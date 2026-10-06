@@ -1,7 +1,3 @@
-/* The pure half of dates in the UI (2026-08-23): the display costume
-   (mirrors the engine's, contract-tested), a month grid for the calendar
-   popover, month/decade stepping, and the default-kind helpers for the
-   field tray. Classic script + ESM in one file (nl-date.js pattern). */
 (function (root) {
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -9,10 +5,6 @@
   const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   const pad = (n) => String(n).padStart(2, '0');
 
-  /* The costume moved to date-grain.js (2026-09-02) so the engine and the
-     browser read ONE rule; these two keep their names for every caller.
-     Same rule as ever: format the stored wall-clock parts, never the local
-     zone's reading of them — and now, only the parts the grain stored. */
   const DG = () => root.weaveDateGrain;
   const formatDate = (iso, opts = {}) => DG().formatDate(iso, opts);
   const formatDateRange = (value, opts = {}) => DG().formatDateRange(value, opts);
@@ -30,11 +22,9 @@
   const isoOf = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
   const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 
-  /* Sunday-first weeks (the native picker's layout) covering the month;
-     leading/trailing days from the neighbours are flagged inMonth:false. */
   function calendarMonth(y, m) {
     const first = new Date(Date.UTC(y, m - 1, 1));
-    const lead = first.getUTCDay();                    // Sun=0 … Sat=6
+    const lead = first.getUTCDay();
     const total = daysIn(y, m);
     const cells = [];
     const [py, pm] = shiftMonth(y, m, -1);
@@ -54,7 +44,6 @@
     return [Math.floor(idx / 12), (idx % 12 + 12) % 12 + 1];
   }
 
-  /* A 12-year window that starts on the decade, so 2026 sits in 2020…2031. */
   function decade(y) {
     const start = Math.floor(y / 10) * 10;
     return Array.from({ length: 12 }, (_, i) => start + i);

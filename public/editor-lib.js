@@ -1,23 +1,6 @@
-/* Pure helpers for the document-editor decoration passes (Phase 4).
-   A classic script in the browser (one global, no module syntax) that node
-   can also import for its side effect — the only shape that serves both a
-   buildless <script src> and `node --test` without a DOM. Nothing in here
-   may touch `document`: DOM work belongs to app.js. */
-
 globalThis.WeaveEditorLib = {
-  /* ---------- inline icons (Kyle, 2026-09-02) ----------
-     `:bell:` is the bell where an emoji shortcode would go — in a sentence, a
-     list, a table cell. The grammar is the token (letters, digits, dashes);
-     the CALLER says which tokens are icons (`accept(token)` returns the icon
-     value — `lucide:bell` for a name, `◔` for a ring alias — or null), so
-     `12:30:45` and `:smile:` stay literal and this file never knows the set.
-     Same grammar as renderInline() in src/markdown.js and as the shortcode
-     table the document editor renders from. */
   ICON_TOKEN: /:([a-z0-9][a-z0-9-]*):/g,
 
-  /* [[ref]] / [[ref|label]] spans in one text-node's worth of plain text.
-     Same grammar renderInline() parses server-side (src/markdown.js): no
-     newlines or brackets inside a reference, label after the first pipe. */
   findRefSpans(text) {
     const out = [];
     const src = String(text ?? '');
@@ -34,43 +17,20 @@ globalThis.WeaveEditorLib = {
     return out;
   },
 
-  /* ---------- what a click on a cell should open ----------
-     The Ledger grid shows a value at rest and the control the moment you aim
-     at it, so a click has to raise the editor that field type actually uses
-     rather than a generic input. Read-only types answer 'none' — a formula
-     is not edited from the grid, and a document has its own surface. An
-     unknown type falls to the text input, which is what the grid renders for
-     one anyway (Kyle, 2026-08-24). */
   cellActivation(type) {
     return {
       text: 'focus-input', number: 'focus-input', url: 'focus-input',
       email: 'focus-input', key: 'focus-input',
-      // Type-or-pick: the caret is the primary path ('next friday'), the
-      // calendar button stays a button.
       date: 'focus-input',
       select: 'open-picker', multiselect: 'open-picker', workflow: 'open-picker',
       relation: 'open-button', attachments: 'open-button', files: 'open-button',
       checkbox: 'toggle', toggle: 'toggle',
-      // A rating is set by its icons, a digit or Backspace (Feature #231);
-      // Return has nothing to open.
       rating: 'rate',
       formula: 'none', rollup: 'none', lookup: 'none', count: 'none',
       document: 'none', field: 'none',
     }[type] ?? (type ? 'focus-input' : 'none');
   },
 
-  /* ---------- a url value as a link (Issue: url cells opened nothing) ----------
-     The Handbook promised "a string the grid renders as a link, opening in a
-     new tab"; the cell drew a text box. The pure half: what the anchor
-     carries. Any scheme draws as a link except the ones a browser would
-     RUN (javascript:, data:, vbscript:, blob:, file:) — a bare word, an
-     empty value or one of those stays the text box, so a stored value can
-     never execute in the reader's tab. `external` is true for http(s): that
-     is the click that leaves weave and takes a new tab. A claude://resume
-     or mailto: link hands off to its handler without leaving the page, so
-     it opens in place (Kyle, 2026-09-07: the Sessions column). host and
-     rest are the two weights the cell sets: a column of links scans by
-     site — for a custom scheme the "host" is everything up to the query. */
   urlParts(value) {
     if (typeof value !== 'string' || !value.trim()) return null;
     let u;
@@ -87,74 +47,30 @@ globalThis.WeaveEditorLib = {
     return { href: u.href, host: cut < 0 ? raw : raw.slice(0, cut), rest: cut < 0 ? '' : raw.slice(cut), external };
   },
 
-  /* ---------- what kind of thing a document is ----------
-     A document field holds whatever was written into it, and weave already
-     treats some of that specially: a complete HTML file runs as an app
-     (isHtmlDocument in app.js and src/markdown.js), a slide Model is JSON, a
-     mermaid source renders as a diagram. The chips in a grid row say which,
-     so a row of three documents is legible without opening any of them.
-     null for an empty document — it has no kind yet. */
   docKind(text) {
     const src = String(text ?? '').trim();
     if (!src) return null;
     if (/^(?:<!doctype\s+html|<html[\s>])/i.test(src)) return 'html';
     if (/^[{[]/.test(src)) {
-      try { JSON.parse(src); return 'json'; } catch { /* prose that opens with a brace */ }
+      try { JSON.parse(src); return 'json'; } catch {}
     }
-    /* A diagram HEADER, not a word that can open prose: "graph theory, a
-       primer" is markdown. graph/flowchart want a direction; the one-word
-       kinds (gantt, pie, mindmap, timeline…) want their own line. The sniff
-       now picks a viewer (docViewMode), so a false positive would hide prose
-       behind a broken drawing. */
     if (/^(?:graph|flowchart)\s+(?:TB|TD|BT|RL|LR)\b|^(?:sequenceDiagram|classDiagram|erDiagram|stateDiagram(?:-v2)?)\b|^(?:gantt|pie|mindmap|timeline|journey|gitGraph)(?=\s+(?:title|showData)\b|\s*\n)/.test(src)) return 'mmd';
     return 'md';
   },
 
-  /* ---------- what a document field's kind means for its surfaces ----------
-     A field DECLARES a kind (config.kind: html, code — markdown is the
-     unmarked default the engine never stores), and the declaration rules;
-     the sniff above decides only for fields that declare nothing, which is
-     every field made before kinds mattered. Declared kind never rejects
-     content: an html field with markdown in it still runs as a frame, a code
-     field holding an HTML file still edits as source — the reader said what
-     the field IS, and weave believes them (Kyle, 2026-08-31). */
   docViewMode(declared, text) {
     if (declared === 'html') return 'app';
     if (declared === 'code') return 'code';
-    // Undeclared: a page runs, a diagram draws, a model edits as code
-    // (Issues #188, #189), and everything else is the markdown editor.
     const kind = this.docKind(text);
     return kind === 'html' ? 'app' : kind === 'mmd' ? 'diagram' : kind === 'json' ? 'code' : 'markdown';
   },
 
-  /* The badge a grid chip wears: the declared kind when there is one, the
-     sniffed kind otherwise — and null for an empty document either way, so
-     the chip can say "empty" instead of lying about what is not there. */
   docChipKind(declared, text) {
     if (!String(text ?? '').trim()) return null;
     if (declared === 'html' || declared === 'code') return declared;
     return this.docKind(text);
   },
 
-  /* ---------- the first few lines of a description, as prose ----------
-     Kyle, 2026-08-27: a description "should always show a preview of the
-     properly formatted first few lines, not an md document chip". A chip said
-     the field existed and what kind it was; it never said what it SAID.
-
-     This is the BLOCK pass, and the only one: it decides which lines are
-     worth showing and hands back their text with the block syntax gone —
-     hashes off headings, bullets off list items, quote carets dropped, table
-     rows and rules and fenced code skipped whole. The caller runs each line
-     through inlineTokens(), so bold arrives as bold and there is still exactly
-     one inline grammar in the browser.
-
-     A document that is not prose is NAMED, never flattened: a doctype makes a
-     terrible summary of a page, and `{"slides":[` a worse one of a deck. The
-     classification is docKind()'s, so a preview and a chip can never disagree
-     about what a document is.
-
-     Returns { kind, lines, label } — kind null and lines empty for an empty
-     document, so the cell can draw its invitation instead of a lie. */
   docPreview(md, { lines: budget = 3 } = {}) {
     const src = String(md ?? '');
     const kind = this.docKind(src);
@@ -168,7 +84,7 @@ globalThis.WeaveEditorLib = {
       try {
         const v = JSON.parse(src.trim());
         shape = Array.isArray(v) ? `${v.length} items` : `${Object.keys(v).length} keys`;
-      } catch { /* docKind already parsed it; a race here is not worth a throw */ }
+      } catch {}
       return { kind, lines: [], label: shape ? `JSON model · ${shape}` : 'JSON model' };
     }
     if (kind === 'mmd') {
@@ -183,42 +99,31 @@ globalThis.WeaveEditorLib = {
       if (/^(?:```|~~~)/.test(line)) { fenced = !fenced; continue; }
       if (fenced) continue;
       if (!line) continue;
-      if (/^(?:[-*_]\s*){3,}$/.test(line)) continue;      // a horizontal rule says nothing
-      if (line.startsWith('|')) continue;                 // nor does one row of a table
+      if (/^(?:[-*_]\s*){3,}$/.test(line)) continue;
+      if (line.startsWith('|')) continue;
       const text = line
-        .replace(/^#{1,6}\s+/, '')                        // a heading is its words
-        .replace(/^>\s?/, '')                             // a quote is what was quoted
-        .replace(/^(?:[-*+]|\d+[.)])\s+/, '')             // a list item is the item
-        .replace(/^\[[ xX]\]\s+/, '')                     // including a checked one
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/^>\s?/, '')
+        .replace(/^(?:[-*+]|\d+[.)])\s+/, '')
+        .replace(/^\[[ xX]\]\s+/, '')
         .trim();
       if (text) out.push(text);
     }
     return { kind, lines: out, label: '' };
   },
 
-  /* ---------- one line of markdown, as marks instead of syntax ----------
-     For places that show a markdown value without editing it — the text
-     cells of the registry grids, where a space description was reading
-     `**Official docs** — the pages`. Flat by design: the first mark that
-     closes wins, nothing nests, and an unclosed marker is just text (so
-     `2 * 3` and `snake_case` survive). Same grammar as renderInline() in
-     src/markdown.js, minus the block level, which a cell has no room for. */
   inlineTokens(md, accept = null) {
     const src = String(md ?? '');
     if (!src) return [];
     const RULES = [
       [/^\[\[([^[\]\n|]+)(?:\|([^[\]\n]+))?\]\]/, (m) => ({ text: (m[2] ?? m[1]).trim(), mark: 'ref' })],
-      // An icon token only counts when the caller vouches for the name.
       [new RegExp('^' + this.ICON_TOKEN.source), (m) => { const icon = accept?.(m[1]) ?? null; return icon ? { text: m[1], mark: 'icon', icon } : null; }],
       [/^\[([^\]\n]+)\]\([^)\s]*\)/, (m) => ({ text: m[1], mark: 'link' })],
-      // Every emphasis mark is flanked: it may not open or close on a space,
-      // so `2 * 3 * 4` stays arithmetic.
       [/^\*\*(\S|\S[^*\n]*\S)\*\*/, (m) => ({ text: m[1], mark: 'strong' })],
       [/^__(\S|\S[^_\n]*\S)__/, (m) => ({ text: m[1], mark: 'strong' })],
       [/^~~(\S|\S[^~\n]*\S)~~/, (m) => ({ text: m[1], mark: 'strike' })],
       [/^`(\S|\S[^`\n]*\S)`/, (m) => ({ text: m[1], mark: 'code' })],
       [/^\*(\S|\S[^*\n]*\S)\*/, (m) => ({ text: m[1], mark: 'em' })],
-      // _em_ only between non-word edges, or snake_case_names would italicise.
       [/^_(\S|\S[^_\n]*\S)_(?!\w)/, (m) => ({ text: m[1], mark: 'em' })],
     ];
     const out = [];
@@ -227,7 +132,6 @@ globalThis.WeaveEditorLib = {
     for (let i = 0; i < src.length;) {
       const rest = src.slice(i);
       const hit = RULES.map(([re, make]) => [re.exec(rest), make]).find(([m]) => m);
-      // An underscore mark may only open where a word does not already run.
       const tok = hit && !(hit[0][0][0] === '_' && /\w$/.test(plain)) ? hit[1](hit[0]) : null;
       if (tok) {
         flush();
@@ -242,41 +146,25 @@ globalThis.WeaveEditorLib = {
     return out;
   },
 
-  /* ---------- what language a fence is written in, when it does not say ----
-     Measured first, then written: highlight.js's own auto-detection is not
-     usable here. Over a subset it read a JS block as CSS (relevance 4) and a
-     mermaid graph as CSS (3); over its full set it answered ada, ebnf,
-     livecodeserver and solidity for ordinary JavaScript, SQL and a file path.
-     A scorer that confident and that wrong colours code as a lie.
-
-     So these are structural rules, precision first: a format is claimed only
-     when its shape says so, and everything else is plain text — which is what
-     a Code block should show anyway. Deterministic, so a block cannot change
-     colour between the editor, the page and the next visit. */
   MERMAID_HEAD: /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(-v2)?|erDiagram|journey|gantt|pie|mindmap|timeline|quadrantChart|gitGraph)\b/,
   SHELL_HEAD: /^\s*(npm|npx|yarn|pnpm|git|curl|wget|cd|ls|mkdir|rm|cp|mv|brew|apt|apt-get|sudo|docker|kubectl|node|deno|python3?|pip3?|make|bash|sh|zsh|ssh|scp|export|echo|cat|grep|sed|awk|tar|open)\s/,
 
   detectCodeLanguage(text) {
     const body = String(text ?? '').trim();
-    if (body.length < 8) return null; // too little to be sure of anything
+    if (body.length < 8) return null;
     const lines = body.split('\n');
 
-    // JSON that parses is JSON. No heuristic beats the parser.
     if (/^[[{]/.test(body)) {
-      try { JSON.parse(body); return 'json'; } catch { /* not JSON after all */ }
+      try { JSON.parse(body); return 'json'; } catch {}
     }
-    // Markup that closes its tags is markup — html and xml share a grammar.
     if (/^</.test(body) && /<\/[a-zA-Z][\w-]*>|\/>/.test(body)) return 'xml';
     if (/^(diff --git |@@ |[+-]{3} )/.test(body)) return 'diff';
-    // A diagram source is not code to colour: it is shown as the text it is.
     if (this.MERMAID_HEAD.test(body)) return null;
     if (/^\s*(select|insert|update|delete|create|alter|drop|with)\b/i.test(body)
       && /\b(from|into|table|set|values|where)\b/i.test(body)) return 'sql';
     if (/^\s*[$#]\s+\S/.test(body) || this.SHELL_HEAD.test(lines[0])) return 'bash';
     if (/^\s*(def|class)\s+\w+[^\n]*:\s*$/m.test(body)
       || /^\s*(from\s+[\w.]+\s+)?import\s+\w+/m.test(body)) return 'python';
-    // A rule block with declarations in it, and none of JavaScript's words —
-    // both languages use braces, only one of them uses `function`.
     if (/[.#@]?[\w-]+\s*\{[^{}]*[\w-]+\s*:[^{}]+\}/.test(body)
       && !/\b(function|const|let|var|return)\b|=>/.test(body)) return 'css';
     const jsSignals = [
@@ -284,24 +172,16 @@ globalThis.WeaveEditorLib = {
       /\b(import|export)\b[^\n]*\bfrom\b/, /\bclass\s+[\w$]+/, /\breturn\b/,
     ].filter((re) => re.test(body)).length;
     if (jsSignals >= 2 || /^\s*(const|let|var)\s+[\w$]+\s*=[^\n]*;\s*$/m.test(body)) return 'javascript';
-    // Loosest rule, so it goes last: every line is a key, a list item or a
-    // comment, and at least one of them is a key.
     if (lines.length >= 2
       && lines.every((l) => !l.trim() || /^(\s*-\s|\s*#|\s*[\w.$-]+\s*:(\s|$))/.test(l))
       && /^\s*[\w.$-]+\s*:/m.test(body)) return 'yaml';
     return null;
   },
 
-  /* Where a chip must never paint: code is literal text by definition, and
-     Vditor's own marker/preview copies are not the writing surface. */
   REF_SKIP_SELECTOR: 'pre, code, .vditor-ir__marker, .vditor-ir__preview',
 
-  /* One dash per heading, length by level — a minimap, not a tree. Below 3
-     headings a map explains nothing, so there is no rail at all (Issue #87). */
   railSpec(headings) {
     if (!Array.isArray(headings) || headings.length < 3) return [];
-    // Widths stay under 20px: the rail owns the full gutter now that the
-    // document text is indented and the fold carets moved inside that indent.
     return headings.map((h) => ({
       level: h.level,
       text: h.text,
@@ -309,49 +189,22 @@ globalThis.WeaveEditorLib = {
     }));
   },
 
-  /* The tracker: index of the last heading at or above the reading line
-     (viewport-relative tops), the first section before any heading passes it,
-     -1 when there are no headings.
-
-     "At" means within a pixel: the rail's own jump lands a heading ON the
-     line, and a scroll offset the browser keeps in fractions put it at 80.15
-     against a line of 80 — so jumping to a section left the tracker pointing
-     at the one above it (Issue #69). */
   currentSection(tops, line) {
     let current = tops.length ? 0 : -1;
     tops.forEach((top, i) => { if (top <= line + 1) current = i; });
     return current;
   },
 
-  /* ---------- programmatic scrolling (Issue #69) ----------
-     `Element.scrollIntoView()` is defined to scroll every scrollable ancestor
-     of its target, so bringing one heading into view also reset the docked
-     panel around it and the page behind that. The caller has to name the ONE
-     box that may move and where it lands; that arithmetic is these two, and
-     neither touches the DOM. */
-
-  /* Which box scrolls: walking out from the target's parent, the first one
-     that both allows overflow and has more content than room. Entries are
-     `{ overflowY, scrollHeight, clientHeight }`. -1 means nothing in the
-     chain scrolls and the caller moves the page itself. */
   scrollBoxIndex(boxes) {
     return (Array.isArray(boxes) ? boxes : []).findIndex((b) =>
       /^(auto|scroll|overlay)$/.test(b?.overflowY ?? '')
       && b.scrollHeight > b.clientHeight + 1);
   },
 
-  /* Where that box's scrollTop has to land. Every measurement shares one
-     coordinate space (viewport rects do fine): the box shows the band
-     [viewTop, viewTop + viewHeight] and the target sits at [targetTop,
-     + targetHeight]. `block: 'start'` puts the target at the top of the band,
-     `padding` below whatever covers that edge; `'nearest'` moves the least
-     that brings the target inside, and nothing at all when it already is. */
   scrollTopFor({
     scrollTop = 0, scrollHeight = 0, viewTop = 0, viewHeight = 0,
     targetTop = 0, targetHeight = 0, block = 'start', padding = 0, bottom = 0,
   } = {}) {
-    // `padding` is what covers the top edge (a sticky header); `bottom` is
-    // what covers the bottom edge (the sticky + New foot, Feature #196).
     const toTop = scrollTop + (targetTop - viewTop) - padding;
     if (block === 'nearest') {
       const above = targetTop < viewTop + padding;
@@ -366,9 +219,6 @@ globalThis.WeaveEditorLib = {
     return Math.min(Math.max(toTop, 0), Math.max(0, scrollHeight - viewHeight));
   },
 
-  /* What a fold hides (Issue #88): the block indices after heading i, up to
-     but not including the next heading of the same or a higher level.
-     `blocks` is one entry per block — a heading's level, or null. */
   foldRange(blocks, i) {
     const out = [];
     for (let j = i + 1; j < blocks.length; j++) {
@@ -378,26 +228,11 @@ globalThis.WeaveEditorLib = {
     return out;
   },
 
-  /* A document that opens by repeating its record's name (F6, 2026-09-26):
-     the page title already says it, so the entity page hides that first H1
-     and the markdown keeps it. Trimmed, whitespace-collapsed, case-folded;
-     an empty name echoes nothing. */
   isTitleEcho(heading, name) {
     const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
     return norm(name) !== '' && norm(heading) === norm(name);
   },
 
-  /* ---------- a block command takes the line it was typed on (Issue #455) ----
-     Kyle, 2026-09-28: a heading line, then /task, kept the heading and put a
-     "To do" placeholder under it. The slash menu handed Vditor a fixed string
-     and nothing read the line. A line-prefix command now travels as a marker,
-     the same U+2063 fence a reference uses, and the line that holds the marker
-     is rewritten here as markdown: old block marker off, new one on, words
-     kept.
-
-     One entry per command: the prefix it writes, and the placeholder a line
-     with no words gets, because a marker with nothing after it is not a block
-     (the slash menu's note in app.js has the measurements). */
   BLOCK_KINDS: {
     text: ['', 'Text'],
     h1: ['# ', 'Heading'],
@@ -416,11 +251,6 @@ globalThis.WeaveEditorLib = {
     return `\u2063block:${kind}\u2063`;
   },
 
-  /* Line in, command in, line out. The indent stays, so a nested item
-     converts where it sits. Every quote caret comes off, then one heading or
-     list marker, and a task box goes with its bullet. A marker counts only
-     with a space or the end of the line after it: `*soon*` is emphasis and
-     `#tag` is a word. */
   convertLine(line, kind) {
     const src = String(line ?? '');
     const spec = this.BLOCK_KINDS[kind];
@@ -433,16 +263,6 @@ globalThis.WeaveEditorLib = {
     return `${indent}${spec[0]}${words || spec[1]}`;
   },
 
-  /* The document around that line. null when no marker is in it; otherwise
-     the document with the one line rewritten, and `line`, where that line now
-     is, so the caller can put the caret at its end.
-
-     The space typed before "/" belongs to the command and goes with it. A
-     table row and a line inside a code fence lose the marker and nothing
-     else, and `line` is -1 to say so: a block prefix there would break the
-     table or rewrite the code. A line that leaves a list or a paragraph
-     (Text, a heading, a quote) is set apart by blank lines, because "- a\nb"
-     reads b as the tail of item a. */
   convertMarkedLine(md) {
     const src = String(md ?? '');
     const hit = src.match(this.BLOCK_MARKER_RE);

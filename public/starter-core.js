@@ -1,31 +1,9 @@
-/* The first-run empty state, the pure half (Issue #386). A workspace with no
-   tables of its own opens on one primary action and a few starting
-   templates instead of the registry grid.
-
-   "Its own" is the engine's `system` flag, never a name: the Workspace space
-   and every table in it are the registry, which each root workspace carries
-   from birth, so counting them made the welcome unreachable.
-
-   A template is data: a weave_build spec (Feature #253) for one space, its
-   tables, fields, relations, rollups, formulas and a few sample rows.
-   spec() hands it to the engine's one build call, so the empty state (POST
-   /api/build), the onboarding welcome (Feature #248, server side) and the
-   tests all build the same thing, and a template needs no builder of its own
-   (Feature #244).
-
-   Loaded by the browser as a classic script, and by the server and the
-   tests as a side-effect import, so it speaks only globalThis. */
 (function (root) {
-  /* The tables a person made, from a describeSchema()-shaped list: a system
-     table, or any table in a system space, is weave's own. */
   function userTables(schema) {
     return (schema ?? []).filter((sp) => !sp.system)
       .flatMap((sp) => (sp.tables ?? []).filter((t) => !t.system));
   }
 
-  /* The month a template is built in: its name for the Months row, a day of
-     it for a sample date, and a date some days on for a due date. Local
-     time, so a row dated "today" is the person's today. */
   function month(now = new Date()) {
     const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     return {
@@ -37,15 +15,6 @@
 
   const money = { format: 'currency', currency: 'USD' };
 
-  /* Three templates, from the use cases Kyle's sessions raised most (Feature
-     #244, 2026-10-03): personal finance, tasks, a CRM. A card's title is its
-     space's name, so the card and the sidebar call it one thing.
-
-     Each template's tables are weave_build tables (Feature #253): fields
-     written flat, a relation as `to` plus cardinality and inverse, rollups
-     and formulas reading relations from the same build, and rows by field
-     name, a relation value being the target row's Name. The first table is
-     the one a build opens on. */
   const TEMPLATES = [
     {
       id: 'finance',
@@ -96,8 +65,6 @@
           rows: [{ Name: 'Paycheck', Amount: 3200, Date: m.on(1), Month: m.name }],
         },
         {
-          // One row per month, linked by hand for now (Feature #245 links
-          // them automatically). No date-grain formula: Issues #576, #590.
           name: 'Months',
           icon: 'lucide:calendar',
           fields: [
@@ -163,17 +130,11 @@
     },
   ];
 
-  /* A template as one weave_build spec: POST /api/build in the browser, the
-     engine's build() on the server, the same spec both ways. */
   function spec(template, { now } = {}) {
     return { spaces: [{ name: template.space, icon: template.icon, tables: template.tables(month(now)) }] };
   }
   const firstTable = (template) => template.tables(month())[0].name;
 
-  /* What a person types as a workspace name, as one the engine accepts (a
-     letter or digit, then letters, digits, - and _). A name it already
-     accepts is kept as typed; anything else is folded: "Acme Team" becomes
-     acme-team. Empty when nothing usable is left (Feature #248). */
   const VALID_NAME = /^[a-z0-9][a-z0-9-_]*$/i;
   function workspaceName(text) {
     const t = String(text ?? '').trim();

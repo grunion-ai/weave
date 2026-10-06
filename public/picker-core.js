@@ -1,30 +1,7 @@
-/* Pure logic behind the token-box picker (Kyle, 2026-08-25).
-
-   The picker's search bar IS the value: the chips already chosen sit inside
-   the cursor box, ahead of the caret, so one box holds both what is selected
-   and what is being typed. That makes the whole field keyboard-reachable —
-   ← → walk the chips, Backspace/Delete removes one, typing filters the list
-   with the TOP FIT already armed so Enter adds it, ↑ ↓ move that arming, and
-   Enter on an empty search saves.
-
-   Two dialects, because selection means different things:
-     multi   multiselect and linked records — Enter toggles, chips accumulate,
-             the edit commits as a set.
-     single  select and workflow states — a pick OVERWRITES, so it commits and
-             closes on the spot and the box carries at most one chip.
-
-   Classic script + ESM in one file, same pattern as chip-core.js: the browser
-   reads the window global, node imports the same source. Nothing here touches
-   `document` — the DOM half lives in app.js (searchPicker). */
 (function (root) {
   const norm = (s) => String(s ?? '').toLowerCase();
   const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  /* ---------- what the search points at ----------
-     "Top fit" is not "first option that contains the letters": typing 'do'
-     against Done / Backlog-doc / To do must arm Done. Exact beats prefix
-     beats word-prefix beats anywhere-in-label beats a hint-only match, and
-     inside a tier the author's own order stands. */
   function rankOptions(options, query) {
     const q = norm(query).trim();
     if (!q) return options.slice();
@@ -44,9 +21,6 @@
     return scored.map((s) => s.o);
   }
 
-  /* State: `staged` are the chips in the box, `query` is the text after them,
-     `active` indexes the visible list (-1 = nothing armed), and `caret` says
-     where the cursor is — null for the text, otherwise the chip it sits on. */
   function blank({ mode = 'multi', options = [], staged = [], currentId = null, clearId = null }) {
     const cur = mode === 'single' ? options.findIndex((o) => o.id === currentId) : -1;
     const chips = mode === 'single'
@@ -58,21 +32,11 @@
   const ids = (state) => state.staged.map((x) => x.id);
   const has = (state, id) => state.staged.some((x) => x.id === id);
 
-  /* What is in the list. A multi picker drops what is already a chip in the
-     box (Issue #64): the chip says it, so the row would say it twice, and the
-     row you can still pick sits lower for no reason. Dropping it here rather
-     than in the DOM is what keeps the grammar and the drawn list from
-     disagreeing about which row a number or an arrow points at — and it is
-     why Enter after ↑↓ can only ever ADD (Issue #63). A single picker keeps
-     everything: a pick there overwrites, so its current value stays listed
-     and stays tickable. */
   const visible = (state) => {
     const ranked = rankOptions(state.options, state.query);
     return state.mode === 'single' ? ranked : ranked.filter((o) => !has(state, o.id));
   };
 
-  /* Typing arms the top fit — Enter is then "add what I searched for". An
-     empty search arms nothing, which is what makes Enter mean "done". */
   function search(state, query) {
     return { ...state, query, active: String(query).trim() ? 0 : -1, caret: null };
   }
@@ -84,9 +48,6 @@
     return { ...state, staged, query: '', active: -1, caret: null };
   }
 
-  /* Removing chip `index`. `land` says where the cursor goes after: 'prev'
-     for Backspace (the chip before it), 'next' for Delete (the one that
-     slides into its place), 'text' when the cursor never left the caret. */
   function removeAt(state, index, land = 'prev') {
     if (index < 0 || index >= state.staged.length) return state;
     const staged = state.staged.filter((_, i) => i !== index);
@@ -103,18 +64,10 @@
   const pass = () => ({ state: null, effect: null, handled: false });
   const took = (state, effect = null) => ({ state, effect, handled: true });
 
-  /* One keystroke. Returns { state, effect, handled }: `handled` false means
-     the key was never ours (plain typing, text navigation) and the input must
-     keep it. Effects are the caller's to run — 'pick' overwrites and closes,
-     'commit' saves the staged set, 'close' walks away. */
   function keyDown(state, { key, atStart = true, quick = null } = {}) {
     const vis = visible(state);
     const typed = state.query !== '';
 
-    /* Quick-pick: the rows are numbered and ⌥1–⌥9 takes one (Issue #65). The
-       core is handed the row NUMBER, never the chord — on a Mac ⌥1 arrives as
-       `¡`, so reading the physical key is the DOM's job. A number past the
-       end is still ours: swallowed, so the box never fills with ª. */
     if (quick != null) {
       const o = vis[quick - 1];
       if (!o) return took(state);
@@ -139,9 +92,6 @@
     if (key === 'Backspace' || key === 'Delete') {
       if (typed) return pass();
       if (state.mode === 'single') {
-        // A single select overwrites, so "remove the chip" is a pick of the
-        // clear option — the same commit-and-close any other pick makes. A
-        // workflow state has no clear option and so cannot be emptied.
         if (!state.staged.length || !state.clearId) return pass();
         return took(state, { type: 'pick', option: { id: state.clearId, label: state.clearId } });
       }
@@ -150,10 +100,6 @@
       return took(removeAt(state, state.staged.length - 1, 'text'));
     }
 
-    /* Enter has one meaning per state of the box: something armed, add it (or
-       pick it); nothing armed and nothing typed, save. The third case is the
-       trap — a search that matches nothing addable must NOT fall through to
-       the save, or typing a tag you already have would close the picker. */
     if (key === 'Enter') {
       const pick = vis[state.active] ?? (state.query.trim() ? vis[0] : null);
       if (pick) {

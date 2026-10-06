@@ -1,8 +1,3 @@
-/* Mermaid flowchart source → plain nodes/edges (Feature #46). The whiteboard
-   needs positions-free structure, not a rendering: tolerant line-by-line
-   parsing of the `graph`/`flowchart` dialect weave actually writes (the
-   relation map, doc diagrams). Unparsed lines are ignored, never fatal.
-   Classic script + node-importable, same pattern as nl-date.js. */
 (function (root) {
   const SHAPES = [
     [/^\(\((.*)\)\)$/, 'circle'],
@@ -37,7 +32,6 @@
     const seen = (ref) => {
       if (!ref) return null;
       const cur = nodes.get(ref.id);
-      // A later mention with a label wins over a bare id reference.
       if (!cur || (ref.label !== ref.id && cur.label === cur.id)) nodes.set(ref.id, ref);
       return ref.id;
     };
@@ -50,19 +44,16 @@
         continue;
       }
       if (/^(subgraph\b|end$|classDef\b|class\b|style\b|linkStyle\b|click\b)/i.test(line)) continue;
-      // A -- label --> B: the label lives between the dashes.
       if ((m = line.match(/^(.+?)\s*[-=.]{2,}\s+"?([^"|]+?)"?\s+[-=.]{2,}>\s*(.+)$/))) {
         const from = seen(parseNodeRef(m[1]));
         const to = seen(parseNodeRef(m[3]));
         if (from && to) { edges.push({ from, to, label: m[2].trim() }); continue; }
       }
-      // A --> B, A -->|label| B, A -.-> B, A ==> B.
       if ((m = line.match(/^(.+?)\s*(?:[-=.]{2,}>|[=]{3,})\s*(?:\|([^|]*)\|\s*)?(.+)$/))) {
         const from = seen(parseNodeRef(m[1]));
         const to = seen(parseNodeRef(m[3]));
         if (from && to) { edges.push({ from, to, label: (m[2] ?? '').trim() }); continue; }
       }
-      // Bare node declarations.
       const ref = parseNodeRef(line);
       if (ref && /[[({>]/.test(line)) seen(ref);
     }

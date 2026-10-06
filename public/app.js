@@ -1,7 +1,3 @@
-/* Weave web UI — vanilla JS SPA over the REST API.
-   Every writable field and every document field is natively editable in every
-   view (table, entity page). ⌘K opens universal search with
-   permalinks. #/map visualizes relations and automations. */
 'use strict';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -26,72 +22,26 @@ const svgEl = (tag, attrs = {}, ...children) => {
   return node;
 };
 
-/* Tabler-house chevron: stroked, round caps, 24-unit box so it sizes off the
-   CSS box rather than a font metric. Text glyphs (▾) cannot match the stroke
-   weight of the surrounding chrome — see the nav-caret UAT note in style.css.
-
-   Points RIGHT at rest and is turned down by CSS rotation, never by swapping
-   the path: one glyph means the open and closed states cannot drift apart,
-   and the turn is animatable. Hairline stroke per Kyle's "Routines ›". */
-// The one chevron the chrome folds with — the inventory's, so it moves like
-// every other icon and matches the set's stroke (Kyle, 2026-09-02: "the new
-// inventory is used and enforced across weave, including chevrons").
 const chevron = () => iconEl('lucide:chevron-right', 'wv-icon');
 
-// Workspace scoping: the app is served at / (default workspace) and at
-// /w/<name>/ for sibling workspaces — one SPA, path-scoped API + permalinks.
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
 
-/* Where this browser is. An instant (a date field with zone: instant) is
-   stored as UTC and rendered in the reader's zone — the server learns the
-   zone from this header and the cell uses it directly. */
-const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; /* no Intl zone data: UTC is the honest default */ } })();
-/* A field mid-edit saves when the page leaves it (Kyle, 2026-09-07). Every
-   plain editor commits through its native `change`, which a browser fires on
-   blur — so clicking elsewhere already saved. A route change, a dock swap or
-   a closing tab tore the focused input out of the page with no blur, and the
-   keystrokes went with it. Blurring the active editor first IS the save;
-   each leaving path calls this before it rebuilds. */
+const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
 function commitActiveEdit() {
   const a = document.activeElement;
   if (a && a.matches?.('input, textarea, select')) a.blur();
-  /* A multi picker stages its picks in the popover and writes them when it
-     closes — a blur reaches none of that (Issue #224). The open picker
-     carries its own commit; every leaving path takes it. */
   document.querySelector('.picker-pop')?.commit?.();
 }
-// Set while the page unloads: a write started then rides `keepalive` so the
-// browser finishes it after the page is gone (bodies stay under its 64KB cap).
 let leaving = false;
 for (const ev of ['beforeunload', 'pagehide']) {
   window.addEventListener(ev, () => { leaving = true; commitActiveEdit(); });
 }
 
-/* The structure's version this tab's schema was loaded at (Issue #274). The
-   schema is fetched once at boot; every answer the server gives names the
-   structure it was computed against, so a read that comes back stamped with
-   a version this tab has not loaded means somebody else — the CLI, an agent
-   over MCP, an automation, a second tab — moved the schema, and the tab
-   refetches it before drawing another row against definitions it no longer
-   has. Set by loadSchema(), which owns what "loaded" means. */
 let loadedSchemaVersion = null;
-// The version the last response named, whatever it was for: loadSchema()
-// reads it back to learn which structure the schema it just took belongs to.
 let lastSchemaVersion = null;
-// True while loadSchema() is in flight: its own responses carry the version
-// it is in the middle of adopting and must not read as drift.
 let schemaLoading = false;
-/* The refetch in flight, if any: the FETCH, never the redraw that follows
-   it. A render waits on this, so a navigation made while the schema is being
-   refetched draws from the fresh one. Waiting on the redraw instead would
-   deadlock, since the redraw is itself a render. */
 let schemaFetch = null;
 
-/* Only a READ is somebody else's news. A write is this tab's own doing —
-   the path that made it refreshes whatever it needs (a column resize
-   deliberately does not repaint, Issue #160) — so a mutation adopts the
-   version it caused without a redraw. The row query every navigation makes
-   is a read wearing POST. */
 function noteSchemaVersion(version, isRead) {
   if (!version) return;
   lastSchemaVersion = version;
@@ -101,7 +51,6 @@ function noteSchemaVersion(version, isRead) {
   syncSchema();
 }
 
-// A File's bytes as bare base64 (no data: prefix), the upload routes' body.
 function fileBase64(file) {
   return new Promise((res, rej) => {
     const reader = new FileReader();
@@ -111,7 +60,6 @@ function fileBase64(file) {
   });
 }
 
-// `signal` lets a caller cancel a request a newer one has replaced (⌘K).
 async function api(method, path, body, { signal } = {}) {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const res = await fetch(WS_PREFIX + '/api' + path, {
@@ -119,17 +67,11 @@ async function api(method, path, body, { signal } = {}) {
     signal,
     headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE },
     body: payload,
-    /* A hidden tab may be frozen or discarded before the answer comes, so
-       its writes ride keepalive too (Issue #247). The browser refuses a
-       keepalive body over 64KB outright; a long document goes as a plain
-       fetch, which a page still alive can finish. The cap counts bytes:
-       an accented letter is two of them. */
     keepalive: (leaving || document.visibilityState === 'hidden')
       && new TextEncoder().encode(payload ?? '').length < 60_000,
   });
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
-  // The status rides the error, so a dialog can tell a conflict from a refusal.
   if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status });
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
@@ -137,13 +79,12 @@ async function api(method, path, body, { signal } = {}) {
   return data;
 }
 
-// Clipboard with fallback: async API → execCommand → show the text to copy.
 async function copyText(text, label = 'Copied') {
   try {
     await navigator.clipboard.writeText(text);
     toast(label);
     return;
-  } catch { /* fall through */ }
+  } catch {}
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.style.cssText = 'position:fixed;opacity:0';
@@ -154,26 +95,6 @@ async function copyText(text, label = 'Copied') {
   toast(ok ? label : text, !ok);
 }
 
-/* ---------- toasts (Issue #380) ----------
-   One behaviour for every caller, decided once here (Kyle approved the
-   mockup 2026-09-26). The stack lives in a lane: at 1000px and wider it
-   centres at the bottom between the content panel and a 300px corner
-   reserve, where the bug button, its panel and the trash sit; below that it
-   moves to the top of the screen (style.css, #wv-toasts). A toast used to
-   land on the bug panel, the version chip and Save changes.
-
-   action = { label, run } adds an inline button and holds the toast open long
-   enough to use it: the undo affordance for recoverable actions. The fourth
-   argument can name the kind outright; otherwise an error is `err`, a toast
-   with an action is `success`, and the rest are `info`.
-
-   Life is the kind's floor or 60 ms a character, whichever is longer, capped
-   at 20 s: a long server error stays long enough to read. The clock stops
-   while the pointer is over the stack, while focus is in it and while the
-   tab is hidden. Three at most: a fourth pushes out the oldest non-error.
-   The same text again counts on the toast already up (×2) instead of
-   stacking a copy. Screen readers hear the text through two live regions
-   inside the layer; the toast itself never takes focus. */
 const TOAST_MS = { info: 4000, action: 8000, err: 10000, perChar: 60, max: 20000 };
 const TOAST_LIMIT = 3;
 const TOAST_ICON = { info: 'lucide:info', success: 'lucide:check', err: 'lucide:circle-alert', automation: 'lucide:workflow' };
@@ -182,9 +103,6 @@ const toastsUp = [];
 function toastLayer() {
   let layer = document.querySelector('#wv-toasts');
   if (layer) return layer;
-  // `wv-toast`, not `toast`: Tabler ships `.toast:not(.show){display:none}`,
-  // Bootstrap's toast waiting for JS to reveal it, so a hand-rolled `.toast`
-  // was invisible (Issue #92).
   layer = el('div', { id: 'wv-toasts', role: 'region', 'aria-label': 'Notifications' },
     el('div', { id: 'wv-live-status', class: 'visually-hidden', role: 'status', 'aria-live': 'polite' }),
     el('div', { id: 'wv-live-alert', class: 'visually-hidden', role: 'alert' }));
@@ -201,8 +119,6 @@ function toast(msg, isErr = false, action = null, { kind } = {}) {
   kind ??= isErr ? 'err' : action ? 'success' : 'info';
   const text = String(msg);
   const layer = toastLayer();
-  // A repeat counts on the toast already up. Never one with an action: two
-  // Undos are two different rows.
   const same = !action && toastsUp.find((t) => !t.action && t.kind === kind && t.msg === text);
   if (same) {
     same.count += 1;
@@ -229,15 +145,12 @@ function toast(msg, isErr = false, action = null, { kind } = {}) {
     class: 'wv-toast-close', type: 'button', 'aria-label': 'Dismiss', title: 'Dismiss',
     onclick: () => dropToast(item),
   }, iconEl('lucide:x', 'wv-toast-x')));
-  // A sideways swipe of 48px dismisses on touch; the text stays selectable.
   let x0 = null;
   node.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') x0 = e.clientX; });
   node.addEventListener('pointerup', (e) => { if (x0 != null && Math.abs(e.clientX - x0) >= 48) dropToast(item); x0 = null; });
   toastsUp.push(item);
   layer.append(node);
   while (toastsUp.length > TOAST_LIMIT) dropToast(toastsUp.find((t) => t.kind !== 'err') ?? toastsUp[0]);
-  // Emptied, then written a beat later, so the same words twice in a row are
-  // announced twice.
   const live = layer.querySelector(kind === 'err' ? '#wv-live-alert' : '#wv-live-status');
   live.textContent = '';
   setTimeout(() => { live.textContent = text; }, 50);
@@ -252,7 +165,6 @@ function dropToast(item) {
   item.node.remove();
 }
 
-// One clock for the stack, running only while a toast is up.
 let toastTick = null;
 function toastClock() {
   if (toastTick) return;
@@ -268,10 +180,6 @@ function toastClock() {
   }, 100);
 }
 
-/* Esc closes the newest toast when focus is in the stack, or when nothing
-   else could want it: focus on the page itself and no dialog, tray, menu,
-   popover or bug panel open. Capture phase, so a tray's own Esc handler has
-   not yet closed the tray when this looks. */
 addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !toastsUp.length) return;
   const at = document.activeElement;
@@ -280,27 +188,9 @@ addEventListener('keydown', (e) => {
   if (inStack || ((!at || at === document.body) && !claimed)) dropToast(toastsUp.at(-1));
 }, true);
 
-/* A centred dialog holds the page while it is open (Issue #263). The audit
-   found Tab walking out of every dialog into the grid behind the backdrop,
-   and nothing telling a screen reader a dialog had opened. holdPage() makes
-   `box` a modal dialog named by its <h2>, puts `back` on the page, marks
-   every other body child `inert` (no focus, no clicks, hidden from the
-   accessibility tree: Chromium 102 and Safari 15.5 on), and keeps Tab and
-   Shift+Tab cycling inside the box. It moves every Tab itself rather than
-   catching only the ends: Safari's default Tab skips buttons, so its last
-   stop is not the box's last control, and a trap that waited there would
-   let the reader walk out to the address bar. The toasts and the problem
-   reporter stay live: a toast's Undo is pressed while a dialog is open, and
-   the reporter floats above dialogs on purpose. Popovers a dialog opens are appended
-   after the hold, so they are live too, and a Tab inside one is theirs.
-   Callers close a dialog by removing its backdrop as often as through
-   modal()'s own close (a Restore, a Clear, tray() opening over it), so the
-   page comes back on the removal itself, and focus that fell to the body
-   goes back to whatever opened the dialog. */
 const MODAL_LIVE = '#wv-toasts, .bug-fab, #bug-panel';
 const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 let pageHeld = [];
-// A modal replacing a modal keeps the page held: only the last one out frees it.
 function releasePage() {
   if (document.querySelector('#modal-back')) return;
   for (const n of pageHeld) n.inert = false;
@@ -338,21 +228,12 @@ function holdPage(back, box) {
   }).observe(document.body, { childList: true });
 }
 
-/* onSubmit null is a dialog that only shows something (the key sheet, Issue
-   #268): one button closes it, and it takes focus, so the keys a reader
-   presses next reach the dialog and not the grid behind it. */
 function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
-  // One dialog at a time: a second open replaces the first instead of stacking
-  // another backdrop (and another set of blank inputs) on top of it.
   document.querySelector('#modal-back')?.remove();
-  /* Focus goes back where it came from, but only when the dialog still holds
-     it: a submit that has already moved focus on (a new row's name cell)
-     keeps its choice. */
   const opener = document.activeElement;
   const close = () => {
     const held = back.contains(document.activeElement);
     back.remove();
-    // The opener is behind the hold: free the page before focusing it.
     releasePage();
     if (held && opener?.isConnected) opener.focus();
   };
@@ -368,7 +249,6 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
       await onSubmit?.(new FormData(form));
       close();
     } catch (err) {
-      // A dialog that already said what went wrong, inside itself, marks it.
       if (!err.shown) toast(err.message, true);
     }
   });
@@ -383,11 +263,6 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   if (first) first.focus();
 }
 
-/* The right-hand tray: the same form contract as modal() (body nodes, an
-   onSubmit over FormData, a submit label) in a slide-over that leaves the
-   table visible behind it — schema edits are made while looking at the
-   data they shape. One tray at a time; Esc or the backdrop closes it.
-   Popovers opened from inside it stack above it (.chip-pop z-index). */
 function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   document.querySelector('#tray-back')?.remove();
   document.querySelector('#modal-back')?.remove();
@@ -421,22 +296,8 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 }
 
 const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: new Set(),
-  /* Feature #132: which rows are chosen, per table. A Set of ENTITY IDS —
-     the grid re-sorts on every draw, so a selection keyed on position would
-     quietly slide onto different records. */
   selected: new Map() };
 
-/* Single entry point for opening an entity, and it DOCKS (Issue #198). The
-   ONE entity view opens beside the table the reader is on (ruling of
-   2026-09-02); the outward arrows expand it to the #/entity page. The dock
-   follows the click and the page stays (Kyle, 2026-09-12, Issue #276): a
-   relation hop into another table docks that row beside the table under
-   the reader, extends the dock's own crumb, and pushes nothing. Only a
-   reader with no table under them (home, a space, activity) travels to the
-   entity's table first — that is a new place, so it is a real history entry.
-   The dock itself is presentation, never a navigation (the ledger's #id
-   link set that rule). The route stays the page: a new tab, a permalink
-   and the expand arrows all land on #/entity/<id>. */
 async function openEntity(id, { drill = false } = {}) {
   let entity;
   try { entity = await api('GET', `/entities/${id}`); } catch (err) { return toast(err.message, true); }
@@ -451,11 +312,6 @@ async function openEntity(id, { drill = false } = {}) {
   await dockEntity(db, id, { drill });
 }
 
-/* Every plain click on an entity link docks, wherever the link was drawn —
-   a relation chip, a card, a mention chip in a document, a crumb. Capture
-   phase, because a chip stops propagation at its own anchor. Modifier
-   clicks are the browser's (Issue #134) and fall through to the href; a
-   control riding inside the link (the mention caret) keeps its own click. */
 document.addEventListener('click', (e) => {
   if (nativeClick(e)) return;
   const a = e.target.closest?.('a[href^="#/entity/"]');
@@ -463,51 +319,24 @@ document.addEventListener('click', (e) => {
   const m = a.getAttribute('href').match(/^#\/entity\/([^/?]+)$/);
   if (!m) return;
   e.preventDefault();
-  // A link inside the dock is a hop FROM the docked entity: it drills the
-  // chain (Issue #276). So is a link on the entity page, the same view in
-  // its expanded pose (Issue #670). A link anywhere else opens afresh.
   openEntity(m[1], { drill: !!a.closest('#dock') || (state.route?.page === 'entity' && !!a.closest('#main')) });
 }, true);
 
-/* ---------- the clicks the browser owns (Issue #134) ----------
-   ⌘/Ctrl means "open a tab", Shift means "open a window", the middle button
-   means a tab again. A reader expects that of every link on every page, so
-   weave hands those clicks back whatever chrome they land on. Alt stays out
-   of it: in a browser Alt-click means "download this", which a hash route
-   cannot honour, and claiming it would take Option-click away from the text
-   inputs that fill half the grid's cells.
-
-   Two halves, and this is the first: the question a routing click handler
-   asks before it routes. An element that is already an <a href> needs only
-   this — bail, and the browser does the rest itself. */
 function nativeClick(e) {
   return !!(e.metaKey || e.ctrlKey || e.shiftKey) || (e.button ?? 0) !== 0;
 }
 
-/* Every link that leaves weave opens in a new tab (Kyle, 2026-09-07) —
-   a markdown link in a description, a url cell, a mention that resolved to
-   a far site — so the reader never loses the page they were on. Routes and
-   same-origin paths stay in place. One capture-phase listener: the anchor
-   is retargeted before the browser follows it, whatever surface drew it,
-   and an anchor that already chose its target keeps it. */
 function externalLinksOpenInTabs(e) {
   const a = e.target?.closest?.('a[href]');
   if (!a || a.target) return;
   let u;
-  try { u = new URL(a.getAttribute('href'), location.href); } catch { return; } // not a URL: leave the click to the browser
+  try { u = new URL(a.getAttribute('href'), location.href); } catch { return; }
   if (u.origin === location.origin || !/^https?:$/.test(u.protocol)) return;
   a.target = '_blank';
   a.rel = 'noopener';
 }
 addEventListener('click', externalLinksOpenInTabs, true);
 
-/* The second half, for every surface that navigates WITHOUT being a link: a
-   grid row, the relation panel's rows, an activity row, a ⌘K hit, a node on
-   the relation map. Each declares where it goes as data-href — nothing else —
-   and this ONE listener opens the tab, in the capture phase so the routing
-   handler underneath never runs. Real anchors are left to the browser, and
-   form controls keep their own modifiers: shift-click still extends a text
-   selection, and the row checkbox still range-selects. */
 const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [contenteditable]';
 function openNativeClick(e) {
   if (!nativeClick(e)) return;
@@ -520,16 +349,6 @@ function openNativeClick(e) {
 }
 addEventListener('click', openNativeClick, true);
 addEventListener('auxclick', openNativeClick, true);
-/* The frozen # column shows its seam only while something is passing under
-   it (Issue #252): the wrap flags its own sideways scroll and the hairline
-   in style.css takes its colour from that. One capture-phase listener for
-   every grid on every page — scroll does not bubble, and a per-grid listener
-   would have to be wired into each of the four places a grid is built. */
-/* The same listener tells a grid's header whether it is stuck (Feature
-   #240): a sticky header cell sits below the top of its table only while
-   rows are passing under it, whichever box scrolls: the page for a grid
-   that fits, the wrap for a wide one. That wrap wears `.wv-head-stuck`, and
-   style.css gives the header a faint shadow for it. Read once a frame. */
 let headCheck = 0;
 const markStuckHeads = () => {
   headCheck = 0;
@@ -545,10 +364,6 @@ addEventListener('scroll', (e) => {
   }
   headCheck ||= requestAnimationFrame(markStuckHeads);
 }, { capture: true, passive: true });
-/* The row term of a table by id (Feature #40) — for surfaces that hold a
-   target id rather than the table. Unknown ids speak the default, "record". */
-/* The field that carries a table's row identity — by ROLE (Feature #168: the
-   Name field can be renamed), with the literal as the pre-role fallback. */
 function nameFieldOf(db) {
   return db?.fields?.find((f) => f.role === 'name') ?? db?.fields?.find((f) => f.name === 'Name');
 }
@@ -558,17 +373,7 @@ function termOfTable(id) {
   return WeaveTerm.DEFAULT;
 }
 
-/* The side peek is gone (2026-09-02): the entity dock is the ONE panel;
-   every opener routes through dockEntity. */
-
-
-
-/* ---------- entity dock (one entity surface) ----------
-   The split dock: an entity opens as a second panel BESIDE the table, not
-   an overlay over it. public/entity-surface-core.js holds the rules (poses,
-   the drill chain, selection-follow); this paints them. The side peek stays
-   for callers outside the table view until the dock absorbs them. */
-let dock = null; // { db, state, editors }
+let dock = null;
 
 function markDockedRow() {
   const id = dock ? weaveEntitySurface.selectionId(dock.state) : null;
@@ -576,15 +381,13 @@ function markDockedRow() {
   if (id) $(`tr[data-eid="${id}"]`)?.classList.add('row-docked');
 }
 
-// Scoped teardown, same discipline as the peek: only what THIS panel
-// mounted — the table beside it may hold live editors of its own.
 function releaseDockPanel() {
   const panel = $('#dock');
   if (!panel) return;
   flushDocSaves();
   if (dock) {
     for (const ed of dock.editors.splice(0)) {
-      try { ed.destroy(); } catch { /* already gone with the DOM */ }
+      try { ed.destroy(); } catch {}
       liveEditors.delete(ed);
     }
   }
@@ -599,10 +402,6 @@ function releaseDockPanel() {
   }
 }
 
-/* Tabler's diagonal-arrow pair (MIT, the icon family of the Tabler CSS we
-   already vendor): arrows-diagonal points outward = expand, and
-   arrows-diagonal-minimize-2 points inward = collapse. Drawn inline like
-   eyeGlyph() — 16px stroke-2 reads at crumb-row scale. */
 function poseGlyph(expanded) {
   const span = el('span', { class: 'pose-glyph' });
   span.innerHTML = expanded
@@ -611,16 +410,8 @@ function poseGlyph(expanded) {
   return span;
 }
 
-/* The click history behind every entity crumb (Issues #670, #671): one
-   nav for the dock and the full page, so expand and collapse keep the path
-   taken. breadcrumbs.js holds the rules; the crumb is the history run
-   through the cut-back, and Back and Forward replay the clicks. */
 let crumbNav = null;
 
-/* Back and Forward, together at the left of the crumb row. They walk the
-   click order, whatever the crumb cut back to; a new hop after Back drops
-   the forward leg. Drawn once a second row has been opened, each disabled
-   where it has nowhere to go. */
 function navArrows(go) {
   if (!crumbNav || crumbNav.stack.length < 2) return [];
   const B = weaveBreadcrumbs;
@@ -638,35 +429,23 @@ function navArrows(go) {
   ];
 }
 
-/* The two poses live in two mounts of the ONE renderer: split is the dock
-   panel, expanded is the classic entity page in #main — same URL, same
-   geometry (doc rails, drag reorder, icon scale) as it always had. The
-   pose buttons and the crumb bridge them. */
 function dockExpand() {
   if (!dock) return;
   const top = dock.state.chain[dock.state.chain.length - 1];
   if (!top) return;
   dockClose();
-  /* A pose flip is presentation, not a new place: rewrite this history
-     entry instead of growing the stack. Pushing here left Back walking a
-     trail of look-alike #/table and #/entity twins — pressing it seemed
-     to do nothing and navigation felt broken (Kyle, 2026-09-02). */
   teardownDocEditors();
   history.replaceState(null, '', `#/entity/${top.id}`);
   withPageLoader(() => showEntity(top.id));
 }
 
-/* ✕ on the entity page: same rule as the pose flip — the table is this
-   place at a smaller pose, not a new destination. */
 async function closeToTable(entity) {
-  crumbNav = null; // closing ends the journey
+  crumbNav = null;
   teardownDocEditors();
   history.replaceState(null, '', `#/table/${entity.dbId}`);
   await showDatabase(entity.dbId);
 }
 
-/* Collapse: the entity page re-docks beside its table. A direct render plus
-   replaceState — a hashchange here would only rebuild the same table. */
 async function collapseToSplit(entity) {
   const db = allTables().find((d) => d.id === entity.dbId);
   if (!db) return;
@@ -689,19 +468,10 @@ function dockClose() {
   markDockedRow();
 }
 
-/* The table under the reader — the dock's anchor. Off a table page (the
-   entity page re-docking, a caller with no route) the entity's own table
-   stands in. */
 function anchorTable(db) {
   return (state.route?.page === 'db' && allTables().find((d) => d.id === state.route.dbId)) || db;
 }
 
-/* db is the entity's OWN table (its fields, its term); the anchor is the
-   table beside the dock. They differ on a cross-table hop, and the chain
-   carries both: each frame names its table, the state names the anchor
-   (Issue #276). `drill` extends the chain — a hop from the docked entity —
-   and a frame already on the chain cuts back to it, so a loop never
-   accumulates (the same rule pushTrail keeps for the page crumb). */
 async function dockEntity(db, id, { drill = false } = {}) {
   commitActiveEdit();
   const S = weaveEntitySurface;
@@ -711,8 +481,6 @@ async function dockEntity(db, id, { drill = false } = {}) {
     ? dock.state
     : S.init({ tableId: anchor.id, tableName: anchor.name });
   if (!st.chain.length) st = S.open(st, frame);
-  // A hop extends the one nav; a fresh open starts it over, unless it
-  // reopens the row already current (collapse from the page, a reload).
   const known = crumbNav?.stack.find((h) => h.id === id);
   const hop = { ...known, ...tableHop(db), id };
   crumbNav = drill ? weaveBreadcrumbs.navHop(crumbNav, hop) : weaveBreadcrumbs.navOpen(crumbNav, hop);
@@ -722,8 +490,6 @@ async function dockEntity(db, id, { drill = false } = {}) {
   await drawDock();
 }
 
-/* The dock's chain is the nav's crumb rows, as the surface core's frames,
-   so the row light, the hash and the tab title follow the nav. */
 function syncDockChain() {
   if (!dock) return;
   dock.state = {
@@ -732,17 +498,10 @@ function syncDockChain() {
   };
 }
 
-/* What a row's table says about it before the row itself is fetched. */
 function tableHop(db) {
   return { tableId: db.id, table: db.name, tableIcon: db.icon ?? null, space: db.space ?? '', spaceId: db.spaceId ?? '', spaceIcon: db.spaceIcon ?? null };
 }
 
-/* The dock is presentation, never a history entry — yet a refresh, a new
-   tab and a shared link must still find it (Issue #226). The docked entity
-   rides the table hash as ?e=<id>, rewritten in place so Back never walks
-   a trail of it. Only the user's own close strips it: the route change's
-   dockClose runs before the router reads the hash it is leaving for, so
-   that path must leave the URL alone. */
 function dockSyncUrl() {
   const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+(?:\/view\/[^/?]+)?/);
   if (!m) return;
@@ -751,13 +510,11 @@ function dockSyncUrl() {
 }
 
 function dockDismiss() {
-  crumbNav = null; // closing ends the journey
+  crumbNav = null;
   dockClose();
   dockSyncUrl();
 }
 
-/* Back and Forward in the dock (Issues #276, #671): the nav moves, the
-   dock follows. Esc is Back while there is somewhere to go back to. */
 function dockGo(next) {
   if (!dock || next === crumbNav) return;
   crumbNav = next;
@@ -771,8 +528,6 @@ async function drawDock() {
   const top = dock.state.chain[dock.state.chain.length - 1];
   let entity;
   try { entity = await api('GET', `/entities/${top.id}`); } catch (err) { dockClose(); return toast(err.message, true); }
-  // The frame learns its name here, for the crumb of the next hop; the
-  // dock's table follows the frame on top (its eye, its fields).
   crumbNav = weaveBreadcrumbs.navUpdate(crumbNav, entityHop(entity));
   syncDockChain();
   noteEntityRecent(entity);
@@ -786,10 +541,6 @@ async function drawDock() {
   applyDockWidth(panel);
   const host = el('div', { class: 'dock-entity' });
   panel.replaceChildren(host);
-  /* The dock's own controls ride the entity's crumb row (Issue #583): back
-     left of the crumb path, expand and close after the eye and the ⋮. A
-     row of their own above the crumb sat outside the sticky band, so it
-     left with the first scroll and the pane wore two toolbars. */
   const dockControls = {
     nav: navArrows(dockGo),
     pose: [
@@ -805,24 +556,11 @@ async function drawDock() {
       }, iconEl('✕')),
     ],
   };
-  // The full entity view — the dock is the entity, not a preview of it.
   await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs, dockControls });
   markDockedRow();
 }
 
-/* The divider. Default is the equal flex split; a drag pins the dock to a
-   px width remembered per browser (like grid density and the activity
-   side), clamped so neither panel collapses. Double-click clears the pin
-   and the halves are equal again. */
 const DOCK_MIN = 360;
-/* The one clamp (Issue #326). A pin is the dock's flex basis, never a
-   fixed width: the stylesheet gives a docked #main its 320px floor, and
-   when the room runs short the browser takes the difference out of the
-   dock. A pin pulled wide on a big screen used to come back unclamped on
-   a smaller one and crush the table to 230px at 1470. The same rule
-   holds while dragging, on a window resize and when the nav opens, with
-   no listener, and it never writes the stored pin, so the dock grows back
-   to it as soon as the window does. */
 function pinDock(panel, px) {
   panel.style.width = '';
   panel.style.flex = px ? `0 1 ${px}px` : '';
@@ -831,9 +569,6 @@ function applyDockWidth(panel) {
   const px = Number(localStorage.getItem('wv-dock-width'));
   pinDock(panel, px >= DOCK_MIN ? px : 0);
 }
-/* The gutter IS the divider (Kyle, 2026-09-02): the 16px canvas gap
-   between the panels, a static sibling in index.html — never a strip
-   painted inside either panel. Wired once; hidden/shown with the dock. */
 function wireDockGutter(panel) {
   const grip = $('#dock-gutter');
   grip.hidden = false;
@@ -849,10 +584,6 @@ function wireDockGutter(panel) {
       document.body.classList.remove('dock-resizing');
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
-      // The width the table left the dock, not the pointer's reach: an
-      // over-drag stores what it shows. Floored at DOCK_MIN, because a
-      // window too narrow for the dock squeezes it below the smallest pin
-      // applyDockWidth keeps, and a drag there must still leave a pin.
       const px = Math.max(DOCK_MIN, Math.round(panel.getBoundingClientRect().width));
       localStorage.setItem('wv-dock-width', String(px));
     };
@@ -865,7 +596,6 @@ function wireDockGutter(panel) {
   });
 }
 
-// ⌘⇧E flips the pose: expands a split dock, re-docks an expanded page.
 document.addEventListener('keydown', (e) => {
   if (!((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'e' || e.key === 'E'))) return;
   if (dock) { e.preventDefault(); return dockExpand(); }
@@ -875,13 +605,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Esc pops the dock one level (core.escape) and re-syncs the hash to the
-// new top (Issue #227: this handler once called two functions that did not
-// exist). Cell editors, overlays and pickers keep their own Escape; the
-// dock only hears it bare. Every
-// overlay app.js raises (a *-back backdrop, a *-pop popover, an open doc
-// rail) owns the key while it is up — test/ui-contract.test.mjs derives
-// that list from the source and checks this selector covers it.
 const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back';
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !dock) return;
@@ -895,13 +618,8 @@ function allTables() {
   return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId, spaceIcon: s.icon ?? null })));
 }
 
-/* The registry lives once, at the weave root (Feature #219). A member
-   workspace's schema has no Workspace space, so the Σ row, the space tiles
-   and the registry grids read the root's — its API answers for those rows
-   through this workspace's own prefix. */
 async function readRegistry() {
   const res = await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } });
-  // No access to the root is an answer, not a failure: no registry to show.
   if (res.status === 401 || res.status === 403) return [];
   if (!res.ok) throw new Error(`${res.status}`);
   const rootSchema = await res.json();
@@ -909,15 +627,9 @@ async function readRegistry() {
 }
 
 async function loadSchema() {
-  /* Three independent reads go out together (Issue #258); they used to run
-     one after another before routing could start. The root registry is asked
-     for up front on a prefixed URL whose last load needed it (or on the first
-     load), and the own schema decides afterwards whether it is used. The
-     workspace id tells a registry row whether it is ours or another
-     workspace's (deep link); it is read once. */
   const registryRead = WS_PREFIX && state.registry !== null ? readRegistry() : null;
-  registryRead?.catch(() => {}); // awaited below, or dropped if the schema read fails
-  const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null); // null: older server
+  registryRead?.catch(() => {});
+  const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
   schemaLoading = true;
   try {
     state.schema = await api('GET', '/schema');
@@ -927,8 +639,6 @@ async function loadSchema() {
     try {
       state.registry = await (registryRead ?? readRegistry());
     } catch (err) {
-      // The rail still renders without the registry, but say why it is empty
-      // rather than let it vanish (Issue #265).
       state.registry = [];
       toast(`Couldn't load the workspace registry: ${err.message}`, true);
     }
@@ -937,13 +647,6 @@ async function loadSchema() {
   renderNav();
 }
 
-/* ---------- navigation sidebar ---------- */
-
-// Inline name entry, replacing popup dialogs: Enter commits, Esc cancels.
-/* Single-instance inline create field for the sidebar. Only ever one is open:
-   clicking "+ New space" (or a space's "+") again — or clicking the other one —
-   moves the existing input rather than stacking another blank row. Enter
-   commits, Escape or blurring an empty input cancels. */
 function inlineNameInput(placeholder, onCommit) {
   document.querySelectorAll('.nav-inline-add').forEach((n) => n.remove());
   const input = el('input', { class: 'form-control form-control-sm nav-inline-add', placeholder });
@@ -954,15 +657,11 @@ function inlineNameInput(placeholder, onCommit) {
     input.disabled = true;
     try { await onCommit(input.value.trim()); } catch (err) { input.disabled = false; toast(err.message, true); }
   });
-  // An abandoned input should not linger in the nav.
   input.addEventListener('blur', () => { if (!input.disabled && !input.value.trim()) cancel(); });
   requestAnimationFrame(() => input.focus());
   return input;
 }
 
-/* The nav row's ⋮ (Kyle, 2026-08-31): the table verbs, right on the row.
-   Reuses the house dotsMenu — including its hold-to-delete — and sits inside
-   an <a>, so the wrap swallows clicks before the link can navigate. */
 function navTableMenu(db, space, row) {
   const wrap = dotsMenu([
     {
@@ -973,8 +672,6 @@ function navTableMenu(db, space, row) {
           await loadSchema();
         });
         input.value = db.name;
-        // The shared input only cancels an EMPTY blur; a rename starts full,
-        // so clicking away must put the row back too.
         input.addEventListener('blur', () => { if (!input.disabled && input.isConnected) { input.remove(); renderNav(); } });
         row.style.display = 'none';
         row.after(input);
@@ -1025,27 +722,10 @@ function navTableMenu(db, space, row) {
       },
     },
   ], { title: `${db.name} actions`, align: 'right', extraClass: 'nav-db-menu' });
-  // Inside the row's <a>: without this, opening the menu also follows the
-  // link. Capture phase, because the dots button stops propagation before a
-  // bubble listener here would ever run — and preventDefault only cancels the
-  // anchor's navigation, never the button handlers themselves.
   wrap.addEventListener('click', (e) => e.preventDefault(), true);
   return wrap;
 }
 
-/* Shared view header: breadcrumb with a copyable permalink, an editable
-   title, and a markdown description editable in place. Every page uses it
-   (entity pages carry the same crumb pattern natively). */
-
-/* One Lucide icon wearing its motion (moving icons, 2026-09-02). The svg's
-   parts carry the classes their keyframes need as data-mi; adding them plays
-   the icon once, removing them after its run puts it back. Two triggers,
-   each a single run, none looping, and both belong to the icon itself:
-   hover and press. Nothing plays on mount — the first cut fired every icon
-   on screen as the page arrived (the "load wave") and a picker grid played
-   each cell as it scrolled in; Kyle ruled both out (Issue #192): a refresh
-   or a login must draw the chrome still, and an icon moves only when it is
-   pointed at. */
 const iconRuns = new WeakMap();
 function playIcon(host) {
   const ms = Number(host.dataset.ms) || 0;
@@ -1063,10 +743,6 @@ function lucideEl(name, cls = 'wv-icon') {
   span.innerHTML = window.LUCIDE_MOVING[name];
   return span;
 }
-/* The icon's own triggers. mouseover rather than mouseenter because the
-   hosts are born after this listener; relatedTarget filters the moves
-   between an icon's own parts. pointerdown is the press — a click on a
-   still icon (a nav row, a chip) plays it once as the row answers. */
 document.addEventListener('mouseover', (e) => {
   const host = e.target.closest?.('.mi');
   if (host && !(e.relatedTarget && host.contains(e.relatedTarget))) playIcon(host);
@@ -1075,15 +751,8 @@ document.addEventListener('pointerdown', (e) => {
   const host = e.target.closest?.('.mi');
   if (host) playIcon(host);
 });
-/* An icon value on a space or table: 'lucide:<name>' renders the vendored
-   set inline (currentColor — it inherits text color); anything else is
-   text, which keeps old emoji icons working (Feature #101). */
 function iconEl(icon, cls = 'wv-icon') {
   if (!icon) return null;
-  // A mark is stored as its character — '✓', '◔' — and drawn as a vector on
-  // the same canvas as the flat set (Issue #87). Rendered as type it took the
-  // font's optical size, so a quarter-filled circle came out visibly smaller
-  // than the tick beside it. The KEY IS THE CHARACTER: nothing migrates.
   const twin = window.weaveMarkIcons?.twin(icon);
   if (twin) return lucideEl(twin, cls);
   const mark = window.weaveMarkIcons?.markSvg(icon);
@@ -1092,13 +761,6 @@ function iconEl(icon, cls = 'wv-icon') {
     span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${mark}</svg>`;
     return span;
   }
-  // `lucide:<name>` draws the vendored set; `iconly:<name>` — every value
-  // stored before 2026-09-02 — resolves through the registry's aliases to its
-  // Lucide twin, so nothing stored migrates. A reference that resolves to
-  // nothing (a name removed, renamed, or never there) draws a ghost ring with
-  // the name in the tooltip: the prefix never reaches the screen. Painting it
-  // once printed the literal "iconly:slides" into the icon slot (Kyle,
-  // 2026-08-29). A bare string paints itself, which keeps an emoji working.
   const name = window.weaveIconRegistry?.resolve(icon);
   if (name) return lucideEl(name, cls);
   if (name === '') {
@@ -1106,28 +768,14 @@ function iconEl(icon, cls = 'wv-icon') {
       class: `${cls} icon-ghost`, title: `${String(icon).replace(/^\w+:/, '')} — this icon is no longer in the set`,
     }, '◌');
   }
-  // A bare string is not an icon (Kyle, 2026-09-02: an emoji must not be
-  // possible). The engine refuses one on write; a value that predates that
-  // rule draws nothing rather than itself, and the callers that pass a
-  // typographic letter (Aa, ƒ, Σ) fall back to the letter themselves.
   return null;
 }
 
-/* The one catalogue every icon is picked from — a space, a table, a select
-   option, a workflow state (Issue #87). The marks lead, the flat set
-   follows; the shape lives in field-dialog-core so it can be reasoned about
-   without a browser. */
 function iconCatalogue() {
-  // Hidden names are dropped from the OFFER, never from the data — a row that
-  // stored `arrow-upsquare` still draws it.
   const reg = window.weaveIconRegistry;
-  // The inventory is what a person picks from; a mark's Lucide twin is
-  // reached through the mark, so the twins vendored for it are not offered twice.
   return fieldDialogCore.iconChoices(fieldDialogCore.ICON_INVENTORY, (n) => reg.CATEGORY[n]);
 }
 
-/* The icon half of a naming edit: the current icon (or a ghost ring) beside
-   the title, opening the one selection dialect over the flat set. */
 function iconButton(current, onPick) {
   const btn = el('button', { class: 'icon-btn', type: 'button', title: 'Set icon' },
     iconEl(current) ?? el('span', { class: 'wv-icon icon-ghost' }, '◌'));
@@ -1143,17 +791,6 @@ function iconButton(current, onPick) {
   return btn;
 }
 
-/* The header holds at the top of the page (Issue #321), so every sticky
-   layer beneath it has to know how tall it is — a title alone and a title
-   over four lines of description park at different heights, and the
-   description arrives from /markdown after the grid is drawn. The reading
-   goes on the root as --wv-view-h, which style.css adds to the `top` of the
-   grid's field headers and the Σ row and hands to #main's scroll-padding.
-   The room it is judged against is the main panel's, the box that scrolls
-   since the shell stopped scrolling the window (Issue #609).
-   The docked pane is its own scroller with a header of its own (Issue
-   #411): its reading goes on #dock under the same name, so the section heads
-   inside it pin under the dock's header, and the page's stays the page's. */
 function publishViewHeaderHeight() {
   publishHeaderOn(document.documentElement, document.querySelector('#main > .view-header'), document.querySelector('#main')?.clientHeight || innerHeight);
   const dock = document.querySelector('#dock');
@@ -1162,35 +799,17 @@ function publishViewHeaderHeight() {
 function publishHeaderOn(holder, box, room) {
   if (!holder || !box) return;
   const h = box.getBoundingClientRect().height;
-  /* It pins while it leaves the reader something to read. Past half the
-     window it does not: a 200px-tall window would hold nothing but header
-     (an opened description is capped in style.css, Issue #412, so a long
-     one alone no longer gets it here) — and the Show less control
-     at its foot would sit off screen with no way to scroll to it, because a
-     pinned band does not move. */
   const holds = h <= room / 2;
   holder.classList.toggle('view-header-loose', !holds);
   const v = holds ? `${h}px` : '0px';
-  // Only on a change: re-writing the same value inside a ResizeObserver
-  // callback is how the "undelivered notifications" loop gets fed.
   if (holder.style.getPropertyValue('--wv-view-h') !== v) holder.style.setProperty('--wv-view-h', v);
 }
 function stickViewHeader(box) {
   new ResizeObserver(publishViewHeaderHeight).observe(box);
   return box;
 }
-// A window resized shorter changes the verdict without changing the header,
-// which a ResizeObserver on the header alone never hears.
 addEventListener('resize', publishViewHeaderHeight);
 
-/* ---------- the crumb trail (Issues #668, #669) ----------
-   One renderer for every crumb row: the entity page, the dock and the view
-   header of every page. Each crumb wears its icon at every level: the
-   workspace's mark as the rail shows it, the space's and the table's icons
-   as the sidebar shows them, and on a row crumb its table's icon, a muted
-   #id and the Name. The current crumb is bold, takes the spare width with
-   its own ellipsis, and carries copy-link as an icon button that shows on
-   hover or focus (the inline ⧉ read as part of the name). */
 const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: 'lucide:table' };
 function crumbIconEl(c) {
   if (c.kind === 'ws') return wsMarkEl();
@@ -1203,10 +822,6 @@ function crumbInner(c) {
     el('span', { class: 'crumb-nm' }, c.label ?? ''),
   ];
 }
-/* copy: { title, run } puts the copy-link button on the current crumb.
-   foldFrom: the first crumb the overflow fold may take (Issue #668). Each
-   crumb rides a slot with the separator before it, so a folded crumb takes
-   its separator with it. */
 function crumbPath(crumbs, { copy = null, foldFrom = 1 } = {}) {
   const path = el('span', { class: 'crumb-path' });
   crumbs.forEach((c, i) => {
@@ -1226,18 +841,10 @@ function crumbPath(crumbs, { copy = null, foldFrom = 1 } = {}) {
     slot.crumb = c;
     path.append(slot);
   });
-  /* Re-fit whenever the box changes: a dock dragged narrower, the nav
-     opening, a window resize. The path's own width comes from the row
-     (an 8rem basis that grows), never from its content, so folding inside
-     it cannot feed the observer back. */
   new ResizeObserver(() => fitCrumbs(path, foldFrom)).observe(path);
   return path;
 }
 
-/* Overflow folds the middle (Issue #668). Measure every crumb at its
-   natural width (ancestors still at their 17ch cap), ask foldPlan which
-   to hide, and put one "…" button where they were. The first crumb and
-   the last two always stay; the current crumb shrinks last. */
 function fitCrumbs(path, foldFrom) {
   if (!path.isConnected) return;
   path.querySelector(':scope > .crumb-more-slot')?.remove();
@@ -1258,12 +865,8 @@ function fitCrumbs(path, foldFrom) {
   slots[fold[0]].before(el('span', { class: 'crumb-slot crumb-more-slot' },
     el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›'), btn));
 }
-const CRUMB_MORE_PX = 40; // the "…" button and its separator
+const CRUMB_MORE_PX = 40;
 
-/* The fold's menu: the hidden crumbs in trail order, each its icon, #id and
-   Name, each a link — a choice goes where its crumb would have. The menu
-   lives in the crumb row, so a link chosen in the dock is a hop from the
-   docked row like any other link there. */
 function crumbFoldMenu(btn, hidden) {
   const row = btn.closest('.crumb-row');
   const open = row.querySelector('.crumb-fold-menu');
@@ -1282,8 +885,6 @@ function crumbFoldMenu(btn, hidden) {
   const away = (e) => { if (!menu.contains(e.target) || e.target.closest('a')) setTimeout(close); };
   const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
   row.append(menu);
-  // Opened under the button, but never past the window's right edge: a dock
-  // sits against it, and the rows carry full Names.
   const over = menu.getBoundingClientRect().right - (innerWidth - 8);
   if (over > 0) menu.style.left = `${Math.max(8, r.left - over)}px`;
   btn.setAttribute('aria-expanded', 'true');
@@ -1292,8 +893,6 @@ function crumbFoldMenu(btn, hidden) {
   menu.querySelector('a')?.focus();
 }
 
-/* A view header's crumbs name their level by where they lead; the icons
-   come from the schema the sidebar draws from. */
 function crumbOfHref(c) {
   if (c.kind) return c;
   const sp = c.href?.match(/^#\/space\/([^/?]+)/);
@@ -1304,9 +903,6 @@ function crumbOfHref(c) {
   return { ...c, kind: 'page' };
 }
 
-/* The workspace's mark, as the rail shows it: the weave rope for the weave
-   docs workspace, an uploaded logo, else the name's first letter on a chip.
-   buildWsRail learns which after the first paint and refills these. */
 function wsMarkEl() {
   return fillWsMark(el('span', { class: 'wv-icon crumb-ic crumb-ws-mark' }));
 }
@@ -1315,8 +911,6 @@ function fillWsMark(span) {
   const weave = $('#rail-weave.active');
   const chip = $('#ws-list .ws-icon.active');
   if (weave) {
-    // The rail's own svgs, both themes (style.css shows one); their mask ids
-    // are renamed so the copies never resolve to each other's masks.
     const n = ++wsMarkIds;
     span.innerHTML = [...weave.querySelectorAll('svg')].map((svg) => svg.outerHTML).join('')
       .replace(/id="([^"]+)"/g, `id="$1-c${n}"`).replace(/url\(#([^)]+)\)/g, `url(#$1-c${n})`);
@@ -1334,14 +928,11 @@ function refreshWsMarks() {
 
 function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page' }) {
   const box = el('div', { class: 'view-header' });
-  // The view's controls sit on the crumb line, right-aligned (Kyle,
-  // 2026-08-23), leaving the title row to the title.
   box.append(el('div', { class: 'crumb crumb-row' },
     navMenuButton(),
     crumbPath([...crumbs.map(crumbOfHref), { kind, label: title, icon, current: true }], {
       copy: {
         title: 'Copy permalink',
-        // A function when the page outlives its view (the table page, Issue #444).
         run: () => copyText(typeof permalink === 'function' ? permalink() : permalink, 'Permalink copied'),
       },
     }),
@@ -1358,8 +949,6 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
   } else {
     titleInput.readOnly = true;
   }
-  // The page's heading is a real <h1> (Issue #267) that wears the old look:
-  // .view-title-h resets the element, the input inside keeps its style.
   box.append(el('div', { class: 'wv-toolbar view-title-row' },
     onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null),
     el('h1', { class: 'view-title-h' }, titleInput)));
@@ -1372,19 +961,14 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         descBox.replaceChildren(el('span', { class: 'view-desc-empty' }, 'Add description…'));
         return;
       }
-      // The rendered markdown sits in its own body so the clamp (Feature
-      // #186: five lines, then Show more) never touches the editor or the
-      // empty placeholder.
       const body = el('div', { class: 'view-desc-body clamped' });
       try {
         const { html } = await api('POST', '/markdown', { md });
         body.innerHTML = html;
       } catch {
-        body.textContent = md; // the raw markdown is still the description; render is decoration
+        body.textContent = md;
       }
       descBox.replaceChildren(body);
-      // Only text that is actually hidden earns the control; a description
-      // that fits in five lines reads as plain prose.
       if (body.scrollHeight > body.clientHeight + 1) {
         const more = el('button', { class: 'view-desc-more', type: 'button' }, 'Show more');
         more.addEventListener('click', () => {
@@ -1427,8 +1011,6 @@ function wsHomeHref() {
   return (WS_PREFIX || '') + '/';
 }
 
-/* Workspace weight in the units the strip speaks: GB, or TB past 1000 GB.
-   A small workspace shows "0.02 GB" rather than switching units downward. */
 function fmtSize(bytes) {
   const gb = bytes / 1e9;
   if (gb >= 1000) return `${(gb / 1000).toFixed(2)} TB`;
@@ -1440,8 +1022,6 @@ function fmtSize(bytes) {
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
-  // The relation map is not a nav row (Kyle, 2026-09-02): the workspace page
-  // and every space page draw it in place; the map route still answers deep links.
   const folded = new Set(JSON.parse(localStorage.getItem('weave-folded-spaces') ?? '[]'));
   const toggleFold = (spaceId) => {
     if (folded.has(spaceId)) folded.delete(spaceId);
@@ -1454,10 +1034,6 @@ function renderNav() {
     const spaceRow = el('div', { class: 'nav-space-row' },
       el('a', {
         class: 'nav-space', href: `#/space/${space.spaceId}`,
-        // A click that would navigate nowhere — the space page is already
-        // open — folds/unfolds the tables instead (Issue #72). Navigation
-        // keeps ⌘-click and middle-click untouched: only the plain click on
-        // the already-open space is repurposed.
         onclick: (e) => {
           if (nativeClick(e)) return;
           if (state.route?.page === 'space' && state.route.spaceId === space.spaceId) {
@@ -1466,8 +1042,6 @@ function renderNav() {
           }
         },
       }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
-      // Trails the label, "Routines ›" — the caret reads as part of the space
-      // name, not as a gutter control. Open is a rotation of the same glyph.
       el('button', {
         class: 'nav-caret' + (isFolded ? '' : ' open'),
         title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`, type: 'button',
@@ -1485,24 +1059,15 @@ function renderNav() {
     nav.append(spaceRow);
     if (isFolded) continue;
     for (const db of space.tables) {
-      // Workflows is pinned in the system rows below: one place in the nav.
       if (db.system === 'workflows') continue;
-      // The row's right edge is the kebab, not a count (Kyle, 2026-08-31):
-      // hover or the active row shows ⋮, and the menu carries the table verbs.
       const row = el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
       }, iconEl(db.icon, 'wv-icon nav-icon'), db.name);
-      // The registry tables take none of these verbs, so they get no kebab.
       if (!db.system) row.append(navTableMenu(db, space, row));
       nav.append(row);
     }
   }
-  /* "+ New space" rides the pinned strip, not the nav's own flow (Issue
-     #452): Kyle on the uno home at 1470x794 found it at 1028px in a 794px
-     window, out of sight until the nav was scrolled to its end. In the strip
-     it holds the sidebar's bottom edge however long the space list grows,
-     and the name input it opens is pinned with it. */
   const foot = el('div', { class: 'nav-foot' },
     el('button', {
       class: 'btn btn-sm btn-ghost-secondary', type: 'button',
@@ -1511,25 +1076,16 @@ function renderNav() {
         await loadSchema();
       })),
     }, '+ New space'));
-  // The stats strip: what this workspace holds and what it weighs. Count is
-  // the same per-table figure the rows above show, summed; size arrives with
-  // /api/health (one shared fetch — the instance chip drinks from it too).
   const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
   const line = el('span', { class: 'nav-stats-line', title: 'Records in this workspace · storage on disk' },
     `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'record' : 'records'}`);
   const stats = el('div', { class: 'nav-stats' }, foot, line);
-  /* The workspace's system tables (Kyle, 2026-09-29): Workflows, Activity
-     and Trash (reordered 2026-10-01, Issue #561), pinned under the spaces in that order. Fixed rows: no kebab,
-     no grip, and the engine refuses a rename, move or delete of any system
-     table. Activity and Trash read across the whole workspace. */
   const wf = allTables().find((d) => d.system === 'workflows');
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'Workspace system tables' },
     ...(wf ? [sysRow(`#/table/${wf.id}`, 'workflow', 'Workflows', state.route?.dbId === wf.id)] : []),
     sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
     sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
-  // Pinned to the sidebar's bottom edge — a sibling AFTER #nav (which carries
-  // flex:1), sticky so a long nav scrolls under it rather than pushing it away.
   document.querySelector('#sidebar .nav-system')?.remove();
   document.querySelector('#sidebar .nav-stats')?.remove();
   $('#sidebar').append(system);
@@ -1537,49 +1093,28 @@ function renderNav() {
   (state.healthP ??= api('GET', '/health')).then((h) => {
     if (h.sizeBytes != null) line.append(` · ${fmtSize(h.sizeBytes)}`);
   }).catch(() => {});
-  // Instance status (Feature #54): version + uptime from /api/health, so a
-  // stale server is visible at a glance instead of masquerading as a broken
-  // feature. startedAt arrives with the same payload for tooling to compare.
-  // The instance chip sits under the stats line (Issue #380). In the
-  // bottom-right corner, where it lived from 2026-08-22, it covered the grid's
-  // "200 of 333 loaded" note and every error toast. It is built once per load
-  // and carried into each re-rendered strip, so its verdict and its one toast
-  // survive a nav refresh.
   if (state.healthChip) stats.append(state.healthChip);
   else {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
     (state.healthP ??= api('GET', '/health')).then((h) => {
       const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
-      state.health = h; // the email report reads version + stale from here (Feature #223)
+      state.health = h;
       status.textContent = `v${h.version}${up}`;
       if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;
-      /* The instance must run the latest main; when it does not, say so out
-         loud, once per load (Kyle, 2026-09-02).
-
-         A stale PROCESS is decided first (Issue #114). This page's app.js came
-         off the disk the server is sitting on; the engine answering it was
-         loaded at boot. When those disagree, the app is not merely old, it is
-         mismatched — on 2026-08-28 + New and Shift+Enter failed silently for
-         three minutes because nothing said so. A restart is the answer, and it
-         is also the answer to being behind, so this branch wins. */
       if (h.stale) {
         status.classList.add('is-stale');
         status.textContent += ` · ${h.sha} ≠ ${h.diskSha}`;
         status.title = `This server booted at ${h.sha}; the checkout it serves is at ${h.diskSha} — restart weave`;
         toast(`This page was served by ${h.diskSha} but the server is still running ${h.sha} — restart weave; until then saving can fail silently`, true);
       } else if (h.releaseBehind) {
-        /* A newer published release (Issue #253): the server asks GitHub at
-           most once a day. It outranks the sha comparison because it is the
-           one an install from a clone or a zip can act on. The toast shows
-           once per release per browser; the chip stays amber until updated. */
         status.classList.add('is-behind');
         status.textContent += ` · v${h.latestRelease} available`;
         status.title = `weave v${h.latestRelease} is out; this instance runs v${h.version}. Checked ${h.releaseCheckedAt}.`;
         let seen = null;
-        try { seen = localStorage.getItem('wv-release-seen'); } catch { /* storage blocked: toast every load */ }
+        try { seen = localStorage.getItem('wv-release-seen'); } catch {}
         if (seen !== h.latestRelease) {
           toast(`weave v${h.latestRelease} is available. This instance runs v${h.version}.`);
-          try { localStorage.setItem('wv-release-seen', h.latestRelease); } catch { /* ignore */ }
+          try { localStorage.setItem('wv-release-seen', h.latestRelease); } catch {}
         }
       } else if (h.behind) {
         status.classList.add('is-behind');
@@ -1593,8 +1128,6 @@ function renderNav() {
 }
 
 
-/* ---------- shared value rendering ---------- */
-
 function fieldValueCell(value) {
   if (value == null || value === '') return '';
   if (Array.isArray(value)) {
@@ -1606,18 +1139,12 @@ function fieldValueCell(value) {
   return String(value);
 }
 
-/* A state's chip text: its icon, when it has one, then the name. A flat icon
-   has no text form, so in a text-only context the name stands alone rather
-   than dragging 'iconly:activity' along with it (Issue #87). */
 const isIconRef = (v) => /^(lucide|iconly):/.test(String(v ?? ''));
 function stateLabel(fieldSchema, stateName) {
   if (stateName == null) return '—';
   const icon = fieldSchema.states?.find((s) => s.name === stateName)?.icon;
   return icon && !isIconRef(icon) ? `${icon} ${stateName}` : stateName;
 }
-/* The same label as nodes, for the chip itself: a flat icon has to be drawn,
-   not spelled (Issue #87). The picker's list keeps the string above, because
-   that is what its search ranks against. */
 function stateNodes(fieldSchema, stateName) {
   if (stateName == null) return [chipLabel('—')];
   const icon = fieldSchema.states?.find((s) => s.name === stateName)?.icon;
@@ -1626,38 +1153,24 @@ function stateNodes(fieldSchema, stateName) {
     ? [iconEl(icon, 'ico wv-icon'), chipLabel(stateName)]
     : [chipLabel(`${icon} ${stateName}`)];
 }
-/* A value chip's text is its own span (Issue #423). Bare, it was an anonymous
-   flex item that could not shrink, so in a narrow column it ran past the
-   chip's fill and the cell cut it mid-letter; as a span it truncates with an
-   ellipsis inside the fill, the way a relation chip's label already did. */
 function chipLabel(text) {
   return el('span', { class: 'k-label' }, text);
 }
 function stateCategory(fieldSchema, stateName) {
   const found = fieldSchema.states?.find((s) => s.name === stateName)?.category;
-  // A state stored under the retired 'other' category still has to render, so
-  // it lands on the default rather than on a class with no rule behind it.
   return found ? chipCore.categoryOrDefault(found) : 'not-started';
 }
 
-/* A state chip: its tier, its category, and the hue that category owns.
-   Category keeps the colour because status has to mean the same thing in
-   every table — it is the one part of the ramp an author cannot repaint. */
 function stateChipClass(fieldSchema, stateName) {
   const cat = stateCategory(fieldSchema, stateName);
   return `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`;
 }
 
-/* weave has no person type yet — a colleague is a relation to whatever table
-   holds people — so person-ness is read off the target table's name. When a
-   real flag lands this is the one function that changes. */
 const PERSON_TABLE = /^(people|persons?|members?|users?|contacts?|owners?|team|staff|employees?)$/i;
 function relationIsPerson(f) {
   const table = String(f?.targetDb ?? '').split('/').pop() ?? '';
   return PERSON_TABLE.test(table.trim());
 }
-/* Initials on a hue hashed from the name, so the same colleague is the same
-   colour in every table with nothing to configure. */
 function personAvatar(f, target) {
   if (!relationIsPerson(f)) return null;
   const name = target?.name ?? '';
@@ -1665,10 +1178,6 @@ function personAvatar(f, target) {
   return el('span', { class: `av hue-${chipCore.hueForName(name)}` }, chipCore.initialsFor(name));
 }
 
-/* What this table is to the slide composer (Feature #118): a table with a
-   many-relation named Slides is a deck, a table with a Model document is a
-   slide. The same convention the server composes on, read off the schema so
-   the entity view knows whether to frame a deck before asking for one. */
 function deckRoleOf(db) {
   if (!db?.fields) return null;
   const isSlideTable = (t) => !!t?.fields?.some((f) => f.name === 'Model' && f.type === 'document');
@@ -1679,22 +1188,11 @@ function deckRoleOf(db) {
   return null;
 }
 
-// First lines of an entity's default document, flattened for view previews.
-
-// Lazy mermaid: load the vendored lib only when a preview contains a diagram.
 let mermaidLoading = null;
 
 
-/* ---------- expand a document (Feature #47) ----------
-   Expanding is not fullscreen: the document takes the entity body — fields,
-   comments, activity step aside — while the nav and breadcrumbs stay where
-   they are. Collapse (or Esc, even with the cursor in the frame) brings the
-   body back. The document's own fullscreen (a deck's F) is its to ask for. */
 function expandDocument(grid, url, title) {
   grid.parentElement?.querySelector('.doc-expand')?.remove();
-  /* Only a framed document (a deck) expands. A markdown document used to
-     hand its live editor over here; Kyle, 2026-09-04 (Issue #176): the
-     document is the page already, the ⛶ on it was one mode too many. */
   const frame = el('iframe', { class: 'doc-expand-frame', src: url, allowfullscreen: '', allow: 'fullscreen', title });
   const collapse = () => { wrap.remove(); grid.classList.remove('hidden'); };
   const wrap = el('div', { class: 'doc-expand' },
@@ -1702,7 +1200,7 @@ function expandDocument(grid, url, title) {
       el('button', { class: 'btn btn-sm', title: 'Collapse (Esc)', onclick: collapse }, '‹ Collapse'),
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
-      el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; /* cross-origin: reload by re-src */ } } }, iconEl('⟳')),
+      el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')),
       el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon'))),
     frame);
   grid.classList.add('hidden');
@@ -1713,25 +1211,15 @@ function expandDocument(grid, url, title) {
     onKey(e);
   });
   frame.addEventListener('load', () => {
-    try { frame.contentWindow.addEventListener('keydown', onKey); } catch { /* cross-origin: the bar still collapses */ }
+    try { frame.contentWindow.addEventListener('keydown', onKey); } catch {}
   });
   return wrap;
 }
 
-/* ---------- fullscreen viewer (Feature #47) ----------
-   Any URL weave serves, full-viewport, without leaving the app: an in-tree
-   dialog hosting an iframe with its own back/refresh — mention links inside
-   keep navigating in-frame (#27), and Esc brings you home. Also the host for
-   the whiteboard (#46), which fills the frame slot with a canvas instead. */
 function fullscreenViewer(title, { url = null, mount = null, sandbox = null, prev = null, next = null } = {}) {
   document.querySelector('#fsv-back')?.remove();
-  // An HTML upload is framed under the sandbox the server sets (never same-origin).
   const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined }) : null;
-  // Closing leaves real fullscreen too, if we got it; leaving real fullscreen
-  // (Esc, the browser's own control) closes the viewer — one state, not two.
   const close = () => back.remove();
-  // Back means back: the frame's own history when it has one, home when it
-  // does not — a fresh frame has nowhere to go but out.
   const goBack = () => {
     const h = frame?.contentWindow?.history;
     if (h && h.length > 1) h.back(); else close();
@@ -1739,11 +1227,9 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
   const back = el('div', { id: 'fsv-back' },
     el('div', { class: 'fsv-bar' },
       url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: goBack }, iconEl('‹')) : null,
-      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; /* cross-origin: reload by re-src */ } } }, iconEl('⟳')) : null,
+      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')) : null,
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
-      // Siblings, when the viewer was opened from a list: ← → on the chrome,
-      // outside the frame, so a focused PDF keeps its own page keys.
       prev || next ? el('span', { class: 'fsv-nav' },
         el('button', { class: 'btn btn-sm', title: 'Previous (←)', disabled: prev ? undefined : '', onclick: () => prev?.() }, iconEl('‹')),
         el('button', { class: 'btn btn-sm', title: 'Next (→)', disabled: next ? undefined : '', onclick: () => next?.() }, iconEl('›'))) : null,
@@ -1760,19 +1246,13 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
     if (!back.isConnected) return removeEventListener('keydown', esc);
     onKey(e);
   });
-  // Keys land in the frame once it has focus; a same-origin frame lets us
-  // listen there too, so Esc works wherever the cursor is.
   frame?.addEventListener('load', () => {
-    try { frame.contentWindow.addEventListener('keydown', onKey); } catch { /* cross-origin: the bar still closes */ }
+    try { frame.contentWindow.addEventListener('keydown', onKey); } catch {}
   });
   if (mount) mount(back.querySelector('.fsv-body'));
   return back;
 }
 
-/* ---------- whiteboard (Feature #46) ----------
-   A mermaid diagram, but alive: parsed to nodes/edges (graph-parse.js) and
-   handed to vendored cytoscape — pan, zoom, drag the nodes around. View
-   state only: nothing writes back to the document. */
 let cytoscapeLoading = null;
 function openWhiteboard(mmdSource, title = 'Whiteboard') {
   cytoscapeLoading ??= new Promise((resolve) => {
@@ -1807,9 +1287,6 @@ function openWhiteboard(mmdSource, title = 'Whiteboard') {
         ],
         wheelSensitivity: 0.2,
       });
-      // The dialog was appended this frame: cytoscape measured a container
-      // the layout engine had not sized yet, and drew into a corner. One
-      // frame later the box is real — measure again, then frame the graph.
       requestAnimationFrame(() => { cy.resize(); cy.fit(undefined, 80); });
     }),
   });
@@ -1829,12 +1306,10 @@ function renderMermaidIn(container) {
       });
       resolve();
     };
-    s.onerror = () => resolve(); // fall back to visible source
+    s.onerror = () => resolve();
     document.head.append(s);
   });
   for (const pre of nodes) {
-    // The source dies when mermaid replaces it — stash it, and give every
-    // diagram its whiteboard handle (#46).
     if (!pre.dataset.mmd) pre.dataset.mmd = pre.textContent;
     const holder = el('span', { class: 'mmd-tools' },
       el('button', {
@@ -1846,16 +1321,6 @@ function renderMermaidIn(container) {
   mermaidLoading.then(() => window.mermaid?.run({ nodes }));
 }
 
-/* ---------- universal field editor ---------- */
-
-/* In-app chip picker: replaces native <select> popups (which can't be
-   styled and clash with the chip aesthetic — weave Issue #9). options:
-   [{name, cls}], current = selected name. */
-/* Anchored popover shared by the chip picker and the header field menu:
-   flips above the trigger when it would overflow, closes on outside click or
-   Escape, and never leaves two popovers open at once. A click on the trigger
-   closes it, so the trigger toggles; `owns` widens "the trigger" for a caller
-   whose trigger is redrawn while its popover is open. */
 function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) {
   document.querySelector('.chip-pop')?.remove();
   const pop = el('div', { class: 'chip-pop' }, ...rows);
@@ -1863,13 +1328,6 @@ function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) 
   const r = trigger.getBoundingClientRect();
   pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
   pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
-  /* Capture phase, so this runs before the clicked control's own handler. It
-     used to count the trigger as outside: a second click on the eye closed
-     the popover and that same click's handler opened a fresh one, so the
-     dialog never closed (Issue #320). A click on what owns the popover now
-     closes it and stops there. A popover already gone (Escape, a pick, the
-     next popover) only unhooks, and the click carries on, so the eye still
-     opens on the first click after an Escape. */
   const close = (ev) => {
     if (pop.contains(ev.target)) return;
     removeEventListener('click', close, true);
@@ -1879,9 +1337,6 @@ function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) 
   };
   addEventListener('click', close, true);
 
-  /* Keyboard: arrows move, Enter/Space commit (native <button> behaviour),
-     Escape closes and hands focus back, Tab closes and carries on along the
-     row — so a record can be filled in without touching the mouse. */
   const opts = [...pop.querySelectorAll('.chip-pop-row')];
   const focusAt = (i) => opts[((i % opts.length) + opts.length) % opts.length].focus();
   pop.addEventListener('keydown', (ev) => {
@@ -1891,37 +1346,17 @@ function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) 
     else if (ev.key === 'Escape') { ev.preventDefault(); pop.remove(); trigger.focus(); }
     else if (ev.key === 'Tab') pop.remove();
   });
-  // Open on the current value when there is one, otherwise the first option.
   const checked = opts.findIndex((o) => o.querySelector('.chip-pop-check'));
   if (opts.length) focusAt(checked < 0 ? 0 : checked);
 
-  // A pick redraws the grid and destroys this cell's control; remember where
-  // we were so focus can be put back on the replacement.
   const cell = trigger.closest?.('tr[data-eid] > td');
   state.refocus = cell
     ? { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell) }
     : null;
-  // The popover hangs off <body>, so the grid's ⌘C/⌘V find their cell here.
   pop.cellFrom = cell;
   return pop;
 }
 
-/* Relearn an open switch popover's rows after the flip they started lands.
-
-   Teaching beats swapping because this runs asynchronously — a PATCH, a
-   schema reload and a redraw after the click — so it can land between a
-   reader's mousedown and mouseup. `replaceChildren` then detached the row the
-   mousedown had focused, the mouseup landed on the replacement, and a down
-   and an up on different nodes fire no `click` at all: the next flip was
-   silently lost, focus fell to <body> where the popover's own keydown
-   listener could not hear Escape, and the arrow walk `opts` captured above
-   was left pointing at detached nodes (Issue #240). A switch flip never adds
-   or removes a row, so teaching covers it; the rebuild stays for the row set
-   that genuinely changed under an open popover, and `refocus` is what puts
-   the pressed row's focus back on its replacement (Issue #223).
-
-   Rows are matched by position on a shape string — class plus label — so a
-   changed row set falls back rather than teaching the wrong switch. */
 function relearnRows(pop, next, refocus = null) {
   const shape = (nodes) => nodes
     .map((n) => `${n.className} ${n.querySelector?.('.eye-label')?.textContent ?? n.textContent}`)
@@ -1942,18 +1377,6 @@ function relearnRows(pop, next, refocus = null) {
   refocus?.(pop);
 }
 
-/* Press-and-hold destructive action: the button fills over ~900ms and fires
-   only when the fill completes; letting go early cancels. The confirmation is
-   the gesture, so there is no window.confirm() dialog to break the page's
-   design. Keyboard users hold Enter or Space, which works the same way.
-
-   `rowClass` lets the caller hand it the row metric of the surface it lands
-   in — a hold button inside the chip popover has to BE a .chip-pop-row or it
-   wears Tabler's padding beside weave's and falls outside the arrow-key walk
-   (Kyle, 2026-08-27). `icon` draws through the one icon path (Issue #87)
-   rather than a character typed into the label, and `hint` is the quiet
-   trailing chip that says the gesture out loud — a hold nobody knows about
-   is a button that does nothing. */
 function holdToConfirm(label, onConfirm, {
   holdingLabel = 'Hold to confirm…', rowClass = 'dropdown-item', icon = null, hint = null,
 } = {}) {
@@ -1963,15 +1386,12 @@ function holdToConfirm(label, onConfirm, {
     fill, icon ? iconEl(icon, 'wv-icon wv-menu-icon hold-icon') : null, text,
     hint ? el('span', { class: 'hold-hint' }, hint) : null);
   let armed = false;
-  let press = 0; // which press a queued confirm belongs to — a re-press must not inherit it
+  let press = 0;
   const start = (e) => {
     if (armed) return;
     armed = true;
     press++;
-    // Capture the pointer (Kyle, 2026-09-02): a release must cancel no matter
-    // where the cursor drifted to — without capture, pointerup lands on
-    // whatever is under the cursor and the hold runs on to completion.
-    if (e?.pointerId != null) { try { btn.setPointerCapture(e.pointerId); } catch { /* gone mid-press */ } }
+    if (e?.pointerId != null) { try { btn.setPointerCapture(e.pointerId); } catch {} }
     btn.classList.add('holding');
     text.textContent = holdingLabel;
   };
@@ -1981,23 +1401,11 @@ function holdToConfirm(label, onConfirm, {
     text.textContent = label;
   };
   btn.addEventListener('pointerdown', start);
-  // pointercancel and lostpointercapture are the releases the finger never
-  // gets to send — a touch turning into a scroll, a native drag starting.
-  // Missing them left the hold armed with no release event ever coming.
   for (const ev of ['pointerup', 'pointerleave', 'blur', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, stop);
   btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); } });
   btn.addEventListener('keyup', stop);
-  // Fires once the fill finishes sweeping across. Collapsing is untransitioned,
-  // so releasing early cannot trigger it. The sweep is a scaleX transform, not
-  // an animated width — width/height animations thrash layout on every frame.
   fill.addEventListener('transitionend', (e) => {
     if (!armed || e.propertyName !== 'transform') return;
-    // The sweep runs on the compositor, so it completes on schedule even when
-    // the main thread is behind on delivering the pointerup — and this
-    // handler would then fire a hold the user had already released. A short
-    // grace lets any queued release land first; re-check that THIS press is
-    // still armed (a release-and-re-press inside the grace is a new press,
-    // not a finished one), then commit.
     const thisPress = press;
     setTimeout(async () => {
       if (!armed || press !== thisPress) return;
@@ -2008,18 +1416,6 @@ function holdToConfirm(label, onConfirm, {
   return btn;
 }
 
-/* Where focus is in the grid right now, so a redraw can put it back.
-
-   The picker path records its own cell before its popover takes focus off it
-   (see showPopover). This covers the plain one: a text cell that was TABBED
-   out of. `change` fires on the way out, PATCHes, and redraws the grid a beat
-   after the browser has already moved focus along the row — so the rebuild
-   tore out the cell the reader had just reached, dropped focus on <body>, and
-   the next Tab restarted at the top of the page (Issue #83).
-
-   Only writes when it finds a grid cell: a picker has already recorded the
-   cell it came from, and by the time its redraw runs the focus is on the
-   popover, which is nowhere near the row. */
 function rememberGridFocus() {
   const at = document.activeElement;
   const cell = at?.closest?.('tr[data-eid] > td');
@@ -2027,60 +1423,29 @@ function rememberGridFocus() {
   let caret = null;
   try {
     if (at.selectionStart != null) caret = [at.selectionStart, at.selectionEnd];
-  } catch { /* number and date inputs refuse to be asked */ }
-  /* Cells rest as values (Feature #134): focus on the <td> itself is the
-     resting cursor, focus on something inside it is an open cell. The redraw
-     puts back whichever it found. */
+  } catch {}
   state.refocus = { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell), caret, open: at !== cell };
 }
 
-/* Put focus back on the cell that triggered a redraw (see showPopover). */
 function restoreGridFocus({ now = false } = {}) {
   const want = state.refocus;
   state.refocus = null;
   if (!want) return;
-  // `now`: the caller has already waited a frame (keepScroll resolves after
-  // its restore), so the rows are painted and the cell can take focus
-  // without leaving the document a frame longer on <body>.
   (now ? (fn) => fn() : requestAnimationFrame)(() => {
     const td = $(`tr[data-eid="${want.eid}"]`)?.children[want.col];
     if (!td) return;
-    // A resting cursor comes back as a resting cursor: the cell is the stop.
     if (want.open === false) return td.focus();
-    /* Not every cell holds a form control: a description preview, a dressed
-       number and a marked-up text value all rest as a `tabindex` span and
-       become their input on demand. Leaving those out is how focus still
-       landed on <body> for the column the reader tabbed into most (#83). */
     const box = td.querySelector('button,input,select,textarea,[tabindex]');
     if (!box) return td.focus();
     box.focus();
-    // Landing the caret where it was, for the same reason activateCell does:
-    // a bare focus() leaves a text input selected whole in some browsers, and
-    // the next keystroke would wipe the value the reader is part-way through.
-    if (want.caret) { try { box.setSelectionRange(want.caret[0], want.caret[1]); } catch { /* not a text box */ } }
+    if (want.caret) { try { box.setSelectionRange(want.caret[0], want.caret[1]); } catch {} }
   });
 }
 
 
-/* ---------- the one selection dialect (Kyle, 2026-08-22; token box 08-25) ----------
-   Everything that picks from a list — workflow states, select options, field
-   types, relation targets, formats — opens the SAME surface: a panel whose
-   first line is a box holding the chips already chosen and, right after them,
-   the cursor. Type and the list beneath filters with the top fit already
-   armed, so Enter adds it; ↑↓ move that arming; ← → walk the chips and
-   Backspace/Delete takes one out; Enter on an empty search saves. Anchored to
-   its trigger when it has one, centered otherwise.
-
-   multi (multiselect, linked records) accumulates chips and commits the set.
-   single (select, workflow states) overwrites — a pick commits and closes on
-   the spot — and `clearId` is the empty value Backspace picks for a field
-   that has one (a select does, and since Issue #421 a workflow state too).
-   The keyboard grammar itself is pure and lives in public/picker-core.js. */
 function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null, grid = false, groups = false, custom = null }) {
   document.querySelector('.chip-pop')?.remove();
   const core = globalThis.pickerCore;
-  // A grid is the icon picker: a value stored as iconly:<name> rings the cell
-  // its Lucide twin sits in, since that is the icon it draws.
   if (grid) currentId = window.weaveIconRegistry?.canonical(currentId) ?? currentId;
   let st = core.blank({
     mode: multi ? 'multi' : 'single',
@@ -2090,17 +1455,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     clearId,
   });
   const input = el('input', { class: 'picker-search', placeholder, type: 'text' });
-  // Chips are their own element so redrawing them never detaches the focused
-  // input; display:contents keeps them in the box's own flex row.
   const chips = el('span', { class: 'picker-chips' });
-  /* The grid's readout (Issue #142). A grid says everything in shapes, and a
-     shape you cannot name is a guess: the name was in the cell's tooltip,
-     which makes a mouse wait and answers a keyboard not at all. So the search
-     bar names whatever the pointer or the focus ring is on, one at a time, and
-     rests on the icon already set — reopening the picker says what it is
-     called. Empty everywhere else, and CSS gives an empty one no room, so the
-     token box the other pickers wear is unchanged. Hidden from screen readers:
-     it repeats the name the focused cell already carries. */
   const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
   const box = el('div', { class: 'picker-box' }, chips, input, readout);
   const list = el('div', { class: 'picker-list' });
@@ -2108,19 +1463,12 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     title ? el('div', { class: 'picker-title' }, title) : null,
     box, list);
   const commit = async () => { pop.remove(); await multi.onCommit(core.ids(st)); };
-  /* Escape on a multi picker commits what is staged, the same as a click
-     elsewhere (Issue #224): the picks in the box are the edit, and closing
-     the box is leaving the field. The popover also carries its commit for
-     commitActiveEdit(), which reaches it on nav-away and unload. */
   const dismiss = () => { if (multi) commit(); else pop.remove(); anchor?.focus?.(); };
   if (multi) pop.commit = commit;
   const pick = async (o) => { pop.remove(); await onPick(o); };
   const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); input.focus(); };
 
   const drawChips = () => {
-    // A grid shows the current icon as a ring on its own cell, so staging it
-    // as a chip says the same thing twice and takes the search box with it —
-    // an unset icon put a "No icon" chip in the field (Kyle, 2026-08-29).
     if (grid || groups) {
       chips.replaceChildren();
       input.placeholder = placeholder;
@@ -2137,27 +1485,9 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
           if (multi) apply(core.removeId(st, x.id)); else pick({ id: clearId, label: clearId });
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null)));
-    // The placeholder is the empty box's label; chips take its place.
     input.placeholder = st.staged.length ? '' : placeholder;
   };
-  /* The list draws exactly what core.visible() says is in it — in a multi
-     picker that is the options NOT already chipped in the box (Issue #64), so
-     no row wears a ✓ there and nothing the arrows land on can un-pick. A
-     single picker still ticks its current value: picking there overwrites.
-     The first nine rows carry their number, which is what ⌥1–⌥9 takes. */
-  /* Icons draw as a grid, not a list (Kyle, 2026-08-29). A name beside every
-     icon is a column you read instead of a set you scan, and 119 of them was
-     a very long column. The name still does its work: it is what the search
-     matches, it is the tooltip, and since Issue #142 it is read out in the
-     search bar for the one cell the pointer or the keyboard is on. Categories
-     are the only labels, and a heading leaves with its icons. Nothing is
-     numbered — ⌥1–9 is for a list you read down, not a field you aim at. */
-  // What the readout falls back to: the icon this picker was opened on. An
-  // unset icon names nothing rather than announcing "No icon" at rest.
   const restName = () => (currentId ? options.find((o) => o.id === currentId)?.label ?? '' : '');
-  // The pointer and the focus ring can be on two different cells at once, so
-  // each keeps its own slot and focus outranks the pointer: a mouse left
-  // resting somewhere must never answer for the cell the keyboard is on.
   let hovering = null, focusing = null;
   const showName = () => { readout.textContent = focusing ?? hovering ?? restName(); };
   const drawGrid = () => {
@@ -2168,15 +1498,11 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       class: `picker-cell${extra}` + (o.id === currentId ? ' on' : ''), type: 'button',
       title: o.label, 'aria-label': o.label,
       onclick: async () => { await pick(o); },
-      // Hover and focus are the same event to a reader: both say "this one".
       onmouseenter: () => { hovering = o.label; showName(); },
       onmouseleave: () => { if (hovering === o.label) hovering = null; showName(); },
       onfocus: () => { focusing = o.label; showName(); },
       onblur: () => { if (focusing === o.label) focusing = null; showName(); },
     }, o.lucide ? iconEl(`lucide:${o.lucide}`) : iconEl(o.mark) ?? el('span', { class: 'wv-icon icon-ghost' }, '◌'));
-    // Clearing is the FIRST cell, not a footer (Kyle, 2026-08-29): setting an
-    // icon back to none is the same gesture as setting it to anything else,
-    // and it is the one people reach for after a mistake.
     list.replaceChildren(
       ...(clear ? [el('div', { class: 'picker-cells' }, cell(clear, ' picker-none'))] : []),
       ...groups.flatMap((g) => [
@@ -2184,15 +1510,9 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
         el('div', { class: 'picker-cells' }, ...g.items.map((o) => cell(o))),
       ]));
     if (!groups.length && !clear) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
-    // A search replaces the cells the pointer and the focus ring were on, and
-    // a removed node never fires its leave or blur: every redraw rests both.
     hovering = focusing = null;
     showName();
   };
-  /* Grouped text cells (the row-term picker, Feature #40): the icon grid's
-     dialect with words instead of glyphs — categories are the only labels, a
-     heading leaves with its cells — plus one row that turns the typed query
-     into a custom value when nothing listed matches it exactly. */
   const drawGroups = () => {
     const vis = core.visible(st);
     const byGroup = new Map();
@@ -2233,28 +1553,19 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
         : el('span', { class: 'picker-label' }, o.label),
       o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
       (multi ? false : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
-    // An empty list means two different things, and saying "No matches" to
-    // someone who has simply chosen everything is a lie.
     if (!vis.length) {
       list.append(el('div', { class: 'picker-empty' },
         multi && st.staged.length && !st.query.trim() ? 'Everything is chosen' : 'No matches'));
     }
   };
-  // Clicking the box's empty space is aiming at the caret, not at a chip.
   box.addEventListener('click', (ev) => {
     if (ev.target !== box && ev.target !== chips) return;
     apply({ ...st, caret: null });
   });
   input.addEventListener('input', () => { st = core.search(st, input.value); drawChips(); draw(); });
   input.addEventListener('keydown', async (ev) => {
-    // Where the text caret sits decides whether ← belongs to the text or to
-    // the chips in front of it.
     const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
-    // ⌥1–⌥9 takes the numbered row. The physical key is what counts: with
-    // Option down, ev.key is the character the chord types (⌥1 is `¡`), and a
-    // bare digit has to stay a digit — the box is a search field.
     const quick = ev.altKey && /^Digit[1-9]$/.test(ev.code) ? Number(ev.code.slice(5)) : null;
-    // Enter on an unlisted query takes the custom row, not the first cell.
     if (groups && custom && ev.key === 'Enter' && st.query.trim()) {
       const q = st.query.trim();
       const exact = options.find((o) => o.label.toLowerCase() === q.toLowerCase() || o.id === q.toLowerCase());
@@ -2266,26 +1577,12 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     if (r.state) { st = r.state; input.value = st.query; drawChips(); draw(); }
     if (!r.effect) return;
     if (r.effect.type === 'pick') await pick(r.effect.option);
-    // The Escape that closes the picker is spent: left to bubble it reached
-    // the grid's own listener AFTER the popover was gone, which read "no
-    // owner" and emptied the selection the picker was acting on.
     else if (r.effect.type === 'close') { ev.stopPropagation(); dismiss(); }
     else if (multi) await commit();
     else dismiss();
   });
   document.body.append(pop);
-  // The cell this picker was opened from, for the grid's ⌘C/⌘V (Feature
-  // #221): focus sits in the popover, off the grid, and the cell is still
-  // what the reader is looking at.
   pop.cellFrom = anchor?.closest?.('tr[data-eid] > td') ?? null;
-  /* Capture phase, so this runs before the clicked control's own handler.
-     It counted the anchor as outside, the loop Issue #320 took out of
-     showPopover(): a second click on a chip, a select face or the icon button
-     closed the picker and that same click's handler opened a fresh one. A
-     click on the anchor now closes it (a multi picker commits, as on any way
-     out) and stops there, so the trigger toggles. A picker already gone
-     (Escape, a pick, the next popover) only unhooks and lets the click
-     through, so the trigger opens on the first click after an Escape. */
   const close = (ev) => {
     if (pop.contains(ev.target)) return;
     removeEventListener('click', close, true);
@@ -2294,19 +1591,13 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     pop.remove();
   };
   addEventListener('click', close, true);
-  // The mandate: the cursor is already in the box, after the chips.
   input.focus();
   drawChips();
   draw();
-  // Placed AFTER the list is drawn: a picker that flips above its trigger
-  // (the puck's, at the bottom of the window) measures its full height.
   anchorPop(pop, anchor);
   return pop;
 }
 
-/* Where a popover lands: under its trigger, above it when the bottom of the
-   viewport is too close (the puck's pickers always flip, the bar being at the
-   bottom), centered when there is no trigger at all. */
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
     const r = anchor.getBoundingClientRect();
@@ -2317,10 +1608,6 @@ function anchorPop(pop, anchor) {
   }
 }
 
-/* The picker's sibling for a value that is typed rather than chosen: one
-   box with the cursor already in it and one button, Return applies. Set a
-   field… reaches for it on a text, number or date field, Roll up… for the
-   new parent's name. Esc and a click elsewhere let it go. */
 function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', apply = 'Apply', onApply }) {
   document.querySelector('.chip-pop')?.remove();
   const input = el('input', { class: 'form-control form-control-sm', type, placeholder });
@@ -2343,9 +1630,6 @@ function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', 
   return pop;
 }
 
-/* The same dialect as a FORM control: looks like a select, opens the picker,
-   carries its value in a hidden input so FormData and change listeners keep
-   working. Returns the wrapper; `.input` is the hidden input to read/listen. */
 function pickerSelect({ name, options, value = null, placeholder = 'Choose…', title = '' }) {
   const input = el('input', { type: 'hidden', name, value: value ?? '' });
   const face = el('button', { class: 'form-select picker-face', type: 'button' },
@@ -2401,9 +1685,6 @@ function chipPickerMulti({ trigger, options, selected, onCommit }) {
   return trigger;
 }
 
-/* Where a remote keystore keeps the credential. Mirrors the engine's
-   credentialLink() — test/credential-chip.test.mjs pins the two together, so
-   a new keystore cannot land on one side only. */
 function credentialLinkFor(keystore, ref) {
   const r = encodeURIComponent(String(ref ?? ''));
   switch (keystore) {
@@ -2416,15 +1697,6 @@ function credentialLinkFor(keystore, ref) {
   }
 }
 
-/* The one control in weave that takes a secret out of the vault.
-
-   It lives on the entity page and nowhere else — a grid draws hundreds of
-   cells and none of them should be one press away from a credential. Copy is
-   the primary path because a value on the clipboard never lands on a screen
-   somebody else is looking at; the server treats copy and show as the same
-   act and logs both, so the softer path is not the quieter one. A refusal is
-   shown as written: the reason a credential is closed is the useful part.
-   (Feature #143.) */
 function credentialReveal(name, keystore) {
   if (keystore && keystore !== 'local') {
     return el('a', { class: 'cred-open', href: credentialLinkFor(keystore, name), target: '_blank', rel: 'noopener' },
@@ -2435,8 +1707,6 @@ function credentialReveal(name, keystore) {
       const { value } = await api('POST', `/keys/${encodeURIComponent(name)}/reveal`, { via });
       if (via === 'copy') return copyText(value, 'Copied — the reveal is on the record');
       shown.replaceChildren(el('code', { class: 'cred-plain' }, value));
-      // Back behind the mask on its own, so a screen left open does not keep
-      // showing it. Re-pressing costs another audited reveal, which is right.
       setTimeout(() => shown.replaceChildren(), 15000);
     } catch (e) {
       toast(String(e.message).match(/not shared|forbidden/i)
@@ -2450,20 +1720,10 @@ function credentialReveal(name, keystore) {
     shown);
 }
 
-/* Field-type groupings the row/cell chrome keys off.
-   PICKER: the cell's whole area opens a chooser. READONLY: computed values
-   that render as text and must not look editable. */
 const PICKER_FIELD_TYPES = ['select', 'multiselect', 'workflow'];
 const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document', 'view'];
-/* A cell that holds a figure sits on the right like a number (Issue #574):
-   a formula or a rollup with a numeric result took no right-align, so a
-   column of totals read flush left beside the amounts it summed. */
 const isNumCell = (f, item) => f.type === 'number' || ((f.type === 'formula' || f.type === 'rollup') && typeof item?.raw?.[f.name] === 'number');
 
-/* Credentials (Feature #143). The glyph says what SORT of secret the chip
-   stands for; the badge says whose store holds it. Both are read off the
-   field's config — the cell itself holds only a name, here as everywhere. */
-// One icon per credential kind, from the set (2026-09-02: no typed glyphs in the chrome).
 const CREDENTIAL_GLYPHS = { apikey: 'lucide:key-round', token: 'lucide:key', password: 'lucide:lock', id: 'lucide:id-card', pair: 'lucide:key-square' };
 const CREDENTIAL_KIND_LABELS = {
   apikey: 'API key', token: 'token', password: 'password', id: 'protected id', pair: 'id + secret pair',
@@ -2473,20 +1733,12 @@ const KEYSTORE_LABELS = {
   'google-sm': 'Google', cloudflare: 'Cloudflare', 'apple-passwords': 'Apple Passwords',
 };
 
-// Inline glyph marking how a read-only value is produced.
 function computedMark(type) {
   return { formula: 'ƒ', rollup: 'Σ', lookup: 'lucide:arrow-up-right', document: 'lucide:file-text', field: 'lucide:sliders-horizontal' }[type] ?? '·';
 }
-// The mark as a node: ƒ and Σ stay letters, the rest draw from the set.
 const computedMarkNode = (type) => { const m = computedMark(type); return iconEl(m, 'ico wv-icon') ?? m; };
 
-/* The same glyph, riding the field NAME. A formula column is not typeable, and
-   that fact belongs on its heading rather than being discovered by clicking a
-   cell that does not respond. Returns children for el(), which flattens. */
 const COMPUTED_NAME_MARKS = { formula: 'formula', rollup: 'rollup', lookup: 'lookup' };
-/* A field's own description (Issue #209): what the value means and how it is
-   written. A view's `description` is its description SIZE (none/small/…), so
-   the views are left out here. */
 function fieldDescription(f) {
   return f && f.type !== 'view' && typeof f.description === 'string' ? f.description : '';
 }
@@ -2500,32 +1752,18 @@ function fieldNameLabel(f, text = f?.name) {
   }, computedMarkNode(f.type))];
 }
 
-/* A click landed on a picker cell's padding rather than its control: forward
-   it to the control. Chip pickers open on click; a native <select> opens its
-   own dropdown (showPicker where supported, focus as the fallback). */
 function openCellPicker(cell) {
   const trigger = cell.querySelector('.chip-trigger');
   if (trigger) return trigger.click();
   const sel = cell.querySelector('select');
   if (!sel) return;
   sel.focus();
-  try { sel.showPicker?.(); } catch { /* not user-activated — focus is enough */ }
+  try { sel.showPicker?.(); } catch {}
 }
 
-/* ---------- Ledger: a click raises the field's own editor ----------
-   The grid shows values at rest, so aiming at a cell has to produce the
-   control that field type actually uses — a picker for a select, the record
-   search for a relation, a caret for text — rather than a generic input the
-   reader then has to find. Which one is the pure half, in editor-lib.js.
-   A click that already landed ON a control is left alone: the browser has
-   put the caret where the reader aimed, which is better than any guess.
-   A text-like cell opens with its WHOLE value selected (Feature #221):
-   ⌘C, ⌘V and typing then act on the value the reader can see, and a second
-   click inside the open control places the caret — the browser's own. */
 function activateCell(cell) {
   switch (globalThis.WeaveEditorLib.cellActivation(cell.dataset.ftype)) {
     case 'none': return;
-    // A rating is set by its icons and its keys; there is nothing to open.
     case 'rate': return;
     case 'toggle': {
       const box = cell.querySelector('input[type="checkbox"]');
@@ -2536,71 +1774,31 @@ function activateCell(cell) {
     case 'open-button': return cell.querySelector('button')?.click();
     default: {
       let input = cell.querySelector('input, select');
-      // A dressed number or marked-up text rests as a span that swaps its
-      // input in on click; opening the cell from a key goes through it.
       if (!input) { cell.querySelector('.num-dressed, .text-dressed, .url-edit')?.click(); input = cell.querySelector('input, select'); }
       if (!input) return;
       input.focus();
-      // Select-on-open, on purpose: a bare focus() leaves a text input with
-      // everything selected in some browsers and nothing in others.
-      try { input.select(); } catch { /* a <select> has nothing to select */ }
+      try { input.select(); } catch {}
     }
   }
 }
 
-/* ---------- a wide grid scrolls in its own box (Issue #233) ----------
-   The wrap of a grid wider than its card is a scroll container (sideways),
-   and a sticky cell sticks to the nearest one — so on the table page that
-   wrap is made the vertical scroller too, cut to the viewport from its own
-   top. A wrap that lost the class gets its height back.
-
-   The box ends where the window ends (Issue #136). It used to claim half a
-   screen whatever was above it, and a short window then had chrome, half a
-   screen of grid and the gutter adding up past the viewport: the page
-   scrolled around a box that scrolled, and Kyle got the two nested bars he
-   filed — the inner one runs out, the outer one takes over. Where the room
-   left is too small to read anyway, the page takes the whole scroll back.
-   Either way one box moves, never two. */
-const GRID_BOX_GUTTER = 40;      // breathing room under the box
-const GRID_BOX_MIN = 120;        // below this the box is not worth the split
+const GRID_BOX_GUTTER = 40;
+const GRID_BOX_MIN = 120;
 function fitGridScroller(wrap, was = null) {
   if (!wrap.isConnected || !wrap.classList.contains('wv-grid-scroll')) { wrap.style.maxHeight = ''; return; }
-  // The wrap's top as it sits with its pane scrolled home (Issue #609: the
-  // pane scrolls, the window does not).
   const top = Math.round(wrap.getBoundingClientRect().top + (paneOf(wrap)?.scrollTop ?? window.scrollY));
-  // vh, not the measured pixels: a window resized shorter re-cuts itself.
   wrap.style.maxHeight = window.innerHeight - top - GRID_BOX_GUTTER < GRID_BOX_MIN
     ? '' : `calc(100vh - ${top}px - ${GRID_BOX_GUTTER}px)`;
-  // The chrome above renders on its own schedule — a description that lands
-  // after the grid pushes the box down, and a cut measured before that is a
-  // box too tall for the room left, which is the whole of this Issue. The
-  // observer above catches it eventually; following the top for as long as
-  // it keeps moving means the reader never sees the wrong cut painted.
   if (top !== was) requestAnimationFrame(() => fitGridScroller(wrap, top));
 }
 
-/* ---------- one scroll moves one box (Issue #69) ----------
-   `Element.scrollIntoView()` is defined to scroll EVERY scrollable ancestor of
-   its target. A weave document sits in a scrolling body, often inside a docked
-   panel, so jumping to a heading also reset scroll positions the reader never
-   asked about — which is what Kyle reported against the outline rail. Every
-   programmatic scroll in the app goes through here instead: the box that may
-   move is resolved explicitly, the rest hold, and the move animates.
-
-   Instant only when the animation would be a lie: a reader who asked for less
-   motion, or a hidden tab, which never runs the frames a smooth scroll rides
-   on and would otherwise never land. */
 const smoothScrollOk = () =>
   !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* The shell pane a node scrolls in (Issue #609): the main panel or the dock,
-   each its own scroller now that the window never scrolls. Null outside the
-   shell — a popover hung off <body>, a standalone page. */
 function paneOf(node) {
   return node?.closest?.('#main, #dock') ?? null;
 }
 
-// The one box that scrolls, or null for the page itself.
 function scrollBoxOf(target) {
   const chain = [];
   for (let p = target.parentElement; p && p !== document.body; p = p.parentElement) {
@@ -2631,38 +1829,12 @@ function scrollTargetIntoView(target, { block = 'start', padding = 0, bottom = 0
   (box ?? window).scrollTo({ top, behavior });
 }
 
-/* ---------- a new row takes the caret (Issues #125, #195) ----------
-   Creating a row from the grid — the "+ New" foot button, Shift+Enter from a
-   row — is the start of typing, so the new row's Name cell opens with the
-   caret inside and the row scrolled into view. The row is found by id, not
-   by column position: `td:nth-child(2) input` was the Name cell until the
-   selection column landed in front of it (Feature #132), then silently
-   aimed at the #id link for a week. Polled by frame because the row arrives
-   after a redraw — and, on the entity page, after a fetch the redraw does
-   not await — and re-asserted only while focus rests on <body>: a second
-   redraw (the commit Shift+Enter left behind) tears the input out, but a
-   reader who has already tabbed on is left alone. The watch ends at the
-   reader's first key or pointer after it placed them — the row is theirs
-   from there — or when the next new row starts its own. Without that, the
-   watch from one Shift+Enter re-grabbed the input the next Shift+Enter had
-   just blurred, and the commit's redraw restored focus to the old row. */
 let newRowTurn = 0;
-/* How much of the PAGE's top edge the view header covers for this node
-   (Issue #321): nothing where there is no pinned header, and nothing inside
-   a grid that scrolls in a box of its own, which starts below the header
-   and is never covered by it. Read off the header's box, so a description
-   that grew counts the moment it paints. */
 function stuckHeaderHeight(node) {
   if (!node?.closest || node.closest('.wv-grid-scroll')) return 0;
   const header = node.closest('#main')?.querySelector(':scope > .view-header');
-  // The laid-out box, not offsetHeight: a half pixel rounded away here is a
-  // row that lands one pixel off after a density flip.
   return header && getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().height : 0;
 }
-// How much of the bottom edge the grid's sticky foot covers — 0 where the
-// foot sits in the flow (the entity page's related sections). A foot stuck
-// to a pane rests on the pane's content edge, so the pane's bottom padding
-// under it is covered too (Issue #609); a grid's own scroll box has none.
 function stickyFootHeight(row) {
   const foot = row.closest('table')?.querySelector('tr.add-entity-row td');
   if (!foot || getComputedStyle(foot).position !== 'sticky') return 0;
@@ -2679,10 +1851,6 @@ function focusNewRow(eid, { field = null, scope = '#main', select = false, frame
     const input = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] input`))
       || row?.querySelector('td input:not([type="checkbox"])');
     if (input && (!placed || document.activeElement === document.body)) {
-      // Instant, not the page's smooth animation: the reader is about to type,
-      // and this poll re-asserts every frame until the caret is placed.
-      // The + New foot floats at the bottom edge (Feature #196): the new
-      // row lands above it, not behind it.
       scrollTargetIntoView(row, { block: 'nearest', instant: true, padding: stuckHeaderHeight(row), bottom: stickyFootHeight(row) });
       activateCell(input.closest('td'));
       if (select) input.select();
@@ -2696,37 +1864,19 @@ function focusNewRow(eid, { field = null, scope = '#main', select = false, frame
   step();
 }
 
-/* ---------- Ledger: a capped column says what it is hiding ----------
-   A cell whose value does not fit shows a marker and, on hover, the whole
-   value — as a COPY in an overlay layer over the grid. The cell itself is
-   never touched: rewriting its box to expand in place would move every
-   column beside it (Kyle, 2026-08-24). The layer hangs off .table-wrap,
-   which scrolls with the grid and does not clip like the cell does. */
 function cellPopLayer(wrap) {
   let layer = wrap.querySelector(':scope > .cell-pop-layer');
   if (!layer) { layer = el('div', { class: 'cell-pop-layer' }); wrap.append(layer); }
   return layer;
 }
 
-/* The type a cell sets, carried onto the copy. The clone lands OUTSIDE the
-   <td>, so every rule scoped to a cell — `td.name-cell .inline-edit` sets the
-   leading column at 15px/600 — stops matching it, and the value changed size
-   at the moment you hovered it to read it (Issue #67). Same technique as
-   cellFitProbe() below: read the computed value, write it on the clone. */
 const CELL_TYPE_PROPS = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
   'letterSpacing', 'lineHeight', 'color', 'textAlign'];
-/* The controls that hold a value longer than their box — a text cell's input
-   and a textarea. A checkbox has no value to cut off; a select paints the
-   option the browser sizes it to. */
 const CLIPPABLE_CONTROLS = 'input:not([type="checkbox"]), textarea';
 function copyCellType(src, dst) {
   const cs = getComputedStyle(src);
   for (const p of CELL_TYPE_PROPS) dst.style[p] = cs[p];
 }
-/* Where a box's content actually starts — the element it holds, or, for a
-   cell that is nothing but text, the text itself. Padding and borders differ
-   between a cell and the popover, so the boxes cannot be aligned; the
-   CONTENT can. */
 function contentRect(node) {
   if (node.firstElementChild) return node.firstElementChild.getBoundingClientRect();
   const range = document.createRange();
@@ -2734,7 +1884,7 @@ function contentRect(node) {
   const r = range.getBoundingClientRect();
   return r.width || r.height ? r : node.getBoundingClientRect();
 }
-const CELL_POP_DELAY = 180; // ms a pointer rests on a clipped cell before it expands (Issue #67)
+const CELL_POP_DELAY = 180;
 function showCellPop(td, wrap) {
   const layer = cellPopLayer(wrap);
   const base = wrap.getBoundingClientRect();
@@ -2745,9 +1895,6 @@ function showCellPop(td, wrap) {
     class: 'cell-pop',
     style: `left:${left}px; top:${top}px; min-width:${r.width}px;`,
   });
-  // A copy, so the live cell keeps its controls and its place in the row.
-  // The pop shows MORE of the value, never a restyled version of it: the
-  // cell's own typography rides along (Kyle, Issue #93 — "same font").
   const cs = getComputedStyle(td);
   for (const prop of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'color', 'textAlign']) {
     pop.style[prop] = cs[prop];
@@ -2757,17 +1904,8 @@ function showCellPop(td, wrap) {
   const src = td.querySelectorAll('*');
   const clones = pop.querySelectorAll('*');
   for (let i = 0; i < clones.length && i < src.length; i++) copyCellType(src[i], clones[i]);
-  // The pop is where the chips the fit hid are read (Feature #239).
   for (const n of pop.querySelectorAll('.wv-cb > .ms-box > [hidden]')) n.hidden = false;
   for (const n of pop.querySelectorAll('.wv-cb > .ms-box > .k-more')) n.remove();
-  /* An <input> is a box the CELL sized: it cannot wrap and it cannot grow, so
-     a copy of one hides exactly what the cell hid — the expansion opened and
-     showed no more of the name than the row already had (Issue #157). The
-     value becomes text, which wraps inside the popover's measure the way a
-     description's lines do. The control's own metrics ride along, class name
-     included, so the copy still reads at the cell's type (Issue #67) — the
-     unclassed twin of this swap is in cellFitProbe(), which measures off the
-     grid where a class would bring its own max-width. */
   const controls = td.querySelectorAll(CLIPPABLE_CONTROLS);
   pop.querySelectorAll(CLIPPABLE_CONTROLS).forEach((copy, i) => {
     const from = controls[i];
@@ -2781,20 +1919,10 @@ function showCellPop(td, wrap) {
     copy.replaceWith(text);
   });
   layer.replaceChildren(pop);
-  /* The expansion opens ABOVE the cell, never over it (Kyle, 2026-09-23,
-     Issue #346, superseding the 2026-08-26 over-the-value rule): a copy laid
-     on the live text blocked click and edit, because the editor, the caret
-     and every typed character sat under a static copy of the old value.
-     Horizontally the CONTENT still lines up — the cell pads 9px/4px and the
-     popover 8px/10px over a border, so the boxes cannot share an edge; the
-     value can. Vertically the pop's bottom sits CELL_POP_GAP over the cell's
-     top, and flips below the row when the room above inside the wrap's
-     visible area (or the viewport) is shorter than the pop — the first rows
-     of a table get their expansion below, never one clipped off the top. */
   const want = contentRect(td);
   const got = contentRect(pop);
   pop.style.left = `${left + (want.left - got.left)}px`;
-  const at = pop.getBoundingClientRect(); // laid out at `top` for now
+  const at = pop.getBoundingClientRect();
   const visibleTop = Math.max(base.top + wrap.clientTop, 0);
   const above = r.top - visibleTop >= at.height + CELL_POP_GAP;
   const rowBottom = (td.closest('tr') ?? td).getBoundingClientRect().bottom;
@@ -2802,9 +1930,7 @@ function showCellPop(td, wrap) {
   pop.style.top = `${top + (goal - at.top)}px`;
   pop.classList.toggle('cell-pop-below', !above);
 }
-const CELL_POP_GAP = 4; // px between the expansion and the cell it reads (Issue #346)
-/* Editing never happens under a copy (Issue #346): a cell whose own control
-   holds focus is being edited, so it opens nothing. */
+const CELL_POP_GAP = 4;
 function cellIsEditing(td) {
   const a = document.activeElement;
   return !!a && a !== td && td.contains(a);
@@ -2814,52 +1940,27 @@ function hideCellPop(wrap) {
   wrap.querySelector(':scope > .cell-pop-layer')?.replaceChildren();
 }
 
-/* Clipped is measured, never assumed: a value that fits gets no marker, so
-   the marker always means there is more to see. */
 const overflowsX = (n) => n.scrollWidth > n.clientWidth + 1;
-/* A block of cells on the system clipboard (Feature #220).
-
-   Two flavours go on together. `text/plain` is TSV — what a spreadsheet
-   reads, and what weave reads back from one. `text/html` carries the same
-   block TYPED, in a comment ahead of a table nothing else has to understand:
-   option IDS, a multi-select's whole set, a boolean that is a boolean. That
-   is the flavour the system clipboard keeps intact between two weave tabs,
-   which is why the typed copy rides there rather than in a custom MIME type
-   the platform would drop.
-
-   `lastCopiedBlock` is the same-page shortcut, for a browser that hands the
-   html back stripped: the plain text still identifies the block that made it. */
 const WEAVE_CELLS = /<!--weave-cells:([^->]*)-->/;
 let lastCopiedBlock = null;
 const htmlText = (s) => String(s).replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
 function weaveCellsHTML(block) {
   const label = (d) => (d == null ? '' : Array.isArray(d) ? d.join(', ') : String(d));
   const rows = block.cells.map((row) => `<tr>${row.map((c) => `<td>${htmlText(label(c.d))}</td>`).join('')}</tr>`).join('');
-  // The table is for whatever else reads the clipboard; the comment ahead of
-  // it is the typed block, and only weave looks for that.
   return `<!--weave-cells:${encodeURIComponent(JSON.stringify(block))}--><table>${rows}</table>`;
 }
 function readWeaveCells(html) {
   const m = WEAVE_CELLS.exec(html ?? '');
   if (!m) return null;
-  // Clipboard content is data, never trusted structure: a block that does not
-  // parse into cells is no block, and the TSV underneath takes over.
   try {
     const block = JSON.parse(decodeURIComponent(m[1]));
     return Array.isArray(block?.cells) && block.h > 0 && block.w > 0 ? block : null;
-  } catch { return null; } // not our block: the TSV underneath takes over
+  } catch { return null; }
 }
 
-/* A chip shows whole or not at all (Feature #239, Kyle 2026-09-27). In a
-   multi-value cell the chips that fit inside the cell's clip box stay, the
-   rest are hidden from the end and a +N counts them; the cell reads as
-   clipped, so its pop shows every one. At Spacious the box wraps to two
-   rows of chips. One chip that cannot fit even alone shrinks to the box
-   rather than cross it. */
 function fitChips(grid) {
   for (const box of grid.querySelectorAll('tbody td > .wv-cb > .ms-box')) {
     const cb = box.parentElement;
-    // A relation chip rides in its .mention-wrap.
     const chips = [...box.children].filter((n) => n.matches('.k:not(.k-more):not(.k-add), .mention-wrap'));
     let more = box.querySelector(':scope > .k-more');
     box.classList.remove('wv-fit-one');
@@ -2867,7 +1968,6 @@ function fitChips(grid) {
     if (more) more.hidden = true;
     if (chips.length < 2) continue;
     const c = cb.getBoundingClientRect();
-    // Centred in its box, a second row of chips spills above as well as below.
     const out = (n) => { const r = n.getBoundingClientRect(); return r.right > c.right + 0.5 || r.bottom > c.bottom + 0.5 || r.top < c.top - 0.5; };
     let shown = chips.length;
     while (shown > 1 && (out(chips[shown - 1]) || (more && !more.hidden && out(more)))) {
@@ -2881,9 +1981,6 @@ function fitChips(grid) {
   }
 }
 const overflowsY = (n) => n.scrollHeight > n.clientHeight + 1;
-/* In development one painted row per paint is held to its token (Feature
-   #239): a renderer that grows a row names its field type in the console
-   instead of quietly moving every row under the window. */
 const WEAVE_DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
 function checkRowPitch(grid) {
   const tr = grid.querySelector('tbody tr.entity-row');
@@ -2898,22 +1995,10 @@ function checkRowPitch(grid) {
 
 function markClippedCells(grid) {
   fitChips(grid);
-  // A text cell's value is cut off INSIDE its control: the <input> is
-  // `width: 100%`, so it never outgrows the cell and the cell never reports
-  // overflow. Every Name on Kyle's Issue grid ran past its column and not one
-  // was marked, so hovering did nothing (Issue #157). The control knows what
-  // it is hiding — ask it, in ONE pass over the grid rather than a selector
-  // run per cell.
   const cutOff = new Set();
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
     if (overflowsX(c)) cutOff.add(c.closest('td'));
   }
-  // A value chip's label truncates inside the chip, so the chip never
-  // outgrows the cell either (Issue #423). A cut label marks its cell and its
-  // chip carries the whole value as its title: on the chip, not the label,
-  // because the chip's own title (the field name) answered every hover on
-  // its padding (Issue #584). A chip that fits gets back the title it was
-  // drawn with. This runs again after a column resize, so the title follows.
   for (const label of grid.querySelectorAll('tbody td .k > .k-label')) {
     const chip = label.parentElement;
     chip.dataset.fieldTitle ??= chip.getAttribute('title') ?? '';
@@ -2922,18 +2007,8 @@ function markClippedCells(grid) {
     else chip.removeAttribute('title');
   }
   for (const td of grid.querySelectorAll('tbody td')) {
-    // A description holds lines the row has no height for; they are in the
-    // cell, hidden, and only the pop can show them. Width alone would call
-    // that cell unclipped and the rest of the description would never be
-    // reachable, so having more than one line counts as clipped too.
-    // Spacious shows two (Feature #239).
     const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > (grid.dataset.density === 'spacious' ? 2 : 1);
-    // A graphic (Feature #230) is drawn to fit its cell and has nothing
-    // hidden: the pop would only show the same bar again.
     if (td.querySelector('.cg-wrap')) { td.classList.remove('clipped'); continue; }
-    /* The clip box holds the value to the row (Feature #239), so what it
-       cuts is cut in either direction: a value past its width or past its
-       height, a child ellipsised inside it, or whole chips the fit hid. */
     const cb = td.matches('[data-field], .sys-cell') ? td.querySelector(':scope > .wv-cb') : null;
     const boxCut = !!cb && (overflowsX(cb) || overflowsY(cb)
       || [...cb.children].some((n) => overflowsX(n) || overflowsY(n))
@@ -2943,27 +2018,19 @@ function markClippedCells(grid) {
   if (WEAVE_DEV && grid.dataset.density) checkRowPitch(grid);
 }
 
-/* ---------- Ledger: density (Feature #239) ----------
-   Compact, Comfortable or Spacious: the row height a grid is drawn at, 32,
-   44 or 72px, declared by the --wv-row-h token and never measured. It is a
-   property of the view (Kyle, 2026-09-27), beside filter, sort and fields,
-   and a pick autosaves into it the way those do. A grid with no view (a
-   registry table) keeps the old per-browser key; a view that has no
-   density yet reads that key once, saves it, and the key goes. */
 const DENSITY_LABELS = { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' };
 const densityKey = (dbId) => `weave-grid-density:${dbId}`;
 const hasView = (db) => !!db.view && !db.view.blank;
 function gridDensity(db) {
   if (hasView(db)) return db.view.density ?? 'comfortable';
   try { const d = localStorage.getItem(densityKey(db.id)); return DENSITY_LABELS[d] ? d : 'comfortable'; }
-  catch { return 'comfortable'; } // storage blocked: the default density
+  catch { return 'comfortable'; }
 }
 function saveGridDensity(db, mode) {
   if (!hasView(db)) {
-    try { localStorage.setItem(densityKey(db.id), mode); } catch { /* private mode */ }
+    try { localStorage.setItem(densityKey(db.id), mode); } catch {}
     return;
   }
-  // Painted now, saved behind: the view object is the one the schema holds.
   if (mode === 'comfortable') delete db.view.density; else db.view.density = mode;
   gridConfigWrite(db, null, { density: mode }).catch((err) => toast(err.message, true));
 }
@@ -2971,13 +2038,10 @@ function adoptLegacyDensity(db) {
   if (!hasView(db) || db.view.density) return;
   let old = null;
   try { old = localStorage.getItem(densityKey(db.id)); localStorage.removeItem(densityKey(db.id)); }
-  catch { return; } // storage blocked: nothing to hand over
+  catch { return; }
   if (DENSITY_LABELS[old] && old !== 'comfortable') saveGridDensity(db, old);
 }
 
-// Row click → 'ignore' (a control handled it), the picker cell, or null (open).
-/* The Workspace registries, as the schema describes them. kind is the
-   engine's system marker: 'spaces' | 'tables' | 'fields'. */
 function registryTable(kind) {
   for (const sp of [...state.schema, ...(state.registry ?? [])]) {
     if (sp.system !== 'workspace') continue;
@@ -2987,10 +2051,6 @@ function registryTable(kind) {
   return null;
 }
 
-/* A registry row stands for a piece of structure; opening it opens the
-   structure — the space or the table, which IS the entity of the workspace
-   (Kyle, 2026-08-24). Ordinary rows open their entity page as ever. A row
-   describing another workspace deep-links into it (Feature #219). */
 function registryHref(db, item) {
   if (db.system === 'workspaces' && item.sysId) return item.sysId === state.wsId ? '#/' : `/w/${item.sysId}/`;
   const here = !item.sysWorkspaceId || !state.wsId || item.sysWorkspaceId === state.wsId;
@@ -2999,8 +2059,6 @@ function registryHref(db, item) {
   if (db.system === 'spaces' && item.sysId) return at(`#/space/${item.sysId}`);
   return null;
 }
-/* This workspace's slice of a registry grid. The root IS the hub: its home
-   shows every workspace's spaces side by side; a member shows its own. */
 const mineOnly = (items) => (WS_PREFIX ? items.filter((i) => !i.sysWorkspaceId || !state.wsId || i.sysWorkspaceId === state.wsId) : items);
 
 function rowClickTarget(e) {
@@ -3008,12 +2066,6 @@ function rowClickTarget(e) {
   return e.target.closest('.cell-pick');
 }
 
-/* Which side an anchored panel hangs off, in numbers (Issue #133).
-   A left placement runs from the anchor's left edge rightwards; a right
-   placement ends at the anchor's right edge. `prefer` is the caller's
-   default and wins whenever it fits — the flip is a rescue, not a policy.
-   When neither side fits (a panel wider than its bounds) the preference
-   stands, because moving it only trades one clipped edge for the other. */
 function menuSide({ anchorLeft, anchorRight, width, boundsLeft, boundsRight, prefer = 'left', pad = 4 }) {
   const fits = (left) => left >= boundsLeft + pad && left + width <= boundsRight - pad;
   const other = prefer === 'right' ? 'left' : 'right';
@@ -3022,9 +2074,6 @@ function menuSide({ anchorLeft, anchorRight, width, boundsLeft, boundsRight, pre
   return fits(start(other)) ? other : prefer;
 }
 
-/* The box the panel has to live inside: the nearest ancestor that clips its
-   overflow, else the viewport. The side peek is the reason — a menu there
-   clips against the panel's edge long before it reaches the window's. */
 function menuBounds(node) {
   const viewport = { left: 0, right: document.documentElement.clientWidth };
   for (let p = node.parentElement; p && p !== document.body; p = p.parentElement) {
@@ -3035,14 +2084,6 @@ function menuBounds(node) {
   return viewport;
 }
 
-/* The ⋮ overflow menu, one implementation for every view that has one.
-   items: {label, href, download} for a link, {label, run, danger} for a
-   button, {hold: label, run} for a hold-to-confirm, or 'divider'.
-   align 'right' hangs the panel off the right edge — the table and space
-   menus sit at the end of the header toolbar, where left-aligning would
-   push the panel off-screen. It is the DEFAULT, not the decision: the side
-   is measured on open (Issue #133), because the same ⋮ that has room in one
-   view is flush against the edge in the next. */
 function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } = {}) {
   const menu = el('div', { class: `dl-menu hidden${align === 'right' ? ' dl-menu-right' : ''}` });
   const close = () => menu.classList.add('hidden');
@@ -3062,9 +2103,6 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
       onclick: async () => { close(); await it.run(); },
     }, it.label));
   }
-  /* Measured while the panel is visible — a hidden box has no width — and
-     re-measured on every open, so a menu that flipped once flips back when
-     the pane it sits in grows. */
   const place = () => {
     const a = wrap.getBoundingClientRect();
     const bounds = menuBounds(wrap);
@@ -3080,7 +2118,6 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
       onclick: (e) => {
         e.stopPropagation();
         const opening = menu.classList.contains('hidden');
-        // One menu at a time, and clicking anywhere else closes it.
         for (const m of document.querySelectorAll('.dl-menu')) m.classList.add('hidden');
         if (!opening) return;
         menu.classList.remove('hidden');
@@ -3096,24 +2133,16 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
   return wrap;
 }
 
-/* A text value is markdown when tokenizing it finds a mark — cheaper to ask
-   the tokenizer than to keep a second grammar in sync with it. */
 function hasInlineMarkup(text) {
   return globalThis.WeaveEditorLib.inlineTokens(text, inlineIconAccept).some((t) => t.mark);
 }
 
 const INLINE_TAG = { strong: 'strong', em: 'em', code: 'code', strike: 's', link: 'span', ref: 'span' };
-/* Which `:token:` is an icon (Kyle, 2026-09-02): a name in the set draws as
-   `lucide:<name>`, a drawn mark draws as itself; anything else stays literal.
-   The tokenizer and the chip layer both ask this, so there is one answer. */
 function inlineIconAccept(token) {
   const hit = window.weaveIconRegistry?.inline(token);
   return hit ? (hit.name ? `lucide:${hit.name}` : hit.mark) : null;
 }
 
-/* One line of markdown painted into one node: the marks as marks, the syntax
-   gone. Shared by the text costume and the description preview so there is a
-   single place the browser turns tokens into elements. */
 function dressTokens(into, tokens) {
   for (const t of tokens) {
     if (t.mark === 'icon') { into.append(iconEl(t.icon, 'wv-icon md-icon')); continue; }
@@ -3123,30 +2152,20 @@ function dressTokens(into, tokens) {
   return into;
 }
 
-/* The costume: marks painted, syntax gone, and one click back to the source.
-   Focus follows the click so typing continues where it was aimed. */
 function dressedText(md, input) {
   const tokens = globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
-  // The tooltip is the whole value the cell had to ellipsise — as prose, for
-  // the same reason the cell is: nobody wants to read markers in a tooltip.
   const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
   dressTokens(dressed, tokens);
   dressed.addEventListener('click', (e) => {
     e.stopPropagation();
     dressed.replaceWith(input);
     input.focus();
-    input.select();   // select-on-open, the same as every text cell (Feature #221)
+    input.select();
   });
   input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
   return dressed;
 }
 
-/* A url value at rest: a real anchor, so a plain click opens a new tab and
-   ⌘-click and middle-click stay the browser's. One link colour end to end
-   (Kyle, 2026-09-07); the host is set a touch heavier so a column scans by
-   site. The pencil (visible on hover and focus), a double-click on the span,
-   and Return through the keymap swap the input in; blur swaps the link
-   back, as dressedText does. */
 function dressedUrl(value, input) {
   const parts = globalThis.WeaveEditorLib.urlParts(value);
   const dressed = el('span', { class: 'url-dressed', tabindex: 0, title: parts.href });
@@ -3155,14 +2174,11 @@ function dressedUrl(value, input) {
     e.stopPropagation();
     dressed.replaceWith(input);
     input.focus();
-    input.select();   // select-on-open, the same as every text cell (Feature #221)
+    input.select();
   };
   const link = el('a', {
     class: 'url-link', href: parts.href,
-    // http(s) leaves weave and takes a new tab; a custom scheme (claude://,
-    // mailto:) launches its handler and the page stays, so no target.
     target: parts.external ? '_blank' : null, rel: parts.external ? 'noopener' : null,
-    // The click is the browser's: no docking, no row navigation underneath.
     onclick: (e) => e.stopPropagation(),
   }, el('span', { class: 'url-host' }, parts.host), el('span', { class: 'url-rest' }, parts.rest));
   const pen = el('button', { class: 'url-edit', type: 'button', title: 'Edit the link', onclick: edit },
@@ -3173,32 +2189,16 @@ function dressedUrl(value, input) {
   return dressed;
 }
 
-/* ---------- the chip and the card (Kyle, 2026-09-04) ----------
-   One row as it appears elsewhere, drawn from the object the engine's
-   renderView hands back (`raw[Chip]`, `raw[Card]`, and `chip` on every
-   relation summary). A relation cell, a doc mention, a reference card and
-   the entity page's own preview all come through here, so they agree. */
 const viewCore = globalThis.weaveViewCore;
-/* The table's chip or card field, by role — never by the name, which is
-   the owner's to change. */
 function viewFieldOf(db, shape) {
   return db?.fields?.find((f) => f.type === 'view' && f.role === shape) ?? null;
 }
-/* ---------- the number display (Feature #230) ----------
-   A bar, a ring or a heat tint, drawn against the scale the engine names on
-   the read (`scales`: the column max, or a fixed number) — so a paged grid, a
-   chip and a card all draw against the whole column. The value's own text
-   rides beside the graphic and is what a screen reader reads; the SVG is
-   aria-hidden. The cell never measures as clipped (markClippedCells). */
 const cellGraphics = globalThis.weaveCellGraphics;
 const numberCore = globalThis.weaveNumberCore;
 function scaleText(f, scale) {
   if (scale == null) return null;
   return f?.format === 'percent' ? `${Math.round(scale * 1e4) / 100}%` : Number(scale).toLocaleString();
 }
-/* The width a figure takes in a grid cell, for fitting a graphic column
-   (Feature #235): the grid's own font on a canvas, tabular digits being as
-   wide as the widest, plus a pixel of slack for rounding. */
 let figureCanvas = null;
 function figureWidth(text) {
   try {
@@ -3206,7 +2206,7 @@ function figureWidth(text) {
     const cs = getComputedStyle(document.documentElement);
     figureCanvas.font = `${cs.getPropertyValue('--wv-grid-font').trim() || '13px'} ${getComputedStyle(document.body).fontFamily}`;
     return Math.ceil(figureCanvas.measureText(String(text).replace(/\d/g, '0')).width) + 2;
-  } catch { return null; } // no canvas (a headless probe): the width falls back to three digits
+  } catch { return null; }
 }
 function numberGraphic(display, value, scale, text, f = null, color = f?.color) {
   const shown = String(text ?? value ?? '');
@@ -3214,27 +2214,17 @@ function numberGraphic(display, value, scale, text, f = null, color = f?.color) 
     class: `cg-wrap cg-${display} ${cellGraphics.colorClass(color)}`, role: 'img', 'aria-label': shown,
     title: cellGraphics.meterTitle(shown, value, scale, scaleText(f, scale)),
   });
-  // The markup is numbers only (cell-graphics.js builds it from a share).
   box.innerHTML = cellGraphics.meterSvg(display, cellGraphics.share(value, scale) ?? 0);
   box.append(el('span', { class: 'cg-text', 'aria-hidden': 'true' }, shown));
   return box;
 }
-/* The graphic a field's value wears in this row, or null for plain text. */
 function numberGraphicFor(f, item, text) {
   if (!cellGraphics.isGraphic(f.display)) return null;
   const value = item?.raw?.[f.name];
   if (typeof value !== 'number') return null;
   return numberGraphic(f.display, value, item?.scales?.[f.name] ?? f.scale ?? null, text ?? value, f);
 }
-/* ---------- the rating (Feature #231) ----------
-   `max` icons, the first `n` filled. Editable, each icon is a button: the
-   nth sets n and the current one clears to 0, and the grid keymap sends a
-   `rate` event (a digit, Backspace). Read-only — a lookup, a rollup, a chip
-   — the same icons with no buttons, rounded to a whole icon. Either way the
-   group says "3 of 5" to a screen reader and the icons are hidden from it. */
 function ratingEl(max, icon, value, { onSet = null, title = null, color = 'ink' } = {}) {
-  /* The colour (Feature #235) is a class; Color by icon also names the
-     icon's hue, which the style sheet maps to a token with a dark twin. */
   const box = el('span', {
     class: `wv-rating ${cellGraphics.colorClass(color)}` + (onSet ? ' editable' : ''), role: onSet ? 'group' : 'img',
     dataset: { max: String(max ?? 5), hue: cellGraphics.ratingHue(icon) },
@@ -3244,10 +2234,6 @@ function ratingEl(max, icon, value, { onSet = null, title = null, color = 'ink' 
     box.setAttribute('aria-label', label);
     box.title = title ?? label;
     box.dataset.value = v == null ? '' : String(v);
-    /* The compact form a narrow column draws instead (Issue #404): one
-       icon and "3/12", first in the row and hidden unless the grid's layout
-       sheet says the icons do not fit. The group's label is still what a
-       screen reader hears, so the pair is hidden from it. */
     const compact = el('span', { class: 'wv-rating-compact', 'aria-hidden': 'true' },
       el('span', { class: 'wv-rate-mini' + (filled > 0 ? ' on' : '') }, iconEl(icon || 'lucide:star', 'wv-icon') ?? '★'),
       el('span', { class: 'wv-rating-n' }, `${filled}/${m}`));
@@ -3265,21 +2251,13 @@ function ratingEl(max, icon, value, { onSet = null, title = null, color = 'ink' 
   if (onSet) box.addEventListener('rate', (e) => onSet(e.detail));
   return box;
 }
-/* ---------- the sparkline (Feature #232) ----------
-   A formula's list as a line, columns or win/loss bars, the newest 60
-   points drawn; the hover lists every value and a screen reader hears the
-   count, the last value, the low and the high. Null when there is no number
-   to draw, so the cell falls back to its text. */
 function sparkEl(style, values, color = 'ink') {
   const svg = cellGraphics.sparkSvg(style || 'line', values);
   if (!svg) return null;
   const box = el('span', { class: `cg-wrap cg-sparkwrap cg-${style || 'line'} ${cellGraphics.colorClass(color)}`, role: 'img', 'aria-label': cellGraphics.sparkLabel(values), title: cellGraphics.sparkTitle(values) });
-  box.innerHTML = svg; // numbers only: cell-graphics.js builds it from the series
+  box.innerHTML = svg;
   return box;
 }
-/* A segment: the state as the same state chip a cell wears (category owns
-   the colour), or a label + value pair. A graphic number draws its meter,
-   a rating its icons, a sparkline its series. */
 function segmentValueEl(seg) {
   if (seg.spark) return sparkEl(seg.spark.style, seg.spark.values, seg.spark.color) ?? seg.value;
   if (seg.rating) return ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}`, color: seg.rating.color });
@@ -3294,27 +2272,13 @@ function viewSegmentEl(seg) {
   }
   return el('span', { class: 'mention-f' }, el('span', { class: 'mention-f-label' }, seg.label), segmentValueEl(seg));
 }
-/* The chip: the whole thing is a link; the segments fold behind the same
-   caret a doc mention uses (Feature #163), so the caret is the one
-   non-navigating pixel. `lead` goes inside the link before the name (an
-   avatar), `tail` after it (a table badge); `extra` sits outside the link
-   (a ×). */
 function viewChipEl(v, { lead = null, tail = null, extra = null, href = null } = {}) {
   const segs = viewCore.viewSegments(v);
-  /* The caret and the segments ride INSIDE the link, as src/markdown.js
-     draws a doc mention: the whole chip stays the link, the ↗ stays its
-     last pixel (grid-chrome test 3), and the caret is the one pixel that
-     does not navigate. */
-  /* The name is its own span so a chip in a narrow column can truncate the
-     label alone and keep the badge and the ↗ at its right end (Issue #201);
-     the full name rides in the title. */
   const a = el('a', { href: href ?? `#/entity/${v.id}`, title: String(v?.name ?? ''), onclick: (e) => e.stopPropagation() },
     lead, el('span', { class: 'k-label' }, viewCore.viewTitle(v)), tail,
     ...(segs.length ? [
       el('button', {
         type: 'button', class: 'mention-caret', 'aria-expanded': 'false', title: 'Show fields',
-        // The chip's link swallows clicks (a cell must not open the row), so
-        // the caret toggles itself rather than relying on the delegate below.
         onclick: (e) => { e.preventDefault(); e.stopPropagation(); toggleMentionCaret(e.currentTarget); },
       }, '›'),
       el('span', { class: 'mention-fields' }, ...segs.map(viewSegmentEl)),
@@ -3323,8 +2287,6 @@ function viewChipEl(v, { lead = null, tail = null, extra = null, href = null } =
   if (extra) chip.append(extra);
   return el('span', { class: 'mention-wrap' }, chip);
 }
-/* The card: a tile with the #id link and the name on one line, the state
-   beside them, the description preview, then the fields two-up. */
 function viewCardEl(v, { compact = false } = {}) {
   const segs = viewCore.viewSegments(v);
   const state = segs.find((x) => x.kind === 'state');
@@ -3342,13 +2304,10 @@ function viewCardEl(v, { compact = false } = {}) {
   }
   return card;
 }
-/* An unhidden view in the grid: read-only, drawn as itself. */
 function viewCell(v, f, { compact = false } = {}) {
   if (!v || typeof v !== 'object') return el('span', { class: 'k k-empty' }, '—');
   return f.shape === 'card' || v.shape === 'card' ? viewCardEl(v, { compact }) : viewChipEl(v);
 }
-/* Every relation chip: the far row's chip, with the avatar a person wears
-   and the home badge a target-set member needs. */
 function relationChipEl(f, s, { extra = null } = {}) {
   const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [] };
   return viewChipEl(v, {
@@ -3357,8 +2316,6 @@ function relationChipEl(f, s, { extra = null } = {}) {
     extra,
   });
 }
-// The caret toggles the segments open, wherever the chip is (doc pages carry
-// their own copy of this in src/markdown.js).
 function toggleMentionCaret(caret) {
   const open = caret.closest('.mention-wrap').classList.toggle('open');
   caret.setAttribute('aria-expanded', String(open));
@@ -3370,12 +2327,6 @@ document.addEventListener('click', (ev) => {
   toggleMentionCaret(caret);
 });
 
-/* A toggle is a switch wearing the word of its state (Feature #202). The
-   input underneath is a real checkbox, so everything the grid already knows
-   about a boolean cell — Return and Space flip it through activateCell, the
-   row click leaves a label alone, the clip and focus rules skip it — holds
-   without a second path. The word is the config's `on` / `off`; the track
-   and knob are CSS on Tabler tokens (.wv-toggle in style.css). */
 function toggleSwitch(f, val, patch) {
   const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': f.name });
   const word = el('span', { class: 'wv-toggle-word' });
@@ -3387,27 +2338,11 @@ function toggleSwitch(f, val, patch) {
     word.textContent = on ? (f.on ?? 'On') : (f.off ?? 'Off');
   };
   input.addEventListener('change', () => patch(input.checked, paint));
-  /* In the grid the CELL is the focus stop, never the control inside it: a
-     click on the label would leave the box focused, and a checkbox flips on
-     the keyup of Space no matter what the keydown decided — so the next
-     Space would flip it twice (once by the keymap, once natively). Hand the
-     focus to the cell; on the entity page there is no cell and the native
-     key is the right one. */
   input.addEventListener('focus', () => { const td = input.closest('td.wv-cell, td'); if (td) td.focus(); });
   paint(val);
   return wrap;
 }
 
-/* Every control a cell or a field row holds carries a name (Issue #378):
-   axe counted 40 unnamed inputs on the Issue table, each read aloud as a
-   bare "edit text". A grid control is named by column and row ("Points,
-   Grid is slow"); a field row on the entity page passes its field name. */
-/* ---------- attachment previews (Kyle, 2026-10-05) ----------
-   One file kind vocabulary for the sheet, the viewer and the lightbox. A
-   picture is what the sheet can draw with an <img>; a pdf and plain text
-   open in a frame the server already serves inline (Issue #483); an HTML
-   upload opens in a frame under `?view` and the same sandbox the server
-   sets, so it runs in an opaque origin with nothing of weave's to read. */
 const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 function fileKind(file) {
@@ -3421,12 +2356,6 @@ function fileKind(file) {
 const isPictureFile = (file) => fileKind(file) === 'image';
 const fileIconName = (file) => ({ image: 'lucide:image', pdf: 'lucide:file-text', text: 'lucide:file-text', html: 'lucide:code' })[fileKind(file)] ?? 'lucide:file';
 const fileSizeText = (n) => n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-/* The contact sheet: one cell per file, wrapping to the column's width.
-   `fit-trim` sizes each cell to its picture's shape once the image says
-   what it is; `fit-fill` is a uniform grid with the picture cropped to the
-   cell. A file the sheet cannot picture is a glyph cell naming its kind.
-   ponytail: a server-made still for pdf and html pages would turn those
-   glyph cells into pictures; the sheet's shape does not change for it. */
 function attachSheetEl(files, { size = 'medium', fit = 'trim' } = {}, { remove = null } = {}) {
   const sheet = el('div', { class: `attach-sheet size-${size} fit-${fit}` });
   files.forEach((file, i) => {
@@ -3445,13 +2374,9 @@ function attachSheetEl(files, { size = 'medium', fit = 'trim' } = {}, { remove =
     cell.append(el('span', { class: 'attach-cell-label' }, file.name), remove ? remove(file) : null);
     sheet.append(cell);
   });
-  // The last row is never stretched to the edge: the filler takes the slack.
   if (fit === 'trim') sheet.append(el('span', { class: 'attach-sheet-filler' }));
   return sheet;
 }
-/* The viewer: the file itself, in place, no click. Height follows `size`
-   and the bottom edge drags, so the page scrolls outside and the file
-   inside. Null for a kind with no viewer: the chip stands alone. */
 function fileViewerEl(file, { size = 'medium' } = {}) {
   const kind = fileKind(file);
   const url = fileUrl(file);
@@ -3468,14 +2393,10 @@ function fileViewerEl(file, { size = 'medium' } = {}) {
       el('a', { class: 'btn btn-sm btn-ghost-secondary tiny', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon wv-icon-xs'))),
     body);
 }
-/* The cover: a single-file field's picture at the top of the record. */
 function entityCoverEl(file, { size = 'medium', fit = 'trim' } = {}) {
   return el('div', { class: `entity-cover size-${size} fit-${fit}`, title: file.name },
     el('img', { src: fileUrl(file), alt: file.name }));
 }
-/* A sheet cell opens its file in the fullscreen viewer (Feature #47), and
-   ← → walk the field's files. A kind the server only hands back as a
-   download opens in a tab instead of a frame that would save it. */
 function fileLightbox(files, index) {
   const file = files[index];
   const kind = fileKind(file);
@@ -3498,13 +2419,6 @@ function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, 
   }
   return node;
 }
-/* A file dropped from the desktop (Issue #85). `zone` lights while a drag
-   that carries files is over it and hands the files to `take` on the drop.
-   Only a drag whose types include 'Files' is taken: text, a header or a row
-   being moved passes through with its default intact, so this never
-   swallows another surface's drag. The depth count is how a zone with
-   children knows it was really left: dragenter on the chip fires before
-   dragleave on the cell, and the class must survive that crossing. */
 function fileDropZone(zone, take) {
   let depth = 0;
   const carriesFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
@@ -3537,23 +2451,14 @@ function fileDropZone(zone, take) {
   return zone;
 }
 
-// An option's colour is a name from the ten-hue ramp, not a loose hex —
-// chip-core.js reads the stored hex back as one, so an option that predates
-// the ramp keeps exactly the colour it had. Uncoloured rests on slate.
 function optionHue(field, name) {
   const o = (field.optionsFull ?? []).find((x) => x.name === name);
   return `hue-${chipCore.hueFromHex(o?.color)}`;
 }
-// The glyph an option wears, if its author gave it one.
 function optionIcon(field, name) {
   const ico = (field.optionsFull ?? []).find((x) => x.name === name)?.icon;
   return ico ? iconEl(ico, 'ico wv-icon') : null;
 }
-/* The chip a select, a multi-select or a state paints for one value. The
-   cell draws it here and the grid's column floor measures it here (Issue
-   #614), so the floor is the chip the cell shows, never a copy of its
-   recipe. A select's and a state's chip is the picker's trigger button; a
-   multi-select's chips sit in a box that is the trigger. */
 function optionChipEl(f, name) {
   const unset = name == null ? ' is-empty' : '';
   switch (f.type) {
@@ -3566,26 +2471,10 @@ function optionChipEl(f, name) {
 function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
-  /* The way back for the writers that are not a field PATCH — a state change,
-     a link, an unlink. Each writes through its own endpoint, which answers
-     nothing the grid can use, so the row is re-read and the grid redrawn.
-     No 'Saved' toast: a save is the default outcome of leaving a field, and
-     a message for the default is noise (Issue #135). Failures still toast. */
   const saved = async () => {
     const fresh = await api('GET', `/entities/${id}`);
     onSaved(fresh);
   };
-  /* The committed value shows the moment it is committed (Issue #225): the
-     editor already holds it, and waiting on PATCH → GET → re-render left the
-     old chip up long enough to read as a lost edit. `paint` draws the value
-     on the control now; the round trip reconciles, and a refused write
-     paints the stored value back before it toasts.
-
-     The PATCH answers with the fresh row AND names every row this write can
-     have changed (`affected`, Issue #257), so nothing re-reads the row and
-     the grid swaps those rows' cells where they stand. The field's name goes
-     with it: an edit to the column the table is sorted by or filtered on can
-     move the row, and only the grid knows that. */
   const patch = async (value, paint = null) => {
     paint?.(value);
     try {
@@ -3595,9 +2484,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   };
 
   if (f.type === 'view') return viewCell(item.raw?.[f.name], f, { compact });
-  /* A lookup of a relation draws the far rows' chips, the way the relation
-     column does (Issue #643); it printed their uuids. No ×, no + link: the
-     value is computed, and the chip still opens the row. */
   const farRel = lookupTargetOf(db, f);
   if (farRel?.type === 'relation' && val != null && (!Array.isArray(val) || val.length)) {
     const all = Array.isArray(val) ? val : [val];
@@ -3611,20 +2497,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     return box;
   }
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
-    // Read-only: the glyph says "computed, not editable" at a glance so these
-    // are not mistaken for the chips and inputs beside them.
     const text = fieldValueCell(val);
-    // A formula's list wears its sparkline (#232).
     const graphic = (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(item?.raw?.[f.name]) ? sparkEl(f.style, item.raw[f.name], f.color) : null)
-      // A lookup or a rollup that reads a rating draws its icons (#231).
       ?? (f.rating && typeof item?.raw?.[f.name] === 'number'
         ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${text}`, color: f.rating.color }) : null)
       ?? numberGraphicFor(f, item, text);
-    /* A rich column — a sparkline, a rating it reads, a bar, ring or heat —
-       leaves the Σ or ƒ to its header (Feature #235): the graphic already
-       says the cell is not typed into, and a mark in every row was noise. */
     const rich = f.display === 'sparkline' || !!f.rating || cellGraphics.isGraphic(f.display);
-    // Nothing computed: the dash is the empty hint, blank at rest in a grid (Issue #420).
     const box = el('span', { class: 'computed k k-computed' + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
       rich ? null : el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
       graphic ?? (text || '—'));
@@ -3632,7 +2510,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     return box;
   }
   if (f.type === 'rating') {
-    // The value paints the moment it is chosen; the PATCH reconciles.
     const box = ratingEl(f.max, f.icon, item.raw?.[f.name] ?? null, { onSet: (v) => patch(v, (x) => box.paint(x)), color: f.color });
     return box;
   }
@@ -3641,12 +2518,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const paint = (name) => { const next = optionChipEl(f, name); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
-      /* The picker paints a row or a staged chip with the class it is handed,
-         whole: a `bare` class without the `k` base drew tinted text with no
-         padding and no corners in the box and in every row (Kyle, 2026-09-02). */
-      /* A state can be empty since Issue #421 (a row starts with none unless
-         the field names a default), so the list leads with the same clear
-         row a select offers. */
       options: [{ name: '—' }, ...f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name), label: stateLabel(f, s.name) }))],
       current: val ?? null,
       clearId: '—',
@@ -3666,8 +2537,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const paint = (v) => { const next = optionChipEl(f, v); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
-      // Each option is its own chip in the list, in the hue it wears in the
-      // cell; the clear row is the same — chip the empty cell shows.
       options: [{ name: '—' }, ...f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` }))],
       current: val ?? null,
       clearId: '—',
@@ -3687,42 +2556,22 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       trigger: box,
       options: f.options.map((o) => ({ id: o, label: o, chip: true, cls: `k k-multi ${optionHue(f, o)}` })),
       selected: current.map((v) => ({ id: v, label: v, cls: `k k-multi ${optionHue(f, v)}` })),
-      // A picker closed with nothing changed is not an edit: no write, no redraw.
       onCommit: (ids) => (ids.join('\u0000') === current.join('\u0000') ? null : patch(ids, paint)),
     });
     return box;
   }
   if (f.type === 'key') {
-    /* A credential is generated, not typed. It reads as a value chip in slate
-       and in the monospace an identifier deserves — the identity treatment the
-       row's own #41 ↗ already gets. (Feature: chip system, 2026-08-24.)
-       Since #143 the chip also says WHICH sort of credential and WHOSE store,
-       because "✱✱✱✱ acme-portal" alone left a reader guessing whether the
-       secret was here, in 1Password, or nowhere yet. The grid never reveals:
-       the mask is the whole point of the cell. */
     const kind = f.kind ?? 'apikey';
     const store = f.keystore ?? 'local';
-    /* The engine masks the value as `✱✱✱✱ name` for surfaces with no glyph —
-       CLI, CSV, export. The chip HAS a glyph, and wearing both read as
-       "✱✱✱✱✱ stripe-live" (or "•••✱✱✱✱ …" once kinds arrived), so the text
-       mask comes off here and the glyph carries it alone. */
     const shown = String(fieldValueCell(val) ?? '').replace(/^✱+\s*/, '');
     const chip = el('span', {
       class: 'k k-key hue-slate' + (shown ? '' : ' is-empty'),
       title: `${f.name} — ${CREDENTIAL_KIND_LABELS[kind] ?? kind} in ${KEYSTORE_LABELS[store] ?? store}`,
     }, iconEl(CREDENTIAL_GLYPHS[kind] ?? CREDENTIAL_GLYPHS.apikey, 'ico wv-icon'), chipLabel(shown || '—'));
     if (store !== 'local' && val) chip.append(el('span', { class: 'store' }, KEYSTORE_LABELS[store]));
-    /* The NAME, not the dressed cell. `val` arrives masked and may carry
-       ' (unset)', and posting that to /reveal asked the keystore for a
-       credential called '✱✱✱✱ stripe-live'. item.raw is the undressed value,
-       which is what every other editor here already reaches for. */
     const ref = item?.raw?.[f.name] ?? null;
     if (compact || !ref) return chip;
-    // A local credential the keystore does not hold yet has nothing to reveal;
-    // offering the buttons would promise a secret that is not there.
     if (store === 'local' && /\(unset\)$/.test(String(val ?? ''))) return chip;
-    // The entity page IS the edit surface, so it is where taking the secret
-    // out belongs — the same split the relation chip's × makes.
     return el('span', { class: 'cred-cell' }, chip, credentialReveal(ref, store));
   }
   if (f.type === 'checkbox') {
@@ -3734,24 +2583,10 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'relation') {
     const box = el('span', { class: 'ms-box' });
     const all = val == null ? [] : Array.isArray(val) ? val : [val];
-    // In the grid a cell is nowrap and used to clip whatever did not fit. Show
-    // the first few and hand the rest to a count that opens the cell popover,
-    // so the row says how much it is not showing. The table grid draws every
-    // chip and shows the ones that fit whole (`fit`, Feature #239).
     const CAP = 3;
     const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
     const hidden = all.length - current.length;
     for (const s of current) {
-      /* The whole chip is the link — avatar, name, and the ↗ that promises
-         it goes somewhere. The mark used to be a ::after on the chip, i.e.
-         OUTSIDE the <a>, so the one pixel advertising navigation was the one
-         pixel that did nothing (Kyle, 2026-08-26). */
-      /* Unlinking is an edit, and a grid is a record: in a table the × was
-         chrome on every chip of every row. The cell's picker owns removal
-         there; the entity page keeps its × because the page IS the edit
-         surface (Kyle, 2026-08-26). The chip itself is the far row's Chip
-         (2026-09-04): a target-set chip says where it lives — a Task and a
-         Space can share a name, and the table is the disambiguator. */
       const x = compact ? null : el('span', {
         class: 'x',
         onclick: async () => {
@@ -3772,9 +2607,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       class: 'btn btn-sm btn-ghost-secondary tiny',
       onclick: async (e2) => {
         const btn = e2?.currentTarget ?? null;
-        /* A target-set field draws candidates from every member table, each
-           option wearing its home table so a Task and a Space with the same
-           name stay tellable apart. */
         const targets = f.targetDbIds
           ? f.targetDbIds.map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean)
           : [allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb)];
@@ -3804,20 +2636,10 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     return box;
   }
   if (f.type === 'document') {
-    // The description reaches its cell as prose; every other document as the
-    // named chip wearing its kind (Kyle, 2026-08-31 — one field, one column).
     if (f.role === 'description') return docPreviewCell(item.docs?.[f.name], f.name, () => dockEntity(db, id));
     return docChipCell(f, item, () => dockEntity(db, id));
   }
   if (f.type === 'field') {
-    // A field definition. In compact surfaces (grid, board, list) the value
-    // reads as a sentence and editing happens on the entity page — same
-    // reason as document: the generic text fallback would render an editable
-    // box that can only ever produce an invalid definition. On the entity
-    // page the chip opens the definition editor: the entity page IS the
-    // control surface (Feature #85, design option D).
-    // `val` (item.fields) is the engine's display sentence — 'select · 3
-    // options'; the definition itself rides in item.raw.
     const def = item.raw?.[f.name] ?? null;
     const chip = el('span', { class: 'computed k k-computed' + (def == null ? ' is-empty' : ''), title: compact ? `field definition — edit on the ${db?.term?.singular ?? 'record'} page` : 'field definition — click to edit' },
       el('span', { class: 'computed-mark' }, computedMarkNode('field')),
@@ -3832,11 +2654,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
         placeholder: '{} — config as JSON (options, states, depth…)',
       });
       cfgArea.value = JSON.stringify(def?.config ?? {}, null, 2);
-      // Clearing lives HERE, beside the definition it would take, and behind a
-      // held gesture (Issue #90). The bare `×` this replaces sat on the row at
-      // the same weight as the chip that merely opens this editor, so a click
-      // meant to find out what it did destroyed a definition that has no copy
-      // anywhere. What the clear takes, it offers straight back.
       const clearRow = def == null ? [] : [el('div', { class: 'fielddef-clear' },
         holdToConfirm(`Clear the ${String(val)} definition`, async () => {
           document.querySelector('#modal-back')?.remove();
@@ -3852,27 +2669,15 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
         let config;
         try { config = JSON.parse(String(fd.get('config') || '{}')); }
         catch { throw new Error('Config is not valid JSON'); }
-        // The server validates through the same normaliser addField uses, so
-        // an invalid definition is refused with its real reason — and the
-        // dialog stays open to fix it (patch() would swallow the throw).
         await api('PATCH', `/entities/${id}`, { values: { [f.name]: { type: String(fd.get('type')), config } } });
         await saved();
-        // On a Workspace/Fields row this IS a field's configuration (Issue
-        // #428): the change is in Activity, and the toast offers the way back.
         toast(`${f.name} saved`, false, { label: 'Undo', run: () => patch(def) });
       }, 'Save');
     };
     return el('span', { class: 'fielddef-edit' }, chip);
   }
-  // Attachments (Feature #16): the value is file ids; the cell shows names,
-  // the entity page manages the list — upload lands blob and column together.
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
-    /* One upload path for the `+ file` button and a drop (Issue #85): each
-       file lands blob and column together through the field's files route,
-       in order, and the row is re-read once at the end. A refusal (a
-       one-file field given a second) stops the run and says why; whatever
-       landed before it still shows. */
     const upload = async (files) => {
       let landed = 0;
       try {
@@ -3889,8 +2694,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: 'attachments' },
       el('span', { class: 'ico' }, iconEl('lucide:file', 'wv-icon')),
       ids.length ? String(val ?? `${ids.length}`) : '—');
-    /* The grid's drop zone is the whole cell, which this function never
-       sees: the grid wires the <td> and hands a drop to the chip's upload. */
     chip.dropFiles = upload;
     if (compact) return chip;
     const files = (item.files ?? []).filter((x) => ids.includes(x.id));
@@ -3898,29 +2701,18 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
-    /* A file whose bytes are gone keeps its name and loses its link. The
-       anchor was the whole of Issue #121: it looked live, it opened raw
-       404 JSON, and the reporter could only file "file missing?". The row
-       still offers the × so a dead pointer can be cleared. */
     const chipFor = (file) => el('span', { class: 'attach-item' + (file.missing ? ' is-missing' : '') },
       file.missing
         ? el('span', { title: 'The stored file is gone — only its name is left' },
           file.name, el('span', { class: 'attach-gone' }, '(missing)'))
         : el('a', { href: fileUrl(file), target: '_blank' }, file.name),
       remove(file));
-    /* How the record shows the files (Kyle, 2026-10-05): the field's
-       `preview`, unset resolving to auto for many and inline for one. link
-       and cover keep the chip row (the cover itself is drawn by the record
-       page, above the fields); inline is a contact sheet of every file, or
-       the one file in its viewer; auto puts the pictures in the sheet and
-       the rest in the chip row. */
     const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
     const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
     const present = files.filter((x) => !x.missing);
     const sheet = mode === 'inline' && f.multiple !== false ? present
       : mode === 'auto' ? present.filter(isPictureFile) : [];
     const box = el('span', { class: 'attach-box' + (mode === 'link' || mode === 'cover' ? '' : ' attach-box-wide') });
-    // A kind with no viewer (a zip, say) stands as its chip alone: append(null) would print the word.
     const viewer = mode === 'inline' && f.multiple === false && present[0] ? fileViewerEl(present[0], look) : null;
     if (viewer) box.append(viewer);
     if (sheet.length) box.append(attachSheetEl(sheet, look, { remove }));
@@ -3938,35 +2730,20 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     }, '+ file'));
     return fileDropZone(box, upload);
   }
-  // Type-or-pick dates (Feature #44): one control that is both a text input
-  // ('next friday', 'jun 21' — parsed by nl-date.js) and a native calendar.
   if (f.type === 'date') {
     return dateControl({
       value: item.raw?.[f.name] ?? '', costume: f,
       placeholder: 'today, 15 sep, 9/15/26…', onChange: (iso) => patch(iso),
     });
   }
-  /* A range is ONE control (Issue #197): one box reading the whole span and
-     one calendar button opening the range dialog — start on the first
-     click, end on the second. The grid cell is that same control, not a
-     read-only chip that sent you to the record page (Issue #156). Half a
-     range is not a range: the control only ever hands over both ends. */
   if (f.type === 'daterange') {
     return rangeControl({ value: item.raw?.[f.name] ?? null, costume: f, compact, onChange: (r) => patch(r) });
   }
   const rawVal = item.raw?.[f.name] ?? val;
-  /* A value with a shape and no renderer (Issue #200, the class Issue #91
-     opened): a text box would paint String(obj) — '[object Object]' — and
-     could only hand the server a string it must refuse. The marker says what
-     is missing instead, so the gap is visible and a test can find it. */
   if (rawVal != null && typeof rawVal === 'object') {
     return el('span', { class: 'k k-computed wv-unrendered', title: `${f.type} — no cell renderer for this value` },
       `unrendered ${f.type}`);
   }
-  /* A percent field stores the fraction and talks to people in percent
-     (Issue #127): the box shows 32.5 for a stored 0.325 and typing 50
-     stores 0.5 — the number in the box is the number in the "32.5%" the
-     cell shows at rest. Rounding strips float noise both ways. */
   const isPercent = f.type === 'number' && f.format === 'percent';
   const boxVal = isPercent && typeof rawVal === 'number' ? Math.round(rawVal * 100 * 1e8) / 1e8 : rawVal;
   const input = el('input', {
@@ -3978,23 +2755,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   input.addEventListener('change', () => patch(input.value === '' ? null
     : f.type === 'number' ? (isPercent ? Math.round(Number(input.value) * 1e8) / 1e10 : Number(input.value))
     : input.value));
-  // Space and table descriptions are markdown living in a text field. A grid
-  // that paints them raw reads `**Official docs** — the pages`, so the cell
-  // wears the marks and hands over the source on click (the #97 pattern).
-  // A literal field paints its characters (Issue #86): a column of syntax,
-  // a regex, a glob — the marks ARE the value.
   if (f.type === 'text' && !f.literal && typeof rawVal === 'string' && hasInlineMarkup(rawVal)) {
     return dressedText(rawVal, input);
   }
-  // A url rests as a link — the Handbook promised "opening in a new tab" and
-  // the cell drew a text box. The pencil, a double-click, or Return on the
-  // focused cell hands the input over (the #97 costume). A value that is not
-  // an http(s) url keeps the plain box below.
   if (f.type === 'url' && globalThis.WeaveEditorLib.urlParts(rawVal)) {
     return dressedUrl(rawVal, input);
   }
-  // A number with a display (Feature #230) rests as its graphic and hands
-  // over the raw number the moment it is clicked, like the costume below.
   const graphic = f.type === 'number' ? numberGraphicFor(f, item, val) : null;
   if (graphic) {
     graphic.tabIndex = 0;
@@ -4007,8 +2773,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(graphic); });
     return graphic;
   }
-  // A formatted number (#97) shows its costume at rest — '30 days' — and
-  // hands over the raw number the moment it is clicked.
   if (f.type === 'number' && val != null && String(val) !== String(rawVal)) {
     const dressed = el('span', { class: 'num-dressed', tabindex: 0, onclick: (e) => {
       e.stopPropagation();
@@ -4021,22 +2785,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   return input;
 }
 
-/* ---------- the description, as its first few lines (Kyle, 2026-08-27) ----
-   "it should always show a preview of the properly formatted first few lines,
-   not an md document chip." The chip said the field was there; the preview
-   says what it says.
-
-   The row holds one line, because a row holds one line: a comfortable row is
-   48px and a compact one 34px, and Kyle drove those numbers down himself on
-   2026-08-26. The rest of the budget rides along in the same cell, hidden,
-   and showCellPop's cloneNode copy reveals it on hover — so "the first few
-   lines" arrive without the grid growing to hold them.
-
-   A document that is not prose is named, not flattened: docPreview hands back
-   a label for an HTML app, a JSON model or a mermaid diagram, and the cell
-   wears it as the chip's kind rather than pretending a doctype is a sentence.
-   Clicking opens the dock, never an inline input — a document is not
-   edited in a cell (Issue #74). */
 function docPreviewCell(md, name, onOpen) {
   const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md);
   const box = el('span', {
@@ -4059,12 +2807,6 @@ function docPreviewCell(md, name, onOpen) {
   return box;
 }
 
-/* ---------- a document cell, as a chip (Kyle, 2026-08-24 → 2026-08-31) ----
-   One chip per document field: its name, and the kind of thing it holds —
-   the kind the field DECLARES when it declares one, the sniffed kind
-   otherwise — with an empty one labelled as empty rather than lying. The
-   chips used to crowd a shared Docs cell; each now sits in its own field's
-   column, so it hides, resizes and reorders like any value. */
 function docChipCell(f, item, onOpen) {
   const kind = globalThis.WeaveEditorLib.docChipKind(f.kind, item.docs?.[f.name]);
   return el('button', {
@@ -4076,21 +2818,12 @@ function docChipCell(f, item, onOpen) {
 }
 
 
-/* ---------- trash ----------
-   Deleted rows keep their public id and links, so this reads as the table it
-   came from, minus the editing: each row can only go back (restore) or away
-   for good (purge, hold-to-confirm — it is the one irreversible action). */
-
 async function showTrash(dbId) {
-  // No table: the workspace trash, every trashed row in one list (the system
-  // Trash row in the nav). A trashed table or space is its registry row.
   const db = dbId ? allTables().find((d) => d.id === dbId) : null;
   if (dbId && !db) return showHome();
   state.route = { page: 'trash', dbId };
   renderNav();
   let { items } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
-  // A trashed table's views go with it and come back with it: its Tables row
-  // stands for the lot, so the Views rows would only be noise here.
   if (!db) items = items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views');
   const main = $('#main');
   main.replaceChildren();
@@ -4122,7 +2855,7 @@ async function showTrash(dbId) {
             try {
               await api('POST', `/entities/${item.id}/restore`);
               toast('Restored');
-              await loadSchema(); // the nav's row counts moved
+              await loadSchema();
               showTrash(dbId);
             } catch (err) { toast(err.message, true); }
           },
@@ -4146,23 +2879,10 @@ async function showTrash(dbId) {
   if (wsTrashed.length) main.append(trashedWorkspacesCard(wsTrashed, () => showTrash(dbId)));
 }
 
-/* ---------- table views (Feature #229) ----------
-   A strip of named views under the table title; the leftmost is the default
-   and opens with the table. The schema carries each table's `views` in strip
-   order (names, fields, filters, sort). The grid below draws the table AS
-   the view: `viewed()` lays the view's columns, filter and sort over the
-   table object, so every grid path reads them unchanged, and
-   `gridConfigWrite()` sends every change back to that view — the same
-   tableView verb an agent calls. Kyle's rulings: a change autosaves into the
-   view (2026-09-23); drag order is the default and Blank leaves the strip
-   (2026-09-25). The raw table is still computed here for the old
-   …/view/blank link, read-only and never stored. */
 const BLANK_READ_ONLY = 'The raw table is read-only. Open Views and choose + Add view, or Duplicate a view.';
 function blankView(db) {
   return { id: 'blank', name: 'Blank', blank: true, fields: db.fields.filter((f) => f.type !== 'view').map((f) => f.name) };
 }
-/* The view a route names: an id, 'blank', or nothing (the default). A stale
-   id — a deleted view, an old #/…/board route — lands on the default. */
 function pickTableView(db, ref) {
   const views = db.views ?? [];
   if (ref === 'blank' || !views.length) return blankView(db);
@@ -4174,20 +2894,12 @@ function viewed(db, v) {
   const shown = v.fields.map((n) => by.get(n)).filter(Boolean);
   const on = new Set(shown);
   const hidden = db.fields.filter((f) => !on.has(f));
-  /* The grid's columns in the view's one ordered list: fields and the system
-     columns it shows, side by side (Issue #418). Blank is the raw table and
-     keeps the table's system columns at its end, as it always drew them. */
   const sys = (n) => !by.has(n) && !!SYSTEM_COLS[n];
   const columns = v.blank
     ? [...shown.map((f) => f.name), ...(db.systemFields ?? []).filter((n) => SYSTEM_COLS[n])]
     : v.fields.filter((n) => by.has(n) || sys(n));
-  // `systemFields` stays the table's switch (Activity rides it); the system
-  // columns this view shows are the ones in `columns`.
   return { ...db, fields: [...shown, ...hidden], hiddenFields: hidden.map((f) => f.name), filters: v.filters, sort: v.sort, view: v, columns };
 }
-/* Where a grid's filter, sort, columns and column order are saved: the view
-   it shows, or — on a grid with no strip (a space page, a related grid) —
-   the table itself, which the engine reads as its default view. */
 async function gridConfigWrite(db, tablePatch, viewPatch = tablePatch) {
   if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return false; }
   if (db.view) await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, viewPatch);
@@ -4196,16 +2908,8 @@ async function gridConfigWrite(db, tablePatch, viewPatch = tablePatch) {
   return true;
 }
 const viewHref = (db, v) => `#/table/${db.id}/view/${v.blank ? 'blank' : v.id}`;
-/* Deleted rows and the Σ row are the view's (Issue #442; Kyle, 2026-09-27).
-   A view that never set the Σ row follows the table's older opt-in; a grid
-   with no view (a space page) keeps the session switch and the table's. */
 const showsDeleted = (db) => (db.view && !db.view.blank ? !!db.view.deleted : state.showDeleted.has(db.id));
 const showsRollups = (db) => !db.system && (db.view && !db.view.blank && typeof db.view.rollups === 'boolean' ? db.view.rollups : db.hideRollups === false);
-/* The one system default (Issue #442): what Reset view returns a view to
-   and what New view starts from, so the two can never drift. Every field in
-   schema order (with the table's default system columns), no filter, sort,
-   widths or frozen columns, no deleted rows, no Σ row, Comfortable. Search
-   is not a view setting; both callers clear it. */
 function systemDefault(db, view = null) {
   const table = allTables().find((d) => d.id === db.id) || db;
   return {
@@ -4215,34 +2919,17 @@ function systemDefault(db, view = null) {
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
   };
 }
-/* The name a new view is offered: "View 2", "View 3", …, the first one this
-   table has free (Kyle, 2026-09-27). A duplicate is offered its source's
-   name with the next free number. The first, migrated view is "Standard". */
 function nextViewName(db, base = 'View') {
   const taken = new Set((db.views ?? []).map((v) => v.name.toLowerCase()));
   for (let n = 2; ; n++) if (!taken.has(`${base} ${n}`.toLowerCase())) return `${base} ${n}`;
 }
-/* The Views list inside the View dropdown (Kyle's rulings 2026-09-23,
-   2026-09-25 and 2026-09-27). Order is the only signal of the default: the
-   first view opens with the table, and its row says so ("Opens first"),
-   wherever a drag puts it. No right-click, no context menu. Every row
-   shows its drag handle; a drag by the handle or Alt+Up / Alt+Down on the
-   focused row reorders, with the same square-ended line as Fields. Rename,
-   Duplicate and a hold-to-delete show as row buttons on hover and on
-   keyboard focus. Rename edits the name in place; + Add view and Duplicate
-   append an inline row with a focused name ("View 2"): Enter or a click
-   away creates the view and opens it, Escape drops the row. The dropdown
-   stays open through all of it. The old …/view/blank link still opens the
-   raw table, read-only, with no row lit. */
-let viewEdit = null; // {dbId, mode: 'new'|'dup'|'rename', id?, after?, from?, name, orig?}: the inline name editor
+let viewEdit = null;
 function viewStrip(db) {
   const cur = db.view;
   const views = db.views ?? [];
   const strip = el('div', { class: 'view-strip', role: 'list', 'aria-label': 'Views' });
   const at = (id) => `/tables/${db.id}/views/${encodeURIComponent(id)}`;
   const redraw = () => strip.closest('.table-view-popover')?.refresh?.(db, { force: true });
-  // Every write keeps the view on screen, even when the bare route's first
-  // view changes under it; a refusal says why and redraws.
   const write = async (fn, { focus, part = '.view-name' } = {}) => {
     try { await fn(); } catch (err) { toast(err.message, true); }
     await loadSchema();
@@ -4268,7 +2955,6 @@ function viewStrip(db) {
       if (e.mode === 'rename') return write(() => api('PATCH', at(e.id), { name }), { focus: e.id });
       let made;
       try {
-        // + Add view starts from the system default (Issue #442); Duplicate copies its source.
         made = await api('PATCH', at(name), { from: e.from, ...(e.from === 'blank' ? systemDefault(db) : {}), ...(e.position != null ? { position: e.position } : {}) });
         if (e.from === 'blank') { stopTableSearchTimer(); tableSearch = { ...tableSearch, text: '', focus: false, only: null }; }
       } catch (err) { toast(err.message, true); redraw(); return; }
@@ -4284,7 +2970,6 @@ function viewStrip(db) {
         finish(false).then(() => document.querySelector('.table-view-popover .view-add')?.focus({ preventScroll: true }));
       }
     });
-    // A click away creates it, as Enter does.
     input.addEventListener('blur', () => finish(true));
     editorInput = input;
     return row;
@@ -4295,15 +2980,12 @@ function viewStrip(db) {
     const active = cur && !cur.blank && v.id === cur.id;
     const grip = el('button', { class: 'view-grip', type: 'button', 'aria-label': `Reorder ${v.name}`, title: 'Drag to reorder; Alt+↑ / Alt+↓ to move' }, lucideEl('grip-vertical'));
     const name = el('a', { class: 'view-name', href: viewHref(db, v), draggable: 'false', ...(active ? { 'aria-current': 'true' } : {}) }, v.name);
-    // The view on screen is already open: a click that re-routed to it would only redraw.
     name.addEventListener('click', (e) => { if (active) e.preventDefault(); });
     const act = (cls, icon, label, run) => el('button', { class: `view-act ${cls}`, type: 'button', 'aria-label': `${label} ${v.name}`, title: label, onclick: run }, lucideEl(icon));
     const del = holdToConfirm('', async () => {
-      // The last view is refused by the engine, which says why.
       try { await api('DELETE', at(v.id)); } catch (err) { toast(err.message, true); return; }
       await loadSchema();
       if (cur?.id !== v.id) return showDatabase(db.id);
-      // The view on screen went: the bare route opens the first.
       const bare = `#/table/${db.id}`;
       if (location.hash === bare) showDatabase(db.id, null); else location.hash = bare;
     }, { rowClass: 'view-act view-del', holdingLabel: '' });
@@ -4347,17 +3029,12 @@ function viewStrip(db) {
   if (editorInput) queueMicrotask(() => { if (editorInput.isConnected) { editorInput.focus({ preventScroll: true }); editorInput.select(); } });
   return strip;
 }
-/* Issue #341: a row made on a filtered grid starts inside the filter, or the
-   grid cannot show it. A workflow whose default state the filter holds, or a
-   toggle whose resting label it holds, needs nothing; otherwise the row takes
-   the filter's first state. */
 function filterSeed(db) {
   const values = {};
   for (const [name, states] of Object.entries(tableFilters(db))) {
     const f = db.fields.find((x) => x.name === name);
     if (!f || !states?.length) continue;
     if (f.type === 'toggle') { if (!states.includes(f.off)) values[name] = true; continue; }
-    // A select takes the filter's first option; a multi-select holds it (Issue #319).
     if (f.type === 'select') { values[name] = states[0]; continue; }
     if (f.type === 'multiselect') { values[name] = [states[0]]; continue; }
     const def = f.states?.find((s) => s.default)?.name;
@@ -4367,23 +3044,12 @@ function filterSeed(db) {
 }
 
 
-/* ---------- filters (Feature #38) ----------
-   Per-table workflow-state filters. Table truth since 2026-08-28: the
-   selection lives on the table itself and mirrors to the Tables registry
-   row's Filter field, so every browser — and the row — shows the same
-   filter. The selection drives the ENGINE's where-language over POST /query
-   — the grid never filters client-side. */
 function tableFilters(db) {
   return db.filters ?? {};
 }
 async function setTableFilters(db, filters) {
   return gridConfigWrite(db, { filters });
 }
-/* A toggle's two labels are its states (Feature #202): the strip offers
-   them like a workflow's, and the where-clause carries the booleans. A
-   single-select's and a multi-select's options are picked the same way
-   (Issue #319): the where-clause is `in` over their names, which a
-   multi-select row meets with any one of its options. */
 const FILTER_KINDS = {
   workflow: { label: 'Workflow', icon: 'refresh-cw' },
   toggle: { label: 'Toggle', icon: 'square-check' },
@@ -4396,10 +3062,7 @@ const filterStates = (f) => (f.type === 'toggle'
   : f.type === 'select' || f.type === 'multiselect'
     ? (f.optionsFull ?? (f.options ?? []).map((name) => ({ name }))).map((o) => ({ name: o.name, hue: o.hue || 'slate' }))
     : f.states);
-/* The Filters popover's footer, "X of N <rows>" (Issue #448): X is what the
-   filters and the search leave, N every undeleted row, both read off the
-   grid's own query (`countAll`). Set in place, never redrawn. */
-const filterCounts = new Map(); // table id → { x, n }
+const filterCounts = new Map();
 function setFilterTotal(db, x, n) {
   if (x != null && n != null) filterCounts.set(db.id, { x, n });
   const c = filterCounts.get(db.id);
@@ -4419,14 +3082,6 @@ function filterWhere(db) {
       : [f.name, 'in', states]));
   return conds.length ? conds : undefined;
 }
-/* A burst of chip clicks is one write and one re-read (Issue #269). Each
-   click used to PATCH, re-read the schema and re-query the grid on its own,
-   and read the selection the strip was drawn with, so a second quick click
-   dropped the first. The strip now keeps its own copy of the selection, a
-   click paints its chip at once, and the PATCH and the grid's re-query run
-   once the clicks pause. Flushes chain: a click during a re-read queues one
-   more instead of racing it. The rows still come from the engine's
-   where-language (Feature #38); the grid never filters client-side. */
 const FILTER_DEBOUNCE = 250;
 let filterWrites = Promise.resolve();
 function filterStrip(db, onChange) {
@@ -4435,9 +3090,6 @@ function filterStrip(db, onChange) {
   const active = Object.fromEntries(Object.entries(tableFilters(db)).map(([k, v]) => [k, [...v]]));
   const strip = el('div', { class: 'filter-strip' });
   const chips = [];
-  /* The grid dims from the click, not from the fetch (Issue #433), and stays
-     dim until the last flush of the burst has drawn: `inflight` counts the
-     flushes still on the chain, so a click during a slow re-read keeps it. */
   let timer = 0, dirty = false, inflight = 0, release = null;
   const hold = () => { release ??= gridHold(); };
   const note = el('span', { class: 'filter-total', role: 'status', 'aria-live': 'polite' });
@@ -4486,7 +3138,6 @@ function filterStrip(db, onChange) {
         el('span', { class: 'filter-type' }, FILTER_KINDS[f.type].label)));
     const values = el('div', { class: 'filter-values' });
     for (const st of filterStates(f)) {
-      // A filter option is weave's checkbox with its name (Issue #441).
       const box = el('input', { type: 'checkbox', class: 'form-check-input', onchange: () => {
         if (db.view?.blank) { box.checked = !box.checked; return toast(BLANK_READ_ONLY, true); }
         const cur = new Set(active[f.name] || []);
@@ -4503,23 +3154,13 @@ function filterStrip(db, onChange) {
     row.append(values); scroll.append(row);
   }
   strip.append(scroll, el('div', { class: 'filter-footer' }, note, clear)); paint();
-  // The count fills in once the popover is on the page.
   queueMicrotask(() => setFilterTotal(db));
   return strip;
 }
 
-/* Table search (Feature #228): the magnifier in the table's toolbar. The
-   ⌘K matcher scoped to this table — name, publicId (#143), text fields —
-   runs on the server as the query's `search`, so it narrows every page of a
-   paged grid, keeps the table's sort and composes with its saved filter.
-   Transient view state: one table at a time, in memory, never written to
-   the Tables row, so nobody else's view moves. Leaving the table drops it. */
-const TABLE_SEARCH_DEBOUNCE = 150;               // the palette's pause
+const TABLE_SEARCH_DEBOUNCE = 150;
 let tableSearch = { dbId: null, text: '', open: false, focus: false, only: null };
 let tableSearchTimer = 0;
-/* The grid dims from the keystroke (Issue #433): the hold is taken when the
-   box changes and let go once no keystroke is waiting on its pause and the
-   read it started has drawn. A read overtaken by a newer one keeps it. */
 let tableSearchRelease = null;
 function stopTableSearchTimer() {
   clearTimeout(tableSearchTimer); tableSearchTimer = 0;
@@ -4568,7 +3209,6 @@ function tableSearchBox(db) {
       document.querySelector('.table-search-btn')?.focus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      // A keystroke still in its pause is flushed first: Enter answers what the box says.
       if (input.value.trim() !== tableSearchText(db)) await setTableSearch(db, input.value, { focus: true });
       if (tableSearch.only) openEntity(tableSearch.only);
     }
@@ -4579,23 +3219,11 @@ function tableSearchBox(db) {
 async function showDatabase(dbId, view) {
   const table = allTables().find((d) => d.id === dbId);
   if (!table) return showHome();
-  // The route's view, laid over the table (Feature #229); the default when
-  // the route names none. state.route.view carries it through every redraw.
-  // A redraw that names no view keeps the one on screen; the router always
-  // names one (null for the bare table route, which opens the default).
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
-  // Arriving at a table is a visit for ⌘K's Recent group; a redraw is not.
   if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
   const db = viewed(table, pickTableView(table, view));
   if (tableSearch.dbId !== dbId) { stopTableSearchTimer(); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
   const search = tableSearch.text.trim();
-  // The board view is gone (Kyle, 2026-08-25, Issue #75) the way the list
-  // view went before it: a stale 'board' names no table view and lands on
-  // the default.
-  /* A redraw of the table already on screen (a search, a filter, a view, a
-     field flip) keeps its page (Issue #444): the sidebar marks the same row
-     as before and is left alone, and the grid on screen dims while its rows
-     are read (Issue #433). Opening a table is a route and draws it all. */
   const again = tableChromeOn(dbId);
   state.route = { page: 'db', dbId, view: db.view.id };
   if (!again) renderNav();
@@ -4603,71 +3231,37 @@ async function showDatabase(dbId, view) {
   try { await readAndDrawTable(db, dbId, search); } finally { release(); }
 }
 async function readAndDrawTable(db, dbId, search) {
-  // public/ is served from disk while the server process is long-lived, so a
-  // page can be newer than the routes behind it (git pull without a restart).
-  // The trash badge is decoration — it must never keep the table from opening.
   const where = filterWhere(db);
-  /* The first page only (Issue #271): the grid windows its rows and pages
-     its data, so the open costs one page of 200 in the table's own sort —
-     server-side, so page 1 is the right 200 — and the response's `total`
-     sizes the spacers and the foot's count from the first paint. The
-     eyeball's "show deleted" is the one path that still asks for the whole
-     table: trashed rows ride along in place, and a page has no place for
-     them. ponytail: the window still draws only what is in view there. */
   const showDeleted = showsDeleted(db);
   const query = {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
     ...(search ? { search } : {}),
     ...(showDeleted ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
-    /* What the grid draws, and no more (Issue #272): its columns, and each
-       related row's chip once per page rather than once per row. A hidden
-       field is not fetched; the eye's flip comes back through here, so the
-       field is named on the re-read that shows it. */
     fields: gridFields(db),
     relations: 'chip',
   };
-  /* The trash list only when it is shown (Issue #270): the open used to read
-     the whole trash — every trashed row in full — to print one number in the
-     eyeball. The count rides on the query (`trashCount`); the rows are asked
-     for only when "Deleted rows" puts them in the grid. */
   const [result, trash] = await Promise.all([
     api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true, countAll: true }).then((res) => graftChips(db, res)),
     showDeleted
       ? api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] }))
       : null,
   ]);
-  // The box has moved on while this read was out: a newer read is coming.
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
   tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
   setFilterTotal(db, result.total, result.all);
-  // The eyeball's "show deleted": trashed rows ride along, dimmed, in place.
-  // The search never finds the trash, so a search leaves them out.
   const items = showDeleted && !search
     ? [...result.items, ...(trash.items ?? []).map((e) => ({ ...e, deleted: true }))]
     : result.items;
   drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
 }
 
-/* Whether committing `field` can move the row or take it out of the grid: it
-   is the column the table is sorted by, or one the filter strip is holding.
-   A paged grid has one page of the server's order, so where the row belongs
-   now is the server's question — which is what sends the commit back to the
-   full re-read (Issue #257). A write that names no field (a bulk command, an
-   undo) is that question too. So is any write on a table sorted by Modified
-   At or Modified By (Issue #254): every edit rewrites the stamp, whatever
-   field it touched, so the edited row belongs somewhere else now. */
 function gridMoves(db, field) {
   if (!field) return true;
   if ((gridSort(db) ?? []).some((s) => s.field === field || s.field === 'Modified At' || s.field === 'Modified By')) return true;
   return Object.keys(tableFilters(db) ?? {}).includes(field);
 }
 
-/* The fields a table page asks its query for (Issue #272): the columns it
-   shows, the fields it is sorted by (a grid holding every row sorts itself,
-   off those values), and the system columns it shows. The stamps ride on
-   every row anyway; Activity is named because it brings the history the
-   column counts. The row's id, #id and name are the row's own, always sent. */
 function gridFields(db) {
   const names = new Set(visibleCols(db));
   for (const s of gridSort(db) ?? []) if (db.fields.some((f) => f.name === s.field)) names.add(s.field);
@@ -4675,14 +3269,8 @@ function gridFields(db) {
   return [...names];
 }
 
-/* A chip-level answer carries each related row's summary once, in `chips`,
-   and a reference in the row. The summary goes back onto the reference, so
-   every relation cell draws the chip a full read would have handed it. Only
-   the table's relation fields: a view field's value is an object with an id
-   too, and it is not a reference. */
 function graftChips(db, res) {
   if (!res?.chips) return res;
-  // A lookup of a relation answers references too (Issue #643).
   const rels = db.fields.filter((f) => f.type === 'relation' || lookupTargetOf(db, f)?.type === 'relation').map((f) => f.name);
   for (const item of res.items ?? []) {
     for (const name of rels) {
@@ -4693,27 +3281,15 @@ function graftChips(db, res) {
   return res;
 }
 
-/* The table's sort as the query takes it: only fields that still exist, so a
-   sort left pointing at a dropped column cannot keep the table from opening.
-   A system column always exists (Issue #254). */
 function gridSort(db) {
   const sort = (db.sort ?? []).filter((s) => db.fields.some((f) => f.name === s.field) || fieldDialogCore.SYSTEM_SORT[s.field]);
   return sort.length ? sort : null;
 }
 
-/* The data pages behind a windowed grid (Issue #271). `rows` is the whole
-   table as one sparse array in the query's order — a hole is a row whose page
-   has not arrived — so a row's index is its position on screen and the
-   spacer math needs nothing else. Pages are fetched at most once and kept;
-   `refresh` drops them all and re-reads only the pages under the window,
-   which is what a cell commit or a bulk write costs now (Issue #257 owns the
-   in-place patch). ponytail: `total` drifting between two page reads — a row
-   created or trashed by someone else meanwhile — shifts positions by that
-   much until the next refresh, and is not reconciled. */
 function gridPager(db, query, first) {
   const GW = globalThis.WeaveGridWindow;
   const rows = new Array(first.total);
-  const pages = new Map();                    // offset → the fetch, settled or not
+  const pages = new Map();
   const put = (offset, res) => {
     pager.total = res.total;
     res.items.forEach((e, i) => { rows[offset + i] = e; });
@@ -4722,14 +3298,13 @@ function gridPager(db, query, first) {
   const fetch = (offset) => {
     if (pages.has(offset)) return pages.get(offset);
     const p = api('POST', `/tables/${db.id}/query`, { ...query, limit: GW.PAGE, offset }).then((res) => put(offset, graftChips(db, res)));
-    // A read that failed is not a page: the next window asks again.
     p.catch(() => pages.delete(offset));
     pages.set(offset, p);
     return p;
   };
   const pager = {
     rows, total: first.total, page: GW.PAGE, search: query.search ?? '',
-    window: { start: 0, end: 0 },             // the last window painted; renderTable keeps it current
+    window: { start: 0, end: 0 },
     has: (offset) => pages.has(offset),
     fetch,
     pageOf: (i) => Math.floor(i / GW.PAGE) * GW.PAGE,
@@ -4740,9 +3315,6 @@ function gridPager(db, query, first) {
       await Promise.all((want.length ? want : [0]).map(fetch));
       rows.length = pager.total;
     },
-    /* Where a row sits, fetching pages until it is found: the last page first
-       (an unsorted table puts a new row there), then from the top (a sorted
-       table puts it wherever the sort says). -1 when it is nowhere. */
     indexOf: async (id) => {
       const found = () => rows.findIndex((r) => r && r.id === id);
       let i = found();
@@ -4756,8 +3328,6 @@ function gridPager(db, query, first) {
   return pager;
 }
 
-/* Table controls share one anchored popover. Its trigger can be replaced by
-   a grid refresh, so ownership and focus follow the control, not its old node. */
 function tableControlPopover(anchor, db, className, rows) {
   const selector = `.${[...anchor.classList].find((c) => /^table-.*-btn$/.test(c)) || 'eye-btn'}`;
   const old = document.querySelector('.chip-pop');
@@ -4771,7 +3341,6 @@ function tableControlPopover(anchor, db, className, rows) {
   const trigger = () => document.querySelector(`#main ${selector}`) || anchor;
   const position = () => {
     const r = trigger().getBoundingClientRect();
-    // A long list grows to the room below its button before it scrolls (Issue #446).
     if (className === 'table-fields-popover' || className === 'table-filter-popover') pop.style.maxHeight = `${Math.max(220, innerHeight - r.bottom - 22)}px`;
     pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
     pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
@@ -4786,12 +3355,7 @@ function tableControlPopover(anchor, db, className, rows) {
     window.removeEventListener('resize', position);
     remove();
   };
-  // Safari does not focus a button on click. Keep Escape and arrow keys
-  // inside the open control without taking focus back from a new tray.
   pop.addEventListener('click', (e) => {
-    // A hold button is left alone: Safari blurs a focused button on the next
-    // press, and a blur ends a hold (the Views list's delete).
-    // A checkbox row focuses its box, so Space and Escape reach the popover.
     const hit = e.target.closest('button:not(.hold-btn),a,label');
     const target = hit?.tagName === 'LABEL' ? hit.control : hit;
     if (pop.isConnected && target && pop.contains(target) &&
@@ -4825,9 +3389,6 @@ function tableControlHeader(title, close) {
   return el('div', { class: 'table-control-head' }, el('strong', {}, title),
     el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary', type: 'button', 'aria-label': `Close ${title.toLowerCase()}`, onclick: close }, lucideEl('x')));
 }
-/* The toolbar is drawn once per table (Issue #444) and outlives every grid
-   redraw under it, so each control reads the view on screen through `ref`
-   at click time, and `label` repaints what it shows when the view moves. */
 function tableViewButton(ref) {
   const btn = tableControlButton('table-view-btn', '', 'table', true);
   btn.label = () => {
@@ -4865,7 +3426,6 @@ function tableViewButton(ref) {
     pop = tableControlPopover(btn, db, 'table-view-popover', build(db));
     if (!pop) return;
     pop.refresh = (current, { force = false } = {}) => {
-      // A name being typed is never redrawn away; the editor redraws itself when it is done.
       if (!force && pop.querySelector('.view-name-input')) return;
       const at = document.activeElement?.closest('.view-tab');
       const focused = at?.dataset.view;
@@ -4903,8 +3463,6 @@ function tableDensityButton(ref) {
   });
   return btn;
 }
-/* The count on the Filters trigger, set in place: a toolbar node is never
-   swapped for a new one (Issue #444). */
 function setFilterCount(btn, count) {
   if (!btn) return;
   let badge = btn.querySelector('.table-filter-count');
@@ -4929,14 +3487,6 @@ function tableFilterButton(ref) {
   });
   return btn;
 }
-/* One pointer drag for the rows of a popover list: the Fields popover's
-   fields and the Views list (Issues #445, #443). A press that moves 4px
-   lifts the row; html.wv-grabbing holds the `grabbing` cursor, and no text
-   selects, until the drop, Escape or a cancelled pointer; a square-ended
-   .drop-line marks the gap the row lands in, and the list scrolls when the
-   pointer rests near its edge. `drop(targetKey, after)` runs on a real drop
-   only. `row.dragged` stays true through the click a drop fires, so the
-   press is not also a click. */
 function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
   const html = document.documentElement;
   let started = false, line = null, at = null, raf = 0, lastY = down.clientY;
@@ -4997,7 +3547,6 @@ function tableFieldsPopover(anchor, db, trashCount) {
   const here = () => state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id;
   const write = (make) => {
     if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
-    // The grid dims from the flip until the last flip of a burst has drawn (Issue #433).
     const release = gridHold();
     const turn = eyeWrites.then(async () => {
       const patch = make(current());
@@ -5028,8 +3577,6 @@ function tableFieldsPopover(anchor, db, trashCount) {
     if (from === target || db.view?.blank) return;
     order = order.filter((n) => n !== from);
     order.splice(order.indexOf(target) + (after ? 1 : 0), 0, from);
-    // A hidden field keeps its place in this picker; only visible columns
-    // are a saved view's order. Showing it uses the same ordered list.
     const list = pop.querySelector('.table-field-list');
     for (const name of order) { const row = [...list.children].find((r) => r.dataset.field === name); if (row) list.append(row); }
     write((t) => {
@@ -5037,12 +3584,6 @@ function tableFieldsPopover(anchor, db, trashCount) {
       return { fields: order.filter((n) => (t.columns || []).includes(n)) };
     });
   };
-  /* A row is a labelled checkbox and a drag handle in one (Issues #441,
-     #445): a click on the box or the name flips the field, a press that
-     moves drags the row, and the whole row reads `grab` — never an I-beam.
-     A drag sets html.wv-grabbing, so the cursor reads `grabbing` wherever
-     the pointer goes until the drop, Escape or a cancelled pointer. The
-     insertion line is one straight, square-ended rule in the list. */
   const makeRow = (name, shown) => {
     const box = el('input', { type: 'checkbox', class: 'form-check-input', checked: shown ? '' : undefined, onchange: () => flip(name) });
     const toggle = el('label', { class: 'chip-pop-row eye-row' }, box, el('span', { class: 'eye-label' }, name));
@@ -5050,10 +3591,9 @@ function tableFieldsPopover(anchor, db, trashCount) {
     const row = el('div', { class: 'table-field-row', dataset: { field: name } }, toggle, handle);
     row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target === box || db.view?.blank) return;
-      e.preventDefault(); // no text selection, no caret
+      e.preventDefault();
       startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
     });
-    // A press that became a drag is not a click on the label.
     row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
     handle.addEventListener('keydown', (e) => {
       if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
@@ -5086,7 +3626,6 @@ function tableFieldsPopover(anchor, db, trashCount) {
     el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'Add field'),
     el('div', { class: 'eye-head' }, 'Rows'),
     el('label', { class: 'chip-pop-row eye-row', 'data-deleted': '' },
-      // Saved into the view, like its filters (Issue #442).
       el('input', { type: 'checkbox', class: 'form-check-input', checked: showsDeleted(db) ? '' : undefined, onchange: () => write((t) => ({ deleted: !showsDeleted(t) })) }),
       el('span', { class: 'eye-label' }, `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`)),
     ...(db.system ? [] : [el('label', { class: 'chip-pop-row eye-row', 'data-rollups': '' },
@@ -5094,20 +3633,9 @@ function tableFieldsPopover(anchor, db, trashCount) {
       el('span', { class: 'eye-label' }, 'Σ rollup row'))]),
   ];
   pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
-  // Teach switches only after both the grid and dock have repainted.
   if (pop) { pop.eyeOf = db.id; pop.relearnEye = () => refresh(current()); }
 }
 
-/* ---------- the table page: chrome once, grid patched (Issue #444) ----------
-   The breadcrumb, title, description and toolbar are drawn when a table
-   opens and stay mounted while the reader works in it. Search, filter, view,
-   Reset view, field show/hide and order, and Add field all redraw the grid
-   body under them, in one task, so no frame paints a blank or half-built
-   page, the description is not re-rendered off /markdown, the open popover
-   keeps its anchor and the search box keeps its node, focus and caret.
-   Density never redraws at all (wvSetDensity). The chrome is rebuilt only
-   when the table's own face changes (name, icon, description, space, row
-   term) or the reader arrives from another page. */
 const tableChromeSig = (db) => JSON.stringify([db.name, db.icon, db.description, db.space, db.spaceId, db.term?.singular, db.term?.plural]);
 function tableChromeOn(dbId) {
   const main = $('#main');
@@ -5124,7 +3652,6 @@ function tableChrome(db, trashCount) {
   chrome.set = (next, count) => {
     ref.db = next; ref.trashCount = count;
     viewBtn.label(); densityBtn.label(); filterBtn.label();
-    // A search cleared from elsewhere (Reset view, a new row) empties the box.
     const input = search.querySelector('.table-search-input');
     const want = tableSearchText(next) ? tableSearch.text : '';
     if (input.value.trim() !== want.trim()) input.value = want;
@@ -5134,8 +3661,6 @@ function tableChrome(db, trashCount) {
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
       { label: db.space, href: `#/space/${db.spaceId}` },
     ],
-    /* The default view copies the server-seen permalink that unfurls in a
-       chat (Feature #264); any other view keeps its own hash. */
     permalink: () => {
       const v = ref.db.view;
       const byDefault = !v || v.id === pickTableView(allTables().find((d) => d.id === ref.db.id) ?? ref.db, null)?.id;
@@ -5144,13 +3669,11 @@ function tableChrome(db, trashCount) {
     title: db.name,
     icon: db.icon,
     kind: 'table',
-    // A new face redraws the chrome: the signature no longer matches.
     onSetIcon: async (icon) => {
       await api('PATCH', `/tables/${db.id}`, { icon: icon ?? '' });
       await loadSchema();
       showDatabase(db.id, state.route.view);
     },
-    // A system table's name is fixed: the title reads, it does not edit.
     onRename: db.system ? null : async (name) => {
       await api('PATCH', `/tables/${db.id}`, { name });
       await loadSchema();
@@ -5160,7 +3683,6 @@ function tableChrome(db, trashCount) {
     onSaveDescription: async (md) => {
       await api('PATCH', `/tables/${db.id}`, { description: md });
       await loadSchema();
-      // The box already shows what was saved; the next grid redraw keeps it.
       const saved = allTables().find((d) => d.id === db.id);
       if (saved) chrome.sig = tableChromeSig(saved);
     },
@@ -5175,17 +3697,10 @@ function tableChrome(db, trashCount) {
         return eye;
       })(),
       filterBtn,
-      // Export and delete are occasional and one of them is irreversible, so
-      // they live in the overflow rather than the toolbar.
       dotsMenu([
-        // Every column summarised on demand — nothing stored; the footer's
-        // Σ row is where a figure is kept.
         { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
         { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
         'divider',
-        // A share page is this table + these filters, named (Feature #17).
-        // Its old label, "Save as view", now belongs to the view strip's
-        // duplicate (Feature #229), so the two never share a name.
         {
           label: 'New share page…',
           run: () => modal('New share page', [
@@ -5197,13 +3712,10 @@ function tableChrome(db, trashCount) {
           }, 'Save'),
         },
         'divider',
-        // What a row is called (Feature #40) is Name-field config — the same
-        // dialog every other field opens, reached from here as a shortcut.
         {
           label: `Row term (${db.term.singular})…`,
           run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
         },
-        // System columns live behind the eye (Feature #114), not here.
         'divider',
         {
           hold: 'Delete table', holdingLabel: 'Hold to delete table…',
@@ -5226,12 +3738,10 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
   const main = $('#main');
   let chrome = tableChromeOn(db.id);
   if (chrome && chrome.sig === tableChromeSig(db)) {
-    // The grid body goes; the chrome, and a rope finishing its cycle, stay.
     chrome.set(db, trashCount);
     syncDocTitle(db.name);
     for (const n of [...main.children]) if (n !== chrome.header && !n.classList.contains('grid-loader')) n.remove();
   } else {
-    // The search box is redrawn with the chrome; the caret goes with it.
     const typing = document.activeElement?.classList?.contains('table-search-input') ? document.activeElement : null;
     const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
     main.replaceChildren();
@@ -5255,11 +3765,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     controlPop.viewId = db.view?.id;
     main.querySelector(controlPop.triggerSelector)?.setAttribute('aria-expanded', 'true');
     controlPop.refresh?.(db);
-    // Keep the open popover still across writes, including a held pointer.
-    // Resize is the only time its anchor is measured again (Issue #240).
   }
 
-  // A search that matches nothing says so, with the way back beside it.
   const searching = tableSearchText(db);
   if (searching && !(pager ? pager.total : items.length)) {
     main.append(el('div', { class: 'table-search-empty wv-note' },
@@ -5270,25 +3777,10 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
       }, 'Clear search')));
   }
 
-  /* One commit, one row (Issue #257). `written` is the PATCH response: the
-     fresh row, and `affected` — every row this write can have changed. The
-     grid swaps those rows' cells where they stand, so scroll, focus,
-     selection and any open editor are never torn down and the table is not
-     read again.
-
-     The re-read below answers everything the client cannot work out from the
-     page it holds: a registry row (it IS the structure, Issue #241), an edit
-     to the column the table is sorted by or filtered on (the row moves, or
-     leaves), a bulk write, and any response without `affected` — a state
-     change, a link, an older server. That path re-reads the pages under the
-     window and redraws at the same scroll (Issue #271), so the cell the
-     focus goes back to is a drawn cell and nothing jumps to the top. */
   const onSaved = async (written = null, field = null) => {
     if (written?.affected && !db.system && !gridMoves(db, field)
       && await main.querySelector('.table-wrap')?.wvPatchRows?.(written)) return;
     rememberGridFocus();
-    // A registry row IS the structure: renaming a Spaces row renames the
-    // space, and the sidebar must say so (Issue #241).
     if (db.system) await loadSchema();
     let fresh = items;
     if (pager) await pager.refresh();
@@ -5300,12 +3792,6 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     restoreGridFocus({ now: true });
   };
 
-  // Inline add: create the row, redraw, focus its Name cell. A registry row
-  // IS the structure (Issue #241): a Spaces row is born as "New space" with
-  // the name selected for the caret to replace, as on the home page; a
-  // Tables or Fields row needs more than a name and opens the dialog that
-  // asks for it; a Workflows row is ordinary data. A refused create is said
-  // out loud — the button never reads as dead.
   const redraw = async () => {
     if (!pager) {
       const fresh = await api('POST', `/tables/${db.id}/query`, {});
@@ -5315,9 +3801,6 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     await keepScroll(() => drawDatabase(db, items, trashCount, pager));
   };
   state.inlineAdd = async () => {
-    /* A new row is born empty and matches no search, so the search steps
-       aside first and the row lands where the reader can see it (the
-       search's half of Issue #341; the saved filter's half is its own). */
     if (searching) {
       await setTableSearch(db, '', { open: false });
       return state.inlineAdd();
@@ -5331,8 +3814,6 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
       const created = await api('POST', `/tables/${db.id}/entities`, seed);
       await loadSchema();
       await redraw();
-      // A windowed grid draws the new row only once it is scrolled to: the
-      // pager finds where the sort put it, and the grid brings it in.
       if (pager) {
         const i = await pager.indexOf(created.id);
         if (i >= 0) main.querySelector('.table-wrap')?.wvScrollToRow?.(i);
@@ -5342,11 +3823,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
   };
 
   renderTable(main, db, items, onSaved, state.inlineAdd, pager);
-  // A grid drawn while a newer change is still loading is not the answer yet.
   paintGridWait();
-  /* / or ⌘F on a resting cell opens the search. Capture phase, ahead of the
-     grid's keymap: a resting cell would otherwise take / as the first
-     character of an edit. A cell already editing keeps its keys. */
   main.querySelector('.table-wrap')?.addEventListener('keydown', (e) => {
     if (e.isComposing || e.altKey) return;
     const td = e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
@@ -5359,11 +3836,6 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
   }, true);
 }
 
-/* Show / hide, one list: the table's fields, then the system columns, then
-   the deleted rows. A tick toggles and the list reopens; hidden fields and
-   shown system columns persist on the table (PATCH), deleted-row display
-   is a session switch. */
-/* A flat eye, drawn inline so it takes the text color (no emoji). */
 function eyeGlyph() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16');
@@ -5373,35 +3845,15 @@ function eyeGlyph() {
   return svg;
 }
 
-/* The eye's table writes, one at a time in click order (Issue #243). Every
-   switch PATCHes a whole setting (the hidden set, the system set, the Σ
-   flag), so two flips whose PATCHes overlap both read the pre-flip table and
-   the later write drops the earlier one. Queued, each flip reads the table
-   only when its turn comes, after the flip before it has landed and the
-   schema has been reloaded. Module-wide rather than per popover, so a
-   popover closed and reopened mid-write still waits its turn. */
 let eyeWrites = Promise.resolve();
-/* The last queued flip per table. Only it paints, and "last" is judged per
-   table: a flip in the dock's eye for another table's record queues behind
-   this table's write but must not cancel this table's repaint. */
 const eyeTails = new Map();
 
 function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
   if (db.view && rowsSection) return tableFieldsPopover(anchor, db, trashCount);
-  // Each row is a toggle switch: the whole row flips it.
   const row = (on, label, run) => el('button', {
     class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
     onclick: (e) => { e.stopPropagation(); run(); },
   }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
-  /* A flip is a write and a paint (Issue #243). The write (PATCH, then the
-     schema reload that lets the next flip read what this one did) waits its
-     turn on eyeWrites; `patchOf` is handed the table as it stands then, never
-     as it stood at the click. The paint stays off the queue, so a PATCH never
-     waits on a grid render, and only the last flip of a burst paints: the
-     ones before it would draw a state that is already out of date. A failed
-     write still paints if it is last, so the switches fall back to the
-     table's truth. A field flip on a grid with views is that view's
-     (Feature #229); system columns and the Σ row stay the table's. */
   const save = (patchOf) => {
     const release = home?.id === 'main' ? gridHold() : () => {};
     const turn = eyeWrites.then(async () => {
@@ -5418,24 +3870,13 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       release();
     });
   };
-  /* A queued paint can land after the reader has moved on. The eye's own
-     page is redrawn only while it is still the page on screen: a table eye
-     whose reader went to another table would otherwise draw its grid over
-     that page. The dock redraws itself, and drawDock already knows when
-     there is no dock. */
   const home = anchor.closest('#main, #dock');
   const pageOf = (r) => (r?.page === 'db' ? `db:${r.dbId}` : r?.page === 'entity' ? `entity:${r.id}` : r?.page);
   const openedOn = pageOf(state.route);
   const stillShown = () => home?.id !== 'main' || pageOf(state.route) === openedOn;
   const paint = async () => {
     try {
-      // The entity page opens this too (Feature #117): it redraws itself.
       if (stillShown()) redraw ? await redraw() : await keepScroll(() => showDatabase(db.id, state.route.view));
-      /* One hidden set, possibly two visible surfaces: the split shows the
-         table AND an entity of the same table, so a flip on either eye must
-         reach both (Kyle, 2026-09-02: visibility in the pane diverged from
-         the grid). The primary redraw above covered the eye's own surface;
-         this covers its sibling. */
       if (dock && dock.db.id === db.id) {
         dock.db = allTables().find((d) => d.id === db.id) ?? dock.db;
         if (redraw !== drawDock) await drawDock();
@@ -5443,36 +3884,17 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
           await keepScroll(() => showDatabase(db.id, state.route.view));
         }
       }
-      /* The popover stays put: same node, same position, same scroll — only
-         its rows learn the new truth. The old close-and-reopen re-measured
-         against an anchor mid-relayout, so every flip made the dialog jump
-         (Kyle, 2026-09-02). Read literally, since a swap landing mid-gesture
-         swallowed the next flip outright (Issue #240; relearnRows carries the
-         mechanism). The popover open now may not be this one: the reader can
-         close the eye and open a column's ⋮ before a queued paint lands, and
-         relearning would swap the eye's switches into that menu. So only an
-         eye on this table learns, and it learns its own rows (the table's eye
-         has a Rows section, the entity's does not). */
       const pop = document.querySelector('.chip-pop');
       if (pop?.eyeOf === db.id) pop.relearnEye();
     } catch (err) { toast(err.message, true); }
   };
-  /* A taught row keeps the handler it was built with, so the handler reads
-     the table live, when its write's turn comes (Issue #243), through the
-     open view if there is one (Feature #229). A set captured when the row
-     was built would be one flip out of date, and the second flip would drop
-     the first one back out of the hidden set (Issue #240). */
   const liveTable = () => {
     const raw = allTables().find((d) => d.id === db.id) ?? db;
     return db.view ? viewed(raw, db.view.blank ? blankView(raw) : (raw.views ?? []).find((v) => v.id === db.view.id) ?? db.view) : raw;
   };
   const buildRows = (cur) => {
     const hidden = new Set(cur.hiddenFields ?? []);
-    // A view's grid shows the system columns in its own list (Issue #418).
     const sysOn = new Set(cur.columns ? cur.columns.filter((n) => SYSTEM_COLS[n] && !colField(cur, n)) : cur.systemFields ?? []);
-    // Listed in schema order, whatever the view's column order: a flip must
-    // not move the row under the pointer (Issue #240's rows are taught, not
-    // swapped, and a reordered list would be a swap).
     const listed = (allTables().find((d) => d.id === cur.id) ?? cur).fields;
     return [
       el('div', { class: 'eye-head' }, 'Fields'),
@@ -5484,7 +3906,6 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       }))),
       el('div', { class: 'eye-head' }, 'System'),
       ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => save((t) => {
-        // A view shows system columns in its own list, in its own order (#418).
         if (db.view) return { view: { [(t.columns ?? []).includes(n) ? 'hide' : 'show']: [n] } };
         const next = new Set(t.systemFields ?? []);
         if (next.has(n)) next.delete(n); else next.add(n);
@@ -5497,164 +3918,64 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
           document.querySelector('.chip-pop')?.remove();
           keepScroll(() => showDatabase(cur.id, state.route.view));
         }),
-        // The Σ row (Issue #233): table truth, like the filter and the sort —
-        // the next reader inherits it. Registry grids have no rollups. Off
-        // until this table opts in (Issue #249), so the switch reads and
-        // writes `hideRollups === false` rather than its absence.
         ...(cur.system ? [] : [row(cur.hideRollups === false, 'Σ rollup row', () => save((t) => ({ hideRollups: t.hideRollups === false })))]),
       ] : []),
     ];
   };
-  /* A flip redraws the surface, eye included, so the eye that opened this
-     popover may be a detached node by the next click. Its replacement sits in
-     the same region; the other surface's eye (table vs docked entity) does
-     not, and still opens its own popover in one click (Issue #320). */
   const pop = showPopover(anchor, buildRows(db), { owns: (t) => t.closest?.('.eye-btn')?.closest('#main, #dock') === home });
   pop.eyeOf = db.id;
   pop.relearnEye = () => {
     const wasFocused = document.activeElement?.closest?.('.eye-row')?.querySelector('.eye-label')?.textContent ?? null;
-    // On a rebuild the pressed row is a new node; focus follows it so
-    // Escape still closes and the arrows still move (Issue #223).
     relearnRows(pop, buildRows(liveTable()), (p) => {
       if (wasFocused != null) [...p.querySelectorAll('.eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === wasFocused)?.focus();
     });
   };
 }
 
-/* The columns a table shows: every field, minus the table's hidden set (the
-   eyeball, Feature #114). reorderField mirrors this.
-
-   Documents are columns like everything else (Kyle, 2026-08-31): the
-   description previews its first lines (2026-08-27), every other document is
-   its named chip with a kind badge — and each resizes, hides and reorders
-   like every other field. The shared Docs cell they used to fold into is
-   gone. */
 function visibleCols(db) {
-  // A view's grid: its one ordered list, system columns included (#418).
   if (db.columns) return [...db.columns];
   const hidden = new Set(db.hiddenFields ?? []);
   return db.fields.filter((f) => !hidden.has(f.name)).map((f) => f.name);
 }
 
-/* onAdd is the foot button's verb — the table page's inlineAdd, a registry
-   grid's create-and-name. Without one the grid has no foot button: the old
-   button reached for state.inlineAdd, which on a space page was whatever
-   table the reader had visited last (Issue #195). */
-// Each grid scopes its layout sheet to its own table (Feature #233).
 let GRID_SEQ = 0;
 function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   adoptLegacyDensity(db);
-  // Reassigned when a column moves in place (Feature #233): rows built after
-  // the move, and the next draw, read the order the reader now sees.
   let cols = visibleCols(db);
-  /* A system column (Created At, Modified By, …) in a view's grid is one of
-     the view's columns (Issue #418): it sits in `cols` and moves, freezes and
-     sizes like a field. A grid with no view (a registry grid) still draws
-     the table's system columns after its fields, fixed there. */
   const isSysCol = (c) => !colField(db, c) && !!SYSTEM_COLS[c];
   const sysTail = db.columns ? [] : (db.systemFields ?? []);
-  /* Every value sits in ONE clip box (Feature #239): a table cell treats its
-     height as a minimum, so the td alone can never hold a row to its
-     density; the box, sized to --wv-cell-h with overflow clipped, can. One
-     choke point for every field type, rather than a rule per renderer. */
   const cellBox = (...kids) => el('div', { class: 'wv-cb' }, ...kids);
   const sysValue = (n, item) => el('span', { class: 'wv-cb-text' }, SYSTEM_COLS[n]?.(item) ?? '');
   const sysCell = (n, item) => el('td', { class: 'cell-computed sys-cell', dataset: { sys: n } }, cellBox(sysValue(n, item)));
-  // Header bar = checkbox + id + one per field + the "+" field control.
-  // Full-width rows span it, so it is derived once rather than restated per
-  // call site.
   const colCount = cols.length + 3;
-  // Sort is table truth (2026-08-28): read from the schema, written back on
-  // change, mirrored to the Tables registry row's Sort field. The grid still
-  // sorts locally for the instant redraw; the PATCH makes it survive.
   let sortKey = db.sort?.[0]?.field ?? null, sortDir = db.sort?.[0]?.dir === 'desc' ? -1 : 1;
   const wrap = el('div', { class: 'card table-wrap' });
-  /* A wrap whose grid fits clips instead of scrolling (Feature #196).
-     `overflow-x: auto` made the wrap a scroll container, and a sticky cell
-     sticks to the NEAREST one — a box exactly as tall as the table, so
-     neither the header nor the + New foot ever held against the page.
-     Measured, not assumed: a grid wider than its card keeps its sideways
-     scroll, and so does every wrap this observer does not watch. */
-  /* The body runs in the next frame, never inside the observation that asked
-     for it (Issue #464). Three of these writes resize the very wrap this
-     observer watches — `wv-grid-scroll` caps its height against the viewport
-     — so a synchronous body fed its own observer, and WebKit answered with a
-     window `error`, "ResizeObserver loop completed with undelivered
-     notifications.", on every table a Safari reader opened. The in-app bug
-     recorder listens on `error`, so that reader then filed a report carrying
-     an error nobody caused. One frame also collapses the repeat callbacks a
-     first draw delivers into a single pass. */
   let fitFrame = 0;
   const refit = () => {
     fitFrame = 0;
-    // A redraw replaces the wrap; a frame queued against the old one has
-    // nothing left to measure and its settle()/rewindow() belong to a grid
-    // the reader no longer sees.
     if (!wrap.isConnected) return;
     const fit = wrap.scrollWidth <= wrap.clientWidth + 1;
     wrap.classList.toggle('wv-fit', fit);
-    // The trailing "+" wears its fade and chip only while it floats over
-    // columns (Feature #240).
     wrap.classList.toggle('wv-overflow-x', !fit);
-    /* A grid wider than its card keeps its sideways scroll, so its wrap IS
-       the scroll container — and the header and the Σ row (Issue #233) can
-       only stick to it. On the table page such a wrap scrolls vertically
-       too: sized to the viewport, so the body moves inside it under a
-       header that stays; a space or workspace page keeps its grids in the
-       flow. Fitting grids clip and stick to the page as before. */
     wrap.classList.toggle('wv-grid-scroll', !fit && state.route?.page === 'db');
     fitGridScroller(wrap);
-    // The frozen zone's cap is a share of the visible grid: a narrower
-    // window can leave fewer fields frozen, never a clipped label.
     settle();
-    // The box that scrolls may have just changed hands, and a density flip
-    // lands here too: the row window is re-measured against whichever it is.
     rewindow();
   };
   const fitWatch = new ResizeObserver(() => { fitFrame ||= requestAnimationFrame(refit); });
 
-  /* ---------- Feature #132: row selection ----------
-     The Puck won the five-bars study (Kyle, 2026-08-24). This is the layer
-     underneath it: a set of chosen ids, a checkbox column left of the # link,
-     and a header box that reads none / some / all.
-
-     One departure from that spec, forced by Ledger landing the same evening:
-     the mockup had a bare row click toggle the row, but Ledger's one rule is
-     that a bare row click raises THAT CELL's editor. Two meanings for one
-     gesture is one too many, so the checkbox owns selection outright and
-     shift extends from the last box hit. */
   const SEL = () => globalThis.WeaveSelection;
-  // Assigned by the range layer below (Feature #220); a redraw rebuilds every
-  // row, so the range — which is keyed on records, not positions — repaints
-  // itself onto the new ones. Declared here because draw() runs first.
   let repaintRange = () => {};
   const chosen = () => state.selected.get(db.id) ?? new Set();
-  let anchor = null;                       // the last box hit, for shift-range
-  // Read off the DOM rather than off `sorted`: what shift-click means is
-  // "everything between these two rows ON SCREEN", which is the drawn order.
+  let anchor = null;
   const drawnIds = () => [...wrap.querySelectorAll('tbody tr.entity-row')].map((r) => r.dataset.eid);
-  /* ---------- the row window (Issue #271) ----------
-     The grid draws the rows in view plus a buffer, and two spacer rows stand
-     in for the rest, so a 2,000-row table costs a hundred rows of DOM and
-     the scrollbar stays honest. The arithmetic is pure and lives in
-     public/grid-window.js; this half measures and paints. `ordered()` is
-     the whole table in display order — the pager's sparse array when the
-     data is paged, the (locally sorted) items otherwise — and a row's index
-     in it is its `data-i`. Rows are built once per draw and kept, so a row
-     that scrolls out and back in is the same node; a row leaving the window
-     is removed, which blurs an editor open in it, and that blur is the
-     commit it would have had anyway. ⌘A and the header box take the LOADED
-     rows, and the foot says how many that is out of the table. */
   let sortedItems = items;
   const ordered = () => (pager ? pager.rows : sortedItems);
   const total = () => ordered().length;
   const itemAt = (i) => ordered()[i] ?? null;
-  // Sparse-safe: `find` visits holes as undefined; `filter` skips them.
   const itemOf = (id) => ordered().find((x) => x && x.id === id) ?? null;
   const loadedIds = () => ordered().filter(Boolean).map((x) => x.id);
 
-  /* Painting is deliberately not a redraw: a redraw would tear down whatever
-     editor the reader has open in a cell of the row they are selecting. */
   const paintSelection = () => {
     const sel = chosen();
     const table = wrap.querySelector('.wv-grid');
@@ -5663,8 +3984,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const on = sel.has(row.dataset.eid);
       const box = row.querySelector('.sel-box');
       if (box) box.checked = on;
-      // Selected rows carry the accent tint alone — Kyle took the leading
-      // accent stripe out on the second pass.
       row.classList.toggle('row-selected', on);
     }
     const head = table.querySelector('thead .sel-box');
@@ -5673,11 +3992,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       head.checked = st === 'all';
       head.indeterminate = st === 'some';
     }
-    // While anything is chosen the whole column stays lit, so the reader can
-    // work down it without hunting for a box that only exists under the mouse.
     if (sel.size) table.dataset.selecting = 'on'; else delete table.dataset.selecting;
-    // The bar floats over the grid, so the grid grows a floor while one is up
-    // — otherwise the puck covers the last row it is acting on.
     wrap.classList.toggle('has-selection', sel.size > 0);
     drawPuck();
   };
@@ -5697,43 +4012,26 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     setChosen(next);
   };
 
-  /* ---------- the puck ----------
-     Direction 2 of the five-bars study, chosen by Kyle on 2026-08-24: icon
-     only, hover labels, a count in an accent pill, and trash past a hairline.
-     It floats over the bottom of the grid and rises 14px on appear.
-
-     Only commands this release can actually RUN reach it. A designed-but-
-     unbuilt button reads as broken rather than forthcoming, so `BUILT` is the
-     gate and it grows as slice 3 lands. */
   const BUILT = ['fields', 'link', 'dup', 'more', 'trash'];
   const MORE_BUILT = ['move', 'rollup', 'copy'];
   const CMD_ICON = { fields: 'lucide:pencil', link: 'lucide:arrow-left-right', dup: '⧉', more: 'lucide:ellipsis', trash: 'lucide:trash-2' };
   const MORE_ICON = { move: 'send', rollup: 'layers', copy: 'link' };
   const puck = el('div', { class: 'sel-puck-wrap' });
 
-  // `undoable(done)` names the toast's action for the rows that landed.
   const runOnSelection = async (verb, each, undoable = null) => {
     const ids = [...chosen()];
     const failed = [];
     for (const id of ids) {
-      try { await each(id); } catch { failed.push(id); } // counted and toasted below
+      try { await each(id); } catch { failed.push(id); }
     }
     const done = ids.filter((id) => !failed.includes(id));
     const action = undoable && done.length ? undoable(done) : null;
-    // What did NOT land is the part worth saying. A bulk command that half
-    // works and reports success is how a row goes missing quietly.
     if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true, action);
     else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`, false, action);
     clearChosen();
     await onSaved?.();
   };
 
-  /* Trash is instant and the toast takes it back (Issue #259). The bar used
-     to say "Moved to trash 1 bug" with nothing to press and drop focus on
-     <body>, while the row menu's delete already carried an Undo. The gesture
-     is remembered for ⌘Z too (undoGesture), and the cursor goes to the row
-     after the last one trashed, or the one before when nothing follows, so
-     the reader keeps a place in the grid. */
   const trashChosen = async () => {
     const ids = chosen(), drawn = drawnIds();
     const last = Math.max(...[...ids].map((id) => drawn.indexOf(id)));
@@ -5748,8 +4046,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     focusGridRow(next, main);
   };
 
-  /* Slice 3: one write for the whole selection (POST /api/bulk), the engine
-     reporting per row. The toast says what did NOT land. */
   const runBulk = async (verb, op, params) => {
     const ids = [...chosen()];
     let result;
@@ -5764,8 +4060,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const nRows = () => SEL().countLabel(chosen().size, db.term);
   const picker = (anchor, opts) => searchPicker({ anchor, ...opts });
 
-  /* Set a field…: field, then value — the value editor the field's type
-     calls for (state chips, options, a checked/unchecked pair, a typed box). */
   const setField = (anchor) => picker(anchor, {
     title: `Set a field on ${nRows()}`, placeholder: 'Search fields…',
     options: SEL().settableFields(db.fields).map((f) => ({ id: f.name, label: f.name, hint: f.type })),
@@ -5804,7 +4098,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       onApply: (v) => write(v === '' ? null : v) });
   };
 
-  /* Link to…: relation, then search the far table, one target. */
   const relationPicker = (anchor, title, onPick) => picker(anchor, {
     title, placeholder: 'Search relations…',
     options: relations().map((f) => ({ id: f.name, label: f.name, hint: f.targetDbs ? f.targetDbs.join(', ') : f.targetDb })),
@@ -5824,7 +4117,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     });
   });
 
-  /* The overflow: Move to table…, Roll up…, Copy links. */
   const MORE_CMDS = {
     move: (anchor) => picker(anchor, {
       title: `Move ${nRows()} to…`, placeholder: 'Search tables…',
@@ -5836,7 +4128,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       valuePop({ anchor, title: `New ${term.singular}`, placeholder: 'Name', apply: 'Create & link',
         onApply: (name) => runBulk('Rolled up', 'rollup', { field: f.name, name }) });
     }),
-    // Copying spends nothing: the selection stays for whatever comes next.
     copy: () => copyText([...chosen()].map((id) => `${location.origin}${WS_PREFIX}/e/${id}`).join('\n'),
       `${SEL().countLabel(chosen().size, db.term)} — links copied`),
   };
@@ -5854,8 +4145,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     dup: () => runOnSelection('Duplicated', async (id) => {
       const row = await api('GET', `/entities/${id}`);
       const values = { ...row.fields };
-      // Computed fields are reads, not values — writing one back is an error,
-      // and the copy recomputes them anyway.
       for (const f of db.fields) {
         if (READONLY_FIELD_TYPES.includes(f.type) || f.type === 'document') delete values[f.name];
       }
@@ -5877,8 +4166,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     puck.replaceChildren(el('div', { class: 'sel-puck glass' },
       el('span', { class: 'sel-count' }, L.countLabel(sel.size, db.term)),
       ...cmds.map((c) => [
-        // Trash is past a hairline: it is the one command on the bar that
-        // takes rows away, and it should not sit flush against Duplicate.
         c.danger ? el('span', { class: 'sel-sep' }) : null,
         el('button', {
           class: 'sel-act' + (c.danger ? ' danger' : ''), type: 'button',
@@ -5888,27 +4175,16 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ]).flat()));
   };
 
-  // Escape is the way out of a selection, for the life of this grid.
   addEventListener('keydown', function esc(e) {
     if (!wrap.isConnected) return removeEventListener('keydown', esc);
     if (e.key !== 'Escape' || !chosen().size) return;
-    // A dialog, popover or open cell editor owns Escape first — clearing the
-    // selection out from under one of those would answer a keystroke the
-    // reader aimed somewhere else. The same list the dock defers to.
     if (document.querySelector(DOCK_ESC_OWNERS)) return;
     clearChosen();
   });
 
-  // One row, built once per draw and kept for the life of the window.
   const buildRow = (item) => {
     const row = el('tr', {
       class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
-      /* Ledger's one rule: the #id link opens, every cell edits. A bare
-         row click raises the cell's own editor; the #id link docks the
-         entity beside the table. data-href is what the row navigates to,
-         and openNativeClick above turns a ⌘-click on any cell into that
-         record's own tab — the modifier means "not here", same as every
-         link. A registry row points at the structure it stands for. */
       dataset: { eid: item.id, href: registryHref(db, item) ?? `#/entity/${item.id}` },
       onclick: (e) => {
         if (e.target.closest('a, button, input, select, textarea, label')) return;
@@ -5916,8 +4192,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         if (cell) activateCell(cell);
       },
     },
-      // Left of the # link, so the link never disappears while a selection
-      // is live and a chosen row stays openable (mockup, 2026-08-24).
       el('td', { class: 'sel-cell' }, cellBox(
         item.deleted ? null : el('label', { class: 'sel-hit' },
           el('input', {
@@ -5930,8 +4204,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           class: 'open-link',
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
           title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
-          // Plain click docks the entity beside the table; a modifier
-          // falls through to the real href, so ⌘-click opens a tab.
           onclick: (e) => {
             if (nativeClick(e) || registryHref(db, item)) return;
             e.preventDefault();
@@ -5941,42 +4213,19 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ...cols.map((c) => {
         if (isSysCol(c)) return sysCell(c, item);
         const f = db.fields.find((x) => x.name === c);
-        /* A description is not computed. `cell-computed` dims a value to
-           --tblr-secondary and says "nothing to do here"; the description is
-           the row's own prose and one click opens it (Kyle, 2026-08-27), so
-           it takes the plain cell every text value takes. */
         const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
           : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed'
-          /* A document chip is not a cell: it opens the record, it holds
-             no value the grid edits, so the arrows and Tab pass over it
-             (Feature #134, the open question, decided 2026-09-05). The
-             description is the row's own prose and stays a stop. */
           : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
         const td = el('td', {
           dataset: { ftype: f.type, field: f.name },
-          // The leading column carries the row's identity — Name by default,
-          // whatever the reader put first after a reorder — so it is set
-          // heavier than the fields that qualify it.
           class: (isNumCell(f, item) ? 'num' : '')
             + (c === cols[0] ? ' name-cell' : '') + kind,
-          // The width is the column's, painted by the grid's layout sheet
-          // (Feature #233), so a row built later wears it too.
         }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
-        /* A file cell takes a dropped file (Issue #85). The cell is the
-           zone, not the chip, so the whole box lights; the chip it holds
-           now (repaintRow swaps it) does the upload. */
         return f.type === 'attachments'
           ? fileDropZone(td, (files) => td.querySelector('.k-attach')?.dropFiles?.(files))
           : td;
       }),
       ...sysTail.map((n) => sysCell(n, item)));
-    /* Cells rest as values (Feature #134): the CELL is the focus stop and
-       nothing inside it is. Tab lands on every field cell — select, multi-
-       select, checkbox and date included, which the browser's own order
-       skipped or fell through to its chrome from (Issue #84) — and the
-       keymap below decides what a key means from there. A document chip
-       column is passed over; the box and the #id link are pointer targets,
-       with Space and ⌘Return their keys. */
     for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     return row;
@@ -5984,50 +4233,27 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
   const GW = () => globalThis.WeaveGridWindow;
   let table = null, tbody = null, topSpacer = null, bottomSpacer = null, loadedNote = null;
-  const live = new Map();     // index → the <tr> in the tbody right now
-  const built = new Map();    // entity id → its <tr>, for the life of this draw
+  const live = new Map();
+  const built = new Map();
   const win = { start: 0, end: 0, lastTop: 0, dir: 1 };
 
-  /* ---------- column layout: resize, reorder, freeze (Feature #233) ----------
-     Kyle's rules (2026-09-25): a header label never truncates; one field's
-     change never moves another field's width; every type has a default
-     width, raised only by its own label; the click that ends a gesture never
-     opens the field menu. The numbers and the drop plan are the pure half in
-     public/column-resize.js; this half measures, paints and persists.
-
-     Widths and the frozen zone paint through ONE function (Issue #160),
-     paintLayout, as a small style sheet scoped to this grid: header, Σ row
-     and every body row — drawn now or built later as the window moves — take
-     the column's width from the same rule, and a drag rewrites one rule
-     rather than every cell. Every field column carries a fixed width; the
-     "+" column is the only one that takes the slack, so showing, hiding,
-     adding or dropping a field slides its neighbours and resizes none.
-
-     A view's grid persists widths, order and the frozen count on its view
-     (the tableView verb, Feature #229's autosave). Blank is read-only. A
-     registry grid has no views: its widths stay the field's schema width,
-     its order the table's, and only # freezes. */
   const CR = globalThis.WeaveColumnResize;
   const gid = `g${++GRID_SEQ}`;
   const layoutSheet = el('style', { class: 'wv-grid-layout' });
-  const floors = new Map();        // column → its label floor, measured off the rendered header
-  const valueFloors = new Map();   // column → the width its value needs whole: a date (Issue #159), a toggle (#586), a chip or a rating (#614)
-  const chipWidths = new Map();    // chip column → { key, chip, more, gap }: its widest option, measured while its options and face stay the same (Issue #614)
-  const cellPads = new Map();      // rating column → its cell's own horizontal padding (Issue #404)
-  const override = new Map();      // column → the width a gesture is painting right now
-  let frozenShown = 0;             // frozen fields drawn: the stored count, capped at 60%
-  let lead = 0;                    // the checkbox and # columns, in px
-  let pidWidth = 0;                // the # column, held at the widest id this table can show
-  let grabbed = null;              // the column a reorder drag holds
-  const nudgeTimers = new Map();  // column → its pending keyboard-nudge commit
+  const floors = new Map();
+  const valueFloors = new Map();
+  const chipWidths = new Map();
+  const cellPads = new Map();
+  const override = new Map();
+  let frozenShown = 0;
+  let lead = 0;
+  let pidWidth = 0;
+  let grabbed = null;
+  const nudgeTimers = new Map();
   const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 160, 'Modified By': 160, Activity: 88 };
   const canFreezeHere = () => !!db.view && !db.view.blank;
   const storedFrozen = () => (canFreezeHere() ? db.view.frozen ?? 0 : 0);
   const storedWidth = (c) => db.view?.widths?.[c] ?? colField(db, c)?.width;
-  /* A graphic number column opens at its graphic plus its widest figure
-     (Feature #235): the column max the engine names on the read, dressed
-     the way the cell prints it, measured once. Stable across pages, since
-     the max is the whole column's. */
   const widest = new Map();
   const widestOf = (c) => {
     const f = colField(db, c);
@@ -6038,15 +4264,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
     return widest.get(c);
   };
-  // A system column's default is its stamp's width; it floors like a field.
-  /* A document column with nothing in any loaded row (Issue #575): an agent's
-     empty Description took the widest default on the grid for a column of
-     placeholders. */
   const emptyDoc = (c) => colField(db, c)?.type === 'document' && items.every((it) => !String(it?.docs?.[c] ?? '').trim());
   const widthOf = (c) => override.get(c)
     ?? CR.layout([{ ...colField(db, c), name: c, pad: cellPads.get(c), stored: storedWidth(c) ?? (isSysCol(c) ? SYS_WIDTHS[c] : undefined), floor: floors.get(c), widest: widestOf(c), empty: emptyDoc(c) }])[c];
   const headOf = (c) => table?.tHead?.rows[0]?.querySelector(`th.col-head[data-col="${CSS.escape(c)}"]`) ?? null;
-  // The cells before the first field: the checkbox and the # link.
   const leadCount = () => {
     const head = table?.tHead?.rows[0];
     const i = head ? [...head.children].findIndex((h) => !h.classList.contains('sel-head') && !h.classList.contains('pid-head')) : -1;
@@ -6062,19 +4283,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const cell = (k, section = '*') => `${scope} > ${section} > tr > :nth-child(${k}):not([colspan])`;
     const fixed = (w) => `{width:${w}px;min-width:${w}px;max-width:${w}px}`;
     const out = [];
-    /* The # column is held at the widest id the table can show. Sized by its
-       content, it widened by a digit whenever the window scrolled onto
-       longer ids, and in a grid that just fits its card that one digit
-       flipped the wrap into its scrolling mode and back, throwing the
-       page's scroll away (Feature #233: every other column is fixed now, so
-       nothing else absorbs it). */
     if (pidWidth) out.push(`${scope} > * > tr > :is(th.pid-head, td.pid-cell){min-width:${pidWidth}px}`);
     cols.forEach((c, i) => {
       out.push(cell(at + i + 1) + fixed(widthOf(c)));
-      /* A rating column narrower than its icons draws the compact "★ 3/12"
-         rather than cutting icons off (Issue #404). Its floor holds every
-         icon since Issue #614, so a drag cannot get it there: only a max
-         past the fit cap does. */
       const f = colField(db, c);
       if (f?.type === 'rating' && !CR.ratingFits(widthOf(c), f.max, cellPads.get(c))) {
         out.push(`${cell(at + i + 1, 'tbody')} .wv-rating > .wv-rate-ico{display:none}`,
@@ -6082,23 +4293,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       }
     });
     sysTail.forEach((n, j) => out.push(cell(at + cols.length + j + 1) + fixed(Math.max(SYS_WIDTHS[n] ?? 136, floors.get(n) ?? 0))));
-    // The frozen fields stick beside #, each at the sum of what is left of
-    // it, with the # column's own layers (Issue #252): opaque in the body,
-    // over the Σ row, under the header corner.
     let left = lead;
     for (let i = 0; i < frozenShown; i++) {
       const k = at + i + 1;
       out.push(`${cell(k)}{position:sticky;left:${left}px}`,
         `${cell(k, 'tbody')}{z-index:1;background:var(--tblr-bg-surface)}`,
         `${scope} > tbody > tr.row-selected > :nth-child(${k}):not([colspan]){background:color-mix(in srgb,var(--tblr-primary) 9%,var(--tblr-bg-surface))}`,
-        // The docked row's light, over the surface rather than over nothing (Issue #409).
         `${scope} > tbody > tr.row-docked > :nth-child(${k}):not([colspan]){background:linear-gradient(var(--tblr-active-bg),var(--tblr-active-bg)) var(--tblr-bg-surface)}`,
         `${scope} > thead > tr > th:nth-child(${k}){z-index:5}`,
         `${scope} > thead > tr.wv-foot > td:nth-child(${k}){z-index:3}`);
       left += widthOf(cols[i]);
     }
-    // The seam moves to the last frozen field, and keeps Issue #252's
-    // manners: reserved at rest, drawn only while something passes under.
     if (frozenShown) {
       const k = at + frozenShown;
       out.push(`${cell(k)}{border-right:1px solid transparent}`,
@@ -6114,9 +4319,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const css = layoutCss();
     if (layoutSheet.textContent !== css) layoutSheet.textContent = css;
   };
-  /* Measure what only the rendered grid knows — each label's floor (icon,
-     label, marks, the padding the ⋮ and the grip sit in) and the width of
-     the # lead — then paint. Reads first, one write at the end. */
   const settle = () => {
     if (!table?.isConnected) return;
     const head = table.tHead.rows[0];
@@ -6129,10 +4331,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         padLeft: parseFloat(cs.paddingLeft) || 0, padRight: parseFloat(cs.paddingRight) || 0,
       }));
     }
-    /* A date's format knows how wide its widest value is ("Wednesday 30th
-       September 2026" against "Sep 30, 2026"), so a date column never clips
-       one (Issue #159): measured once per draw, off a rendered cell holding
-       a sample, and it raises only that column, as a long label does. */
     for (const c of cols) {
       const f = colField(db, c);
       if (f?.type !== 'date' || valueFloors.has(c)) continue;
@@ -6150,14 +4348,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       valueFloors.set(c, Math.ceil(probe.getBoundingClientRect().width + box));
       measure.remove();
     }
-    /* A toggle paints its switch and the word of its state, and neither may
-       be cut (Issue #586; Kyle, 2026-10-02): its floor holds the track, the
-       gap and the wider of its two words inside the cell's padding. The
-       words are measured in the cell's own face, off the grid; the padding
-       is read every draw, as a rating's is, because hiding a field moves
-       which cell is last and Tabler pads the last one 20px on the right.
-       Like a date's, this floor binds a drag, a nudge, a fit and the frozen
-       cap, and raises a stored or default width under it. */
     for (const c of cols) {
       const f = colField(db, c);
       if (f?.type !== 'toggle') continue;
@@ -6175,20 +4365,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       valueFloors.set(c, CR.toggleWidth({ on: wide(f.on ?? 'On'), off: wide(f.off ?? 'Off'), pad }));
       measure.remove();
     }
-    /* A select, a multi-select and a state paint a chip of fixed shape, and
-       no part of it may be cut either (Issue #614; Kyle, 2026-10-03: "make
-       sure no part of the toggle or box can be cut off by field resize").
-       The floor is the widest OPTION's chip, not the widest value on screen,
-       so picking a long option later never lands cut. The chips are drawn
-       by the cell's own optionChipEl inside the column's own cell, hidden
-       off to the side, so every grid rule on a chip (its face, padding, the
-       box's gap) applies and a CSS change moves the number with it. A multi-
-       select keeps one chip whole beside the +N count fitChips shows, never
-       the sum of its chips. They are measured again only when the options
-       or the cell's face change (an option added, renamed or given an icon;
-       a density; the column moved to lead the row), so a cached width cannot
-       go stale the way a date's `valueFloors.has(c)` would; the padding is
-       read every draw, as a toggle's is. Free text is not floored. */
     for (const c of cols) {
       const f = colField(db, c);
       if (!['select', 'multiselect', 'workflow'].includes(f?.type)) continue;
@@ -6216,15 +4392,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
       valueFloors.set(c, CR.chipWidth({ ...m, pad }));
     }
-    /* A rating column opens at the width its own icons need (Issue #404,
-       Feature #235). The icon box and the gap are constants in
-       column-resize.js; the cell's padding is not — Tabler gives the row's
-       last cell 20px on the right where every other gets 4 — so it is read
-       off the rendered cell, every draw, because hiding a field moves which
-       cell is last. Its icons are a control of fixed shape, so since Issue
-       #614 they floor the column as a toggle's switch does: a drag no longer
-       cuts the last icon (Kyle, 2026-10-03, superseding Feature #235's "a
-       width the reader dragged still wins" for widths under the icons). */
     for (const c of cols) {
       const f = colField(db, c);
       if (f?.type !== 'rating') continue;
@@ -6239,8 +4406,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (pidCell) {
       let top = db.entityCount ?? 0;
       for (const it of ordered()) if (it?.publicId > top) top = it.publicId;
-      // Measured as painted: the cell's own link, cloned off the grid with
-      // the widest id of that many digits in it.
       const probe = cellFitProbe(pidCell);
       const link = probe.querySelector('a') ?? probe;
       link.textContent = `#${'0'.repeat(String(top).length)} \u2197`;
@@ -6268,10 +4433,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       if (canFreezeHere()) {
         db.view.widths = { ...(db.view.widths ?? {}), [c]: w };
         refreeze(); paintLayout();
-        requestAnimationFrame(() => markClippedCells(table)); // the chips that fit, refit
+        requestAnimationFrame(() => markClippedCells(table));
         await gridConfigWrite(db, null, { widths: { [c]: w } });
       } else {
-        // A registry grid has no views: the width stays the field's own.
         f.width = Math.max(MIN_COLUMN_WIDTH, w);
         refreeze(); paintLayout();
         requestAnimationFrame(() => markClippedCells(table));
@@ -6280,7 +4444,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       }
     } catch (err) { toast(err.message, true); showDatabase(db.id, state.route?.view); }
   };
-  // What the resize grip needs from the grid it sits in.
   const grid = {
     blocked,
     width: widthOf,
@@ -6290,8 +4453,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     commit: commitWidth,
   };
 
-  /* Slide every column that moved from where it was to where it is (FLIP,
-     ~180 ms). Only a transform: nothing is laid out again frame by frame. */
   const flip = (before) => {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const at = leadCount();
@@ -6308,23 +4469,14 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     setTimeout(() => { for (const [cell] of moving) cell.style.transition = ''; }, 240);
   };
 
-  /* A new column order and frozen count, applied in place — cells move,
-     nothing repaints, scroll and focus stay (Kyle, 2026-08-22) — then saved
-     behind the move. Exactly one field moves: the dragged or nudged one. */
   const applyOrder = async (next, shownFrozen, moved) => {
     const at = leadCount();
-    /* The plan speaks the zone as drawn; a narrow window can draw fewer
-       fields frozen than the view stores (the 60% cap). The drop changes the
-       stored count by what it changed on screen, so a move on the scrolling
-       side never unfreezes fields the cap is only hiding. */
     const nextFrozen = Math.min(next.length, Math.max(0, storedFrozen() + shownFrozen - frozenShown));
     const before = new Map(cols.map((c) => [c, headOf(c)?.getBoundingClientRect().left ?? 0]));
     const prev = cols;
     const prevFrozen = storedFrozen();
     const reordered = next.some((c, i) => c !== prev[i]);
     if (reordered) {
-      // Every row that holds a cell per column: the header, the Σ row, and
-      // every body row built this draw — drawn now or waiting off screen.
       for (const row of new Set([...table.querySelectorAll('tr'), ...built.values()])) {
         const cells = row.children;
         if (cells.length < at + prev.length || cells[0].colSpan > 1) continue;
@@ -6334,14 +4486,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           const cell = byName.get(c);
           anchorCell.after(cell);
           anchorCell = cell;
-          // The leading column carries the row's identity, set heavier.
           if (cell.dataset.field) cell.classList.toggle('name-cell', c === next[0]);
         }
       }
       const i = next.indexOf(moved);
       const anchor = i > 0 ? next[i - 1] : next[1];
-      // The local field list follows when both ends are fields; a system
-      // column (Issue #418) lives only in the view's list and in `cols`.
       const fi = db.fields.findIndex((f) => f.name === moved);
       if (fi >= 0 && db.fields.some((f) => f.name === anchor)) {
         const [mf] = db.fields.splice(fi, 1);
@@ -6369,14 +4518,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       }
     } catch (err) {
       toast(err.message, true);
-      showDatabase(db.id, state.route?.view); // the move did not hold — show the truth
+      showDatabase(db.id, state.route?.view);
     }
   };
 
-  /* Drag a header to move its column. A ghost follows the pointer, the
-     column it came from dims, and ONE vertical line marks where it lands —
-     never a highlight on the field it displaces. Where the drop changes the
-     frozen zone the line says so. Near the wrap's edges the grid scrolls. */
   const columnDrag = (c) => {
     const head = table.tHead.rows[0];
     const pidHead = head.querySelector('th.pid-head');
@@ -6403,7 +4548,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const capOk = canFreezeHere() && (mine || CR.canFreeze({ lead, widths: order.slice(0, fz).map(widthOf), add: widthOf(c), viewport: wrap.clientWidth }));
       const t = CR.target({ cols: b, frozen: fz, lead: leadRight(), seam, x: px, dragged: c, capOk });
       plan = CR.plan({ order, frozen: fz, dragged: c, gap: t.gap, side: t.side });
-      // A drop that changes nothing draws nothing.
       line.hidden = plan.noop;
       if (plan.noop) return;
       const wr = wrap.getBoundingClientRect();
@@ -6456,10 +4600,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       if (!drag) {
         if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
         if (blocked()) return end(false);
-        try { th.setPointerCapture(id); } catch { /* released already */ }
+        try { th.setPointerCapture(id); } catch {}
         drag = columnDrag(c);
       }
-      // A header is a control: a drag leaves no text selected (Issue #417).
       clearSelection();
       drag.update(ev.clientX, ev.clientY);
     };
@@ -6468,7 +4611,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       document.removeEventListener('pointerup', up, true);
       document.removeEventListener('pointercancel', cancel, true);
       if (!drag) return;
-      // Rule 4: the click this gesture ends with opens nothing.
       th.dataset.gesture = '1';
       document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true });
       const d = drag;
@@ -6501,19 +4643,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
     const w = CR.nudge({ width: widthOf(c), delta: 8 * dir, floor: floors.get(c) ?? 0 });
     grid.paint(c, w);
-    // One write per burst of presses, per column.
     clearTimeout(nudgeTimers.get(c));
     nudgeTimers.set(c, setTimeout(() => { nudgeTimers.delete(c); commitWidth(c, w); }, 350));
   };
-  /* The row height is DECLARED, never measured (Feature #239, Issue #440):
-     the --wv-row-h token of the grid's density, which every row is held to
-     by its cells' clip boxes. Issue #324 measured one painted row per table,
-     density and width and kept it, because rows were not all the same
-     height (46.5, 47 and 48 on the live Issue grid) and a spacer standing
-     in for hundreds of them at a re-measured height made the page cycle
-     between three heights at the last row. A declared height has no
-     variance to chase: every row is the token, so the spacer is exact and
-     nothing is measured on a scroll, a resize or a flip. */
   const tokenH = {};
   const rowH = () => {
     const d = gridDensity(db);
@@ -6524,9 +4656,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   };
   const spacer = () => el('tr', { class: 'wv-spacer', 'aria-hidden': 'true' },
     el('td', { colspan: String(colCount) }));
-  /* A spacer with nothing to stand in for leaves the tbody, so the first
-     body row is a real row (every suite that waits on `tbody tr` reads the
-     first one) and the last is the + New foot. */
   const setPad = (tr, px) => {
     tr.firstChild.style.height = `${px}px`;
     if (px <= 0) return tr.remove();
@@ -6534,7 +4663,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (tr === topSpacer) tbody.prepend(tr);
     else tbody.insertBefore(tr, tbody.querySelector('tr.add-entity-row'));
   };
-  // A row whose page is still on its way holds the place at the row height.
   const rowFor = (i) => {
     const item = itemAt(i);
     if (!item) return el('tr', { class: 'entity-row-pending', 'aria-hidden': 'true', dataset: { i: String(i) }, style: `height:${rowH()}px` }, el('td', { colspan: String(colCount) }));
@@ -6543,18 +4671,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     tr.dataset.i = String(i);
     return tr;
   };
-  // Which box scrolls the body: the wrap when it is the scroller (a grid
-  // wider than its card on the table page), else the pane it sits in — the
-  // main panel or the dock (Issue #609), the window only outside the shell.
-  // Geometry is body-relative — how much of the <tbody> sits above the
-  // box's top edge — so one arithmetic serves every case.
   const scroller = () => (wrap.classList.contains('wv-grid-scroll') ? wrap : paneOf(wrap));
   const geometry = () => {
     const box = scroller();
-    /* Where the reader's window really starts. A wrap that scrolls starts at
-       its own top edge; the page starts under the view header, which holds
-       there (Issue #321) — reading 0 instead put the window a header's
-       height too high and a commit mid-table landed the reader elsewhere. */
     const chromeH = stuckHeaderHeight(wrap);
     const viewTop = (box ? box.getBoundingClientRect().top : 0) + chromeH;
     return {
@@ -6565,9 +4684,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       headH: table.tHead?.offsetHeight ?? 0,
     };
   };
-  /* Paint a window: rows leaving are removed, rows arriving are inserted at
-     their place, rows staying are not touched — a focused cell keeps its
-     focus. Only a changed window pays for the repaints underneath. */
   const paint = (w) => {
     let changed = false;
     for (const [i, tr] of live) {
@@ -6584,43 +4700,29 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
     win.start = w.start; win.end = w.end;
     if (pager) pager.window = { start: w.start, end: w.end };
-    /* The foot counts what is loaded even when no row moved: a prefetched
-       page lands outside the drawn window, and the note still said "200 of"
-       while ⌘A took 400 (found landing Issue #608). */
     if (loadedNote) {
       const n = loadedIds().length;
-      // A search says how many rows it found (Feature #228).
       const note = n < total() ? `${n.toLocaleString()} of ${total().toLocaleString()} loaded`
         : pager?.search ? `${WeaveTerm.count(total(), db.term)} found` : '';
       if (loadedNote.textContent !== note) loadedNote.textContent = note;
     }
     if (!changed) return;
-    // Rows that just arrived take their state: the clipped marker measured
-    // after layout, the selection, the docked light and the cell range.
     requestAnimationFrame(() => markClippedCells(table));
     paintSelection(); markDockedRow(); repaintRange();
   };
   const rewindow = () => {
     if (!tbody?.isConnected) return;
     const g = geometry();
-    // A row of travel decides the direction, never a pixel (Issue #317).
     const travel = GW().travelFor({ scrollTop: g.scrollTop, lastTop: win.lastTop, direction: win.dir, rowH: rowH() });
     win.dir = travel.direction; win.lastTop = travel.lastTop;
     const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: total(), direction: win.dir });
     if (pager) {
-      // The pages under the window, and the one past its leading edge, are
-      // asked for once; a page landing repaints the placeholders it fills.
       const want = GW().pagesFor(w, pager.page, pager.total);
-      /* The page past the leading edge waits for the reader to move: an
-         open fetches the pages it draws and no more. It used to by luck —
-         the at-rest geometry read a pane's padding as travel upward — and
-         read right (Issue #608) the open asked for a second page. */
       if (w.prefetchOffset != null && win.travelled) want.push(w.prefetchOffset);
       for (const o of want) if (!pager.has(o)) pager.fetch(o).then(schedule, () => {});
     }
     paint(w);
   };
-  // Re-windowed once per frame, never per scroll event.
   let raf = 0;
   const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; rewindow(); }); };
   const onScroll = (e) => {
@@ -6628,8 +4730,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (e.target === document || e.target === wrap || e.target === paneOf(wrap)) { win.travelled = true; schedule(); }
   };
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
-  // Bring row i into view with the least motion and paint the window there,
-  // synchronously, so the caller can focus a cell in it on the next line.
   const scrollToRow = (i) => {
     if (!tbody?.isConnected) return;
     const g = geometry();
@@ -6637,26 +4737,16 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (want !== g.scrollTop) (g.box ?? window).scrollBy({ top: want - g.scrollTop, left: 0, behavior: 'instant' });
     rewindow();
   };
-  // The <tr> for row i, drawn — fetched, scrolled to and painted if it must be.
   const ensureRow = async (i) => {
     if (i < 0 || i >= total()) return null;
     if (pager && !itemAt(i)) await pager.fetch(pager.pageOf(i));
     scrollToRow(i);
     return live.get(i) ?? null;
   };
-  /* ---------- the in-place commit (Issue #257) ----------
-     One row's cells, swapped where they stand. The <tr> and its <td>s are
-     kept: the CELL is the focus stop (Feature #134), so a cell that is not
-     repainted cannot lose focus, and the reader's scroll, selection and
-     range are never touched. Only the cells whose value actually moved are
-     redrawn — a Name commit costs one cell's markup, and the description
-     beside it does not go back to the markdown renderer for nothing. */
   const repaintRow = (tr, item, was) => {
     for (const td of tr.querySelectorAll(':scope > td[data-field]')) {
       const f = db.fields.find((x) => x.name === td.dataset.field);
       if (!f) continue;
-      // A cell the reader is INSIDE keeps what they are typing: the editor
-      // painted it already, and the round trip must not take it back.
       if (td !== document.activeElement && td.contains(document.activeElement)) continue;
       if (was && JSON.stringify(was.fields?.[f.name] ?? null) === JSON.stringify(item.fields?.[f.name] ?? null)) continue;
       td.replaceChildren(cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
@@ -6665,11 +4755,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     for (const td of tr.querySelectorAll(':scope > td.sys-cell')) td.replaceChildren(cellBox(sysValue(td.dataset.sys, item)));
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
-  /* `fresh` is the PATCH response: the edited row, plus `affected`. The rows
-     of that set THIS grid is holding are re-read in one query; the rest are
-     rows the grid cannot show, or pages it has not fetched, and a page that
-     arrives later arrives fresh. False when the edited row is not here at
-     all, which sends the caller back to the full re-read. */
   const patchRows = async (fresh) => {
     const arr = ordered();
     const at = (eid) => arr.findIndex((r) => r && r.id === eid);
@@ -6685,11 +4770,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       if (i < 0) continue;
       const was = arr[i];
       arr[i] = item;
-      /* And the rows the grid was OPENED with, which are a second copy: a
-         local sort rebuilds `sortedItems` from them. A paged grid sorts on
-         the server and never reads them again, but the one grid with no
-         pager — "Deleted rows" on, where trashed rows ride along in place —
-         does, and it would sort the patched row back to its old value. */
       const j = items.findIndex((r) => r && r.id === item.id);
       if (j >= 0) items[j] = item;
       const tr = built.get(item.id);
@@ -6698,31 +4778,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     requestAnimationFrame(() => markClippedCells(table));
     return true;
   };
-  /* ---------- the density flip (Issue #342) ----------
-     Density is a way of READING the table (Kyle, 2026-08-24), so it leaves
-     the reader where they were reading. The grid owns the flip because only
-     it knows the geometry: the window is placed from a body-relative offset
-     divided by the row height, and shorter rows put a different row under
-     the same offset, so a flip half way down drew from somewhere else
-     entirely. The row at the top edge is read BEFORE the flip and landed
-     back there after it, inside the one gesture, so no frame is painted
-     anywhere in between.
-
-     Read and landed off the DOM as well as off `rowH`: rows used to vary in
-     height (Issue #324), and an anchor estimated from one height was twenty
-     rows out on a 600-row grid. Every row is its density's token now
-     (Feature #239), so `scrollToRow` lands the row at the estimate and the
-     correction that follows is a fraction of a row at most; it stays, as
-     the check that the arithmetic and the paint agree.
-
-     The correction is the grid settling, not the reader travelling, so it
-     re-anchors the direction of travel (Issue #317) before the re-window.
-     Read as travel, a correction of more than a row turned the buffer to
-     the other side of the window, and the spacer that swapped in for those
-     rows did not weigh what they did: on a page-scrolled grid of uneven
-     rows the flip landed one row off (Issue #413). A re-window can still
-     move the window's edge, so the row is read again until it holds. The
-     edge keeps the same fraction of the row it cut before the flip. */
   const topEdge = (g) => g.viewTop + g.headH;
   const topRow = () => {
     const edge = topEdge(geometry());
@@ -6737,8 +4792,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const { i: anchor, into } = topRow();
     saveGridDensity(db, mode);
     table.dataset.density = mode;
-    rewindow();            // windows at the new density's token and repaints
-    scrollToRow(anchor);   // and brings the reader's row back into the window
+    rewindow();
+    scrollToRow(anchor);
     for (let k = 0; k < 3; k++) {
       const g = geometry(), tr = live.get(anchor);
       if (!tr) break;
@@ -6755,29 +4810,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.wvScrollToRow = scrollToRow;
   wrap.wvSetDensity = setDensity;
   wrap.wvPatchRows = patchRows;
-  // ⌘Z's redraw (Issue #259): the same re-read a bulk write takes.
   wrap.wvRefresh = () => onSaved?.();
 
   const draw = () => {
     sortedItems = [...items];
-    // A paged grid is in the server's order already (page 1 has to be the
-    // right 200); the local sort is for the grids that hold every row.
     if (sortKey && !pager) {
-      /* A sort orders the value, never the costume it wears (Issue #279).
-         "Sep 9, 2026 9:51 AM" beats "Sep 12, 2026 7:32 AM" as text, and
-         "15,829,984" loses to "900" — so a number sorts as a number, a date
-         as its stored instant, and a range by its start then its end (Issue
-         #287), all read off item.raw. Everything else sorts by its display
-         form, because for a multiselect or a joined relation the names ARE
-         the value. Mirrors the engine's own comparator (#pathValue's
-         `undressed`) through the same weaveDateGrain.rangeKey, so a grid
-         that holds every row lands in the same order as the paged one
-         beside it. */
       const sortField = db.fields.find((f) => f.name === sortKey);
       const sortType = sortField?.type;
-      // A system column reads its entity key (Issue #254); a select and a
-      // workflow read where the value sits in the definition (Issue #318),
-      // as the engine's #definitionRank does.
       const system = sortField ? null : fieldDialogCore.SYSTEM_SORT[sortKey];
       const order = sortType === 'select' ? (sortField.optionsFull ?? []).map((o) => o.id)
         : sortType === 'workflow' ? (sortField.states ?? []).map((st) => st.id) : null;
@@ -6786,7 +4825,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         const raw = item.raw?.[sortKey];
         if (sortType === 'daterange') return weaveDateGrain.rangeKey(raw);
         if (order) return raw == null ? null : (order.indexOf(raw) + 1 || order.length + 1);
-        // A sparkline sorts on its last value, as the server does (#232).
         if (Array.isArray(raw) && raw.some((v) => typeof v === 'number')) return raw.filter((v) => typeof v === 'number').at(-1);
         return typeof raw === 'number' || sortType === 'date' ? raw : item.fields[sortKey];
       };
@@ -6802,9 +4840,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     win.start = 0; win.end = 0; win.lastTop = 0; win.dir = 1;
     tbody = el('tbody');
     topSpacer = spacer(); bottomSpacer = spacer();
-    // Creating an entity is the last row of the grid, not a detached bar:
-    // the table reads as one surface that grows from the bottom. A paged
-    // grid says there how much of the table is here.
     loadedNote = null;
     if (onAdd) {
       loadedNote = pager ? el('span', { class: 'wv-loaded', 'aria-live': 'polite' }) : null;
@@ -6817,33 +4852,19 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           loadedNote)));
     }
 
-    /* One sort path for every header that sorts: a field's, the # column's
-       and a system column's (Issue #254). `key` is the name the table
-       stores, which for # is `Public Id`. */
     const sortBy = (key) => (dir) => {
       if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
       sortKey = dir ? key : null; sortDir = dir || 1;
-      // The open view's sort since Feature #229, the table's without one.
       const saved = gridConfigWrite(db, { sort: dir ? [{ field: key, dir: dir > 0 ? 'asc' : 'desc' }] : [] });
-      // A paged grid sorts on the server: page 1 is re-read in the
-      // new order once the sort is the table's. The rest sort in
-      // place for the instant redraw, as before.
       if (pager) saved.then(() => keepScroll(() => showDatabase(db.id, state.route.view)));
       else draw();
     };
     const sortMark = (key) => (sortKey === key ? iconEl(sortDir > 0 ? '↑' : '↓', 'wv-icon wv-icon-xs') : null);
-    /* A system column has no definition to edit, so its ⋮ carries the sort
-       rows alone (Kyle, 2026-09-12: "system fields need the same 3 dots menu
-       for sorting"). Activity has none: it links to the history. */
     const systemMenu = (key, label) => {
       const sys = fieldDialogCore.SYSTEM_SORT[key];
       return sys ? fieldMenuButton(db, { ...sys, name: label, system: true },
         { sorted: sortKey === key ? sortDir : 0, onSort: sortBy(key) }) : null;
     };
-    /* A system column's header. In a view's grid it is a column like any
-       field (Issue #418): it drags, steps with Alt+Shift+arrows, freezes
-       across the seam and sizes from its grip; it opens no field tray,
-       because there is no field to edit. */
     const sysHead = (n, movable) => el('th', {
       class: movable ? 'col-head sys-head' : 'sys-head', title: `${n} — system field, read-only`, dataset: { col: n },
       ...(movable ? {
@@ -6862,8 +4883,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       dataset: { density: gridDensity(db) },
     },
       el('thead', {}, el('tr', {},
-        // Select-all, with a dash for a partial selection. Same hit target as
-        // the body boxes so the column reads as one vertical line.
         el('th', { class: 'sel-head' },
           el('label', { class: 'sel-hit' },
             el('input', {
@@ -6879,22 +4898,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         el('th', { class: 'pid-head' }, '#', sortMark('Public Id'), systemMenu('Public Id', '#')),
         ...cols.map((c) => (isSysCol(c) ? sysHead(c, true) : el('th', {
           class: 'col-head',
-          // A header is a stop: Alt+Shift+←/→ moves the field, Alt+←/→
-          // sizes it, Return opens it (Feature #233).
           tabindex: '0',
           'aria-keyshortcuts': 'Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+ArrowLeft Alt+ArrowRight',
           dataset: { col: c },
-          // The field's description is the header's tooltip (Issue #209).
           title: fieldDescription(colField(db, c)) || null,
-          // Click opens the field in the tray (Kyle, 2026-08-23: editing is
-          // what a header click should mean); sorting lives in the ⋮ menu.
-          // The click that ends a resize, a reorder or a freeze drop lands
-          // here too (Safari resolves a captured drag's click to the header
-          // under the pointer): the gesture marks the header and its click
-          // is inert (Issue #98; Kyle's rule 4, Feature #233).
           onclick: (e) => { const th = e.currentTarget; if (!th.dataset.resized && !th.dataset.gesture) editFieldDialog(db, colField(db, c)); },
-          // Dragging a header moves the column: a ghost follows the pointer
-          // and one insertion line marks where it lands (Feature #233).
           onpointerdown: (e) => headPointerDown(e, c),
           onkeydown: (e) => headKey(e, c),
         },
@@ -6907,70 +4915,36 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           }),
           columnResizeGrip(db, colField(db, c), grid)))),
         ...sysTail.map((n) => sysHead(n, false)),
-        // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db))),
-      // The Σ row (Issue #233): this table's space rollups, one cell per
-      // column, pinned under the field headers so it stays while the body
-      // scrolls; painted once the stats arrive (registry grids have no space
-      // to roll up to). The eye's Rows section switches it on — a table has
-      // no Σ row until it opts in, which is `hideRollups: false` on the
-      // table, so the absence reads as hidden (Issue #249).
       showsRollups(db) ? renderFooter(db, cols) : null),
       tbody);
     const kept = wrap.scrollTop;
     wrap.replaceChildren(table, puck, layoutSheet);
-    // Widths and the frozen zone, painted before the first frame and then
-    // measured against the rendered headers (Feature #233).
     paintLayout();
     settle();
-    // A redraw is not a scroll: a wrap that scrolls (wide grid) is clamped
-    // to 0 for the instant it is empty.
     wrap.scrollTop = kept;
-    // main is watched too: a description that arrives after the grid, or a
-    // filter strip, moves the wrap's top, which is what its height is cut from.
     fitWatch.disconnect(); fitWatch.observe(wrap); fitWatch.observe(table); fitWatch.observe(main);
     const foot = table.querySelector('tr.wv-foot');
     if (foot) {
       fillFooter(db, foot);
-      // Pinned under the header row: its cells stick at the header's height,
-      // which the density and a wrapped label can change, so it is measured
-      // rather than assumed.
       new ResizeObserver(() => table.style.setProperty('--wv-head-h', `${table.tHead.rows[0].offsetHeight}px`)).observe(table.tHead.rows[0]);
     }
-    // The window, painted now if the wrap is already in the document (a
-    // redraw); the first draw paints it once renderTable has attached the
-    // wrap. Every repaint underneath (selection, dock, range, clipped
-    // markers) rides on it.
     rewindow();
-    // A row that left the table — trashed, filtered out — is no longer
-    // selected. Done after the draw so it reads the rows that exist.
     if (chosen().size) setChosen(SEL().prune(chosen(), loadedIds()));
     else paintSelection();
   };
   draw();
 
-  /* ---------- the keymap (Feature #134, REST) ----------
-     One listener, one pure core (public/grid-keymap.js). Rest is focus on
-     the <td>; open is a live text control inside it. A picker's popover
-     and a chip button both count as rest — Return opens or reopens them,
-     the arrows walk on. Tab never leaves the grid (Issue #84): the end of
-     the last row is the end. */
   const KM = () => globalThis.WeaveGridKeymap;
   const OPEN_CONTROLS = 'input:not([type="checkbox"]), select, textarea, [contenteditable]';
   const stops = (row) => [...row.querySelectorAll(':scope > td[tabindex="0"]')];
   const rowsOf = () => [...wrap.querySelectorAll('tbody tr.entity-row')];
-  // What Return does on this cell, or null when nothing here opens: the
-  // field type's own activation, else the description's preview.
   const openerOf = (td) => {
     if (globalThis.WeaveEditorLib.cellActivation(td.dataset.ftype) !== 'none') return () => activateCell(td);
     const preview = td.querySelector('.doc-preview');
     return preview ? () => preview.click() : null;
   };
   const cellAt = (r, c) => stops(rowsOf()[r])?.[c] ?? null;
-  /* A move counts rows over the WHOLE table, not the drawn window (Issue
-     #271): the row it lands on is scrolled into the window first — fetched,
-     when its page has not arrived — and End and Home are the last and the
-     first row of the table. */
   const landOn = async (td, verb) => {
     const row = td.parentElement;
     const r = Number(row.dataset.i), c = stops(row).indexOf(td), cols = stops(row).length;
@@ -6980,40 +4954,27 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         : KM().step({ r, c, rows: total(), cols }, verb);
     if (!to) return td.focus();
     const tr = await ensureRow(to.r);
-    // Focusing the next cell blurs the open one, which is what commits it.
     (tr ? stops(tr)[to.c] : td)?.focus();
   };
   const apply = (verb, td, at) => {
     const eid = td.parentElement.dataset.eid;
     switch (verb.type) {
-      // A bare arrow is the cursor leaving the rectangle it cornered, so the
-      // range goes with it (Feature #220).
-      // landOn may wait on a page; a read that fails leaves the cursor put.
       case 'move': case 'commitMove': clearRange(); landOn(td, verb).catch(() => td.focus()); return true;
       case 'edit': {
         const activation = globalThis.WeaveEditorLib.cellActivation(td.dataset.ftype);
-        // A character does not flip a checkbox; Return does.
         if (verb.select === 'replace' && activation === 'toggle') return true;
         openerOf(td)?.();
         const input = td.querySelector(OPEN_CONTROLS);
         if (input && input === document.activeElement) {
-          try { input.select(); } catch { /* not a text box */ }
-          // 'replace': the key that opened the cell is the first character
-          // typed into it — the browser delivers it to the input focus just
-          // moved to, so the default is kept.
+          try { input.select(); } catch {}
           return verb.select !== 'replace';
         }
         return true;
       }
-      /* Home and End inside an open cell (Issue #260) — see grid-keymap.js
-         for why the browser cannot be trusted with them. Only a single-line
-         <input> is ours: a textarea's End belongs to the line it is on, and
-         a select, a number or a date box has no caret to place (setting one
-         throws), so each of those keeps the browser's own key. */
       case 'caret': {
         if (at.tagName !== 'INPUT' || typeof at.value !== 'string') return false;
         const to = verb.to === 'end' ? at.value.length : 0;
-        try { at.setSelectionRange(to, to); } catch { return false; } // no caret here: the browser keeps the key
+        try { at.setSelectionRange(to, to); } catch { return false; }
         return true;
       }
       case 'revert': {
@@ -7023,22 +4984,14 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       }
       case 'open': dockEntity(db, eid); return true;
       case 'newRow': {
-        // Save-and-create-another (Issue #125): the blur commits the open
-        // cell before the new row is asked for. onAdd is THIS grid's verb —
-        // on a registry grid state.inlineAdd belongs to some other table.
         if (at !== td) at.blur();
         onAdd?.();
         return true;
       }
-      /* A range of cells (Feature #220). ⇧ grows it; a bare arrow lets it go,
-         because the cursor has left the rectangle it was the corner of. */
       case 'extendRange': {
         const here = coordOfCell(td);
         const cur = rangeRect() && sameCell(coordOfRef(rangeFocus), here)
           ? { anchor: coordOfRef(rangeAnchor), focus: here }
-          // The cursor moved without ⇧ since the last extension: it is the
-          // new anchor. Growing from where the reader last LOOKED, not from
-          // where they last held ⇧, is the only reading that never surprises.
           : { anchor: here, focus: here };
         const out = RG().extend({ ...cur, dr: verb.dr, dc: verb.dc, rows: rowsOf().length, cols: rangeCols().length });
         if (!out) return true;
@@ -7047,8 +5000,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         return true;
       }
       case 'clearRange': clearRange(); return true;
-      // A digit or Backspace on a rating cell (Feature #231): the control
-      // sets itself, the cursor stays on the cell.
       case 'rate': td.querySelector('.wv-rating')?.dispatchEvent(new CustomEvent('rate', { detail: verb.value })); return true;
       case 'toggleSelect': anchor = eid; setChosen(SEL().toggle(chosen(), eid)); return true;
       case 'extendSelect': {
@@ -7061,8 +5012,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       }
       case 'selectAll': anchor = null; setChosen(SEL().selectAll(loadedIds())); return true;
       case 'help': openKeySheet(); return true;
-      // Escape with a selection is the standing listener's (above); with none,
-      // the browser's. Either way the keymap lets it through.
       default: return false;
     }
   };
@@ -7080,22 +5029,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (apply(verb, td, at)) { e.preventDefault(); e.stopPropagation(); }
   });
 
-  /* ---------- Feature #220: ranges, fill and paste ----------
-     #134 made the cell rest as a value and #132 gave a run of ROWS one write.
-     This is the rectangle between them: a range of CELLS, the handle that
-     drags one value across it, and a clipboard that carries typed values.
-
-     The arithmetic is pure and lives in public/grid-range.js. The write is
-     the SAME `bulk set` the puck uses — one op, per-row results, riding the
-     single-row undo, tombstone and activity paths. Nothing here writes on
-     its own, and one Undo on the toast steps the whole fill or paste back.
-
-     The range is keyed on the RECORD and the FIELD, never on a row and
-     column number, for the reason #132 learned about selection: a sort
-     re-orders every row and coordinates would slide onto different cells. */
   const RG = () => globalThis.WeaveGridRange;
-  let rangeAnchor = null, rangeFocus = null;   // each { eid, field }
-  let fillRect = null;                          // the handle's target, mid-drag
+  let rangeAnchor = null, rangeFocus = null;
+  let fillRect = null;
 
   const rangeCols = () => (rowsOf()[0] ? stops(rowsOf()[0]).map((td) => td.dataset.field) : []);
   const refOfCell = (td) => ({ eid: td.parentElement.dataset.eid, field: td.dataset.field });
@@ -7103,24 +5039,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const coordOfRef = (ref) => (ref ? { r: drawnIds().indexOf(ref.eid), c: rangeCols().indexOf(ref.field) } : null);
   const refAtCoord = ({ r, c }) => ({ eid: drawnIds()[r], field: rangeCols()[c] });
   const sameCell = (a, b) => !!a && !!b && a.r === b.r && a.c === b.c;
-  // Null once either end has left the page — a range to a row that is no
-  // longer drawn is the same lie a stale selection would be.
   const rangeRect = () => {
     const a = coordOfRef(rangeAnchor), b = coordOfRef(rangeFocus);
     if (!a || !b || a.r < 0 || a.c < 0 || b.r < 0 || b.c < 0) return null;
     const rect = RG().rect(a, b);
     return RG().single(rect) ? null : rect;
   };
-  // The cell the cursor is on: the resting <td>, the open control's cell,
-  // or — a picker's popover hangs off <body> — the cell the popover was
-  // opened from (Feature #221). Null when focus is off this grid.
   const cellOfNode = (n) => n?.closest?.('tbody tr.entity-row > td[tabindex="0"]') ?? n?.closest?.('.chip-pop')?.cellFrom ?? null;
   const cursorCell = () => {
     const td = cellOfNode(document.activeElement);
     return td && wrap.contains(td) ? td : null;
   };
-  // What a copy or a paste acts on: the range if there is one, else the one
-  // cell the cursor is resting on — the smallest range there is.
   const rangeOrCursor = () => {
     const rect = rangeRect();
     if (rect) return rect;
@@ -7130,9 +5059,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     return r < 0 || c < 0 ? null : { r0: r, c0: c, r1: r, c1: c };
   };
 
-  /* Painting, not redrawing — same rule as the selection: a redraw would
-     tear down an editor the reader has open. The handle is one absolutely
-     positioned corner on the bottom-right cell, so no column ever moves. */
   const paintRange = () => {
     const grid = wrap.querySelector('.wv-grid');
     if (!grid) return;
@@ -7142,15 +5068,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     grid.querySelector('.wv-fill-handle')?.remove();
     const rect = rangeRect();
     const rows = rowsOf();
-    // A rectangle can outlive the rows it named for one frame — a filter or a
-    // sort lands between the drag and the repaint — so an absent cell is
-    // simply not painted rather than a throw inside a redraw.
     const cellOf = (r, c) => (rows[r] ? stops(rows[r])[c] ?? null : null);
     for (const { r, c } of rect ? RG().cellsOf(rect) : []) cellOf(r, c)?.classList.add('wv-in-range');
     for (const { r, c } of fillRect ? RG().cellsOf(fillRect) : []) cellOf(r, c)?.classList.add('wv-fill-target');
-    // The handle hangs off whatever the cursor's bottom-right corner is —
-    // the range's, or the resting cell's when there is no range yet, so
-    // filling one value down a column never needs a range first.
     const corner = rect ? cellOf(rect.r1, rect.c1)
       : document.activeElement?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
     if (corner && wrap.contains(corner)) {
@@ -7161,20 +5081,14 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   repaintRange = paintRange;
   const setRange = (a, f) => { rangeAnchor = a; rangeFocus = f; paintRange(); };
   const clearRange = () => setRange(null, null);
-  // The handle follows the resting cursor, so a fill needs no range first.
   wrap.addEventListener('focusin', (e) => { if (!rangeRect() && e.target.matches?.('td[tabindex="0"]')) paintRange(); });
 
-  /* What a cell holds, in both dialects: `v` is the TYPED value the engine
-     writes (a select's option id, a multi-select's whole set, a boolean) and
-     `d` is the label a spreadsheet reads. */
   const fieldNamed = (name) => db.fields.find((f) => f.name === name) ?? null;
   const typeOf = (name) => fieldNamed(name)?.type ?? null;
   const optionsOf = (name) => {
     const f = fieldNamed(name);
     return f?.optionsFull ?? f?.states ?? [];
   };
-  // A relation's display value is its summaries; the label is their names,
-  // so the TSV reads `Ann, Cy` and a paste elsewhere can match them (#224).
   const labelOf = (x) => (x && typeof x === 'object' ? x.name ?? '' : x);
   const valueAt = (r, c) => {
     const name = rangeCols()[c];
@@ -7183,14 +5097,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     return { type: typeOf(name), v: item.raw?.[name] ?? null, d: Array.isArray(d) ? d.map(labelOf) : labelOf(d) };
   };
 
-  /* One gesture, one plan, as few writes as the values allow — rows that get
-     an identical set share a `bulk` call, so a fill down twenty rows is ONE
-     write and one Undo. The toast names the columns that refused (a formula,
-     a rollup) and counts the cells that would not read.
-     A relation column links by name (Feature #224): its target table's rows
-     are fetched first — the same query the record picker runs — so the plan
-     can match labels to ids and stay pure. A fetch that fails leaves the
-     column to refuse by name, exactly as it did before. */
   const relationRows = async (names) => {
     const out = new Map();
     for (const name of new Set(names)) {
@@ -7200,7 +5106,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       try {
         const lists = await Promise.all(dbIds.map((id) => api('POST', `/tables/${id}/query`, { select: ['Name'] })));
         out.set(name, { rows: lists.flatMap((l) => l.items), many: !!f.many });
-      } catch { /* refused by name below */ }
+      } catch {}
     }
     return (name) => out.get(name) ?? null;
   };
@@ -7214,9 +5120,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       try { results.push(await api('POST', '/bulk', { ids: g.ids, op: 'set', values: g.values })); }
       catch (err) { results.push({ done: [], failed: g.ids.map((id) => ({ id, error: err.message })) }); }
     }
-    // How deep to step back: the rows that actually CHANGED. A row that
-    // already held the value pushed no undo entry, and undoing past it would
-    // walk into somebody else's edit (the engine reports this per call).
     const steps = results.reduce((n, r) => n + (r.changed?.length ?? 0), 0);
     const t = RG().toast({ verb, cells: plan.writes.length, refused: plan.refused, unparsed: plan.unparsed, unmatched: plan.unmatched, results });
     toast(t.msg, t.err, steps ? {
@@ -7226,34 +5129,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     await onSaved?.();
   };
 
-  /* ---------- the clipboard ----------
-     An internal copy carries typed values; TSV from a spreadsheet carries
-     strings and the target column's type reads them. The typed block rides
-     a marker in the text/html flavour, which is what survives the system
-     clipboard between two weave tabs; `lastCopiedBlock` is the same-page
-     shortcut for a browser that hands the html back stripped. */
-  /* ⌘C and ⌘V follow the selection, and take the cell when there is none
-     (Feature #221 — Kyle, 2026-09-12, "B+"). Text selected in the open
-     control is the browser's own copy and paste. A collapsed caret, a
-     control with no caret (a <select>, a checkbox), a picker's popover and
-     a resting cell all read as no selection, and the cell is what moves.
-     The pure rule is WeaveGridKeymap.clipboardTarget; this reads the DOM. */
   const openControl = () => {
     const at = document.activeElement;
     return at && at !== at.closest?.('td') && at.matches?.(OPEN_CONTROLS) ? at : null;
   };
   const clipboardTarget = () => {
     const at = openControl();
-    // selectionStart is null on a number or date input — no caret to read.
     const collapsed = !at ? true
       : at.isContentEditable ? !!getSelection()?.isCollapsed
         : at.selectionStart == null || at.selectionStart === at.selectionEnd;
     return KM().clipboardTarget({ mode: at ? 'edit' : 'rest', selectionCollapsed: collapsed });
   };
-  // Where a ⌘C/⌘V landed, resolved to this grid's cell — or null when the
-  // gesture is another surface's. The listeners sit on the document because
-  // a picker's popover (the search box, the option rows) is not inside the
-  // wrap, and the cell it was opened from is still the reader's cell.
   const cellOfEvent = (e) => {
     const td = cellOfNode(e.target);
     return td && wrap.contains(td) ? td : null;
@@ -7281,10 +5167,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ?? RG().parseTSV(plain);
     if (!block) return;
     e.preventDefault();
-    // The paste writes the record, so the open control is let go the way Esc
-    // lets it go — value put back, cursor resting on the cell — and a
-    // picker's popover closes: the redraw would otherwise commit a stale
-    // editor over the value just pasted.
     const td = cursorCell(), at = openControl();
     if (at && 'defaultValue' in at) at.value = at.defaultValue;
     document.activeElement?.closest?.('.chip-pop')?.remove();
@@ -7292,29 +5174,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     runRange('Pasted', rect, block);
   });
 
-  /* ---------- the pointer ----------
-     A drag across cells draws a range, and the corner handle fills one. Both
-     start on mousedown and neither may steal the plain click: Ledger's rule
-     is that a bare cell click raises THAT cell's editor, so a range only
-     begins once the pointer has reached a DIFFERENT cell, and the click that
-     ends such a drag is spent here rather than opening anything. */
   let dragFrom = null, dragged = false;
-  // The live control a press is about to open (Feature #221): a plain text
-  // cell keeps its <input> in the row, so the press lands ON it, activateCell
-  // never runs, and the browser places a caret. The click that follows
-  // selects the whole value instead — unless the press dragged a selection
-  // of its own, or the control was already open, where the caret is the
-  // reader's. The click, not the focus: a mouseup collapses whatever a
-  // focus handler selected.
   let opening = null;
   const cellUnder = (e) => e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
   wrap.addEventListener('mousedown', (e) => {
-    // A modifier or a non-primary button is the reader saying "not here" —
-    // the browser's own gesture (`nativeClick`, 023b777), never a range drag.
     if (nativeClick(e)) return;
     opening = e.target?.matches?.(OPEN_CONTROLS) && e.target !== document.activeElement && cellUnder(e) ? e.target : null;
     if (e.target?.closest?.('.wv-fill-handle')) {
-      // The handle drags the range (or the resting cell) down or across.
       fillRect = rangeOrCursor();
       dragged = true;
       e.preventDefault();
@@ -7333,24 +5199,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     } else if (dragFrom && (e.buttons & 1)) {
       const ref = refOfCell(td);
       if (ref.eid === dragFrom.eid && ref.field === dragFrom.field) return;
-      // The press landed in a text cell's live <input> and focused it. A
-      // drag is not an edit, so the cursor comes back out to the cell it
-      // started from — otherwise a range would be drawn around an open
-      // editor, which is two states at once.
       if (!dragged) wrap.querySelector(`tr[data-eid="${dragFrom.eid}"] > td[data-field="${CSS.escape(dragFrom.field)}"]`)?.focus();
       dragged = true;
       setRange(dragFrom, ref);
     }
   });
-  // On the window: a drag that ends outside the grid still has to end.
   const endDrag = () => {
     const fill = fillRect;
     dragFrom = null; fillRect = null;
     if (!fill) { paintRange(); return; }
     const source = rangeOrCursor();
     paintRange();
-    // The handle dragged nowhere fills nothing rather than rewriting the
-    // range with itself.
     if (!source || (fill.r1 === source.r1 && fill.c1 === source.c1)) return;
     runRange('Filled', fill, RG().block({ rect: source, fields: rangeCols(), valueAt }));
   };
@@ -7358,7 +5217,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!wrap.isConnected) return removeEventListener('mouseup', up);
     if (dragFrom || fillRect) endDrag();
   });
-  // The click that ends a drag is the drag's, not the cell editor's.
   wrap.addEventListener('click', (e) => {
     const opened = opening;
     opening = null;
@@ -7370,17 +5228,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
     if (opened && opened === e.target && opened === document.activeElement
       && opened.selectionStart != null && opened.selectionStart === opened.selectionEnd) {
-      try { opened.select(); } catch { /* not a text box */ }
+      try { opened.select(); } catch {}
     }
   }, true);
 
-  // A clipped cell opens a copy above itself on hover, in a layer of its own —
-  // the cell keeps its box, so no column ever moves (Kyle, 2026-08-24).
-  // It opens for a pointer that RESTS on the cell: crossing a row of
-  // clipped cells used to flash each one in turn (Issue #67). The delay is
-  // per grid, and a pointer that leaves before it elapses opens nothing.
-  // A press or focus anywhere in the grid takes it down, and a cell being
-  // edited opens none (Issue #346).
   let popTimer = 0;
   wrap.addEventListener('mouseover', (e) => {
     const td = e.target.closest('td.clipped');
@@ -7395,27 +5246,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('focusin', dropCellPop);
   main.append(wrap);
   settle();
-  // A web font that lands after the first paint changes every label's
-  // width, so the floors are measured again once the fonts are in.
   document.fonts?.ready?.then(() => { if (wrap.isConnected) settle(); });
-  // …and once the first window of rows is in: a date column measures a cell.
   requestAnimationFrame(() => { if (wrap.isConnected) settle(); });
-  // The first window is painted once the wrap is in the document: before
-  // that there is no geometry to measure, and a draw that painted nothing
-  // left the page 800px tall for the frame in which keepScroll put the
-  // reader's scroll back — clamped to 0 (Issue #271).
   rewindow();
 }
 
 
-/* System columns (Feature #65): read-only, engine-maintained, shown per
-   table via db.systemFields. Values ride the entity payload, not fields. */
 const SYSTEM_COLS = {
   'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
   'Modified At': (e) => (e.updatedAt ?? '').slice(0, 16).replace('T', ' '),
   'Created By': (e) => actorChipEl(e.createdBy),
   'Modified By': (e) => actorChipEl(e.modifiedBy),
-  // The count links the row to its history; the panel is the full treatment.
   'Activity': (e) => `${(e.activity ?? []).length}⚡`,
 };
 
@@ -7528,23 +5369,8 @@ function pulseCells(eid, fields) {
 
 const colField = (db, name) => db.fields.find((f) => f.name === name);
 
-/* ---------- column widths (Feature #42) ----------
-   Mirrors the engine's floor: a drag that writes anything narrower comes back
-   as a 400 and the column snaps to a width nobody asked for. */
 const MIN_COLUMN_WIDTH = 60;
 
-/* Drag the edge to size a column, double-click it to hand the column back to
-   the browser. The width is per-field schema, so it is the grid's width for
-   everyone — one write on release, never one per pointermove. */
-/* The widest content in the column, measured off the grid: double-clicking
-   the grip fits the column to it so nothing is cut off (Kyle, 2026-08-23).
-   scrollWidth cannot answer this (Kyle, 2026-08-24 — "does not snap to
-   properly"): a cell clips with `max-width` + ellipsis, so it never reports
-   overflow, and the <input> a text cell holds is a fixed default box whose
-   width says nothing about its value. Every fit came back as the width the
-   column already had, plus the padding constant. So the column's content is
-   cloned into an unclipped measurer — inputs swapped for spans carrying their
-   text and metrics — and the widest clone is the fit. */
 function cellFitProbe(cell) {
   const cs = getComputedStyle(cell);
   const probe = el('span', { class: 'wv-measure-cell' });
@@ -7552,7 +5378,6 @@ function cellFitProbe(cell) {
     probe.style[prop] = cs[prop];
   }
   for (const node of cell.childNodes) probe.append(node.cloneNode(true));
-  // An <input> paints its value, not its box, so measure the value.
   const live = cell.querySelectorAll('input, textarea');
   probe.querySelectorAll('input, textarea').forEach((copy, i) => {
     const src = live[i] ?? copy;
@@ -7574,12 +5399,8 @@ function fitColumnWidth(th) {
   const measure = el('div', { class: 'wv-measure' });
   document.body.append(measure);
   const probes = [];
-  // The body's values only: the header is the floor's business, measured
-  // off the rendered label (Feature #233), and the fit never goes under it.
   for (const row of table.querySelectorAll(':scope > tbody > tr')) {
     const cell = row.children[idx];
-    // A colspan cell (the "+ New" row, an expanded document) is the whole
-    // grid, not this column — measuring it fits the column to the table.
     if (!cell || cell.colSpan > 1) continue;
     const probe = cellFitProbe(cell);
     measure.append(probe);
@@ -7596,26 +5417,17 @@ function fitColumnWidth(th) {
   return Math.ceil(widest);
 }
 
-/* Drop any live text selection (Issue #417): a header drag, a resize and a
-   fit are control gestures, and a highlight left across the header labels
-   reads as broken. */
-const clearSelection = () => { try { getSelection()?.removeAllRanges(); } catch { /* no selection API */ } };
+const clearSelection = () => { try { getSelection()?.removeAllRanges(); } catch {} };
 
-/* The grip on a header's right edge. `grid` is the layout of the grid it
-   sits in (renderTable): the width painted now, the label floor, and the
-   one paint function header and cells share. A drag moves only this column
-   — the ones to its right slide by the delta, their widths untouched — and
-   a small readout names the field, its width and the change. */
 function columnResizeGrip(db, f, grid) {
   const CR = globalThis.WeaveColumnResize;
   const grip = el('span', { class: 'col-resize', title: 'Drag to resize — double-click to fit the content' });
-  grip.addEventListener('click', (e) => e.stopPropagation());        // resizing is not opening the editor
+  grip.addEventListener('click', (e) => e.stopPropagation());
   grip.addEventListener('dblclick', (e) => {
     e.stopPropagation();
-    clearSelection(); // a double-click selects the word under it (Issue #417)
+    clearSelection();
     if (grid.blocked()) return;
     const th = grip.closest('th');
-    // The longest value, between the label floor and the type's cap.
     grid.commit(f.name, CR.fit({ content: fitColumnWidth(th), floor: grid.floor(f.name), max: CR.maxWidth(f) }));
   });
   grip.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -7624,19 +5436,13 @@ function columnResizeGrip(db, f, grid) {
     e.preventDefault();
     if (e.button !== 0 || grid.blocked()) return;
     const th = grip.closest('th');
-    try { grip.setPointerCapture(e.pointerId); } catch { /* older engines */ }
-    // A resize is a control gesture: whatever was selected goes, and nothing
-    // selects while it runs (Issue #417).
+    try { grip.setPointerCapture(e.pointerId); } catch {}
     clearSelection();
     document.body.classList.add('wv-col-resizing');
-    // The gesture's own click must not open the field dialog (Issue #98):
-    // the header wears the mark until the next press anywhere.
     th.dataset.resized = '1';
     document.addEventListener('pointerdown', () => { delete th.dataset.resized; }, { capture: true, once: true });
     const startX = e.clientX;
     const base = grid.width(f.name);
-    // The header can never hide its own label (Issue #100, Kyle's rule 1):
-    // the floor is the rendered label plus the padding the ⋮ and grip use.
     const floor = grid.floor(f.name);
     let width = base;
     const readout = el('div', { class: 'wv-col-readout', role: 'status' });
@@ -7651,8 +5457,6 @@ function columnResizeGrip(db, f, grid) {
     show();
     const move = (ev) => {
       width = CR.width({ base, startX, x: ev.clientX, floor });
-      // Painted the way it will be stored — header AND cells through one
-      // rule, so release repaints nothing (Issue #160).
       grid.paint(f.name, width);
       show();
     };
@@ -7677,61 +5481,12 @@ function columnResizeGrip(db, f, grid) {
   return grip;
 }
 
-/* ---------- the column header as a control (Feature #41, option A) ----------
-   Until this, the header only sorted and there was NO edit path for a field:
-   changing a select's options meant deleting the column and building it again,
-   which takes the column's data with it. The ⋮ puts the field's whole life —
-   edit, move, insert, delete — on the header it belongs to, reusing the chip
-   popover so it matches every other picker in the grid. */
-
-/* Redesigned 2026-08-27 (Kyle: "match weave design language"). What the old
-   panel got wrong, all of it visible in one screenshot:
-
-   1. The icons were CHARACTERS typed into the label — '✎ Edit field…',
-      '↑ Sort ascending'. A font gives each glyph its own advance width and
-      its own optical size, so the pencil, the plus and the arrows never
-      shared a box and the labels never shared a left edge. That is the exact
-      defect Issue #87 is about, and this was the surface it had not reached:
-      every mark here now draws through iconEl() at --wv-icon-md, on the same
-      0 0 24 24 canvas as the rest of the app.
-   2. The delete row was a Tabler `.dropdown-item` sitting among weave
-      `.chip-pop-row`s — different padding, different radius, no icon column,
-      so it hung off the left edge of the labels above it. Worse than the
-      look: showPopover walks `.chip-pop-row` for ↑↓, so the one row that
-      needed the most deliberate aim was the one the keyboard could not reach.
-      Every row is the same row now, destructive included.
-   3. Sort state was a '✓ ' PREFIX pasted onto the label, which shunted the
-      whole row right when it was on. The popover already has a cue for "this
-      is the current value" — the trailing .chip-pop-check — and using it also
-      opens the menu focused on the active sort, free.
-   4. Nothing said which column the panel belonged to. The ⋮ paints at its
-      column's right edge, millimetres from the NEXT column's label; the
-      hovered-header tint was the only cue (live check, 2026-08-16). The panel
-      now opens by naming the field and its type.
-
-   The hold-to-delete gesture and its sweep are kept, and made discoverable:
-   the row carries a quiet HOLD chip at rest, so the gesture is advertised
-   before the press rather than discovered by it. */
-
-/* Picked by eye off a contact sheet of every candidate in both vocabularies,
-   not by name. `iconly:arrow-up` is a solid teardrop that reads as a map pin
-   at 16px — the drawn '↑' and '↓' marks are the actual arrows, and being
-   stroked at 2.6 they sit at the density Issue #87 matched the filled set to.
-   Iconly's only plus is a filled rounded square, which came out the darkest
-   thing on the panel beside a hairline pencil, so the set gained a bare '+'
-   at 2.6 — the same move Issue #87 made for the five marks it drew.
-   edit and delete stay on iconly because that is what the entity command bar
-   already draws for the same two verbs (CMD_ICON), and a menu that renames a
-   field must not label it differently from the bar that deletes it. */
 const FIELD_MENU_ICONS = {
   edit: 'lucide:pencil', insert: '+',
   asc: '↑', desc: '↓', clear: '✕',
   delete: 'lucide:trash-2',
 };
 
-/* One row shape for the whole menu: icon box, label, and the check slot the
-   popover already uses. `current` both tints the row and drops the check in,
-   which is what showPopover reads to open focus on it. */
 function fieldMenuRow(icon, label, run, { current = false } = {}) {
   const row = el('button', {
     class: `chip-pop-row wv-menu-row${current ? ' is-current' : ''}`, type: 'button',
@@ -7741,8 +5496,6 @@ function fieldMenuRow(icon, label, run, { current = false } = {}) {
   return row;
 }
 
-/* The field a lookup reads on the far table, found through the relation it
-   rides (Issue #643), or null for anything else. */
 function lookupTargetOf(db, f) {
   if (f?.type !== 'lookup' || !f.via || !f.targetField) return null;
   const rel = db?.fields?.find((x) => x.type === 'relation' && x.name === f.via);
@@ -7750,9 +5503,6 @@ function lookupTargetOf(db, f) {
   return far?.fields.find((x) => x.name === f.targetField) ?? null;
 }
 
-/* The two sort labels a column's menu offers (Issues #254, #318). The words
-   are fieldDialogCore.sortLabels'; this finds the type a lookup or a rollup
-   reads, which only the schema around the field knows. */
 function sortLabelsFor(db, f) {
   let targetType = null;
   if ((f.type === 'lookup' || f.type === 'rollup') && f.targetField) {
@@ -7763,8 +5513,6 @@ function sortLabelsFor(db, f) {
   return fieldDialogCore.sortLabels(f, { targetType });
 }
 
-/* `f.system` is a system column (Issue #254): the menu names it and sorts
-   it, and has nothing to edit, insert beside or delete. */
 function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
   const btn = el('button', {
     class: 'field-menu', type: 'button',
@@ -7772,11 +5520,8 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
     'aria-label': f.system ? `Sort by ${f.name}` : `Configure field ${f.name}`,
   }, iconEl('lucide:ellipsis-vertical', 'wv-icon'));
   btn.addEventListener('click', (e) => {
-    e.stopPropagation();   // configuring a column must not also sort it
+    e.stopPropagation();
     const row = fieldMenuRow;
-    // No move rows: the header itself is the reorder control, and a dragged
-    // column lands where the gap opened. Two ways to do one thing is one too
-    // many when the direct one is the one people reach for.
     const rows = [
       el('div', { class: 'wv-menu-head' },
         el('span', { class: 'wv-menu-title', title: f.name }, f.name),
@@ -7787,9 +5532,6 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
         row(FIELD_MENU_ICONS.insert, 'Insert field…', () => addFieldDialog(db)));
     }
     if (onSort) {
-      /* The direction is still asc/desc underneath; the words say what that
-         means for this column: oldest first, smallest first, A to Z, the
-         option order (Kyle, 2026-09-09 and 2026-09-18). */
       const words = sortLabelsFor(db, f);
       if (!f.system) rows.push(el('div', { class: 'wv-menu-sep' }));
       rows.push(row(FIELD_MENU_ICONS.asc, words.asc, () => onSort(1), { current: sorted > 0 }),
@@ -7817,22 +5559,6 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
   return btn;
 }
 
-/* A field definition can name the value a new row starts with. The engine's
-   DEFAULTABLE_TYPES is the authority — it refuses the rest — so the dialogs
-   offer the input for exactly those types. A workflow is absent because its
-   default is one of its states. */
-/* Which types take a default, and how a string becomes one, live in
-   field-dialog-core.js (DEFAULTABLE / definitionFromState) — tested there. */
-
-/* ---------- dates: smart input + calendar popover (2026-08-23) ----------
-   One control everywhere a date is edited (cells, entity rows, the tray's
-   default): a text input that reads any format a person types — '9/15/26',
-   '15 sep 2026', 'next friday' (nl-date.js) — beside a calendar button that
-   opens a small popover laid out like the native picker Kyle liked:
-   month ▾ / year ▾ (each a grid), ↑ ↓ months, Sunday-first days, a time row
-   when the field carries time, Clear / Today. */
-/* The width of a string in an element's font, off a canvas: what an input
-   cannot say about its own value. 0 while the element is not on the page. */
 let measureCtx = null;
 function textWidth(str, node) {
   if (!node.isConnected) return 0;
@@ -7844,9 +5570,6 @@ function textWidth(str, node) {
 }
 function dateControl({ value = '', time = false, format = 'iso', costume = null, placeholder = 'type a date…', onChange, compact = true }) {
   const dc = weaveDateCore;
-  /* The field's costume (grain · format · time · clock · zone · pad, 2026-09-02)
-     decides what the box parses, what the popover offers and what is stored.
-     Callers that predate it pass { time, format } and get the full grain. */
   const c = costume ? { ...costume } : { time, format };
   format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
   time = !!c.time;
@@ -7860,13 +5583,6 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
     value: show(current), placeholder: timeOnly ? '9:15, 5:40 pm…' : placeholder,
     onclick: (e) => e.stopPropagation(),
   });
-  /* The box is as wide as the date it shows (Issue #159): a fixed 120/200px
-     box cut an ordinal date — "Wednesday 30th September 2026" — off inside
-     its own control. The text is measured in the box's own font once it is
-     on the page (a detached input has no font to measure with), and again
-     whenever the value changes; the stylesheet width stays as the floor.
-     The fit is a width, not a min-width (Issue #372): a narrow column (the
-     dock at 360 px) may still shrink the box instead of scrolling sideways. */
   const fit = () => {
     const w = textWidth(text.value || text.placeholder, text);
     if (w) text.style.setProperty('--date-fit', `${Math.ceil(w) + 22}px`);
@@ -7874,7 +5590,6 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
   requestAnimationFrame(fit);
   const set = (iso) => { current = iso ?? ''; text.value = show(current); fit(); onChange(current || null); };
   const { store, local: toLocal } = dateStoreFns(c);
-  // What the popover and the typed-time fallback see: the local wall clock.
   const local = () => toLocal(current);
   text.addEventListener('change', () => {
     const typed = text.value.trim();
@@ -7901,10 +5616,6 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
   return wrap;
 }
 
-/* Both date controls share the two conversions between the local wall
-   clock a person reads and the stored form. store(): an instant folds to
-   UTC, a partial grain is cut to its parts, the full grain stores as typed.
-   local(): the stored form back to the wall clock the popover shows. */
 function dateStoreFns(c) {
   const dc = weaveDateCore;
   return {
@@ -7918,14 +5629,6 @@ function dateStoreFns(c) {
   };
 }
 
-/* The range control (Issue #197): ONE box that reads the whole span in the
-   field's costume — '2026-08-01 – 2026-09-15', 'Aug 1 – Sep 15, 2026' — and
-   ONE calendar button opening the range dialog (datePopover in range mode:
-   first click start, second click end). Typing works too: 'start – end',
-   'start to end', 'start - end', each end read the way a single date is. It
-   is the same control in the grid cell, on the entity page and in the
-   tray's default, so Kyle's "start and end in the same date dialog" holds
-   everywhere a range is edited. Half a range never leaves this control. */
 function rangeControl({ value = null, costume, compact = true, placeholder = 'start – end', onChange }) {
   const dc = weaveDateCore;
   const c = { ...costume };
@@ -7942,7 +5645,6 @@ function rangeControl({ value = null, costume, compact = true, placeholder = 'st
   text.addEventListener('change', () => {
     const typed = text.value.trim();
     if (!typed) return set(null);
-    // The separator: an en/em dash, a spaced hyphen, or the word 'to'.
     const ends = typed.split(/\s*[–—]\s*|\s+-\s+|\s+to\s+/i).filter(Boolean);
     try {
       if (ends.length !== 2) throw new Error('two ends');
@@ -7970,15 +5672,10 @@ function rangeControl({ value = null, costume, compact = true, placeholder = 'st
   wrap.setValue = (r) => { current = r?.start && r?.end ? { start: r.start, end: r.end } : null; text.value = show(current); };
   return wrap;
 }
-// A range runs forwards: whichever end was picked second, the earlier one starts it.
 function orderRange(r) {
   return String(r.start) > String(r.end) ? { start: r.end, end: r.start } : r;
 }
 
-/* Typed text → a local ISO stamp the store() step cuts to the grain. Throws
-   when nothing readable is there. The full-date phrases ('next friday',
-   '15 sep') go through nl-date.js; the shapes a partial grain invites —
-   '08/2026', '2026', 'the 15th', 'august' — are read here first. */
 function readTypedDate(typed, c, current) {
   const dc = weaveDateCore;
   const grain = dc.grainOf(c);
@@ -8008,7 +5705,6 @@ function readTypedDate(typed, c, current) {
   }
   if (!day) throw new Error('unreadable');
   if (!c.time) return day;
-  // A typed day keeps the existing time of day; a typed datetime brings its own.
   const keep = dc.partsOf(current)?.t;
   const t = clock ?? keep;
   return t ? `${day}T${t}` : day;
@@ -8021,13 +5717,6 @@ function calendarGlyph() {
   return svg;
 }
 
-/* The picker opens on the view the grain asks for: a calendar for a full
-   date, the month grid for year·month, the year grid for a year, a 1–31
-   grid for a day of the month, a clock alone for a time of day. Every pick
-   hands back a LOCAL wall-clock stamp; the control cuts it to the grain.
-   `range: true` is the same dialog holding two ends (Issue #197): the first
-   pick starts a span, the second closes it, the days between are lit, and
-   onPick receives { start, end } once — never half a range. */
 function datePopover({ anchor, value, time, format, costume = null, range = false, onPick }) {
   const dc = weaveDateCore;
   const c = costume ?? { time, format };
@@ -8039,10 +5728,6 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   document.querySelector('.date-pop')?.remove();
   const todayIso = dc.todayIso();
   const [ty, tm, td] = todayIso.split('-').map(Number);
-  /* Range mode (Issue #197): the same dialog holds TWO ends. `ends` is what
-     has been chosen so far — a start alone is a range half-made — and
-     `picking` names the end the next click sets. A single date is the same
-     machine with one end. */
   const startVal = range ? (value?.start ?? '') : (value || '');
   const p = dc.partsOf(startVal) ?? {};
   let y = p.y ?? ty, m = p.m ?? tm;
@@ -8060,8 +5745,6 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   const pop = el('div', { class: 'date-pop' + (range ? ' range' : ''), role: 'dialog', onclick: (e) => e.stopPropagation() });
   const withClock = (day, which = 'start') => (time ? `${day}T${clocks[which] || '00:00'}` : day);
   const stamp = (which) => (view === 'clock' ? clocks[which] : (ends[which] ? withClock(ends[which], which) : ''));
-  /* One commit for both modes: a single date hands back its stamp (or null);
-     a range hands back { start, end } only once both ends are there. */
   const commit = (close) => {
     if (range) {
       const both = view === 'clock' ? clocks.start && clocks.end : ends.start && ends.end;
@@ -8073,10 +5756,6 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
     else draw();
   };
   const clear = () => { ends.start = ''; ends.end = ''; clocks.start = ''; clocks.end = ''; picking = 'start'; onPick(null); pop.remove(); };
-  /* A pick lands on the end being chosen. Single: it is the value. Range:
-     the first click starts a new span and clears the old end; the second
-     closes it — swapped if it came before the start — and, without a time
-     of day to set, that is done. */
   const pick = (dayIso) => {
     if (!range) { ends.start = dayIso; return commit(!time); }
     if (picking === 'start') { ends.start = dayIso; ends.end = ''; picking = 'end'; return draw(); }
@@ -8099,12 +5778,12 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
     });
     const preview = el('div', { class: 'date-smart-preview' });
     const readSmart = () => {
-      try { return readTypedDate(smart.value, c, cur); } catch { return null; } // half-typed: no preview yet
+      try { return readTypedDate(smart.value, c, cur); } catch { return null; }
     };
     smart.addEventListener('input', () => {
       const local = readSmart();
       let shown = '…';
-      if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; /* not a date yet */ } }
+      if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; } }
       preview.textContent = smart.value.trim() ? shown : '';
     });
     smart.addEventListener('keydown', (e) => {
@@ -8116,12 +5795,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
       const day = local.split('T')[0];
       const t = local.split('T')[1];
       if (t) clocks[which] = t;
-      // Enter is "done": commit and close, time of day kept (Kyle, 2026-08-23).
       if (!range) { ends.start = day; return commit(true); }
-      /* A typed end follows the click rule: a start begins a new span (the
-         old end goes, focus moves to the end input), an end closes it —
-         swapped if it came first — and Enter on the end is done. The
-         calendar follows whichever end was typed. */
       [y, m] = day.split('-').map(Number);
       if (which === 'start') {
         ends.start = day; ends.end = ''; picking = 'end';
@@ -8177,7 +5851,6 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
       if (time) body.append(timeRow());
       body.append(foot(() => { [y, m] = [ty, tm]; pick(todayIso); }));
     } else if (view === 'daylist') {
-      // A day of the month, of no particular month: 1 to 31.
       const grid = el('div', { class: 'date-grid' });
       for (let d = 1; d <= 31; d++) {
         const iso = `${ty}-${pad(tm)}-${pad(d)}`;
@@ -8247,12 +5920,6 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
   pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
-  /* Capture phase, so this runs before the calendar button's own handler.
-     It counted the button as outside, the loop Issue #320 took out of
-     showPopover(): a second click closed the dialog and that same click's
-     handler opened a fresh one, so it never closed. A click on the button
-     now closes it and stops there. A dialog already gone (Escape, a pick)
-     only unhooks, and the click carries on to open a fresh one. */
   const close = (ev) => {
     if (pop.contains(ev.target)) return;
     removeEventListener('click', close, true);
@@ -8266,28 +5933,12 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   return pop;
 }
 
-/* ---------- unified field dialog (design review 2026-08-22, A+E) ----------
-   One dialog for add and edit: a type grid with per-type config editors
-   (direction A) over one state object in field-dialog-core.js, which
-   builds the canonical {type, config} definition the server stores. Any
-   field can be a formula: ƒ is a toggle, not a grid tile. The
-   section/grid/list-editor pieces are the house dialog framework. */
-
 function dsection(label, ...kids) {
   return el('div', { class: 'dlg-sec full' }, el('div', { class: 'dlg-lbl' }, label), ...kids);
 }
 
-/* The chip/card config pane (Kyle, 2026-09-04): what rides on the view.
-   Two switches, one size control, and the field list — a checkbox per
-   glanceable column in column order, or "the first few" when nobody
-   chooses, which is the default and the rule the doc chips already follow. */
 function viewSection(db, dlg, changed, redraw) {
   const v = dlg.view ?? (dlg.view = fieldDialogCore.blankView());
-  /* The preview (Kyle, 2026-09-04): the chip or card as it will look, drawn
-     for one real row under the config as it stands in the form — fetched
-     through the same renderView the page uses, so the two cannot differ.
-     The row is the one the reader came from when the dialog opened on an
-     entity page, else the table's first. */
   const previewBox = el('div', { class: 'wv-view-preview' }, el('span', { class: 'wv-muted' }, '…'));
   let sampleId = state.route?.page === 'entity' && state.route.dbId === db.id ? state.route.id : null;
   let timer = null;
@@ -8339,11 +5990,6 @@ function viewSection(db, dlg, changed, redraw) {
 function segCtl(options, value, onPick) {
   const wrap = el('div', { class: 'seg-ctl', role: 'group' });
   const norm = options.map((o) => (typeof o === 'string' ? { id: o, label: o } : o));
-  /* The buttons are built once and a pick only moves the `on` mark. Rebuilding
-     the strip took the button the reader had just clicked out of the document,
-     focus fell to <body>, and the browser scrolled to the top of the page to
-     show it — which is how a density flip half way down a table landed the
-     reader back at row 0 (Issue #342). */
   const btns = norm.map((o) => el('button', {
     type: 'button', class: 'seg-opt', title: o.title ?? null,
     onclick: () => { mark(o.id); onPick(o.id); },
@@ -8351,13 +5997,10 @@ function segCtl(options, value, onPick) {
   const mark = (current) => btns.forEach((b, i) => b.classList.toggle('on', norm[i].id === current));
   mark(value);
   wrap.append(...btns);
-  wrap.mark = mark; // a value set elsewhere (a typed box beside it) moves the mark too
+  wrap.mark = mark;
   return wrap;
 }
 
-/* The ten-hue ramp and the glyph vocabulary as popovers rather than cycles.
-   Seven clicks to reach the seventh colour was tolerable when there were
-   seven; the ramp is ten and the glyphs are fourteen. */
 function huePopover(anchor, current, onPick) {
   const grid = el('div', { class: 'swatch-grid' },
     ...chipCore.HUES.map((h) => el('button', {
@@ -8368,8 +6011,6 @@ function huePopover(anchor, current, onPick) {
   showPopover(anchor, [grid, el('p', { class: 'pick-note' },
     'Stored as a name. A new option takes the next hue in ramp order.')]);
 }
-/* Was a fourteen-button strip of marks while a table next door searched 101
-   flat icons. One catalogue, one control, both dialects (Issue #87). */
 function glyphPopover(anchor, current, onPick) {
   searchPicker({
     anchor, title: 'Icon', placeholder: 'Search by name or category…',
@@ -8378,8 +6019,6 @@ function glyphPopover(anchor, current, onPick) {
   });
 }
 
-/* The chip a row is about to produce, shown beside the controls that produce
-   it — the one thing the tray could never tell you before. */
 function optionPreview(o) {
   return el('span', { class: 'opt-preview' },
     el('span', { class: `k k-select hue-${o.hue ?? 'slate'}` },
@@ -8394,19 +6033,10 @@ function statePreview(st) {
       st.name || 'State'));
 }
 
-/* What one row is called (Feature #40) — Name-field config. The face shows
-   the current term as the chip it will become, and opens the grouped picker
-   (the icon picker's dialect, in words): click a term, or type one nobody
-   listed and take it as a custom term. Picking Record is picking the default.
-   The plural derives from the singular, greyed and read-only; the preview shows the three
-   surfaces that speak it. */
 function termSection(state, onChange) {
   const T = WeaveTerm;
   const face = el('button', { type: 'button', class: 'picker-face term-face', 'aria-haspopup': 'listbox' });
   const reset = el('button', { type: 'button', class: 'term-reset', title: 'Back to Record' }, 'reset');
-  // The plural is derived, shown greyed and read-only (Kyle, 2026-09-03):
-  // one word to choose, not two to keep in step. The engine still accepts
-  // an explicit plural over the API for the rare irregular.
   const plur = el('input', { class: 'form-control term-plural', readonly: '', tabindex: '-1', title: 'derived from the singular', value: T.resolve({ term: state.term }).plural });
   const preview = el('div', { class: 'modal-note term-preview' });
   const draw = () => {
@@ -8440,8 +6070,6 @@ function termSection(state, onChange) {
     preview);
 }
 
-/* Rows of {name, color} with a cycling color swatch — replaces the
-   comma-separated string that couldn't hold a color and choked on commas. */
 function optionListEditor(state, onChange) {
   const wrap = el('div', { class: 'opt-list' });
   const draw = () => {
@@ -8449,8 +6077,6 @@ function optionListEditor(state, onChange) {
       ...state.options.map((o, i) => {
         const hue = o.hue ?? chipCore.hueFromHex(o.color);
         return el('div', { class: 'opt-row' },
-          // The same slot a table or a space wears (Issue #419): a ghost ring
-          // when unset, the drawn icon when set — never a dash, never the name.
           iconButton(o.icon || null, (id) => { o.icon = id ?? ''; draw(); onChange(); }),
           el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; onChange(); } }),
           (() => {
@@ -8465,8 +6091,6 @@ function optionListEditor(state, onChange) {
       }),
       el('button', {
         type: 'button', class: 'opt-add',
-        // A new option takes the next hue in ramp order, so a fresh set is
-        // legible before anyone has chosen anything.
         onclick: () => {
           const hue = chipCore.hueForIndex(state.options.length);
           state.options.push({ name: '', hue, icon: '', color: chipCore.HUE_HEX[hue] });
@@ -8478,13 +6102,6 @@ function optionListEditor(state, onChange) {
   return wrap;
 }
 
-/* The Default of a select, multi-select or workflow (Issue #422, Kyle
-   2026-09-26: "Default config should be a drop down selection of available
-   options"). A picker face over the field's own options or states, read
-   fresh on every open and redrawn on every edit to the list above it, so a
-   rename or a removal shows at once. "No default" is the first row; a
-   multi-select stages several. The pick is a flag on the entry itself
-   (fieldDialogCore.setChoiceDefault), which is what keeps it live. */
 function choiceDefaultControl(state, t) {
   const fdc = fieldDialogCore;
   const multi = t === 'multiselect';
@@ -8525,9 +6142,6 @@ function choiceDefaultControl(state, t) {
   return face;
 }
 
-/* States: drag ⠿ to reorder (the list's order is the selector's order; the
-   Default below the list picks a start state, or none — Issue #422), an icon
-   the chip wears, the name, the category through the picker dialect. */
 function stateListEditor(state, onChange) {
   const fdc = fieldDialogCore;
   const wrap = el('div', { class: 'opt-list' });
@@ -8557,8 +6171,6 @@ function stateListEditor(state, onChange) {
           cat.input.addEventListener('change', () => { s.category = cat.input.value; draw(); onChange(); });
           return cat;
         })(),
-        // A state's colour belongs to its category — status has to mean the
-        // same thing in every table — so the swatch shows it and refuses.
         (() => {
           const cat = chipCore.categoryOrDefault(s.category ?? 'in-progress');
           const hue = chipCore.categoryHue(cat);
@@ -8569,7 +6181,6 @@ function stateListEditor(state, onChange) {
         })(),
         statePreview(s),
         el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'));
-        // Inputs inside a draggable row must keep their own mouse events.
         for (const ctl of row.querySelectorAll('input,button,.picker-wrap')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());
         return row;
       }),
@@ -8582,21 +6193,12 @@ function stateListEditor(state, onChange) {
   return wrap;
 }
 
-/* The formula builder: expression plus insertable chips for this table's
-   fields and the engine's functions — the two vocabularies a formula has. */
 function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () => selfName ?? '', onType = null, onTail = null } = {}) {
   const ta = el('textarea', {
     class: 'fx-expr', rows: 3, spellcheck: 'false',
     placeholder: 'e.g. if(Estimate > 5, "big", "small")',
   });
   ta.value = state.expression ?? '';
-  /* Live verdict under the expression: the same check the save runs, so
-     nothing is a surprise at submit. Valid + a row → a real preview value
-     with its type; invalid → the parser's message, in place, while typing.
-     Direction B (2026-09-07): the check scans the table behind the preview
-     (up to 200 rows) for the null and error counts, and the row cycler
-     steps the preview through the rows — one row proves the formula
-     parses, not that it is right. */
   const status = el('div', { class: 'fx-status' });
   const scanNote = el('span', { class: 'fx-scan' });
   const pickLabel = el('span', { class: 'fx-rowpick-lbl' });
@@ -8638,11 +6240,6 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     }
   };
   const step = (d) => { if (rows.length < 2) return; idx = (idx + d + rows.length) % rows.length; drawPick(); runCheck({ scan: false }); };
-  /* Autocomplete (direction D, 2026-09-07): a popover at the caret — `[`
-     offers fields, two letters offer functions — drawn from the same lists
-     the chips use (fieldDialogCore.formulaSuggest). Up/down move, Enter
-     picks, Escape closes the popover and nothing else. The caret's box
-     comes from a mirror div wearing the textarea's metrics, no editor. */
   const ac = el('div', { class: 'fx-ac', hidden: '' });
   const mirror = el('div', { class: 'fx-ac-mirror', 'aria-hidden': 'true' });
   let sugg = null, sel = 0;
@@ -8671,7 +6268,6 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     sel = Math.min(sel, sugg.items.length - 1);
     ac.replaceChildren(...sugg.items.map((it, i) => el('div', {
       class: 'fx-ac-item' + (i === sel ? ' sel' : ''), role: 'option',
-      // mousedown, not click: the textarea must keep focus and its caret.
       onmousedown: (e) => { e.preventDefault(); sel = i; applyAc(); },
     }, el('span', { class: 'k' }, it.label), el('span', { class: 't' }, it.detail))));
     const box = caretBox();
@@ -8688,12 +6284,8 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     else if (e.key === 'Enter' || e.key === 'Tab') { applyAc(); e.preventDefault(); }
     else if (e.key === 'Escape') { hideAc(); e.preventDefault(); e.stopPropagation(); }
   });
-  // The rows the cycler walks: the same first 200 the scan reads.
   api('GET', `/tables/${db.id}/entities?limit=200`).then((r) => { rows = (r.items ?? []).map((e) => ({ id: e.id, name: e.name })); drawPick(); }).catch(() => {});
   const queueCheck = () => { clearTimeout(timer); timer = setTimeout(runCheck, 250); };
-  /* The agent panel (direction C, 2026-09-07): the CLI lines and MCP
-     sequence for what is being built, closed by default, live with the
-     typing — the dialog prints its own API where the human is standing. */
   const agentPre = el('pre', {});
   const agent = el('div', { class: 'fx-agent' }, el('details', {}, el('summary', {}, 'As an agent would do it'), agentPre));
   const drawAgent = () => {
@@ -8714,10 +6306,6 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     queueCheck();
     drawAgent();
   };
-  /* The signature card (direction A, 2026-09-07): one element under the
-     chips, filled from whichever chip is hovered, focused or tapped — the
-     signature, one sentence of doc, an example. A title attribute was
-     invisible on touch and to an agent reading the DOM; this is in the DOM. */
   const card = el('div', { class: 'fx-sigcard', hidden: '' },
     el('div', { class: 'sig' }), el('div', { class: 'doc' }), el('div', { class: 'eg' }));
   const showCard = ({ sig, doc, eg }) => {
@@ -8735,9 +6323,6 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     btn.addEventListener('blur', hideCard);
     return btn;
   };
-  // The field being edited never offers itself — a formula that reads
-  // itself never converges, and the engine rejects it anyway. A field a
-  // formula cannot read stays listed, greyed, with the reason.
   const fieldChips = fieldDialogCore.formulaFieldChoices(db.fields, selfName)
     .map((x) => teach(el('button', {
       type: 'button', class: 'fx-chip' + (x.excluded ? ' excluded' : ''),
@@ -8745,8 +6330,6 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
       'aria-label': x.excluded ? `${x.name}: ${x.excluded}` : undefined,
       onclick: () => { if (!x.excluded) insert(x.token); },
     }, x.name), { sig: `${x.token} · ${x.type}`, doc: x.excluded ?? `The ${x.type} value of this row's ${x.name}.`, eg: x.excluded ? null : x.token }));
-  // Function chips land the caret between the parens, not after a dangling
-  // '(' — one row per grammar group.
   const fnRows = fieldDialogCore.formulaFunctionGroups().map(({ group, fns }) =>
     el('div', { class: 'fx-chip-row fn-group' }, el('span', { class: 'fx-chip-lbl' }, group),
       ...fns.map((fn) => teach(el('button', { type: 'button', class: 'fx-chip fn', onclick: () => insert(`${fn.name}()`, 1) }, `${fn.name}()`),
@@ -8754,14 +6337,6 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
   const written = !!(state.expression ?? '').trim();
   if (written) runCheck();
   drawAgent();
-  /* Issue #389: the result line is followed by what the result looks
-     like — Display, Style, Color, Sample, drawn by the tray between the
-     Script section and this tail — and the sixty field and function chips
-     fold behind "Fields and functions", open while the script is empty and
-     closed once a formula exists, so the setting that decides the column's
-     look is on screen when the tray opens. Typing still offers both
-     through the autocomplete. The tail (the reference and the agent
-     panel) is handed to the tray through onTail, to sit under the look. */
   const reference = el('details', { class: 'fx-ref', ...(written ? {} : { open: '' }) },
     el('summary', {}, 'Fields and functions', el('span', { class: 'fx-ref-hint' }, 'or type [ for a field, two letters for a function')),
     el('div', { class: 'fx-chip-rows' },
@@ -8775,14 +6350,6 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     rowpick);
 }
 
-/* The number costume controls (Kyle, 2026-08-23): Format → number shows a
-   free-text Unit (days, feet); currency shows an ISO-code picker — the two
-   never mix; percent shows neither. Decimals and the separator apply to
-   all. Used by number fields and by a formula's numeric result. */
-/* The date tray (2026-09-02): what the field STORES — which of year · month
-   · day, and a time of day — then how it PRINTS. Only the styles the grain
-   can wear are offered, each shown as today's date would render in it, in
-   the grain the field stores: the example IS the label. */
 function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
   const fdc = fieldDialogCore;
   const dc = weaveDateCore;
@@ -8797,13 +6364,12 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
     el('span', { class: 'form-check-label' }, label));
   const setPart = (key) => (on) => {
     g[key] = on;
-    // A year with a day needs the month between them; no parts at all is a time of day.
     if (g.year && g.day && !g.month) g.month = true;
     if (!g.year && !g.month && !g.day) d.time = true;
     if (!fdc.legalFormats(g).includes(d.format)) d.format = 'iso';
   };
   let stored = '';
-  try { stored = parts.length ? dc.coerce({ ...costume, time: false }, todayIso) : ''; } catch { stored = ''; } // hint example only
+  try { stored = parts.length ? dc.coerce({ ...costume, time: false }, todayIso) : ''; } catch { stored = ''; }
   const storesHint = parts.length
     ? `Stores ${parts.join(' · ')}${d.time ? ' + a time of day' : ''} — today would be ${stored}${d.time ? 'T14:30' : ''}`
     : 'No date parts: a time of day, stored and compared as a clock reading.';
@@ -8834,7 +6400,7 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
       el('div', { class: 'hintnote' }, zoneHint[d.zone ?? 'floating']));
     if (d.zone === 'fixed') {
       let zones = [];
-      try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = [LOCAL_ZONE]; } // older engine: offer our own zone
+      try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = [LOCAL_ZONE]; }
       const list = el('datalist', { id: 'wv-zones' }, ...zones.map((z) => el('option', { value: z })));
       zoneSec.append(el('input', {
         class: 'form-control date-zone-name', list: 'wv-zones', value: d.zoneName ?? '', placeholder: LOCAL_ZONE,
@@ -8871,7 +6437,6 @@ function numberCostumeControls(state, redraw, changed, { label = 'Format', colum
     type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: n.decimals ?? '', placeholder: n.format === 'currency' ? '2' : n.format === 'compact' ? '1' : '0',
     oninput: (e) => { n.decimals = e.target.value === '' ? null : Number(e.target.value); changed(); },
   })));
-  // Currency and compact group on their own; the separator is for the rest.
   if (n.format !== 'currency' && n.format !== 'compact') {
     kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
       el('input', { type: 'checkbox', class: 'form-check-input', checked: n.separator ? '' : undefined, onchange: (e) => { n.separator = e.target.checked; changed(); } }),
@@ -8886,10 +6451,6 @@ function numberCostumeControls(state, redraw, changed, { label = 'Format', colum
   return kids;
 }
 
-/* The Color picker (Feature #235): the field's three colour settings as
-   swatches, each drawn as a live sample of this field in that setting —
-   the bar, the ring, the stars or the line it will wear — so the choice is
-   made by looking, not by reading a name. `sample(color)` draws one. */
 function colorPicker(current, sample, onPick) {
   const fdc = fieldDialogCore;
   const wrap = el('div', { class: 'wv-color-pick', role: 'group', 'aria-label': 'Color' });
@@ -8903,16 +6464,9 @@ function colorPicker(current, sample, onPick) {
   return wrap;
 }
 
-/* A list result's costume (Feature #232): text, or a sparkline in one of
-   three styles, with a sample series drawn in the chosen style. */
 const SPARK_STYLE_LABELS = { line: 'line', column: 'column', winloss: 'win/loss' };
 const SPARK_SAMPLE = [3, 5, 4, 7, 6, 9, 8, 11, 10, 12];
 const SPARK_SAMPLE_WL = [1, -1, 1, 1, -1, 1, -1, -1, 1, 1];
-/* The Sample draws the column's own series (Issue #388): the list on the
-   first row that holds two numbers or more, named by that row, in the
-   chosen style and colour, and each Color swatch draws the same series. A
-   column with no list yet, or a field being created, draws an example
-   series under a note saying so. */
 function sparklineControls(n, redraw, changed, column = null) {
   const on = n.display === 'sparkline';
   const out = [dsection('Display', segCtl([{ id: 'text', label: 'text' }, { id: 'sparkline', label: 'sparkline' }], on ? 'sparkline' : 'text',
@@ -8923,8 +6477,6 @@ function sparklineControls(n, redraw, changed, column = null) {
   const sample = el('div', { class: 'cg-preview cg-spark-preview' });
   const note = el('div');
   const draw = () => {
-    // Nothing until the column answers: an example flashed over a real
-    // series is the very thing Issue #388 is about.
     if (column && !column.seriesAnswered) { sample.replaceChildren(); swatches.replaceChildren(); note.replaceChildren(); return; }
     const own = column?.series ?? null;
     const series = own ?? (style === 'winloss' ? SPARK_SAMPLE_WL : SPARK_SAMPLE);
@@ -8943,13 +6495,6 @@ function sparklineControls(n, redraw, changed, column = null) {
   return out;
 }
 
-/* The display picker (Feature #230): text, bar, ring or heat, then what
-   100% is — the column's max, or a fixed number — and a live Sample.
-   The Sample draws the column's own smallest, middle and largest figures
-   (Issue #388), dressed in the costume the form holds and measured against
-   the scale it holds, so the choice is judged against values the field
-   actually carries. A column with nothing in it falls back to a quarter,
-   three fifths and the whole of the scale, labelled as examples. */
 function numberDisplayControls(n, redraw, changed, column = null) {
   const display = n.display ?? 'text';
   const out = [dsection('Display', segCtl(fieldDialogCore.NUMBER_DISPLAYS, display, (v) => { n.display = v; redraw(); changed(); }))];
@@ -8964,15 +6509,12 @@ function numberDisplayControls(n, redraw, changed, column = null) {
   const noteBox = el('div');
   const swatches = el('div');
   const drawPreview = () => {
-    // Nothing until the column answers: a figure the field never holds is
-    // the very thing Issue #388 is about, and a flash of one is still one.
     if (column && !column.answered) { preview.replaceChildren(); noteBox.replaceChildren(); return; }
     const summary = column?.summary ?? null;
     const scale = numberCore.sampleScale(summary, n.scale, n);
     const { values, example } = numberCore.sampleFigures(summary, n.scale, n);
     const draw = (value, color) => numberGraphic(display, value, scale, String(numberCore.dressNumber(n, value)), n, color);
     preview.replaceChildren(...values.map((value) => el('div', { class: 'cg-preview-row' }, draw(value, n.color))));
-    // Each swatch draws the column's middle figure in its setting.
     const mid = values[Math.floor(values.length / 2)];
     swatches.replaceChildren(colorPicker(n.color, (c) => draw(mid, c), (c) => { n.color = c; drawPreview(); changed(); }));
     noteBox.replaceChildren(example
@@ -8980,7 +6522,6 @@ function numberDisplayControls(n, redraw, changed, column = null) {
       : '');
   };
   drawPreview();
-  // The column answers on its own time; the Sample redraws when it does.
   if (column) column.load().then(drawPreview, () => {});
   out.push(dsection('Color', swatches));
   out.push(dsection('Scale',
@@ -8993,10 +6534,6 @@ function numberDisplayControls(n, redraw, changed, column = null) {
   return out;
 }
 
-/* Where a lookup's or a rollup's look comes from (Issue #387). A computed
-   column has no display of its own: it wears the rating or the number
-   display of the field it reads (Features #230, #231), so the tray names
-   that field and links to its settings, where the look is changed. */
 function computedShowsAs(db, f, after) {
   const rel = f.via ? db.fields.find((x) => x.type === 'relation' && x.name === f.via) : null;
   const far = allTables().find((d) => d.id === (f.viaTableId ?? rel?.targetDbId));
@@ -9018,8 +6555,6 @@ function computedShowsAs(db, f, after) {
     href: '#',
     onclick: (e) => { e.preventDefault(); fieldDialog(far, source, after); },
   }, `Open ${source.name} settings`) : null;
-  /* The result on the first row that has one, drawn as the cell draws it
-     (ported from change 443), so the recipe reads against a real value. */
   const result = el('div', {}, el('span', { class: 'hintnote' }, 'Reading the rows…'));
   api('POST', `/tables/${db.id}/query`, { limit: 50 }).then((res) => {
     const blank = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
@@ -9043,15 +6578,9 @@ function fieldDialog(db, existing, after) {
   const fdc = fieldDialogCore;
   const isEdit = !!existing;
 
-  // The schema flattens a field's config onto the field view; the fold-back
-  // to the canonical {type, config} lives in field-dialog-core — tested there.
   const state = isEdit ? fdc.stateFromDefinition(fdc.definitionFromFieldView(existing)) : fdc.blankState('text');
   if (isEdit && existing.type === 'formula') state.computed = 'formula';
 
-  /* The figures the number Sample draws (Issue #388): this column's own
-     five-number summary, from the same stats the grid's rollup row reads.
-     Fetched once per dialog, and only when a graphic display asks for it. A
-     field being created has no column, so it samples examples. */
   const column = isEdit && existing?.name ? {
     summary: null,
     answered: false,
@@ -9062,10 +6591,6 @@ function fieldDialog(db, existing, after) {
         .catch(() => { this.summary = null; })
         .then(() => { this.answered = true; }));
     },
-    /* A list column's own series, for the sparkline Sample (Issue #388):
-       the first row whose value holds two numbers or more, read from the
-       rows that hold a value at all. A plain first page of 50 missed a list
-       that sat further down the table (Issue #620). */
     series: null,
     seriesRow: null,
     seriesAnswered: false,
@@ -9086,10 +6611,6 @@ function fieldDialog(db, existing, after) {
     value: existing?.name ?? '',
   });
 
-  /* The field's description (Issue #209): what it represents and how it is
-     written, for whoever — or whatever — fills the column. Plain text; it
-     rides the schema, the column tooltip and the entity page. A view's
-     `description` is its description size, so the views have no box. */
   const describable = !(isEdit && existing.type === 'view');
   const descInput = el('textarea', {
     name: 'description', class: 'form-control field-desc', rows: '2',
@@ -9098,16 +6619,10 @@ function fieldDialog(db, existing, after) {
   descInput.value = fieldDescription(existing) || '';
   const gridWrap = el('div', { class: 'full' });
   const cfgWrap = el('div', { class: 'full' });
-  // The agent panel under a script names the field: it follows the name box.
   nameInput.addEventListener('input', () => cfgWrap.querySelector('.fx-agent')?.dispatchEvent(new Event('refresh')));
   const changed = () => {};
 
-  // An existing field sees its own type plus the compatible migrations —
-  // nothing the engine would refuse. Picking one carries the config across
-  // (options <-> states) so it can be adjusted before the save migrates the
-  // column's values in place.
   let choices = fdc.typeChoices(isEdit ? existing.type : null);
-  // A name is a label: text, or a formula through the ƒ toggle (Feature #168).
   if (isEdit && existing.role === 'name') choices = choices.filter((t) => t.id === 'text' || t.id === existing.type);
   const migratable = isEdit && choices.length > 1;
   function pickType(id) {
@@ -9115,8 +6630,6 @@ function fieldDialog(db, existing, after) {
     if (isEdit && id !== state.type) Object.assign(state, fdc.migrateState(state, id));
     else {
       state.type = id;
-      // A new field starts as text, so picking `workflow` is where the tray
-      // first has a lifecycle to show: blankState carries it (Issue #251).
       if (id === 'workflow' && !state.states.length) state.states = fdc.blankState('workflow').states;
     }
     drawGrid(); drawCfg(); changed();
@@ -9129,12 +6642,7 @@ function fieldDialog(db, existing, after) {
       disabled: isEdit && choices.length <= 1 ? '' : undefined,
       title: isEdit && t.id !== existing.type ? `Convert to ${t.id} — values are migrated in place` : (t.computed ? `${t.id} (computed)` : t.id),
       onclick: () => pickType(t.id),
-      // The tile draws whatever the catalogue can draw and types the rest:
-      // Aa, #, @ and the sum sign are letters doing a letter's job, while url
-      // and files were colour emoji sitting among monochrome marks (#138).
     }, el('span', { class: 'type-ic' }, iconEl(t.icon) ?? t.icon), t.label));
-    // Formula is a checkbox (Kyle, 2026-08-23): ticking it opens the script
-    // dialog; the tray then shows the expression with an edit link.
     const fx = el('label', { class: 'fx-toggle' + (state.computed ? ' on' : '') },
       el('input', {
         type: 'checkbox', class: 'form-check-input', checked: state.computed ? '' : undefined, disabled: isEdit && !['text', 'formula'].includes(existing.type) ? '' : undefined,
@@ -9145,8 +6653,6 @@ function fieldDialog(db, existing, after) {
         },
       }),
       el('span', { class: 'fx-mark' }, 'ƒ'), 'Formula',
-      /* What the box does, said where it is (Issue #389): unticked, a
-         formula column freezes into text; ticked, a new field computes. */
       el('span', { class: 'fx-hint' }, isEdit && existing.type === 'formula'
         ? 'untick to freeze each row’s result into plain text'
         : 'compute this field from the row’s other fields instead of typing it'));
@@ -9169,13 +6675,8 @@ function fieldDialog(db, existing, after) {
   function drawCfg() {
     const kids = [];
     if (state.computed === 'formula') {
-      // The script editor lives in the tray (Kyle, 2026-08-23), not a window.
-      // A numeric result wears the same costume a number field does — and
-      // only a numeric one: the section draws once the check names the type
-      // (direction B), and stays for a table with no rows to type it on.
       const costumeWrap = el('div', { class: 'full' });
       let resultType = null, fxTail = null;
-      // A formula over the Date tile keeps the date's grain and style (Issue #576).
       const drawCostume = () => costumeWrap.replaceChildren(...(state.type === 'date' ? dateCostumeControls(state, drawCostume, changed)
         : resultType === 'list' || state.number.display === 'sparkline'
         ? sparklineControls(state.number, drawCostume, changed, column)
@@ -9185,10 +6686,7 @@ function fieldDialog(db, existing, after) {
       kids.push(costumeWrap, fxTail);
     } else {
       const t = state.type;
-      // The Name field carries the table's row term (Feature #40).
       if (isEdit && existing.role === 'name') kids.push(termSection(state, changed));
-      // A choice field's Default is picked from its own list (Issue #422),
-      // and redrawn on every edit to that list.
       const choice = ['select', 'multiselect', 'workflow'].includes(t) ? choiceDefaultControl(state, t) : null;
       const listChanged = () => { choice?.draw(); changed(); };
       if (t === 'select' || t === 'multiselect') {
@@ -9205,9 +6703,6 @@ function fieldDialog(db, existing, after) {
         } else {
           const r = state.relation;
           const tables = allTables();
-          /* One target: the classic paired relation. More: a target-set
-             (polymorphic) relation — one-way, values may point at rows of any
-             member table, the registry's Spaces/Tables included. */
           r.targets = r.targets?.length ? r.targets : [r.targetDb || (tables[0]?.id ?? '')];
           const targetsBox = el('div', { class: 'target-set' });
           const drawTargets = () => {
@@ -9241,9 +6736,6 @@ function fieldDialog(db, existing, after) {
           if (r.targets.length > 1) {
             kids.push(el('div', { class: 'modal-note full' }, 'A target set is one-way: no inverse field is created on the member tables.'));
           } else {
-            // The inverse is a NEW field the engine creates on the target table
-            // — a name, not a pick — and it has a sensible default, so the
-            // input only exists to override it.
             const autoName = db.name + (['many-to-one', 'many-to-many'].includes(r.cardinality ?? 'many-to-one') ? 's' : '');
             kids.push(dsection('Inverse field on the target', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: `${autoName} (created automatically — rename here)`, oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
           }
@@ -9256,9 +6748,6 @@ function fieldDialog(db, existing, after) {
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined,
             onchange: (e) => { state.multiple = e.target.checked; if (state.multiple && files.preview === 'cover') files.preview = ''; changed(); drawCfg(); } }),
           el('span', { class: 'form-check-label' }, 'Allow multiple files')));
-        /* How the record shows the files (Kyle, 2026-10-05). Unset follows the
-           box above: a contact sheet for many, the viewer for one. A cover is
-           one picture, so it waits for the box to be unticked. */
         const previews = segCtl([
           { id: '', label: 'Unset', title: state.multiple !== false ? 'auto: pictures in a sheet, the rest as chips' : 'inline: the file in its viewer' },
           ...fieldDialogCore.ATTACHMENT_PREVIEWS.map((id) => ({ id, label: id })),
@@ -9268,25 +6757,18 @@ function fieldDialog(db, existing, after) {
           cover.disabled = true;
           cover.title = 'Only a single-file field has a cover';
         }
-        kids.push(dsection('Show as', previews), // the vditor contract bars the word Preview from the app
+        kids.push(dsection('Show as', previews),
           dsection('Size', segCtl(fieldDialogCore.ATTACHMENT_SIZES, files.size, (id) => { files.size = id; changed(); })),
           dsection('Fit', segCtl(fieldDialogCore.ATTACHMENT_FITS.map((id) => ({
             id, label: id, title: id === 'fill' ? 'Uniform cells, the file cropped to the cell' : 'The whole file, the cell trimmed to its shape',
           })), files.fit, (id) => { files.fit = id; changed(); })));
       } else if (t === 'text' && !(isEdit && existing.role === 'name')) {
-        /* Issue #86: a column that holds syntax opts out of the markdown
-           costume. The Name column never wears one, so it has nothing to opt
-           out of. */
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.literal ? '' : undefined, onchange: (e) => { state.literal = e.target.checked; changed(); } }),
           el('span', { class: 'form-check-label' }, 'Literal ', el('span', { class: 'date-format-eg' }, 'show ', el('code', {}, '**marks**'), ' and ', el('code', {}, '`syntax`'), ' as typed, never dressed'))));
       } else if (t === 'document') {
         kids.push(dsection('Kind', segCtl(fdc.DOCUMENT_KINDS, state.kind ?? 'markdown', (v) => { state.kind = v; changed(); })));
       } else if (t === 'key') {
-        /* Two picks, both stated rather than defaulted quietly (#143). The
-           note under them is the part that matters: someone reaching for this
-           type is deciding where a secret lives, and the answer to "who can
-           see it" is not the same answer the rest of the table gives. */
         const cred = (state.credential ??= { kind: 'apikey', keystore: 'local' });
         kids.push(dsection('Holds', segCtl(fdc.CREDENTIAL_KINDS.map((k) => ({ id: k, label: CREDENTIAL_KIND_LABELS[k] ?? k })),
           cred.kind, (v) => { cred.kind = v; changed(); })));
@@ -9301,12 +6783,6 @@ function fieldDialog(db, existing, after) {
           oninput: (e) => { state.depth = Number(e.target.value) || 1; changed(); },
         })));
       } else if (t === 'lookup' || t === 'rollup') {
-        // Both picks are search-as-you-type over what exists: the table's
-        // relations, then the fields of the table that relation points at.
-        // `fixed` (an existing field, Issue #387) draws the same three rows
-        // read-only, in the slots the pickers take: the engine has no verb
-        // to repoint a lookup or a rollup yet, and when it does, dropping
-        // `fixed` is the whole client change.
         const fixedRow = (name, value) => el('input', { class: 'form-control wv-fixed', name, readonly: '', tabindex: '-1', value: value ?? '' });
         const throughRelation = (fixed = false) => {
           const out = [];
@@ -9337,13 +6813,6 @@ function fieldDialog(db, existing, after) {
           }
           return out;
         };
-        /* A rollup on the Spaces registry has a second kind (Issue #222):
-           over a WHOLE table, no relation crossed — the Σ under a grid
-           column. The footer picker and the API could write one; the dialog
-           offered only the registry's own relations, so it was the odd
-           surface out. `via` names the table, and the engine refuses it
-           anywhere but here, which is why the question is asked here alone.
-           A filter (`where`) stays API-only for now. */
         const overs = t === 'rollup' && db.system === 'spaces' ? allTables().filter((x) => !x.system) : [];
         const overTable = () => {
           const over = overs.find((x) => x.id === state.via) ?? overs[0];
@@ -9364,8 +6833,6 @@ function fieldDialog(db, existing, after) {
           return out;
         };
         if (isEdit) {
-          /* Issue #387: the tray says what the column computes and where
-             its look comes from, instead of only that it cannot change. */
           if (existing.viaTable) {
             kids.push(dsection('Table', fixedRow('via', existing.viaTable)));
             if (existing.targetField) kids.push(dsection('Field', fixedRow('targetField', existing.targetField)));
@@ -9390,8 +6857,6 @@ function fieldDialog(db, existing, after) {
       if (choice) {
         kids.push(dsection('Default', choice));
       } else if (t === 'date') {
-        // A date default is none, the day/moment the row is created
-        // (today() / now(), resolved by the engine), or a specific date.
         const dc = weaveDateCore;
         const kind = dc.defaultKind(state.default);
         const dyn = state.date.time ? 'now()' : 'today()';
@@ -9413,23 +6878,12 @@ function fieldDialog(db, existing, after) {
         }
         kids.push(dsection('Default', body));
       } else if (t === 'daterange') {
-        /* A range default wears the SAME control and dialog the cell does
-           (Issue #197): a bare text box could only hand the engine a string
-           it refuses. The state keeps the range as JSON text so the code
-           pane and the form stay two views of one string. */
         kids.push(dsection('Default', rangeControl({
           value: fdc.rangeDefault(state.default), costume: fdc.dateCostume(state.date, t), compact: false,
           placeholder: 'No default — pick a range',
           onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; changed(); },
         })));
       } else if (t === 'rating') {
-        /* The scale, its icon and the default (Feature #231, #234): any whole
-           number typed, 3, 5 or 7 at a click; one icon from the inventory; and
-           the default picked on a live row of the field's own icons, the same
-           control the grid cell wears. Click the nth to set n, click it again
-           to clear; focused, the arrows move it, a digit sets it and
-           Backspace clears. The row redraws with the icon and the max, and a
-           default above a lowered max comes down with it. */
         const r = state.rating ?? (state.rating = { max: 5, icon: 'lucide:star', color: 'ink' });
         const preview = el('div', { class: 'wv-rating-default' });
         const drawDefault = () => {
@@ -9469,15 +6923,10 @@ function fieldDialog(db, existing, after) {
           onclick: (e) => glyphPopover(e.currentTarget, r.icon, (id) => { r.icon = id || 'lucide:star'; drawCfg(); changed(); }),
         }, iconEl(r.icon, 'wv-icon'), el('span', {}, String(r.icon).replace(/^lucide:/, '')));
         kids.push(dsection('Icon', iconBtn));
-        // The colour (Feature #235): three of the field's own icons, two
-        // filled, in each setting.
         kids.push(dsection('Color', colorPicker(r.color, (c) => ratingEl(3, r.icon, 2, { color: c }), (c) => { r.color = c; drawDefault(); changed(); })));
         drawDefault();
         kids.push(dsection('Default', preview));
       } else if (t === 'toggle') {
-        /* Two words and a starting state (Feature #202): the labels the
-           switch wears, and which of them a new row begins on. The default
-           control names the states with the words just typed. */
         const tg = state.toggle ?? (state.toggle = { on: 'On', off: 'Off' });
         const labelInput = (key, ph) => el('input', {
           class: 'form-control', value: tg[key] ?? '', placeholder: ph, 'data-toggle-label': key,
@@ -9491,7 +6940,6 @@ function fieldDialog(db, existing, after) {
         kids.push(dsection('Default', segCtl([{ id: 'off', label: tg.off?.trim() || 'Off' }, { id: 'on', label: tg.on?.trim() || 'On' }], cur,
           (v) => { state.default = v === 'on' ? 'true' : 'false'; changed(); })));
       } else if (t === 'checkbox') {
-        // A checkbox default is one of two states, not typed text.
         const cur = state.default === '' ? 'none' : ['true', 'yes', '1'].includes(String(state.default).toLowerCase()) ? 'checked' : 'unchecked';
         kids.push(dsection('Default', segCtl([{ id: 'unchecked', label: 'Unchecked' }, { id: 'checked', label: 'Checked' }], cur === 'none' ? 'unchecked' : cur,
           (v) => { state.default = v === 'checked' ? 'true' : 'false'; changed(); })));
@@ -9509,7 +6957,7 @@ function fieldDialog(db, existing, after) {
   drawGrid();
   drawCfg();
 
-  let saved = null; // the edit's PATCH answer: the field and its Activity entry
+  let saved = null;
   tray(isEdit ? `Edit ${existing.name}` : 'Add field', [
     dsection('Name', nameInput),
     describable ? dsection('Description', descInput) : '',
@@ -9520,8 +6968,6 @@ function fieldDialog(db, existing, after) {
     const description = descInput.value.trim();
     if (!isEdit && def.type === 'relation') {
       const made = await api('POST', `/tables/${db.id}/relations`, { name, ...def.config });
-      // A relation is made by its own verb, so its description follows as
-      // an update on the field it made.
       if (description && made?.field?.id) await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(made.field.id)}`, { config: { description } });
     } else if (!isEdit) {
       await api('POST', `/tables/${db.id}/fields`, { name, type: def.type, config: { ...def.config, ...(description ? { description } : {}) } });
@@ -9529,14 +6975,11 @@ function fieldDialog(db, existing, after) {
       const patch = {};
       if (name && name !== existing.name) patch.name = name;
       if (def.type !== existing.type) {
-        // A migration: the engine coerces every row, then the rest of the
-        // config (default) applies on the new shape.
         patch.type = def.type;
         patch.config = def.config;
       } else {
         patch.config = fdc.editPatchConfig(existing, def, state);
       }
-      // null clears it, like width; unchanged is not sent at all.
       if (describable && description !== (fieldDescription(existing) || '')) patch.config = { ...(patch.config ?? {}), description: description || null };
       saved = await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(existing.id)}`, patch);
     }
@@ -9546,11 +6989,6 @@ function fieldDialog(db, existing, after) {
   }, isEdit ? 'Save changes' : 'Create');
 }
 
-/* Issue #428: a field configuration change says it landed and offers the way
-   back, in the toast and, for later, in Activity. The Undo is the same roll
-   back the Activity entry offers: it applies the definition before, and the
-   server refuses it if the field has changed since. A type change keeps the
-   values it converted (Issue #467), so it offers Undo like any other. */
 function fieldConfigToast(db, res, redraw) {
   if (!res?.activity) return;
   toast(res.lossy ? `${res.name} is now ${res.type}` : `${res.name} updated`, false, {
@@ -9566,10 +7004,6 @@ function fieldConfigToast(db, res, redraw) {
   });
 }
 
-/* What a roll back did, in one line. A type change's roll back also says
-   what happened to the values (Issue #467): back from before the change,
-   kept because someone edited them since, or converted because the row is
-   newer than the change. Counts of zero say nothing. */
 function rolledBackText(out, verb) {
   const n = (k, one, many) => (out[k] ? `${out[k]} ${out[k] === 1 ? one : many}` : null);
   const parts = [
@@ -9580,14 +7014,6 @@ function rolledBackText(out, verb) {
   return `${out.field.name} ${verb}${parts.length ? `: ${parts.join(', ')}` : ''}`;
 }
 
-/* A field edit redraws the table; the page and the grid must not snap back
-   to the top-left (Kyle, 2026-08-23). Every box the reader had scrolled is
-   held, not just the grid's — a redraw inside a docked panel used to reset
-   the panel with it (Issue #69). A non-zero scrollTop/scrollLeft is its own
-   proof of a scroller, so no computed style is read; a box resting at the
-   origin has nothing to restore. Boxes the redraw replaced are gone from the
-   document, which is why the grid scroller — the one weave rebuilds
-   wholesale — is re-found by selector afterwards. */
 async function keepScroll(redraw) {
   const x = window.scrollX, y = window.scrollY;
   const boxes = [...document.querySelectorAll('*')]
@@ -9596,13 +7022,7 @@ async function keepScroll(redraw) {
   const left = document.querySelector('.wv-grid')?.parentElement?.scrollLeft ?? 0;
   const top = document.querySelector('.wv-grid')?.parentElement?.scrollTop ?? null;
   await redraw();
-  // Resolved only once the scroll is back: a caller that scrolls next (a
-  // new row brought into the window, Issue #271) must not race the restore.
   await new Promise((done) => requestAnimationFrame(() => {
-    /* Instant, every one: a restore is not a scroll the reader asked for,
-       and Tabler's smooth `:root` would otherwise animate the page back —
-       an animation a windowed grid's first repaint cancels, leaving the
-       page at the top (Issue #271). */
     window.scrollTo({ left: x, top: y, behavior: 'instant' });
     for (const b of boxes) {
       if (!b.el.isConnected) continue;
@@ -9610,10 +7030,6 @@ async function keepScroll(redraw) {
     }
     const again = document.querySelector('.wv-grid')?.parentElement;
     if (again) again.scrollLeft = left;
-    /* The grid scroller is a new box after the redraw, so its own scrollTop
-       is put back by hand, and the row window is painted for that position
-       in the same frame — before the focus a commit restores looks for its
-       cell (Issue #271). */
     if (again) { if (top != null) again.scrollTo({ top, behavior: 'instant' }); again.wvRewindow?.(); }
     done();
   }));
@@ -9623,22 +7039,6 @@ function editFieldDialog(db, f) {
   fieldDialog(db, f, () => keepScroll(() => showDatabase(db.id)));
 }
 
-/* Column order IS fieldOrder, so a move is a schema write — drag a column and
-   it is still there tomorrow. The order sent covers every field, document
-   columns included, because the engine refuses a partial order rather than
-   silently dropping what the grid cannot see. */
-/* Blocks are reordered by reading the body back after the move: the nodes
-   have already been put where the reader dropped them, so the DOM is the new
-   order and no index arithmetic can disagree with it (Issue #89). */
-/* One placeholder for a held row or block: it opens where the pointer says
-   and everything after it makes room, so the reader sees the outcome before
-   letting go. The pointer's height against an item's midpoint places the
-   slot above or beneath that item; only items in the pointer's column are
-   candidates, which is what makes the multicol field grid behave like the
-   list it is. The drop swaps the held node into the slot — nothing is left
-   to compute, the DOM is the new order. A list whose held() is null lets the
-   event through, so a row can never land among the blocks or a block among
-   the rows. */
 function slotDrag(list, { itemSel, held, label, onDrop }) {
   let slot = null;
   const clear = () => { slot?.remove(); slot = null; };
@@ -9689,11 +7089,6 @@ async function reorderField(db, fromName, toName, { after = false, onFail = () =
   const at = order.indexOf(toName);
   if (at < 0) return;
   order.splice(after ? at + 1 : at, 0, fromName);
-  // The columns move IN PLACE — cells relocate, nothing repaints, scroll and
-  // focus stay put (Kyle, 2026-08-22: the full redraw read as clunky flicker).
-  // The schema write happens behind the move; if it fails, redraw to truth.
-  // Must mirror drawDatabase's cols selection or the in-place move lands on
-  // the wrong cell index.
   const cols = visibleCols(db);
   const fromIdx = cols.indexOf(fromName);
   const toIdx = cols.indexOf(toName);
@@ -9701,8 +7096,6 @@ async function reorderField(db, fromName, toName, { after = false, onFail = () =
   if (table && fromIdx >= 0 && toIdx >= 0) {
     for (const row of table.querySelectorAll('tr')) {
       const cells = row.children;
-      // Two anchored cells sit before the first field in every row — the
-      // selection box and the # link — so field i lives at cell 2 + i.
       const from = cells[2 + fromIdx];
       const to = cells[2 + toIdx];
       if (from && to) to.insertAdjacentElement(after || fromIdx < toIdx ? 'afterend' : 'beforebegin', from);
@@ -9713,44 +7106,25 @@ async function reorderField(db, fromName, toName, { after = false, onFail = () =
   const ti = db.fields.findIndex((f) => f.name === toName);
   db.fields.splice(after ? ti + 1 : ti, 0, moved);
   try {
-    // A grid with a view strip moves the column in that view (Feature #229),
-    // by the same relative edit an agent sends; Blank refuses and redraws.
     if (db.view) { if (!await gridConfigWrite(db, null, { move: { field: fromName, [after ? 'after' : 'before']: toName } })) onFail(); return; }
     await api('PATCH', `/tables/${db.id}`, { fieldOrder: order });
     await loadSchema();
   } catch (err) {
     toast(err.message, true);
-    onFail(); // the move did not hold — show the truth
+    onFail();
   }
 }
 
 
-/* The "+" that closes the grid's header bar. A menu rather than a straight
-   dialog because it replaces the "⚙ Fields" button in table view, so it has
-   to keep relations and field management reachable — not just adding. */
-/* The header "+" opens the add-field tray directly (Kyle, 2026-08-23):
-   relation is a type in the grid and Manage fields is gone, so there is
-   nothing left for a menu to offer. */
 function addFieldMenuButton(db) {
   const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'Add a field' }, iconEl('+', 'wv-icon'));
   btn.addEventListener('click', (e) => { e.stopPropagation(); addFieldDialog(db); });
   return btn;
 }
 
-/* ---------- statistics: the grid footer, its picker, space tiles, column stats ----------
-   Kyle's ruling (2026-09-06): "all footer values live at the space level."
-   The Σ under a column is a rollup field on the Workspace/Spaces row of the
-   space that holds the table (config.via names the table). The footer READS
-   those rollups — it stores nothing of its own — and its picker creates and
-   deletes them like any other field, so a total is addressable, auditable
-   and lookup-able. The stats panel is the other half: every column
-   summarised on demand (GET /api/tables/:id/stats), nothing kept. */
 const FOOT_LABELS = { count: 'n', sum: 'Σ', avg: 'avg', median: 'med', min: 'min', max: 'max', stdev: 'σ', range: 'range', distinct: '≠', filled: 'filled', empty: 'empty' };
 const FOOT_NUMERIC = ['sum', 'avg', 'median', 'min', 'max', 'stdev', 'range'];
 
-/* Which aggregates a column can wear: numbers the whole family, dates their
-   extremes, everything else how many say something and how many things
-   they say. The Name column carries the row count. */
 function footAggregatesFor(db, f) {
   if (!f) return [];
   if (f.role === 'name' || f.id === db.fields.find((x) => x.role === 'name')?.id) return ['count', 'distinct'];
@@ -9777,10 +7151,6 @@ const spaceRollupEntry = (db, col, agg, made) => {
   return out;
 };
 
-/* The Σ row: one cell per column, painted from the table's stats once they
-   arrive. Empty cells still take a click, which is how the first Σ is added.
-   A row of the header (Issue #233), not a footer: it sits under the field
-   labels and stays put while the body scrolls. */
 function renderFooter(db, cols) {
   const spacesT = registryTable('spaces');
   if (!spacesT) return null;
@@ -9804,15 +7174,11 @@ function renderFooter(db, cols) {
     el('td'));
 }
 
-/* Paint the Σ row from the live rollups. `rollups` may be handed in by a
-   caller that already fetched them; otherwise one read. */
 async function fillFooter(db, foot, rollups = null, { col = null } = {}) {
   if (!foot) return;
   try {
     rollups ??= (await api('GET', `/tables/${db.id}/stats`)).rollups;
-  } catch { return; } // the Σ row is a summary: blank beats a toast on every grid paint
-  // The grid is drawn before it is attached, so connection is checked after
-  // the read, not before; a row a redraw replaced meanwhile is left alone.
+  } catch { return; }
   if (!foot.isConnected) return;
   const nameCol = db.fields.find((f) => f.role === 'name')?.name ?? 'Name';
   const colOf = (r) => r.targetField ?? nameCol;
@@ -9828,9 +7194,6 @@ async function fillFooter(db, foot, rollups = null, { col = null } = {}) {
   foot.dataset.rollups = String(foot.rollups.length);
 }
 
-/* The picker: one switch per aggregate the column can wear. On creates the
-   space rollup, off deletes it. The popover stays put and its rows relearn
-   the truth, the way the eye does. */
 async function footerPicker(anchor, db, col) {
   const spacesT = registryTable('spaces');
   const f = colField(db, col);
@@ -9905,8 +7268,6 @@ async function footerPicker(anchor, db, col) {
   const pop = showPopover(anchor, build());
 }
 
-/* The space page's tiles: every space rollup pointed at one of its tables,
-   read off the space's own registry row. A tile opens its table. */
 async function spaceStatTiles(space) {
   const spacesT = registryTable('spaces');
   if (!spacesT) return null;
@@ -9916,7 +7277,7 @@ async function spaceStatTiles(space) {
   try {
     const res = await api('POST', `/tables/${spacesT.id}/query`, { where: [['Name', '=', space.space]] });
     row = res.items.find((i) => i.sysId === space.spaceId) ?? null;
-  } catch { return null; } // stat tiles are a summary: the space page draws without them
+  } catch { return null; }
   if (!row) return null;
   return el('div', { class: 'wv-stat-tiles' }, ...mine.map((f) => {
     const t = space.tables.find((x) => x.id === f.viaTableId);
@@ -9928,18 +7289,10 @@ async function spaceStatTiles(space) {
   }));
 }
 
-/* Column stats: every column summarised, on demand, nothing stored. Numbers
-   get the five-number summary and a histogram, chips a ranked distribution,
-   dates their span and a month strip, text its distinct count. `by` groups
-   the numeric columns on one field. */
 async function columnStatsPanel(db) {
   document.querySelector('#modal-back')?.remove();
   const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } });
   const body = el('div', { class: 'wv-stats-body' }, el('div', { class: 'wv-muted' }, 'Reading…'));
-  // Both controls speak the picker dialect (no native <select> in the app).
-  // The group-by list is known once the first read names the chip columns,
-  // so the face is placed after it and the figure picker stays hidden until
-  // there are groups to apply it to.
   const ctl = el('div', { class: 'wv-stats-ctl' }, el('span', { class: 'wv-muted' }, 'Group by'));
   let bySel = null;
   const statSel = pickerSelect({ name: 'stat', title: 'Group figure', value: 'sum', options: ['sum', 'avg', 'median', 'min', 'max'].map((k) => ({ id: k, label: k })) });
@@ -10041,8 +7394,6 @@ async function columnStatsPanel(db) {
   await load();
 }
 
-/* ---------- space page ---------- */
-
 async function showSpace(spaceId) {
   const space = state.schema.find((s) => s.spaceId === spaceId);
   if (!space) return showHome();
@@ -10052,7 +7403,7 @@ async function showSpace(spaceId) {
   main.replaceChildren(
     viewHeader({
       crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
-      permalink: `${location.origin}${WS_PREFIX}/s/${spaceId}`, // unfurls in a chat (Feature #264)
+      permalink: `${location.origin}${WS_PREFIX}/s/${spaceId}`,
       title: space.space,
       kind: 'space',
       onRename: async (name) => {
@@ -10071,10 +7422,6 @@ async function showSpace(spaceId) {
         await api('PATCH', `/spaces/${spaceId}`, { description: md });
         await loadSchema();
       },
-      // The space menu holds only what acts on the space: its delete. Per-table
-      // CSV exports live on each table's own ⋮ (Issue #373). The system
-      // Workspace space is never deletable (Issue #126, #248), which leaves
-      // it nothing to offer, so it renders no ⋮ at all.
       actions: space.system ? [] : [
         ...(space.template ? [useTemplateButton(space)] : []),
         dotsMenu([
@@ -10097,20 +7444,11 @@ async function showSpace(spaceId) {
       ],
     }),
   );
-  // The space's own figures first: every space rollup over one of its
-  // tables, as tiles read off its registry row.
   const tiles = await spaceStatTiles(space);
   if (tiles) main.append(tiles);
   main.append(spaceTablesCard(space));
-  // A space draws its own map — itself and whatever it touches — instead of
-  // sending the reader to the workspace-wide one (Kyle, 2026-08-24).
   const card = await relationMapCard('Relation map', { spaceId });
   if (card) main.append(card);
-  // The tables of this space, AS the Tables registry grid (Kyle, 2026-08-24):
-  // the same rows the engine syncs, with every field — Description, Field
-  // Order, Hidden Fields, the Fields relation — editable in place; opening a
-  // row opens the table, because the row IS the table. Folded under Schema
-  // (Issue #386): the plain list above is what a reader opens tables from.
   const reg = registryTable('tables');
   if (reg) {
     const onSaved = async () => {
@@ -10119,8 +7457,6 @@ async function showSpace(spaceId) {
       await showSpace(spaceId);
       restoreGridFocus();
     };
-    // A new table is born here with a placeholder name, selected whole in
-    // the row's Name cell so typing replaces it (Issue #195).
     const onAdd = async () => {
       try {
         const made = await api('POST', `/tables/${reg.id}/entities`, { name: 'New table', values: { Space: space.space } });
@@ -10131,20 +7467,12 @@ async function showSpace(spaceId) {
     };
     await schemaDisclosure(main, async (body) => {
       const res = await api('POST', `/tables/${reg.id}/query`, {});
-      // Scoped by id (universal reference rule): a registry row belongs to
-      // this space iff its sysId names one of the space's tables. Names drift.
       const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
       renderTable(body, reg, items, onSaved, onAdd);
     });
   }
 }
 
-/* Use Template (Feature #261): a space marked a template (the Template box
-   on its Workspace/Spaces row) copies its schema, never its rows, into
-   another workspace of the hub. The dialog offers every other workspace and
-   a name prefilled with the space's. A conflict or a refusal is said inside
-   the dialog, which stays open; success closes it and toasts a way to the
-   new space. */
 function useTemplateButton(space) {
   return el('button', { class: 'btn btn-sm use-template-btn', type: 'button', onclick: () => useTemplateDialog(space) },
     iconEl('lucide:copy', 'wv-icon'), 'Use template');
@@ -10185,8 +7513,6 @@ async function useTemplateDialog(space) {
   else box?.querySelector('.picker-face')?.focus();
 }
 
-/* The space's tables in plain words: a name and a record count each,
-   opening the table; an empty space says so and offers New table. */
 function spaceTablesCard(space) {
   const add = space.system ? null
     : el('button', { class: 'btn btn-sm wv-start-new', onclick: () => startTableDialog({ spaceId: space.spaceId }) }, '+ New table');
@@ -10201,14 +7527,6 @@ function spaceTablesCard(space) {
       el('span', { class: 'pid' }, WeaveTerm.count(t.entityCount ?? 0, t.term)))),
     add ? el('div', { class: 'list-row list-row-add' }, add) : null);
 }
-
-/* ---------- relation map (tables, relations, automations) ----------
-   ONE map, drawn at three altitudes: the full page behind #/map, a card on
-   the workspace home, and a card on a space page showing that space and
-   whatever it touches. It replaces both of the maps that came before — the
-   mermaid render (right content: user tables, grouped by space, a labelled
-   arrow each) and the circle-layout SVG (right design: weave's own cards).
-   Geometry is relmap-layout.js; this is the drawing. */
 
 const AUTO_ACTION = { 'set-field': (x) => `set ${x.field}`, 'append-doc': (x) => `append ${x.field}`, 'add-comment': () => 'comment' };
 
@@ -10225,7 +7543,6 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
   }
   const svg = svgEl('svg', { viewBox: `0 0 ${map.width} ${map.height}`, class: 'relmap', width: map.width, height: map.height });
 
-  // One arrowhead, referenced by every relation line.
   const defs = svgEl('defs');
   const marker = svgEl('marker', {
     id: 'relmap-arrow', viewBox: '0 0 8 8', refX: '7', refY: '4',
@@ -10235,7 +7552,6 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
   defs.append(marker);
   svg.append(defs);
 
-  // Space boxes first: they are ground, everything else sits on them.
   for (const g of map.groups) {
     svg.append(svgEl('rect', { x: g.x, y: g.y, width: g.w, height: g.h, rx: 14, class: 'space-box' }));
     svg.append(svgEl('text', { x: g.x + 14, y: g.y + 18, class: 'space-label' }, g.name));
@@ -10243,7 +7559,6 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
 
   for (const e of map.edges) {
     if (e.self) {
-      // A relation onto its own table: a loop off the card's right edge.
       svg.append(svgEl('path', {
         d: `M${e.x1},${e.y1} C${e.x1 + 34},${e.y1 - 16} ${e.x2 + 34},${e.y2 + 16} ${e.x2},${e.y2}`,
         class: 'rel-line', 'marker-end': 'url(#relmap-arrow)', fill: 'none',
@@ -10262,7 +7577,6 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
     g.addEventListener('click', () => { location.hash = `#/table/${n.id}`; });
     g.append(svgEl('rect', { x, y, width: n.w, height: n.h, rx: 10, class: 'node-box' }));
     g.append(svgEl('text', { x: n.x, y: y + 24, 'text-anchor': 'middle', class: 'node-title' }, n.name));
-    // Inside its own space box the space name is redundant; a guest names it.
     g.append(svgEl('text', { x: n.x, y: y + 43, 'text-anchor': 'middle', class: 'node-sub' },
       n.foreign ? `${n.space} • ${WeaveTerm.count(n.entityCount, n.term)}` : WeaveTerm.count(n.entityCount, n.term)));
     svg.append(g);
@@ -10272,8 +7586,6 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
       const actions = a.actions.map((x) => (AUTO_ACTION[x.type] ?? (() => 'webhook'))(x)).join(', ');
       const trig = a.trigger.type === 'state-changed' ? `${a.trigger.field}→${a.trigger.toState ?? '*'}`
         : a.trigger.type === 'field-updated' ? `${a.trigger.field} changed` : 'created';
-      // The pill never outgrows its card: a wider one leaves the space box
-      // and, in the first column, the canvas itself.
       const full = `⚡ ${trig} ⇒ ${actions}`;
       const fits = Math.floor((n.w - 16) / 5.8);
       const label = full.length > fits ? full.slice(0, fits - 1).trimEnd() + '…' : full;
@@ -10295,13 +7607,10 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
       el('span', {}, '⚡ automation: trigger ⇒ actions')));
 }
 
-/* The same view as a card, for a page that is mostly something else. */
 async function relationMapCard(title, { spaceId = null } = {}) {
   const card = el('div', { class: 'card panel home-map' },
     el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, title)),
     el('div', { class: 'card-body' }, el('div', { class: 'wv-empty' }, '…')));
-  // The tab's own schema: boot loaded it and Issue #274 keeps it current, so
-  // fetching it again here was a second 96 KB read per page (Issue #258).
   const automations = await api('GET', '/automations').catch(() => []);
   const tables = state.schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space, spaceId: s.spaceId })));
   const view = relationMapView(tables, automations, { spaceId });
@@ -10318,72 +7627,31 @@ async function showMap() {
     permalink: `${location.origin}${WS_PREFIX}/#/map`,
     title: 'Relation map',
   }));
-  const automations = await api('GET', '/automations'); // the schema is the tab's (Issue #258)
+  const automations = await api('GET', '/automations');
   main.append(relationMapView(allTables(), automations));
 }
-
-/* ---------- the embedded document editor (Feature #45) ----------
-   Vditor in `ir` mode: the rendered document is the editing surface, so there
-   is no mode to switch, nothing to preview and nothing to save by hand. The
-   toolbar is hidden — every markdown block is reachable from the slash menu
-   below, which keeps the document the only chrome on the page. */
 
 const DOC_SAVE_DEBOUNCE = 600;
 const liveEditors = new Set();
 const pendingDocSaves = new Map();
-// Each live editor's `pull`: hands on what the surface holds right now.
 const docPulls = new WeakMap();
 
 
-/* ---------- the slash menu ----------
-   With the toolbar hidden this menu is the ONLY way to reach a markdown
-   construct, so it has to read like a menu and not like a list of syntax:
-   a glyph for what the thing is, its name, and — on the right of every row —
-   the markdown it actually writes, so the menu teaches the syntax while it
-   inserts it. Commands are grouped by what they do rather than alphabetically:
-   blocks you insert, references to other records, and formatting.
-
-   Line-prefix blocks carry placeholder text on purpose. A marker with nothing
-   after it is not a block: "# " round-tripped through Lute as "#\n" and "> "
-   vanished to "\n", so every heading, quote and list item the menu inserted
-   came out empty. Placeholders make the block real and visible, and the writer
-   types over them. */
 const SLASH_GROUPS = [
   ['all', 'ALL COMMANDS'],
   ['reference', 'REFERENCE'],
   ['format', 'FORMAT · APPLIES TO SELECTION'],
 ];
 
-/* Picking a reference opens the ⌘K search instead of inserting text. It
-   travels through Vditor as a value, because a hint item can only insert — so
-   the editor's own input handler recognises the marker, takes it back out and
-   hands over to the picker. U+2063 is invisible and not something a writer
-   types by accident. */
 const refMarker = (kind) => `⁣ref:${kind}⁣`;
-/* Same trick for a raw HTML block, for a different reason: Vditor's insert
-   path spins what it inserts through Lute in a context that drops an html
-   block outright (measured: "/raw html" produced an empty document), while a
-   whole-document write round-trips it untouched. The marker is what the menu
-   inserts; the input handler swaps it for the block. */
 const DEFERRED_INSERTS = { '⁣raw-html⁣': '<div>html</div>' };
 const ENTITY_LINK_MARKER = refMarker('entity');
 const REF_MARKER_RE = /⁣ref:(entity|table|space)⁣/;
-// A document mid-command: every marker above, and the block marker below.
 const holdsCommandMarker = (v) => REF_MARKER_RE.test(v)
   || globalThis.WeaveEditorLib.BLOCK_MARKER_RE.test(v)
   || Object.keys(DEFERRED_INSERTS).some((m) => v.includes(m));
-/* And for a line-prefix block (Text, a heading, a list, a quote), because the
-   command takes the line it was typed on and a hint item cannot read one
-   (Issue #455). The marker lands in the line; the editor rewrites that line
-   as markdown the moment it does (convertBlockLine). The kinds, their
-   prefixes and their placeholders live in editor-lib.js. */
 const blockMarker = (kind) => globalThis.WeaveEditorLib.blockMarker(kind);
 
-/* The last thing the writer selected, remembered because typing "/" replaces
-   the selection before any command can see it. A format command wraps that
-   text instead of a placeholder, which is what "applies to selection" means
-   from the writer's side. Short-lived on purpose: a selection from a minute
-   ago is not what this "/" is about. */
 const SELECTION_MEMORY_MS = 15000;
 let lastSelection = { text: '', at: 0 };
 function rememberSelection() {
@@ -10396,11 +7664,6 @@ function selectionForFormat() {
   return fresh ? lastSelection.text : '';
 }
 
-/* One catalogue. `hint` is the syntax column, `icon` the leading glyph, and
-   `aliases` are the words a writer is likely to type for something the label
-   does not literally say ("h2", "checkbox", "hr"). `hidden` items never show
-   on their own row — they exist so a query can promote a specific one, which
-   is how "Heading 1–6" answers /h4 with a level-4 heading. */
 function slashItems() {
   const wrap = (before, after = before) => {
     const picked = selectionForFormat();
@@ -10412,9 +7675,6 @@ function slashItems() {
     insert: blockMarker(`h${n}`),
   }));
   return [
-    /* These six rows and the heading levels convert the line they are typed
-       on; on a line with no words they write their prefix and a placeholder,
-       as they always did. Every other block is an insert. */
     { label: 'Text', icon: '¶', flat: 'pilcrow', group: 'all', hint: '—', aliases: ['paragraph', 'plain'], insert: blockMarker('text') },
     { label: 'Heading 1–6', icon: 'H', group: 'all', hint: '#…######', aliases: ['title'], insert: blockMarker('h1') },
     ...headings,
@@ -10422,24 +7682,12 @@ function slashItems() {
     { label: 'Numbered list', icon: '1.', flat: 'list-ordered', group: 'all', hint: '1.', aliases: ['ol', 'ordered'], insert: blockMarker('number') },
     { label: 'Task list', icon: '☑', flat: 'square-check', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: blockMarker('task') },
     { label: 'Quote', icon: '❝', flat: 'quote', group: 'all', hint: '>', aliases: ['blockquote'], insert: blockMarker('quote') },
-    /* No language on the fence: the content decides. An unlabelled block is
-       auto-detected and highlighted as what it actually is — json, html, a
-       mermaid source, a shell session — and anything unrecognised stays plain
-       text. Naming a language on the fence still wins (Issue #35). */
     { label: 'Code block', icon: '#', flat: 'code', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```\ncode\n```' },
     { label: 'Mermaid diagram', icon: '◈', flat: 'workflow', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
     { label: 'Table', icon: '▦', flat: 'table', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
-    /* The divider inserts ***, not --- : Lute reads an inserted --- pair as
-       YAML front matter and renders a yaml code block (Kyle, 2026-08-23:
-       "divider still makes a code block"). Same rule, unambiguous spelling. */
     { label: 'Divider', icon: '—', flat: 'minus', group: 'all', hint: '***', aliases: ['hr', 'rule', 'separator'], insert: '\n***\n' },
-    /* A hard break, the markdown way (backslash-newline). Before this item,
-       "/line break" matched nothing and Enter took whatever row was first —
-       usually a code block (Kyle, 2026-08-23). */
     { label: 'Line break', icon: '↵', flat: 'corner-down-left', group: 'all', hint: '\\ + ⏎', aliases: ['br', 'newline', 'return'], insert: '\\\n' },
     { label: 'Image', icon: '▤', flat: 'image', group: 'all', hint: '![](…)', aliases: ['picture', 'photo'], insert: '![alt](url)' },
-    // Raw HTML is a block Lute passes through untouched: the escape hatch for
-    // anything markdown has no syntax for.
     { label: 'Raw HTML', icon: '</>', flat: 'braces', group: 'all', hint: '<div>', aliases: ['embed', 'html'], insert: '⁣raw-html⁣' },
 
     { label: 'Entity', icon: '#', flat: 'hash', group: 'reference', hint: '[[Task#12]]', aliases: ['record', 'row', 'link entity', 'mention'], insert: refMarker('entity') },
@@ -10454,15 +7702,10 @@ function slashItems() {
   ];
 }
 
-// [[Space/Table#12|Name]] — qualified, so a table name shared by two spaces
-// cannot resolve to the wrong one. The label keeps the chip readable when the
-// reference is read as plain markdown.
 function entityReference(hit) {
   return `[[${hit.db}#${hit.publicId}|${hit.name}]]`;
 }
 
-/* What the picked search result becomes, per reference kind — the same four
-   shapes the renderer's mention parser accepts. */
 function referenceFor(kind, hit) {
   if (hit.kind === 'entity') return entityReference(hit);
   if (hit.kind === 'table') return `[[table:${hit.name}]]`;
@@ -10470,9 +7713,6 @@ function referenceFor(kind, hit) {
   return `[[workspace|${hit.name}]]`;
 }
 
-/* Ranking: a query promotes its best matches into an INSERT group at the top
-   and leaves the rest of the catalogue where it is, so the menu narrows
-   without ever becoming a dead end — a typo still shows every command. */
 function slashScore(item, q) {
   if (!q) return 0;
   const label = item.label.toLowerCase();
@@ -10492,9 +7732,6 @@ function slashRows(query) {
   const ranked = q
     ? items
       .map((item, i) => ({ item, i, score: slashScore(item, q) }))
-      // Only a strong match is promoted: a query that merely appears inside a
-      // word ("ta" in "italic") is not what the writer meant, and a wrong row
-      // at the top is worse than no INSERT group at all.
       .filter((r) => r.score >= 70)
       .sort((a, b) => (b.score - a.score) || (a.i - b.i))
       .slice(0, SLASH_PROMOTED)
@@ -10512,16 +7749,9 @@ function slashRows(query) {
   return rows;
 }
 
-/* `#` IS the entity search. Picking a reference used to be two steps — the
-   /entity command, then a dialog to search in — and the dialog is the part
-   nobody wants: the caret is already where the reference goes, and the
-   document is a perfectly good search box. Type # and the workspace's records
-   filter under the caret; ↑/↓ move, Enter drops the reference in, and the chip
-   layer turns it into a chip. Two characters minimum, so "# Heading" is still
-   a heading and never a search. */
 const ENTITY_HINT_MIN = 2;
 const entityHintCache = new Map();
-let entityHintFailing = false; // one toast per run of failures, not one per keystroke
+let entityHintFailing = false;
 
 async function entityHint(query) {
   const q = String(query ?? '').trim();
@@ -10533,8 +7763,6 @@ async function entityHint(query) {
         .filter((h) => h.kind === 'entity');
       entityHintFailing = false;
     } catch (err) {
-      // A search that fails is a menu that does not open — so say so, once
-      // until a search succeeds again (Issue #265).
       if (!entityHintFailing) toast(`Couldn't search: ${err.message}`, true);
       entityHintFailing = true;
       return [];
@@ -10559,54 +7787,25 @@ function slashHint(query) {
   }));
 }
 
-/* A row's glyph: the vendored flat icon when the row names one, otherwise the
-   typographic mark, which for B / I / S / ` / H IS the icon. Never an emoji —
-   a colour picture in a monochrome menu ignores the text colour and the
-   theme. `link` is drawn here because the Iconly free set has no chain. */
 function slashGlyph(item) {
-  // `flat` names a Lucide icon in the inventory; the typographic mark is the
-  // fallback and, for B / I / S / ` / H, the icon itself (Feature #120).
   const name = item.flat && window.weaveIconRegistry?.resolve(`lucide:${item.flat}`);
   return name ? window.LUCIDE_MOVING[name] : escapeHtmlText(item.icon);
 }
 
-// The catalogue is weave's own text, but it reaches the menu as innerHTML and
-// a remembered SELECTION rides into it — which is the writer's text.
 function escapeHtmlText(text) {
   return String(text ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-// Editor chrome, document content and code highlighting each take a theme;
-// all three follow weave's data-bs-theme so a toggle does not leave a light
-// document sitting inside a dark page.
 function vditorTheme() {
   const dark = document.documentElement.dataset.bsTheme === 'dark';
-  /* The hljs palette follows the theme because the code SLAB does (Kyle,
-     2026-08-26: "dark code block background in light mode dont make sense").
-     That pairing is the whole of Issue #81 — the slab was dark in both themes
-     while the palette switched, so github's white-page tokens landed on a
-     near-black ground at 2.7:1. Either they move together or neither does;
-     --wv-code-bg in style.css is the other half of this line. */
   return { ui: dark ? 'dark' : 'classic', content: dark ? 'dark' : 'light', hljs: dark ? 'github-dark' : 'github' };
 }
 
-/* Every `new Vditor` appends another copy of the hidden 53-symbol icon
-   sprite to <body>, and destroy() never removes it — the one leak a
-   mount-per-focus editor would accumulate (measured: +1428 nodes over 12
-   cycles, all sprite). One sheet serves every editor; the rest go. */
 function dedupeVditorSprites() {
   const sprites = [...document.querySelectorAll('body > svg')].filter((v) => v.querySelector('symbol'));
   for (const extra of sprites.slice(1)) extra.remove();
 }
 
-/* ---------- table keys (Kyle, 2026-08-23) ----------
-   Vditor already owns every table operation: Tab/⇧Tab walk cells, ⌘= adds a
-   row below, ⇧⌘F above, ⇧⌘= a column, ⌘-/⇧⌘- delete. What writers reach for
-   first is plain Enter and Tab, so those are added ON TOP by replaying the
-   chord — one implementation of each operation, Vditor's own.
-   Enter: row below. Shift+Enter on an all-empty row: delete it. Tab in the
-   very last cell: grow the table by a row, then Vditor's own Tab moves the
-   caret into it. */
 function tableCellOf(node) {
   for (let n = node instanceof Element ? node : node?.parentElement; n; n = n.parentElement) {
     if (n.tagName === 'TD' || n.tagName === 'TH') return n;
@@ -10617,41 +7816,17 @@ function rowIsEmpty(cell) {
   return [...cell.parentElement.children].every((c) => !c.textContent.trim());
 }
 function replayChord(host, key, shift = false) {
-  // Dispatched on the IR element Vditor listens on — an event targeted at the
-  // host never reaches a descendant's listener. Vditor's modifier check is
-  // exclusive (mac: metaKey && !ctrlKey; elsewhere the reverse), so the
-  // replay sets exactly the platform's own modifier.
   const mac = /Mac|iPhone/.test(navigator.platform);
   const ir = host.querySelector('.vditor-ir .vditor-reset') ?? host;
   ir.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey: mac, ctrlKey: !mac, shiftKey: shift, bubbles: true, cancelable: true }));
 }
-/* The slash menu opens upward when the caret sits low — and a 20-row menu
-   can overflow the top of the window, or run under the pinned record header,
-   hiding exactly the row the query promoted (the writer then reads the wrong
-   first row). Clamp it under the header and let it scroll instead.
-   The clamp is a short one (Issue #137, Kyle: "too many and too big of a
-   slash command menu"): the full catalogue stays, but the menu is a list to
-   scroll, never a sheet over the document. The selection bubble carries the
-   everyday formatting with icons; the menu is for everything else. */
 const HINT_MIN_PX = 160;
-/* The record header the menu must stay clear of: the page's own, or the
-   dock's when the document is open in the dock. Its live bottom edge, not
-   --wv-view-h, because an unscrolled page has not pinned it yet and the
-   breadcrumb row inside it is as opaque as the title. */
 function hintFloor(hint) {
   const head = document.querySelector(hint.closest('#dock') ? '#dock .view-header' : '#main > .view-header');
   return head ? head.getBoundingClientRect().bottom + 4 : 8;
 }
 function attachHintClamp(host) {
-  /* Each write here is a style mutation the observer below hears, so a write
-     of the value already there would spin. */
   const put = (el, prop, v) => { if (el.style[prop] !== v) el.style[prop] = v; };
-  /* Vditor anchors an upward menu by its bottom edge (top = caret top minus
-     its own height), so the overlap comes off the top: the menu keeps its
-     place beside the caret and gives up rows to the scroll instead of
-     sliding behind the header (Issue #550). Holding the bottom makes the
-     pass idempotent — the observer hears our own writes, and a second pass
-     computes the same box and writes nothing. */
   const clamp = (hint) => {
     const floor = hintFloor(hint);
     const r = hint.getBoundingClientRect();
@@ -10664,18 +7839,10 @@ function attachHintClamp(host) {
     for (const m of muts) {
       const hint = m.target.classList?.contains('vditor-hint') ? m.target : null;
       if (!hint) continue;
-      // A closed menu drops the shrink, so the next opening is measured — by
-      // Vditor's own flip check too — at the cap the sheet gives it.
       if (hint.style.display === 'none') { if (hint.style.maxHeight) hint.style.removeProperty('max-height'); continue; }
       clamp(hint);
     }
   }).observe(host, { subtree: true, attributes: true, attributeFilter: ['style'] });
-  /* Vditor closes the menu on any window scroll. A wheel over a menu that
-     cannot absorb it — shorter than its box, or already at an end — chained
-     to the page, which scrolled, which closed the menu under the pointer
-     ("it disappears when trying to scroll", Issue #137). The wheel stops at
-     the menu's edge; overscroll-behavior in the CSS says the same thing to
-     browsers that honour it, this is for the ones that do not. */
   host.addEventListener('wheel', (e) => {
     const hint = e.target.closest?.('.vditor-hint');
     if (!hint || hint.style.display === 'none') return;
@@ -10691,24 +7858,21 @@ function attachTableKeys(host) {
     if (!cell || !host.contains(cell)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault(); e.stopImmediatePropagation();
-      replayChord(host, '='); // row below
+      replayChord(host, '=');
     } else if (e.key === 'Enter' && e.shiftKey) {
-      if (!rowIsEmpty(cell)) return; // a full row is never deleted from a key
+      if (!rowIsEmpty(cell)) return;
       e.preventDefault(); e.stopImmediatePropagation();
-      replayChord(host, '-'); // delete row
+      replayChord(host, '-');
     } else if (e.key === 'Tab' && !e.shiftKey) {
       const table = cell.closest('table');
       const cells = table.querySelectorAll('td, th');
       const lastCell = cells[cells.length - 1];
-      if (cell !== lastCell) return; // mid-table Tab is Vditor's cell walk
-      replayChord(host, '='); // grow first; Vditor's Tab then enters the new row
+      if (cell !== lastCell) return;
+      replayChord(host, '=');
     }
   }, { capture: true });
 }
 
-/* Vditor's toolbar buttons draw the inventory's icons — the same shapes the
-   slash menu and the rest of the chrome use — so Vditor's own set never
-   paints beside ours (Kyle, 2026-09-02). A separator stays a separator. */
 const tbIcon = (name) => (window.LUCIDE_MOVING?.[name] ?? '').replace(/ data-mi="[^"]*"/g, '');
 const WV_TB_ICONS = {
   headings: tbIcon('heading'), bold: tbIcon('bold'), italic: tbIcon('italic'), strike: tbIcon('strikethrough'),
@@ -10721,20 +7885,14 @@ const WV_TB_ICONS = {
 
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   const t = vditorTheme();
-  /* Vditor hands the text over 800ms after the last keystroke (undoDelay),
-     and a phone leaves sooner than that: the app switcher, the lock button,
-     Back. `pull` reads what the surface holds right now and hands it on if
-     it moved, so every leaving path saves the last word (Issue #247). A
-     half-typed command is left alone: its marker is not content. */
-  let handed = null; // null until Vditor has built the surface
+  let handed = null;
   const onInput = (v) => { handed = v; hand(v); };
   const pull = () => {
     if (handed === null) return;
     let v;
-    try { v = editor.getValue(); } catch { return; } // already destroyed
+    try { v = editor.getValue(); } catch { return; }
     if (v !== handed && !holdsCommandMarker(v)) onInput(v);
   };
-  // Tapping outside is a leaving path too; the write goes now, not in 1.4s.
   host.addEventListener('focusout', () => { pull(); flushDocSaves(); });
   const chips = attachRefChips(host);
   attachCodeAuto(host);
@@ -10743,8 +7901,6 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachHintClamp(host);
   const editor = new Vditor(host, {
     mode: 'ir',
-    // Vendored, not the public CDN default: a weave instance with no internet
-    // still has to render its own documents.
     cdn: '/vendor/vditor',
     value,
     placeholder,
@@ -10752,18 +7908,8 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
     icon: 'ant',
     theme: t.ui,
     minHeight: 160,
-    // weave saves server-side on every pause; a localStorage draft would only
-    // compete with that and resurrect stale text.
     cache: { enable: false },
     counter: { enable: false },
-    // Kyle's Toolbar Lab pick (2026-08-30): the full set as a selection
-    // bubble — the bar floats over selected text (attachToolbarBubble)
-    // instead of sitting in the flow, so the document keeps a clean top
-    // edge. The slash menu stays the full catalogue (references, mermaid,
-    // raw HTML, math) the toolbar never holds. hide stays false: Vditor
-    // must never fight the bubble layer for visibility.
-    // Vditor's own toolbar icons give way to the inventory's, so the bubble
-    // matches the chrome (Kyle, 2026-09-02).
     toolbar: [
       'headings', 'bold', 'italic', 'strike', 'inline-code', 'link', '|',
       'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
@@ -10773,54 +7919,24 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
     toolbarConfig: { hide: false, pin: false },
     upload: {
       multiple: true,
-      // Everything weave stores is uploadable — the files API takes any
-      // mime. Images embed, everything else links.
       handler: (files) => uploadDocFiles(files, entityId, () => editor, onInput),
     },
-    // The outline lives outside the editor (the dash rail), so Vditor's own
-    // panel stays off rather than fighting it for the left gutter.
     outline: { enable: false, position: 'left' },
     preview: {
       hljs: { enable: true, style: t.hljs, lineNumber: false },
       theme: { current: t.content, path: '/vendor/vditor/dist/css/content-theme' },
-      // KaTeX is Vditor's default engine, but the default is not a decision:
-      // naming it here is what makes "only KaTeX is vendored" a choice.
-      // $…$ / $$…$$ load katex + mhchem from the vendored tree; the other
-      // fence engines (graphviz, echarts, plantuml, mindmap, abc, flowchart)
-      // are NOT vendored and those fences degrade to plain code blocks.
       math: { engine: 'KaTeX' },
     },
-    // `:` completes from the inventory — every name draws its icon in the popup.
     hint: { emoji: window.weaveIconRegistry?.emojiTable() ?? {}, emojiPath: '/vendor/icons', extend: [{ key: '/', hint: slashHint }, { key: '#', hint: entityHint }] },
-    // Every decoration pass on this host starts once the editor is actually
-    // built — an attach-time schedule can fire before Vditor has a surface.
     after: () => {
       dedupeVditorSprites();
-      /* `:bell:` is an icon here, never an emoji (Kyle, 2026-09-02). Lute
-         renders `:name:` from a shortcode table; Vditor only MERGES the hint
-         map into Lute's GitHub emoji table, so the table is replaced here
-         with the inventory alone — each name an <img> under /vendor/icons —
-         and a token draws the icon inline as Lute's own node, serialises
-         back to `:name:`, and `:smile:` stays text. A document that already
-         carries a token is rendered again once so the first paint agrees
-         with every later one; setValue fires no input, so nothing is saved. */
       editor.vditor?.lute?.SetEmojis?.(window.weaveIconRegistry?.emojiTable() ?? {});
       const md = editor.getValue();
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
-      /* Lute normalises what it loads (a trailing newline, a list marker),
-         so the baseline for pull() is the surface as built, not the stored
-         text: an untouched document must not save itself on leaving. */
       handed = editor.getValue();
       scheduleDecorFor(host);
-      /* Typing "/" replaces whatever was selected, so the selection has to be
-         remembered before the menu can ask for it. Both events fire after the
-         selection settles, and only a non-empty one is kept — the collapsed
-         selection left by the "/" itself must not erase it. */
       host.addEventListener('keyup', rememberSelection);
       host.addEventListener('mouseup', rememberSelection);
-      /* Vditor moves the slash menu's highlight on ↑/↓ but never scrolls to
-         it, which is invisible in a menu of eight rows and useless in one of
-         twenty. Runs after Vditor's own handler, so the class has moved. */
       host.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
         requestAnimationFrame(() =>
@@ -10833,19 +7949,12 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
     },
     ...(onBlur ? { blur: () => onBlur() } : {}),
     input: (v) => {
-      // A reference command arrives here as its marker, never as content.
       const ref = v.match(REF_MARKER_RE);
       if (ref) return pickReference(editor, v, ref[0], ref[1], onInput);
-      // watchBlockMarkers converts a block marker as it lands. This is the
-      // net under it: a marker is never handed on to be saved.
       if (globalThis.WeaveEditorLib.BLOCK_MARKER_RE.test(v)) return convertBlockLine(host, editor, onInput);
       for (const [marker, block] of Object.entries(DEFERRED_INSERTS)) {
         if (!v.includes(marker)) continue;
         const next = v.replace(marker, block);
-        /* A microtask, not a timer or a frame: a headless page is
-           backgrounded and Chrome throttles both there, so the swap would
-           never land under test — and the writer would watch the marker sit
-           in their document until something else woke the page. */
         queueMicrotask(() => {
           editor.setValue(next);
           editor.focus();
@@ -10854,18 +7963,13 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
         return;
       }
       onInput(v);
-      scheduleDecorFor(host); // chips, rail, folds and code detection
+      scheduleDecorFor(host);
     },
   });
   docPulls.set(editor, pull);
   liveEditors.add(editor);
   return editor;
 }
-
-/* ---------- toolbar bubble + uploads (Kyle's Toolbar Lab pick, 2026-08-30) ----
-   The toolbar never sits in the flow: it floats over the selection like
-   Fibery's, and only while a selection exists in this editor. Vditor keeps
-   owning every button; weave only owns where and when the bar is. */
 
 const docBubbles = new Set();
 
@@ -10883,9 +7987,6 @@ function placeToolbarBubble(st) {
   if (!bar || !root) return;
   const sel = getSelection();
   const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
-  // The bubble stays while the writer is inside it — a headings-dropdown or
-  // link-input click collapses the document selection, and the bar must not
-  // vanish under the cursor mid-gesture.
   const inBar = bar.contains(document.activeElement) || bar.matches(':hover');
   const on = (range && !range.collapsed && root.contains(range.startContainer)
     && root.contains(range.endContainer)) || (inBar && bar.classList.contains('wv-show'));
@@ -10895,21 +7996,15 @@ function placeToolbarBubble(st) {
   const base = st.host.getBoundingClientRect();
   const barW = bar.offsetWidth, barH = bar.offsetHeight;
   const left = Math.max(0, Math.min(base.width - barW, r.left - base.left + r.width / 2 - barW / 2));
-  // Above the selection; below it when the selection touches the host's top.
   const above = r.top - base.top - barH - 8;
   bar.style.left = `${left}px`;
   bar.style.top = `${above >= 0 ? above : r.bottom - base.top + 8}px`;
 }
 
-/* A microtask, not a frame: backgrounded pages throttle rAF to never, and
-   the bubble must still work in a hidden tab under test. */
 document.addEventListener('selectionchange', () => {
   for (const st of docBubbles) queueMicrotask(st.place);
 });
 
-/* Toolbar uploads land on the entity through the same files API every other
-   surface uses; the doc then links what was stored — an image embeds, any
-   other type gets a plain link. Returning a string is Vditor's error tip. */
 async function uploadDocFiles(files, entityId, getEditor, onInput) {
   if (!entityId) return 'This document has no record to attach to';
   const editor = getEditor();
@@ -10923,10 +8018,6 @@ async function uploadDocFiles(files, entityId, getEditor, onInput) {
     } catch (e) { return `Upload failed: ${e.message}`; }
     const url = `${WS_PREFIX}/api/files/${meta.id}`;
     const mime = f.type || '';
-    // Images and PDFs embed as inline viewers (the raw-HTML block passes
-    // through the renderer and every export); anything else links, because
-    // the server sends it as a download (Issue #483). The hover toolbar can
-    // demote any viewer to a link later.
     const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![${f.name}](${url})`
       : mime === 'application/pdf'
         ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
@@ -10936,13 +8027,6 @@ async function uploadDocFiles(files, entityId, getEditor, onInput) {
   onInput?.(editor.getValue());
   return null;
 }
-
-/* ---------- hover toolbar on file viewers (Kyle, 2026-08-31) ----------
-   Every file viewer (an uploaded image, a pdf/html iframe) grows a small
-   toolbar on hover with one action: show the file as a plain link. The
-   rewrite happens in the markdown, so it survives save and export.
-   ponytail: the reverse (link back to viewer) and persisting a resized
-   width into the markdown are deliberate omissions until asked for. */
 
 function attachFileTools(host, editor, onInput) {
   const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -10984,34 +8068,16 @@ function attachFileTools(host, editor, onInput) {
 }
 
 
-/* ---------- live [[…]] chips over the IR surface (Issue #86) ----------
-   Lute is compiled Go and cannot learn weave's reference syntax, so the
-   chips are a decoration pass OVER the editing surface, never a rewrite of
-   it: the contenteditable DOM belongs to Lute's serializer, and anything
-   injected there would leak into the stored markdown. Each editor gets a
-   click-transparent sibling layer; resolved chips paint on top of the
-   literal text and step aside while the caret sits inside a reference. */
-
 const REF_CHIP_DEBOUNCE = 250;
 const refChipLayers = new Set();
-const refResolveCache = new Map(); // ref → { href, label, kind } | null (miss)
+const refResolveCache = new Map();
 
-// Kick every decoration pass attached to one editor host (chips, rail, folds).
 function scheduleDecorFor(host) {
   for (const s of [...refChipLayers, ...docRails, ...docFolds, ...docCodeAuto, ...docCodeRaw]) {
     if (s.host === host) s.schedule();
   }
 }
 
-/* ---------- unlabelled code blocks colour themselves ----------
-   A fence with no language is plaintext to highlight.js: zero token spans,
-   one colour, forever. Naming a language for the writer was the old answer
-   (the slash command inserted ```js); detecting it is the better one — the
-   block is highlighted as whatever it turns out to be, and content that is
-   not recognisably code stays plain text rather than being coloured as a
-   guess. Only the rendered half of the block is touched: the markdown lives
-   in the editable <pre> beside it, so nothing here can change the document.
-   Diagram and math fences belong to their own renderers and are left alone. */
 const docCodeAuto = new Set();
 
 function attachCodeAuto(host) {
@@ -11028,69 +8094,34 @@ function refreshCodeAuto(st) {
   if (!document.body.contains(st.host)) { docCodeAuto.delete(st); return; }
   const hljs = window.hljs;
   if (!hljs?.highlightAuto) {
-    // Vditor fetches highlight.js when it renders the first code block, which
-    // can land after this pass. Wait for it rather than never colouring.
     if ((st.tries = (st.tries ?? 0) + 1) < 20) st.schedule();
     return;
   }
   let applied = false;
   for (const code of st.host.querySelectorAll('.vditor-ir__preview > code')) {
-    /* A language WE detected is not a language the fence named. Both leave a
-       `language-x` class behind, and answering "already handled" to our own
-       class means never looking again — so the two are told apart by the
-       marker, not by the class.
-
-       The same marker cannot be the whole answer either: this element belongs
-       to Vditor, which re-renders the preview from the markdown. A re-render
-       replaces the tokens while leaving the class and the marker on the
-       element, and the block would then read as handled and stay plain for
-       good. So the question is not "did we answer" but "is the answer still
-       on the page". Under load that is the state a flaky
-       `slash-commands` case has been landing in; it is a hypothesis, not a
-       proven cause, and this guard costs nothing when it is wrong. */
     const ours = code.dataset.autoLang;
-    if (!ours && /language-\S/.test(code.className)) continue; // the fence named a language
+    if (!ours && /language-\S/.test(code.className)) continue;
     const text = code.textContent ?? '';
     const answered = code.dataset.autoFor === text;
     if (answered && (!ours || code.querySelector('span'))) continue;
     code.dataset.autoFor = text;
     const lang = globalThis.WeaveEditorLib?.detectCodeLanguage(text);
-    if (!lang) { delete code.dataset.autoLang; continue; } // prose, a note, a diagram source
+    if (!lang) { delete code.dataset.autoLang; continue; }
     try {
       code.innerHTML = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
       code.classList.add('hljs', `language-${lang}`);
       code.dataset.autoLang = lang;
       applied = true;
-    } catch { /* the language is not in the vendored bundle */ }
+    } catch {}
   }
-  /* Vditor renders the preview again after it has fetched highlight.js, which
-     can land after this pass and take the tokens with it. Nothing types, so
-     no input or selection event brings us back — look once more on our own.
-     The guard above makes the second pass free when the tokens survived, and
-     the counter stops the two of us trading renders forever. */
   if (applied && (st.rechecks = (st.rechecks ?? 0) + 1) <= 3) st.schedule();
   else if (!applied) st.rechecks = 0;
 }
 
-/* ---------- a code block's markdown behind </> (Issue #96) ----------
-   Vditor expands a fenced block into its markdown the moment the caret enters
-   it: the ``` fence and language above the code, the closing fence below, and
-   for a diagram the source in place of the drawing. Kyle clicked a mermaid
-   diagram six times watching it turn back into text, and asked for "show raw"
-   to live behind a code icon in the panel's upper right instead.
-
-   So the block the caret is in keeps looking like itself (code stays code, a
-   diagram stays a diagram) and one </> button per editor, floated over that
-   block's panel, shows and hides the raw lines. The state is a class on the
-   host, not on the block: Vditor rebuilds a block's DOM as it is typed in,
-   and a class on the block would vanish mid-edit. It resets when the caret
-   leaves the block, so every block opens clean. The button lives beside the
-   IR surface, never inside it, where Lute would serialise it. */
 const docCodeRaw = new Set();
 
 const codeRawNode = (host) =>
   host.querySelector('.vditor-ir .vditor-reset .vditor-ir__node--expand[data-type="code-block"]');
-// A preview that holds no <code> is a rendering (mermaid, math), not code.
 const codeRawIsDrawing = (node) => !node.querySelector(':scope > .vditor-ir__preview > code');
 
 function setCodeRaw(st, on) {
@@ -11106,25 +8137,17 @@ function attachCodeRawToggle(host) {
   const st = { host, btn, key: -1, timer: 0 };
   st.place = () => placeCodeRaw(st);
   st.schedule = () => queueMicrotask(st.place);
-  // Teardown: the button leaves with its editor, and a pass already queued
-  // (a microtask, the focusout timer) finds the state dead and does nothing.
   st.stop = () => {
     st.dead = true;
     clearTimeout(st.timer);
     btn.remove();
     host.classList.remove('wv-code-raw');
   };
-  // Focus stays in the document: a blur is what makes Vditor fold the block
-  // up under the button before its click lands.
   btn.addEventListener('mousedown', (e) => e.preventDefault());
   btn.addEventListener('click', () => setCodeRaw(st, !host.classList.contains('wv-code-raw')));
-  // Vditor expands a block on click and keyup, after the selection has moved.
   host.addEventListener('click', st.schedule);
   host.addEventListener('keyup', st.schedule);
   host.addEventListener('focusout', () => { clearTimeout(st.timer); st.timer = setTimeout(st.place); });
-  /* A diagram's source is off screen while the drawing shows, and the caret
-     sits in it. A keystroke there would change text nobody can see, so an
-     edit opens the source first and then lands where the writer can watch. */
   host.addEventListener('keydown', (e) => {
     if (e.isComposing || e.altKey || ((e.metaKey || e.ctrlKey) && e.key !== 'v')) return;
     if (e.key.length !== 1 && !['Enter', 'Backspace', 'Delete', 'Tab'].includes(e.key)) return;
@@ -11136,19 +8159,17 @@ function attachCodeRawToggle(host) {
 }
 
 function placeCodeRaw(st) {
-  if (st.dead) return; // torn down (st.stop)
+  if (st.dead) return;
   if (!document.body.contains(st.host)) { docCodeRaw.delete(st); return; }
   const node = codeRawNode(st.host);
-  // Blocks are told apart by position: typing rebuilds the element itself.
   const key = node ? [...node.parentElement.querySelectorAll(':scope > [data-type="code-block"]')].indexOf(node) : -1;
   if (key !== st.key) {
     st.key = key;
     if (st.host.classList.contains('wv-code-raw')) { setCodeRaw(st, false); return; }
   }
-  // Whichever of the block's two copies is on screen is the panel.
   const panel = node && [...node.querySelectorAll(':scope > pre')].find((p) => p.getClientRects().length);
   if (!panel) { st.btn.remove(); return; }
-  if (!st.btn.isConnected) st.host.append(st.btn); // Vditor clears the host when it builds
+  if (!st.btn.isConnected) st.host.append(st.btn);
   const r = panel.getBoundingClientRect();
   const base = st.host.getBoundingClientRect();
   st.btn.style.top = `${r.top - base.top + 6}px`;
@@ -11165,9 +8186,6 @@ function attachRefChips(host) {
   return st;
 }
 
-/* Caret and scroll re-evaluate every live decoration (chips and rails).
-   Registered once — the sets empty on teardown, so idle listeners cost
-   nothing. */
 document.addEventListener('selectionchange', () => {
   for (const st of refChipLayers) st.schedule();
 });
@@ -11175,41 +8193,27 @@ window.addEventListener('scroll', () => {
   for (const st of refChipLayers) st.schedule();
   for (const st of docRails) st.schedule();
 }, true);
-/* One pass per animation frame (Issue #269): a window drag fires resize
-   dozens of times a second, and every event used to reschedule every rail. */
 let resizeFrame = 0;
 window.addEventListener('resize', () => {
   if (resizeFrame) return;
   resizeFrame = requestAnimationFrame(() => {
     resizeFrame = 0;
-    for (const st of docRails) st.schedule(); // an open outline re-pins its x
+    for (const st of docRails) st.schedule();
   });
 });
 
 async function refreshRefChips(st) {
   if (!document.body.contains(st.host)) { refChipLayers.delete(st); return; }
-  // The IR surface specifically: the host also carries Vditor's outline and
-  // preview containers, each with an (empty) .vditor-reset of its own.
   const root = st.host.querySelector('.vditor-ir .vditor-reset');
   if (!root) return;
-  // Vditor owns the host and clears it when it builds (and rebuilds), so the
-  // layer re-attaches itself instead of trusting any earlier append.
   if (!st.layer.isConnected) st.host.append(st.layer);
   const lib = globalThis.WeaveEditorLib;
 
-  // The caret splits text nodes as it moves ("edit [[N" + "ote#1]] live"),
-  // and a reference cut in two is invisible to a per-node scan. normalize()
-  // merges the pieces without changing content — the DOM spec adjusts live
-  // ranges (the selection included) across the merge.
   root.normalize();
 
-  // Gather spans first: only visible paragraphs pay for geometry, and code
-  // contexts never decorate (code is literal text by definition).
   const spans = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    // The IR surface is itself a <pre contenteditable>, so the root never
-    // counts as a code context — only something nearer does.
     const codeCtx = n.parentElement?.closest(lib.REF_SKIP_SELECTOR);
     if (codeCtx && codeCtx !== root) continue;
     const found = lib.findRefSpans(n.nodeValue);
@@ -11220,7 +8224,7 @@ async function refreshRefChips(st) {
   }
 
   await resolveRefs(spans.map((s) => s.ref));
-  if (!document.body.contains(st.layer)) return; // torn down mid-flight
+  if (!document.body.contains(st.layer)) return;
 
   const sel = getSelection();
   const caret = sel?.rangeCount ? sel.getRangeAt(0) : null;
@@ -11228,52 +8232,32 @@ async function refreshRefChips(st) {
   st.layer.replaceChildren();
   for (const s of spans) {
     const hit = refResolveCache.get(s.ref);
-    if (!hit) continue; // a broken reference stays literal — nothing to open
-    // The writer is inside this reference: editing stays plain text.
+    if (!hit) continue;
     if (caret?.startContainer === s.node && caret.startOffset >= s.start && caret.startOffset <= s.end) continue;
     const range = document.createRange();
     range.setStart(s.node, s.start);
     range.setEnd(s.node, s.end);
     const rects = range.getClientRects();
-    if (rects.length !== 1) continue; // wrapped across lines: leave literal
+    if (rects.length !== 1) continue;
     const r = rects[0];
-    // The anchor covers the literal on an opaque ground; the tint is the
-    // label's own, so it ends where the words end (F6). A name longer than
-    // its literal ellipsizes inside it; the tooltip has the rest.
     st.layer.append(el('a', {
       class: `mention mention-${hit.kind} doc-ref-chip`,
       href: hit.href,
       title: hit.title,
-      // 2px over and under: a bracket's tail drops below the text box.
       style: `left:${r.left - base.left}px; top:${r.top - base.top - 2}px; width:${r.width}px; height:${r.height + 4}px;`,
     }, el('span', { class: 'k k-rel doc-ref-label' }, el('span', { class: 'k-label' }, s.label ?? hit.label))));
   }
 }
 
-/* ---------- document outline dash rail (Issue #87) ----------
-   A minimap in the left gutter of the entity page's document panels: one
-   dash per heading (longer for higher levels), a tracker that follows the
-   scroll, click to jump. Vditor's own outline stays disabled — it wants the
-   same gutter and a tree; the rail says "where am I" without one. */
-
-const DASH_READING_LINE = 80; // px below the viewport top: past the header
+const DASH_READING_LINE = 80;
 const docRails = new Set();
 
 function attachDashRail(section, host) {
-  // rail = the full-height gutter column; track = the sticky thing inside it,
-  // so the map floats alongside the reader instead of scrolling off the top.
   const track = el('div', { class: 'doc-rail-track' });
   const st = {
     section, host, track, timer: 0,
     rail: el('nav', { class: 'doc-rail', title: 'Document outline' }, track),
   };
-  /* The outline opens on click, never on hover: the resting rail stays a
-     minimap, and the first click anywhere on it widens the minimap IN PLACE
-     into a panel of headings — same sticky anchor, same left edge, so the
-     panel lands on the dashes the reader just clicked. It used to float
-     fixed at the viewport's middle, which read as the outline snapping away
-     (Issues #131, #144). Capture phase, so a dash click while closed opens
-     the panel instead of jumping blind. */
   const onAway = (e) => { if (!st.rail.contains(e.target)) st.close(); };
   const onKey = (e) => { if (e.key === 'Escape') st.close(); };
   st.close = () => {
@@ -11282,7 +8266,7 @@ function attachDashRail(section, host) {
     document.removeEventListener('keydown', onKey);
   };
   st.rail.addEventListener('click', (e) => {
-    if (st.rail.classList.contains('open')) return; // open: dash clicks jump
+    if (st.rail.classList.contains('open')) return;
     e.stopPropagation();
     st.rail.classList.add('open');
     document.addEventListener('click', onAway, true);
@@ -11297,8 +8281,6 @@ function attachDashRail(section, host) {
   return st;
 }
 
-// A heading's textContent includes Vditor's "# " marker span; chrome about
-// the heading (rail tooltips, fold keys) wants the words, not the syntax.
 function headText(h) {
   return [...h.childNodes]
     .filter((n) => !(n.nodeType === 1 && n.classList.contains('vditor-ir__marker')))
@@ -11309,29 +8291,18 @@ function refreshDashRail(st) {
   if (!document.body.contains(st.section)) { st.close(); docRails.delete(st); return; }
   const root = st.host.querySelector('.vditor-ir .vditor-reset');
   if (!root) return;
-  // Block headings only — direct children of the surface, never something a
-  // preview rendered inside a code block. Headings hidden inside a fold
-  // (display:none, so no offsetParent) leave the map with their section.
   const heads = [...root.querySelectorAll(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')]
     .filter((h) => h.offsetParent !== null);
   const lib = globalThis.WeaveEditorLib;
   const spec = lib.railSpec(heads.map((h) => ({ level: +h.tagName[1], text: headText(h) })));
-  if (!spec.length) { st.close(); st.rail.remove(); return; } // < 3 headings: no rail
+  if (!spec.length) { st.close(); st.rail.remove(); return; }
   if (!st.rail.isConnected) st.section.append(st.rail);
-  // The reading line hangs from the top of the box the document scrolls in
-  // — the main panel or the dock, 8px under the window (Issue #609) — the
-  // same edge a dash click lands its heading against.
   const lineTop = scrollBoxOf(heads[0])?.getBoundingClientRect().top ?? 0;
   const current = lib.currentSection(heads.map((h) => h.getBoundingClientRect().top - lineTop), DASH_READING_LINE);
-  // A dash is a tick plus its heading's words. The words are display:none
-  // until the rail is hovered, so the resting rail stays a minimap and the
-  // dash keeps the tick's own width.
   st.track.replaceChildren(...spec.map((d, i) => el('button', {
     class: 'doc-rail-dash' + (i === current ? ' active' : ''),
     type: 'button',
     title: d.text,
-    // The heading lands on the same reading line the tracker measures from,
-    // so the section the rail says you are in is the one under the header.
     onclick: () => {
       scrollTargetIntoView(heads[i], { block: 'start', padding: DASH_READING_LINE });
       st.close();
@@ -11339,30 +8310,19 @@ function refreshDashRail(st) {
   },
   el('i', { class: 'doc-rail-tick', style: `width:${d.width}px` }),
   el('span', { class: 'doc-rail-label' }, d.text))));
-  // The track caps at the viewport, so a long map has to bring the reader's
-  // own section back into it — never while they are scrolling the map by hand.
   const marker = st.track.children[current];
   if (marker && st.track.scrollHeight > st.track.clientHeight && !st.rail.matches(':hover')) {
     st.track.scrollTop = Math.max(0, marker.offsetTop - st.track.clientHeight / 2);
   }
 }
 
-/* ---------- collapsible headings (Issue #88) ----------
-   Folding a heading hides every block until the next heading of the same or
-   a higher level. The caret lives in an overlay gutter layer — never inside
-   the contenteditable — and the fold itself is a class on the hidden blocks,
-   which Lute ignores when it reads the DOM back, so the stored markdown
-   never changes. State persists per entity+field, keyed by level+text (two
-   identical headings fold together — the key is the identity we have). */
-
 const docFolds = new Set();
 
-// Fold state per entity+field: read with two args, write with three.
 function docFoldState(entityId, field, next) {
   const key = `weave-doc-folds:${entityId}:${field}`;
   if (next === undefined) {
     try { return new Set(JSON.parse(localStorage.getItem(key)) ?? []); }
-    catch { return new Set(); } // no stored folds: all open
+    catch { return new Set(); }
   }
   localStorage.setItem(key, JSON.stringify([...next]));
   return next;
@@ -11386,23 +8346,16 @@ function refreshHeadingFolds(st) {
   if (!st.layer.isConnected) st.host.append(st.layer);
   const lib = globalThis.WeaveEditorLib;
   const blocks = [...root.children];
-  /* A first H1 that repeats the record name is the page title twice (F6,
-     2026-09-26): hidden by a class Lute ignores, like a fold, so the markdown
-     keeps it. It is no heading to fold or map. A document that is nothing
-     but that heading keeps it, or there would be nowhere to write. */
   const echo = blocks.length > 1 && blocks[0].tagName === 'H1'
     && lib.isTitleEcho(headText(blocks[0]), st.recordName());
   if (blocks[0] && blocks[0].classList.contains('wv-title-echo') !== echo) {
     blocks[0].classList.toggle('wv-title-echo', echo);
-    for (const rail of docRails) rail.schedule(); // a hidden heading leaves the rail
+    for (const rail of docRails) rail.schedule();
   }
   const levels = blocks.map((b, i) => (echo && i === 0 ? null : /^H[1-6]$/.test(b.tagName) ? +b.tagName[1] : null));
   const folded = docFoldState(st.entityId, st.field);
   const headKey = (h) => `${h.tagName[1]}:${headText(h)}`;
 
-  // Apply the folds first (layout settles), then place carets on whatever
-  // headings are still visible.
-  // A block written above the echo makes it second: it shows again.
   for (const b of blocks.slice(1)) b.classList.remove('wv-title-echo');
   for (const b of blocks) b.classList.remove('wv-folded');
   levels.forEach((lvl, i) => {
@@ -11427,16 +8380,13 @@ function refreshHeadingFolds(st) {
         next.has(key) ? next.delete(key) : next.add(key);
         docFoldState(st.entityId, st.field, next);
         refreshHeadingFolds(st);
-        for (const rail of docRails) rail.schedule(); // hidden headings leave the rail
+        for (const rail of docRails) rail.schedule();
       },
     }));
   });
   st.layer.replaceChildren(...carets);
 }
 
-/* One resolver for every reference kind: the same POST /api/markdown the
-   previews render through, batched (one paragraph per reference) and cached.
-   Misses cache as null so a dead reference is not re-asked on every pass. */
 async function resolveRefs(refs) {
   const missing = [...new Set(refs)].filter((r) => !refResolveCache.has(r));
   if (!missing.length) return;
@@ -11448,31 +8398,17 @@ async function resolveRefs(refs) {
     missing.forEach((ref, i) => {
       const a = paras[i]?.querySelector('a.mention');
       if (!a) return refResolveCache.set(ref, null);
-      // The API's canonical entity href targets the standalone document page
-      // (right for exported HTML); inside the app the chip means the entity.
       let href = a.getAttribute('href');
       const ent = href.match(/\/e\/([^/]+)\/doc\.html$/);
       if (ent) href = `#/entity/${ent[1]}`;
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
-      // The anchor may carry collapsed preview segments (.mention-fields);
-      // the overlay chip's label is the name alone, never the hidden fields.
       a.querySelector('.mention-fields')?.remove();
       a.querySelector('.mention-caret')?.remove();
-      // The chip reads as the record's name (F6): `Task#1 — Name` is the
-      // export's label, and it stays on as the tooltip.
       refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });
     });
-  } catch { /* resolution is decoration; a failed fetch leaves literals */ }
+  } catch {}
 }
 
-/* ---------- a block command takes its line (Issue #455) ----------
-   The marker is converted the moment it lands, from a MutationObserver, and
-   not from Vditor's input event. That event runs on an 800ms timer
-   (undoDelay), so the writer would read "Buy milk block:task" for most of a
-   second. The same timer puts the document on the undo stack: a marker still
-   there at that point comes back on ⌘Z, converts again, and undo never gets
-   past the line. The observer runs before either, and setValue cancels the
-   timer, so the undo stack only ever holds the converted line. */
 function watchBlockMarkers(host, editor, onInput) {
   const root = host.querySelector('.vditor-ir .vditor-reset');
   if (!root) return;
@@ -11482,14 +8418,6 @@ function watchBlockMarkers(host, editor, onInput) {
   }).observe(root, { childList: true, characterData: true, subtree: true });
 }
 
-/* The rewrite is WeaveEditorLib.convertMarkedLine, on the markdown. The
-   whole document is written back, the one path that round-trips through
-   Lute, with a sentinel after the line's last word: setValue rebuilds the
-   surface and leaves the caret nowhere, and the sentinel is where it goes.
-   The sentinel is out again before anything reads the document, so what is
-   saved, through the same debounce as typing, is what the editor holds.
-   A table row or a line of code is not converted (`line` is -1): the marker
-   comes out of the surface and the caret stays where it was. */
 const CARET_SENTINEL = '\u2063caret\u2063';
 function convertBlockLine(host, editor, onInput) {
   const md = editor.getValue();
@@ -11502,16 +8430,11 @@ function convertBlockLine(host, editor, onInput) {
     lines[next.line] += token;
     editor.setValue(lines.join('\n'));
   }
-  // The token is somewhere the walk cannot reach: write the document
-  // without one and let the caret fall where focus puts it.
   if (!caretToToken(host, token)) { editor.setValue(next.md); editor.focus(); }
   onInput(editor.getValue());
   scheduleDecorFor(host);
 }
 
-/* Takes every `token` out of the editing surface (a code block holds its
-   text twice, source and preview) and leaves the caret where the first one
-   was. false when there was none. */
 function caretToToken(host, token) {
   const root = host.querySelector('.vditor-ir .vditor-reset');
   if (!root) return false;
@@ -11534,9 +8457,6 @@ function caretToToken(host, token) {
   return true;
 }
 
-/* Hands off to the same search the ⌘K palette runs, so one search surface
-   serves navigation and referencing. Picking writes the reference where the
-   marker was; dismissing leaves the document as it was. */
 const REF_KINDS = {
   entity: { kinds: ['entity'], placeholder: 'Search entities to reference…' },
   table: { kinds: ['table'], placeholder: 'Search tables to reference…' },
@@ -11555,32 +8475,21 @@ function pickReference(editor, value, marker, kind, onInput) {
     kinds,
     placeholder,
     onPick: (hit) => settle(referenceFor(kind, hit)),
-    // Dismissing leaves the document as it was: the marker goes, nothing
-    // takes its place, and the writer is back where they typed "/".
     onDismiss: () => settle(''),
   });
 }
 
-/* Exposed for the browser-driven slash-command suite: what a menu item
-   produces depends on Lute and contenteditable, so the tests need the live
-   instance to read the document back rather than scraping the DOM. */
 window.__weaveEditors = liveEditors;
 window.__weaveDocSaves = pendingDocSaves;
-/* Same flush the page runs on unload and on route change. Exposed because a
-   headless page is backgrounded, and Chrome throttles timers there — the
-   debounce is not a usable clock in a test, so the suite asks for the write
-   instead of waiting for one. */
 window.__weaveFlushDocSaves = flushDocSaves;
 
 function retheme() {
   const t = vditorTheme();
   for (const ed of liveEditors) {
-    try { ed.setTheme(t.ui, t.content, t.hljs); } catch { /* editor not ready yet */ }
+    try { ed.setTheme(t.ui, t.content, t.hljs); } catch {}
   }
 }
 
-/* A pause in typing is the save. Keyed per entity+field so two document
-   sections on one page cannot cancel each other's writes. */
 function scheduleDocSave(entityId, field, value, statusEl, onSaved = null) {
   const key = `${entityId}::${field}`;
   clearTimeout(pendingDocSaves.get(key)?.timer);
@@ -11601,8 +8510,6 @@ function scheduleDocSave(entityId, field, value, statusEl, onSaved = null) {
   pendingDocSaves.set(key, { timer: setTimeout(write, DOC_SAVE_DEBOUNCE), write });
 }
 
-// One document's pending save, written now: the history panel lists and
-// restores against the log, so what was just typed has to be in it first.
 async function flushDocSave(entityId, field) {
   const p = pendingDocSaves.get(`${entityId}::${field}`);
   if (!p) return;
@@ -11610,9 +8517,6 @@ async function flushDocSave(entityId, field) {
   await p.write();
 }
 
-/* "5 min ago" for a revision row; the exact time rides in the title.
-   ponytail: Intl.RelativeTimeFormat still needs the unit picked, and this is
-   the whole of that. */
 function relTime(iso) {
   const sec = (Date.now() - Date.parse(iso)) / 1000;
   if (sec < 45) return 'just now';
@@ -11622,8 +8526,6 @@ function relTime(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
-/* Leaving the page must not cost the last few keystrokes. The live editors
-   are read first: what Vditor has not handed over yet is not queued yet. */
 function flushDocSaves() {
   for (const ed of liveEditors) docPulls.get(ed)?.();
   for (const { timer, write } of [...pendingDocSaves.values()]) {
@@ -11631,9 +8533,6 @@ function flushDocSaves() {
     write();
   }
 }
-/* iOS Safari seldom fires beforeunload. A phone leaves through pagehide, or
-   through a hide that may be the last time this page runs: the tab is
-   frozen in the background and can be discarded there (Issue #247). */
 window.addEventListener('beforeunload', flushDocSaves);
 window.addEventListener('pagehide', flushDocSaves);
 document.addEventListener('visibilitychange', () => {
@@ -11643,7 +8542,7 @@ document.addEventListener('visibilitychange', () => {
 function teardownDocEditors() {
   flushDocSaves();
   for (const ed of liveEditors) {
-    try { ed.destroy(); } catch { /* already gone with the DOM */ }
+    try { ed.destroy(); } catch {}
   }
   liveEditors.clear();
   for (const st of refChipLayers) {
@@ -11667,7 +8566,6 @@ function teardownDocEditors() {
   docCodeRaw.clear();
 }
 
-// Collapse state per entity+field: read with two args, write with three.
 function docSectionCollapse(entityId, field, next) {
   const key = `weave-doc-collapsed:${entityId}:${field}`;
   if (next === undefined) return localStorage.getItem(key) === '1';
@@ -11675,15 +8573,7 @@ function docSectionCollapse(entityId, field, next) {
   return next;
 }
 
-/* ---------- entity page ---------- */
-
-/* How this row appears elsewhere: its chip and its card, drawn from the same
-   objects every other surface draws from. */
 function appearsAsPanel(db, entity, refresh) {
-  // The eye rules here too (Kyle, 2026-09-07, Issues #212 and #208): a Chip
-  // or Card switched off in the table's hidden set leaves the strip, and
-  // with both off the strip itself goes — the same hidden set the grid and
-  // the field rows already honour, so one toggle means one thing everywhere.
   const hidden = new Set(db.hiddenFields ?? []);
   const shownView = (role) => { const f = viewFieldOf(db, role); return f && !hidden.has(f.name) ? f : null; };
   const chipF = shownView('chip');
@@ -11710,14 +8600,8 @@ async function showEntity(id) {
     toast(`Couldn't open that record: ${err.message}`, true);
     return showHome();
   }
-  // The crumb is the path taken: an entity reached from another entity
-  // keeps that entity in the trail (breadcrumbs.js); any other origin
-  // starts it fresh.
   noteEntityRecent(entity);
   const hop = entityHop(entity);
-  /* The same nav as the dock (Issue #670): expanding the docked row lands
-     on the row already current, so the path the dock took stays. Another
-     entity page reached from this one is a hop; anything else starts over. */
   const B = weaveBreadcrumbs;
   crumbNav = B.navCurrent(crumbNav)?.id === id ? B.navUpdate(crumbNav, hop)
     : state.route?.page === 'entity' ? B.navHop(crumbNav, hop) : B.navOpen(crumbNav, hop);
@@ -11730,9 +8614,6 @@ async function showEntity(id) {
   await renderEntityView(entity, { mount: main, refresh: () => showEntity(id) });
 }
 
-/* Back and Forward on the entity page: the nav moves and the page shows
-   its row in place. Like a pose flip this rewrites the history entry, so
-   the browser's own Back keeps meaning "the page before this one". */
 function pageGo(next) {
   const to = weaveBreadcrumbs.navCurrent(next);
   if (!to || next === crumbNav) return;
@@ -11747,22 +8628,12 @@ function entityHop(entity) {
   return { id: entity.id, publicId: entity.publicId, name: entity.name, space: db?.space ?? '', spaceId: db?.spaceId ?? '', spaceIcon: db?.spaceIcon ?? null, table: db?.name ?? entity.db, tableId: entity.dbId, tableIcon: db?.icon ?? null };
 }
 
-/* The one entity rendering. The full page and the side peek (Feature #39)
-   mount the SAME view — the peek is not a preview, it is the entity. Peek
-   mode changes only what must change: no route/nav writes, refresh redraws
-   the panel, deleting closes it instead of navigating, and mounted editors
-   are handed back for scoped teardown when the panel goes. */
 async function renderEntityView(entity, { mount, refresh, inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null }) {
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
-  /* A textarea, not an input: an input is one line by construction and cut
-     "…CSV import/export; file attac" at its edge (Kyle, 2026-09-04, Issue
-     #175: the full name always shows, wrapping and pushing the body down).
-     It sizes to its content and Enter commits — a name has no second line
-     of its own. */
   const nameInput = el('textarea', {
     class: 'name-edit' + (computed ? ' computed' : ''), rows: '1', 'aria-label': 'Name',
     readonly: computed ? '' : undefined,
@@ -11770,25 +8641,17 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
   });
   nameInput.value = entity.name;
-  // ponytail: `field-sizing: content` does the growing; this is the same
-  // rule by hand for an engine that lacks it, and goes when they all have it.
   if (!CSS.supports('field-sizing', 'content')) {
     const fit = () => { nameInput.style.height = 'auto'; nameInput.style.height = `${nameInput.scrollHeight}px`; };
     nameInput.addEventListener('input', fit);
     requestAnimationFrame(fit);
   }
-  // A rename can make, or unmake, a document heading that echoes the title.
   nameInput.addEventListener('input', () => { for (const st of docFolds) st.schedule(); });
   if (!computed) nameInput.addEventListener('change', async () => {
     try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); toast('Renamed'); }
     catch (err) { toast(err.message, true); }
   });
 
-  /* Activity is a system relation, not a log printed into the page: these are
-     the entity's own rows of the workspace Activity table, so each one links
-     into that table the way any related record would. Ten of them — the pane
-     answers "what just happened here", and the table answers everything
-     else. */
   const recent = [...entity.activity].reverse().slice(0, ACTIVITY_PANE_ROWS);
   const firstIndex = entity.activity.length - 1;
   const actBody = el('div', { class: 'card-body' },
@@ -11805,7 +8668,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         entity.activity.length > recent.length ? `All ${entity.activity.length} →` : 'Open table →')),
     actBody);
 
-  // Upper-left ⋯ menu: whole-entity downloads + delete (with confirmation).
   const entBase = `${WS_PREFIX}/e/${id}/entity`;
   const dlBtn = dotsMenu([
     inPeek ? { label: 'Activity', run: () => activityPanel.toggle(id, null, mount) } : null,
@@ -11815,8 +8677,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       download: `${(entity.name || 'entity')}.${ext}`,
     })),
     'divider',
-    // Deleting is recoverable now, so it is a plain item with an undo rather
-    // than a hold-to-confirm. The irreversible purge lives in the trash view.
     {
       label: 'Move to trash', danger: true,
       run: async () => {
@@ -11837,16 +8697,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     },
   ], { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions`, align: 'right' });
 
-  /* Crumb row, then a title row that ends in the ⋮ — the same two-row shape
-     viewHeader() builds for tables, boards, lists and spaces, so the menu is
-     in one place across the app. */
-  // The eye (Feature #114), the table's own: one hidden set per table, so a
-  // field hidden here is hidden in the grid and back. No Rows section — a
-  // page has no rows to show deleted.
-  /* Comments + activity + references are a side column, and the switch is
-     the table's Activity system toggle in the eye — the one that adds the ⚡
-     column to the grid. Stored on the table like every visibility choice;
-     the separate button and its per-browser memory went with Issue #177. */
   const sideOpen = (db.systemFields ?? []).includes('Activity');
   const activityBtn = inPeek ? null : el('button', {
     class: 'btn btn-sm activity-btn', type: 'button', title: 'Activity', 'aria-label': 'Activity',
@@ -11854,11 +8704,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   }, iconEl('lucide:history', 'wv-icon'));
   const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
   eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false }); });
-  /* One entity surface: the full page IS the dock's expanded pose, so its
-     crumb row wears the same pose controls the split dock wears — the
-     inward arrows re-dock beside the table, ✕ closes to the table. The
-     dock hands in its own (Issue #583): outward arrows and ✕ here, and
-     after a hop a back arrow that leads the crumb path. */
   const poseControls = inPeek ? (dockControls?.pose ?? []) : db ? [
     el('button', {
       class: 'btn btn-sm pose-btn', type: 'button',
@@ -11876,20 +8721,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       el('div', { class: 'crumb crumb-row' },
         ...(inPeek ? (dockControls?.nav ?? []) : [navMenuButton(), ...navArrows(pageGo)]),
         crumbPath(inPeek
-          /* The dock's crumb is its chain (Issues #276, #673); a caller
-             without one gets the row alone. */
           ? (crumbs ?? weaveBreadcrumbs.dockCrumbs([entityHop(entity)]))
           : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity)), {
           copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') },
-          // The dock folds after its first row; the page keeps its
-          // workspace › space › table head and the first row (Issue #668).
           foldFrom: inPeek ? 1 : 4,
         }),
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput))),
   );
-  /* The crumb's table link on the full page means "re-dock", not "leave":
-     the split shows the same table the link names, entity still in hand. */
   if (!inPeek && db) {
     mount.querySelector(`.crumb-path a[href="#/table/${entity.dbId}"]`)?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -11904,18 +8743,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const right = el('div', { class: 'entity-side' });
   grid.append(left, right);
 
-  /* One document section per document field — built here, placed by the
-     ordered body below. The rendered document IS the
-     editor — no edit mode, no preview toggle, no save button. The section
-     title is a quiet collapsible line rather than a card header, so nothing
-     competes with the document for attention. */
   const docSection = (f) => {
     const fmtBase = `${WS_PREFIX}/e/${id}/doc/${encodeURIComponent(f.name)}`;
     const host = el('div', { class: 'doc-editor' });
     const status = el('span', { class: 'doc-status', title: 'Saved automatically' });
 
-    // MD / MMD / PDF survive as downloads. They were view modes when the frame
-    // could swap its source; with the editor always live they are exports.
     const dl = dotsMenu(
       ['md', 'mmd', 'pdf', 'html'].map((ext) => ({
         label: `Download .${ext}`, href: `${fmtBase}.${ext}`,
@@ -11924,20 +8756,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       { title: `${f.name} downloads`, extraClass: 'doc-dl' });
 
     const body = el('div', { class: 'doc-section-body' }, host);
-    /* The field's DECLARED kind picks the surface (Kyle, 2026-08-31): an
-       html field runs in its frame, a code field edits in the code box, and
-       only an undeclared field falls back to sniffing its content. An HTML
-       document runs in its own frame here; the source editor is one </>
-       toggle away — mounted on first use, because an editor mounted into a
-       hidden box measures nothing and stays blank. */
     const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
     const isApp = mode === 'app';
-    /* A sniffed mermaid source is a diagram, drawn by the one mermaid
-       renderer every fenced block uses; a sniffed JSON model is code. Both
-       used to fall into the markdown editor, which drew the source as
-       paragraphs (Issues #188, #189). The diagram keeps the app's </>
-       toggle: the drawing steps aside, the code box shows the source, and
-       closing the box redraws from what was typed. */
     const isDiagram = mode === 'diagram';
     const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, allowfullscreen: '', allow: 'fullscreen', title: f.name })
       : isDiagram ? el('div', { class: 'doc-diagram' }) : null;
@@ -11964,7 +8784,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         appFrame.classList.toggle('hidden', showingSource);
         sourceToggle.classList.toggle('active', showingSource);
         if (showingSource && !mounted) { mounted = true; mountSourceEditor(); }
-        if (!showingSource) { if (isApp) appFrame.src = appFrame.src; else drawDiagram(); } // pick up what was typed
+        if (!showingSource) { if (isApp) appFrame.src = appFrame.src; else drawDiagram(); }
       },
     }, iconEl('lucide:code-xml', 'wv-icon')) : null;
     if (appFrame) { host.classList.add('hidden'); body.prepend(appFrame); }
@@ -12000,20 +8820,16 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const mountEditor = () => {
       const ed = mountDocEditor(host, {
         value: entity.docs?.[f.name] ?? '',
-        entityId: id, // toolbar uploads attach to this entity
+        entityId: id,
         placeholder: `Write ${f.name}… press / for blocks`,
         onInput: (value) => {
           scheduleDocSave(id, f.name, value, status, checkHistory);
-          rail.schedule(); // headings may have changed
-          folds.schedule(); // a re-render drops the fold classes; re-apply
+          rail.schedule();
+          folds.schedule();
         },
       });
       editors?.push(ed);
     };
-    // The source of an HTML document is code, so its editor is a code box —
-    // the rendering editor would run the HTML instead of showing it. A field
-    // whose declared kind IS code mounts this box directly: its document is a
-    // program, and there is no frame to toggle away from.
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
       ta.value = entity.docs?.[f.name] ?? '';
@@ -12026,7 +8842,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     return section;
   };
 
-  /* Comments panel */
   const commentsBody = el('div', { class: 'card-body' });
   const commentsPanel = el('div', { class: 'card panel' },
     el('div', { class: 'card-header' },
@@ -12048,37 +8863,20 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   });
   commentsBody.append(el('div', { style: 'margin-top:8px' }, commentInput));
 
-  /* The body is BLOCKS (Feature #117; blocks since Issue #89, Kyle
-     2026-08-26): the field block, each document, each attachment row, each
-     related table. A block carries a reposition anchor and moves among its
-     peers through bodyOrder; a value field moves inside the field block
-     through fieldOrder. The two drags never reach into each other — a field
-     promoted to a block would be a field the grid view could not show — so
-     each ignores the other's dragstart. */
   const VALUES_BLOCK = '@values';
   left.classList.add('entity-body');
   const fields = el('div', { class: 'entity-fields' });
-  /* Value rows flow into columns (Issue #89): twenty-eight of them in one
-     column put the document a screen down. */
   const values = el('div', { class: 'entity-values' });
-  let dragFrom = null;   // a value field, moving inside the field block
-  let blockFrom = null;  // a whole block, moving among the blocks
+  let dragFrom = null;
+  let blockFrom = null;
   const hidden = new Set(db.hiddenFields ?? []);
   const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
-  /* A single-file field whose preview is `cover` puts its picture at the
-     top of the record (Kyle, 2026-10-05). ponytail: it sits under the
-     sticky title bar rather than between the crumbs and the name, because
-     the bar is sticky and a picture in it would ride along the page. */
   const coverF = shown.find((x) => x.type === 'attachments' && x.preview === 'cover');
   const coverIds = coverF ? (entity.raw?.[coverF.name] ?? []) : [];
   const coverFile = coverF && (entity.files ?? []).find((x) => coverIds.includes(x.id) && !x.missing && isPictureFile(x));
   if (coverFile) left.prepend(entityCoverEl(coverFile, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' }));
   const blocks = new Map();
 
-  /* Every block wears the same anchor — a grip that is itself draggable, so
-     the thing you grab is the thing that moves. The grip is the Lucide one
-     every row wears: the ⠿ character it used to be sat beside those icons at
-     a different weight and read as stray dots (Issue #210). */
   const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
@@ -12093,8 +8891,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     blocks.set(key, node);
     return node;
   };
-  /* Blocks share the rows' slot (review, 2026-09-03): a held block opens one
-     hole among the blocks, and the drop puts it there. The body is the list. */
   const blockSlot = slotDrag(left, {
     itemSel: '[data-block]',
     held: () => blockFrom ? blocks.get(blockFrom) : null,
@@ -12102,10 +8898,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     onDrop: () => reorderBlocks(db, left, refresh),
   });
 
-  /* A slot, not a line (review, 2026-09-03): while a row is held, one dashed
-     hole named for it opens where it will land and the rows after it make
-     room. No side to learn — the field goes where the hole is — and the same
-     slot serves the blocks below, so the page has one drag grammar. */
   const rowSlot = slotDrag(values, {
     itemSel: '.fieldrow',
     held: () => dragFrom ? values.querySelector(`[data-field="${CSS.escape(dragFrom)}"]`) : null,
@@ -12121,32 +8913,24 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     node.dataset.field = f.name;
     handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
     handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); rowSlot.clear(); });
-    // Editors inside a draggable node must keep their own mouse events.
     for (const stop of node.querySelectorAll('input, select, textarea, .picker-wrap')) {
       stop.addEventListener('mousedown', (ev) => ev.stopPropagation());
     }
     return node;
   };
   for (const f of shown) {
-    // A related table is its own block, below — but a target-set relation has
-    // no one table to render as a grid, so its chips stay here in the panel.
     if (f.type === 'relation' && f.many && !f.targetDbIds) continue;
     if (f.type === 'document') {
       const section = docSection(f);
       wireBlock(f.name, section, [section.querySelector('.opt-grip'), section.querySelector('.doc-section-head')]);
       continue;
     }
-    /* The field's description sits under its label (Issue #209): what the
-       value means and how it is written, where whoever fills the row reads
-       it. A field without one wears no empty line. */
     const node = el('div', { class: 'fieldrow' },
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       el('label', { class: 'fieldrow-label', title: fieldDescription(f) ? `${fieldDescription(f)}\n\nEdit field` : 'Edit field', onclick: () => editFieldDialog(db, f) },
         fieldNameLabel(f), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
       labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }));
     if (f.type === 'attachments') {
-      // An attachment row is a block: it is as wide as its chips, and it
-      // belongs wherever the reader put it, not always last.
       node.classList.add('attach-block');
       wireBlock(f.name, node, [node.querySelector('.opt-grip')]);
       continue;
@@ -12154,10 +8938,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     node.setAttribute('draggable', 'true');
     values.append(dragRow(node, node, f));
   }
-  /* The System toggles (Feature #65) reach the page too — Kyle, 2026-09-04
-     (Issue #174): every System row on in the eye, none of them drawn. One
-     read-only row per name, the grid's own formatter, after the fields.
-     Activity is the side column, not a row. */
   for (const n of (db.systemFields ?? [])) {
     if (n === 'Activity' || !SYSTEM_COLS[n]) continue;
     values.append(el('div', { class: 'fieldrow fieldrow-system', dataset: { field: n } },
@@ -12167,13 +8947,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   }
 
   if (values.childElementCount) {
-    /* Folded, the block still says what the row is (Kyle, Issue #89: "still
-       see the same information but compactly organized at the top"): one
-       label · value chip per row, wrapping on one line above the documents,
-       the value drawn by the same editor the row uses so it edits in place
-       like a grid cell. It is built from the rows already drawn, so a field
-       the eye turns on lands here too (Issue #129): checked means drawn,
-       folded or not. */
     const summary = el('div', { class: 'entity-values-summary hidden' },
       ...[...values.children].map((row) => {
         const f = shown.find((x) => x.name === row.dataset.field);
@@ -12183,9 +8956,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           el('span', { class: 'wv-sum-label', onclick: f ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
           system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name }));
       }));
-    /* The field block folds like a document section (Kyle, 2026-09-03): the
-       same caret, in the same place in the head, remembered per entity the
-       same way — so a page opens the way it was left. */
     const setFolded = (closed) => {
       values.classList.toggle('hidden', closed);
       summary.classList.toggle('hidden', !closed);
@@ -12206,13 +8976,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     fields.append(valuesHead, values, summary);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
   }
-  // A table with no fields beyond its name shows nothing here — the banner
-  // that used to fill the space read as breakage, not help (Issue #124).
 
-  /* Collections of related records are blocks in the body rather than the
-     side panel: they are work to do, not attributes to read. Each is fetched
-     on its own so a slow one cannot hold up the page, and its anchor lands in
-     the head the grid draws for it. */
   for (const f of shown.filter((x) => x.type === 'relation' && x.many && !x.targetDbIds)) {
     const grip = anchor(f.name);
     const slot = wireBlock(f.name, el('div', { class: 'related-block' }), [grip]);
@@ -12225,32 +8989,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       .catch((err) => toast(err.message, true));
   }
 
-  // The order the table remembers, resolved by the engine; anything it does
-  // not name (a block just added, a field just unhidden) still has a node,
-  // and lands after the ones it does.
   const named = db.bodyBlocks ?? [VALUES_BLOCK];
   for (const key of [...named, ...blocks.keys()]) {
     const node = blocks.get(key);
     if (node && !node.isConnected) left.append(node);
   }
-  /* How this row appears elsewhere (Kyle, 2026-09-04): its chip and its
-     card, so what the reader sees here is what a relation cell, a doc
-     mention or a board will show — for the views the eye shows (Issue #208). */
   const appears = appearsAsPanel(db, entity, refresh);
   if (appears) left.prepend(appears);
 
-  /* References, both directions. A chip in a document is deliberately not a
-     relation — nothing was configured, so there is nothing to unlink; each
-     list exists exactly as long as the text does. "References" is what this
-     entity's documents mention (md chips, HTML hrefs, mermaid clicks alike);
-     "Referenced by" is who mentions it.
-     Hidden by default (Kyle, 2026-09-02), exactly like comments and
-     activity: the panels live in the entity-side column the Activity button
-     opens, so the resting page never mentions them — and nothing is even
-     fetched until the reader asks. The chips are the SAME k k-rel chips a
-     relation field wears, each with its k-home table badge, since
-     references cross tables freely. No ×: a reference is text, so there is
-     nothing to unlink. */
   const refCard = (title, extraClass) => (refs) => {
     if (!refs?.length || !mount.isConnected) return;
     right.append(el('div', { class: `card panel ref-backlinks-card ${extraClass}` },
@@ -12262,16 +9008,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   if (sideOpen) {
     api('GET', `/entities/${id}/references-from`)
       .then(refCard('References', 'ref-outbound-card'))
-      .catch(() => { /* references are a bonus, never an error on the page */ });
+      .catch(() => {});
     api('GET', `/entities/${id}/references`)
       .then(refCard('Referenced by', 'ref-inbound-card'))
-      .catch(() => { /* backlinks are a bonus, never an error on the page */ });
+      .catch(() => {});
   }
-  /* A deck is composed on read, so the frame IS the deck: the same editable
-     file /e/:id/deck.html serves, live over whatever the slides say right now.
-     A deck entity shows its whole composition; a slide shows itself, wearing
-     the chrome of the deck it belongs to. Slides also carry the version
-     action, because a version is a new row, not a saved copy. */
   const deckRole = deckRoleOf(db);
   if (deckRole) {
     const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
@@ -12317,9 +9058,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     left.prepend(section);
     if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); }
   }
-  // The side column reads top-down as what people said (Comments) and what
-  // happened (Activity); the body holds what the record is and carries.
-  right.append(commentsPanel, actPanel); // delete lives in the ⋮ menu
+  right.append(commentsPanel, actPanel);
   activityPanel.mounted(id, mount);
 }
 
@@ -12570,8 +9309,6 @@ const activityPanel = (() => {
   return { toggle, open, close, mounted, get openFor() { return panel ? st?.id : null; } };
 })();
 
-/* ---------- create & schema dialogs ---------- */
-
 function quickCreate(db) {
   if (computedName(db)) {
     api('POST', `/tables/${db.id}/entities`, {})
@@ -12588,10 +9325,6 @@ function quickCreate(db) {
   });
 }
 
-/* + New table on the Workspace/Tables page (Issue #241): a table lives in a
-   space, which the grid foot cannot guess from here — the space page knows
-   its own. Name and space, then the same registry POST the space page
-   makes, and the reader lands on the new row. */
 function newTableDialog(reg, after) {
   const spaces = state.schema.filter((s) => !s.system);
   if (!spaces.length) return toast('Create a space first — a table lives in one', true);
@@ -12606,15 +9339,6 @@ function newTableDialog(reg, after) {
   });
 }
 
-/* ---------- first run: New table, templates, the Schema fold (Issue #386) ----------
-   A workspace with no tables of its own opens on one primary action and three
-   starting templates; the registry grids fold under a Schema disclosure on
-   the home and space pages. "Its own" is starter-core's userTables — the
-   engine's system flag, never a name. */
-
-/* A table needs a space. With `spaceId` the dialog asks only for the name;
-   otherwise it offers the person's spaces, or names a first one when there
-   are none. Plain create calls, then the reader lands on the new table. */
 function startTableDialog({ spaceId = null } = {}) {
   const spaces = state.schema.filter((s) => !s.system);
   const fixed = spaceId ? spaces.find((s) => s.spaceId === spaceId) : null;
@@ -12637,9 +9361,6 @@ function startTableDialog({ spaceId = null } = {}) {
   });
 }
 
-/* A template is one weave_build spec (Feature #253): one POST /api/build
-   builds its space, tables, rollups and sample rows, reusing a space the
-   person already made under that name, then its first table opens. */
 async function runStarter(template) {
   toast(`Setting up ${template.title}…`);
   try {
@@ -12664,8 +9385,6 @@ function emptyWorkspace() {
       el('div', { class: 'wv-start-templates' },
         ...WeaveStarters.TEMPLATES.map((t) => el('button', {
           class: 'wv-start-template', dataset: { template: t.id },
-          // One build at a time: a second click would race the first to the
-          // same space. A failure redraws home, buttons and all.
           onclick: (e) => {
             for (const b of e.currentTarget.closest('.wv-start').querySelectorAll('button')) b.disabled = true;
             runStarter(t);
@@ -12675,23 +9394,12 @@ function emptyWorkspace() {
         el('span', { class: 'wv-start-blurb' }, t.blurb))))));
 }
 
-/* ---------- the onboarding welcome (Feature #248) ----------
-   Kyle, 2026-10-02: "starting from naming the first workspace give
-   defaults, but let the user rename always allow skip ... friendly welcome
-   low text." One held dialog (holdPage, Issue #263) walks three steps:
-   welcome, name the workspace (the server's default arrives filled in),
-   and an optional starter from starter-core's templates. Skip on every step
-   and Esc finish with the defaults; Enter takes the primary button. The
-   server decides whether to ask (GET /api/onboarding: once per person, only
-   while they have built nothing) and does the work in one call, so a
-   refused name builds nothing. Asked once per page load, from an empty
-   home only. */
 let onboardingAsked = false;
 async function maybeOnboard() {
   if (onboardingAsked || document.querySelector('#modal-back')) return;
   onboardingAsked = true;
   let got;
-  try { got = await api('GET', '/onboarding'); } catch { return; } // an older server has no welcome
+  try { got = await api('GET', '/onboarding'); } catch { return; }
   if (got.show && !document.querySelector('#modal-back')) onboard(got.name);
 }
 
@@ -12735,7 +9443,6 @@ function onboard(defaultName) {
     } else if (i === 1) {
       const input = el('input', { name: 'name', value: name, class: 'form-control', 'aria-label': 'Workspace name', autocomplete: 'off', spellcheck: 'false' });
       input.addEventListener('input', () => { name = input.value; });
-      // A form, so Enter in the field is the primary button.
       const form = el('form', { class: 'wv-onboard-form' }, input);
       form.addEventListener('submit', (e) => { e.preventDefault(); name = input.value; show(2); });
       body.replaceChildren(form);
@@ -12756,9 +9463,6 @@ function onboard(defaultName) {
     if (icon?.classList.contains('mi')) playIcon(icon);
   }
 
-  /* Skip is finish() with nothing: the server keeps the default name and
-     builds nothing. A template is built before the rename, server side, so
-     the page's own URL stays good until it moves to the result. */
   async function finish(choice = {}) {
     if (busy) return;
     busy = true;
@@ -12767,16 +9471,13 @@ function onboard(defaultName) {
     if (choice.template) toast(`Setting up ${choice.template.title}…`);
     try {
       const done = await api('POST', '/onboarding', { ...(choice.name != null ? { name: choice.name } : {}), ...(choice.template ? { template: choice.template.id } : {}) });
-      // A member's URL may carry its old name; the id survives the rename.
       const base = WS_PREFIX ? done.url : '/';
       location.href = base + (done.table ? `#/table/${done.table}` : '#/');
-      // Same page, new hash: reload, so the rail and the header read the new name.
       if (location.pathname === base) location.reload();
     } catch (err) {
       busy = false;
       for (const c of controls) c.disabled = false;
       toast(err.message, true);
-      // A refused name is the one thing the person can fix: back to it.
       if (choice.name != null) show(1);
     }
   }
@@ -12788,22 +9489,16 @@ function onboard(defaultName) {
   show(0);
 }
 
-/* The registry grid under a Schema disclosure: one click away for whoever
-   edits structure as rows, out of a first-timer's first screen. Open or shut
-   is remembered per browser; the grid is drawn on first open, so a closed
-   fold costs no registry read. Appended to `parent` before it draws, so the
-   grid's row window measures a live box. Resolves once an open fold has
-   drawn. */
 const SCHEMA_OPEN_KEY = 'weave-schema-open';
 async function schemaDisclosure(parent, draw) {
   let open = false;
-  try { open = localStorage.getItem(SCHEMA_OPEN_KEY) === '1'; } catch { /* storage blocked: shut */ }
+  try { open = localStorage.getItem(SCHEMA_OPEN_KEY) === '1'; } catch {}
   const body = el('div', { class: 'wv-schema-body' });
   const box = el('details', { class: 'wv-schema' }, el('summary', {}, 'Schema'), body);
   let drawn = null;
   const fill = () => (drawn ??= Promise.resolve(draw(body)).catch((err) => toast(err.message, true)));
   box.addEventListener('toggle', () => {
-    try { localStorage.setItem(SCHEMA_OPEN_KEY, box.open ? '1' : '0'); } catch { /* private mode */ }
+    try { localStorage.setItem(SCHEMA_OPEN_KEY, box.open ? '1' : '0'); } catch {}
     if (box.open) fill();
   });
   parent.append(box);
@@ -12814,9 +9509,6 @@ async function schemaDisclosure(parent, draw) {
   return box;
 }
 
-/* + New field on the Workspace/Fields page (Issue #241): a field lands on a
-   table and carries a definition, so the foot asks which table and hands
-   over to that table's own field dialog. */
 function newFieldDialog(after) {
   const tables = allTables().filter((t) => !t.system);
   if (!tables.length) return toast('Create a table first — a field lands on one', true);
@@ -12829,23 +9521,12 @@ function newFieldDialog(after) {
 }
 
 function addFieldDialog(db) {
-  /* Back to wherever the add started (Issue #196): the table keeps its
-     scroll; every other surface — the Spaces grid on the workspace home,
-     the Tables grid on a space page — redraws its own route. The v0.3.0
-     schema page that used to catch the off-table case is gone. */
   fieldDialog(db, null, () => keepScroll(() => (state.route?.page === 'db'
     ? showDatabase(db.id, state.route.view)
     : renderRoute())));
 }
 
 
-/* ---------- related records, rendered as the table they live in ----------
-   A collection relation was chips in the Fields panel: enough to see what is
-   linked, useless for working on it — every edit meant opening five other
-   pages. It renders here as the target table's own grid, built from the same
-   parts as the table view (its columns, editorFor cells, the picker routing),
-   so a Project page is where its Tasks are worked on. Single-value relations
-   stay chips: a one-row grid is a worse chip. */
 async function relatedGrid(entity, f, onSaved) {
   const target = allTables().find((d) => d.id === f.targetDbId)
     ?? allTables().find((d) => d.qualified === f.targetDb);
@@ -12855,11 +9536,6 @@ async function relatedGrid(entity, f, onSaved) {
   const rows = linked.length
     ? (await api('POST', `/tables/${target.id}/query`, { where: [['id', 'in', linked.map((s) => s.id)]] })).items
     : [];
-  /* The target table's own view, as it shows it (Issue #200): its column
-     order and its hidden set — the eye and the Tables row's Hidden Fields
-     reach here too, so Chip and Card (hidden by default, Feature #175) stay
-     out until someone unhides them. Minus its documents (edited on their own
-     page) and the relation pointing back at the record you are looking at. */
   const shownCols = new Set(visibleCols(target));
   const cols = target.fields.filter((c) => shownCols.has(c.name) && c.type !== 'document' && c.name !== f.inverseField);
   const colCount = cols.length + 2;
@@ -12896,9 +9572,6 @@ async function relatedGrid(entity, f, onSaved) {
           } catch (err) { toast(err.message, true); }
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs'))))),
-    /* Adding grows the table from the bottom, as it does in the table view —
-       and a row added HERE is created and linked in one step, because the
-       reason to add it is that it belongs to this record. */
     el('tr', { class: 'add-entity-row' },
       el('td', { colspan: String(colCount) },
         el('button', {
@@ -12907,8 +9580,6 @@ async function relatedGrid(entity, f, onSaved) {
             try {
               const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: `New ${target.name}` } });
               await link([made.id]);
-              // The refresh redraws the page and fetches this grid again;
-              // the new row's Name cell takes the caret when it lands.
               focusNewRow(made.id, { scope: '.related-block', select: true });
             } catch (err) { toast(err.message, true); }
           },
@@ -12953,16 +9624,8 @@ async function relatedGrid(entity, f, onSaved) {
         el('table', { class: 'table table-sm wv-grid' }, body)));
 }
 
-/* ---------- the Activity system table ----------
-   Activity is a table weave owns: every event in the workspace, one row each,
-   with a fixed shape nobody can redefine and no row anyone can type. It reads
-   like any other table view, and the entity pane is the same rows filtered to
-   one entity — a related table, not a second implementation of the log. */
-
 const ACTIVITY_PANE_ROWS = 10;
 
-/* An entity keeps its newest 500 activity entries; the engine counts the
-   rest (Issue #281). Entities trimmed before the count existed read 0. */
 function droppedText(n) {
   return `${n} older ${n === 1 ? 'entry' : 'entries'} not kept`;
 }
@@ -12977,7 +9640,6 @@ function activitySummary(a) {
     case 'comment-added': return `comment by ${commentAuthorText(d.author)}`;
     case 'file-attached': return `attached ${d.name}`;
     case 'automation-ran': return `automation “${d.name}” ran`;
-    // A field's configuration (Issue #428): the table's own entries.
     case 'field-config-updated': return `${d.field}: ${(d.changed ?? []).join(', ')} changed`;
     case 'undo': if (a.scope === 'field') return `${d.field}: ${(d.changed ?? []).join(', ')} put back`; return a.kind;
     case 'doc-updated':
@@ -12985,7 +9647,6 @@ function activitySummary(a) {
       if (d.restoredFrom != null) {
         return `${d.field ?? 'Description'} restored to the version from ${d.restoredAt ? new Date(d.restoredAt).toLocaleString() : 'an earlier revision'}${d.restoredBy ? ` by ${d.restoredBy}` : ''}`;
       }
-      // The enriched detail is the point of the row: how much moved, where.
       const size = d.delta == null ? '' : ` ${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)} chars`;
       const where = d.line ? ` at line ${d.line}` : '';
       const verb = a.kind === 'doc-appended' ? 'appended to' : 'edited';
@@ -12996,24 +9657,16 @@ function activitySummary(a) {
   }
 }
 
-/* A history line has to name what changed. `String(v)` on a stored object
-   printed '[object Object]' — a date range is the shape that hits it, and any
-   other object would have too (Issue #91). */
 const fmtValue = (v) => {
   if (v == null || v === '') return '—';
   if (Array.isArray(v)) return v.join(', ');
   if (typeof v === 'object') {
-    // ponytail: the feed has the field's name, not its costume, so a range
-    // wears the default (long). Plumb the config through when a feed row can
-    // reach its table.
     if ('start' in v || 'end' in v) return weaveDateCore.formatDateRange(v, {});
     return v.name ?? JSON.stringify(v);
   }
   return String(v);
 };
 
-/* `#/activity` is the whole table; `#/activity/<entityId>` narrows it to one
-   entity; `#/activity/<entityId>:<n>` is one event's own page. */
 async function showActivity(param) {
   if (param && param.includes(':')) return showActivityDetail(param);
   state.route = { page: 'activity' };
@@ -13059,11 +9712,7 @@ async function showActivity(param) {
       : el('div', { class: 'wv-empty' }, 'No activity yet.'));
 }
 
-/* The record an event refers to, as the same relation chip any entity page
-   uses: a permalink to the entity, swallowing the click so the row or page
-   around it keeps its own destination. */
 function recordChip(a) {
-  // A field configuration entry belongs to a table, which is its record.
   if (a.scope === 'field') {
     return el('span', { class: 'k k-rel' + (a.deleted ? ' deleted' : '') },
       el('a', { href: `#/table/${a.dbId}`, onclick: (e) => e.stopPropagation() },
@@ -13074,11 +9723,6 @@ function recordChip(a) {
       `${a.db ?? '—'} #${a.publicId}${a.deleted ? ' (deleted)' : ''}`));
 }
 
-/* Roll back, on a field configuration entry (Issue #428): the server says
-   whether it can (`rollback.ok`) and, when it cannot, why, and that reason is
-   what the page shows instead of the button. It checks again on the click, so
-   a field changed in another tab since this page loaded refuses rather than
-   overwriting that change. */
 function rollbackControl(a) {
   const fieldPath = () => `/tables/${a.dbId}/fields/${encodeURIComponent(a.detail.fieldId)}/rollback`;
   if (!a.rollback?.ok) return el('span', { class: 'activity-rollback-reason' }, a.rollback?.reason ?? 'Not available');
@@ -13135,13 +9779,6 @@ function fieldChangeRows(d, row) {
   });
 }
 
-/* One event's own page, laid out like any entity page: the crumb carries its
-   table (Activity) and a copyable permalink, the title is the summary, and the
-   values are label/value field rows. The event is the entity here — its
-   `entityId:index` id is a real address — so the record it references is one
-   field among the others, a relation chip linking out, not the click-through
-   destination: one event can involve several records (a relation change
-   names two) and the record may since have been deleted. */
 async function showActivityDetail(id) {
   state.route = { page: 'activity' };
   renderNav();
@@ -13159,8 +9796,6 @@ async function showActivityDetail(id) {
     row('Event', el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
     row('When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())),
     row('Actor', actorChipEl(a.actor) || '—'),
-    // A field configuration entry (Issue #428) reads as the field, what
-    // changed, and the two definitions whole; the ids and seq stay in the API.
     ...(field
       ? [row('Field', d.field),
         ...fieldChangeRows(d, row),
@@ -13169,7 +9804,6 @@ async function showActivityDetail(id) {
           el('div', { class: 'activity-defs-body' },
             el('div', { class: 'activity-defs-col' }, el('div', { class: 'activity-defs-head' }, 'Before'), el('pre', { class: 'activity-def' }, JSON.stringify(d.before, null, 2))),
             el('div', { class: 'activity-defs-col' }, el('div', { class: 'activity-defs-head' }, 'After'), el('pre', { class: 'activity-def' }, JSON.stringify(d.after, null, 2)))))),
-        // A type change's values (Issue #467): kept, or dropped under the bound.
         ...(d.lossy ? [row('Values', d.snapshot
           ? `${d.snapshot.rows} ${d.snapshot.rows === 1 ? 'value' : 'values'} from before this change kept for a roll back`
           : d.snapshotDropped ? 'No longer kept: a newer type change of this field replaced them' : 'Not kept')] : []),
@@ -13193,8 +9827,6 @@ async function showActivityDetail(id) {
       el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Fields')),
       fieldsBody));
 }
-
-/* ---------- home ---------- */
 
 async function showView(id) {
   state.route = { page: 'view', id };
@@ -13242,17 +9874,9 @@ async function showHome() {
   syncDocTitle(null);
   renderNav();
   const main = $('#main');
-  // The person's own tables: the registry every root carries is not one
-  // (Issue #386), or the empty state could never show.
   const mine = WeaveStarters.userTables(state.schema);
-  // Two independent reads, asked for together (Issue #258).
   const [wsRead, listRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces')]);
-  // An older server has no /workspace; the header's name stands in.
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
-  // Deleting a workspace lives on the workspace's own page (Issue #122) and
-  // on its rail chip (Issue #190) — the hub says which rows may go; the
-  // default and the weave docs workspaces never do, and theirs shows no menu.
-  // A single-workspace hub has no list: no row, no menu.
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const deletable = !!wsRow?.deletable;
   main.replaceChildren(
@@ -13263,14 +9887,11 @@ async function showHome() {
       title: ws.title ?? ws.name,
       onRename: async (name) => {
         const updated = await api('PATCH', '/workspace', { name });
-        // The id permalink survives the rename; the name URL just died.
         location.href = WS_PREFIX ? `/w/${updated.id}/` : '/';
       },
       description: ws.description,
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
       actions: [dotsMenu([
-        /* Link preview before sign-in (Feature #264): on a walled workspace,
-           whether a pasted permalink unfurls for someone signed out. */
         {
           label: `Link preview before sign-in: ${ws.linkPreview ? 'on' : 'off'}`,
           run: async () => {
@@ -13288,16 +9909,11 @@ async function showHome() {
       ], { title: 'Workspace actions', align: 'right' })],
     }),
     ...(mine.length ? [] : [emptyWorkspace()]),
-    /* The system tables live below the workspace's own, marked as weave's
-       rather than the user's — they are reached from here because they belong
-       to no space. */
     el('div', { class: 'card list-rows system-tables' },
       el('div', { class: 'list-row', dataset: { href: '#/activity' }, onclick: () => { location.hash = '#/activity'; } },
         el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
         el('span', { class: 'spacer' }),
         el('span', { class: 'pid' }, 'every event in this workspace'))));
-  // Saved views (Feature #17): named cross-table slices; share mints a
-  // read-only capability URL that outlives the auth wall until revoked.
   try {
     const views = await api('GET', '/views');
     if (views.length) {
@@ -13308,20 +9924,13 @@ async function showHome() {
           el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)))));
     }
-  } catch { /* older server */ }
-  // The workspace's shape, read-only (Feature #51) — the same view #/map and
-  // every space page draw, so there is one map to learn, not three.
+  } catch {}
   if (mine.length) {
     const card = await relationMapCard('Relation map');
     if (card) main.append(card);
   } else {
-    // A person who has built nothing may be new here (Feature #248).
     maybeOnboard();
   }
-  // The spaces of this workspace, AS the Spaces registry grid (Kyle,
-  // 2026-08-24): every field of the registry, editable in place; opening a
-  // row opens the space, because the row IS the space. Folded under Schema
-  // (Issue #386): structure as rows is one click away, not the first screen.
   const reg = registryTable('spaces');
   if (reg) {
     const onSaved = async () => {
@@ -13346,13 +9955,6 @@ async function showHome() {
   await membersSection(main);
 }
 
-/* Members (Issue #569): who has an account here, the pending invites, and
-   the form that invites a new person by email. The server answers the two
-   reads only for a caller who may manage accounts, an architect, so anyone
-   else never sees the section. The invite answers a one-time sign-in link:
-   emailed when the server has mail on (Feature #216), else shown once for
-   the architect to hand over. The labels are Kyle's billing words; weave
-   bills nobody (Feature #256). */
 const ROLE_LABELS = { editor: 'Editor, paid seat', observer: 'Observer, free', architect: 'Architect, paid' };
 async function membersSection(parent) {
   const [acc, inv] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites')]);
@@ -13373,8 +9975,6 @@ async function membersSection(parent) {
         draw(a2, i2, made);
       } catch (err) { toast(err.message, true); }
     } }, email, role, el('button', { class: 'btn btn-primary', type: 'submit' }, 'Invite'));
-    /* Emailed when the server has mail on (Feature #216); otherwise, or when
-       the send failed, the link to hand over, as before. */
     const shown = link?.mailed ? el('div', { class: 'wv-invite-link card' },
       el('div', { class: 'wv-invite-link-head' }, `Emailed ${link.email}`),
       el('div', { class: 'wv-invite-note' }, 'weave emailed the sign-in link. It works once and expires in 7 days.'))
@@ -13413,13 +10013,7 @@ async function membersSection(parent) {
   parent.append(box);
 }
 
-/* ---------- universal search (sidebar + ⌘K palette) ----------
-   Option A, "Grouped results" (Issue #382, Kyle 2026-09-26): one 36px line
-   per hit under Records, In documents and Tables headers; Recent when the
-   input is empty. public/palette-core.js holds the pure half. */
-
 function navigateToResult(hit) {
-  // Results can come from another workspace: follow the permalink's path.
   const hitPrefix = (hit.url.match(/^\/w\/[^/]+/) ?? [''])[0];
   if (hitPrefix !== WS_PREFIX) {
     location.href = hit.kind === 'entity' ? `${hitPrefix}/#/entity/${hit.id}` : hit.url;
@@ -13432,22 +10026,16 @@ function navigateToResult(hit) {
   else location.hash = '#/';
 }
 
-// The workspace this page is, by name: the rail's wordmark once it has
-// loaded, the URL segment until then.
 function currentWsName() {
   return $('#ws-name')?.textContent || (WS_PREFIX ? decodeURIComponent(WS_PREFIX.slice(3)) : '');
 }
 
-/* Recent: what this browser opened in this workspace, newest first. Kept
-   client-side per workspace; a blocked store just means no Recent group.
-   ponytail: names and states are as they were when opened; a renamed or
-   trashed row shows its old name until it is opened again. */
 const RECENT_KEY = `weave-recent:${WS_PREFIX || '/'}`;
 function readRecents() {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) ?? []; } catch { return []; } // blocked or garbled store: no Recent group
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) ?? []; } catch { return []; }
 }
 function noteRecent(item) {
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), item))); } catch { /* storage blocked */ }
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), item))); } catch {}
 }
 function noteEntityRecent(entity) {
   const wf = allTables().find((d) => d.id === entity.dbId)?.fields.find((f) => f.type === 'workflow');
@@ -13473,7 +10061,6 @@ const marked = (text, needle) => weavePalette.highlight(text, needle).map((s) =>
 
 function paletteRow(hit, i, { needle, group, here, onPick, href }) {
   const P = weavePalette;
-  // A hit from another workspace says which; a hit at home says nothing.
   const foreign = hit.workspace && (here ? hit.workspace !== here : !hit.url.startsWith(`${WS_PREFIX}/`));
   const state = hit.chip?.state;
   const cat = state && chipCore.categoryOrDefault(state.category);
@@ -13498,16 +10085,10 @@ function paletteRow(hit, i, { needle, group, here, onPick, href }) {
   }, iconEl('⧉')));
 }
 
-// The sidebar search control IS the ⌘K palette — one search surface.
 function wireSearchButton() {
   $('#search-btn')?.addEventListener('click', openCommandK);
 }
 
-/* One search surface. By default a pick navigates; callers that need a
-   reference rather than a jump — the editor's reference commands, which ask
-   for one kind of target each — pass their own onPick and get the hit back
-   instead. The input is a combobox over a listbox of grouped options, and
-   focus never leaves it: arrows, Tab and Enter all act on the selection. */
 function openCommandK({ onPick = null, onDismiss = null, kinds = null, placeholder = null } = {}) {
   if ($('#cmdk-back')) return;
   const P = weavePalette;
@@ -13532,7 +10113,7 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
   };
   const setSel = (i, scroll = true) => {
     if (!rowEls.length) { input.removeAttribute('aria-activedescendant'); return; }
-    sel = ((i % rowEls.length) + rowEls.length) % rowEls.length; // wrap at ends
+    sel = ((i % rowEls.length) + rowEls.length) % rowEls.length;
     rowEls.forEach((r, j) => {
       r.classList.toggle('active', j === sel);
       r.setAttribute('aria-selected', String(j === sel));
@@ -13557,7 +10138,7 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     list.replaceChildren(...(nodes.length ? nodes : [el('div', { class: 'cmdk-empty' }, empty)]));
     list.dataset.query = q;
     input.setAttribute('aria-expanded', String(rowEls.length > 0));
-    setSel(0); // highlight resets to the top on every re-render
+    setSel(0);
   };
   const showRecent = () => {
     const recent = readRecents().filter((h) => !kinds || kinds.includes(h.kind));
@@ -13568,15 +10149,13 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     const q = input.value.trim();
     if (!q) { inflight?.abort(); showRecent(); return; }
     timer = setTimeout(async () => {
-      // One request in flight: a newer keystroke aborts the older one, so a
-      // slow earlier answer cannot land on top of a newer one (Issue #265).
       inflight?.abort();
       const ctl = inflight = new AbortController();
       let hits;
       try {
         hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`, undefined, { signal: ctl.signal });
       } catch (err) {
-        if (ctl.signal.aborted) return; // replaced by a newer keystroke
+        if (ctl.signal.aborted) return;
         groups = []; flat = []; rowEls = [];
         input.setAttribute('aria-expanded', 'false');
         input.removeAttribute('aria-activedescendant');
@@ -13584,8 +10163,6 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
         return;
       }
       if (ctl.signal.aborted) return;
-      // A reference command asks for one kind of target; the palette itself
-      // asks for all of them.
       if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
       render(q, P.groupHits(hits, q), `No matches for “${q}”.`);
     }, 150);
@@ -13621,15 +10198,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-/* ---------- undo from the page (Issue #259) ----------
-   POST /api/undo steps back one entry of the workspace's undo stack, and the
-   engine keeps one entry per row, so a gesture that trashed two rows left two.
-   `lastGesture` is the most recent such gesture from this page: its kind and
-   the ids it touched. How deep it still reaches is read off the stack each
-   time, never assumed: only the run of its own entries still on TOP is ours to
-   step back, and anything written since (a cell edit here, a write from
-   another tab) breaks that run, so stepping a gesture back never reaches past
-   its own rows into somebody else's change. */
 let lastGesture = null;
 
 async function gestureTop(g) {
@@ -13642,11 +10210,6 @@ async function gestureTop(g) {
   return ours;
 }
 
-/* The toast's Undo: every row the gesture took comes back. The entries still
-   on top are stepped back, which leaves the stack as if the gesture never
-   happened; a row the stack cannot reach (a registry row, whose trash is
-   structure and holds no entry, or one buried under a later write) is
-   restored by id instead. */
 async function undoGesture(g) {
   if (lastGesture === g) lastGesture = null;
   try {
@@ -13659,9 +10222,6 @@ async function undoGesture(g) {
   } catch (err) { toast(err.message, true); }
 }
 
-// The grid redraws in place, keeping scroll and cursor; any other page
-// renders its route again, schema first, since a registry row brought back
-// by id is a table or a space coming back.
 async function refreshView() {
   const grid = state.route?.page === 'db' ? $('#main .table-wrap') : null;
   if (grid?.wvRefresh) return grid.wvRefresh();
@@ -13669,23 +10229,12 @@ async function refreshView() {
   return route();
 }
 
-/* A cursor for the grid after rows leave or come back: the row's first
-   resting cell, else the first one in the grid, so focus never falls to
-   <body>. */
 function focusGridRow(eid, scope = document) {
   const stop = 'td[data-field]:not(.cell-nostop)';
   const own = eid ? scope.querySelector(`tr[data-eid="${eid}"] > ${stop}`) : null;
-  // The fallback takes focus where the reader is looking, without a jump.
   (own ?? scope.querySelector(`.table-wrap tr.entity-row > ${stop}`))?.focus({ preventScroll: !own });
 }
 
-/* ⌘Z (Ctrl+Z) steps back the last change: the whole of the last gesture when
-   it is still on top of the stack, else one entry. A text box, a document
-   editor (Vditor's own undo) and an open cell keep the key: it is their text
-   undo there. So does any overlay the dock defers Escape to, which covers the
-   cell popovers and dialogs. The grid keymap resolves ⌘Z to nothing at rest,
-   so a resting cell hands it on to here. Redo is not bound: the engine keeps
-   no redo stack. */
 document.addEventListener('keydown', async (e) => {
   if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
   if (e.defaultPrevented || e.isComposing) return;
@@ -13705,13 +10254,6 @@ document.addEventListener('keydown', async (e) => {
 });
 
 
-/* ---------- the key sheet (Issue #268) ----------
-   ? outside a text field, or the rail's ? chip, lists every key weave
-   answers. The grid's rows come from public/grid-keymap.js itself
-   (WeaveGridKeymap.bindings), which test/grid-keymap.test.mjs holds to the
-   keymap, so the sheet cannot promise a key the grid has dropped or miss one
-   it has grown. The few keys app.js handles itself, outside the keymap,
-   are listed by hand below. */
 const KEY_SHEET_ANYWHERE = [
   { keys: '⌘K', does: 'search every record, table and document' },
   { keys: '?', does: 'this sheet, from anywhere outside a text field' },
@@ -13739,10 +10281,6 @@ function openKeySheet() {
   $('#modal')?.classList.add('wv-keys');
 }
 
-/* ? is a character wherever something is being written, so the sheet only
-   answers it outside every text field, the document editor included. A
-   resting grid cell is not a text field: the grid's keymap claims ? itself
-   and stops it before it gets here. An overlay that is up keeps its keys. */
 document.addEventListener('keydown', (e) => {
   if (e.key !== '?' || e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.defaultPrevented) return;
   if (e.target.closest?.('input, textarea, select, [contenteditable], .vditor') || e.target.isContentEditable) return;
@@ -13758,32 +10296,7 @@ function wireKeySheet() {
   btn.addEventListener('click', openKeySheet);
 }
 
-/* ---------- page loader ---------- */
-
-/* The weave-on rope (brand decision 7) covers any load expected to run
-   long: it appears only once a wait passes LOADER_SHOW_AFTER_MS (500ms —
-   Kyle, 2026-08-28). Hash routes paint their skeleton instantly and almost
-   always finish well inside the threshold (the API answers in single-digit
-   ms), so in practice the rope belongs to boot — which is also every
-   workspace switch, since those navigate to /w/<id>/ — and to the rare
-   genuinely slow route (Feature #148).
-
-   Two rules, and they pull against each other:
-   - It must not tax fast navigation, so it only appears once a wait passes
-     LOADER_SHOW_AFTER_MS.
-   - Once it does appear it always finishes at least one whole cycle, so the
-     rope is never caught half-woven. Hiding therefore waits out the remainder
-     of the cycle it is in — which is a full cycle when it has only just
-     appeared, and rounds up to the next boundary when the wait ran long.
-
-   The rope is the still mark shown through windows that move by transform
-   alone (Issue #390): one fragment, brand/build-logos.mjs loaderRopeHtml(),
-   carries both themes and the CSS. The compositor keeps it moving while this
-   thread parses JSON or renders a route; the old SMIL rope froze on every
-   long task. Its animations are CSS inside a host whose [hidden] is
-   display:none, so showing the host starts them at the start of a weave,
-   which is what makes "one whole cycle" exact. */
-const LOADER_CYCLE_MS = 2000; // must match LOADER_CYCLE_MS in brand/build-logos.mjs
+const LOADER_CYCLE_MS = 2000;
 const LOADER_SHOW_AFTER_MS = 500;
 const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, ready: false };
 
@@ -13792,7 +10305,7 @@ async function initPageLoader() {
   if (!host) return;
   const html = await fetch('/brand/weave-loader-rope.html')
     .then((res) => (res.ok ? res.text() : null)).catch(() => null);
-  if (!html) return; // no loader is better than a bare wash
+  if (!html) return;
   host.innerHTML = html;
   loading.ready = true;
 }
@@ -13813,7 +10326,6 @@ function hidePageLoader() {
   loading.shownAt = 0;
 }
 
-/* Runs `work`, showing the loader if it takes long enough to be a wait. */
 async function withPageLoader(work) {
   loading.depth += 1;
   clearTimeout(loading.hideTimer);
@@ -13828,8 +10340,8 @@ async function withPageLoader(work) {
     return await work();
   } finally {
     loading.depth -= 1;
-    if (loading.depth > 0) return; // a newer route is still in flight
-    if (loading.showTimer) { // finished before it ever appeared
+    if (loading.depth > 0) return;
+    if (loading.showTimer) {
       clearTimeout(loading.showTimer);
       loading.showTimer = null;
       return;
@@ -13840,14 +10352,6 @@ async function withPageLoader(work) {
   }
 }
 
-/* ---------- the grid's own wait (Issue #433) ----------
-   A change on a table already on screen (a filter chip, a keystroke in the
-   search, a field flip, a view) holds the grid until its rows are drawn.
-   While anything holds it the grid body — never the toolbar — is dimmed and
-   aria-busy at once, so the old rows never pass for the answer; the rope
-   comes over the grid only when the wait passes LOADER_SHOW_AFTER_MS, and
-   once up it finishes its cycle, the page loader's two rules at grid scale.
-   gridHold() returns its release; releasing twice is harmless. */
 const gridWait = { holds: new Set(), showTimer: 0, shownAt: 0, hideTimer: 0 };
 function gridHold() {
   const token = {};
@@ -13873,17 +10377,11 @@ function paintGridWait() {
   const elapsed = Date.now() - gridWait.shownAt;
   gridWait.hideTimer = setTimeout(hideGridLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
 }
-/* Over the part of the grid in view: the rope sits where the reader is
-   looking, under the page header (which stacks above it). */
 function placeGridLoader() {
   const main = $('#main');
   const node = main?.querySelector(':scope > .grid-loader');
   const wrap = main?.querySelector(':scope > .table-wrap');
   if (!node || !wrap) return;
-  /* The loader hangs off #main, which scrolls (Issue #609): an absolute
-     child is placed in the panel's scrolled content, so the panel's own
-     scroll is added back, and the part in view is the part inside the
-     panel's frame. */
   const m = main.getBoundingClientRect(), w = wrap.getBoundingClientRect();
   const top = Math.max(w.top, m.top), bottom = Math.min(w.bottom, m.bottom);
   Object.assign(node.style, {
@@ -13898,7 +10396,6 @@ function showGridLoader() {
   let node = main.querySelector(':scope > .grid-loader');
   if (!node) {
     node = el('div', { class: 'grid-loader', 'aria-hidden': 'true' });
-    // The marks only: the fragment's <style> already applies document-wide.
     for (const mark of source.querySelectorAll(':scope > span')) node.append(mark.cloneNode(true));
     main.append(node);
   }
@@ -13911,8 +10408,6 @@ function hideGridLoader() {
   const node = $('#main')?.querySelector(':scope > .grid-loader');
   if (node) node.hidden = true;
 }
-/* Leaving the table drops whatever it was waiting on: the page it would
-   dim is gone, and a hold released later is a no-op. */
 function resetGridWait() {
   gridWait.holds.clear();
   clearTimeout(gridWait.showTimer); gridWait.showTimer = 0;
@@ -13920,24 +10415,11 @@ function resetGridWait() {
   hideGridLoader();
 }
 
-/* ---------- boot ---------- */
-
-
-/* ---------- skeleton loading (Feature #49, boneyard-inspired) ----------
-   The route paints a skeleton of the REAL destination the instant navigation
-   starts — grid rows at grid rhythm, an entity page's two columns — so the
-   wait looks like the thing being waited for (0xGF/boneyard's idea; the
-   library itself is framework+build-time and cannot ride a vanilla no-build
-   UI). The route's own render replaces it. Since Feature #148 the skeleton
-   is the ONLY cover for hash routes — the rope belongs to full page loads —
-   so a table skeleton takes its column count from the destination table:
-   the schema is already client-side, which makes the real shape free. */
 function paintSkeleton(kind, db) {
   const main = $('#main');
   if (!main) return;
   const line = (w, h = 12) => el('div', { class: 'sk sk-line', style: `width:${w};height:${h}px` });
   if (kind === 'db') {
-    // First column wide like a Name, the rest tapering like real fields.
     const n = Math.max(2, Math.min(db ? visibleCols(db).length : 4, 8));
     const widths = Array.from({ length: n }, (_, i) => (i === 0 ? '22%' : `${Math.max(12 - i, 7)}%`));
     const bar = () => el('div', { class: 'sk-row' }, line('28px'), ...widths.map((w, i) => line(w, i === 0 ? 14 : 12)));
@@ -13959,10 +10441,6 @@ function paintSkeleton(kind, db) {
   }
 }
 
-/* The tab title follows the place (Issue #267): a docked row, else the page's
-   own name (a table, a space, an entity), then the workspace. Pages hand in
-   their name as they render; the dock and the workspace wordmark call with
-   no argument, re-reading what is already known. */
 function syncDocTitle(pageName) {
   if (pageName !== undefined) state.pageName = pageName;
   const top = dock?.state.chain[dock.state.chain.length - 1];
@@ -13970,25 +10448,14 @@ function syncDocTitle(pageName) {
 }
 
 function renderRoute() {
-  // Every render replaces #main, which would strand live document editors and
-  // whatever they have not written yet. Flush and destroy before the DOM goes.
   teardownDocEditors();
-  // A route change leaves the view the dock belonged to.
   dockClose();
-  /* Navigating away abandons any floating chrome: a picker left open would
-     otherwise survive the route change and haunt the next page (Issue #93's
-     replay — the grid it anchored to is gone, so there is nothing to commit
-     to either). */
   for (const pop of document.querySelectorAll('.chip-pop, .picker-pop')) {
     const nextTable = location.hash.match(/^#\/(?:table|db)\/([^/?]+)/)?.[1];
     if (!pop.classList.contains('table-view-popover') || pop.tableId !== nextTable) pop.remove();
   }
-  // A new place names itself as it renders (Issue #267).
   state.pageName = null;
   const hash = location.hash || '#/';
-  // The skeleton of where we're going, painted before we go (Feature #49).
-  // Another view of the table on screen is not a new place: its grid is
-  // redrawn under the chrome it already has (Issue #444).
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
   if (!(dbM && tableChromeOn(dbM[1]))) {
     resetGridWait();
@@ -14007,15 +10474,6 @@ function renderRoute() {
   return showHome();
 }
 
-/* A route render that rejects used to leave #main holding the skeleton
-   paintSkeleton had just put there, because nothing above it caught: the
-   page waited forever for a render that was never coming (Issue #118 — uno's
-   Project grid asked for its rows, the query answered 500, and the table
-   never appeared). showEntity was the only route that caught at all, and it
-   caught by falling home, which says nothing about what broke.
-   So every route ends here instead. The failure names itself, in the words
-   the server used, and carries the retry: a load that breaks reads as an
-   error rather than as an endless wait. */
 function paintRouteError(err) {
   console.error(err);
   const main = $('#main');
@@ -14026,9 +10484,6 @@ function paintRouteError(err) {
       el('p', { class: 'wv-route-error-msg' }, String(err?.message || err || 'Unknown error')),
       el('div', { class: 'wv-route-error-actions' },
         el('button', { class: 'btn btn-primary', type: 'button', onclick: () => route() }, 'Try again'),
-        /* A page that did not load is where the corner button is hardest to
-           reach for, so the report link sits here too, with the error folded
-           in (Feature #223). */
         el('a', {
           class: 'bug-mail', title: `Opens your mail app with the error filled in, addressed to ${bugCore.REPORT_MAIL}`,
           href: bugCore.mailtoReport({
@@ -14040,12 +10495,6 @@ function paintRouteError(err) {
           }),
         }, iconEl('lucide:mail', 'wv-icon bug-mail-icon'), 'Report by email')))));
 }
-/* Promise.resolve().then, not work().catch: renderRoute is a plain function
-   whose branches return a promise, a value or nothing, and it can throw
-   before it ever returns — all three have to land in the same catch. */
-/* One render at a time, in the order they were asked for (Issue #274). Two
-   renders in flight over the same #main means the slower one wins whatever
-   it was drawing from, and the loser can be the fresher schema. */
 let renderChain = Promise.resolve();
 const renderRouteSafely = () => {
   renderChain = renderChain
@@ -14056,44 +10505,28 @@ const renderRouteSafely = () => {
     .then(ensureNavMenu);
   return renderChain;
 };
-/* Every page carries the drawer's handle (Issue #262): the crumb bar holds it
-   where the page has one, and a page without one gets it on a line of its own. */
 function ensureNavMenu() {
   const main = $('#main');
   if (!main || main.querySelector('.nav-menu')) return;
   main.prepend(el('div', { class: 'crumb nav-menu-row' }, navMenuButton()));
 }
-// Every route change may earn the rope, but only past LOADER_SHOW_AFTER_MS
-// (500ms): the skeleton covers the wait until a load proves it is genuinely
-// long (Feature #148). At the old 200ms threshold the full-cycle rule WAS
-// the wait — routine navs paid up to ~2.2s for fetches that took a quarter
-// of that.
 function route() {
   return withPageLoader(renderRouteSafely);
 }
 
-/* A table hash carrying ?e=<id> re-docks that row after the table renders
-   (Issue #226). A row that is gone, or a stale id, drops the query rather
-   than toasting on every reload. The row may live in another table (Issue
-   #276): it renders from its own. ponytail: the dock chain reopens one
-   deep; nested drills are not encoded. */
 async function redock(dbId, id) {
   if (!id) return;
   const anchor = allTables().find((d) => d.id === dbId);
   if (!anchor) return;
   let entity;
-  try { entity = await api('GET', `/entities/${id}`); } catch { dockSyncUrl(); return; } // the docked record is gone: drop it from the URL
+  try { entity = await api('GET', `/entities/${id}`); } catch { dockSyncUrl(); return; }
   const db = allTables().find((d) => d.id === entity.dbId) ?? anchor;
   await dockEntity(db, id);
 }
 
-// Registered ahead of route, so the edit commits before the page rebuilds.
 window.addEventListener('hashchange', commitActiveEdit);
 window.addEventListener('hashchange', route);
 
-/* Collapsible chip previews arrive wherever /api/markdown HTML lands (doc
-   previews, handbook, applets). One delegated listener toggles every caret;
-   the chip itself stays a plain link. */
 document.addEventListener('click', (ev) => {
   const caret = ev.target.closest('.mention-caret');
   if (!caret) return;
@@ -14103,22 +10536,10 @@ document.addEventListener('click', (ev) => {
   caret.setAttribute('aria-expanded', String(!!open));
 });
 
-/* Spaces and tables are created by the single-instance inline input in the
-   sidebar (inlineNameInput). The modal variants that used to live here were
-   unreachable and styled differently, so the same action had two competing
-   designs — weave Issue #16. */
-
-/* Shift+Enter anywhere on a table view = quick-create in the current table.
-   From inside a grid cell editor it is save-and-create-another (Issue #125):
-   the blur commits the cell (change fires before keydown resolves), and the
-   focus lands in the new row's Name cell instead of being dropped. Editors
-   outside the grid — filters, dialogs, pickers — keep their keys. */
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || !e.shiftKey) return;
   if (state.route?.page !== 'db') return;
   const editing = e.target.closest?.('input,select,textarea,[contenteditable]');
-  // The grid's own rows only: a relation grid docked beside the table now
-  // carries data-eid too (Issue #195), and its editors keep their keys.
   if (editing && !editing.closest('.wv-grid tr[data-eid]')) return;
   if ($('#modal-back') || $('#cmdk-back')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
@@ -14129,23 +10550,14 @@ document.addEventListener('keydown', (e) => {
   else quickCreate(db);
 });
 
-/* Workspace rail: the weave docs workspace is pinned first as the
-   brand-colored chip (it always exists); every other workspace stacks below,
-   showing its uploaded logo when it has one (the chip menu — right-click, or a
-   left click on the current chip — updates or removes it, Issue #202). */
 async function buildWsRail() {
   const listBox = $('#ws-list');
   if (!listBox) return;
   try {
     const list = await api('GET', '/workspaces');
     const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
-    // The URL segment may be the friendly name or the durable id — both route.
     const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
     const current = cur?.name ?? seg;
-    // The wordmark is the way home, not a caption (Kyle, 2026-08-24: "allow
-    // clicking the workspace name to take you to the workspace entity page in
-    // addition to the workspace selector chip"). A real href, so ⌘-click and
-    // middle-click open the workspace in a tab like every other link.
     const wordmark = $('#ws-name');
     wordmark.textContent = current ?? '';
     syncDocTitle();
@@ -14167,17 +10579,8 @@ async function buildWsRail() {
         }, w.logo
           ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
           : w.name.slice(0, 1).toUpperCase());
-        // The chip menu: Update logo… on every chip, current or not, logo or
-        // not (Issue #202 — the logo route is per-workspace, so each chip
-        // targets its own), Remove logo while one exists, and delete (Issue
-        // #190 — the hub's `deletable` decides; a hosted hub without it
-        // offers none). Right-click opens it anywhere; a left click on the
-        // current chip, which used to reload the page, opens it too — a left
-        // click on any other chip still switches workspace.
         const openMenu = (e) => {
           e.preventDefault();
-          // The menu closes on the next `click` anywhere; a left click that
-          // opened it must not be that click.
           e.stopPropagation();
           contextMenu(e, [
             { label: 'Update logo…', run: () => uploadWorkspaceLogo(w) },
@@ -14189,14 +10592,10 @@ async function buildWsRail() {
         if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) openMenu(e); });
         return chip;
       }));
-    // The crumbs drawn before the rail knew the workspace wear its mark now.
     refreshWsMarks();
-  } catch { /* single-workspace hub */ }
+  } catch {}
 }
 
-/* A menu at the pointer, in the dots-menu costume: Escape, a click
-   elsewhere, or picking an item closes it. Items are dotsMenu's: a button,
-   'divider', or {hold: label, run} for a hold-to-confirm. */
 function contextMenu(e, items, extraClass = '') {
   contextMenu.close?.();
   const menu = el('div', { class: `dl-menu wv-ctx ${extraClass}`, style: `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:120` });
@@ -14215,16 +10614,12 @@ function contextMenu(e, items, extraClass = '') {
     }, it.label));
   }
   document.body.append(menu);
-  // A right-click never dispatches `click`, so the listeners can go on now.
   addEventListener('click', away);
   addEventListener('keydown', esc);
   contextMenu.close = close;
   return menu;
 }
 
-/* Delete a workspace (Issue #190): soft, through DELETE /api/workspaces/:id,
-   confirmed by typing the workspace's name — a hold is too cheap for a whole
-   workspace. Trash in the sidebar is where it comes back from (Issue #562). */
 function confirmDeleteWorkspace(w, { current = false } = {}) {
   modal(`Delete workspace ${w.name}`, [
     el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
@@ -14240,16 +10635,11 @@ function confirmDeleteWorkspace(w, { current = false } = {}) {
     });
     buildWsRail();
   }, 'Delete');
-  // A destructive submit wears the danger colour, not the primary one.
   document.querySelector('#modal button[type="submit"]')?.classList.replace('btn-primary', 'btn-danger');
 }
 
-/* Trashed workspaces (Issues #190, #562): the Trash page lists them under the
-   rows, each with a Restore. They used to hang off a glyph in the bottom-right
-   corner, which Trash in the sidebar made redundant. A workspace is the hub's,
-   not this workspace's, so a single-workspace hub has none to list. */
 async function trashedWorkspaces() {
-  try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; } // a single-workspace hub has no list to read
+  try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; }
 }
 function trashedWorkspacesCard(trashed, redraw) {
   return el('div', { class: 'card panel trash-workspaces', style: 'margin-top:12px' },
@@ -14268,9 +10658,6 @@ function trashedWorkspacesCard(trashed, redraw) {
         },
       }, 'Restore'))));
 }
-// Workspace logo (Feature #57, Issue #202): picked file → base64 → PUT
-// /w/<ws>/api/workspace/logo on the chip's OWN workspace — not `api()`, which
-// is pinned to the workspace being viewed — then the rail re-renders.
 const wsApiPrefix = (w) => (w.default ? '' : `/w/${w.id}`) + '/api';
 async function wsApi(w, method, path, body) {
   const res = await fetch(wsApiPrefix(w) + path, {
@@ -14319,11 +10706,6 @@ function wireWsNew() {
   });
 }
 
-/* Collapsible left nav: chevron in the sidebar header hides the sidebar
-   (the rail stays); the expand chevron lives at the top of the rail.
-   While collapsed, resting on the left edge slides the nav out as an
-   overlay and clicking the edge pins it open (Kyle, 2026-08-25, Issue #77);
-   the workspace rail keeps its ordinary hover behaviour. */
 const narrowShell = matchMedia('(max-width: 900px)');
 function wireNavCollapse() {
   const app = $('#app');
@@ -14337,13 +10719,8 @@ function wireNavCollapse() {
     expand.classList.toggle('hidden', !collapsed);
     localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
   };
-  // In the phone drawer the ‹ only closes it: collapsing there would persist
-  // and greet the next desktop visit with the nav gone.
   collapse.addEventListener('click', () => (narrowShell.matches ? app.classList.remove('nav-peek') : apply(true)));
   expand.addEventListener('click', () => apply(false));
-  // The hot strip sits where the sidebar's edge used to be. The overlay
-  // covers it once open, so "left the sidebar" is the one closing signal —
-  // plus a short grace check for a pointer that crossed without settling.
   const strip = el('div', { id: 'nav-hot-strip', 'aria-hidden': 'true' });
   app.append(strip);
   let settle = null;
@@ -14356,8 +10733,6 @@ function wireNavCollapse() {
     }, 400);
   });
   strip.addEventListener('click', () => apply(false));
-  // Once the overlay is out it covers the strip, so the pinning click lands
-  // on the sidebar itself: any press on a non-interactive spot pins the nav.
   sidebar.addEventListener('click', (e) => {
     if (!app.classList.contains('nav-peek') || narrowShell.matches) return;
     if (e.target.closest('a,button,input,textarea,select,label')) return;
@@ -14368,10 +10743,6 @@ function wireNavCollapse() {
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') app.classList.remove('nav-peek'); });
   apply(localStorage.getItem('weave-nav-collapsed') === '1');
-  // The phone drawer (Issues #262, #326) is the same overlay, opened by the
-  // crumb bar's menu button. It closes on Esc (above), on a tap on the scrim
-  // (#app's ::after, so the target is #app itself), and on navigation; a
-  // pointer leaving it or a press on its blank space means nothing here.
   const shut = () => app.classList.remove('nav-peek');
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);
@@ -14379,7 +10750,6 @@ function wireNavCollapse() {
   narrowShell.addEventListener('change', shut);
 }
 
-/* The drawer's handle, first in every crumb bar; CSS shows it below 900px. */
 function navMenuButton() {
   const btn = el('button', {
     class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button',
@@ -14390,14 +10760,6 @@ function navMenuButton() {
   return btn;
 }
 
-/* Theme toggle: auto (follow OS, live) → dark → light.
-   Tabler themes via data-bs-theme on <html>. Auto resolves from the OS and
-   tracks OS changes live. */
-/* Skip to content (Issue #378): the first Tab stop, ahead of the rail and
-   the sidebar, which spend 30 stops before the content does. The href is
-   what it means without script; the router owns the hash, so a click moves
-   focus into #main instead of navigating, and #main is focusable only for
-   that moment, so a click inside it never parks focus on the panel. */
 function wireSkipLink() {
   $('.skip-link')?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -14420,7 +10782,7 @@ function wireThemeToggle() {
     document.documentElement.dataset.bsTheme = resolved;
     btn.replaceChildren(iconEl(icons[pref]) ?? icons[pref]);
     btn.title = `Theme: ${pref} (click to switch)`;
-    retheme(); // live document editors follow the page, not their birth theme
+    retheme();
   };
   media.addEventListener('change', () => { if (pref === 'auto') apply(); });
   apply();
@@ -14431,15 +10793,6 @@ function wireThemeToggle() {
   });
 }
 
-/* Schema can change from another tab, the CLI, or an agent while a view is
-   open. Re-fetch it and, if it moved, redraw — unless a document editor is
-   open (never clobber unsaved text; hint instead).
-
-   Two things call this. Refocusing the window (Feature #33) covers the
-   person who edited in another tab and came back. A read stamped with a
-   version this tab has not loaded (Issue #274) covers everyone who does not
-   come back: an agent over MCP, the CLI, an automation. Only the second one
-   catches the tab that never loses focus while it navigates. */
 function syncSchema() {
   if (schemaFetch) return schemaFetch;
   const before = JSON.stringify(state.schema);
@@ -14447,40 +10800,19 @@ function syncSchema() {
   return schemaFetch.then((loaded) => {
     schemaFetch = null;
     if (!loaded || JSON.stringify(state.schema) === before) return;
-    // A re-render destroys live editors. Never do that over text that has not
-    // reached the server yet.
     if (pendingDocSaves.size) {
       toast('Schema changed elsewhere — reopen this entity to see new fields');
       return;
     }
-    /* The render that DISCOVERED the drift is still running, on the schema
-       this one replaces: the version came back on its own row query. Renders
-       are chained, so this one takes the page after it, and the fresh paint
-       is the one that stays. */
     route();
   });
 }
 window.addEventListener('focus', syncSchema);
 
 
-/* ---------- the bug reporter (Feature #141) ---------- */
-
-/* The report button's glyph: Kyle's ant, traced from the icon he sent
-   (2026-08-25) and vendored into the flat set as `bug` — "this is also
-   good for the icon library" — so spaces, tables and states can wear it
-   too. The FAB draws it through iconEl like every other mark. */
 const bugGlyph = () => iconEl('lucide:bug', 'bug-fab-icon');
 
-/* One recorder for the session, started at boot. It holds the last minute of
-   what happened — routes, clicks, API calls with their status and duration,
-   anything that threw — so a report can carry the steps to reproduce instead
-   of asking the reporter to remember them. bugCore owns the rules about what
-   may be remembered (public/bug-core.js); this wires it to the page. */
 let bugRecorder = null;
-/* What has been written but not yet filed. A report is often several minutes
-   of someone's attention and the panel is not modal, so closing it — however
-   that happens — puts the writing down rather than throwing it away, and the
-   next open picks it back up (Issue #93). Filing clears it. */
 let bugDraft = { note: '', categories: [] };
 
 function installBugReporter() {
@@ -14488,30 +10820,16 @@ function installBugReporter() {
   bugRecorder = bugCore.createRecorder();
   const now = () => Date.now();
 
-  // Routes. The hash IS the page in this SPA, so a route change is the
-  // coarsest replay step and usually the first line of a reproduction.
   bugRecorder.record({ kind: 'nav', to: location.hash || '#/', t: now() });
   addEventListener('hashchange', () => bugRecorder.record({ kind: 'nav', to: location.hash, t: now() }));
 
-  /* Clicks, captured at the document so a redraw cannot unsubscribe us. The
-     reporter's own controls are skipped: the trace is about the app, and a
-     bug report that ends "clicked Report" tells nobody anything. */
   addEventListener('click', (e) => {
     const node = e.target?.closest?.('button, a, [role="button"], th, td, .chip, summary') ?? e.target;
     if (node?.closest?.('.bug-fab, #bug-panel')) return;
     bugRecorder.record({ kind: 'click', target: bugCore.describeTarget(node), t: now() });
   }, true);
 
-  /* Requests — but not all of them. A page load fires a dozen reads that all
-     come back 200 in 3ms; recorded, they fill the buffer with the app working
-     correctly and push the actions that caused the bug off the end. What is
-     evidence: anything that failed, anything slow enough to be the complaint,
-     and every write (a 200 on a PATCH is what proves the save was accepted,
-     which is the whole question in a "didn't save" report). */
   const SLOW_MS = 400;
-  /* weave posts its reads: a filter goes in a body, so /query, /search and
-     /markdown are POSTs that change nothing. Classify by what a call does,
-     not by its verb, or "every write is evidence" quietly readmits the noise. */
   const READ_PATHS = /\/(query|search|markdown|health|schema|vocabulary)(\?|$)/;
   const worthRecording = (method, status, ms, path = '') =>
     status === 0 || status >= 400 || ms >= SLOW_MS || (method !== 'GET' && !READ_PATHS.test(path));
@@ -14533,8 +10851,6 @@ function installBugReporter() {
       }
       return res;
     } catch (err) {
-      // status 0 is "never arrived" — a dropped connection reads differently
-      // from a 500 when an agent is deciding what to reproduce.
       if (!mine) {
         bugRecorder.record({
           kind: 'api', method, path: url.replace(location.origin, ''),
@@ -14569,14 +10885,6 @@ function closeBugPanel() {
   document.querySelector('.bug-fab')?.setAttribute('aria-expanded', 'false');
 }
 
-/* The panel floats beside the button — no backdrop, no modal (Kyle,
-   2026-08-25: "dialog floats next to bug button"). Reporting a bug must not
-   cover the bug: the broken page stays visible while the report is written.
-
-   The note is first and focused, so the fastest report is to start typing;
-   the four symptoms are a multi-select underneath, because one bug is often
-   slow AND wrong, and neither half is required — a sentence alone is the
-   "other" nobody has to be given a fifth button for. */
 function openBugPanel(fab) {
   closeBugPanel();
   fab.setAttribute('aria-expanded', 'true');
@@ -14613,13 +10921,6 @@ function openBugPanel(fab) {
   });
   sync();
 
-  /* Report by email (Feature #223). Send files into THIS instance's Issue
-     table, which on a self-hosted weave nobody at grunion reads. The link
-     opens the reporter's own mail client with the report filled in —
-     symptoms, note, build, route shape, browser, the last error — and they
-     read and edit every line before it goes. The trace never rides by mail.
-     The href is rebuilt as the report is written, so what was typed is what
-     the mail carries. */
   const mailHref = () => bugCore.mailtoReport({
     categories: picked, note: note.value,
     pathname: location.pathname, hash: location.hash,
@@ -14638,16 +10939,10 @@ function openBugPanel(fab) {
     note,
     el('div', { class: 'bug-cats' }, ...cats),
     el('div', { class: 'bug-foot' },
-      // Say what is being sent before it is sent — a trace of someone's
-      // session is not something to attach quietly.
       el('span', { class: 'bug-captured', title: 'Recent routes, clicks, requests and errors — never anything you typed into a field' },
         `${c.actions + c.errors + c.failedRequests} steps captured`),
-      // ⌘Return sends from the note (below). Kyle filed a report that way
-      // and said so in it: a shortcut nobody can see is one nobody finds.
       el('kbd', { class: 'bug-kbd', title: '⌘Return (Ctrl+Return) sends the report' }, '⌘↵'),
       send),
-    // Its own row under the foot, with the address printed beside it so a
-    // device with no mail handler still has something to copy.
     el('div', { class: 'bug-mail-row' }, mailLink, el('span', { class: 'bug-addr' }, bugCore.REPORT_MAIL)));
 
   form.addEventListener('submit', async (e) => {
@@ -14662,9 +10957,6 @@ function openBugPanel(fab) {
         events: bugRecorder.events(),
         client: bugCore.clientContext(),
       });
-      /* The button becomes the receipt (Kyle: "send should sent"). Confirming
-         in the control that was pressed beats a toast that has already faded
-         by the time anyone looks up. */
       bugDraft = { note: '', categories: [] };
       send.textContent = 'Sent';
       send.classList.add('sent');
@@ -14681,16 +10973,10 @@ function openBugPanel(fab) {
   const panel = el('div', { id: 'bug-panel', role: 'dialog', 'aria-label': 'Report a problem' }, form);
   document.body.append(panel);
 
-  // Anchored to the button, flipped inside the viewport on a small screen.
   const r = fab.getBoundingClientRect();
   panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
   panel.style.bottom = (innerHeight - r.top + 6) + 'px';
 
-  /* The panel is not modal on purpose, so clicking the page behind it is the
-     reporter checking the thing they are reporting — not a dismissal. A blank
-     panel still goes away on that click, because there is nothing to lose and
-     one opened by accident should not need a second gesture to put back.
-     Esc closes either way; the draft is kept, so nothing typed is gone. */
   const away = (ev) => {
     if (!panel.isConnected) return removeEventListener('click', away, true);
     if (panel.contains(ev.target) || fab.contains(ev.target)) return;
@@ -14702,7 +10988,6 @@ function openBugPanel(fab) {
   addEventListener('keydown', function esc(ev) {
     if (!panel.isConnected) return removeEventListener('keydown', esc);
     if (ev.key === 'Escape') { closeBugPanel(); fab.focus(); removeEventListener('keydown', esc); }
-    // ⌘/Ctrl+Enter sends from the note without reaching for the mouse.
     if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey) && panel.contains(ev.target)) {
       ev.preventDefault();
       form.requestSubmit();
@@ -14711,18 +10996,9 @@ function openBugPanel(fab) {
   note.focus();
 }
 
-// The loader is fetched before the first route so boot's own wait can use it.
 initPageLoader();
-/* The recorder starts before the first render: a bug on first paint is a
-   bug too, and by the time a user reaches for the button the actions that
-   caused it are already history. */
 installBugReporter();
-// The live regions exist before the first message, or a reader misses it.
 toastLayer();
-/* Theme first: the first render must not paint an unthemed frame. Anything
-   that reads the theme when it is built rather than on every paint — the
-   document editors, and the mermaid diagrams they render once — would
-   otherwise be born light and stay light under a dark page. */
 wireThemeToggle();
 wireSkipLink();
 wireKeySheet();

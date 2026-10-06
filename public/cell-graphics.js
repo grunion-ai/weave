@@ -1,35 +1,13 @@
-/* The drawing behind the rich cells — pure: numbers in, SVG markup out, no
-   DOM. Classic script + ESM in one file (the view-core.js pattern): the
-   browser reads the window global, node imports the same source for
-   test/cell-graphics.test.mjs. app.js puts the markup in a grid cell, a chip
-   segment or a card, beside the value's own text.
-
-   The number display (Feature #230), the rating's icons (Feature #231) and
-   the sparkline (Feature #232).
-   The number display: a bar or a ring filled to the value's
-   share of its scale, or a heat tint behind the text. The scale is the
-   engine's (`scales` on a read): the column max, or a fixed number. Every
-   graphic is aria-hidden — the text beside it is what a screen reader reads,
-   so the graphic can never say something the value does not.
-
-   The colour (Feature #235) is the field's `color` — ink, icon or accent —
-   worn as a class on the cell's wrapper (cg-c-<color>, see colorClass); the
-   markup here only carries geometry and the share, and public/style.css
-   paints each setting from theme tokens with a dark twin. */
 (function (root) {
   const DISPLAYS = ['text', 'bar', 'ring', 'heat'];
-  // Mirrors the engine's CELL_COLORS (contract-tested).
   const COLORS = ['ink', 'icon', 'accent'];
   const colorOf = (c) => (COLORS.includes(c) ? c : 'ink');
   const colorClass = (c) => `cg-c-${colorOf(c)}`;
-  /* Color by icon: a rating's filled icons take the icon's own hue. The
-     four the mockup names; any other icon falls back to the accent. */
   const ICON_HUES = { star: 'amber', heart: 'rose', zap: 'violet', flame: 'orange' };
   const ratingHue = (icon) => ICON_HUES[String(icon ?? 'lucide:star').replace(/^lucide:/, '')] ?? 'accent';
   const isGraphic = (d) => d != null && d !== 'text' && DISPLAYS.includes(d);
   const r2 = (n) => Math.round(n * 100) / 100;
 
-  /* The value over the scale, held to 0..1; null when there is no value. */
   function share(value, scale) {
     if (value == null || value === '') return null;
     const v = Number(value);
@@ -43,12 +21,6 @@
   const RING_C = 2 * Math.PI * RING_R;
   const SVG = 'aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"';
 
-  /* The cell shapes (Feature #235). The bar is 6px tall with round ends on
-     an 80px track: the box is 100 by 7.5 so a share stays a percent of the
-     width, and the SVG draws at 80 by 6 — the same 0.8 both ways, so the
-     ends stay round. The ring is 16px with a 2.5px round-capped stroke:
-     2.81 in an 18-unit box. BAR_TRACK and RING_PX are the CSS sizes the
-     column width is fitted to (public/column-resize.js). */
   const BAR_TRACK = 80, RING_PX = 16;
   const RING_STROKE = r2(2.5 * 18 / RING_PX);
   function meterSvg(display, frac) {
@@ -66,42 +38,27 @@
         + ` stroke-dasharray="${r2(RING_C * f)} ${r2(RING_C)}" transform="rotate(-90 9 9)"/></svg>`;
     }
     if (display === 'heat') {
-      // A rounded tint behind the number (the wrapper's corners clip it). A
-      // floor so a cell on the scale reads as tinted at all; a ceiling so the
-      // text stays legible on the hottest cell in both themes. --cg-f is the
-      // share, which Color by icon mixes from cool to warm.
       return `<svg class="cg cg-heat" viewBox="0 0 10 10" preserveAspectRatio="none" ${SVG}>`
         + `<rect class="cg-fill" x="0" y="0" width="10" height="10" fill-opacity="${r2(0.08 + 0.32 * f)}" style="--cg-f:${Math.round(f * 100)}%"/></svg>`;
     }
     return '';
   }
 
-  /* The hover: the value, then its share of the scale when there is one. */
   function meterTitle(text, value, scale, scaleText) {
     const f = share(value, scale);
     if (f == null || !(Number(scale) > 0)) return String(text ?? '');
     return `${text} — ${Math.round((Number(value) / Number(scale)) * 100)}% of ${scaleText ?? scale}`;
   }
 
-  /* The rating (Feature #231): how many of the `max` icons are filled, and
-     the words a screen reader hears. A lookup or a rollup can hand over a
-     fraction (an average of 3.5); the icons round it, the API keeps it. */
   function ratingParts(value, max) {
     const m = Number.isInteger(max) && max > 0 ? max : 5;
     if (value == null || value === '' || !Number.isFinite(Number(value))) return { filled: 0, max: m, label: `unrated, of ${m}` };
     const filled = Math.min(m, Math.max(0, Math.round(Number(value))));
     return { filled, max: m, label: `${filled} of ${m}` };
   }
-  /* Clicking the nth icon sets n; clicking the one that is the value clears it. */
   const ratingClick = (current, n) => (Number(current) === n ? 0 : n);
 
-  /* The sparkline (Feature #232): a formula's list drawn as a line, columns
-     or win/loss bars. The newest SPARK_CAP points are drawn — a series is
-     read left to right, oldest first — and the hover lists every value. A
-     blank slot is a gap in the line and an empty column. */
   const SPARK_CAP = 60;
-  // Drawn at its own size, never stretched: the dot stays round and the
-  // columns keep their 1.5px corners (Feature #235).
   const SPARK_W = 80, SPARK_H = 18, PAD = 2;
   const WL_BLOCK = 5, DOT_R = 2;
   const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -128,7 +85,6 @@
     const open = `<svg class="cg cg-spark cg-spark-${style}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" ${SVG}>`;
     const slot = (SPARK_W - 2 * PAD) / n;
     if (style === 'winloss') {
-      // Small blocks a pixel clear of the midline: a win above, a loss below.
       const mid = SPARK_H / 2, h = WL_BLOCK, w = Math.max(1, slot * 0.7);
       const bars = pts.map((v, i) => (isNum(v) && v !== 0
         ? `<rect class="cg-fill cg-${v > 0 ? 'win' : 'loss'}" x="${r2(PAD + i * slot + (slot - w) / 2)}" y="${r2(v > 0 ? mid - 1 - h : mid + 1)}" width="${r2(w)}" height="${h}" rx="1"/>`
@@ -137,7 +93,6 @@
     }
     const lo = Math.min(...nums), hi = Math.max(...nums);
     if (style === 'column') {
-      // Columns stand on zero when the series crosses it, else on its floor.
       const base = Math.min(0, lo), top = Math.max(0, hi);
       const span = top - base || 1;
       const y = (v) => PAD + (1 - (v - base) / span) * (SPARK_H - 2 * PAD);
@@ -150,7 +105,6 @@
         return `<rect class="cg-fill${v < 0 ? ' cg-neg' : ''}" x="${r2(PAD + i * slot + (slot - w) / 2)}" y="${r2(Math.min(yv, zero))}" width="${r2(w)}" height="${r2(h)}" rx="1.5"/>`;
       }).join('') + '</svg>';
     }
-    // line
     const span = hi - lo;
     const x = (i) => (n === 1 ? SPARK_W / 2 : PAD + (i * (SPARK_W - 2 * PAD)) / (n - 1));
     const y = (v) => (span ? PAD + (1 - (v - lo) / span) * (SPARK_H - 2 * PAD) : SPARK_H / 2);

@@ -172,11 +172,10 @@ test('extending past either end holds the cursor at the end', () => {
   assert.deepEqual([...out.selected], ['a', 'b', 'c']);
 });
 
-test('the port names where EDGE would go, and nothing more', async () => {
+test('the open-cell keymap does not build the edge-through branch', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../public/grid-keymap.js', import.meta.url), 'utf8');
-  assert.match(src, /EDGE/, 'the open-cell keymap says where the edge-through branch belongs');
-  assert.ok(!/caret\.atEnd|caret\.atStart/.test(src), 'and does not build it');
+  assert.ok(!/caret\.atEnd|caret\.atStart/.test(src), 'no caret.atEnd or caret.atStart branch');
 });
 
 test('at rest, ⌘C and ⌘V take the cell', () => {

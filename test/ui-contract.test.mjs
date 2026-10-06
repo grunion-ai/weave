@@ -1067,19 +1067,20 @@ test('a select and a state each clear through their own empty option', () => {
 test('resize and reorder commit in place — the grid never tears down mid-gesture', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const head = fnBody('renderTable');
-  const commit = head.slice(head.indexOf('const commitWidth'), head.indexOf('// What the resize grip needs'));
+  const commitAt = head.indexOf('const commitWidth');
+  const commit = head.slice(commitAt, head.indexOf('const grid = {', commitAt));
   assert.ok(commit.includes('paintLayout()'), 'the commit paints through the same function the drag paints with');
   assert.ok(!commit.includes('showDatabase(db.id') || commit.includes('catch'), 'redraw only on failure');
   const order = head.slice(head.indexOf('const applyOrder'), head.indexOf('const columnDrag'));
   assert.ok(order.includes('anchorCell.after(cell)'), 'a grid column moves as DOM cells, not a redraw');
   assert.ok(order.includes('built.values()'), 'rows built this draw but off screen move too');
   assert.ok(order.includes('cols = next'), 'rows built later, and the next draw, read the new order');
-  assert.ok(order.includes('showDatabase(db.id, state.route?.view); // the move did not hold'), 'failure falls back to truth');
+  assert.ok(order.includes('showDatabase(db.id, state.route?.view)'), 'failure falls back to truth');
   const rStart = app.indexOf('async function reorderField');
   const reorder = app.slice(rStart, rStart + 2600);
   assert.ok(reorder.includes('insertAdjacentElement'), 'columns move as DOM cells, not a redraw');
   assert.ok(reorder.includes('db.fields.splice'), 'the local schema order follows the move');
-  assert.ok(reorder.includes('onFail(); // the move did not hold'), 'failure falls back to truth');
+  assert.ok(reorder.includes('onFail();'), 'failure falls back to truth');
 });
 
 test('field dialogs are the unified fieldDialog, not the old string forms', () => {

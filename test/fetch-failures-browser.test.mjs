@@ -18,10 +18,9 @@ function bareCatches(src = APP) {
   return out;
 }
 
-test('every bare catch in app.js toasts, rethrows, or says why silence is right (Issue #265)', () => {
-  const silent = bareCatches().filter(({ text }) => !/toast\(|throw |\/\*|\/\//.test(text));
-  assert.deepEqual(silent.map((c) => `app.js:${c.line} ${c.text.split('\n')[0].trim()}`), [],
-    'a catch with no toast and no comment is a failure nobody hears about');
+test('no new silent catch in app.js: a new one toasts or rethrows (Issues #265, #661)', () => {
+  const silent = bareCatches().filter(({ text }) => !/toast\(|throw /.test(text));
+  assert.ok(silent.length <= 50, `${silent.length} catches neither toast nor rethrow; 50 did when comments went (Issue #661), each with its reason reviewed. A new catch toasts or rethrows:\n${silent.map((c) => `app.js:${c.line} ${c.text.split('\n')[0].trim()}`).join('\n')}`);
 });
 
 test('the registry catch surfaces the failure instead of emptying the rail (Issue #265)', () => {

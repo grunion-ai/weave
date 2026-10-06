@@ -1,19 +1,4 @@
-/* The ⌘K palette, the pure half (Issue #382; option A, "Grouped results",
-   Kyle's pick from the 2026-09-26 design pass). A hit is one line: its name
-   with the match marked, an optional plain-text excerpt, the workflow state
-   chip and where it lives ("Task #1"). No permalink line and no raw
-   markdown: those made each hit three lines of noise.
-   The parts that need no DOM live here — the markdown stripping, the
-   grouping, the Tab jump between groups and the recents list — so
-   test/palette-core.test.mjs holds them directly. app.js draws the rest.
-   Loaded by the browser as a classic script and by the tests as a
-   side-effect import, so it speaks only globalThis. */
 (function (root) {
-  /* Markdown to the words a reader sees. Order matters: references and links
-     give up their labels before the URL pass removes what is left, and the
-     partial-link passes catch the fragments a 40-character snippet window
-     cuts through. A number sign that is content ("Task #143") stays; only a
-     heading marker (hashes then a space) goes. */
   function plainText(md) {
     return String(md ?? '')
       .replace(/```[^\n]*|~~~[^\n]*/g, ' ')
@@ -36,9 +21,6 @@
       .trim();
   }
 
-  /* A few words either side of the match, cut on word boundaries, with an
-     ellipsis on each end that was cut. With no match left (it sat inside a
-     URL the stripping removed) the opening words stand in. */
   const BEFORE = 3, AFTER = 8;
   function excerpt(snippet, needle) {
     const words = plainText(snippet).split(' ').filter(Boolean);
@@ -50,7 +32,6 @@
     return (from > 0 ? '… ' : '') + words.slice(from, to).join(' ') + (to < words.length ? ' …' : '');
   }
 
-  /* Segments of `text`, each marked as a match or not, for <mark>. */
   function highlight(text, needle) {
     const s = String(text ?? '');
     const n = String(needle ?? '').toLowerCase();
@@ -67,10 +48,6 @@
     return out;
   }
 
-  /* Four groups in a fixed order, each hidden when it has no hits. A record
-     whose name matches (or whose #id did) is a Record; a record found only
-     in its text is In documents. Spaces, views and the workspace itself
-     share the last group so a view hit (Issue #280) still has a home. */
   const GROUPS = [
     { key: 'records', label: 'Records' },
     { key: 'docs', label: 'In documents' },
@@ -91,8 +68,6 @@
   }
 
   const lastSegment = (name) => String(name ?? '').split('/').pop();
-  // A table hit's name is its qualified "Space/Table"; the line shows the
-  // table and puts the space in the where-text.
   function displayName(hit) {
     return hit.kind === 'table' ? lastSegment(hit.name) : String(hit.name ?? '');
   }
@@ -105,8 +80,6 @@
     return hit.kind;
   }
 
-  /* Tab lands on the first row of the next group, Shift+Tab on the first
-     row of the one before; both wrap. `sel` is the flat row index. */
   function groupJump(groups, sel, dir) {
     if (!groups.length) return 0;
     const starts = [];
@@ -118,8 +91,6 @@
     return starts[next];
   }
 
-  /* The empty palette's Recent group: newest first, one entry per thing
-     (kind + id), eight at most. Stored per workspace by app.js. */
   const RECENT_MAX = 8;
   function pushRecent(list, item) {
     const key = (r) => `${r.kind}:${r.id}`;

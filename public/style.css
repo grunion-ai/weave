@@ -1,67 +1,28 @@
-/* Weave custom layer on top of vendored Tabler (v1.4.0).
-   Tabler owns: reset, typography, buttons, forms, tables, cards, nav-tabs,
-   light/dark themes (data-bs-theme on <html>, always set to the resolved
-   theme by app.js). This file keeps only Weave's custom surfaces — layout,
-   sidebar + workspace rail, board, chips, doc editor, ⌘K palette, relation
-   map — mapped onto Tabler tokens (var(--tblr-*)). */
-
-/* ---------- Buzz-layout skin, Grunion (Kami) palette (2026-08-23) ----------
-   Layout language borrowed from the Buzz client: the chrome (rail + sidebar)
-   sits on a canvas and the content lives on a panel with large rounded
-   corners floating on it; nav is borderless — hover/active are soft
-   ink-tint pills. Colors are the Grunion brand kit (brand-grunion-skill.md):
-   light = Paper Tint canvas / Warm White panel; dark = Deep Navy canvas /
-   Elevated Panel. Brand blue #2563eb (--tblr-primary default) + rope mark. */
 :root {
-  /* The chip's one size, decided here and read everywhere a chip draws
-     (Issue #194, Kyle: "default chip view is likely too small"). 13px is one
-     step below the 14px body; 22px of line plus 1px of padding each side is
-     the 24px hit target. Change these two, not a surface. */
   --wv-chip-font: 13px;
   --wv-chip-line: 22px;
-  /* The grid's one size (Kyle, 2026-09-07). A row carried five: a text box
-     at rest was Tabler's 12px form-control-sm, a number's costume the 14px
-     body, a chip 13px, a system column 12.5px, the name 15px. Every value
-     surface in .wv-grid reads this, and it is the chip's size so a value and
-     the chip beside it agree by construction. */
   --wv-grid-font: var(--wv-chip-font);
-  /* And one line. Whole pixels, because a row's height is the sum of these
-     and a scroll lands on an integer: at 13px × Tabler's 1.4286 a row came
-     to 45.56px and "scroll the new row into view" left it 0.08px under the
-     fold. 20px keeps the description's 28px box, so comfortable stays 46
-     and compact 32 — under the 48/34 caps grid-chrome gates. */
   --wv-grid-line: 20px;
 }
 :root, [data-bs-theme="light"] {
-  --wv-canvas: #f3f1ec;                      /* Kami Paper Tint */
-  /* Kami Muted Tertiary was #7e8394, 3.35:1 on the canvas. Muted text is
-     still text, so it clears WCAG AA's 4.5:1 (Issue #378): 5.2:1 here. */
+  --wv-canvas: #f3f1ec;
   --wv-canvas-muted: #5f6474;
-  --tblr-secondary: #5f6474;                 /* Tabler's #6b7280 is 4.28:1 on the canvas */
+  --tblr-secondary: #5f6474;
   --tblr-secondary-rgb: 95, 100, 116;
-  /* A form control's outline is how you find it: 3:1 against the surface
-     (WCAG 1.4.11). --tblr-border-color stays the quiet divider. */
   --wv-control-border: #858a97;
-  --wv-pill-hover: rgba(12, 27, 51, .06);    /* ink tint on paper */
+  --wv-pill-hover: rgba(12, 27, 51, .06);
   --wv-pill-active: rgba(12, 27, 51, .12);
   --wv-panel-shadow: 0 1px 3px rgba(12, 27, 51, .08);
-  --wv-head-shadow: rgba(12, 27, 51, .14);   /* a stuck grid header's lift (Feature #240) */
+  --wv-head-shadow: rgba(12, 27, 51, .14);
   --tblr-border-radius: 8px;
   --tblr-border-radius-lg: 14px;
-  --tblr-bg-surface: #fafaf8;                /* Kami Warm White Paper */
+  --tblr-bg-surface: #fafaf8;
   --tblr-bg-surface-secondary: #f3f1ec;
   --tblr-border-color: #e6e3dc;
   --tblr-body-bg: var(--wv-canvas);
   --wv-code-bg: #ffffff;
-  /* An icon accompanying a label rests lighter than the label (Kyle,
-     2026-09-02). Same ink as the text at a fraction of it, so the grey carries
-     the kit's blue bias instead of reading as a flat neutral. */
-  --wv-icon-rest: rgba(12, 27, 51, .55);    /* .34 was 2.14:1; .55 clears 3:1 */
-  /* Amber text on the paper canvas: Tabler's #f59f00 reads 1.9:1, this 4.9:1
-     (Issue #380). The border keeps the brighter amber. */
+  --wv-icon-rest: rgba(12, 27, 51, .55);
   --wv-warn-text: #a35200;
-  /* The toast surface is the kit's ink in light theme and its cream in dark:
-     system chrome in either, one surface for every kind (Issue #380). */
   --wv-toast-bg: #0c1b33;
   --wv-toast-fg: #f3f1ec;
   --wv-toast-muted: rgba(243, 241, 236, .66);
@@ -71,19 +32,19 @@
   --wv-toast-err: #ff9592;
 }
 [data-bs-theme="dark"] {
-  --wv-canvas: #0c1b33;                      /* Kami Deep Navy Canvas */
-  --wv-canvas-muted: #9aa0ae;                /* 5.9:1 on the panel, 5:1 on a kbd */
-  --wv-pill-hover: rgba(224, 220, 212, .07); /* cream tint on navy */
+  --wv-canvas: #0c1b33;
+  --wv-canvas-muted: #9aa0ae;
+  --wv-pill-hover: rgba(224, 220, 212, .07);
   --wv-pill-active: rgba(224, 220, 212, .14);
   --wv-panel-shadow: 0 1px 3px rgba(0, 0, 0, .35);
   --wv-head-shadow: rgba(0, 0, 0, .45);
   --tblr-border-radius: 8px;
   --tblr-border-radius-lg: 14px;
-  --tblr-bg-surface: #132444;                /* Kami Elevated Panel */
-  --tblr-bg-surface-secondary: #1a2d54;      /* Kami Elevated Surface */
+  --tblr-bg-surface: #132444;
+  --tblr-bg-surface-secondary: #1a2d54;
   --tblr-border-color: #24375e;
-  --tblr-body-color: #e0dcd4;                /* Kami Cream Primary */
-  --wv-code-bg: #0d1117;                     /* github-dark's own ground */
+  --tblr-body-color: #e0dcd4;
+  --wv-code-bg: #0d1117;
   --wv-icon-rest: rgba(224, 220, 212, .55);
   --wv-warn-text: #f59f00;
   --wv-toast-bg: #e0dcd4;
@@ -93,9 +54,6 @@
   --wv-toast-info: #2f55c9;
   --wv-toast-ok: #1f7a35;
   --wv-toast-err: #b42318;
-  /* Tabler's #066fd1 is a light-theme blue: 3.08:1 on the navy panel, so every
-     crumb, link and focus ring read dim (Issue #378). This one is 6.4:1, and
-     the text on a primary button turns navy to stay legible on it. */
   --tblr-primary: #6ea8ff;
   --tblr-primary-rgb: 110, 168, 255;
   --tblr-primary-fg: #0c1b33;
@@ -104,48 +62,19 @@
   --tblr-link-hover-color: #9cc4ff;
   --tblr-link-hover-color-rgb: 156, 196, 255;
   --wv-control-border: #687896;
-  --tblr-secondary: #b4b8c4;                 /* Kami Silver Secondary */
+  --tblr-secondary: #b4b8c4;
   --tblr-body-bg: var(--wv-canvas);
 }
 
 * { box-sizing: border-box; }
-/* No horizontal rubber-band (Issue #76): in a narrow Safari window the page
-   h-overflows (rail + sidebar are 316px fixed) and a trackpad swipe can
-   leave the bounce STUCK ~16px in — dead space at the left edge until a
-   reload. Forbidding x-overscroll removes the state (and the accidental
-   back-swipe while scrolling a wide grid, with it). Vertical bounce stays. */
 html, body { overscroll-behavior-x: none; }
-/* Tabler (≥992px) sets `:root { margin-left: calc(100vw - 100%) }` to keep a
-   centred page from jumping when a scrollbar appears. Weave is left-anchored,
-   so all it did was push the page right by the width of a classic scrollbar
-   (16px in Safari with a mouse attached) on every view that scrolls the page:
-   the rail and sidebar moved between a long table and a short one (Issue #546). */
 :root { margin-left: 0; }
 body { font-size: 14px; background: var(--wv-canvas); }
-/* The app shell is a fixed frame (Issue #609): the document never scrolls.
-   The workspace rail, the left nav, the main panel and the dock each own one
-   scroller, and a wheel over one never moves another: the panes are siblings,
-   so a scroll that runs out at one edge can only chain to the document, which
-   no longer scrolls. Before this the window scrolled: #main grew to its
-   content, and the rail and nav faked holding still with `position: sticky`.
-   Scoped to a page that has the shell, so a page without one still scrolls.
-   The nav and rail also say `overscroll-behavior: contain`; the main panel
-   and the dock must not: in Chromium it stops End from moving the caret in
-   a document's code block (code-raw-toggle-browser), and the hidden
-   document already ends the chain. */
 html:has(> body > #app), body:has(> #app) { height: 100%; overflow: hidden; }
 #app { display: flex; height: 100vh; height: 100dvh; }
 
-/* ---------- sidebar ---------- */
-/* Sidebar sits directly on the cream canvas — no border, no surface of its
-   own; the white content panel provides all the separation (Buzz idiom). */
-/* 264px is the comfortable minimum (Kyle, 2026-08-25, Issue #77): 240px
-   compacted the rows once counts and carets joined the labels. */
 #sidebar { width: 264px; flex-shrink: 0; background: transparent; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
 .brand { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
-/* The workspace name is the way home (Kyle, 2026-08-24). It stays the
-   wordmark — brand color, no link blue — and earns an underline on hover;
-   the blue that other nav links use goes muddy on the dark sidebar. */
 .ws-wordmark { color: inherit; text-decoration: none; cursor: pointer; }
 .ws-wordmark:hover, .ws-wordmark:focus-visible { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .ws-wordmark { font-family: 'Inter', var(--tblr-font-sans-serif, -apple-system, sans-serif); font-weight: 700; font-size: 18px; letter-spacing: -0.02em; line-height: 22px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -157,28 +86,12 @@ a.nav-space { text-decoration: none; display: block; }
 a.nav-space:hover { color: var(--tblr-primary); }
 .nav-add-table { margin-left: auto; opacity: 0; }
 .nav-space-row:hover .nav-add-table, .nav-add-table:focus-visible { opacity: 1; }
-/* The "+ New space" row, the first line of the pinned strip below (Issue
-   #452). Its divider is what marks where the scrolling nav ends, so it
-   stretches and its side margins cancel the strip's own padding. */
 .nav-foot { align-self: stretch; margin: 0 -10px; padding-top: 8px; border-top: 1px solid var(--wv-pill-hover); }
-/* The workspace system tables, pinned under the spaces (Workflows, Activity, Trash). */
 .nav-system { border-top: 1px solid var(--wv-pill-hover); padding-top: 6px; flex: none; }
-/* The stats strip: workspace entity count + on-disk size, pinned to the
-   sidebar's bottom edge — quiet metadata, same register as the version chip.
-   Sticky with the canvas behind it, so a long nav scrolls under the strip. */
-/* bottom: -14px and the matching padding carry the strip's ground over the
-   sidebar's own 14px bottom padding; at bottom 0 a scrolled nav row showed
-   through that band under the version chip (Issue #380). */
 .nav-stats { position: sticky; bottom: -14px; margin-top: auto; padding: 6px 10px 16px; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--wv-canvas); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-/* Nav rows are soft ink-tint pills on the canvas — the active row darkens
-   the cream rather than turning brand-blue (Buzz idiom; blue stays for
-   accents inside the content panel). */
 .nav-db { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: var(--tblr-border-radius); cursor: pointer; color: var(--tblr-body-color); text-decoration: none; }
 .nav-db:hover { background: var(--wv-pill-hover); color: var(--tblr-body-color); }
 .nav-db.active { background: var(--wv-pill-active); color: var(--tblr-body-color); font-weight: 600; }
-/* The row's right edge is the ⋮ menu (2026-08-31, replacing the entity
-   count): hidden until hover, the active row, keyboard focus, or an open
-   menu — the same reveal the space rows give their + button. */
 .nav-db .nav-db-menu { margin-left: auto; margin-right: 0; opacity: 0; }
 .nav-db:hover .nav-db-menu, .nav-db.active .nav-db-menu,
 .nav-db .nav-db-menu:focus-within,
@@ -186,43 +99,20 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .nav-db-menu .dots-btn { padding: 0 4px; line-height: 1.3; }
 .hidden { display: none !important; }
 
-/* Search control = ⌘K entry point */
-/* A white rounded field floating on the cream, like Buzz's search bar —
-   the surface itself is the affordance, no border needed. */
 .search-like { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; color: var(--wv-canvas-muted); background: var(--tblr-bg-surface); border: 1px solid transparent; border-radius: 10px; padding: 6px 9px; font: inherit; cursor: pointer; box-shadow: var(--wv-panel-shadow); }
 .search-like:hover { border-color: var(--tblr-primary); color: var(--tblr-body-color); }
 .search-like .search-label { flex: 1; }
 .search-like kbd { font: 11px var(--tblr-font-monospace); background: var(--wv-pill-hover); border: 0; border-radius: 4px; padding: 1px 5px; color: var(--wv-canvas-muted); }
 
-/* ---------- workspace icon rail (far-left) ---------- */
-/* z-index is load-bearing: the positioned rail is its own stacking context,
-   so the rail's layer — not #nav-expand's z-index — is what must clear #main.
-   Without it #main (position:relative, later sibling) paints over the expand
-   chevron that overhangs the rail, and the collapsed nav can never re-open. */
-/* Top padding centres the first (weave) chip on the sidebar wordmark:
-   #sidebar padding-top (14px) + half the .ws-wordmark line box (22px)
-   − half the .ws-weave chip (46px) = 2px. Keep the terms in sync if any
-   of those three change — the UI contract test asserts the equality. */
 #ws-rail { width: 52px; flex-shrink: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: calc(14px + 22px / 2 - 46px / 2) 0 12px; position: relative; height: 100%; z-index: 60;
-  /* A long workspace list scrolls the rail alone (Issue #609); it is chrome,
-     so the bar stays hidden. */
   overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 #ws-rail::-webkit-scrollbar { display: none; }
-/* flex-shrink:0 is load-bearing: the rail is a column flexbox, so height is
-   the main axis and a declared chip height is otherwise only a maximum —
-   chips silently shrink to their content and the centring calc goes stale. */
-/* Workspace chips live on the canvas like the nav does: flat, borderless,
-   ink-tint pills for hover; the ACTIVE workspace is the one white square on
-   the cream — the same figure/ground move as the main panel. */
 .ws-icon { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: transparent; border: 1px solid transparent; color: var(--wv-canvas-muted); font-weight: 700; font-size: 14px; text-decoration: none; cursor: pointer; padding: 0; }
 .ws-icon:hover { background: var(--wv-pill-hover); color: var(--tblr-body-color); }
 .ws-icon.active { background: var(--tblr-bg-surface); color: var(--tblr-body-color); box-shadow: var(--wv-panel-shadow); }
 .ws-icon.ws-new { border: 1px dashed var(--wv-canvas-muted); font-weight: 400; }
 .ws-icon.ws-new:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); background: transparent; }
 .ws-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
-/* Pinned weave chip: the bare rope mark, larger than workspace chips
-   (also when active — .ws-icon.active must not repaint it). The mark fills
-   nearly the whole 52px rail — it is the brand, not one more chip. */
 .ws-icon.ws-weave, .ws-icon.ws-weave.active { background: none; border: none; box-shadow: none; width: 46px; height: 46px; }
 .ws-weave img, .ws-weave svg { width: 42px; height: 42px; object-fit: contain; }
 .ws-weave:hover img, .ws-weave:hover svg { transform: scale(1.08); }
@@ -232,32 +122,15 @@ a.nav-space:hover { color: var(--tblr-primary); }
 [data-bs-theme="dark"] .ws-weave .mark-light { display: none; }
 [data-bs-theme="dark"] .ws-weave .mark-dark { display: inline; }
 #ws-list { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-/* The list is filled by an async fetch. An empty flex item still eats a gap
-   on each side, so the rail loaded with 16px of dead space under the mark and
-   the "+" chip jumped once the fetch landed (UAT, 2026-08-16). */
 #ws-list:empty { display: none; }
 .rail-spacer { flex: 1; }
 #app.nav-collapsed #sidebar { display: none; }
-/* Collapsed-nav slide-out (Issue #77): a slim hot strip where the sidebar's
-   edge used to be. Resting on it slides the nav out OVER the page — the
-   workspace rail stays put — and clicking it pins the nav open again. The
-   overlay needs the canvas color it normally borrows by being transparent. */
 #nav-hot-strip { display: none; }
 #app.nav-collapsed #nav-hot-strip { display: block; position: fixed; left: 52px; top: 0; width: 14px; height: 100vh; z-index: 55; cursor: e-resize; }
-/* Not scoped to .nav-collapsed: the phone drawer below is this same overlay,
-   opened by the crumb bar's menu button while the nav is not collapsed. */
 #app.nav-peek #sidebar { display: flex; position: fixed; left: 52px; top: 0; z-index: 70; background: var(--wv-canvas); box-shadow: var(--wv-panel-shadow); border-radius: 0 14px 14px 0; animation: nav-peek-slide .16s ease; }
 @keyframes nav-peek-slide { from { transform: translateX(-16px); opacity: .5; } to { transform: none; opacity: 1; } }
-/* Expand control keeps the collapse chevron's upper-left position (fixed
-   beside the rail) instead of stacking as a workspace chip. */
 #nav-expand { position: fixed; top: 10px; left: 60px; z-index: 60; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
 #nav-expand:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
-/* Phone and narrow-window shell (Issues #262, #326). At 390px the 52px rail
-   and 264px sidebar stayed in the flow and left #main ~66px, so every view
-   scrolled sideways. Below 900px the sidebar leaves the flow and becomes a
-   drawer: the peek overlay above, opened by the menu button in the crumb bar
-   rather than by hover, over a scrim that closes it. Below 600px the rail
-   folds into the same drawer. Everything in the drawer is a 32px target. */
 .nav-menu, .nav-menu-row { display: none; }
 @media (max-width: 900px) {
   .nav-menu-row { display: block; }
@@ -269,10 +142,7 @@ a.nav-space:hover { color: var(--tblr-primary); }
   #sidebar .nav-db, #sidebar a.nav-space, #sidebar .search-like, #sidebar .btn { min-height: 32px; }
   #sidebar a.nav-space { display: flex; align-items: center; }
   #sidebar button.btn-icon, #sidebar .nav-caret { min-width: 32px; min-height: 32px; }
-  /* The ⋮ grows to 32px inside the row's own padding, so the row stays 32. */
   #sidebar .nav-db-menu .dots-btn { min-width: 32px; min-height: 32px; margin: -6px 0; }
-  /* The wordmark's box grows 10px; the sidebar's top padding gives back 5 so
-     the text stays centred on the rail's weave chip (the #ws-rail note). */
   #sidebar { padding-top: 9px; }
   #sidebar .ws-wordmark { padding: 5px 0; }
   .nav-add-table { opacity: 1; }
@@ -284,13 +154,6 @@ a.nav-space:hover { color: var(--tblr-primary); }
   #app.nav-peek #ws-rail { display: flex; position: fixed; left: 0; top: 0; height: 100dvh; z-index: 71; background: var(--wv-canvas); }
   #main { --wv-pane-pad: 16px; --wv-pane-pad-x: 14px; margin-left: 8px; padding: var(--wv-pane-pad) var(--wv-pane-pad-x); }
 }
-/* Disclosure caret: a hairline chevron in a full 24px target, TRAILING the
-   space label — "Routines ›" (UAT round 2, Kyle, 2026-08-16). It points right
-   at rest and turns down when open, so one glyph covers both states.
-   Round 1 fixed the glyph itself: a 12px `▾` in an 18px box read as a speck
-   and could not match the chrome's stroke weight. The 24px target is that
-   round's fix and stays — the reference reads light because the stroke is a
-   hairline and the color is muted, not because the target is small. */
 .nav-caret { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-left: -2px; padding: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; line-height: 0; transition: transform .12s ease, color .12s ease, background-color .12s ease; }
 .nav-caret svg { width: 15px; height: 15px; stroke: currentColor; }
 .nav-caret.open { transform: rotate(90deg); }
@@ -298,52 +161,15 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .nav-caret:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .nav-caret:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
 
-/* ---------- shared view header ---------- */
-/* The header never leaves the screen (Issue #321). A table page scrolls one
-   of two boxes — the grid's own wrap, when the grid outgrows its card and
-   takes a vertical scroller of its own (Issue #233), or the page itself,
-   when the grid fits and clips. In the second case the breadcrumb, title,
-   description and toolbar left with the page, which is the "sometimes" Kyle
-   reported: the two modes looked like two different products. Sticky at the
-   top of the panel makes them read the same.
-   The gap under the header is padding, not margin: a margin is transparent,
-   and rows read straight through the 16px band while the header held.
-   z-index 6 clears every sticky layer the grid has (Issue #252 tops out at
-   5) and ties with the overlays that must still open over it — the cell
-   expansion and the field menu — which a tie hands to the later element in
-   the document, and every one of them is later.
-   The panel is the scroller (Issue #609), and a sticky box stops at its
-   scroller's CONTENT edge, under the panel's top padding: `top` takes the
-   padding back so the held header meets the panel's own top edge.
-   --wv-pane-pad is that padding, set on #main and #dock, and every sticky
-   layer under the header (grid headers, Σ row, section heads, doc rail)
-   sits at --wv-view-h less it. */
 .view-header { padding-bottom: 16px; }
 #main > .view-header { position: sticky; top: calc(-1 * var(--wv-pane-pad, 0px)); z-index: 6; background: var(--tblr-bg-surface); }
-/* The frame holds (Issue #608): the header leading its pane takes the pane's
-   top and side padding as its own ground, so the panel's rounded top edge,
-   the band above the crumb row, the crumb row and the title never move, and
-   only what sits below the title scrolls, under the header. Before, the
-   panel's padding scrolled away above a header pinned flush to the edge, and
-   the header floated with no frame round it. At rest it lays out exactly as
-   before; held, its top meets the panel's own. */
 :is(#main, #dock > .dock-entity) > .view-header:first-child {
   margin: calc(-1 * var(--wv-pane-pad, 0px)) calc(-1 * var(--wv-pane-pad-x, 0px)) 0;
   padding: var(--wv-pane-pad, 0px) var(--wv-pane-pad-x, 0px) 16px; }
-/* A header that would take half the window does not pin: in a 200px-tall
-   window it would hold nothing but header, and the Show less control at its
-   foot would sit off screen with no way to scroll to it, because the pinned
-   band does not move. Over that line the header goes back in the flow and
-   --wv-view-h reads 0 — stickViewHeader() owns both. */
 html.view-header-loose #main > .view-header { position: static; }
-/* An opened description, or its editor, stops at a fifth of the window
-   (never under the clamp's five lines) and the rest scrolls inside it
-   (Issue #412). Uncapped, sixty paragraphs opened to a 1,340px header: it
-   let go of the top, and the crumb and toolbar scrolled off with it. */
 #main > .view-header :is(.view-desc-body:not(.clamped), .view-desc-edit) { max-height: max(20vh, calc(5 * 1.45em)); overflow-y: auto; }
 .view-header .crumb { margin-bottom: 12px; }
 .view-title-row { margin-bottom: 0; }
-/* Issue #267: the heading element around the title input, with none of an h1's own look. */
 .view-title-h { display: flex; flex: 1; min-width: 0; margin: 0; font: inherit; }
 .view-title { font-size: 19px; font-weight: 700; font-family: 'Inter', var(--tblr-font-sans-serif, -apple-system, sans-serif); background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); padding: 2px 6px; margin: 0 auto 0 -6px; min-width: 0; flex: 1; color: var(--tblr-body-color); }
 .view-title:not([readonly]):hover, .view-title:focus { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); outline: none; }
@@ -355,172 +181,62 @@ html.view-header-loose #main > .view-header { position: static; }
 .view-desc-empty { font-style: italic; color: var(--wv-canvas-muted); }
 .view-desc-edit { width: 100%; min-height: 38px; font: inherit; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 4px 6px; }
 
-/* ---------- chip picker popover (replaces native selects) ---------- */
-/* A picker trigger borrows the page's family and weight but NOT its size —
-   `font: inherit` outranks .k and rendered state and select chips at the
-   table's 14px while a multiselect span beside them stayed at 11.5px. */
 button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inherit; }
 .chip-pop { position: fixed; z-index: 1200; min-width: 140px; padding: 4px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
 .chip-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: none; border: 0; border-radius: var(--tblr-border-radius); cursor: pointer; text-align: left; color: var(--tblr-body-color); }
 .chip-pop-row:hover, .chip-pop-row:focus { background: var(--tblr-active-bg, rgba(0,0,0,.05)); outline: none; }
-/* Keyboard focus needs to be as loud as hover — arrows move focus, not hover. */
 .chip-pop-row:focus-visible { outline-offset: -2px; }
 .chip-pop-check { margin-left: auto; color: var(--tblr-primary); font-weight: 700; }
-/* The popover arrives rather than appears — the same idiom as the selection
-   puck's rise, at half the distance because it hangs off a 18px ⋮ and a big
-   move would read as a different object landing. */
 .chip-pop { animation: wv-pop-in .12s ease-out both; transform-origin: top left; }
 @keyframes wv-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.985); } }
 @media (prefers-reduced-motion: reduce) { .chip-pop { animation: none; } }
 
-/* ---------- the field menu (redesign 2026-08-27) ----------
-   One row metric for every row in the panel, destructive included: the icon
-   box is the same width whatever it holds, so every label starts on one left
-   edge. Before this the icons were characters in the label string and the
-   delete row was a Tabler .dropdown-item, which is why the screenshot showed
-   four different indents in a five-row menu. */
 .wv-menu-head { display: flex; align-items: baseline; gap: 8px; padding: 4px 8px 7px; margin: 0 0 3px; border-bottom: 1px solid var(--tblr-border-color); }
 .wv-menu-title { font-size: 12.5px; font-weight: 600; letter-spacing: .01em; color: var(--tblr-body-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 178px; }
 .wv-menu-kind { margin-left: auto; font-size: 10.5px; color: var(--tblr-secondary); font-variant: small-caps; letter-spacing: .04em; }
 .wv-menu-sep { height: 1px; margin: 4px 2px; background: var(--tblr-border-color); }
 .chip-pop-row.wv-menu-row { gap: 9px; width: 100%; padding: 5px 8px; font: inherit; font-size: 13.5px; line-height: 20px; }
-/* The icon box never collapses: an empty one still holds the label's left
-   edge, so a row without a glyph lines up with the rows that have one. */
 .wv-menu-icon { flex: 0 0 var(--wv-icon-md); margin-right: 0; color: var(--tblr-secondary); }
 .wv-menu-row:hover .wv-menu-icon, .wv-menu-row:focus .wv-menu-icon { color: inherit; }
 .wv-menu-label { flex: 1 1 auto; white-space: nowrap; }
 .wv-menu-row.is-current, .wv-menu-row.is-current .wv-menu-icon { color: var(--tblr-primary); }
 .wv-menu-row .chip-pop-check { display: inline-flex; margin-left: auto; }
-/* Destructive rows are the same row, tinted — not a different control. */
 .wv-menu-row.wv-menu-danger, .wv-menu-row.wv-menu-danger .wv-menu-icon { color: var(--tblr-danger); }
 .wv-menu-row.wv-menu-danger:hover, .wv-menu-row.wv-menu-danger:focus { background: color-mix(in srgb, var(--tblr-danger) 11%, transparent); }
 
-/* ---------- main + toolbar ---------- */
-/* The content panel is THE surface: white, big rounded corners, floating on
-   the cream with visible margin on top/right/bottom (Buzz idiom). The nav
-   never touches it — the gap is the separation. */
-/* The panel is the page's one scroller (Issue #609): the shell's height
-   stretches it to the window less its 8px margins, and its content scrolls
-   inside the rounded frame. Anything the browser scrolls to by itself — a
-   focused control, a hash anchor, find-in-page — stops below the pinned view
-   header instead of behind it (Issue #321); the app's own scrolls go through
-   scrollTargetIntoView. */
 #main { --wv-pane-pad: 24px; --wv-pane-pad-x: 28px; flex: 1; padding: var(--wv-pane-pad) var(--wv-pane-pad-x); min-width: 0; margin: 8px 8px 8px 0; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); }
 .wv-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .wv-toolbar h1 { font-size: 19px; margin: 0 auto 0 0; }
 
-/* ---------- table view ---------- */
-
-/* Open ledger, not a closed cell: rows are ruled, the page is the surface.
-   Any card hosting a grid loses its box entirely (Kyle, 2026-08-28), and the
-   header is no longer a tinted strip with soft corners: its labels sit on
-   the same surface over one hairline (Feature #240, Kyle 2026-09-27). The
-   header's rule is a step stronger than the row rule, the border mixed an
-   eighth of the way toward the ink, so it reads in both themes. */
 .card:has(.wv-grid) { border: 0; border-radius: 0; box-shadow: none; }
 .wv-grid { --wv-head-rule: color-mix(in srgb, var(--tblr-border-color), var(--tblr-body-color) 12%); }
-/* position:relative so the clipped-cell overlay can hang off the wrapper —
-   a cell clips its own overflow, and the expansion must not be clipped. */
-/* An overflow that scrolls makes the wrap a scroll container, and a sticky
-   header or foot sticks to IT (a box as tall as the table) instead of the
-   page. buildGrid measures its wrap and marks one whose grid fits `.wv-fit`,
-   which clips instead; a wider grid — and every wrap nobody measures (stats,
-   relation grids) — keeps its sideways scroll. */
 .table-wrap { overflow-x: auto; position: relative; }
 .table-wrap.wv-fit { overflow-x: clip; }
-/* A wide grid on the table page scrolls vertically in its wrap as well
-   (Issue #233): fitGridScroller sets the max-height; border-box so that is
-   the box the page sees. The header and the Σ row stick to it. */
 .table-wrap.wv-grid-scroll { box-sizing: border-box; }
-/* The sticky layers of a grid, lowest first (Issue #252): the frozen # pair
-   in the body (1) passes under the Σ rollup row (2), whose own frozen corner
-   (3) passes under the header row (4), whose corner (5) sits over the lot.
-   Ties are broken by document order, which would put a body cell over the
-   Σ row it scrolls beneath, so each layer is numbered rather than shared. */
-/* The header paints the card surface, opaque, so rows never show through it
-   while it is stuck (Feature #240). Labels read as the field is named:
-   sentence case, no tracking, 12px medium in the secondary ink. */
 .wv-grid thead th { position: sticky; top: 0; z-index: 4; background: var(--tblr-bg-surface); cursor: pointer; user-select: none; white-space: nowrap;
   text-transform: none; letter-spacing: normal; font-size: 12px; font-weight: 500; color: var(--tblr-secondary); border-bottom-color: var(--wv-head-rule); }
-/* The grid's own header sticks to whichever box scrolls, so the offset is
-   owed only where the PAGE is that box: a `.wv-fit` wrap, which clips rather
-   than scrolls. There the view header is already parked at the top, and the
-   field headers — and the Σ row under them — start where it ends instead of
-   sliding beneath it. Every other wrap scrolls itself (a wide grid on the
-   table page, the registry grids on a space page, the dock) and its header
-   belongs at ITS top edge: offsetting those pushed the header down inside a
-   box only as tall as the table, onto the rows. */
 #main .table-wrap.wv-fit .wv-grid thead th { top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px)); }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
-/* A figure whose costume printed its raw text rests as the input itself
-   (44.22 at two decimals), and an input aligns its text left whatever the
-   cell says: it ends on the same right edge as a dressed 44.20 (Issue #574). */
 .wv-grid td.num input.inline-edit { text-align: right; }
-/* The id column carries a short "#12 ↗" link — collapse it to its content
-   instead of letting the table hand it an equal share of the width. */
 .wv-grid th.pid-head, .wv-grid td.pid-cell { width: 1%; white-space: nowrap; text-align: left; padding-right: 6px; }
-/* ---------- the frozen # column (Issue #252) ----------
-   Scroll a wide grid sideways and the row used to lose its identity: the id
-   went with the body, so the reader could not see which record the far
-   columns belonged to and the `#12 ↗` permalink was off screen. The # is
-   anchored to the wrap's left edge instead, and the checkbox travels with it
-   — the pair separates otherwise. The hairline is reserved at rest and only
-   takes its colour once there is something underneath: a frozen column reads
-   as a seam, not as a panel laid over the grid.
-   A sticky cell floats over moving content, so it has to paint its own
-   ground: a token background in both themes, never a tint mixed against
-   `transparent`, and the layer numbers from the header rule above. */
-/* The checkbox column's width, in the two numbers that make it: a lead inset
-   and our own hit box. The lead used to be Tabler's .card-table first-child
-   inset, 20px of empty space left of a box that only shows on hover; Kyle
-   called it padding to clean up (Issue #410), and the grid's cards lost
-   their box on 2026-08-28, so there is no card edge left to keep it off. It
-   is the 4px every other cell pads with, set on the checkbox column below.
-   The suite asserts the box sits 4px in on the header, body and Σ rows, and
-   that the # lands exactly at the checkbox column's rendered right edge, so a
-   drift in either number fails the build rather than opening a gap. */
 .wv-grid { --wv-sel-lead: 4px; --wv-sel-hit: 30px; }
 .wv-grid :is(th.sel-head, td.sel-cell, th.pid-head, td.pid-cell) { position: sticky; left: 0; }
 .wv-grid :is(th.pid-head, td.pid-cell) { border-right: 1px solid transparent; }
-/* The # clears the checkbox column wherever there is one. The registry,
-   stats and related grids draw the # with no checkbox beside it, and it
-   freezes against the wrap's edge itself. */
 .wv-grid:has(th.sel-head) :is(th.pid-head, td.pid-cell) { left: calc(var(--wv-sel-lead) + var(--wv-sel-hit)); }
 .wv-grid tbody :is(td.sel-cell, td.pid-cell) { z-index: 1; background: var(--tblr-bg-surface); }
 .wv-grid thead :is(th.sel-head, th.pid-head) { z-index: 5; }
 .table-wrap.wv-scrolled-x .wv-grid :is(th.pid-head, td.pid-cell) { border-right-color: var(--tblr-border-color); }
-/* With fields frozen beside it (Feature #233) the seam belongs to the last
-   of them, which the grid's layout sheet draws; the # keeps its reserve. */
 .table-wrap.wv-scrolled-x .wv-grid.wv-frozen-fields :is(th.pid-head, td.pid-cell) { border-right-color: transparent; }
-/* A chosen row's tint is 9% of the accent over nothing at all, which a
-   frozen cell cannot use — the same 9% is mixed against the surface here so
-   the colour matches and the cell stays opaque. */
 .wv-grid tbody tr.row-selected > :is(td.sel-cell, td.pid-cell),
 .wv-grid tbody tr.row-selected:hover > :is(td.sel-cell, td.pid-cell) {
   background: color-mix(in srgb, var(--tblr-primary) 9%, var(--tblr-bg-surface));
 }
-/* The row open in the dock is lit with --tblr-active-bg on every cell (the
-   row-docked rule, further down), and in the light theme that token is 4% of
-   the accent over nothing. It out-ranked the ground above, and on a frozen
-   cell a tint over nothing is a window: Kyle read `$1,119` through `#1 ↗`
-   (Issue #409). The same light is laid over the surface here instead, so the
-   pair matches the row and stays opaque in both themes. */
 .wv-grid tbody tr.entity-row.row-docked > :is(td.sel-cell, td.pid-cell) {
   background: linear-gradient(var(--tblr-active-bg), var(--tblr-active-bg)) var(--tblr-bg-surface);
 }
-/* ---------- row selection (Feature #132) ----------
-   The checkbox is its own column, LEFT of the # link, so the link never
-   disappears while a selection is live and a chosen row stays openable.
-   The column holds its width at rest and reveals its box on row hover, or on
-   every row once anything is selected — an idle grid stays clean. */
 .wv-grid th.sel-head, .wv-grid td.sel-cell { width: 1%; padding: 0 0 0 var(--wv-sel-lead); text-align: left; }
-/* Out-ranks Tabler's `.card-table tr td:first-child { padding-left: 1.25rem }`
-   (Issue #410): the checkbox column is always the first child. */
 .wv-grid tr > :is(th.sel-head, td.sel-cell):first-child { padding-left: var(--wv-sel-lead); }
-/* One padding rule at equal specificity for head and body, inside an
-   identical hit target, so the select-all box lands on the same vertical
-   line as every row's box (Kyle's second pass, 2026-08-24). */
 .wv-grid .sel-hit { display: inline-flex; align-items: center; justify-content: center; width: var(--wv-sel-hit); height: 26px; margin: 0; cursor: pointer; }
 .wv-grid .sel-box { opacity: 0; transition: opacity .12s ease; cursor: pointer; margin: 0; }
 .wv-grid tbody tr:hover .sel-box,
@@ -529,18 +245,9 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid .sel-box:focus-visible,
 .wv-grid .sel-box:checked,
 .wv-grid .sel-box:indeterminate { opacity: 1; }
-/* A chosen row carries the accent tint alone — Kyle removed the leading
-   accent stripe on the second pass. It has to out-rank Tabler's .table-hover
-   striping, which is what a row otherwise wears under the pointer. */
 .wv-grid tbody tr.row-selected > td, .wv-grid tbody tr.row-selected:hover > td {
   background: color-mix(in srgb, var(--tblr-primary) 9%, transparent);
 }
-/* ---------- the puck ----------
-   Direction 2 of the five-bars study (Kyle, 2026-08-24): icon only, hover
-   labels, a count in an accent pill, trash past a hairline. It floats over the
-   bottom of the VIEWPORT (Issue #161: hung off the table's bottom it sat
-   below the fold on any grid taller than the window), and the grid grows a
-   floor while one is up so the bar never covers the last row it acts on. */
 .table-wrap.has-selection { padding-bottom: 62px; }
 .sel-puck-wrap { position: fixed; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; pointer-events: none; z-index: 1030; }
 .sel-puck {
@@ -548,7 +255,6 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
   padding: 6px; border-radius: 999px; max-width: 100%;
   animation: sel-puck-rise .19s cubic-bezier(.22,1,.36,1);
 }
-/* Glass: the shell reads as a layer over the grid rather than a row of it. */
 .sel-puck.glass {
   background: color-mix(in srgb, var(--tblr-bg-surface) 82%, transparent);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
@@ -576,8 +282,6 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .sel-act.danger { color: var(--tblr-danger); }
 .sel-act.danger:hover { background: color-mix(in srgb, var(--tblr-danger) 12%, transparent); }
 .sel-sep { width: 1px; align-self: stretch; margin: 6px 5px; background: var(--tblr-border-color); }
-/* The label is the tooltip: an icon-only bar has to say what it does the
-   moment the pointer lands, without spending the width a label would cost. */
 .sel-tip {
   position: absolute; bottom: calc(100% + 9px); left: 50%;
   transform: translateX(-50%) translateY(3px);
@@ -587,69 +291,37 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
   transition: opacity .12s, transform .12s;
 }
 .sel-act:hover .sel-tip, .sel-act:focus-visible .sel-tip { opacity: 1; transform: translateX(-50%); }
-/* A typed value's popover: one box, one button, the picker's shell. */
 .value-pop { min-width: 260px; }
 .value-form { display: flex; gap: 6px; padding: 8px; }
 .value-form .form-control { flex: 1; }
-/* ---------- the Ledger grid (Kyle, 2026-08-24 — direction A) ----------
-   The grid was a form: every cell wore a control and hovering drew a box
-   around each one, so a row read as ruled between its fields. It is a record
-   now — values at rest, the control the moment you aim at a cell. Row height
-   is one variable, because density is a control the reader owns. */
-/* Row density (Feature #239, Kyle 2026-09-27): the row is a DECLARED track,
-   never the tallest cell. --wv-row-h is the row, --wv-cell-h the clip box
-   every value sits in (app.js cellBox), --wv-row-pad what is left above and
-   below it, --wv-lines the lines a text value may take. Only height moves:
-   the font and every column width are the same at all three. */
 .wv-grid { --wv-row-h: 44px; --wv-cell-h: 28px; --wv-row-pad: 8px; --wv-lines: 1; --wv-grid-chip-line: 18px; --wv-av: 20px; }
 .wv-grid[data-density="compact"] { --wv-row-h: 32px; --wv-cell-h: 24px; --wv-row-pad: 4px; --wv-grid-chip-line: 16px; --wv-av: 16px; }
 .wv-grid[data-density="spacious"] { --wv-row-h: 72px; --wv-cell-h: 56px; --wv-lines: 2; --wv-av: 24px; }
-/* A table cell treats height as a minimum, so the td states the track and
-   the clip box inside it is what holds it. The rule between rows is an
-   inset shadow, beside Tabler's hover tint, so it costs the row no height. */
 .wv-grid[data-density] tbody tr.entity-row > td { height: var(--wv-row-h); box-sizing: border-box; border-bottom-width: 0;
   box-shadow: inset 0 -1px 0 var(--tblr-table-border-color, var(--tblr-border-color)), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))); }
-/* A collapsed border is split between the cells it divides, so the header's
-   rule would hand the first row half a pixel: it is a shadow too, in the
-   header's stronger hairline. --wv-head-lift is the faint shadow a stuck
-   header casts on the rows passing under it (Feature #240): the scroll
-   listener in app.js marks the wrap `.wv-head-stuck` only while the header
-   sits below its resting place, so at rest there is none. It falls from the
-   header's last row, which is the Σ row when the table shows one. */
 .wv-grid[data-density] thead > tr > * { border-bottom-width: 0; }
 .wv-grid[data-density] thead > tr:first-child > th { box-shadow: inset 0 -1px 0 var(--wv-head-rule), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))); }
 .table-wrap.wv-head-stuck .wv-grid { --wv-head-lift: 0 5px 6px -5px var(--wv-head-shadow); }
 .table-wrap.wv-head-stuck .wv-grid[data-density] thead > tr:first-child:last-child > th { box-shadow: inset 0 -1px 0 var(--wv-head-rule), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))), var(--wv-head-lift); }
 .wv-grid .wv-cb { height: var(--wv-cell-h); overflow: clip; display: flex; align-items: center; min-width: 0; }
 .wv-grid td.num > .wv-cb { justify-content: flex-end; }
-/* The value's own box may shrink, and ends in an ellipsis where it has one. */
 .wv-grid .wv-cb > * { min-width: 0; max-width: 100%; flex: 0 1 auto; }
-/* The checkbox and # columns are as wide as what they hold. */
 .wv-grid td:is(.sel-cell, .pid-cell) > .wv-cb > * { flex: none; }
 .wv-grid .wv-cb > :is(.wv-cb-text, .text-dressed, .doc-preview, .url-dressed, .num-dressed, .k) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wv-grid .wv-cb > .inline-edit { flex: 1 1 auto; }
-/* Row forms: a block-padded value loses its block padding, a chip is 18 or
-   20px, and at Spacious text takes two lines. */
 .wv-grid .wv-cb > :is(.text-dressed, .doc-preview) { padding-top: 0; padding-bottom: 0; }
 .wv-grid .wv-cb .k { line-height: var(--wv-grid-chip-line); }
 .wv-grid .wv-cb .av { width: var(--wv-av); height: var(--wv-av); }
 .wv-grid[data-density="spacious"] .wv-cb > .text-dressed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--wv-lines); white-space: normal; }
 .wv-grid[data-density="spacious"] .wv-cb > .doc-preview .doc-preview-line { display: block; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid[data-density="spacious"] .wv-cb > .doc-preview .doc-preview-line ~ .doc-preview-line ~ .doc-preview-line { display: none; }
-/* Chips on one row, two at Spacious; the rest are hidden whole (fitChips)
-   and counted. */
 .wv-grid .wv-cb > .ms-box > :is(.k, .mention-wrap) { flex: none; }
-/* A relation chip wears its avatar at the density's size and no block
-   padding, so two rows of them fit a Spacious box. The + link button
-   follows the chips; it leaves when one chip has to shrink to fit. */
 .wv-grid .wv-cb .k-rel > a { padding-top: 0; padding-bottom: 0; }
 .wv-grid .wv-cb > .ms-box > .btn { flex: none; }
 .wv-grid .wv-cb > .ms-box.wv-fit-one > .btn { display: none; }
 .wv-grid .wv-cb > .ms-box > [hidden] { display: none; }
 .wv-grid[data-density="spacious"] .wv-cb > .ms-box { flex-wrap: wrap; row-gap: 4px; white-space: normal; }
 .wv-grid .wv-cb > .ms-box.wv-fit-one > :first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-/* The computed card: a chip, title only, until Spacious makes room for a
-   compact card of title and one line. */
 .wv-grid .wv-cb > .wv-card { margin: 0; min-width: 0; gap: 2px; padding: 0 8px; line-height: 18px; }
 .wv-grid .wv-cb > .wv-card :is(.wv-card-fields, .wv-card-head > :not(.wv-card-title)) { display: none; }
 .wv-grid .wv-cb > .wv-card .wv-card-head { display: block; min-width: 0; }
@@ -659,106 +331,47 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid:not([data-density="spacious"]) .wv-cb > .wv-card .wv-card-desc { display: none; }
 .wv-grid[data-density="spacious"] .wv-cb > .wv-card { padding: 4px 8px; }
 .wv-grid[data-density="spacious"] .wv-cb > .wv-card .wv-card-desc { -webkit-line-clamp: 1; }
-/* The row checkbox is a 14px box whose 26px hit area is a pseudo-element,
-   so it takes no layout and its cell lets it spill. */
 .wv-grid tbody td.sel-cell > .wv-cb { overflow: visible; }
 .wv-grid tbody .sel-hit { height: 16px; position: relative; }
 .wv-grid tbody .sel-hit::before { content: ""; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
-/* Chips and their + button stay on one line: wrapped, a relation cell was
-   48px tall and set the height of every row beside it. Overflow is the
-   clipped-cell hover expansion's job now, not the row's. */
 .wv-grid tbody .ms-box { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-wrap: nowrap; }
 .wv-grid tbody .ms-box .chip, .wv-grid tbody .ms-box .k { margin: 0; }
 .wv-grid tbody td { padding-top: var(--wv-row-pad); padding-bottom: var(--wv-row-pad);
   font-size: var(--wv-grid-font); line-height: var(--wv-grid-line); }
-/* Every cell edits, so every cell is a target. */
 .wv-grid tbody td { cursor: text; }
-/* At rest an input is text, so it is sized like text. Tabler's form-control
-   min-height reserved a control's worth of room in every cell, which is what
-   made a comfortable row 70px tall instead of 43. The border is already
-   transparent until focus, so the box never changes size on the way in. */
 .wv-grid tbody .inline-edit { min-height: 0; height: auto; padding: 1px 4px;
   font-size: var(--wv-grid-font); line-height: var(--wv-grid-line); font-family: inherit; }
-/* The cell's own text-overflow never reaches text inside an input, so a long
-   value at rest was cut mid-letter at the input's padding (Issue #424). At
-   rest it ends in an ellipsis; focused it clips, so the caret can scroll. An
-   empty date cell rests blank: the same hint on every empty row was noise,
-   so it shows on focus only. */
 .wv-grid .inline-edit:not(:focus) { text-overflow: ellipsis; }
 .wv-grid .date-text:not(:focus)::placeholder { color: transparent; }
-/* A number's costume ('13 min') and a text value's marks stand in for the
-   box above, so they are set exactly like it — the swap on click reflows
-   nothing. */
 .wv-grid .num-dressed, .wv-grid .text-dressed { font-size: var(--wv-grid-font); }
-/* The leading column carries the row's identity; the rest qualify it. It is
-   heavier, never larger — one size in the row. */
 .wv-grid td.name-cell .inline-edit { font-weight: 600; }
-/* A chip is still a chip — the value comes from a set of options — it just
-   stops wearing a box inside the grid. */
 .wv-grid .chip { border-color: transparent; }
 .wv-grid .k { max-width: 100%; }
-/* A value chip clips at its fill (Issue #423). A relation chip is left out:
-   its label already truncates inside its link, and clipping the chip would
-   also clip the mention caret's 24px hit area, an ::after that reaches past
-   the chip (Issue #397, test/a11y-browser.test.mjs). */
 .wv-grid .k:not(.k-rel) { overflow: hidden; }
-/* A multi-select's box is capped at its column, so a lone chip longer than
-   the column truncates like a select chip. Several chips keep their own
-   widths and the cell clips the row: shrinking them all to fit would cut
-   every label short (Issue #423). */
 .wv-grid tbody .ms-box.chip-trigger { max-width: 100%; }
 .wv-grid tbody .ms-box > .k { flex-shrink: 0; }
-/* Computed / read-only cells must not read as editable — the glyph says so,
-   a tinted box only added another rectangle to a row full of them. */
 .wv-grid td.cell-computed { background: none; color: var(--tblr-secondary); cursor: default; }
-/* NO per-cell hover chrome: a border on each cell reads, across a row, as a
-   pale rule between every field. The row's own tint is the feedback, and the
-   focused control is the only thing that draws itself a box. */
 .wv-grid .inline-edit:hover { border-color: transparent; background: none; }
 .wv-grid .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
-/* Cells rest as values; the cell is the cursor (Feature #134, REST). Focus
-   on the <td> is the resting cursor and draws itself as a ring INSIDE the
-   cell, so no column moves and no line lands between fields. Tokens, so it
-   reads the same in both themes. */
 .wv-grid tbody td[tabindex]:focus { outline: none; box-shadow: inset 0 0 0 2px var(--tblr-primary); border-radius: 4px; }
-/* Hover ARMS a cell — the one under the pointer shows the control a click
-   would open. One cell, never the row: Kyle's Ledger rule is that a row
-   hover draws no lines between fields, and it still does not. */
 .wv-grid tbody td[tabindex]:hover .inline-edit:not(:focus) { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .wv-grid tbody td[tabindex]:hover .chip-trigger { border-color: var(--tblr-border-color); }
 
-/* ---------- a range of cells (Feature #220) ----------
-   The range is the same accent as a chosen row, one step quieter: rows are
-   the louder state and the two can be up at once. The cursor's own ring
-   stays on top of it, so which cell the arrows will move from is never in
-   doubt. Tokens only, so both themes read the same. */
 .wv-grid tbody td.wv-in-range { background: color-mix(in srgb, var(--tblr-primary) 13%, transparent); }
-/* Where a fill is about to land, before the mouse comes up: an outline
-   rather than a fill, because nothing has been written yet. */
 .wv-grid tbody td.wv-fill-target { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 55%, transparent); }
-/* The handle on the bottom-right corner of the range — drag it down or
-   across to fill. It sits INSIDE the cell's box (no overflow), so no column
-   moves and no cell starts reporting itself clipped (Issue #157's measure). */
 .wv-grid tbody td.wv-range-corner { position: relative; }
 .wv-fill-handle {
   position: absolute; right: 0; bottom: 0; width: 8px; height: 8px;
   background: var(--tblr-primary); border-radius: 2px; cursor: crosshair; z-index: 2;
-  /* A hairline of the page under it, so the handle still reads as a separate
-     thing when it sits on the cursor's own ring — which is the same accent. */
   box-shadow: 0 0 0 1.5px var(--tblr-bg-surface);
 }
-/* A drag across cells is a selection gesture, not a text one. */
 .wv-grid tbody td.wv-in-range, .wv-grid tbody td.wv-fill-target { user-select: none; }
 .wv-grid tbody td.cell-pick { cursor: pointer; }
-/* Remove and link are chrome about the row, not part of it. */
 .wv-grid .chip .x, .wv-grid .k .x, .wv-grid .ms-box > .btn, .wv-grid .date-pick-btn { opacity: 0; transition: opacity .12s ease; }
 .wv-grid tr:hover .chip .x, .wv-grid tr:hover .k .x, .wv-grid tr:hover .ms-box > .btn, .wv-grid tr:hover .date-pick-btn,
 .wv-grid tr:focus-within .chip .x, .wv-grid tr:focus-within .k .x, .wv-grid tr:focus-within .ms-box > .btn, .wv-grid tr:focus-within .date-pick-btn { opacity: 1; }
 
-/* A capped column shows its whole value on hover; no marker glyph (2026-09-27). */
 .wv-grid td.clipped { position: relative; }
-/* The expansion is a COPY in a layer over the grid. The cell keeps its own
-   box and its own content, so expanding one cannot move a column. */
 .cell-pop-layer { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
 .cell-pop {
   position: absolute; z-index: 6; max-width: 380px; width: max-content;
@@ -772,125 +385,52 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .cell-pop .ms-box > .btn, .cell-pop .chip .x, .cell-pop .k .x, .cell-pop .date-pick-btn { display: none; }
 .computed { cursor: default; }
 .computed-mark { margin-right: 5px; color: var(--tblr-secondary); font-size: 11px; }
-/* Column header = the field's control (Feature #41). The ⋮ is absolutely
-   positioned so it costs the label no width: a header sized to its text does
-   not jump when the affordance appears. It stays invisible until the header is
-   hovered or the button itself takes keyboard focus — quiet chrome, but a real
-   control, so focus-visible has to reveal it as loudly as hover does. */
-/* Sticky, not relative: relative would win over the thead rule above and the
-   field headers alone scrolled away while # and the select box held. Sticky
-   is positioned too, so the menu and the resize grip still anchor to it. */
 .wv-grid th.col-head { position: sticky; padding-right: 24px; }
 .wv-grid th.col-head .col-label { pointer-events: none; }
-/* A label is one unbroken box (Feature #233, Kyle's rule 1): it never wraps
-   and never ellipsises, and the grid measures it to set the column's floor. */
 .wv-grid thead th .col-label { display: inline-block; white-space: nowrap; }
 .wv-grid th.col-head:focus-visible { outline-offset: -2px; }
 .field-menu { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; transition: opacity .12s ease; }
-/* The ⋮ sits at its column's right edge — hard against the next column's
-   label — so the hovered header tints too: the tint says which column the
-   affordance belongs to. With no band under the header (Feature #240) it is
-   also the only sign that the cell resizes, reorders and opens a menu, so
-   the one hovered cell takes the secondary surface, opaque like the rest. */
 .wv-grid th.col-head:hover { background: var(--tblr-bg-surface-secondary); }
 .wv-grid th.col-head:hover .field-menu, .field-menu:focus-visible { opacity: 1; }
-/* The # column and a system column carry a sort-only ⋮ (Issue #254), on the
-   same terms: room kept for it, shown on hover or focus. */
 .wv-grid :is(th.pid-head, th.sys-head) { padding-right: 24px; }
 .wv-grid :is(th.pid-head, th.sys-head):hover { background: var(--tblr-bg-surface-secondary); }
 .wv-grid :is(th.pid-head, th.sys-head):hover .field-menu { opacity: 1; }
 .field-menu:hover, .field-menu:focus-visible { color: var(--tblr-primary); background: var(--tblr-bg-surface); }
-/* Resize grip (Feature #42): the column's own right edge. It spans the full
-   header height so the target is a line, not a dot, and it only shows its
-   tint once the header is hovered — the cursor carries the affordance. */
-/* Off-grid measurer for double-click-to-fit: a column's content is cloned in
-   here, unclipped, to read the width it actually needs. Never visible. */
 .wv-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none; contain: layout style; }
 .wv-measure-cell { display: block; width: max-content; white-space: nowrap; }
 .col-resize { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; user-select: none; touch-action: none; }
 .wv-grid th.col-head:hover .col-resize { background: var(--tblr-border-color); }
 .col-resize:hover { background: var(--tblr-primary) !important; }
-/* Reordering a column (Feature #233): a ghost of the header follows the
-   pointer, the column it came from dims (the grid's layout sheet), and one
-   vertical line marks where it lands — never a tint on the field it
-   displaces. The line carries a tag when the drop freezes or unfreezes. It
-   sits in the wrap's own layer order: over the header row, under the view
-   header (z-index 6). */
 .wv-col-ghost { position: fixed; left: 0; top: 0; z-index: 1080; pointer-events: none; padding: 3px 10px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); border: 1px solid var(--tblr-border-color); box-shadow: var(--tblr-box-shadow-dropdown, 0 8px 24px rgba(0, 0, 0, .12)); font-size: 13px; font-weight: 500; white-space: nowrap; }
 .wv-col-insert { position: absolute; width: 2px; margin-left: -1px; z-index: 5; pointer-events: none; background: var(--tblr-primary); }
 .wv-col-insert-tag { position: absolute; top: 6px; left: 6px; padding: 1px 6px; border-radius: var(--tblr-border-radius); background: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); font-size: 11px; line-height: 16px; white-space: nowrap; }
 body.wv-col-dragging, body.wv-col-dragging * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
 body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -webkit-user-select: none; user-select: none; }
-/* Headers are controls (Issue #417): the header row, every header cell —
-   system columns included — its label and the resize grip never select.
-   WebKit still reads only the prefixed property. Cell values below stay
-   selectable. */
 .wv-grid thead tr:first-child, .wv-grid thead tr:first-child > th, .wv-grid thead tr:first-child > th *, .col-resize { -webkit-user-select: none; user-select: none; }
-/* The resize readout: the field, its width and the change, above the grip. */
 .wv-col-readout { position: fixed; z-index: 1080; pointer-events: none; transform: translateX(-50%); padding: 2px 8px; border-radius: var(--tblr-border-radius); background: var(--tblr-dark, #182433); color: #fff; font-family: var(--tblr-font-monospace); font-size: 11px; white-space: nowrap; }
 [data-bs-theme="dark"] .wv-col-readout { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); border: 1px solid var(--tblr-border-color); }
 .modal-note { color: var(--tblr-secondary); font-size: 12px; margin-top: 2px; }
 
-/* "+" closing the header bar: adds a field where the fields live. */
-/* It trails the last field (Feature #240, Kyle 2026-09-27). The grid is as
-   wide as its columns, so the card's slack past the "+" is bare surface: no
-   column takes it, and no field is ever stretched or squeezed to fill it
-   (Feature #233, Kyle's rule 2). */
 .wv-grid:has(th.add-field-head) { width: max-content; }
 .wv-grid th.add-field-head { white-space: nowrap; padding-left: 4px; padding-right: 8px; cursor: default; }
-/* On a grid wider than its card the "+" holds at the wrap's right edge,
-   over the headers scrolling under it: opaque surface (the header rule),
-   above the scrolling header cells, and a short fade on its left so a
-   column slides under it instead of being cut. fitWatch marks the wrap
-   `.wv-overflow-x` only while it overflows, and the button wears its chip
-   border only then. */
 .wv-grid th.add-field-head { position: sticky; right: 0; z-index: 5; }
 .table-wrap.wv-overflow-x .wv-grid th.add-field-head::before { content: ''; position: absolute; top: 0; bottom: 1px; right: 100%; width: 16px; pointer-events: none; background: linear-gradient(to right, transparent, var(--tblr-bg-surface)); }
 .table-wrap.wv-overflow-x .add-field-btn { border-color: var(--tblr-border-color); }
 .add-field-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; }
 .add-field-btn:hover { color: var(--tblr-primary); border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
-/* Creating an entity is the grid's last row, so the table reads as one
-   surface that grows from the bottom rather than a table plus a button.
-   On a long table it floats at the bottom edge of the page (Feature #196),
-   the header's twin: the same opaque surface so rows do not bleed through,
-   same z-index so it paints over them, resting in its place once the reader
-   reaches the end. The selection puck floats centred over it; the label
-   sits at the left edge and stays readable, so the foot does not lift.
-   Like the hairline header it carries no grey, under the pointer either:
-   the label turns to the accent instead (Feature #240). */
 .wv-grid tr.add-entity-row td { padding: 0; border-bottom: 0; position: sticky; bottom: 0; z-index: 1; background: var(--tblr-bg-surface); }
 .wv-grid tr.add-entity-row:hover td { background: var(--tblr-bg-surface); }
-/* A grid that fits scrolls in the main panel (Issue #609), and a sticky foot
-   stops at the panel's content edge, 24px of padding above the panel's
-   bottom: rows passing under it showed through that band. A strip of the
-   surface hung under the foot, one padding deep, fills the band without
-   moving the foot or the layout; at rest it lies on the panel's empty
-   bottom padding. (A box-shadow would do, but a collapsed-border table
-   paints none on its cells.) */
 #main > .table-wrap.wv-fit .wv-grid tr.add-entity-row td { overflow: visible; }
 #main > .table-wrap.wv-fit .wv-grid tr.add-entity-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: var(--wv-pane-pad, 24px); background: var(--tblr-bg-surface); pointer-events: none; }
 .add-entity-btn { width: 100%; display: block; padding: 7px 12px; background: none; border: 0; color: var(--tblr-secondary); font: inherit; text-align: left; cursor: pointer; }
 .add-entity-btn:hover { color: var(--tblr-primary); }
-/* The row window (Issue #271): two spacer rows stand in for the rows not
-   drawn, a pending row holds a place at the row height until its page
-   lands, and the foot says how much of the table is here. */
-/* No scroll anchoring over a windowed body: the browser would otherwise
-   move the scroll to keep some row where it was each time the spacer
-   above it changed height, and the window would chase its own tail. */
 .table-wrap, .wv-grid, .wv-grid tbody { overflow-anchor: none; }
 .wv-grid tr.wv-spacer > td { padding: 0; border: 0; height: 0; }
 .wv-grid tr.entity-row-pending > td { padding: 0; }
 .wv-grid .wv-loaded { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--tblr-secondary); font-size: var(--wv-grid-font); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
 .entity-row { cursor: pointer; }
-/* One chip per document field: its name, then what it holds. The kind rides
-   inside the chip as a quieter second half, the way the state chips carry
-   their category — a chip you can read at a glance and click to open. */
-/* Geometry only — .k-doc carries the look, and the empty state is dashed
-   rather than dimmed: 50% opacity reads as "you may not", which is the
-   opposite of what an empty document field is telling you. */
 .doc-chip { max-width: 190px; }
 
-/* ---------- list view ---------- */
 .list-rows { overflow: hidden; }
 .list-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--tblr-border-color); cursor: pointer; }
 .list-rows > :last-child { border-bottom: none; }
@@ -898,33 +438,15 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .list-row .pid { color: var(--tblr-secondary); font-size: 12px; min-width: 40px; text-decoration: none; }
 .list-row .spacer { flex: 1; }
 
-/* ---------- the chip system (design review 2026-08-24, set E) ----------
-   Three tiers carry every value a row can hold, and each tier owns exactly one
-   meaning, so a new field type inherits a look instead of inventing one:
-
-     value    a filled tint, no border   — the value was chosen from a set
-     pointer  a 1px outline plus ↗       — clicking goes somewhere
-     computed a glyph, then the value    — not yours to type
-
-   Kyle settled the two open axes on 2026-08-24: 4px rather than a pill, and no
-   fill at all behind a pointer. Colour is spent only in the value tier, and
-   only out of the ramp below — which is why a relation no longer wears brand
-   blue and stops competing with the in-progress state for the same channel.
-   The pure half of this (ramp order, hex→hue, the avatar hash) is
-   public/chip-core.js. */
-
 .k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
      font-size: var(--wv-chip-font); line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
 .k .ico { font-size: 10.5px; line-height: 1; opacity: .85; flex: none; }
 
-/* tier 1 — value. --fill and --text come from the .hue-* class beside it. */
 .k-state, .k-select, .k-multi, .k-key {
   background: var(--fill, var(--tblr-bg-surface-secondary));
   color: var(--text, var(--tblr-secondary));
   border: 0;
 }
-/* Category owns the colour. Binding it here as well as in the class app.js
-   emits means a state chip is right even when the hue class is missing. */
 .k-state.cat-not-started { --fill: rgba(0, 5, 20, .05);     --text: #60646c; }
 .k-state.cat-in-progress { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; }
 .k-state.cat-done        { --fill: rgba(46, 160, 67, .14);  --text: #218358; }
@@ -934,9 +456,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 [data-bs-theme="dark"] .k-state.cat-done        { --fill: rgba(70, 180, 110, .16);  --text: #71d083; }
 [data-bs-theme="dark"] .k-state.cat-canceled    { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
 .k-key { font-family: var(--tblr-font-monospace); font-size: 11px; letter-spacing: .02em; }
-/* Whose store holds the secret, riding inside the chip. Scoped under .k-key on
-   purpose — a bare `.store` would collide with Tabler the way `.toast` did
-   (Issue #92). Quiet: the badge is provenance, not a second value. */
 .k-key .store {
   margin-left: 5px;
   padding: 0 4px;
@@ -948,9 +467,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
   opacity: .75;
 }
 
-/* The reveal control, entity page only. The cell is a flex row that wraps as
-   whole pieces: a link reading "Open in 1Password ↗" split across two lines
-   at the space before "1Password", which is the one place it must not break. */
 .cred-cell { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cred-actions { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cred-actions .btn { padding: 1px 8px; font-size: 11px; }
@@ -964,8 +480,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 }
 .cred-open { font-size: 12px; white-space: nowrap; }
 
-/* tier 2 — pointer. Neutral by design: the moment a pointer carries a hue it
-   reads as a value, and the row loses the one thing colour was meant to say. */
 .k-rel, .k-doc, .k-attach, .k-more {
   background: none;
   border: 1px solid var(--tblr-border-color);
@@ -975,71 +489,31 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .k-rel:hover, .k-doc:hover, .k-attach:hover, .k-more:hover {
   border-color: var(--tblr-primary); color: var(--tblr-primary);
 }
-/* The mark rides INSIDE the relation chip's link: a ::after on the chip sat
-   outside the <a>, so the pixel that promised navigation was the pixel that
-   did nothing (Kyle, 2026-08-26). Doc and attachment chips are buttons — the
-   whole chip is already the control — so theirs stays on the chip. */
 .k-rel > a::after, .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: 10px; margin-left: 1px; }
-/* The chip's own padding belongs to the link inside it, so the whole chip —
-   avatar, name, mark, and the space around them — is the target. A pointer
-   that goes somewhere only from its middle is a pointer you have to aim at. */
 .k-rel { padding: 0; }
 .k-rel > a { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px; color: inherit; text-decoration: none; }
-/* The x follows the link (avatar · name · arrow · x): pulled into the
-   link's own right padding so the chip reads as one piece, with air before
-   the edge — it was spaced as if it came first (Issue #93). */
 .k-rel > .x { margin: 0 6px 0 -3px; padding: 0 2px; }
-/* A pointer chip is never wider than the column it stands in (Issue #201):
-   in a constrained column — the References card, Comments, Activity, a
-   relation cell — the label alone truncates with an ellipsis, and the home
-   badge and the ↗ stay visible at the right end. The full name is the title. */
 .mention-wrap, .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A value chip's label follows the same rule (Issue #423): in a column
-   narrower than the value, it ends in an ellipsis inside the chip's fill
-   instead of running past it to be cut mid-letter by the cell. */
 .k > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; color: var(--tblr-secondary); }
-/* Target-set chips carry their home table: a Task and a Space can share a
-   name, and the table is what tells them apart. */
 .k-rel .k-home { font-family: var(--tblr-font-monospace); font-size: .78em; opacity: .55; }
 .k-more { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
 
-/* An empty cell is an invitation. Dimming it to 50% reads as "you may not",
-   which is the opposite of what is true. */
-/* `is-empty`, not `empty`: Tabler ships a global `.empty` — a full-height
-   flex column with a 1rem pad — and a chip wearing that class name inherited
-   it, which took a comfortable row from 43px to 85 (Kyle, 2026-08-26). */
 .k-add, .k-doc.is-empty, .k-attach.is-empty {
   background: none; border: 1px dashed var(--tblr-border-color);
   color: var(--tblr-secondary); cursor: pointer;
 }
 .k-doc.is-empty, .k-attach.is-empty { border-style: dashed; }
-/* An empty chip invites writing; the arrow promises navigation. Only one
-   can be true (Issue #93 — "the empty doc chip"). */
 .k-doc.is-empty::after, .k-attach.is-empty::after { content: "+"; opacity: .55; }
-/* An empty grid cell at rest is blank (Issue #420, Kyle 2026-09-26: "make
-   empty cells blank to cut noise"). The invitations above — the dashed chip,
-   "Add description…", the "—" of an unset select or state, a date box's
-   placeholder — show only on the cell that holds the focus, the cell itself
-   or the control being edited in it. Opacity, not visibility: the invisible
-   chip is still the click target that opens its picker. This supersedes the
-   2026-08-24 "empty is dashed, never dimmed" ruling for cells at rest; the
-   entity page, footers and stat tiles keep their marks. */
 .wv-grid tbody td:not(:focus):not(:focus-within) .is-empty,
 .wv-grid tbody td:not(:focus):not(:focus-within) .k-empty,
 .wv-grid tbody td:not(:focus):not(:focus-within) .k-add { opacity: 0; }
 .wv-grid tbody td:not(:focus):not(:focus-within) ::placeholder { color: transparent; }
 
-/* tier 3 — computed. Never a chip: the glyph says "not editable" before a
-   click has to prove it. */
 .k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
-/* A cell whose value has no renderer (Issue #200): named, dashed, in the
-   warning colour — visible in both themes, never '[object Object]'. */
 .wv-unrendered { border: 1px dashed var(--tblr-warning); color: var(--tblr-warning); padding: 0 6px; font-family: var(--tblr-font-monospace); font-size: 10.5px; }
 
-/* One neutral system chip, replacing .system-chip and the old .kind-badge —
-   they differed only by case and letter-spacing and never shared a row. */
 .k-sys { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary);
          font-family: var(--tblr-font-monospace); font-size: 9.5px; line-height: 1.9;
          letter-spacing: .11em; text-transform: uppercase; padding: 0 7px; }
@@ -1048,9 +522,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .k .x:hover { color: var(--tblr-danger); }
 .k.deleted { opacity: .55; text-decoration: line-through; }
 
-/* The avatar is structural, not decorative: it is what separates a person from
-   every other pointer on the row. Colour is hashed from the name, so the same
-   colleague is the same colour in every table with nothing to configure. */
 .av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden;
       display: inline-flex; align-items: center; justify-content: center;
       font-family: var(--tblr-font-monospace); font-size: 8.5px; font-weight: 600; letter-spacing: .02em;
@@ -1072,12 +543,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .wv-grid td.wv-pulse { border-radius: 0; }
 @media (prefers-reduced-motion: reduce) { .wv-pulse { animation: none; } }
 
-/* ---------- the hue ramp ----------
-   Ten hues as a --fill/--text pair, redefined for dark rather than inverted:
-   a light tint on navy is the classic unreadable cell. The first seven hexes
-   are exactly today's OPTION_COLORS, so a stored option migrates by name.
-   Ramp order (chip-core.js RAMP_ORDER) decides what a new option gets; slate
-   is held back as the resting colour for anything uncoloured. */
 .hue-slate  { --fill: rgba(0, 5, 20, .05);      --text: #60646c; --dot: transparent; }
 .hue-blue   { --fill: rgba(71, 105, 235, .12);  --text: #3a5bc7; --dot: #4769eb; }
 .hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #218358; --dot: #2ea043; }
@@ -1099,8 +564,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 [data-bs-theme="dark"] .hue-teal   { --fill: rgba(70, 200, 180, .16);  --text: #6fdcc8; }
 [data-bs-theme="dark"] .hue-orange { --fill: rgba(250, 150, 80, .18);  --text: #ffb183; }
 
-/* .chip stays as an alias for one release: the board, the list, the doc rail
-   and the cell popover all still ask for it while their callers migrate. */
 .chip { display: inline-flex; align-items: center; gap: 5px; font-size: var(--wv-chip-font); line-height: var(--wv-chip-line);
         border-radius: 4px; padding: 1px 8px; border: 0;
         background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
@@ -1108,14 +571,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .chip .x:hover { color: var(--tblr-danger); }
 
 
-/* ---------- inline editing surfaces (all views) ---------- */
-/* Tabler gives every .form-control a 1px drop shadow. A cell that has given
-   up its border and background has nothing to cast one, so the shadow read as
-   a smudge under the text. Scoped to :not(:focus) — the focus ring rides the
-   same property. */
-/* A markdown text value at rest: the marks, not the syntax. Sized and
-   ellipsised like the input it stands in for, so the cell never reflows on
-   the swap. Clicking hands the source back (see dressedText in app.js). */
 .text-dressed { display: block; max-width: 100%; padding: 4px 7px; border: 1px solid transparent;
   border-radius: var(--tblr-border-radius); cursor: text; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .text-dressed:hover { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
@@ -1125,9 +580,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
   background: rgba(var(--tblr-primary-rgb), .08); }
 .text-dressed s { color: var(--tblr-secondary); }
 
-/* A url value at rest: a link with a pencil beside it (see dressedUrl in
-   app.js). Padded like the input it stands in for, so the swap never
-   reflows the row; the host leads and carries the weight. */
 .url-dressed { display: flex; align-items: center; gap: 4px; max-width: 100%; padding: 4px 4px 4px 7px;
   border: 1px solid transparent; border-radius: var(--tblr-border-radius); min-width: 0; }
 .url-dressed:hover, .url-dressed:focus-within { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
@@ -1141,14 +593,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .url-dressed .url-edit .wv-icon { width: 14px; height: 14px; }
 .wv-grid tbody .url-dressed { padding-top: 1px; padding-bottom: 1px; }
 
-/* A description at rest: its first few lines, formatted (Kyle, 2026-08-27).
-   The cell shows ONE of them, because a comfortable row is 48px and a compact
-   one 34px and those numbers are Kyle's. The rest are in the same cell,
-   display:none — showCellPop copies the cell, so hovering wraps them out at
-   380px and the grid never grows to hold what only hover needs. */
-/* 3px, where .text-dressed pads 4: the description is the tallest thing in
-   its row, so its box has to fit the row rather than the row grow to it —
-   43px comfortable, and the caps in grid-chrome are the gate. */
 .doc-preview { display: block; max-width: 100%; padding: 3px 7px; border: 1px solid transparent;
   border-radius: var(--tblr-border-radius); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-preview:hover { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
@@ -1161,12 +605,7 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .doc-preview .md-ref { color: var(--tblr-primary); padding: 0 4px; border-radius: 4px;
   background: rgba(var(--tblr-primary-rgb), .08); }
 .doc-preview s { color: var(--tblr-secondary); }
-/* Empty is an invitation, never a dim: a dashed border says "write here",
-   opacity says "you may not". `is-empty`, not `empty` — Tabler's global. */
 .doc-preview.is-empty > .doc-preview-line {
-  /* inline, not inline-block: an inline box paints its border without adding
-     to the line box, so the invitation and a written line are the same height
-     and the row stays under its cap. */
   display: inline; padding: 0 6px; border: 1px dashed var(--tblr-border-color);
   border-radius: var(--tblr-border-radius); color: var(--tblr-secondary);
 }
@@ -1177,9 +616,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
 select.inline-edit:not(:hover):not(:focus) { background-image: none; }
 td .inline-edit { width: 100%; min-width: 70px; }
-/* The UA number stepper is browser chrome, not Tabler chrome: it ignores the
-   --tblr-* tokens, floats over the cell's right padding, and duplicates
-   typing + arrow keys. Drop it in both engines. */
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; appearance: textfield; }
@@ -1192,13 +628,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .fieldrow-system .fieldrow-value { color: var(--tblr-secondary); font-size: 13px; }
 .fieldrow-system .opt-grip { visibility: hidden; }
 
-/* ---------- entity page ---------- */
-/* The entity head is a .wv-toolbar row, so it must not fight the toolbar's
-   own alignment — a baseline row would sit the ⋮ glyph off the title. */
 .entity-head { display: flex; align-items: center; gap: 10px; margin-bottom: 0; flex-wrap: wrap; }
 .entity-head .pid { color: var(--tblr-secondary); }
-/* The name grows to fill the row (capped) and the ⋮ is pushed to the right
-   edge, matching where viewHeader() leaves it on every other view. */
 .entity-head textarea.name-edit { font-size: 24px; font-weight: 700; border: none; background: none; color: inherit; padding: 2px 4px; flex: 1; min-width: 0; width: 100%; resize: none; overflow: hidden; field-sizing: content; line-height: 1.25; font-family: inherit; }
 .entity-head .dl-wrap { margin-left: auto; }
 .entity-head textarea.name-edit:hover, .entity-head textarea.name-edit:focus { background: var(--tblr-bg-surface-secondary); border-radius: var(--tblr-border-radius); outline: none; }
@@ -1212,28 +643,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .fieldrow { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; padding: 4px 0; }
 .fieldrow label { color: var(--tblr-secondary); font-size: 12.5px; }
 .fieldrow.compact { grid-template-columns: 92px 1fr; font-size: 12.5px; padding: 2px 0; }
-/* ---------- entity fields block (Feature #117) ----------
-   The first thing in the body: label / value rows, a ⠿ grip that only shows
-   on hover so the block reads as a form, not a list of handles. A drop moves
-   the row in place and writes fieldOrder (the table's columns follow). */
 .entity-fields { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 22px; container-type: inline-size; container-name: entity-body; }
-/* Columns for the value rows (Issue #89, Kyle 2026-08-26): the fields stay
-   whole — same rows, same editors, same ⠿ — they just stop being a column
-   that buries the document. Documents and attachments are siblings of the
-   grid, not cells in it, so they keep the full width.
-
-   The ladder is one, two, three, and it reads the CONTAINER, not the
-   viewport: this page gives room away to the activity rail and to a peek
-   panel, so a window-width media query would promise a third column the row
-   does not have. Both thresholds are measured, not chosen: 820px is where a
-   150px label and a value still fit two tracks, and 1220px is where three
-   tracks still hold the widest chip on the page — the masked key, which
-   wants 205px and clips by 3px at 1180. */
 .entity-values { column-gap: 26px; }
-/* Column-major: the order flows DOWN a column before it moves to the next,
-   so a field keeps its column under any reorder that stays inside it — only
-   the boundary row can change columns. Multicol gives that for free where
-   the old grid's row-major auto-flow reshuffled every later field. */
 .entity-values .fieldrow { break-inside: avoid; margin-bottom: 2px; }
 @container entity-body (min-width: 820px) {
   .entity-values { column-count: 2; }
@@ -1242,9 +653,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   .entity-values { column-count: 3; column-gap: 20px; }
   .entity-values .fieldrow { grid-template-columns: 16px 118px minmax(0, 1fr); }
 }
-/* The folded field block (Issue #89): label · value chips on one wrapping
-   line, the value drawn by the row's own compact editor, so a folded page
-   still reads and still edits. Hidden while the rows are open. */
 .entity-values-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 16px; padding: 0 0 6px; max-width: 100%; }
 .wv-sum { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; max-width: 100%; min-width: 0; }
 .wv-sum-label { font-size: 12px; color: var(--tblr-secondary); white-space: nowrap; cursor: pointer; border-radius: 4px; padding: 1px 4px; margin-left: -4px; }
@@ -1254,8 +662,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-sum > .picker-wrap { width: auto; max-width: 260px; }
 .entity-fields .fieldrow { max-width: 720px; }
 .entity-body > .doc-section { margin: 10px 0 18px; }
-/* The head steps back out of the section's 18px text indent, so every
-   block's grip and caret share one x with the field block's (F6). */
 .entity-body > .doc-section > .doc-section-head { margin-left: -18px; }
 .entity-body > .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }
 .entity-body > .doc-section:hover .opt-grip { opacity: 1; }
@@ -1267,29 +673,18 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-fields .fieldrow label { font-size: 13px; }
 .entity-fields .fieldrow-label { cursor: pointer; border-radius: 4px; padding: 2px 6px; margin-left: -6px; width: fit-content; }
 .entity-fields .fieldrow-label:hover { background: var(--wv-pill-active); color: var(--tblr-body-color); }
-/* The field's description under its label (Issue #209): quiet, wrapping,
-   never an empty line when there is none. */
 .entity-fields .fieldrow-desc { display: block; font-size: 11.5px; line-height: 1.3; color: var(--tblr-secondary); margin-top: 1px; white-space: normal; }
-/* Values sit at their own width on the left of the column — a chip is a chip,
-   not a bar; text inputs stay quiet until hovered, like the grid's. */
 .entity-fields .fieldrow { min-height: 32px; }
 .entity-fields .fieldrow > :nth-child(3) { justify-self: start; max-width: 100%; }
-/* A computed value wraps inside its cell (F6): a rollup joining a dozen
-   names printed on one line and pushed the page past the viewport. */
 .entity-fields .k-computed { white-space: normal; min-width: 0; max-width: 100%; align-items: baseline; }
 .entity-fields .fieldrow > input.inline-edit, .entity-fields .fieldrow > select.inline-edit { width: min(100%, 360px); min-height: 26px; padding: 2px 6px; margin-left: -7px; }
 .entity-fields .fieldrow > .picker-wrap { width: min(100%, 360px); }
 .entity-fields .fieldrow.dragging { opacity: .4; }
-/* A block wears its anchor the way a document section does: quiet until the
-   block is hovered, and the ⠿ is the thing you grab (Issue #89). */
 .entity-body > [data-block] { border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
 .entity-body > [data-block].dragging { opacity: .4; }
 .block-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; cursor: grab; }
 .block-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .block-head .opt-grip, .related-head .opt-grip, .attach-block .opt-grip { opacity: 0; cursor: grab; transition: opacity .12s; }
-/* Lit for a hover or a KEYBOARD focus. :focus-within lit it for a mouse click
-   too — the fold caret kept focus after the click, so the grip stayed on as
-   a stray ⠿ beside FIELDS after the pointer had gone (Issue #210). */
 .entity-body > [data-block]:hover .opt-grip, .entity-body > [data-block]:has(:focus-visible) .opt-grip { opacity: 1; }
 .related-block { margin: 0 0 18px; }
 .entity-body > .attach-block { grid-template-columns: 16px 150px minmax(0, 1fr); gap: 0 10px; align-items: center;
@@ -1298,10 +693,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-body > .attach-block label { color: var(--tblr-secondary); font-size: 13px; }
 @media (max-width: 600px) { .entity-body > .attach-block { grid-template-columns: 16px 110px minmax(0, 1fr); } }
 
-/* The cue is a slot, not a line (review, 2026-09-03): one dashed row-shaped
-   hole, named for what will land in it, opened where the pointer says and
-   pushing everything after it down. Rows and blocks share it — the block
-   version is only taller, because a block is. */
 .drop-slot { box-sizing: border-box; min-height: 32px; margin: 0 0 2px -6px; padding: 0 0 0 26px;
   border: 2px dashed var(--tblr-primary); border-radius: var(--tblr-border-radius);
   background: rgba(6, 111, 209, .06); color: var(--tblr-primary); font-size: 12.5px;
@@ -1312,18 +703,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .comment:first-child { border-top: none; }
 .comment .who { font-weight: 600; font-size: 12.5px; }
 .comment .when { color: var(--tblr-secondary); font-size: 11.5px; margin-left: 6px; }
-/* Each entry is a row of the Activity table seen through this entity, so it
-   behaves like one: a link into that table, not a line of printed log. */
 .activity-item { display: block; font-size: 12px; color: var(--tblr-secondary); padding: 3px 0; border-top: 1px solid var(--tblr-border-color); text-decoration: none; }
 .activity-item:first-child { border-top: none; }
 .activity-item:hover { color: var(--tblr-primary); }
 .activity-dropped { display: block; font-size: 12px; font-style: italic; color: var(--tblr-secondary); padding: 3px 0; border-top: 1px solid var(--tblr-border-color); }
 .panel-link { margin-left: auto; font-size: 12px; text-decoration: none; }
-/* A system table is weave's own: the label says so before anyone tries to add
-   a column to it. */
 .system-tables { margin: 14px 0; }
-/* First run (Issue #386): a workspace with no tables of its own opens on one
-   primary action and three templates; a space lists its tables plainly. */
 .wv-start, .space-tables { margin: 14px 0; }
 .wv-start .card-body { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 22px 24px; }
 .wv-start-lead { margin: 0; color: var(--tblr-secondary); max-width: 62ch; }
@@ -1335,7 +720,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-start-blurb { font-size: 12px; color: var(--tblr-secondary); }
 .list-row.list-row-add { cursor: default; }
 .list-row.list-row-add:hover { background: none; }
-/* The registry grids, folded: structure as rows, one click away. */
 .wv-schema, .wv-members-box { margin-top: 14px; }
 .wv-schema > summary, .wv-members-box > summary { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); cursor: pointer; padding: 4px 0; }
 .wv-schema > summary:hover, .wv-members-box > summary:hover { color: var(--tblr-body-color); }
@@ -1358,7 +742,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-note { color: var(--tblr-secondary); font-size: 12px; margin: 0 0 10px; }
 .activity-when { white-space: nowrap; color: var(--tblr-secondary); }
 .activity-row { cursor: pointer; }
-/* A field definition on its event page wraps rather than widening the page (Issue #428). */
 .activity-def { overflow-wrap: anywhere; white-space: pre-wrap; margin: 0; font-size: 12px; background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 8px 10px; max-height: 360px; overflow: auto; }
 .field-change { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field-change-item, .field-change.field-change-value { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -1377,7 +760,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-head .activity-title { font-size: 24px; font-weight: 700; padding: 2px 4px; flex: 1; min-width: 0; }
 .chip.rel.deleted a { text-decoration: line-through; color: var(--tblr-secondary); }
 
-/* ---------- entity doc preview panels ---------- */
 .k-inline { display: inline; font-size: inherit; line-height: inherit; padding: 0; white-space: normal;
   -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .k-inline > a { display: inline; padding: 0 5px 0 4px; }
@@ -1386,40 +768,21 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .k-inline .mention-caret { vertical-align: middle; }
 .k-rel > a.mention, .k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none;
   font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
-/* Kind glyphs match the standalone document page (src/markdown.js). */
 .k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
 .k-rel > .mention-entity::before { content: "#"; }
 .k-rel > .mention-table::before { content: "▦"; }
 .k-rel > .mention-space::before { content: "◇"; }
 .k-rel > .mention-workspace::before { content: "⬡"; }
-/* Backlink chips on the entity page (References section): same chip costume,
-   laid out as a wrapping row. wv- prefix on the container, chip classes reuse
-   the mention costume above. */
-/* Collapsible chip previews (src/markdown.js emits them): collapsed to the
-   name by default, the caret opens the field segments. Global on purpose —
-   /api/markdown HTML lands in doc previews, applets, and the handbook alike. */
 .mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
 .mention-fields { display: none; }
 .mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: .85em; }
 .mention-f-label { opacity: .65; margin-right: 3px; }
 .mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
 .mention-wrap.open .mention-caret { transform: rotate(180deg); }
-/* Reference panels sit in the entity-side column, dressed like Activity;
-   the chips inside are the shared k k-rel language — no local chip styling
-   here, on purpose. */
 .ref-backlinks { display: flex; flex-wrap: wrap; gap: 6px; }
 
-/* ---------- live [[…]] chips over the IR editor (Issue #86) ----------
-   The layer never eats a click meant for the text — only the chips are
-   interactive. A chip covers its literal reference exactly (the pass sizes
-   it to the text's rect), so the chip needs an opaque ground under the
-   mention tint or the literal shows through. */
 .doc-editor { position: relative; }
 .doc-ref-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 4; }
-/* `a.mention` (above) sets a transparent tint and outranks a plain
-   `.doc-ref-chip`, so the literal `[[Table#12|Name]]` showed straight through
-   the chip that was meant to hide it. The chip is an anchor too: same
-   specificity, later in the file, opaque ground. */
 .doc-ref-layer a.doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
   display: flex; align-items: center; white-space: nowrap; overflow: hidden; margin: 0; padding: 0;
   border-radius: 0; font-size: inherit; font-weight: inherit; line-height: 1; text-decoration: none;
@@ -1435,47 +798,28 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-ref-layer .mention-workspace .doc-ref-label::before { content: "⬡"; }
 .doc-ref-layer .doc-ref-label::after { content: "↗"; opacity: .42; font-size: .7em; margin-left: 3px; flex: none; }
 .doc-ref-layer a.doc-ref-chip:hover .doc-ref-label { border-color: var(--tblr-primary); color: var(--tblr-primary); }
-/* `:bell:` in a document is Lute's own shortcode node — an <img> of the icon
-   under /vendor/icons, serialised back as the token. Sized to the line; the
-   ink is recoloured for the dark theme since an <img> cannot inherit
-   currentColor (Kyle, 2026-09-02). */
 .vditor-reset img.emoji { width: 1.05em; height: 1.05em; max-width: none; vertical-align: -.15em; margin: 0 .08em; }
 [data-bs-theme="dark"] .vditor-reset img.emoji { filter: invert(.86) hue-rotate(180deg); }
 .vditor-hint img { width: 1em; height: 1em; vertical-align: -.15em; margin-right: 6px; }
 [data-bs-theme="dark"] .vditor-hint img { filter: invert(.86) hue-rotate(180deg); }
 
-/* An icon inline in text — a dressed cell, a preview line, an export — sits on
-   the line at the text's own size, not on the 16px chrome scale. */
 .wv-icon.md-icon { width: 1em; height: 1em; margin-right: .15em; vertical-align: -.15em; flex: none; }
 .wv-icon.md-icon svg { width: 1em; height: 1em; }
-/* The small scale for controls that sit inside text: chip removes, sort marks, carets. */
 .wv-icon.wv-icon-xs { width: var(--wv-icon-sm); height: var(--wv-icon-sm); margin-right: 0; }
 .wv-icon.wv-icon-xs svg { width: var(--wv-icon-sm); height: var(--wv-icon-sm); }
-/* Vditor paints toolbar svgs with fill: currentColor and stroke-width 0
-   (.vditor-toolbar__item svg); ours are strokes at the set's 2. */
 .vditor-toolbar svg { fill: none; stroke: currentColor; stroke-width: 2; width: 16px; height: 16px; }
-/* The dense toolbar glyphs draw finer than the rest — a 2px stroke reads as
-   a clot in a 16px box (Kyle, 2026-08-31: "still too thick"). */
 .vditor-toolbar [data-type="ordered-list"] svg *, .vditor-toolbar [data-type="list"] svg *, .vditor-toolbar [data-type="check"] svg *,
 .vditor-toolbar [data-type="table"] svg *, .vditor-toolbar [data-type="outdent"] svg *, .vditor-toolbar [data-type="indent"] svg * { stroke-width: 1.4; }
 .mention-caret svg { width: 12px; height: 12px; display: block; }
 
-/* ---------- modal (custom overlay, Tabler-card look) ---------- */
 #modal-back { position: fixed; inset: 0; background: rgba(15, 20, 25, .48); display: flex; align-items: center; justify-content: center; z-index: 1050; }
-/* The bottom 88px stay free, so a toast or the bug button never sits on
-   Create (Issue #380). */
 #modal { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); padding: 20px; width: 440px; max-width: 92vw; max-height: min(85vh, calc(100vh - 176px)); overflow-y: auto; box-shadow: var(--tblr-box-shadow-lg); }
 #modal h2 { margin: 0 0 12px; font-size: 16px; }
 #modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 #modal input, #modal select { margin-bottom: 6px; }
-/* Use Template (Feature #261): what went wrong, said in the dialog. */
 .use-template-said { margin-top: 8px; padding: 8px 10px; border-radius: var(--tblr-border-radius); color: var(--tblr-danger); background: color-mix(in srgb, var(--tblr-danger) 10%, transparent); font-size: 13px; }
 .use-template-none { color: var(--tblr-secondary); margin: 0; }
 .use-template-btn { display: inline-flex; align-items: center; gap: 6px; }
-/* The onboarding welcome (Feature #248): the same held dialog, one step at
-   a time. Progress is three soft squared bars, the step's Lucide icon sits
-   on a primary-tinted square, Skip is quiet on the left and the one primary
-   button on the right. The starter cards are the empty state's own. */
 #modal.wv-onboard { width: 460px; padding: 24px; }
 .wv-onboard-dots { display: flex; gap: 6px; margin-bottom: 18px; }
 .wv-onboard-dots span { width: 22px; height: 4px; border-radius: 2px; background: var(--tblr-border-color); }
@@ -1494,9 +838,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   .wv-onboard .actions { flex-wrap: wrap-reverse; }
   .wv-onboard .actions .btn { flex: 1 1 auto; }
 }
-/* The key sheet (Issue #268): modal() with a read-only body. A key column
-   and what it does, one table per place the keys work. The kbd chips take
-   the ⌘K button's tokens so the two read as the same kind of thing. */
 #modal.wv-keys { width: 560px; }
 .key-sheet-section + .key-sheet-section { margin-top: 14px; }
 .key-sheet h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--tblr-secondary); text-transform: none; }
@@ -1507,31 +848,17 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .key-sheet kbd { color: var(--tblr-body-color); }
 
 .wv-empty { color: var(--tblr-secondary); text-align: center; padding: 60px 0; }
-/* The route that could not load (Issue #118). It sits where the skeleton used
-   to wait forever, says what the server said, and carries the retry. Tokens
-   only, so it reads under both data-bs-theme values. */
 .wv-route-error { max-width: 560px; margin: 48px auto; background: var(--tblr-bg-surface); }
 .wv-route-error-title { margin: 0 0 8px; font-size: 16px; }
 .wv-route-error-msg { color: var(--tblr-secondary); margin: 0 0 16px; overflow-wrap: anywhere; }
-/* Toasts live in a lane (Issue #380). At 1000px and wider it runs from the
-   content panel's left edge plus 24px to a 300px reserve at the right edge,
-   where the bug button (Issue #119), its 252px panel and the trash sit; the
-   stack centres at the lane's bottom, newest nearest the edge. A collapsed
-   nav lets the lane out, a tray pulls its right edge in to the tray's own.
-   Below 1000px the reserve leaves no useful width at the bottom, so the lane
-   moves to the top of the screen, newest on top. */
 #wv-toasts { --wv-lane-l: 340px; --wv-lane-r: 300px; position: fixed; left: var(--wv-lane-l); right: var(--wv-lane-r); bottom: 24px; z-index: 2000; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 body:has(#app.nav-collapsed) #wv-toasts { --wv-lane-l: 76px; }
 body:has(#tray-back) #wv-toasts { --wv-lane-r: calc(min(480px, 94vw) + 24px); }
-/* Over a dialog, the newest toast only. */
 body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 @media (max-width: 999.98px) {
   #wv-toasts { left: 16px; right: 16px; bottom: auto; top: calc(12px + env(safe-area-inset-top, 0px)); flex-direction: column-reverse; align-items: stretch; }
-  /* Under a tray's head, so its close button stays in reach. */
   body:has(#tray-back) #wv-toasts { top: 60px; }
 }
-/* One surface for every kind; the icon carries the kind. The text wraps and
-   never truncates: a server error is read whole or not at all. */
 .wv-toast { display: flex; align-items: flex-start; gap: 10px; max-width: min(440px, 100%); padding: 10px 6px 10px 12px; background: var(--wv-toast-bg); color: var(--wv-toast-fg); border-radius: var(--tblr-border-radius); box-shadow: 0 8px 24px rgba(12, 27, 51, .22); font-size: 13px; line-height: 20px; pointer-events: auto; touch-action: pan-y; animation: wv-toast-in .16s ease-out; }
 .wv-toast-icon { flex: 0 0 16px; display: flex; width: 16px; height: 16px; margin-top: 2px; color: var(--wv-toast-info); }
 .wv-toast-icon svg { width: 100%; height: 100%; }
@@ -1539,7 +866,6 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .wv-toast.err .wv-toast-icon { color: var(--wv-toast-err); }
 .wv-toast-msg { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
 .wv-toast-count { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--wv-toast-line); font: 600 11px/16px var(--tblr-font-monospace); }
-/* Undo sits inside the toast: the action and the way back are one object. */
 .wv-toast-action { flex: 0 0 auto; padding: 0 4px; background: none; border: 0; border-radius: 4px; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .wv-toast-close { flex: 0 0 24px; width: 24px; height: 24px; margin-top: -2px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; border-radius: 5px; color: var(--wv-toast-muted); cursor: pointer; }
 .wv-toast-close:hover { color: var(--wv-toast-fg); background: var(--wv-toast-line); }
@@ -1550,27 +876,16 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 @keyframes wv-toast-fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .wv-toast { animation: wv-toast-fade .12s linear; } }
 
-/* ---------- trash ---------- */
 .empty-note { padding: 18px; color: var(--tblr-secondary); }
 .wv-grid td.trash-when { color: var(--tblr-secondary); font-size: 12.5px; }
 .wv-grid td.trash-acts { white-space: nowrap; text-align: right; }
-/* holdToConfirm renders a .dropdown-item; in a row it has to sit inline
-   beside Restore rather than fill the cell like a menu entry. */
 .trash-acts .hold-btn { display: inline-flex; width: auto; margin-left: 6px; vertical-align: middle; }
 
-/* The definition editor's clear (Issue #90): holdToConfirm renders a
-   .dropdown-item, so in a dialog it needs the same inline treatment the trash
-   row gives it, set apart from the fields above by a rule. */
 .fielddef-clear { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--tblr-border-color); }
 .fielddef-clear .hold-btn { display: inline-flex; width: auto; }
 
 .copy-btn { margin-left: auto; }
 
-/* ---------- ⌘K palette ----------
-   Option A, "Grouped results" (Issue #382, Kyle 2026-09-26). One 36px line
-   per hit under 11px group headers. The type scale is Kyle's of the same
-   day: input 16, rows 14, where-text and chips 12, headers and tags 11.
-   Muted text is --tblr-secondary, the post-F2 #5f6474 in light. */
 #cmdk-back { position: fixed; inset: 0; background: rgba(15, 20, 25, .48); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; z-index: 1060; }
 #cmdk { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); width: 620px; max-width: 92vw; box-shadow: var(--tblr-box-shadow-lg); overflow: hidden; display: flex; flex-direction: column; }
 .cmdk-inp { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--tblr-border-color); }
@@ -1589,27 +904,19 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 #cmdk mark { background: rgba(245, 159, 0, .24); color: inherit; border-radius: 2px; padding: 0 1px; }
 #cmdk .k { flex: none; font-size: 12px; line-height: 20px; }
 .cmdk-where { flex: none; font-size: 12px; color: var(--tblr-secondary); white-space: nowrap; }
-/* Copy link stays on every hit and shows where the reader is: the selected
-   row or the one under the pointer. */
 #cmdk .copy-btn { flex: none; margin-left: 0; opacity: 0; }
 #cmdk .result.active .copy-btn, #cmdk .result:hover .copy-btn, #cmdk .copy-btn:focus-visible { opacity: 1; }
 .cmdk-empty { padding: 12px 16px; font-size: 13px; color: var(--tblr-secondary); }
-#cmdk-results .cmdk-error { padding: 12px 16px; font-size: 13px; color: var(--tblr-danger); } /* a failed search, named under the input (Issue #265) */
+#cmdk-results .cmdk-error { padding: 12px 16px; font-size: 13px; color: var(--tblr-danger); }
 .cmdk-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--tblr-border-color); font-size: 12px; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); }
 .cmdk-foot kbd { font: 11px var(--tblr-font-monospace); border: 1px solid var(--tblr-border-color); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); box-shadow: none; }
 
-/* ---------- relation map ---------- */
 .map-wrap { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); background: var(--tblr-bg-surface); overflow: auto; }
-/* Drawn at its own size and scrolled when it does not fit: shrinking a wide
-   map to the card's width only makes the labels unreadable. */
 .relmap { display: block; margin: 0 auto; }
-/* A space is ground the tables stand on — the subgraph the mermaid map drew,
-   in weave's own tokens. Its label is the space name, set like the nav's. */
 .relmap .space-box { fill: var(--tblr-bg-surface-secondary); stroke: var(--tblr-border-color); stroke-dasharray: 5 4; opacity: .7; }
 .relmap .space-label { font: 600 10.5px var(--tblr-font-sans-serif); letter-spacing: .06em; text-transform: uppercase; fill: var(--tblr-secondary); }
 .relmap .node-box { fill: var(--tblr-bg-surface); stroke: var(--tblr-border-color); stroke-width: 1.2; }
 .relmap .table-node:hover .node-box { stroke: var(--tblr-primary); }
-/* A guest from another space: present because something here points at it. */
 .relmap .table-node.foreign .node-box { stroke-dasharray: 4 3; }
 .relmap .table-node.foreign .node-title { fill: var(--tblr-secondary); }
 .relmap .rel-arrow { fill: var(--tblr-secondary); opacity: .75; }
@@ -1626,62 +933,30 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .relmap .ext-node { fill: var(--tblr-bg-surface-secondary); stroke: var(--tblr-secondary); stroke-dasharray: 4 3; }
 .map-legend { display: flex; gap: 18px; color: var(--tblr-secondary); font-size: 12px; margin-top: 8px; flex-wrap: wrap; }
 
-/* Navigable document frame (entity page) */
-/* ---------- document sections (Feature #45) ----------
-   The rendered document is the editing surface, so the section title has to
-   get out of its way: a quiet line of text, not a card header. Controls stay
-   invisible until the section is hovered — the document is the content, the
-   title is a label. */
-/* ---------- related records embedded in an entity body ----------
-   The head reads like a document section head — quiet, uppercase, out of the
-   grid's way — because the grid under it is the content. */
 .related-section { margin: 0 0 26px; }
 .related-head { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; }
 .related-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .related-count { font-size: 11px; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); border-radius: 999px; padding: 0 6px; }
-/* Two ways to add a row belong on one line: "new" and "link existing" are the
-   same decision, not two rows of chrome. */
 .related-section .add-entity-row td { display: flex; }
 .related-section .wv-grid tr.add-entity-row td { position: static; }
 .related-section .add-entity-btn { width: auto; }
-/* The slack goes to the name, not to the id column — an embedded grid has
-   fewer columns than a table view, so there is slack to place. */
 .related-section .wv-grid th.pid-head, .related-section .wv-grid td.pid-cell { width: 1%; white-space: nowrap; }
 .unlink-btn { opacity: 0; transition: opacity .12s ease; }
 .entity-row:hover .unlink-btn, .entity-row:focus-within .unlink-btn { opacity: .7; }
 .unlink-btn:hover { opacity: 1; }
 
-/* The computed-field glyph on a field NAME: an annotation, so it never
-   competes with the name it hangs off. */
 .field-mark { font-size: .72em; font-weight: 400; color: var(--tblr-secondary); margin-left: 2px; cursor: help; }
 
-/* The document body is indented off the gutter so the rail and the fold
-   carets have room of their own and the text never runs up against them. */
 .doc-section { margin: 0 0 26px; position: relative; padding-left: 18px; }
 .doc-section.deck-section { padding-left: 0; }
 
-/* ---------- outline dash rail (Issue #87) ----------
-   A minimap in the gutter #main's own padding provides: one dash per
-   heading, longer for higher levels; the active dash is the section under
-   the reading line. The rail spans the whole section but its track is
-   sticky, so the map floats beside the reader instead of scrolling away.
-   Clicking it opens the headings themselves in a panel floated at the
-   viewport midpoint; hover only hints that the rail is pressable. Narrow
-   screens have no gutter, so no rail. The track pins just under the entity
-   header, whose height --wv-view-h carries (Issue #411). */
 .doc-rail { position: absolute; left: -26px; top: 0; bottom: 0; width: 22px; cursor: pointer; }
 .doc-rail-track { position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px) + 8px); width: max-content; display: flex; flex-direction: column;
   gap: 1px; align-items: flex-start; padding: 8px 10px; margin: 26px -10px 0; border-radius: 10px;
   border: 1px solid transparent; transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
-  /* A long document out-maps the viewport: the track scrolls itself, and the
-     active dash is kept in it. No scrollbar — this is chrome, not a pane. */
   max-height: calc(100vh - var(--wv-view-h, 0px) - 40px); overflow-y: auto; scrollbar-width: none; }
 .doc-rail-track::-webkit-scrollbar { display: none; }
 .doc-rail:hover .doc-rail-track { background: var(--tblr-bg-surface); border-color: var(--tblr-border-color); }
-/* Open: the minimap widens in place into a panel — same sticky anchor, same
-   left edge, so the headings land on the dashes the reader just clicked. A
-   fixed panel at the viewport's middle read as the outline snapping away
-   (Issues #131, #144). */
 .doc-rail.open .doc-rail-track { background: var(--tblr-bg-surface); border-color: var(--tblr-border-color);
   box-shadow: var(--tblr-box-shadow); z-index: 6; width: 260px; }
 .doc-rail-dash { border: 0; padding: 3px 0; background: none; cursor: pointer; display: flex;
@@ -1696,11 +971,6 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .doc-rail-dash.active .doc-rail-label { color: var(--tblr-primary); font-weight: 600; }
 @media (max-width: 900px) { .doc-rail { display: none; } }
 
-/* ---------- collapsible headings (Issue #88) ----------
-   Carets sit just left of the text, inside the section's own 18px indent;
-   the rail owns the gutter outside it. One per visible heading. Hover
-   chrome like the section head — except a FOLDED caret stays visible, or
-   the hidden content would be unfindable. */
 .doc-fold-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .doc-fold { position: absolute; left: -13px; width: 13px; pointer-events: auto; border: 0; background: none;
   padding: 0; cursor: pointer; color: var(--tblr-secondary); display: flex; align-items: center;
@@ -1712,17 +982,6 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .doc-fold.folded { opacity: 1; color: var(--tblr-primary); }
 .wv-folded { display: none; }
 @media (max-width: 900px) { .doc-fold-layer { display: none; } }
-/* The whole head — field name, caret, permalink, downloads, save state — is
-   chrome ABOUT the document, so it stays out of sight until the section is
-   hovered or holds focus. It keeps its space in the flow: display:none would
-   jump the document up by a line the moment the pointer crossed it. */
-/* The head holds under the entity header while its own section is in view,
-   and leaves with the section's end, so the next document's head takes the
-   same place (Issue #411). --wv-view-h is the pinned header's height: the
-   page's on the root, the dock's on #dock; less the pane's top padding, it
-   is the head's offset from the pane's content edge. The band is opaque so the text
-   scrolls under it, z-index 5 clears the heading carets (4) and stays under
-   the entity header (6). */
 .doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px;
   position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px)); z-index: 5; background: var(--tblr-bg-surface); }
 .doc-section-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
@@ -1797,32 +1056,18 @@ body.wv-activity-open #main { margin-right: 344px; }
   body.wv-activity-open #main { margin-right: 0; }
   .wv-activity { left: 8px; width: auto; }
 }
-/* Save state is a single glyph, because "saved" is the normal case and should
-   not need a sentence — · pending, ✓ written, ! failed. */
 .doc-status { margin-left: auto; font-size: 11px; color: var(--tblr-secondary); min-width: 10px; text-align: right; }
 .doc-editor { border: 0; }
 .doc-editor .vditor { border: 0; background: transparent; }
-/* The toolbar is a selection bubble (Kyle's Toolbar Lab pick, 2026-08-30):
-   hidden at rest, floated over the selection by placeToolbarBubble. Vditor
-   writes its own toolbar padding inline, hence the !important. */
 .doc-editor { position: relative; }
 .doc-editor .vditor-toolbar { display: none; position: absolute; z-index: 7; width: max-content;
   max-width: 100%; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color);
   border-radius: 8px; box-shadow: var(--tblr-box-shadow); padding: 2px 5px !important; }
 .doc-editor .vditor-toolbar.wv-show { display: flex; flex-wrap: wrap; }
 .doc-editor .vditor-toolbar__item { padding: 0 1px; float: none; }
-/* Kyle, 2026-08-30: the ordered-list and check glyphs were hard to read at
-   Vditor's default size — every toolbar icon draws at 16px minimum. */
 .doc-editor .vditor-toolbar svg { width: 16px; height: 16px; fill: none; }
-/* Vditor's own sheet paints toolbar svgs with fill: currentColor, which
-   turns the lab's stroke glyphs into blobs — fill lives on the elements
-   that ask for it (the quote glyph, the bullet dots), not the frame. */
-/* Hover labels (Vditor's aria-label tooltips) must clear the bubble border. */
 .doc-editor .vditor-toolbar .vditor-tooltipped::after { z-index: 8; }
 
-/* ---------- file viewers (Kyle, 2026-08-31) ----------
-   Uploaded files render centered at a medium width with the native resize
-   grip; the hover toolbar (attachFileTools) floats above the viewer. */
 .doc-editor .vditor-ir .vditor-reset img,
 .doc-editor iframe.wv-file {
   display: block; margin: 8px auto; max-width: 60%;
@@ -1835,72 +1080,31 @@ body.wv-activity-open #main { margin-right: 344px; }
   color: var(--tblr-body-color); border-radius: 6px; font-size: 12px; padding: 3px 10px;
   cursor: pointer; box-shadow: var(--tblr-box-shadow); }
 .wv-file-tools button:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
-/* Vditor's content themes paint their own surface — and do it from
-   `.vditor-ir pre.vditor-reset`, so the element selector has to be matched or
-   the document keeps sitting on a slab lighter than the page in dark mode. */
-/* Vditor writes `padding: 10px 35px` inline on the writing surface — a gutter
-   it reserves for the heading-level badges weave removes — so the document sat
-   35px in from its own section head, indented for chrome that is not there.
-   Inline styles only yield to !important. */
 .doc-editor .vditor-ir pre.vditor-reset { padding: 0 !important; font-size: 16px; background: transparent; }
-/* Document headings sit under the page title (F6, 2026-09-26; the scale is
-   11/12/13/14/16/18/20/24): title 24, H1 20, H2 18, H3 16 bold, text 16.
-   Vditor sizes headings in em, which put an H1 at 26px over a 20px title. */
 .doc-editor .vditor-ir .vditor-reset > h1 { font-size: 20px; }
 .doc-editor .vditor-ir .vditor-reset > h2 { font-size: 18px; }
 .doc-editor .vditor-ir .vditor-reset > h3 { font-size: 16px; font-weight: 700; }
 .doc-editor .vditor-ir .vditor-reset > h4 { font-size: 16px; }
 .doc-editor .vditor-ir .vditor-reset > h5,
 .doc-editor .vditor-ir .vditor-reset > h6 { font-size: 14px; }
-/* A first H1 that repeats the record name is the title twice: hidden here,
-   kept in the markdown (refreshHeadingFolds marks it). */
 .doc-editor .vditor-ir .vditor-reset > h1.wv-title-echo { display: none; }
 .doc-editor .vditor-ir { background: transparent; }
-/* Vditor prints the heading level in the left gutter of every heading. The
-   heading itself already says how big it is; the badge only tells the writer
-   that they are inside an editor. */
 .doc-editor .vditor-ir .vditor-reset > h1::before,
 .doc-editor .vditor-ir .vditor-reset > h2::before,
 .doc-editor .vditor-ir .vditor-reset > h3::before,
 .doc-editor .vditor-ir .vditor-reset > h4::before,
 .doc-editor .vditor-ir .vditor-reset > h5::before,
 .doc-editor .vditor-ir .vditor-reset > h6::before { content: none; }
-/* ---------- code blocks ----------
-   Expanding an IR node turns every marker inline, and a code block's editable
-   source is a <pre> carrying that marker class: inline, its slab paints out of
-   the line box and smears over the language tag. Block puts it back in place.
-   Its rendered twin steps aside while the source is on screen, so a focused
-   code block is one block rather than two copies of the same code. */
 .doc-editor .vditor-ir__node--expand pre.vditor-ir__marker--pre { display: block; }
-/* One surface for code in both states, and it follows the page (Kyle,
-   2026-08-26: "dark code block background in light mode dont make sense").
-   Three stylesheets have an opinion here — Tabler paints every <pre> dark,
-   highlight.js gives <code> a light chip, and vditor greys anything carrying
-   a marker class — and the collision left the source text unreadable while
-   editing and a blue band across the rendered block in dark mode. weave
-   settles it: the slab is weave's, the ink is the page's, and <code> adds no
-   surface of its own.
-
-   The slab is the exact ground the highlight.js palette on it was drawn for —
-   white for github, #0d1117 for github-dark — because a token colour answers
-   to the surface under it (Issue #81). On a tinted slab the github keyword
-   red measured 4.27:1, under AA by a hair. */
 .doc-editor .vditor-ir pre.vditor-ir__preview,
 .doc-editor .vditor-ir pre.vditor-ir__marker--pre {
   color: var(--tblr-body-color);
   background: var(--wv-code-bg);
-  /* The slab sits close to the page in either theme, so the edge is what
-     makes it a block at all. */
   border: 1px solid var(--tblr-border-color);
 }
 .doc-editor .vditor-ir pre.vditor-ir__preview > code,
 .doc-editor .vditor-ir pre.vditor-ir__marker--pre > code { background: transparent; color: inherit; }
 .doc-editor .vditor-ir__node--expand[data-type="code-block"] .vditor-ir__preview { display: none; }
-/* The markdown of the block being edited stays behind the </> button until
-   the writer asks for it (Issue #96): the ``` fences (Vditor draws them as
-   the node's ::before and ::after), the language, and a diagram's whole
-   source. attachCodeRawToggle sets .wv-code-raw on the host; without it, code
-   stays code and a diagram stays its drawing. */
 .doc-editor:not(.wv-code-raw) .vditor-ir__node--expand[data-type="code-block"]::before,
 .doc-editor:not(.wv-code-raw) .vditor-ir__node--expand[data-type="code-block"]::after { content: none; }
 .doc-editor:not(.wv-code-raw) .vditor-ir__node--expand[data-type="code-block"] > .vditor-ir__marker--info { display: none; }
@@ -1910,32 +1114,10 @@ body.wv-activity-open #main { margin-right: 344px; }
   padding: 3px; border: 0; border-radius: 4px; background: transparent; color: var(--tblr-secondary); cursor: pointer; }
 .doc-code-raw:hover { color: var(--tblr-body-color); background: rgba(127, 127, 127, .18); }
 .doc-code-raw[aria-pressed="true"] { color: var(--tblr-primary); }
-/* Vditor hides the copy button until the block is hovered, which leaves it
-   undiscoverable and unreachable by touch. It is always there, upper right,
-   quiet until you go for it. */
 .doc-editor .vditor-copy { display: block; }
 .doc-editor .vditor-copy span { top: 8px; right: 10px; opacity: .45; transition: opacity .12s ease; border-radius: 4px; padding: 3px; }
 .doc-editor .vditor-copy span:hover { opacity: 1; background: rgba(127, 127, 127, .18); }
 .doc-editor .vditor-copy svg { color: currentColor; }
-/* The slash menu is the only route to markdown blocks now, so it reads as a
-   list of names rather than a strip of syntax. */
-/* The slash menu is the only route to a markdown construct, so it reads as a
-   menu: a glyph for what the thing is, its name, and — on the right of every
-   row — the syntax it writes. Groups are headers INSIDE the first row of each
-   group (a hint item is always a button), so the highlight is painted on the
-   row rather than the button: a group label never lights up. */
-/* A list to scroll, never a sheet over the document (Issue #137): capped
-   short, tight rows, and a wheel that stops at the menu's edge instead of
-   scrolling the page — which is what closes the menu. The cap is the
-   window's as well as the menu's, so a short window shows a short menu with
-   no hand from script; attachHintClamp shrinks it further only when it has
-   to clear the pinned header. */
-/* The menu outranks every band it opens over (Issue #550). Vditor's own rule
-   puts .vditor-hint at z-index 4, under the document section head (5) and
-   the record header (6), both sticky, so a menu that flipped upward was
-   painted over by the title and by the word DESCRIPTION, and the rows under
-   them could be neither read nor clicked. 9 clears both bands and the
-   selection bubble (7) with its tooltip (8). */
 .vditor-hint { max-width: 340px; min-width: 280px; padding: 4px; z-index: 9;
   max-height: min(400px, calc(100vh - 24px)); overflow-y: auto; overscroll-behavior: contain; }
 .vditor-hint button { padding: 0; }
@@ -1945,51 +1127,27 @@ body.wv-activity-open #main { margin-right: 344px; }
 .slash-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; }
 .vditor-hint button:hover .slash-item, .vditor-hint button.vditor-hint--current .slash-item { background: var(--tblr-bg-surface-secondary); }
 .slash-icon { flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--tblr-secondary); }
-/* Flat icons, not emoji: one monochrome vocabulary that inherits text colour
-   instead of a colour picture that ignores it. */
-/* No CSS fill on an icon svg (2026-09-02): a Lucide shape sets fill="none" and
-   strokes in currentColor; a drawn mark sets fill="currentColor" itself. The
-   Iconly-era `fill: currentColor` here turned every stroke icon into a blob. */
 .slash-icon svg { width: var(--wv-icon-md); height: var(--wv-icon-md); }
 .vditor-hint .slash-item b { font-weight: 500; font-size: 13px; }
-/* The syntax column is the teaching half of the menu: monospace, quiet, and
-   never wrapped — it is the shape of the markdown, not prose. */
 .slash-syntax { margin-left: auto; padding: 0; background: none; font-size: 11px; color: var(--tblr-secondary); opacity: .8; white-space: nowrap; }
 .dl-wrap { position: relative; margin-right: 6px; }
 .dl-menu { position: absolute; top: 100%; left: 0; z-index: 30; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-shadow-dropdown, 0 2px 8px rgba(0,0,0,.15)); min-width: 150px; padding: 4px 0; }
 .dl-menu .dropdown-item { display: block; padding: 5px 12px; color: var(--tblr-body-color); text-decoration: none; font-size: 13px; }
 .dl-menu .dropdown-item:hover { background: var(--tblr-active-bg, rgba(var(--tblr-primary-rgb), .08)); }
-/* The inline create field sits in the table list, so it matches a .nav-db row
-   — same indent, height and type scale — rather than a stock form control. */
 .nav-inline-add { margin: 2px 0; padding: 5px 8px; height: auto; font-size: inherit; line-height: 1.4; border-radius: var(--tblr-border-radius); border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
 .nav-inline-add:focus { box-shadow: none; border-color: var(--tblr-primary); }
 .nav-inline-add::placeholder { color: var(--tblr-secondary); }
 #main { position: relative; }
-/* Vertical ellipsis: a tall, narrow glyph in a tall, narrow button. */
 .dots-btn { padding: 2px 5px; line-height: 1.1; font-size: 15px; letter-spacing: 0; }
-/* Hold-to-confirm: the fill IS the confirmation, so there is no browser
-   dialog. Collapsing is untransitioned — releasing early cannot complete it. */
 .hold-btn { position: relative; overflow: hidden; cursor: pointer; }
-/* The sweep darkens toward its leading edge, so the gesture reads as a front
-   travelling across the row rather than a block growing out of the left. The
-   gradient is painted once and scaled with the fill, which keeps it composited
-   — no repaint per frame. The tint comes off the danger token, not a literal
-   rgb, so it holds in both themes. */
 .hold-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; transform: scaleX(0); transform-origin: left; background: linear-gradient(90deg, color-mix(in srgb, var(--tblr-danger) 14%, transparent), color-mix(in srgb, var(--tblr-danger) 34%, transparent)); transition: transform 0s; }
 .hold-btn.holding .hold-fill { transform: scaleX(1); transition: transform .9s linear; }
 .hold-btn .hold-label { position: relative; }
 .hold-btn .hold-icon { position: relative; }
-/* A hold nobody knows about is a button that does nothing: the chip says the
-   gesture at rest and gets out of the way once the press starts, where the
-   swapped label ("Hold to delete…") is carrying the message instead. */
 .hold-hint { position: relative; margin-left: auto; padding: 0 5px; border: 1px solid var(--tblr-border-color); border-radius: 4px; font-size: 10px; line-height: 15px; letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); transition: opacity .12s ease; }
 .hold-btn.holding .hold-hint { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .hold-btn.holding .hold-fill { transition-duration: .6s; } }
-/* Header-toolbar menus sit at the right edge; left-aligning the panel would
-   hang it off-screen. */
 .dl-menu-right { left: auto; right: 0; }
-/* holdToConfirm renders a .dropdown-item, so inside a menu it must fill the
-   row like every other item rather than shrink to its label. */
 .dl-menu .hold-btn { display: block; width: 100%; text-align: left; }
 .dl-menu .dropdown-divider { border-top: 1px solid var(--tblr-border-color); margin: 4px 0; }
 .dl-menu button.dropdown-item { width: 100%; text-align: left; background: none; border: 0; }
@@ -1997,40 +1155,21 @@ body.wv-activity-open #main { margin-right: 344px; }
 .permalink-copy { cursor: pointer; }
 .permalink-copy:hover { color: var(--tblr-primary); }
 
-/* ---------- page loader (brand decision 7) ----------
-   The weave-on rope, shown while a route is being fetched and rendered.
-   Fixed over #main rather than inside it: page renders replace #main's
-   children wholesale, so a child loader would vanish the moment a slow
-   render finally landed. `hidden` is the off state; app.js flips it.
-   The threshold + one-full-cycle rules live in app.js — see pageLoader(). */
 #page-loader[hidden] { display: none; }
 #page-loader {
-  /* Above #ws-rail (60), which sets its own z-index to clear #main —
-     a page load washes the whole window, chrome included. */
   position: fixed; inset: 0 0 0 0; z-index: 70;
   display: flex; align-items: center; justify-content: center;
   pointer-events: none;
   background: color-mix(in srgb, var(--tblr-body-bg) 94%, transparent);
   animation: loader-in .18s ease both;
 }
-/* The rope is inlined SVG with a viewBox and no width/height, so as a flex
-   item it has no intrinsic size and collapses to 0x0 unless sized here. */
 #page-loader .mark-light, #page-loader .mark-dark { position: relative; width: 96px; height: 96px; }
 #page-loader svg { width: 100%; height: 100%; display: block; }
 #page-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-light { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-dark { display: block; }
 @keyframes loader-in { from { opacity: 0; } to { opacity: 1; } }
-/* Issue #390: the rope's own layout and keyframes ship inside
-   public/brand/weave-loader-rope.html (brand/build-logos.mjs loaderRopeCss),
-   generated from the rope's geometry; they move by transform only, so the
-   compositor keeps the rope moving while the main thread is busy. */
-/* The rope's own motion is the loading signal; the wash fading in is not.
-   Honour a reduced-motion request by dropping the fade, not the loader. */
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
-/* The grid's own wait (Issue #433): a table change that refetches dims the
-   grid body at once, and past the loader threshold the same rope sits over
-   the part of the grid in view. The page header stacks above it (z 6). */
 #main > .table-wrap[aria-busy="true"] { opacity: .5; transition: opacity .12s ease; }
 #main > .grid-loader[hidden] { display: none; }
 #main > .grid-loader {
@@ -2046,25 +1185,10 @@ body.wv-activity-open #main { margin-right: 344px; }
 [data-bs-theme="dark"] #main > .grid-loader .mark-dark { display: block; }
 @media (prefers-reduced-motion: reduce) { #main > .grid-loader, #main > .table-wrap[aria-busy="true"] { animation: none; transition: none; } }
 .fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
-/* The instance tag, under the stats line in the sidebar foot (Issue #380).
-   It wraps inside the foot rather than running past it. */
 .nav-health { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; line-height: 16px; color: var(--tblr-secondary); font-family: var(--tblr-font-sans-serif); font-variant-numeric: tabular-nums; background: var(--wv-pill-hover); border: 1px solid transparent; border-radius: 4px; padding: 2px 6px; }
-/* A stale instance wears the warning: the chip is how you notice without
-   the toast (Kyle, 2026-09-02). */
 .nav-health.is-behind { color: var(--wv-warn-text); border-color: var(--tblr-warning); }
-/* A stale PROCESS is worse than a stale checkout — the page and the engine
-   disagree and saving can fail silently (Issue #114) — so it wears the danger
-   tint and full opacity, a step louder than merely behind. Both tokens flip
-   with data-bs-theme, so the chip stays legible in either. */
 .nav-health.is-stale { color: var(--tblr-danger); border-color: var(--tblr-danger); opacity: 1; }
 .wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: var(--wv-grid-font); white-space: nowrap; }
-/* ---------- view strip (Feature #229) ----------
-   Tabs under the table title, Attio/Airtable style: an underline marks the
-   view on screen, and the leftmost tab is the default (Kyle, 2026-09-25:
-   order is the only signal, so there is no star). A tab being dragged lifts
-   onto a soft fill. A long strip scrolls sideways inside itself; the page
-   never does. The tabs refuse text selection and the iOS link callout so a
-   held finger is a drag, not a selection. */
 .view-strip { display: flex; align-items: center; gap: 2px; margin: 0 0 10px; border-bottom: 1px solid var(--tblr-border-color);
   overflow-x: auto; scrollbar-width: none; }
 .view-strip::-webkit-scrollbar { display: none; }
@@ -2075,81 +1199,35 @@ body.wv-activity-open #main { margin-right: 344px; }
 .view-tab.active { color: var(--tblr-body-color); font-weight: 600; border-bottom-color: var(--tblr-primary); }
 .view-tab.dragging { background: var(--tblr-primary-lt); color: var(--tblr-body-color); cursor: grabbing; }
 .view-add { padding: 0 8px; margin-left: 2px; }
-/* ---------- filter strip (Feature #38) ---------- */
 .filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
 .filter-group { display: inline-flex; align-items: center; gap: 4px; }
 .filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); margin-right: 2px; }
-/* The state filters sit directly above the chips they filter, so they wear
-   the same tier: off is a quiet outline, on is the category's own fill. */
 .filter-chip { display: inline-flex; align-items: center; gap: 5px; font-size: var(--wv-chip-font); line-height: var(--wv-chip-line);
   padding: 1px 8px; border-radius: 4px; border: 1px solid var(--tblr-border-color);
   background: none; color: var(--tblr-secondary); cursor: pointer; }
 .filter-chip:hover { border-color: var(--tblr-primary); color: var(--tblr-body-color); }
 .filter-chip.on { border-color: transparent; background: var(--fill, rgba(var(--tblr-primary-rgb), .10));
   color: var(--text, var(--tblr-primary)); font-weight: 600; }
-/* ---------- entity dock (one entity surface) ----------
-   The split pane the table view opens an entity into: a real layout column
-   beside #main, styled as its twin panel — not an overlay. The rules live
-   in public/entity-surface-core.js; app.js paints them here. */
-/* The pane is its own scroll box (Issue #609), a flex column of the shell
-   like #main, so a long table scrolling beside it never moves it.
-   Default is an equal split — #main and #dock each flex to half the room
-   left of the nav (Kyle, 2026-09-02). A dragged divider pins the dock to a
-   px flex basis it may shrink from (Issue #326); double-click hands it back
-   to the even split.
-   Side padding matches #main's 28px, so the entity reads on the page's
-   grid (Kyle, 2026-09-02: padding on either edge of the split dock). */
 #dock { --wv-pane-pad: 14px; --wv-pane-pad-x: 28px; flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); position: relative; }
-/* The divider is the canvas gap itself: a 16px flex column between the two
-   panels (Kyle, 2026-09-02 — never a strip inside either panel). Its
-   hairline waits for the pointer or a drag, centered mid-gap. */
 #dock-gutter { flex: none; width: 16px; margin: 8px 0; cursor: col-resize; position: relative; touch-action: none; }
 #dock-gutter[hidden] { display: none; }
-/* The gutter supplies the whole gap while it is up; #main's own right
-   margin would double it. */
 #main:has(+ #dock-gutter:not([hidden])) { margin-right: 0; }
-/* The table beside the dock keeps a readable floor at every window and
-   every pin (Issue #326). The dock is the one that yields: its pin is a
-   shrinkable flex basis (pinDock in app.js) and its own floor is 0, so a
-   window too narrow for both takes room from the dock, never the table,
-   and never spills into a sideways page scroll. */
 #main:has(+ #dock-gutter:not([hidden])) { min-width: 320px; }
 #dock-gutter::after { content: ""; position: absolute; left: 50%; top: 50%; height: 44px; width: 3px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--tblr-border-color); opacity: 0; transition: opacity .12s ease; }
 #dock-gutter:hover::after, body.dock-resizing #dock-gutter::after { opacity: 1; }
 body.dock-resizing { user-select: none; cursor: col-resize; }
-/* Below 600px there is no room for two columns (Issue #549): the table's
-   320px floor left the dock 56px at 390 and the name stood one letter per
-   line. The dock leaves the row and covers the screen as a sheet, under the
-   nav drawer's scrim (65) and every popover, over the hub foot (55). Its
-   pin is a flex basis, so it means nothing here and comes back past 600px.
-   The table underneath keeps its scroll, and the sheet keeps its own.
-   align-self goes back to auto: on a positioned box flex-start means "as
-   tall as the content", and a long record ran 62px past the screen.
-   The sheet says nothing about overscroll-behavior, the same as #main and
-   the desktop dock: `contain` stops Chromium moving the caret with End
-   inside a code block, so the text landed at the start of the line
-   (Issue #616, the same trap as Issue #609). Nothing is lost by dropping
-   it — since #609 the document no longer scrolls, so a scroll that runs
-   out at the sheet's edge has nowhere to chain. */
 @media (max-width: 600px) {
   #dock { --wv-pane-pad-x: 14px; position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; }
   #dock-gutter:not([hidden]) { display: none; }
   #main:has(+ #dock-gutter:not([hidden])) { min-width: 0; margin-right: 8px; }
 }
-/* The pane is narrower than a page: the field grid single-columns. The
-   entity header pins to the top of the pane, as it does on the full page
-   (Issue #411), carrying the pane's top padding as its own ground so the
-   frame holds (Issue #608). Past half the pane it sits in the flow, the
-   page header's rule. */
 #dock .dock-entity .entity-grid { grid-template-columns: minmax(0, 1fr); }
 #dock .dock-entity .view-header { position: sticky; top: calc(-1 * var(--wv-pane-pad, 0px)); z-index: 6; background: var(--tblr-bg-surface); }
 #dock.view-header-loose .dock-entity .view-header { position: static; }
-/* The docked row stays lit in the table — selection follows the pane. */
 .wv-grid tbody tr.entity-row.row-docked td { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .pose-glyph { display: inline-flex; line-height: 0; }
 .pose-glyph svg { display: block; }
 
-/* ---------- skeletons (Feature #49, boneyard-inspired) ---------- */
 .sk { background: var(--tblr-bg-surface-secondary); border-radius: 4px; position: relative; overflow: hidden; }
 .sk::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); animation: sk-shimmer 1.1s infinite; }
 [data-bs-theme="dark"] .sk::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.07), transparent); }
@@ -2166,20 +1244,11 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .sk-entity .sk-side { width: 300px; display: flex; flex-direction: column; gap: 10px; }
 .sk-block { height: 120px; width: 100%; }
 .sk-block.short { height: 60px; width: 80%; }
-/* ---------- share link ---------- */
 .share-box { display: flex; flex-direction: column; gap: 10px; }
 .share-url { font-size: 11.5px; word-break: break-all; color: var(--tblr-secondary); }
 .share-hint { font-size: 12.5px; color: var(--tblr-secondary); }
 .attach-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-/* ---------- attachment preview (Kyle, 2026-10-05) ----------
-   A record shows an attachments field by its `preview`: chips, a contact
-   sheet of the files, or the one file in its viewer. The sheet wraps to the
-   column's width; `fit-fill` makes every cell the same 4:3 box with the
-   picture cropped to it, `fit-trim` sizes each cell to the picture's own
-   shape (--ar, read from the image once it loads) and justifies the row.
-   Nothing is ever stretched. */
 .attach-box.attach-box-wide { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; }
-/* A sheet or a viewer is tall: the row's label sits at its top, not its middle. */
 .entity-body > .attach-block:has(.attach-box-wide) { align-items: start; }
 .entity-body > .attach-block:has(.attach-box-wide) > label { padding-top: 6px; }
 .attach-chips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
@@ -2202,9 +1271,6 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .attach-cell:hover .attach-cell-label, .attach-cell:focus-visible .attach-cell-label { opacity: 1; }
 .attach-cell > .tiny { position: absolute; top: 3px; right: 3px; opacity: 0; background: var(--tblr-bg-surface); }
 .attach-cell:hover > .tiny, .attach-cell:focus-within > .tiny { opacity: 1; }
-/* The viewer: the file itself, in place. Height follows `size`; the bottom
-   edge drags (native resize) so the page scrolls outside and the file
-   inside. A frame that holds an HTML upload carries the sandbox attribute. */
 .file-viewer { display: flex; flex-direction: column; width: 100%; border: 1px solid var(--tblr-border-color); border-radius: 8px; overflow: hidden;
   background: var(--tblr-bg-surface-secondary); resize: vertical; height: 520px; min-height: 160px; }
 .file-viewer.size-small { height: 360px; }
@@ -2214,27 +1280,19 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .file-viewer-size { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; }
 .file-viewer-frame { flex: 1; width: 100%; border: 0; background: #fff; }
 .file-viewer > img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
-/* The cover: a single-file field's picture at the top of the record. */
 .entity-cover { margin: 0 0 14px; border-radius: 8px; overflow: hidden; background: var(--tblr-bg-surface-secondary); }
 .entity-cover img { display: block; width: 100%; height: auto; }
 .entity-cover.fit-fill img { height: 220px; object-fit: cover; }
 .entity-cover.fit-fill.size-small img { height: 140px; }
 .entity-cover.fit-fill.size-large img { height: 320px; }
 .fsv-nav { display: inline-flex; gap: 4px; } .attach-item { display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; background: var(--tblr-bg-surface-secondary); border-radius: 5px; padding: 1px 3px 1px 7px; }
-/* An attachment whose bytes are gone (Issue #121): the app's own dim colour,
-   a dashed edge that says "nothing behind this", and the word in plain text.
-   No new hue — a lost file is a state, not a category. */
 .attach-item.is-missing { color: var(--tblr-secondary); background: none; border: 1px dashed var(--tblr-border-color); padding: 0 3px 0 6px; }
-/* Files over a file cell (Issue #85): the zone says "let go here" with a
-   ring and a tint in the primary token, both inset, so nothing around it
-   moves and the chips stay readable in either theme. */
 .wv-grid td.is-file-drop, .wv-grid[data-density] tbody tr.entity-row > td.is-file-drop, .attach-box.is-file-drop {
   box-shadow: inset 0 0 0 2px var(--tblr-primary);
   background: rgba(var(--tblr-primary-rgb), .08);
 }
 .attach-box.is-file-drop { border-radius: 6px; }
 .attach-gone { margin-left: 4px; font-variant: small-caps; letter-spacing: .03em; opacity: .85; }
-/* ---------- fullscreen viewer + whiteboard (Features #47, #46) ---------- */
 #fsv-back { position: fixed; inset: 0; z-index: 90; background: var(--tblr-bg-surface); display: flex; flex-direction: column; }
 .fsv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--tblr-border-color); }
 .fsv-title { font-weight: 600; font-size: 14px; margin-left: 6px; }
@@ -2242,7 +1300,6 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .fsv-body { flex: 1; }
 .doc-app { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #fff; }
 .doc-app.hidden { display: none; }
-/* A sniffed mermaid document, drawn in place of an editor (Issue #188). */
 .doc-diagram { padding: 8px 0 4px; }
 .doc-diagram.hidden { display: none; }
 .doc-diagram pre.mermaid { margin: 0; background: none; border: 0; text-align: center; }
@@ -2252,49 +1309,25 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .doc-expand { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 420px; }
 .doc-expand-bar { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; }
 .doc-expand-frame { flex: 1; border: 0; border-radius: 8px; background: #fff; }
-/* Expanded markdown: the live editor fills the overlay and scrolls itself. */
-/* ---------- composed decks (Feature #118) ---------- */
-/* The deck paints its own ground (its style tokens, not the app's), so the
-   frame stays neutral in both themes and only draws the edge around it. */
 .deck-frame { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface-secondary); }
 .deck-section .doc-section-body { padding-top: 2px; }
 .mmd-tools { display: block; text-align: right; margin-bottom: -26px; position: relative; z-index: 2; }
-/* ---------- the one selection dialect ---------- */
 .picker-pop { padding: 6px; min-width: 220px; }
 .picker-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); padding: 2px 4px 6px; }
-/* The cursor box (Kyle, 2026-08-25): the chips already chosen sit INSIDE the
-   search field, ahead of the caret, so one control carries both the value and
-   the search. The box wears the border the input used to wear; the input
-   itself is bare and grows into whatever room the chips leave. */
 .picker-box { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; width: 100%; border: 1px solid var(--tblr-border-color); border-radius: 5px; background: var(--tblr-bg-surface); padding: 3px 5px; margin-bottom: 6px; cursor: text; }
 .picker-box:focus-within { border-color: var(--tblr-primary); }
-/* display:contents — the chips flow in the box's own row, so they wrap with
-   the caret instead of stacking above it. */
 .picker-chips { display: contents; }
 .picker-chip { cursor: default; }
-/* The chip the cursor sits on. A ring, not a fill: ← → is a caret walking the
-   chips, not a second kind of selection. */
 .picker-chip.sel { outline: 2px solid var(--tblr-primary); outline-offset: 1px; }
 .picker-search { flex: 1 1 90px; min-width: 90px; border: 0; border-radius: 3px; background: none; color: var(--tblr-body-color); font-size: 13px; padding: 3px 3px; outline: none; }
-/* The grid's name readout (Issue #142): the icon under the pointer or the
-   focus ring, named at the far end of the search bar. It rides the box's own
-   row after the caret, never takes the caret's minimum width, and an empty one
-   is gone entirely — every picker that is not the grid keeps its plain box. */
 .picker-name { flex: 0 1 auto; margin-left: auto; padding: 0 2px 0 8px; max-width: 50%; color: var(--tblr-secondary); font-size: 11.5px; font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; user-select: none; }
 .picker-name:empty { display: none; }
 .picker-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
 .picker-row { display: flex; align-items: center; gap: 8px; }
 .picker-row.active { background: rgba(var(--tblr-primary-rgb), .10); border-radius: 5px; }
 .picker-hint { color: var(--tblr-secondary); font-size: 11.5px; margin-left: auto; }
-/* The row's own number: ⌥1–⌥9 takes it. A fixed, tabular column so the labels
-   still line up under each other, and quiet enough that a reader scanning
-   names never reads the digits first. */
 .picker-num { flex: 0 0 11px; text-align: right; color: var(--tblr-secondary); font-size: 10.5px; font-variant-numeric: tabular-nums; opacity: .55; user-select: none; }
 .picker-row.active .picker-num, .picker-row:hover .picker-num { opacity: 1; }
-/* ---------- the icon grid (Kyle, 2026-08-29) ----------
-   Icons rest in the same grey a protected glyph wears and come up to full ink
-   under the cursor, so the grid reads as texture until you aim at something.
-   Category headings are the only labels; the name is the tooltip. */
 .picker-cat {
   padding: 9px 6px 3px; font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase;
   color: var(--tblr-secondary); font-family: var(--tblr-font-monospace);
@@ -2312,33 +1345,17 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 }
 .picker-cell:focus-visible { outline-offset: -2px; color: var(--tblr-body-color); }
 .picker-cell .wv-icon { margin-right: 0; }
-/* Clearing leads the grid, drawn as the same ghost ring the unset icon button
-   wears, so "none" is picked with the gesture every other icon is picked with. */
 .picker-none { color: var(--tblr-secondary); }
 .picker-none .wv-icon { opacity: .75; }
-/* A grid wants more room than a name list did, and it wants EXACTLY that
-   room (Issue #336). A shrink-to-fit popover took its width from its widest
-   content, and the widest content is the readout naming whatever the pointer
-   is on: a long name widened the box, the grid reflowed into the new width,
-   the cell slid out from under the pointer, the leave reset the name, and the
-   box snapped back — a flutter the cursor could not escape. A definite width
-   also gives .picker-name's 50% cap something to measure against, which a
-   percentage against an indefinite box never had. */
 .picker-pop:has(.picker-cells) { width: 292px; }
 
 .picker-empty { color: var(--tblr-secondary); font-size: 12.5px; padding: 8px 6px; }
 .picker-face { text-align: left; cursor: pointer; width: 100%; }
-/* A choice field's Default (Issue #422): the picked option chips, or a
-   quiet "No default". */
 .choice-default { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .choice-default-none { color: var(--tblr-secondary); }
 .picker-wrap { display: block; width: 100%; }
 .picker-centered { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 320px; }
 
-/* ---------- unified field dialog (design review 2026-08-22, A+E) ----------
-   The house dialog framework: labeled sections, a type grid, list editors
-   for options/states, segmented controls, and the form ⇄ code definition
-   pane. Tabler tokens throughout so both themes hold. */
 .dlg-sec { margin: 0 0 10px; }
 .dlg-lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--tblr-secondary); font-weight: 600; margin: 0 0 4px; }
 .dlg-narrow { width: 90px; }
@@ -2377,8 +1394,6 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .picker-pop:has(.picker-terms) .picker-list { max-height: 340px; }
 .picker-cell.picker-term.on { color: var(--tblr-primary); font-weight: 600; background: rgba(var(--tblr-primary-rgb), .10); }
 .picker-custom { display: block; width: 100%; text-align: left; font-size: 12.5px; color: var(--tblr-primary); background: none; border: none; border-top: 1px solid var(--tblr-border-color); margin-top: 4px; padding: 8px 6px 4px; cursor: pointer; }
-/* Words, not glyphs, and no readout to shake it: the term grid keeps sizing
-   to its widest row, so it opts back out of the grid's definite width. */
 .picker-pop:has(.picker-terms) { width: auto; min-width: 372px; }
 .term-preview { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
 .opt-list { display: flex; flex-direction: column; gap: 4px; }
@@ -2430,40 +1445,19 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .fx-sigcard .doc { font-size: 12px; color: var(--tblr-secondary); margin-top: 2px; }
 .fx-sigcard .eg { font-family: var(--tblr-font-monospace); font-size: 11px; color: var(--tblr-secondary); margin-top: 5px; opacity: .8; }
 
-/* ---------- icons (Feature #101; Lucide shapes with movingicons.dev motion since 2026-09-02) ----------
-   One size scale (Issue #87). Every icon box is set from it, so a mark and a
-   flat SVG beside each other occupy the same square instead of each surface
-   patching its own alignment. */
 :root { --wv-icon-sm: 12px; --wv-icon-md: 16px; --wv-icon-lg: 20px; }
 .wv-icon { display: inline-flex; align-items: center; justify-content: center; vertical-align: -2px; margin-right: 5px; width: var(--wv-icon-md); height: var(--wv-icon-md); }
 .wv-icon svg { display: block; width: var(--wv-icon-md); height: var(--wv-icon-md); overflow: visible; }
-/* The margin is the icon→label gap. A button whose whole content is one
-   icon has no label, so the gap would push the glyph 2.5px off centre
-   (Issue #207; #191 had patched #ws-new alone). Bare anchors stay out:
-   .nav-space / .nav-db are an icon beside a bare text label, which
-   :only-child (elements only) would still match. */
 button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
-/* Motion (moving icons, 2026-09-02): an icon plays once when the page loads,
-   once when it scrolls into a picker grid, once per hover — never on a loop.
-   The keyframes live in vendor/lucide-moving.css, scoped under .mi-<name>. */
 @media (prefers-reduced-motion: reduce) { .mi svg, .mi svg * { animation: none !important; transition: none !important; } }
-/* Resting icons are lighter than the label beside them and come up to the
-   label's own grey when the row is hovered or current — the icon leads the
-   eye without competing with the word (Kyle, 2026-09-02). */
 .nav-icon { font-size: 14px; color: var(--wv-icon-rest); }
 .nav-db:hover .nav-icon, .nav-space:hover .nav-icon,
 .nav-db.active .nav-icon, .nav-space.active .nav-icon { color: var(--tblr-secondary); }
-/* Flex-centred: at 18px the line box outgrows the 16px glyph and the
-   baseline-hung icon lands 2px low (Issue #207 sweep). */
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; border: none; background: none; cursor: pointer; padding: 2px 4px; border-radius: 5px; font-size: 18px; color: var(--tblr-body-color); }
 .icon-btn:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .icon-ghost { color: var(--tblr-secondary); opacity: .6; }
 .picker-iconly { display: inline-flex; align-items: center; gap: 8px; }
 
-/* ---------- right-hand tray (2026-08-23) ----------
-   Schema dialogs slide in from the right over a light backdrop so the table
-   stays visible while its fields are edited. Form body scrolls; the action
-   row is pinned. Popovers stack above it (.chip-pop z-index 1200). */
 #tray-back { position: fixed; inset: 0; background: rgba(0,0,0,.22); z-index: 1040; }
 #tray { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 94vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); display: flex; flex-direction: column; animation: peek-in .16s ease; }
 .tray-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px 10px; border-bottom: 1px solid var(--tblr-border-color); }
@@ -2478,23 +1472,14 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .type-tile.current:not(.sel) { border-style: dashed; }
 .migrate-note { color: var(--tblr-warning, #f59f00); }
 
-/* An embedded related grid can be wider than the column it sits in (the
-   Showcase Field Types table has 33 columns) — it scrolls inside its card
-   instead of running under the Fields/Comments column. */
 .related-section .card { overflow-x: auto; }
 .related-section .wv-grid { min-width: max-content; }
 
-/* ---------- dates: smart input + calendar popover (2026-08-23) ---------- */
 .date-cell { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .date-cell .date-text { min-width: 0; width: max(120px, var(--date-fit, 0px)); }
 .date-cell .date-text-wide { width: max(200px, var(--date-fit, 0px)); }
-/* A range is two date controls sharing one dash (Issue #91). */
-/* The range control (Issue #197): one box, one calendar button — the same
-   .date-cell the single date wears, wide enough for both ends. */
 .range-sep { color: var(--tblr-secondary); }
 .range-text { min-width: 200px; }
-/* The range dialog: the span between the two lit ends has a paint of its
-   own, a theme token so dark mode gets its tint. */
 .date-pop.range .date-smart-label { display: inline-block; width: 38px; font-size: 11px; color: var(--tblr-secondary); }
 .date-pop.range .date-pop-smart { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0 6px; }
 .date-pop.range .date-pop-smart .date-smart-preview { grid-column: 2; }
@@ -2526,7 +1511,6 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .date-pop-foot { display: flex; justify-content: space-between; padding: 8px 2px 0; }
 .date-pop-link { background: none; border: none; color: var(--tblr-primary); font-size: 13px; cursor: pointer; padding: 2px 2px; }
 
-/* format examples in the field tray */
 .date-format-list { display: flex; flex-direction: column; gap: 4px; }
 .date-format-opt { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); cursor: pointer; text-align: left; }
 .date-format-opt.on { border-color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .08); }
@@ -2539,11 +1523,9 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .date-grain .form-check-label { white-space: nowrap; }
 .date-zone-name { margin-top: 6px; }
 
-/* formula checkbox */
 .fx-toggle .form-check-input { margin: 0; }
 .hintnote { font-size: 11.5px; color: var(--tblr-secondary); margin-top: 4px; }
 
-/* ---------- the eyeball: show / hide (Feature #114) ---------- */
 .eye-head { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--tblr-secondary); padding: 6px 8px 2px; font-weight: 600; }
 .eye-row { display: flex; align-items: center; gap: 12px; min-width: 220px; }
 .eye-label { flex: 1; text-align: left; }
@@ -2552,33 +1534,14 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .switch.on { background: var(--tblr-primary); }
 .switch.on .switch-knob { left: 14px; }
 .eye-btn svg { display: block; }
-/* Table search (Feature #228): a magnifier that opens into a box. */
 .table-search { display: inline-flex; align-items: center; gap: 4px; }
 .table-search-btn .wv-icon, .table-search-btn svg { display: block; width: 16px; height: 16px; }
 .table-search-input { display: none; width: 200px; }
 .table-search.open .table-search-input { display: block; }
 .table-search-empty { margin: 8px 0; color: var(--tblr-secondary); }
-/* The crumb trail is one line at any panel width (Issue #437). A docked
-   entity leaves the table 320-650px, and a flex: 1 path shrank to nothing
-   there: one word per line, drawn under the toolbar. The path now asks for
-   its whole line, so when path and toolbar do not fit side by side the
-   toolbar drops to its own row below; a path longer than the panel itself
-   ends in an ellipsis. */
 .crumb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-/* The path gives up its tail (ellipsis) before the toolbar drops a row: a
-   8rem basis, so a filter badge or a longer view name ("Standard") never
-   reflows the header and moves the grid (Issue #444); a docked panel too
-   narrow for 8rem beside the toolbar still wraps as Issue #437 wants. */
 .crumb-path { flex: 1 1 8rem; min-width: 0; white-space: nowrap; overflow: hidden; display: flex; align-items: center; gap: 1px; }
-/* Every crumb wears its icon (Issue #669): the workspace mark, the space's
-   and the table's icons, and on a row its table icon, a muted #id and the
-   Name. An ancestor caps at about 17 characters with its own ellipsis; the
-   current crumb is bold and is the last thing to shrink (Issue #668). */
 .crumb-sep { flex: none; padding: 0 2px; color: var(--tblr-secondary); }
-/* A slot is a crumb and the separator before it. Past the fold every crumb
-   gives way in proportion to its width; an ancestor may shrink to its icon,
-   the current crumb never below its icon and #id. While fitCrumbs measures,
-   nothing shrinks. */
 .crumb-slot { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; }
 .crumb-slot:not(.crumb-slot-cur) { min-width: 3em; overflow: hidden; }
 .crumb-slot[hidden] { display: none; }
@@ -2586,7 +1549,6 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .crumb-path.crumb-measure > .crumb-slot { flex: none; }
 .crumb-slot > a.crumb-item { min-width: 0; overflow: hidden; }
 .crumb-more { flex: none; padding: 1px 6px; line-height: 0; }
-/* Back and Forward lead the crumb row (Issue #671). */
 .crumb-nav { flex: none; padding: 4px; line-height: 0; }
 .crumb-nav .wv-icon { margin-right: 0; }
 .crumb-nav + .crumb-nav { margin-left: -8px; }
@@ -2615,27 +1577,17 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 [data-bs-theme="dark"] .crumb-ws-mark .mark-dark { display: block; }
 .crumb-ws-letter { display: grid; place-items: center; width: 100%; height: 100%; font-size: 9px; font-weight: 700; color: var(--tblr-body-color); background: var(--wv-pill-hover); }
 .crumb-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
-/* The actions box wears .wv-toolbar for its button styling, not its 16px
-   foot: with it the row centred 28px of buttons plus 16px of margin, and the
-   buttons rode 8px above the crumb text beside them (Issue #585). The gap to
-   the title row is the crumb's own margin (.view-header .crumb). */
 .crumb-row > .crumb-actions { margin-bottom: 0; }
 .row-deleted { opacity: .5; }
 .row-deleted .open-link { text-decoration: line-through; }
 
-/* The tray's reorderable option rows (2026-08-23). The 'other' category that
-   used to be styled here was retired on 2026-08-24 — see chip-core.js. */
 .opt-grip { color: var(--tblr-secondary); cursor: grab; font-size: 12px; user-select: none; }
 .opt-row.dragging { opacity: .4; }
 .opt-row.drop-target { box-shadow: 0 -2px 0 var(--tblr-primary); }
-/* The chip the row will actually produce, shown where the choice is made. */
-/* The preview yields before the name input does — it is a reassurance, not
-   a column, and the tray is only 480px wide. */
 .opt-preview { flex: 0 1 auto; min-width: 0; max-width: 128px; display: flex;
   justify-content: flex-end; align-items: center; overflow: hidden; }
 .opt-preview .k { overflow: hidden; text-overflow: ellipsis; display: inline-flex; }
 .opt-color.locked { cursor: not-allowed; opacity: .7; }
-/* The ramp, as a picker rather than a cycle. */
 .swatch-grid { display: grid; grid-template-columns: repeat(5, 26px); gap: 5px; }
 .swatch-grid .sw { width: 26px; height: 26px; padding: 0; cursor: pointer; border-radius: 50%;
   border: 1px solid var(--tblr-border-color); background: var(--dot, transparent); color: var(--tblr-body-color); }
@@ -2644,8 +1596,6 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 .swatch-grid .sw.sel { box-shadow: 0 0 0 2px var(--tblr-bg-surface), 0 0 0 3.5px var(--tblr-primary); }
 .pick-note { font-size: 10.5px; font-family: var(--tblr-font-monospace); color: var(--tblr-secondary); margin: 7px 2px 1px; max-width: 190px; }
 
-/* checkboxes: one quiet house style everywhere (grid cells, tray, pickers) —
-   a rounded square on the surface, primary fill + tick when checked. */
 input[type="checkbox"].form-check-input { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; margin: 0; border: 1.5px solid var(--tblr-border-color); border-radius: 4px; background: var(--tblr-bg-surface); cursor: pointer; position: relative; vertical-align: middle; transition: background .1s, border-color .1s; }
 input[type="checkbox"].form-check-input:hover { border-color: var(--tblr-secondary); }
 input[type="checkbox"].form-check-input:checked { background: var(--tblr-primary); border-color: var(--tblr-primary); }
@@ -2653,10 +1603,6 @@ input[type="checkbox"].form-check-input:checked::after { content: ''; position: 
 input[type="checkbox"].form-check-input:focus-visible { outline: 2px solid rgba(var(--tblr-primary-rgb), .35); outline-offset: 1px; }
 input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default; }
 
-/* The toggle field (Feature #202): a soft-squared switch on Tabler tokens,
-   its state's word beside it. The input is a real checkbox kept in the
-   label so keyboard and row-click rules for booleans hold; the track and
-   knob draw the state. */
 .wv-toggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; margin: 0; max-width: 100%; user-select: none; font: inherit; color: inherit; line-height: var(--wv-chip-line); }
 .wv-toggle-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
 .wv-toggle-track { position: relative; flex: none; width: 28px; height: 16px; border-radius: 5px; background: var(--tblr-border-color); border: 1px solid transparent; transition: background .12s; box-sizing: border-box; }
@@ -2668,22 +1614,12 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-toggle-word { font-size: var(--wv-chip-font); color: var(--tblr-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wv-toggle.on .wv-toggle-word { color: var(--tblr-body-color); }
 [data-bs-theme="dark"] .wv-toggle-knob { background: #e0dcd4; box-shadow: 0 1px 2px rgba(0, 0, 0, .45); }
-/* The field dialog's two label inputs. */
 .wv-toggle-labels { display: grid; gap: 6px; }
 .wv-toggle-label-row { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; margin: 0; }
-/* long popovers (the eyeball lists every field) scroll instead of flipping off-screen */
 .chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
 
-/* ---------- bug reporter (Feature #141) ----------
-   The button lives in the bottom-right corner. The
-   panel floats beside it rather than over the page: reporting a bug must not
-   cover the bug. Small on purpose (Kyle, 2026-08-25) — this is a corner
-   affordance, not a form. Every surface is a Tabler token, so both themes
-   follow. */
 .bug-fab { position: fixed; right: 12px; bottom: 40px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
 .bug-fab:hover, .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--tblr-secondary); }
-/* A tray's action bar runs along the bottom edge: the button rises above it
-   instead of sitting on Save changes (Issue #380). */
 body:has(#tray-back) .bug-fab { bottom: 72px; }
 .bug-fab-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); color: var(--tblr-body-color); }
 .bug-fab-icon svg { width: 100%; height: 100%; }
@@ -2692,9 +1628,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .bug-note { display: block; width: 100%; font-size: 12px; line-height: 1.35; padding: 5px 7px; resize: none; }
 .bug-note::placeholder { color: var(--tblr-secondary); }
 
-/* Two columns of soft squared toggles, in the chip idiom the rest of the app
-   uses: a tint when on, an outline never. Multi-select, so several can be
-   lit at once — one bug is often slow AND wrong. */
 .bug-cats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
 .bug-cat { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 4px 6px; font-size: 11px; line-height: 1.2; text-align: left; background: var(--tblr-bg-surface-secondary); border: 1px solid transparent; border-radius: 6px; color: var(--tblr-secondary); cursor: pointer; }
 .bug-cat > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2707,9 +1640,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .bug-captured { flex: 1; min-width: 0; font-size: 10px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bug-send { padding: 2px 10px; font-size: 11.5px; }
 .bug-kbd { flex: 0 0 auto; font-size: 10px; }
-/* Report by email (Feature #223): a quiet link at Send's left, the address
-   printed under the foot for a device with no mail handler. Both draw from
-   the same tokens as the panel, so both themes come for free. */
 .bug-mail { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1.2; color: var(--tblr-secondary); text-decoration: none; padding: 2px 6px; border: 1px solid transparent; border-radius: 5px; white-space: nowrap; }
 .bug-mail:hover, .bug-mail:focus-visible { color: var(--tblr-primary); border-color: var(--tblr-border-color); outline: none; }
 .bug-mail-icon { width: var(--wv-icon-sm); height: var(--wv-icon-sm); color: currentColor; }
@@ -2717,20 +1647,12 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .bug-mail-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--tblr-border-color); }
 .bug-addr { font-size: 10px; font-family: var(--tblr-font-monospace); color: var(--tblr-secondary); user-select: all; }
 .wv-route-error-actions { display: flex; align-items: center; gap: 12px; }
-/* Sent is a receipt, not a disabled button: it keeps the primary weight so
-   the eye lands on the confirmation it was already looking at. */
 .bug-send.sent, .bug-send.sent:disabled { opacity: 1; background: var(--tblr-success); border-color: var(--tblr-success); color: #fff; }
 
-/* Target-set builder in the field dialog: each member row is a select with
-   its remove control beside it, never wrapped beneath. */
 .target-set { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .target-set-row { display: flex; align-items: center; gap: 6px; width: 100%; }
 .target-set-row .picker-wrap { flex: 1; }
 
-/* ---------- the chip and the card (Kyle, 2026-09-04) ----------
-   One row as it appears elsewhere. The chip is the shared k k-rel pointer
-   with the doc-mention caret and segments inside it; the card is a tile.
-   Tabler tokens only, so both themes come for free. */
 .k-rel > a > .mention-caret { margin-left: 2px; }
 .k-rel > a > .mention-fields { align-items: center; }
 .k-rel .mention-fields .k-state, .wv-seg-state { font-size: .82em; padding: 0 6px; line-height: 1.5; }
@@ -2751,37 +1673,21 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .wv-card-fields { display: grid; grid-template-columns: max-content 1fr; column-gap: 10px; row-gap: 2px; margin: 0; }
 .wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
 .wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A card in a grid cell is a tile among rows: it keeps the row's height honest. */
 .wv-grid td .wv-card { margin: 2px 0; }
-/* The entity page's "Appears as" strip: the two previews side by side, each
-   under its field name and a gear that opens the table's config. */
 .wv-appears { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 22px; margin: 2px 0 14px; padding: 8px 12px; border: 1px dashed var(--tblr-border-color); border-radius: 6px; }
 .wv-appears-title { flex-basis: 100%; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .wv-appears-slot { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .wv-appears-lbl { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--tblr-secondary); }
 .wv-appears-cfg { padding: 0 3px; line-height: 1; }
-/* The dialog's field list for a view: two columns of checkboxes, dimmed
-   while "the first few" is on. */
 .wv-view-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
 .wv-view-fields.auto { opacity: .45; }
 .wv-view-fields .form-check-label .wv-tag { margin-left: 6px; }
 .wv-view-preview { padding: 8px 10px; border: 1px dashed var(--tblr-border-color); border-radius: 6px; min-height: 34px; display: flex; align-items: center; }
 .wv-muted { color: var(--tblr-secondary); font-size: 12px; }
 
-/* ---------- statistics: the Σ footer, space tiles, column stats ---------- */
-/* The Σ row (Issue #233): a second header row, stuck under the first at the
-   height the grid measured into --wv-head-h. Above the body, under the header
-   cells (whose menus drop over it); opaque, so the rows slide under it, not
-   through it. The rule beneath it is an inset shadow, not a thicker border: a
-   collapsed 2px border lent the first body row a pixel. */
 .wv-grid thead tr.wv-foot td { position: sticky; top: var(--wv-head-h, 0px); z-index: 2; box-shadow: inset 0 -1px 0 var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
 #main .table-wrap.wv-fit .wv-grid thead tr.wv-foot td { top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px) + var(--wv-head-h, 0px)); }
-/* A stuck header casts its faint shadow from here when the Σ row is shown
-   (Feature #240): the rows pass under this row, not under the labels. */
 .table-wrap.wv-head-stuck .wv-grid thead tr.wv-foot td { box-shadow: inset 0 -1px 0 var(--tblr-border-color), var(--wv-head-lift); }
-/* The Σ row's own corner: frozen left as well as pinned under the header,
-   and a layer above the rest of the row so the body's frozen cells pass
-   beneath it rather than through it (Issue #252). */
 .wv-grid thead tr.wv-foot :is(td.sel-cell, td.pid-cell) { z-index: 3; }
 .wv-grid tr.wv-foot td.foot-mark { font-weight: 600; }
 .wv-grid tr.wv-foot td.foot-open { cursor: pointer; min-height: 22px; }
@@ -2825,21 +1731,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .wv-dist-fill { display: block; height: 100%; background: var(--tblr-primary); opacity: .6; }
 .wv-dist-n { color: var(--tblr-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-/* ---------- the rich cells (Features #230, #231, #232, #235) ----------
-   A bar, a ring or a heat tint behind a number; a rating's icons; a
-   formula's sparkline. The shapes are one set (Feature #235): a 6px bar
-   with round ends on an 80px track and the figure to its right in tabular
-   figures, a 16px ring with a 2.5px round-capped stroke, heat as a rounded
-   tint behind the figure, 14px rating icons 1px apart with outlined
-   empties, and an 80 by 18 sparkline drawn at its own size. The graphic
-   never pushes the row taller than a line.
-
-   The colour is the field's `color`, worn as a class on the wrapper:
-   cg-c-ink (Quiet ink, the default), cg-c-icon (Color by icon) or
-   cg-c-accent (One accent hue). Each class sets the working colours a
-   shape reads (--cg-main, --cg-spark, --cg-win, --cg-loss, --cg-heat,
-   --cg-rate) from the tokens below, and every token has a dark twin. The
-   hues are the ramp's own dots (.hue-*), brightened for the dark theme. */
 :root {
   --wv-cg-ink: var(--tblr-body-color);
   --wv-cg-ink-2: var(--tblr-secondary);
@@ -2861,20 +1752,15 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .cg-c-ink { --cg-main: var(--wv-cg-ink); --cg-spark: var(--wv-cg-ink-2); --cg-win: var(--wv-cg-ink); --cg-loss: var(--wv-cg-empty); --cg-heat: color-mix(in srgb, var(--wv-cg-ink) 55%, transparent); --cg-rate: var(--wv-cg-ink); }
 .cg-c-icon { --cg-main: var(--wv-cg-teal); --cg-spark: var(--wv-cg-blue); --cg-win: var(--wv-cg-green); --cg-loss: var(--wv-cg-red); --cg-heat: var(--wv-cg-orange); --cg-rate: var(--wv-cg-accent); }
 .cg-c-accent { --cg-main: var(--wv-cg-accent); --cg-spark: var(--wv-cg-accent); --cg-win: var(--wv-cg-accent); --cg-loss: var(--wv-cg-accent-soft); --cg-heat: var(--wv-cg-accent); --cg-rate: var(--wv-cg-accent); }
-/* Color by icon: a rating's filled icons take the icon's own hue. */
 .wv-rating.cg-c-icon[data-hue="amber"] { --cg-rate: var(--wv-cg-amber); }
 .wv-rating.cg-c-icon[data-hue="rose"] { --cg-rate: var(--wv-cg-rose); }
 .wv-rating.cg-c-icon[data-hue="violet"] { --cg-rate: var(--wv-cg-violet); }
 .wv-rating.cg-c-icon[data-hue="orange"] { --cg-rate: var(--wv-cg-orange); }
 
-/* The number display. */
 .cg-wrap { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; position: relative;
   vertical-align: middle; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
 .cg-wrap .cg { flex: none; display: block; }
 .cg-wrap .cg-text { flex: none; overflow: hidden; text-overflow: ellipsis; }
-/* A bar at the left of the cell and its figure right-aligned after it, so
-   bars start on one line and figures end on another. A ring hugs its
-   percent. */
 .cg-wrap.cg-bar { display: flex; width: 100%; }
 .cg-wrap.cg-bar .cg-text { flex: 1 1 auto; text-align: right; }
 .cg-wrap.cg-bar .cg { width: 80px; height: 6px; }
@@ -2886,8 +1772,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .cg-wrap.cg-heat { padding: 0 8px; min-width: 32px; justify-content: center; border-radius: 4px; isolation: isolate; }
 .cg-wrap.cg-heat .cg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
 .cg-heat .cg-fill { fill: var(--cg-heat); }
-/* Color by icon runs heat from cool to warm with the share (--cg-f, set on
-   the tint itself by public/cell-graphics.js). */
 .cg-c-icon .cg-heat .cg-fill { fill: color-mix(in oklab, var(--wv-cg-orange) var(--cg-f, 50%), var(--wv-cg-teal)); }
 .wv-grid .cg-wrap { font-size: var(--wv-grid-font); }
 .wv-card-fields dd .cg-wrap.cg-bar, .mention-f .cg-wrap.cg-bar { width: auto; }
@@ -2898,9 +1782,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .cg-preview-row { display: flex; justify-content: flex-end; }
 .cg-preview-row .cg-wrap.cg-bar { width: 100%; }
 
-/* The rating: `max` 14px icons 1px apart, the first n filled, the rest as
-   hairline outlines. Editable icons are bare buttons: no box, no focus stop
-   of their own (the cell is the stop), a pointer and a hover lift. */
 .wv-rating { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; white-space: nowrap; line-height: 1; }
 .wv-rate-ico, .wv-rate-mini { display: inline-flex; flex: none; padding: 0; border: 0; background: none; color: var(--wv-cg-empty); font-size: 14px; line-height: 1; }
 :is(.wv-rate-ico, .wv-rate-mini) .wv-icon, :is(.wv-rate-ico, .wv-rate-mini) .wv-icon svg { width: 14px; height: 14px; margin: 0; }
@@ -2909,21 +1790,13 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 :is(.wv-rate-ico, .wv-rate-mini).on svg { fill: currentColor; }
 .wv-rating.editable .wv-rate-ico { cursor: pointer; }
 .wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--cg-rate, var(--wv-cg-ink)); }
-/* The compact form (Issue #404), shown by the grid's layout sheet only in
-   a column too narrow for the icons: one icon and "3/12". */
 .wv-rating > .wv-rating-compact { display: none; align-items: center; gap: 3px; font-size: var(--wv-grid-font); color: var(--tblr-body-color); font-variant-numeric: tabular-nums; }
 .wv-rating-max { display: flex; gap: 8px; align-items: center; }
 .wv-rating-icon { display: inline-flex; gap: 6px; align-items: center; }
-/* The default picker (Feature #234): the field's own icons, a size up from
-   the grid cell, wrapping when the max is long; focusable for the keys
-   (the one focus ring, Issue #378, draws its focus). */
 .wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; gap: 2px; }
 .wv-rating-default .wv-rate-ico { font-size: 19px; }
 .wv-rating-default .wv-rate-ico .wv-icon, .wv-rating-default .wv-rate-ico .wv-icon svg { width: 19px; height: 19px; }
 
-/* The sparkline: 80 by 18, never stretched — a line with a dot on the
-   newest point, columns standing on zero, or small win/loss blocks about a
-   midline. */
 .cg-wrap.cg-sparkwrap { display: inline-flex; width: 80px; height: 18px; }
 .cg-wrap.cg-sparkwrap .cg { width: 80px; height: 18px; }
 .cg-spark-line .cg-fill { stroke: var(--cg-spark); fill: none; }
@@ -2935,8 +1808,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .cg-spark-winloss .cg-track { stroke: var(--wv-cg-hair); stroke-width: 1; }
 .cg-spark-preview .cg-sparkwrap, .cg-spark-preview .cg-sparkwrap .cg { width: 160px; height: 36px; }
 
-/* The Color picker (Feature #235): three swatches, each a live sample of
-   the field in that setting, beside Display. */
 .wv-color-pick { display: flex; flex-wrap: wrap; gap: 6px; }
 .wv-color-opt { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 112px; padding: 6px 8px;
   border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 12px; cursor: pointer; }
@@ -2948,55 +1819,30 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .wv-color-opt .wv-color-label { color: var(--tblr-secondary); }
 .wv-color-opt[aria-pressed="true"] .wv-color-label { color: var(--tblr-body-color); font-weight: 600; }
 
-/* ---------- the formula tray's reference (Issue #389) ----------
-   The field and function chips fold behind one summary under the result's
-   Display, Style, Color and Sample. */
 .fx-ref { margin-top: 10px; }
 .fx-ref > summary { cursor: pointer; font-size: 12.5px; color: var(--tblr-body-color); font-weight: 600; }
 .fx-ref > summary .fx-ref-hint { margin-left: 8px; font-weight: 400; color: var(--tblr-secondary); }
 .fx-ref[open] > summary { margin-bottom: 6px; }
 
-/* ---------- accessibility baseline (Issue #378) ----------
-   Finding F2 of the 2026-09-26 design pass, gated by
-   test/a11y-browser.test.mjs (axe-core, both themes). */
-
-/* One focus ring, everywhere: 2px of the primary, clear of the control.
-   Nav rows wore the browser's default, toolbar buttons Tabler's 25% halo
-   (2.16:1 light, 1.45:1 dark), and the name and title fields none at all.
-   !important because Tabler and a dozen weave rules set `outline: 0` on
-   focus; the grid keeps its inset cell ring, which is this ring drawn in.
-   The ⌘K input is the one control its dialog has and holds focus the whole
-   time it is open; its caret and the selected row say where you are
-   (Issue #382). */
 :focus-visible { outline: 2px solid var(--tblr-primary) !important; outline-offset: 2px; }
 .btn { --tblr-btn-focus-box-shadow: 0 0 0 0 transparent; }
 .wv-grid :focus-visible, .nav-caret:focus-visible, .nav-db:focus-visible { outline-offset: -2px; }
 .wv-grid tbody td[tabindex]:focus-visible,
 #main:focus-visible, .vditor-reset:focus-visible, #cmdk-input:focus-visible { outline: none !important; }
 
-/* Skip to content: the first Tab stop, out of sight until it has focus. */
 .skip-link { position: fixed; left: 12px; top: -48px; z-index: 1000; padding: 8px 14px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); box-shadow: var(--wv-panel-shadow); text-decoration: none; font-weight: 600; }
 .skip-link:focus { top: 12px; }
 
-/* A control you type into or tick shows its edge at 3:1. The grid's cells
-   rest as values and keep their borderless costume. */
 .form-control:not(.inline-edit), .form-select:not(.inline-edit), .form-check-input { border-color: var(--wv-control-border); }
 
-/* 24px targets (WCAG 2.5.8). The glyph keeps its size; an invisible ::after
-   grows the part that takes the click. */
 .doc-caret, .mention-caret, .add-field-btn, #nav-collapse, .nav-db-menu .dots-btn, td.pid-cell a.open-link { position: relative; }
 .doc-caret::after, .mention-caret::after, .add-field-btn::after, #nav-collapse::after,
 .nav-db-menu .dots-btn::after, td.pid-cell a.open-link::after {
   content: ''; position: absolute; left: 50%; top: 50%;
   width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%);
 }
-/* The mention caret sits inside its chip's link, between the label and the
-   ↗: a wider target would take the link's clicks, so it grows only in height
-   until the chip gives it room of its own (Issue #397). */
 .mention-caret::after { width: 100%; }
 
-/* Table toolbar (Feature #237): controls stay on the breadcrumb eyebrow.
-   View, density and fields are adjacent; Table actions remains last. */
 .crumb-actions .table-search { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); gap: 0; }
 .crumb-actions .table-search-btn { border: 0; background: none; }
 .crumb-actions .table-search-input { display: block; width: 140px; min-width: 0; border: 0; background: transparent; box-shadow: none; padding-left: 2px; }
@@ -3045,15 +1891,9 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .table-fields-popover > .eye-row[aria-checked="true"]::after { content: '✓'; margin-left: auto; color: var(--tblr-primary); }
 @media (max-width: 700px) { .crumb-actions .table-search { flex: 1; } .crumb-actions .table-search-input { width: 100%; min-width: 80px; } .table-control-label { max-width: 110px; } }
 @media (pointer: coarse) { .table-control-popover :is(.chip-pop-row,.filter-chip,.seg-opt,.view-tab,.field-reorder-handle) { min-height: 44px; } }
-/* Keep actions visible while a long field list scrolls inside the picker. */
 .table-fields-popover > :not(.table-field-list) { flex-shrink: 0; }
 .table-field-list { min-height: 0; overflow-y: auto; flex: 0 1 auto; position: relative; scroll-snap-type: y mandatory; overscroll-behavior: contain; }
 
-/* ---------- one checkbox (Issues #441, #384) ----------
-   weave's checkbox is input.form-check-input: the field dialog, settings,
-   the checkbox cell, the grid's row selector, the Fields and the Filters
-   popovers all draw it. The grid's selector keeps its fade-in. A checkbox
-   row puts the box on its label's first line, never over it. */
 .wv-grid input.sel-box.form-check-input { transition: opacity .12s ease, background .1s, border-color .1s; }
 .form-check { display: flex; align-items: flex-start; gap: 8px; padding-left: 0; min-height: 0; }
 .form-check > input.form-check-input { float: none; margin: 2px 0 0; flex-shrink: 0; }
@@ -3061,19 +1901,12 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .table-control-popover label.eye-row .form-check-input,
 .table-filter-popover .filter-chip .form-check-input { margin: 0; }
 
-/* ---------- the Fields popover's drag (Issue #445) ---------- */
 .table-fields-popover label.eye-row { cursor: grab; user-select: none; -webkit-user-select: none; }
 .table-fields-popover label.eye-row .form-check-input { cursor: pointer; }
-/* Reboot's [type=button]:not(:disabled) pointer would win over a bare class. */
 .table-fields-popover .field-reorder-handle:not(:disabled) { cursor: grab; }
 .drop-line { position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 0; background: var(--tblr-primary); pointer-events: none; z-index: 2; }
 html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
 
-/* ---------- the Views list (Issue #443; Kyle's rulings 2026-09-27) ----------
-   Every row: a drag handle, the name, "Opens first" on the first row, the
-   Rename / Duplicate / hold-to-delete buttons on hover or keyboard focus,
-   and the check on the view on screen. New view and Duplicate name the
-   view in an inline row. */
 .table-view-popover .view-row { display: flex; align-items: center; gap: 2px; padding: 0 6px 0 0; }
 .table-view-popover .view-grip { border: 0; background: none; color: var(--tblr-secondary); padding: 9px 4px 9px 6px; border-radius: 6px; display: grid; place-items: center; opacity: .7; touch-action: none; }
 .table-view-popover .view-grip:not(:disabled) { cursor: grab; }
@@ -3097,9 +1930,6 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
 .table-view-popover .view-edit-hint { font: 10.5px var(--tblr-font-monospace, ui-monospace, monospace); color: var(--tblr-secondary); padding: 0 6px; white-space: nowrap; }
 @media (pointer: coarse) { .table-view-popover .view-acts { opacity: 1; } }
 
-/* ---------- the Filters popover (Issues #319, #448) ----------
-   The groups scroll under a still footer: the count on the left, Clear all
-   on the right. An option wears its hue's dot. */
 .table-filter-popover { overflow: hidden; }
 .table-filter-popover > :not(.filter-strip) { flex-shrink: 0; }
 .table-filter-popover .filter-scroll { min-height: 0; flex: 0 1 auto; overflow-y: auto; overscroll-behavior: contain; }

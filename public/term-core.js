@@ -1,16 +1,3 @@
-/* What one row is called — the pure half (Feature #40, moved onto the Name
-   field 2026-09-02). A table of deals holds deals, not "entities" and not
-   "rows": every surface that names a row reads the term from here, so the
-   quick-create button, the puck, the trash toggle and the empty state agree.
-
-   The term is Name-field config — `config.term = { singular, plural }` — because
-   the Name field is the one field every table is guaranteed to have and can
-   never lose (the same guarantee `descriptionFieldId` leans on). Absent means
-   the default, "record". Stored lowercase; surfaces capitalise when a sentence
-   starts with it (`cap`).
-
-   Loaded by the browser as a classic script and by src/engine.js as a
-   side-effect import, so it speaks only globalThis. */
 (function (root) {
   const GROUPS = [
     ['General', ['record', 'item', 'entry', 'row', 'asset', 'document', 'note', 'idea', 'goal']],
@@ -36,8 +23,6 @@
     return w + 's';
   }
 
-  /* A term as the engine stores it. Throws a plain Error; the engine wraps it
-     as `invalid`, the dialog shows the message. */
   function normalize(term) {
     if (!term || typeof term !== 'object') throw new Error('A term is { singular, plural } (e.g. { singular: "deal" })');
     const clean = (v, what) => {
@@ -51,8 +36,6 @@
     return { singular, plural };
   }
 
-  /* The term a surface should speak, from a Name field's config. `set` tells
-     the dialog whether to offer a reset. */
   function resolve(config) {
     const t = config && config.term;
     if (!t || !t.singular) return { ...DEFAULT, set: false };
@@ -66,7 +49,6 @@
 
   function cap(s) { s = String(s ?? ''); return s.charAt(0).toUpperCase() + s.slice(1); }
 
-  /* Flat picker options: id is the stored singular, group is the hint. */
   function options() {
     return GROUPS.flatMap((g) => g.terms.map((t) => ({ id: t, label: cap(t), group: g.name })));
   }

@@ -1,33 +1,17 @@
-/* Relation-map layout (Feature: one map, two altitudes).
-
-   There were two maps: a mermaid render on the workspace home, whose CONTENT
-   was right — user tables only, grouped by their space, one labelled arrow
-   per relation — and a hand-drawn SVG behind #/map, whose DESIGN was right —
-   weave's own cards, chips and type. This module is the shared half of the
-   one map that replaces both: pure geometry, no DOM, so the same view can be
-   drawn full-page, on the workspace home, and inside a single space.
-
-   Layout is a column per space, in schema order, nodes stacked inside it.
-   Circles read as decoration once there are more than a handful of tables;
-   columns say "this space holds these tables" the way the subgraphs did.
-
-   Classic script + node-importable, same shape as graph-parse.js. */
 (function (root) {
   const DEFAULTS = {
     nodeW: 190, nodeH: 58,
-    gapX: 78, gapY: 30,     // between columns / between nodes in a column
-    padX: 16, padY: 14,     // inside a space box
-    titleH: 26,             // space name above its nodes
-    selfH: 20,              // headroom for a self-relation's loop and label
-    autoH: 25,              // one automation pill under a node, plus its leader
+    gapX: 78, gapY: 30,
+    padX: 16, padY: 14,
+    titleH: 26,
+    selfH: 20,
+    autoH: 25,
     top: 10, left: 10, bottom: 16,
-    autoCounts: null,       // { [tableId]: number } — pills to reserve room for
+    autoCounts: null,
   };
 
   const card = (many) => (many ? '∗' : '1');
 
-  /* Where the segment from `a`'s centre to `b`'s centre leaves `a`'s box.
-     Edges meet the card, not its middle, so an arrowhead lands on the edge. */
   function border(a, b, w, h) {
     const dx = b.x - a.x, dy = b.y - a.y;
     if (!dx && !dy) return { x: a.x, y: a.y };
@@ -39,13 +23,9 @@
 
   function relmapLayout(tables, opts = {}) {
     const o = { ...DEFAULTS, ...opts };
-    // User structure only. The registry describes itself, so drawing it
-    // doubles every edge with bookkeeping nobody is looking for here.
     const all = (tables ?? []).filter((t) => !t.system);
     const byId = new Map(all.map((t) => [t.id, t]));
 
-    // A space-level map is that space plus whatever it actually touches:
-    // the neighbours come along, marked foreign, or its edges lead nowhere.
     const inScope = o.spaceId ? all.filter((t) => t.spaceId === o.spaceId) : all;
     const scope = new Map(inScope.map((t) => [t.id, t]));
     if (o.spaceId) {
@@ -68,8 +48,6 @@
       }
     }
 
-    // Columns in first-seen order — the schema's own order, which is the
-    // order the sidebar lists spaces in.
     const columns = [];
     const colOf = new Map();
     for (const t of all) {
@@ -80,9 +58,6 @@
     }
     if (!columns.length) return { width: 0, height: 0, groups: [], nodes: [], edges: [] };
 
-    // A table that relates to itself wears a loop and its label above the
-    // card; a table with automations wears pills below it. Both need room
-    // reserved before anything is placed, or the column overlaps itself.
     const loops = new Set(all.filter((t) => (t.fields ?? []).some((f) => f.type === 'relation' && f.targetDbId === t.id)).map((t) => t.id));
     const autos = (id) => Number(o.autoCounts?.[id] ?? 0);
 
@@ -115,8 +90,6 @@
     }
     const pos = new Map(nodes.map((n) => [n.id, n]));
 
-    // One edge per relation pair: a relation and its inverse are the same
-    // line, and the label carries both ends' cardinality.
     const edges = [];
     const seen = new Set();
     for (const t of all) {
@@ -125,7 +98,6 @@
         if (f.type !== 'relation' || seen.has(f.id) || seen.has(f.inverseFieldId)) continue;
         seen.add(f.id);
         if (f.inverseFieldId) seen.add(f.inverseFieldId);
-        // A target-set relation is one field but one edge per member table.
         for (const tid of (f.targetDbIds ?? [f.targetDbId])) {
         const b = pos.get(tid);
         if (!b) continue;
@@ -133,9 +105,6 @@
         const inv = byId.get(tid)?.fields?.find((x) => x.id === f.inverseFieldId);
         const label = `${f.name} ${card(inv?.many)}–${card(f.many)}`;
         if (a.id === b.id) {
-          // The loop arcs off the right edge into the column gap; its label
-          // goes above the card, where selfH already reserved the room — to
-          // the right it would run into the next column or off the canvas.
           const top = a.y - a.h / 2;
           edges.push({
             fromId: a.id, toId: b.id, label, self: true,
@@ -155,8 +124,6 @@
       }
     }
 
-    // The canvas holds the boxes AND what hangs off them — a loop arcs into
-    // the column gap, and off the last column that gap does not exist.
     const right = Math.max(
       ...groups.map((g) => g.x + g.w),
       ...edges.filter((e) => e.self).map((e) => e.x1 + 40),
