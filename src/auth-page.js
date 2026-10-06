@@ -15,7 +15,7 @@
    The built-in passkey door that used to sit here was removed in Feature
    #243; the provider sends the browser back through ?next itself. */
 
-const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+import { escapeHtml as esc } from './markdown.js';
 
 const CSS = `
 :root{

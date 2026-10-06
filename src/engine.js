@@ -622,7 +622,6 @@ const { dressNumber } = globalThis.weaveNumberCore;
 /* The date costume, mirrored in public/date-core.js and contract-tested
    against it. Format the stored wall-clock parts, never the local zone's
    reading of them — '2026-08-21' must never render as Aug 20. */
-const COSTUME_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function dressDate(c, iso) { return DG.formatDate(iso, c); }
 
 /* A formula's costume (Issue #576): a `grain` says the result is a date and
@@ -1111,6 +1110,9 @@ export function runDeferredMigrations() {
     try { w.settleDeferred(); } catch (err) { console.warn(`weave: deferred migration of ${w.store.path} failed: ${err.message}`); }
   }
 }
+
+// The one-time sign-in link an invite or identity link hands over (Issue #569).
+export const inviteUrl = (origin, code) => `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(code)}`;
 
 export class Weave {
   // Entity ids mutated since the last save — the store flushes only these
@@ -3773,7 +3775,7 @@ export class Weave {
     const accounts = (this.state.meta.accounts ??= {});
     if (Object.values(accounts).some((a) => a.name === name)) throw new WeaveError(`Account '${name}' already exists`, 'conflict');
     const token = 'wv_' + randomBytes(24).toString('base64url');
-    const account = { id: uuid(), name, role, tokenHash: createHash('sha256').update(token).digest('hex'), createdAt: nowISO() };
+    const account = { id: uuid(), name, role, tokenHash: this.#hash(token), createdAt: nowISO() };
     accounts[account.id] = account;
     this.save();
     this.#audit('account-created', { name, role });
@@ -3784,7 +3786,7 @@ export class Weave {
 
   verifyToken(token) {
     if (!token) return null;
-    const h = createHash('sha256').update(String(token)).digest('hex');
+    const h = this.#hash(token);
     const a = Object.values(this.state.meta.accounts ?? {}).find((x) => x.tokenHash === h);
     if (!a) return null;
     const { tokenHash, ...pub } = a;

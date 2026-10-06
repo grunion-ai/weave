@@ -19,10 +19,10 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { renderMarkdown } from './markdown.js';
 import { markParts, PALETTE } from './mark.js';
 import { fileHeaders, WeaveError } from './engine.js';
+import { esc } from './mail.js';
 
 const COOKIE = 'wv_applet';
 const YEAR = 31536000;
-const ACTIVE = ['Open', 'In Progress', 'Review'];
 
 /* Wrong guesses are cheap over a LAN; this makes them cost time. The window
    is per process — the applet is a single-user surface, not a login page. */
@@ -61,10 +61,6 @@ const cookieValue = (header, name) => {
   }
   return null;
 };
-
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
-  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-));
 
 /* What the phone needs to know about the table it is pointed at. The applet
    bakes in no field names: the workflow field is whichever one has that type,

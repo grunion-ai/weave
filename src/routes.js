@@ -4,11 +4,11 @@
 // runs under node (src/server.js wraps it) and workerd (src/worker.js will).
 // The adapter owns transport: reading the body stream, writing the response,
 // and static assets (node reads public/; Workers bind Static Assets).
-import { Weave, WeaveError, fileHeaders, logoType } from './engine.js';
+import { Weave, WeaveError, fileHeaders, logoType, inviteUrl } from './engine.js';
 import { handleApplet } from './applet.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
-import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
+import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 // Loaded on demand: the vendored decklet engine resolves its own directory
 // from import.meta.url at module scope, which is undefined inside a bundled
@@ -35,8 +35,7 @@ const STARTED_AT = new Date().toISOString();
 /* What a browser sees at the wall (Feature #222 phase 0): the condition and
    the ways in — the provider's sign-in page (door C, Feature #212) when one
    is configured, a Bearer token, a share link. */
-const escHtml = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
+const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
 /* ---------- sign-in plumbing (Feature #222 part 2, Feature #212) ----------
    A provider trip's secrets live five minutes in memory, keyed by the state
@@ -245,13 +244,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const v = weave.viewByShareToken(shareM[1]);
         if (!v) return out(404, 'This share link is not (or no longer) valid.');
         const resolved = weave.resolveView(v.id);
-        const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        const block = (b) => `<h2>${esc(b.table)}</h2><table><thead><tr>${
-          Object.keys(b.items[0]?.fields ?? { '—': 1 }).map((k) => `<th>${esc(k)}</th>`).join('')
+        const block = (b) => `<h2>${escapeHtml(b.table)}</h2><table><thead><tr>${
+          Object.keys(b.items[0]?.fields ?? { '—': 1 }).map((k) => `<th>${escapeHtml(k)}</th>`).join('')
         }</tr></thead><tbody>${
-          b.items.map((e) => `<tr>${Object.values(e.fields).map((val) => `<td>${esc(Array.isArray(val) ? val.map((x) => x?.name ?? x).join(', ') : (val && typeof val === 'object' ? val.name ?? '' : val ?? ''))}</td>`).join('')}</tr>`).join('')
+          b.items.map((e) => `<tr>${Object.values(e.fields).map((val) => `<td>${escapeHtml(Array.isArray(val) ? val.map((x) => x?.name ?? x).join(', ') : (val && typeof val === 'object' ? val.name ?? '' : val ?? ''))}</td>`).join('')}</tr>`).join('')
         }</tbody></table>`;
-        return out(200, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(resolved.name)}</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:960px;margin:2rem auto;padding:0 16px;color:#1a1d21}table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0 0 24px}th,td{border:1px solid #d9dde3;padding:5px 9px;text-align:left}th{background:#f4f6f8}h1{font-size:22px}h2{font-size:15px;margin:20px 0 6px}footer{color:#6b7280;font-size:12px;margin-top:32px}</style><h1>${esc(resolved.name)}</h1>${resolved.blocks.map(block).join('')}<footer>Shared read-only from a weave workspace.</footer>`,
+        return out(200, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(resolved.name)}</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:960px;margin:2rem auto;padding:0 16px;color:#1a1d21}table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0 0 24px}th,td{border:1px solid #d9dde3;padding:5px 9px;text-align:left}th{background:#f4f6f8}h1{font-size:22px}h2{font-size:15px;margin:20px 0 6px}footer{color:#6b7280;font-size:12px;margin-top:32px}</style><h1>${escapeHtml(resolved.name)}</h1>${resolved.blocks.map(block).join('')}<footer>Shared read-only from a weave workspace.</footer>`,
           { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
       }
     }
@@ -862,7 +860,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/invites') return out(200, weave.listInvites());
         if (route === 'POST /api/invites') {
           const made = weave.inviteMember({ email: body?.email, role: body?.role ?? 'editor', issuer: body?.issuer ?? oidc?.issuer });
-          const url = `${originFor(rx)}${wsPrefix}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}`;
+          const url = inviteUrl(`${originFor(rx)}${wsPrefix}`, made.code);
           let sent = { mailed: false };
           if (mail) {
             try {
@@ -898,7 +896,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const ref = decodeURIComponent(m[1]);
           if (rx.method === 'POST') {
             const made = weave.linkIdentity(ref, { issuer: body?.issuer ?? oidc?.issuer, email: body?.email });
-            return out(201, { ...made, url: `${originFor(rx)}${wsPrefix}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
+            return out(201, { ...made, url: inviteUrl(`${originFor(rx)}${wsPrefix}`, made.code) });
           }
           if (rx.method === 'DELETE') return out(200, weave.unlinkIdentity(ref, { issuer: rx.searchParams?.get('issuer') ?? null, subject: rx.searchParams?.get('subject') }));
         }

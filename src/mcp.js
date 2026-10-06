@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
-import { Weave } from './engine.js';
+import { Weave, inviteUrl } from './engine.js';
 const PROTOCOL_VERSION = '2024-11-05';
 // Lazy-tolerant, same reason as pdf.js's font path: module-top file reads
 // crash the workerd bundle at cold start. The HTTP transport passes the real
@@ -594,6 +594,9 @@ export function listTools(profile = toolProfile()) {
   return profile === 'all' ? TOOLS : TOOLS.filter((t) => CORE_TOOLS.has(t.name));
 }
 
+// WEAVE_ORIGIN as the invite links root it: trimmed, no trailing slash, '' when unset.
+const envOrigin = () => process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+
 /* tools/call, with weave_call unwrapped: the inner tool gets the same admin
    gate, compact reply and verbose switch as a direct call. */
 function callTool(weave, name, rawArgs, caller) {
@@ -826,15 +829,13 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
            address; a hub member's invite opens under /w/<name>/ instead. */
         case 'link-identity': {
           const made = weave.linkIdentity(args.account ?? args.name, { issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER, email: args.email });
-          const origin = process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
-          return { ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` };
+          return { ...made, url: inviteUrl(envOrigin(), made.code) };
         }
         case 'unlink-identity': return weave.unlinkIdentity(args.account ?? args.name, { issuer: args.issuer ?? null, subject: args.subject });
         // A new person, invited to this workspace (Issue #569).
         case 'invite': {
           const made = weave.inviteMember({ email: args.email, role: args.role ?? 'editor', issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER });
-          const origin = process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
-          return { ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` };
+          return { ...made, url: inviteUrl(envOrigin(), made.code) };
         }
         case 'invites': return { invites: weave.listInvites() };
         case 'revoke-invite': return weave.revokeInvite(args.invite ?? args.id);

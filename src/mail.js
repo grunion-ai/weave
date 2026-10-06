@@ -3,8 +3,8 @@
    design on 2026-10-03 (design review "Weave invite emails"); the copy, the
    layout, the colours and the sizes are that review's, word for word.
 
-   Pure functions with no imports, so they run under node and workerd like
-   src/auth-page.js. Each returns { subject, preheader, html, text }.
+   Pure functions with no imports, so they run under node and workerd.
+   Each returns { subject, preheader, html, text }.
 
    One html document per email. The light palette sits inline on every
    element that carries colour or shape, because Gmail drops some <style>
@@ -28,7 +28,7 @@ const C = {
   dark: { canvas: '#0b1220', card: '#111a2b', line: '#22304a', ink: '#eef2f8', body: '#c9d2df', muted: '#94a0b4', panel: '#0f1828', btn: '#3b82f6', btnFg: '#ffffff', link: '#7fb0ff', tile: '#3b82f6', tileFg: '#ffffff', eyebrow: '#7fb0ff' },
 };
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const art = (word) => (/^[aeiou]/i.test(word) ? 'an' : 'a');
 const first = (s) => ([...String(s ?? '')][0] ?? '').toUpperCase();
 const roleOf = (role) => {
