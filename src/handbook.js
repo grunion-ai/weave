@@ -1175,7 +1175,7 @@ weave automation create Task --name 'Log completion' \\
               {"type":"add-comment","text":"{{Name}} moved to Done."}]'
 \`\`\`
 
-Triggers fire on create, update, and state change. Actions set fields, move state, append to a document, add a comment, or POST a webhook. \`{{Field}}\` placeholders read the row; an empty one reads \`(no Field)\`.
+Triggers fire on create, update, and state change. Actions set fields, move state, append to a document, add a comment, or POST a webhook. A webhook that answers non-2xx, does not answer within 5 seconds, or cannot connect marks its Workflows row Failed with the reason; the write that fired it still lands. \`{{Field}}\` placeholders read the row; an empty one reads \`(no Field)\`.
 
 ## Decks
 

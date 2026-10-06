@@ -6258,6 +6258,8 @@ export class Weave {
   #wfRows = null;
   #wfRules = null;
   #noWebhooks = false;
+  #wfRun = new Map();
+  webhookTimeoutMs = 5000;
 
   createAutomation(dbRef, { name, trigger, actions, enabled = true }) {
     const db = this.getTable(dbRef);
@@ -6645,12 +6647,15 @@ export class Weave {
       if (t.toStateId && t.toStateId !== event.toStateId) continue;
       const name = reg.entityName(rule.row);
       let failure = null;
+      const run = { failed: false };
+      reg.#wfRun.set(rule.row.id, run);
       const person = this.actor;
       this.actor = workflowActor(rule.row.id);
       try {
-        for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth);
+        for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth, run);
       } catch (err) {
         failure = err.message;
+        run.failed = true;
       } finally {
         this.actor = person;
       }
@@ -6660,7 +6665,7 @@ export class Weave {
     }
   }
 
-  #runAction(rule, name, action, db, e, event, depth) {
+  #runAction(rule, name, action, db, e, event, depth, run) {
     if (action.type === 'set-field') {
       const f = db.fields[action.fieldId];
       if (f) {
@@ -6691,12 +6696,32 @@ export class Weave {
         automation: name,
         at: nowISO(),
       };
+      const reg = this.#reg;
+      const ms = this.webhookTimeoutMs;
       fetch(action.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).catch(() => {});
+        signal: AbortSignal.timeout(ms),
+      }).then((res) => {
+        res.body?.cancel().catch(() => {});
+        return res.ok ? null : `HTTP ${res.status}`;
+      }, (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.message ?? String(err)))
+        .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${new URL(action.url).host}: ${why}`); })
+        .catch(() => {});
     }
+  }
+
+  #webhookFailed(id, run, reason) {
+    if (this.#wfRun.get(id) !== run || run.failed) return;
+    run.failed = true;
+    const row = own(this.state.entities, id);
+    if (!row || row.deletedAt) return;
+    this.#stamp(row, () => {
+      this.#setOption(row, this.#wfField('Health'), 'Failed');
+      row.values[this.#wfField('Health Reason').id] = reason;
+    });
+    this.save();
   }
 
   #template(text, e, db) {
