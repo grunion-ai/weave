@@ -152,7 +152,8 @@ Entities
   restore <ref>                       Bring a soft-deleted entity back
   trash [table]                       Deleted entities, one table or all
   stats <table> [--by F] [--where J]  Every column summarised (sum/avg/median/min/max/stdev, histograms,
-                                      distributions, date spans), the space rollups on the table, groups by F
+                                      distributions, date spans), the space rollups on the table, groups by F;
+                                      --field F answers for one column and its rollups
   state <ref> <field> <state>         Move workflow state
   link <ref> <field> <target...>
   bulk <set|link|move|rollup> <ref...> [--values '{json}'] [--field F --targets a,b] [--table T] [--name N]
@@ -701,8 +702,8 @@ async function main() {
     case 'trash':
       return out(w.listTrash(args[0] ?? null));
     case 'stats': {
-      if (!args[0]) throw new Error('Usage: stats <table> [--by Field] [--where json]');
-      return out(w.tableStats(args[0], { by: flags.by ?? null, where: flags.where ? JSON.parse(flags.where) : null }));
+      if (!args[0]) throw new Error('Usage: stats <table> [--by Field] [--where json] [--field F]');
+      return out(w.tableStats(args[0], { by: flags.by ?? null, where: flags.where ? JSON.parse(flags.where) : null, field: flags.field ?? null }));
     }
     case 'state': {
       const [ref, field, ...stateParts] = args;

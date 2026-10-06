@@ -5458,7 +5458,8 @@ export class Weave {
         const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
         const looped = vals.find(isCycle);
         if (looped) return looped;
-        const display = rows.map((t, i) => this.#displayValue(targetDb, targetField, vals[i], t));
+        const display = ['distinct', 'join'].includes(field.config.aggregate)
+          ? rows.map((t, i) => this.#displayValue(targetDb, targetField, vals[i], t)) : null;
         return aggregateValues(field.config.aggregate, vals, { display, separator: field.config.separator ?? ', ' });
       }
       case 'view':
@@ -5632,8 +5633,9 @@ export class Weave {
     throw new WeaveError('Invalid where node', 'invalid');
   }
 
-  tableRollups(dbRef) {
+  tableRollups(dbRef, { field = null } = {}) {
     const db = this.getTable(dbRef);
+    const under = field == null ? null : this.getField(db.id, field);
     const spacesT = this.#sysTable('spaces');
     const row = spacesT && this.#sysRow('spaces', db.spaceId);
     if (!row) return [];
@@ -5642,6 +5644,7 @@ export class Weave {
     for (const fid of spacesT.fieldOrder) {
       const f = spacesT.fields[fid];
       if (f?.type !== 'rollup' || f.config.via !== db.id) continue;
+      if (under && (f.config.targetField ?? db.nameFieldId) !== under.id) continue;
       const value = reg.#resolve(row, spacesT, f, 0);
       const display = value == null ? null : reg.#displayValue(spacesT, f, value, row);
       out.push({
@@ -5654,21 +5657,19 @@ export class Weave {
     return out;
   }
 
-  tableStats(dbRef, { by = null, where = null } = {}) {
+  tableStats(dbRef, { by = null, where = null, field = null } = {}) {
     const db = this.getTable(dbRef);
+    const only = field == null ? null : this.getField(db.id, field);
     let rows = this.listEntities(db.id);
     if (where && (Array.isArray(where) ? where.length : true)) {
       this.#checkWhere(db, where);
       rows = rows.filter((r) => this.#matchNode(r, db, Array.isArray(where) ? { and: where } : where));
     }
     const SKIP = new Set(['view', 'document', 'attachments', 'key', 'field']);
-    const fields = db.fieldOrder.map((id) => db.fields[id]).filter((f) => f && !SKIP.has(f.type));
+    const fields = db.fieldOrder.map((id) => db.fields[id]).filter((f) => f && !SKIP.has(f.type) && (!only || f.id === only.id));
     const isBlank = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
-    const read = (f) => {
-      const vals = rows.map((e) => this.#resolve(e, db, f, 0));
-      const display = rows.map((e, i) => this.#displayValue(db, f, vals[i], e));
-      return { vals, display };
-    };
+    const read = (f) => rows.map((e) => this.#resolve(e, db, f, 0));
+    const dressAll = (f, vals) => rows.map((e, i) => this.#displayValue(db, f, vals[i], e));
     const numericCostume = (f) => {
       if (f.type === 'number' || f.type === 'formula') return f.config;
       if (f.type === 'rollup') return this.#rollupTarget(db, f).targetField?.config ?? {};
@@ -5692,7 +5693,7 @@ export class Weave {
     };
     const dayOf = (iso) => Date.parse(String(iso).length <= 10 ? `${iso}T00:00:00Z` : iso);
     const columns = fields.map((f) => {
-      const { vals, display } = read(f);
+      const vals = read(f);
       const kind = kindOf(f, vals);
       const col = { id: f.id, name: f.name, type: f.type, kind, filled: vals.filter((v) => !isBlank(v)).length, empty: vals.filter(isBlank).length };
       if (kind === 'number') {
@@ -5700,7 +5701,7 @@ export class Weave {
         col.display = Object.fromEntries(Object.entries(col.summary).map(([k, v]) => [k, k === 'n' ? String(v) : dress(f, v)]));
         col.histogram = histogram(vals, 10).map((b) => ({ ...b, fromDisplay: dress(f, b.from), toDisplay: dress(f, b.to) }));
       } else if (kind === 'category') {
-        col.distribution = distribution(display);
+        col.distribution = distribution(dressAll(f, vals));
       } else if (kind === 'date') {
         const iso = vals.filter((v) => typeof v === 'string' && v);
         col.earliest = aggregateValues('min', iso);
@@ -5710,14 +5711,14 @@ export class Weave {
         col.spanDays = col.earliest == null ? null : Math.round((dayOf(col.latest) - dayOf(col.earliest)) / 86400000);
         col.byMonth = distribution(iso.map((v) => v.slice(0, 7)));
       } else {
-        col.distinct = aggregateValues('distinct', display);
+        col.distinct = aggregateValues('distinct', dressAll(f, vals));
       }
       return col;
     });
-    const out = { table: this.qualifiedName(db), rows: rows.length, columns, rollups: this.tableRollups(db.id) };
+    const out = { table: this.qualifiedName(db), rows: rows.length, columns, rollups: this.tableRollups(db.id, { field: only?.id ?? null }) };
     if (by) {
       const byF = this.getField(db.id, by);
-      const { display: keys } = read(byF);
+      const keys = dressAll(byF, read(byF));
       const numeric = columns.filter((c) => c.kind === 'number' && c.id !== byF.id).map((c) => db.fields[c.id]);
       const buckets = new Map();
       rows.forEach((e, i) => {

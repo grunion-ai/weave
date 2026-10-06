@@ -1016,10 +1016,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/stats$/)) && rx.method === 'GET') {
           const by = rx.searchParams.get('by') || null;
+          const field = rx.searchParams.get('field') || null;
           const raw = rx.searchParams.get('where');
           let where = null;
           if (raw) { try { where = JSON.parse(raw); } catch { return out(400, { error: 'where must be JSON' }); } }
-          return out(200, weave.tableStats(m[1], { by, where }));
+          return out(200, weave.tableStats(m[1], { by, where, field }));
         }
         if (path === '/api/trash' && rx.method === 'GET') {
           const items = weave.listTrash();

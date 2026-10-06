@@ -108,8 +108,8 @@ export const TOOLS = [
   },
   {
     name: 'weave_stats',
-    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query. Nothing is stored — to keep a figure on the record, add a rollup on the Workspace/Spaces row instead (weave_add_field with config.via).',
-    inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {} }, required: ['table'] },
+    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the row count rides with the name column). Nothing is stored — to keep a figure on the record, add a rollup on the Workspace/Spaces row instead (weave_add_field with config.via).',
+    inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {}, field: { type: 'string' } }, required: ['table'] },
   },
   {
     name: 'weave_undo',
@@ -634,7 +634,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_trash':
       return { items: weave.listTrash(args.table ?? null) };
     case 'weave_stats':
-      return weave.tableStats(args.table, { by: args.by ?? null, where: args.where ?? null });
+      return weave.tableStats(args.table, { by: args.by ?? null, where: args.where ?? null, field: args.field ?? null });
     case 'weave_undo':
       if (args.list) return { history: weave.listUndo({ limit: Number(args.limit ?? 20) }) };
       return weave.undo({ steps: Math.max(1, Number(args.steps ?? 1)) });
