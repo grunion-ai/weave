@@ -1386,8 +1386,8 @@ test('the chrome carries flat icons rather than emoji', () => {
 });
 
 test('a reference chip has an opaque ground', () => {
-  assert.ok(rulesFor('.doc-ref-layer a.doc-ref-chip').background,
-    'the chip must beat a.mention on its own terms');
+  assert.equal(rulesFor('.doc-ref-layer a.doc-ref-chip').background, 'var(--tblr-bg-surface)',
+    'the chip covers its literal with the editor’s own surface');
 });
 
 test('# searches entities inline, and a heading is still a heading', () => {
