@@ -1,21 +1,3 @@
-// Small safe formula evaluator for computed fields.
-//
-// Grammar (precedence low → high):
-//   or      := and ('or' and)*
-//   and     := cmp ('and' cmp)*
-//   cmp     := sum (('='|'!='|'<'|'<='|'>'|'>=') sum)?
-//   sum     := prod (('+'|'-') prod)*
-//   prod    := unary (('*'|'/'|'%') unary)*
-//   unary   := ('-'|'!') unary | atom
-//   atom    := number | string | 'true' | 'false' | 'null'
-//            | ident '(' args ')' | '[' field name ']' | ident | '(' or ')'
-//
-// Field references: [Field Name] (bracketed, any chars) or a bare identifier.
-// Functions: if(c,a,b), concat(...), round(x,n?), abs, min, max, len, lower,
-// upper, trim, contains(hay, needle), empty(x), today(), days(a,b), number(x),
-// text(x), sortby(values, keys). A formula may return a list (a lookup, or
-// sortby over one) or null.
-
 const FUNCS = {
   if: (c, a, b) => (truthy(c) ? a : b),
   concat: (...xs) => xs.map((x) => (x == null ? '' : String(x))).join(''),
@@ -38,10 +20,7 @@ const FUNCS = {
   today: () => new Date().toISOString().slice(0, 10),
   now: () => new Date().toISOString(),
   days: (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000),
-  // Date math (Feature #44). Units: days, weeks, months, years. dateadd
-  // returns the value's own shape — a date in, a date out.
   dateadd: (date, n, unit = 'days') => {
-    // An empty date is null, not the epoch: new Date(null) is 1970 (Issue #237).
     if (date == null || date === '') return null;
     const d = new Date(date);
     if (Number.isNaN(d.getTime())) return null;
@@ -62,19 +41,11 @@ const FUNCS = {
     if (!per) throw new Error(`Unknown date unit '${unit}'`);
     return Math.round(ms / per);
   },
-  // A partial date (2026-08, --08-15, ---15) holds only some parts; read
-  // those, and fall back to Date for anything else Date.parse understands.
   year: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.y : d ? new Date(d).getUTCFullYear() : null; },
   month: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.m : d ? new Date(d).getUTCMonth() + 1 : null; },
   day: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.d : d ? new Date(d).getUTCDate() : null; },
   number: (x) => Number(x),
   text: (x) => (x == null ? '' : String(x)),
-  /* Order a series by a parallel list of keys (Feature #232): a lookup reads
-     in relation order, so `sortby([Deal amounts], [Deal close dates])` puts
-     the amounts in date order. Ascending and stable; a blank key sorts last;
-     a blank value keeps its place beside its key. Two lookups over one
-     relation hold their blank slots in position, which is what keeps the
-     pairs together. A single value is its own series. */
   sortby: (values, keys) => {
     if (!Array.isArray(values)) return values;
     const ks = Array.isArray(keys) ? keys : [keys];
@@ -261,10 +232,6 @@ export function evaluate(expression, getField) {
   return result;
 }
 
-// Static validation for authoring surfaces (dialog, REST, MCP): parse and
-// resolve names without a real row. Field references are checked against
-// `fieldNames`; values are stubbed, so this catches syntax errors, unknown
-// functions and unknown fields — not data-dependent runtime results.
 export function check(expression, fieldNames = []) {
   if (!String(expression ?? '').trim()) return { ok: false, error: 'Formula is empty' };
   const known = new Set([...fieldNames, 'PublicId']);
@@ -279,11 +246,6 @@ export function check(expression, fieldNames = []) {
   }
 }
 
-// Every field a formula reads, in first-seen order — the dependency edges the
-// engine walks before it saves an expression (Issue #283). Both arms of if()
-// and both sides of and/or are evaluated eagerly by `evaluate`, so a resolver
-// that only records names sees every reference. A malformed expression yields
-// what it named before it broke; `check` is what reports the parse error.
 export function references(expression) {
   const names = [];
   try {
@@ -291,6 +253,6 @@ export function references(expression) {
       if (!names.includes(name)) names.push(name);
       return 0;
     });
-  } catch { /* not this function's verdict */ }
+  } catch {}
   return names;
 }

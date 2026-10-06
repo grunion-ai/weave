@@ -1,22 +1,3 @@
-/* The two emails weave sends (Feature #216): the invite a new person gets,
-   and the notice the inviter gets once it is accepted. Kyle approved the
-   design on 2026-10-03 (design review "Weave invite emails"); the copy, the
-   layout, the colours and the sizes are that review's, word for word.
-
-   Pure functions with no imports, so they run under node and workerd.
-   Each returns { subject, preheader, html, text }.
-
-   One html document per email. The light palette sits inline on every
-   element that carries colour or shape, because Gmail drops some <style>
-   rules; the <style> block keeps the phone layout and the dark palette,
-   under @media (prefers-color-scheme: dark), for the clients that honour it
-   (Apple Mail, iOS). The mark is a PNG weave serves itself, because Gmail
-   strips SVG: brand/render-png.mjs draws it from brand/build-logos.mjs.
-   `theme: 'light' | 'dark'` paints one palette inline with no media query,
-   which is what the preview route shows when asked for a theme. */
-
-/* Capability lines are the engine's roles (Feature #255): observer, editor,
-   architect. Chip colours are [background, text]. */
 export const ROLES = {
   observer: { name: 'Observer', line: 'view and comment', chip: ['#eef1f5', '#3d4757'], chipDark: ['#1c2638', '#c5cedb'] },
   editor: { name: 'Editor', line: 'view, create and edit entries', chip: ['#e6eeff', '#1d4ed8'], chipDark: ['#13264d', '#93b8ff'] },
@@ -36,14 +17,9 @@ const roleOf = (role) => {
   if (!r) throw new Error(`No email copy for role '${role}' (${Object.keys(ROLES).join(', ')})`);
   return r;
 };
-/* "October 10", the way the review writes a date. UTC, so the day does not
-   move with the server's zone. */
 export const longDate = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
 
 const FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-/* Every class, as the review's stylesheet wrote it. Each one is inlined on
-   the element that carries it; the dark block is the declarations that
-   change between the palettes, so one table drives both. */
 const STYLE = (c) => ({
   body: `margin:0;padding:0;background:${c.canvas};-webkit-text-size-adjust:100%`,
   wrap: `width:100%;background:${c.canvas};border-collapse:collapse`,
@@ -94,9 +70,6 @@ function shell(theme, { origin, preheader, body, footer }) {
   const at = (cls, extra = '') => ` class="${cls}" style="${[...cls.split(' ').map((k) => S[k]), extra].filter(Boolean).join(';')}"`;
   const mark = (t) => `${esc(origin)}/brand/email-lockup-${t}.png`;
   const img = (t, hidden) => `<img${at(`mark-${t}`, `display:${hidden ? 'none' : 'block'};border:0;outline:none`)} src="${mark(t)}" width="104" height="24" alt="weave">`;
-  /* Production shows the light mark and swaps in the dark one where the
-     client honours the media query; Outlook's renderer ignores display:none
-     on an image, so the dark one is hidden from it outright. */
   const lockup = theme ? img(theme, false) : `${img('light', false)}<!--[if !mso]><!-->${img('dark', true)}<!--<![endif]-->`;
   const dark = theme ? '' : `\n@media (prefers-color-scheme: dark){\n${darkRules()}\n}`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
@@ -129,8 +102,6 @@ const chip = (at, role, theme) => {
   return `<span${at(`chip chip-${role}`, `background:${bg};color:${fg}`)}>${esc(r.name)}</span>`;
 };
 
-/* The card's head row: a tile with a letter, a name, a line under it. The
-   name cell keeps the row padding, as the review's `.prow td` gave it. */
 const head = (at, letter, name, under, round = false) => `<tr class="prow"><td colspan="2"${at('cell0')}><table role="presentation"><tr>
   <td style="padding:0 12px 0 0;vertical-align:middle"><div${at('tile', round ? 'border-radius:999px' : '')}>${esc(letter)}</div></td>
   <td${at('cell0', 'vertical-align:middle')}><div${at('wsname')}>${esc(name)}</div><div${at('wshost')}>${esc(under)}</div></td>
@@ -138,9 +109,6 @@ const head = (at, letter, name, under, round = false) => `<tr class="prow"><td c
 const row = (at, label, value) => `<tr class="prow"><td${at('cell lbl stack')}>${label}</td><td${at('cell val stack')}>${value}</td></tr>`;
 const button = (at, href, label) => `<div${at('btnwrap')}><table role="presentation"${at('btn')}><tr><td${at('btntd')}><a${at('btna')} href="${esc(href)}" target="_blank">${label}</a></td></tr></table></div>`;
 
-/* vars: { inviter, workspace, role, expires ("October 10"), link (the
-   one-time sign-in URL), origin (where weave serves the mark), host
-   (defaults to origin's), theme } */
 export function inviteEmail({ inviter, workspace, role, expires, link, origin, host = new URL(origin).host, theme } = {}) {
   const r = roleOf(role);
   const subject = `Invite from ${inviter} to the ${workspace} workspace`;
@@ -174,11 +142,6 @@ You got this email because ${inviter} entered your address to invite you to a wo
   return { subject, preheader, html: shell(theme, { origin, preheader, body, footer }), text };
 }
 
-/* vars: { workspace, role, member, joined ("October 3"), members (the
-   Members link), origin, host, theme }.
-   Not sent yet: weave keeps no account email (Feature #252), so it has no
-   address for the inviter. Open decision for Kyle: drop this notice, keep
-   the inviter's address on the invite until it is used, or show it in-app. */
 export function inviteAcceptedEmail({ workspace, role, member, joined, members, origin, host = new URL(origin).host, theme } = {}) {
   const r = roleOf(role);
   const subject = `New ${r.name} in the ${workspace} workspace: ${member}`;

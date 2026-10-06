@@ -1,12 +1,5 @@
-/* Sending weave's email (Feature #216): one POST to Resend's API, no SDK,
-   no imports. Off unless the operator sets both WEAVE_MAIL_KEY (a Resend API
-   key) and WEAVE_MAIL_FROM (the sender, e.g. "weave <no-reply@mail.example.com>",
-   on a domain Resend has verified). The templates are src/mail.js. */
 export const RESEND_URL = 'https://api.resend.com/emails';
 
-/* send({ to, subject, html, text }) resolves to Resend's answer ({ id }) or
-   throws with its status and message. Ten seconds, then it gives up, so a
-   stuck provider cannot hold an invite open. */
 export function createMailer({ key, from, fetch = globalThis.fetch }) {
   return async function send({ to, subject, html, text }) {
     const res = await fetch(RESEND_URL, {

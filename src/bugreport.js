@@ -1,22 +1,3 @@
-/* The bug report an agent can act on (Feature #141).
-
-   A reporter picks one of four things and, if they feel like it, types one
-   sentence. Everything else that makes the report worth reading — where they
-   were, what they clicked, which request came back 500, which build was
-   actually running — is collected by the page and rendered here.
-
-   The renderer lives on the server, not in the browser, for two reasons. The
-   page cannot be trusted to describe the server (a stale build reporting its
-   own version is how this project's most common false bug starts), and the
-   Replay section is a contract with an agent — one writer keeps it one shape.
-
-   Zero dependencies, no DOM, no node builtins: a renderer beside
-   markdown.js/deck.js/pdf.js, so routes.js may import it under workerd too. */
-
-/* The four selectors. Not a taxonomy of causes — a taxonomy of how the app
-   is *seen* to break, because the reporter is looking at a screen, not at a
-   stack. Severity is the Issue table's own scale: what the user cannot trust
-   (data, hard errors) outranks what merely looks or feels wrong. */
 export const BUG_CATEGORIES = [
   {
     id: 'slow',
@@ -46,24 +27,15 @@ export const BUG_CATEGORIES = [
 
 export const categoryById = (id) => BUG_CATEGORIES.find((c) => c.id === id) ?? null;
 
-/* The multiselect field on Development/Issue these four write into. A report
-   is a row, not a paragraph: picking "Slow" and "Looks broken" has to be
-   filterable next week, which prose in a Description never is. */
 export const SYMPTOM_FIELD = 'Symptom';
 export const SYMPTOM_OPTIONS = BUG_CATEGORIES.map((c) => c.label);
 
-/* A report can carry several symptoms, or none at all — a reporter who only
-   types a sentence has filed a real bug, and refusing it to make the schema
-   tidy would lose it. Severity is the worst of what was picked; an
-   unclassified report rests at Medium rather than assuming the worst. */
 const RANK = { Low: 0, Medium: 1, High: 2 };
 
 export function severityFor(cats) {
   return cats.reduce((worst, c) => (RANK[c.severity] > RANK[worst] ? c.severity : worst), 'Medium');
 }
 
-/* Resolve the ids a reporter picked. Throws on an id that is not one of the
-   four — a typo must not become an untyped report filed under a shrug. */
 export function resolveCategories(ids = []) {
   if (!Array.isArray(ids)) throw new Error('categories must be an array');
   return ids.map((id) => {
@@ -73,15 +45,8 @@ export function resolveCategories(ids = []) {
   });
 }
 
-/* The largest trace worth pasting into a document. A ring buffer bounded at
-   bugCore.MAX_EVENTS cannot exceed this; anything that does is not a report. */
 export const MAX_EVENTS = 200;
 
-/* A report is quoted into a shared Issue, so it is scrubbed on the way IN.
-   Redacting on the way out would mean the secret was already at rest.
-
-   What survives on purpose: uuids. An entity id is the address of the bug —
-   strip it and the "replayable" report stops being replayable. */
 const SECRET_PARAMS = /\b(token|key|secret|password|passwd|share|sig|signature|auth)=([^&\s"'`]+)/gi;
 const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const PREFIXED_KEY = /\b(wv[a-z]?|sk|pk|ucmcp|ghp|gho)_[A-Za-z0-9_-]{8,}/gi;
@@ -93,8 +58,6 @@ export function redact(text) {
     .replace(PREFIXED_KEY, '***');
 }
 
-/* Deep-redact a recorded event. Values are strings and numbers only — the
-   recorder never puts an object in a trace — so this is one level deep. */
 function scrubEvent(ev) {
   const out = {};
   for (const [k, v] of Object.entries(ev ?? {})) {
@@ -103,8 +66,6 @@ function scrubEvent(ev) {
   return out;
 }
 
-/* Prose the reporter typed, made safe to paste under a heading: no line may
-   open a heading or a fence, or it would forge the sections below it. */
 function quote(note) {
   return String(note)
     .replace(/\r/g, '')
@@ -118,9 +79,6 @@ const secondsBefore = (t, at) => {
   return Number.isFinite(d) ? `-${d.toFixed(1)}s` : '';
 };
 
-/* One recorded event as one replay instruction. Written imperatively enough
-   that an agent driving a browser can execute the line, and plainly enough
-   that Kyle can read the same line and know what happened. */
 function replayStep(ev) {
   switch (ev.kind) {
     case 'nav':
@@ -149,19 +107,9 @@ const uptimeWords = (s) => {
   return `, up ${Math.round(n / 3600)}h`;
 };
 
-/* renderBugReport({category, note, events, client, server})
-     category  one of BUG_CATEGORIES' ids (anything else throws)
-     note      the reporter's optional sentence
-     events    the ring buffer from public/bug-core.js, oldest first
-     client    what the page knows: url, route, viewport, theme, userAgent,
-               at (the ms clock reading when Report was clicked), filedAt
-     server    what only the server knows: version, startedAt, uptime,
-               workspace — routes.js supplies these; a client copy is ignored
-   → { title, severity, markdown } */
 export function renderBugReport({ categories = [], note = '', events = [], client = {}, server = {} } = {}) {
   const cats = resolveCategories(categories);
   const text = String(note ?? '').trim();
-  // A report with neither a symptom nor a sentence says nothing at all.
   if (!cats.length && !text) throw new Error('A report needs a symptom or a note');
 
   const trace = (Array.isArray(events) ? events : []).map(scrubEvent);
@@ -169,9 +117,6 @@ export function renderBugReport({ categories = [], note = '', events = [], clien
   const where = client.route || client.url || '';
   const symptoms = cats.map((c) => c.label);
 
-  /* The title is what the Issue list shows. The reporter's sentence when there
-     is one, the place it happened when there is not; prefixed by what they
-     picked, or by nothing at all when they only typed. */
   const subject = text ? text.split('\n')[0] : `on ${where || 'the web UI'}`;
   const title = (symptoms.length ? `${symptoms.join(' + ')}: ${subject}` : subject).slice(0, 100).trim();
 

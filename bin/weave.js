@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Weave CLI — full workspace access from the terminal (and for agents).
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
@@ -47,7 +46,6 @@ function parseJsonFlag(name) {
   }
 }
 
-// Only the flags a caller actually typed: an absent flag means "leave it".
 function pickFlags(names) {
   const patch = {};
   for (const n of names) if (flags[n] != null && flags[n] !== true) patch[n] = flags[n];
@@ -55,8 +53,6 @@ function pickFlags(names) {
 }
 
 const splitList = (v) => String(v).split(',').map((x) => x.trim()).filter(Boolean);
-/* A view's deleted rows and Σ row (Issue #442): `--deleted on|off`,
-   `--rollups on|off|table` (table follows the table's hideRollups). */
 function viewRowFlags(flags) {
   const on = (v) => ['on', 'true', 'yes', '1', true].includes(v);
   const out = {};
@@ -66,7 +62,6 @@ function viewRowFlags(flags) {
 }
 
 function resolveEntityRef(w, ref, dbFlag) {
-  // Accept: entity uuid, "Db#12", or (with --db) a name / #pid.
   const m = String(ref).match(/^(.+)#(\d+)$/);
   if (m) {
     const found = w.findEntity(m[1], '#' + m[2]);
@@ -242,10 +237,6 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
 async function main() {
   if (!command || command === 'help' || flags.help) return out(HELP);
 
-  /* In-place self-update (Feature #250). With WEAVE_AUTO_UPDATE=1 the
-     supervisor holds the port and runs `serve` as a worker it can swap for a
-     newer release (src/supervisor.js); unset, supervise is serve, so one start
-     command fits every install. */
   if (command === 'supervise') {
     const { autoUpdateFromEnv, startSupervisor } = await import('../src/supervisor.js');
     if (autoUpdateFromEnv()) {
@@ -260,18 +251,12 @@ async function main() {
   }
 
   if (command === 'serve' || command === 'supervise') {
-    /* A worker the supervisor starts beside a running one opens everything
-       without writing, and runs the open-time migrations and the boot syncs
-       below only when told the old worker has exited (Feature #250). */
     const deferred = process.env.WEAVE_DEFER_MIGRATIONS === '1' && !!process.send;
     if (deferred) deferMigrations();
-    // Fresh: personal-workspace; legacy 'Weave Workspace': the basename.
     const w = openDefaultWorkspace(dataPath, { actor: CLI_ACTOR });
     const bootWrites = async () => {
-      // The self-referential docs workspace ("weave") always exists alongside.
       if (w.state.meta.name !== 'weave') {
         const dir = dirname(dataPath);
-        // Any spelling counts — legacy weaver.* files migrate/rename on adoption.
         const present = ['weave.db', 'weave.json', 'weaver.db', 'weaver.json']
           .some((f) => existsSync(join(dir, f)));
         if (!present) {
@@ -281,10 +266,6 @@ async function main() {
           console.log(`Created docs workspace at ${weavePath}`);
         }
       }
-      /* Every build carries its issue list (2026-08-31): apply the shipped
-         Development manifest to the docs workspace, so an updated install
-         shows the current known / resolved issues and the roadmap. Fail-open —
-         a missing or unreadable manifest never blocks serving. */
       const docsPath = w.state.meta.name === 'weave' ? dataPath : join(dirname(dataPath), 'weave.db');
       let docsW = null;
       try {
@@ -301,15 +282,8 @@ async function main() {
           for (const s of r.skipped ?? []) console.warn(`Development sync skipped ${s}`);
         }
       } catch (err) {
-        // Fail-open still, but never silent: this catch spent a release
-        // reporting "no manifest in this build" over a mid-pass throw that had
-        // left the install half-synced (Issue #245).
         console.warn(`Development sync skipped: ${err.message}`);
       }
-      /* The Handbook pages are generated from src/handbook.js, so a build that
-         edits one carries the edit to an existing docs workspace here — once
-         per build, keyed on the pages' hash (Issue #255). Fail-open, same as
-         the Development sync. */
       try {
         if (docsW) {
           const { syncHandbook } = await import('../src/handbook.js');
@@ -319,9 +293,6 @@ async function main() {
       } catch (err) {
         console.warn(`Handbook sync skipped: ${err.message}`);
       }
-      /* The Showcase columns a build adds (bar/ring/heat, ratings, sparklines)
-         reach a docs workspace seeded before them the same way: once per
-         build, additive, fail-open. */
       try {
         if (docsW) {
           const { syncShowcase } = await import('../src/weaver-seed.js');
@@ -335,38 +306,18 @@ async function main() {
     };
     if (!deferred) await bootWrites();
     const port = Number(flags.port ?? process.env.PORT ?? 4400);
-    // Loopback unless asked otherwise. --host 0.0.0.0 puts every workspace on
-    // the local network with no authentication in front of /api/*; it exists
-    // so a phone on the same wifi can reach the task applet, and it should be
-    // turned off again when it is not needed.
     const host = String(flags.host ?? process.env.WEAVE_HOST ?? '127.0.0.1');
     const { buildInfo, originFromEnv } = await import('../src/server.js');
-    /* Sign-in (Feature #212) sends the provider a redirect URI on one
-       public origin, and the session cookie is Secure by it. Off loopback
-       with auth on, an unset WEAVE_ORIGIN means every sign-in would come
-       back to http://localhost — so it fails here, once, with the fix in
-       the message. */
     const loopback = ['127.0.0.1', 'localhost', '::1'].includes(host);
-    const origin = originFromEnv(); // throws on a malformed value
+    const origin = originFromEnv();
     if (w.state.meta.requireAuth && !loopback && !origin) {
       console.error(`WEAVE_ORIGIN is required when authentication is on and the host is ${host}: set it to the public origin browsers use, e.g. WEAVE_ORIGIN=https://weave.example.com; the provider sends sign-ins back to <origin>/api/auth/oidc/callback`);
       process.exit(1);
     }
     if (origin) console.log(`Public origin: ${origin}${process.env.WEAVE_TRUST_PROXY ? ' (trusting X-Forwarded-For)' : ''}`);
-    /* The nightly backup (Feature #222 phase 3, Feature #209): one env var
-       switches it on. Daily at 04:00 UTC, in this process — a platform cron
-       service cannot share the volume, and a sidecar is one more thing to
-       run — into a temp file, up to the bucket, thirty kept, the archive
-       removed once it is up. The result lands in the audit log and on
-       /api/health; the health hook is wired before the scheduler exists so
-       the first probe never sees a missing function. */
     let nightly = null;
     const dest = process.env.WEAVE_BACKUP_DEST || null;
-    // The served instance reports its build so a stale one can toast.
     const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null });
-    /* The newer-release check (Issue #253): at most one GitHub request a day,
-       cached beside the workspace, armed only once the port is listening so it
-       never delays the start. WEAVE_UPDATE_CHECK=off makes no request. */
     {
       const { createReleaseCheck, updateCheckFromEnv } = await import('../src/update-check.js');
       const { armReleaseCheck, VERSION } = await import('../src/server.js');
@@ -390,7 +341,6 @@ async function main() {
     console.log(`Weave running at http://${shown}:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);
     if (wide) console.log(`Bound to ${host} — every workspace on this network can reach it.`);
     console.log(`Docs workspace: http://${shown}:${actual}/w/weave/`);
-    // Under the supervisor: say where we listen, follow it out, migrate on its word.
     if (process.send) {
       process.on('disconnect', () => process.exit(0));
       if (deferred) {
@@ -406,20 +356,16 @@ async function main() {
     return;
   }
   if (command === 'mcp') {
-    // --tools all (or WEAVE_MCP_TOOLS=all) lists every tool; core is the default (Issue #595).
     if (flags.tools != null && !['core', 'all'].includes(flags.tools)) {
       console.error(`--tools takes core or all, not ${JSON.stringify(flags.tools)}`);
       process.exit(1);
     }
     const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
     startMcpServer(w, flags.tools ? { tools: flags.tools } : {});
-    return; // stays alive on stdin
+    return;
   }
 
   if (command === 'quality') {
-    // The Quality mirror, reconciled from the test files. `sync` writes;
-    // `check` only reports drift (exit 1 when any). The main watcher runs
-    // sync against the live docs workspace after every landing.
     const [sub] = args;
     if (!flags.data || flags.data === true) {
       console.error('quality needs an explicit --data (the weave docs workspace .db)');
@@ -443,9 +389,6 @@ async function main() {
   }
 
   if (command === 'handbook') {
-    // The Handbook pages, re-applied from src/handbook.js (Issue #255).
-    // `sync` writes whatever differs (serve does the same once per build);
-    // `check` only reports drift (exit 1 when any).
     const [sub] = args;
     if (!flags.data || flags.data === true) {
       console.error('handbook needs an explicit --data (the weave docs workspace .db)');
@@ -467,8 +410,6 @@ async function main() {
   }
 
   if (command === 'service') {
-    // Never opens the workspace — install/status must work while another
-    // process owns the data file, and must not create one as a side effect.
     const { serviceOptions, buildPlist, parseLaunchctlPrint, buildStatus, probeHealth } = await import('../src/service.js');
     const [sub] = args;
     const opts = serviceOptions({ ...flags, data: flags.data ?? process.env.WEAVE_DATA });
@@ -479,17 +420,16 @@ async function main() {
       mkdirSync(dirname(opts.plistPath), { recursive: true });
       mkdirSync(dirname(opts.logPath), { recursive: true });
       writeFileSync(opts.plistPath, buildPlist(opts));
-      launchctl('bootout', `${domain}/${opts.label}`); // re-install replaces; errors expected on first install
+      launchctl('bootout', `${domain}/${opts.label}`);
       const boot = launchctl('bootstrap', domain, opts.plistPath);
       if (boot.status !== 0) {
-        // Older launchctl (or an already-bootstrapped edge): legacy load path.
         const load = launchctl('load', '-w', opts.plistPath);
         if (load.status !== 0) throw new WeaveError(`launchctl failed: ${(boot.stderr || load.stderr || '').trim() || 'unknown error'}`);
       }
       return out({ ok: true, label: opts.label, plist: opts.plistPath, log: opts.logPath, url: `http://127.0.0.1:${opts.port}` });
     }
     if (sub === 'uninstall') {
-      launchctl('bootout', `${domain}/${opts.label}`); // best effort — plist removal is the point
+      launchctl('bootout', `${domain}/${opts.label}`);
       rmSync(opts.plistPath, { force: true });
       return out({ ok: true, label: opts.label, removed: opts.plistPath });
     }
@@ -509,17 +449,11 @@ async function main() {
     throw new WeaveError(`Unknown service subcommand '${sub}'. Try: install, uninstall, status`);
   }
 
-  /* Backup and restore work on the DATA DIRECTORY, not one workspace: every
-     .db beside --data, files/, keystore.json. --data may name the directory
-     itself or any file in it. Neither verb opens the default workspace —
-     restore must run while no server does, and backup must not create one. */
   const dataDirOf = (p) => (/\.(db|json)$/.test(p) ? dirname(p) : p);
   const flagStr = (name) => (flags[name] != null && flags[name] !== true ? String(flags[name]) : null);
   const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;
   if (command === 'backup') {
     const { backup } = await import('../src/backup.js');
-    // --now is the manual trigger of the same run the nightly makes: plain
-    // `weave backup` already is that run, so the flag documents intent.
     const r = await backup({
       dataDir: dataDirOf(dataPath),
       out: flagStr('out') ?? process.cwd(),
@@ -535,9 +469,6 @@ async function main() {
     if (r.uploaded) lines.push(`  uploaded ${r.uploaded}${r.pruned.length ? `; pruned ${r.pruned.length} past the newest 30` : ''}`);
     return out(lines.join('\n'));
   }
-  /* `restore <ref>` brings a trashed entity back; `restore <archive>` brings
-     a data directory back. An archive is a URL, a .tar/.tar.enc, or a path
-     that exists on disk — an entity ref is none of those. */
   const looksLikeArchive = (a) => typeof a === 'string' && (/^(s3|https?):\/\//.test(a) || /\.tar(\.enc)?$/.test(a) || (a.includes('/') && existsSync(a)));
   if (command === 'restore' && looksLikeArchive(args[0])) {
     const { restore } = await import('../src/backup.js');
@@ -573,8 +504,6 @@ async function main() {
       }
       return out(w.describeSchema());
     }
-    // Feature #253: a whole outline in one call. One line out; a spec with
-    // errors writes nothing and exits 1.
     case 'build': {
       const file = args[0] ?? flags.file;
       if (!file || file === true) throw new WeaveError('Usage: weave build <spec.json> [--dry-run]', 'invalid');
@@ -587,18 +516,11 @@ async function main() {
       if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'editor' }));
       if (sub === 'delete') return out(w.deleteAccount(ref));
       if (sub === 'list' || !sub) return out(w.listAccounts());
-      /* Browser sessions (Feature #222 part 2): the lost-device path. */
       if (sub === 'sessions') return out(w.listSessions(ref));
       if (sub === 'revoke-session') {
         if (!flags.all && (flags.id == null || flags.id === true)) throw new WeaveError('account revoke-session needs --all or --id <session id>', 'invalid');
         return out(w.revokeSession(ref, { all: Boolean(flags.all), id: flags.all ? null : String(flags.id) }));
       }
-      /* Door C (Feature #212, Feature #252): link mints a one-time invite
-         link; the person who opens it and signs in at the provider is linked
-         by subject, and weave keeps no email. Nobody is provisioned by
-         signing in, so this verb is how an account gets a provider identity.
-         The issuer defaults to WEAVE_OIDC_ISSUER, the link's origin to
-         WEAVE_ORIGIN (a bare path without it). */
       if (sub === 'link' || sub === 'unlink') {
         if (!ref) throw new WeaveError(`account ${sub} needs an account name`, 'invalid');
         if (flags.email !== undefined) throw new WeaveError('weave no longer links by email (Feature #252): run account link <name> and send the invite link it prints', 'invalid');
@@ -613,8 +535,6 @@ async function main() {
       }
       throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete, sessions, revoke-session, link, unlink`);
     }
-    /* A new person (Issue #569): weave sends no email, so the link is
-       printed for the operator to hand over. */
     case 'invite': {
       const [sub, ref] = args;
       if (sub === 'list') return out(w.listInvites());
@@ -631,9 +551,6 @@ async function main() {
         return out(w.setKey(name, value));
       }
       if (sub === 'delete') return out(w.deleteKey(name));
-      /* Reveal is the one command that prints a secret, so it prints the
-         secret and nothing else — a bare value pipes into whatever needed it
-         without a JSON wrapper to strip (Feature #143). */
       if (sub === 'reveal') {
         process.stdout.write(w.revealKey(name, { via: flags.copy ? 'copy' : 'show' }) + '\n');
         return;
@@ -654,7 +571,6 @@ async function main() {
       if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '', template: ['true', 'on', 'yes', '1', true].includes(flags.template) })));
       if (sub === 'update') {
         const patch = pickFlags(['name', 'description', 'icon']);
-        // Feature #261: --template true|false (on|off) marks the space a template.
         if (flags.template != null) patch.template = ['true', 'on', 'yes', '1', true].includes(flags.template);
         return out(w.updateSpace(name, patch));
       }
@@ -663,9 +579,6 @@ async function main() {
       if (sub === 'list' || !sub) return out(w.listSpaces());
       throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, delete, restore`);
     }
-    /* Feature #261: a template space's schema, never its rows, into another
-       workspace file. --into opens that file as a second engine; its own
-       writes save it. */
     case 'template': {
       const [sub, ref] = args;
       if (sub === 'list' || !sub) return out(w.listTemplates());
@@ -681,10 +594,9 @@ async function main() {
       throw new WeaveError(`Unknown template subcommand '${sub}'. Try: list, use`);
     }
     case 'table':
-    case 'db': { // `db` kept as an alias
+    case 'db': {
       const [sub, space, name] = args;
       if (sub === 'create') return out(guided(w, 'table', w.createTable({ space, name, description: flags.description ?? '', icon: flags.icon ?? '' })));
-      // `table view Task` lists; `table view Task/Open --fields Name,State` writes (Feature #229).
       if (sub === 'view') {
         const patch = {};
         for (const k of ['fields', 'show', 'hide']) if (flags[k] != null && flags[k] !== true) patch[k] = splitList(flags[k]);
@@ -701,17 +613,13 @@ async function main() {
         return out(w.tableView(space, Object.keys(patch).length ? patch : null));
       }
       if (sub === 'update') {
-        // `space` is the table ref here: `table update Ops/Invoice --icon wallet`.
         const patch = pickFlags(['name', 'description', 'icon', 'noun']);
         if (flags.hidden != null) patch.hiddenFields = splitList(flags.hidden);
         if (flags.system != null) patch.systemFields = splitList(flags.system);
         if (flags.order != null) patch.fieldOrder = splitList(flags.order);
-        // The Σ row is off until a table asks for it (Issue #249), so asking
-        // has to be sayable here: `--rollup-row on` / `off`.
         if (flags['rollup-row'] != null) patch.hideRollups = !['on', 'true', 'yes', '1', true].includes(flags['rollup-row']);
         return out(w.updateTable(space, patch));
       }
-      // `table move Ops/Invoice Archive` — the second arg is the destination.
       if (sub === 'move') return out(w.moveTable(space, name));
       if (sub === 'duplicate') return out(w.duplicateTable(space));
       if (sub === 'delete') { w.deleteTable(space, { hard: Boolean(flags.hard) }); return out({ table: space, deleted: true }); }
@@ -731,25 +639,18 @@ async function main() {
         if (flags.name != null) patch.name = flags.name;
         if (flags.type != null) patch.type = flags.type;
         const config = parseJsonFlag('config') ?? {};
-        // Width, default and description ride their own lanes in the engine,
-        // so they are flags rather than JSON: `--width 240`, `--width null`
-        // to reset, `--description "…"`, `--description null` to clear.
         if (flags.width != null) config.width = flags.width === 'null' ? null : Number(flags.width);
         if (flags.default != null) config.default = flags.default === 'null' ? null : flags.default;
         if (flags.description != null) config.description = flags.description === 'null' ? null : String(flags.description);
         if (Object.keys(config).length) patch.config = config;
         return out(guided(w, 'field', w.updateField(db, name, patch), patch.type == null ? patch.config : {}));
       }
-      // weave field rollback <db> <field> --activity <tableId:fN> (Issue #428)
       if (sub === 'rollback') return out(w.rollbackFieldConfig(flags.activity, { table: db ?? null, field: name ?? null }));
       if (sub === 'delete') return out(w.deleteField(db, name));
       if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
       throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, rollback, delete`);
     }
     case 'formula': {
-      // weave formula check <db> '<expression>' [--entity id] [--exclude-field name] [--scan]
-      // Validate before saving; previews on a real row when the table has one;
-      // --scan evaluates over up to 200 rows for the null and error counts.
       const [sub, db, expression] = args;
       if (sub === 'check') return out(w.checkFormula(db, expression, { entity: flags.entity ?? null, excludeField: flags['exclude-field'] ?? null, scan: Boolean(flags.scan) }));
       throw new WeaveError(`Unknown formula subcommand '${sub}'. Try: check`);
@@ -757,7 +658,6 @@ async function main() {
     case 'relation': {
       const [sub, db, name, targetDb] = args;
       if (sub === 'add') {
-        // --target-dbs 'A,B,C' makes a target-set (polymorphic) relation.
         const targetDbs = flags['target-dbs'] ? String(flags['target-dbs']).split(',').map((s) => s.trim()).filter(Boolean) : undefined;
         return out(w.addRelation(db, { name, targetDb, targetDbs, cardinality: flags.cardinality ?? 'many-to-one', inverseName: flags.inverse }));
       }
@@ -774,7 +674,6 @@ async function main() {
         limit: flags.limit ? Number(flags.limit) : null,
         offset: flags.offset ? Number(flags.offset) : 0,
         search: flags.search ? String(flags.search) : '',
-        // Issue #448: N beside the filtered total, as `all`.
         countAll: Boolean(flags['count-all']),
       });
       return out(result);
@@ -802,8 +701,6 @@ async function main() {
     case 'trash':
       return out(w.listTrash(args[0] ?? null));
     case 'stats': {
-      // Every column summarised, the space rollups pointed at the table, and
-      // per-group figures with --by; --where narrows the rows.
       if (!args[0]) throw new Error('Usage: stats <table> [--by Field] [--where json]');
       return out(w.tableStats(args[0], { by: flags.by ?? null, where: flags.where ? JSON.parse(flags.where) : null }));
     }
@@ -814,7 +711,6 @@ async function main() {
       return out(w.readEntity(e.id));
     }
     case 'bulk': {
-      // weave bulk <set|link|move|rollup> <ref...> [--values '{json}'] [--field F --targets a,b] [--table T] [--name N]
       const [op, ...refs] = args;
       const ids = refs.map((r) => resolveEntityRef(w, r, flags.db).id);
       const params = pickFlags(['field', 'table', 'name']);
@@ -827,8 +723,6 @@ async function main() {
     case 'unlink': {
       const [ref, field, ...targets] = args;
       const e = resolveEntityRef(w, ref, flags.db);
-      // `link --unlink` was the only way to take one off, which reads as a
-      // flag that means the opposite of its command.
       if (command === 'unlink' || flags.unlink) w.unlink(e.id, field, targets);
       else w.link(e.id, field, targets);
       return out(w.readEntity(e.id));
@@ -837,11 +731,8 @@ async function main() {
       const [sub, ref] = args;
       const e = resolveEntityRef(w, ref, flags.db);
       const content = flags.file ? readFileSync(flags.file, 'utf8') : flags.content;
-      const docField = flags.field === true ? null : flags.field ?? null; // named document field, default = first
+      const docField = flags.field === true ? null : flags.field ?? null;
       if (sub === 'get') return out(w.getDoc(e.id, docField));
-      /* Text, or nothing happens (Issue #572). `--content ''` clears the
-         document; no flag at all is a mistake, and it used to be a silent
-         erase that printed {"ok": true}. */
       if (sub === 'set' || sub === 'append') {
         if (content == null || content === true) throw new WeaveError(`doc ${sub} needs its text: --content <markdown> or --file <path>. Use --content '' to clear the document.`, 'invalid');
         if (sub === 'set') w.setDoc(e.id, content, docField);
@@ -897,7 +788,6 @@ async function main() {
         const text = flags.file ? readFileSync(flags.file, 'utf8') : readFileSync(0, 'utf8');
         return out(w.importCSV(db, text));
       }
-      // `csv <table>` stays the export it has always been.
       return process.stdout.write(w.exportCSV(sub === 'export' ? rest[0] : sub));
     }
     case 'export': {
@@ -912,8 +802,6 @@ async function main() {
       if (!flags.file) throw new WeaveError('import needs --file');
       return out({ ok: true, ...w.importJSON(JSON.parse(readFileSync(flags.file, 'utf8'))) });
     }
-    /* Everything below reaches a capability the web UI has always had and the
-       terminal did not — which made a browser the only way to do it. */
     case 'vocabulary': {
       const [section, ...query] = args;
       try { return out(vocabularyView(section, query.join(' '))); }

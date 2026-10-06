@@ -3,25 +3,11 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { scanSuites, syncQualityMirror } from './quality-mirror.js';
 import { SYMPTOM_FIELD, SYMPTOM_OPTIONS } from './bugreport.js';
-// The "weaver" workspace: Weave's canonical, self-referential documentation,
-// how-to, wiki, test-suite mirror, and public issue/roadmap tracker — stored
-// in Weave itself (like the.fibery.io), not an off-the-shelf docs engine.
 
 import { DEFINABLE_TYPES } from './engine.js';
 import { applyHandbook, applyFormattingShowcase, applyIconShowcase } from './handbook.js';
 export { DEFINABLE_TYPES };
 
-/* ---------- Showcase ----------
-   One table with every field type, and several configurations of the same
-   type beside each other (number as plain / currency / percent / unit;
-   date as iso / us / long+time; a colored and a plain select; a full
-   lifecycle workflow and a two-state gate; rollups by count / avg / join;
-   numeric, text and date formulas; a depth-1 and a nested field
-   definition). A People table carries the relations the computed fields
-   hang off. The base is built only when the space is missing; the columns
-   added since (SHOWCASE_ADDITIONS) reach an existing Showcase through
-   syncShowcase, so a second run adds nothing and an older Showcase catches
-   up (Issue #371). */
 export function seedFieldShowcase(w) {
   if (!w.listSpaces().some((sp) => sp.name === 'Showcase')) seedShowcaseBase(w);
   syncShowcase(w);
@@ -36,32 +22,24 @@ function seedShowcaseBase(w) {
   w.addField(people, { name: 'Age', type: 'number' });
 
   const ft = w.createTable({ space: 'Showcase', name: 'Field Types', noun: 'example', icon: 'lucide:settings' });
-  // --- text family
   w.addField(ft, { name: 'Notes', type: 'text', config: { default: 'n/a' } });
   w.addField(ft, { name: 'Site', type: 'url' });
   w.addField(ft, { name: 'Contact', type: 'email' });
-  // --- number: four configurations
   w.addField(ft, { name: 'Count', type: 'number' });
   w.addField(ft, { name: 'Price', type: 'number', config: { format: 'currency', currency: 'USD', decimals: 2 } });
   w.addField(ft, { name: 'Share', type: 'number', config: { format: 'percent', decimals: 1 } });
   w.addField(ft, { name: 'Weight', type: 'number', config: { unit: 'kg', decimals: 0 } });
-  // --- the rich displays (bar/ring/heat), ratings and sparklines join
-  //     through SHOWCASE_ADDITIONS below, beside the anchors named there.
-  // --- dates: three configurations + a range
   w.addField(ft, { name: 'Due', type: 'date' });
   w.addField(ft, { name: 'Start', type: 'date', config: { format: 'us' } });
   w.addField(ft, { name: 'Published', type: 'date', config: { format: 'long', time: true } });
   w.addField(ft, { name: 'Window', type: 'daterange' });
-  // --- booleans
   w.addField(ft, { name: 'Done', type: 'checkbox', config: { default: false } });
   w.addField(ft, { name: 'Feed', type: 'toggle', config: { on: 'Live', off: 'Paused', default: false } });
-  // --- choices: colored select, plain select, multiselect
   w.addField(ft, { name: 'Priority', type: 'select', config: { options: [
     { name: 'Low', color: '#2ea043' }, { name: 'Medium', color: '#f59f00' }, { name: 'High', color: '#e5484d' }] } });
   w.addField(ft, { name: 'Category', type: 'select', config: { options: ['Hardware', 'Software', 'Service'] } });
   w.addField(ft, { name: 'Tags', type: 'multiselect', config: { options: [
     { name: 'alpha', color: '#4769eb' }, { name: 'beta', color: '#8e4ec6' }, { name: 'stable', color: '#2ea043' }, { name: 'legacy', color: '' }] } });
-  // --- workflows: a lifecycle and a gate
   w.addField(ft, { name: 'Stage', type: 'workflow', config: { states: [
     { name: 'Backlog', category: 'not-started', default: true },
     { name: 'Building', category: 'in-progress' },
@@ -70,18 +48,13 @@ function seedShowcaseBase(w) {
   w.addField(ft, { name: 'Review', type: 'workflow', config: { states: [
     { name: 'Pending', category: 'not-started', default: true },
     { name: 'Approved', category: 'done' }] } });
-  // --- documents (a second one beside the built-in Description)
   w.addField(ft, { name: 'Brief', type: 'document' });
-  // --- meta: a field whose value is a field definition, flat and nested
   w.addField(ft, { name: 'Definition', type: 'field' });
   w.addField(ft, { name: 'Nested definition', type: 'field', config: { depth: 2 } });
-  // --- secrets and files
   w.addField(ft, { name: 'API key', type: 'key' });
   w.addField(ft, { name: 'Files', type: 'attachments' });
-  // --- relations: one and many
   w.addRelation(ft, { name: 'Owner', targetDb: people, cardinality: 'many-to-one', inverseName: 'Owns' });
   w.addRelation(ft, { name: 'Peers', targetDb: people, cardinality: 'many-to-many', inverseName: 'Peer of' });
-  // --- computed: lookup, three rollups, three formulas
   w.addField(ft, { name: 'Owner email', type: 'lookup', config: { relationField: 'Owner', targetField: 'Email' } });
   w.addField(ft, { name: 'Peer count', type: 'rollup', config: { relationField: 'Peers', aggregate: 'count' } });
   w.addField(ft, { name: 'Peer age', type: 'rollup', config: { relationField: 'Peers', aggregate: 'avg', targetField: 'Age' } });
@@ -90,7 +63,6 @@ function seedShowcaseBase(w) {
   w.addField(ft, { name: 'Label', type: 'formula', config: { expression: 'concat(upper(Category), " · ", Priority)' } });
   w.addField(ft, { name: 'Days left', type: 'formula', config: { expression: 'if(empty(Due), "", days(today(), Due))' } });
 
-  // --- rows
   const ada = w.createEntity(people, { name: 'Ada Chen', values: { Email: 'ada@example.com', Age: 34 } });
   const leo = w.createEntity(people, { name: 'Leo Marsh', values: { Email: 'leo@example.com', Age: 41 } });
   const mia = w.createEntity(people, { name: 'Mia Okafor', values: { Email: 'mia@example.com', Age: 29 } });
@@ -129,20 +101,6 @@ function seedShowcaseBase(w) {
   return w;
 }
 
-/* ---------- Showcase additions (Features #230, #231, #232, #234, #235) ----------
-   The number displays (bar on the column scale, bar and ring on a fixed
-   one, heat), the rating at three maxes with two icons and a rollup over
-   one, and the formula lists drawn as sparklines in each style, as data.
-   Feature #235 adds a column per colour setting beside the ink ones: a
-   bar, a ring and a heat tint, three ratings (a ten-bolt one wide enough
-   for all ten) and two sparklines, in Color by icon and One accent hue.
-   The fresh seed and a workspace seeded before them both go through
-   applyShowcaseAdditions, so the two cannot drift. Additive and
-   name-matched: a missing field is added after its anchor, a value lands
-   only in an empty cell of a row the seed names, and nothing a person
-   renamed, filled or removed is touched. Boot runs it once per build
-   (syncShowcase, keyed on the hash of this list, the Handbook sync's
-   shape). */
 const SPARK_KEYS = '[Peer joined]';
 export const SHOWCASE_ADDITIONS = [
   { table: 'People', fields: [
@@ -155,31 +113,25 @@ export const SHOWCASE_ADDITIONS = [
     'Mia Okafor': { Skill: 4, Joined: '2025-01-20', Delta: 2 },
   } },
   { table: 'Field Types', fields: [
-    // number displays: column scale, fixed scale, a percent ring, heat
     { after: 'Weight', name: 'Progress', type: 'number', config: { display: 'bar' } },
     { after: 'Progress', name: 'Score', type: 'number', config: { decimals: 1, display: 'bar', scale: 10 } },
     { after: 'Score', name: 'Completion', type: 'number', config: { format: 'percent', decimals: 0, display: 'ring', scale: 1 } },
     { after: 'Completion', name: 'Load', type: 'number', config: { display: 'heat' } },
-    // the colour settings (Feature #235): the columns above are Quiet ink
     { after: 'Load', name: 'Momentum', type: 'number', config: { display: 'bar', color: 'icon' } },
     { after: 'Momentum', name: 'Reach', type: 'number', config: { format: 'percent', decimals: 0, display: 'ring', scale: 1, color: 'accent' } },
     { after: 'Reach', name: 'Warmth', type: 'number', config: { display: 'heat', color: 'icon' } },
-    // ratings: 5 stars, 3 bolts, 7 hearts, 12 suns
     { after: 'Load', name: 'Fit', type: 'rating', config: { max: 5, icon: 'lucide:star' } },
     { after: 'Fit', name: 'Effort', type: 'rating', config: { max: 3, icon: 'lucide:zap' } },
     { after: 'Effort', name: 'Love', type: 'rating', config: { max: 7, icon: 'lucide:heart' } },
-    // past the old cap of 10, and a default a new row starts at (Feature #234)
     { after: 'Love', name: 'Brightness', type: 'rating', config: { max: 12, icon: 'lucide:sun', default: 6 } },
     { after: 'Brightness', name: 'Stars', type: 'rating', config: { max: 5, icon: 'lucide:star', color: 'icon' } },
     { after: 'Stars', name: 'Bolts', type: 'rating', config: { max: 10, icon: 'lucide:zap', color: 'icon' } },
     { after: 'Bolts', name: 'Hearts', type: 'rating', config: { max: 5, icon: 'lucide:heart', color: 'accent' } },
-    // a rating rollup, and the lookups the sparklines read
     { after: 'Peer names', name: 'Peer skill', type: 'rollup', config: { relationField: 'Peers', aggregate: 'avg', targetField: 'Skill' } },
     { after: 'Peer skill', name: 'Peer ages', type: 'lookup', config: { relationField: 'Peers', targetField: 'Age' } },
     { after: 'Peer ages', name: 'Peer skills', type: 'lookup', config: { relationField: 'Peers', targetField: 'Skill' } },
     { after: 'Peer skills', name: 'Peer deltas', type: 'lookup', config: { relationField: 'Peers', targetField: 'Delta' } },
     { after: 'Peer deltas', name: 'Peer joined', type: 'lookup', config: { relationField: 'Peers', targetField: 'Joined' } },
-    // lists, oldest peer first: one sparkline per style, and a null on no peers
     { after: 'Days left', name: 'Age trend', type: 'formula', config: { expression: `sortby([Peer ages], ${SPARK_KEYS})`, display: 'sparkline', style: 'line' } },
     { after: 'Age trend', name: 'Delta columns', type: 'formula', config: { expression: `sortby([Peer deltas], ${SPARK_KEYS})`, display: 'sparkline', style: 'column' } },
     { after: 'Delta columns', name: 'Wins and losses', type: 'formula', config: { expression: `sortby([Peer deltas], ${SPARK_KEYS})`, display: 'sparkline', style: 'winloss' } },
@@ -199,7 +151,6 @@ export function showcaseHash() {
 
 const isBlank = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
 
-/* Returns the number of fields added. */
 function applyShowcaseAdditions(w) {
   let added = 0;
   for (const { table, fields, rows } of SHOWCASE_ADDITIONS) {
@@ -209,8 +160,6 @@ function applyShowcaseAdditions(w) {
       if (w.findField(db, def.name)) continue;
       const f = w.addField(db, def);
       added++;
-      // Beside its anchor in the schema and in every view that shows the
-      // anchor; a missing or hidden anchor leaves it on the end.
       const anchor = w.findField(db, after);
       if (!anchor) continue;
       const order = db.fieldOrder.filter((id) => id !== f.id);
@@ -234,9 +183,6 @@ function applyShowcaseAdditions(w) {
   return added;
 }
 
-/* One pass per build: a workspace whose Showcase already carries this list's
-   hash is left alone, so a column a person removed stays removed until the
-   list itself moves. A workspace with no Showcase is never given one. */
 export function syncShowcase(w, { force = false } = {}) {
   if (!w.listSpaces().some((sp) => sp.name === 'Showcase')) return { applied: false };
   const hash = showcaseHash();
@@ -257,7 +203,6 @@ export function syncShowcase(w, { force = false } = {}) {
 export function seedWeaver(w) {
   w.state.meta.name = 'weave';
 
-  // ---------- Handbook ----------
   w.createSpace({ name: 'Handbook', icon: 'lucide:file-text', description: 'Official documentation and how-tos' });
   const guides = w.createTable({ space: 'Handbook', name: 'Guide', icon: 'lucide:file-text' });
   w.addField(guides, { name: 'Audience', type: 'select', config: { options: ['Human', 'Agent', 'Both'] } });
@@ -309,7 +254,6 @@ Entities are addressable as \`Table#publicId\`, UUID, or name with \`--table\`.`
 The REST API mirrors everything under \`/api\` (workspace-scoped under \`/w/<name>/api\`).`,
   });
 
-  // ---------- Wiki ----------
   w.createSpace({ name: 'Wiki', icon: 'lucide:bookmark', description: 'Design notes and architecture' });
   const articles = w.createTable({ space: 'Wiki', name: 'Article', icon: 'lucide:bookmark' });
   w.addField(articles, { name: 'Topic', type: 'select', config: { options: ['Architecture', 'Philosophy', 'Internals'] } });
@@ -332,7 +276,6 @@ Weave has no runtime dependencies. The markdown renderer, PDF writer, CSV parser
 Workspace → spaces → tables → entities. Multiple workspaces share one web app (\`/w/<name>/\`). The direction of travel: spaces and the workspace itself become tables too, so schema, settings, users, and automations are all agent-editable through the same primitives.`,
   });
 
-  // ---------- Quality: the test suite, mirrored as data ----------
   w.createSpace({ name: 'Quality', icon: 'lucide:shield-check', description: 'The Weave test suite, dogfooded' });
   const suites = w.createTable({ space: 'Quality', name: 'Suite', icon: 'lucide:shield-check' });
   const cases = w.createTable({ space: 'Quality', name: 'Case', icon: 'lucide:square-check' });
@@ -349,14 +292,8 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   w.addField(suites, { name: 'Case Count', type: 'rollup', config: { relationField: 'Cases', aggregate: 'count' } });
   w.addField(suites, { name: 'File', type: 'text' });
 
-  /* The mirror is DERIVED, never hand-kept (the old static list here had 9
-     suites and invented case names). One scan + one sync, shared with the
-     main watcher that keeps the live docs workspace current. In a packaged
-     install without a test/ tree the scan is empty and Quality stays a
-     schema, which is honest. */
   syncQualityMirror(w, scanSuites(join(dirname(fileURLToPath(import.meta.url)), '..')));
 
-  // ---------- Development: public issues + roadmap ----------
   w.createSpace({ name: 'Development', icon: 'lucide:activity', description: 'Open issues and the roadmap, maintained as Weave is built' });
   const issues = w.createTable({ space: 'Development', name: 'Issue', icon: 'lucide:bug' });
   w.addField(issues, {
@@ -369,9 +306,6 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
     },
   });
   w.addField(issues, { name: 'Severity', type: 'select', config: { options: ['Low', 'Medium', 'High'] } });
-  /* What the reporter saw, as a filterable field rather than a sentence
-     (Feature #141). The in-app reporter writes these four; several can be
-     true of one bug, and a report filed on a note alone leaves it empty. */
   w.addField(issues, { name: SYMPTOM_FIELD, type: 'multiselect', config: { options: SYMPTOM_OPTIONS } });
 
   const features = w.createTable({ space: 'Development', name: 'Feature', icon: 'lucide:star' });
@@ -428,9 +362,6 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   ensureReleaseTable(w);
 
   seedFieldShowcase(w);
-  // The reference half of the Handbook and the document half of the Showcase.
-  // Both upsert on name, so they also bring a workspace seeded before they
-  // existed up to date — see src/handbook.js.
   applyHandbook(w);
   applyFormattingShowcase(w);
   applyIconShowcase(w);
@@ -438,24 +369,6 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   return w;
 }
 
-/* ---------- development sync (2026-08-31) ----------
-   Every build ships docs/development.json — the canonical Issue and Feature
-   lists exported at release time. On boot the server applies it to the local
-   weave docs workspace, so updating weave updates the known/resolved issue
-   list and the roadmap without touching anything the local user filed:
-   rows are matched by NAME; matched rows get the shipped status (and
-   severity / milestone / symptom), unmatched manifest rows are created, and
-   local-only rows are left exactly as they are. The manifest's hash on
-   meta makes the pass one write per build, not one per boot. */
-/* ---------- releases (2026-09-04) ----------
-   Every release is a Development/Release row: the version as its name, the
-   date, the landed commit, the Issues it fixes and the Features it ships as
-   relations, and the release notes as its Description. The notes are
-   mandatory — syncDevelopment refuses a manifest release without them, and
-   test/development-sync.test.mjs refuses a build whose package version has
-   no such row — so a version bump cannot land unwritten. The table is
-   created on demand so workspaces seeded before it existed pick it up on the
-   next sync. */
 export function ensureReleaseTable(w) {
   const table = (qualified) => w.listTables().find((t) => `${w.getSpace(t.spaceId)?.name}/${t.name}` === qualified);
   const existing = table('Development/Release');
@@ -471,14 +384,6 @@ export function ensureReleaseTable(w) {
   return w.getTable(rel.id ?? rel);
 }
 
-/* ---------- the manifest is upstream of the seed (Issue #245) ----------
-   A build's manifest names values this workspace's fields have never seen:
-   the seeded Milestone select stops at v0.3 while the shipped roadmap runs
-   to v0.5, and a select validates on write. The throw landed mid-pass, so a
-   fresh install got its Issues, its Features up to the first unknown
-   milestone, and no releases at all. Widen the select to the values the
-   manifest carries before applying it — options are engine-editable, and a
-   value the upstream build ships is by definition a legitimate option. */
 function widenSelects(w, db, entries, selects) {
   const table = w.getTable(db.id);
   for (const sel of selects) {
@@ -510,11 +415,6 @@ export function syncDevelopment(w, manifest) {
   const featuresT = table('Development/Feature');
   if (!issuesT || !featuresT) return { applied: false };
   let created = 0, updated = 0;
-  /* One row the local workspace cannot take — a workflow state carries a
-     category the manifest cannot supply, so an unknown status is the value
-     widening cannot rescue — costs that row, not the rest of the pass and
-     not the release block behind it (Issue #245). Every skip is named in
-     the return so boot can print what it swallowed. */
   const skipped = [];
   const apply = (db, entries, selects) => {
     widenSelects(w, db, entries, selects);
@@ -555,13 +455,6 @@ export function syncDevelopment(w, manifest) {
     apply(relT, releases, ['Date', 'Commit']);
     const byName = (db) => new Map(w.listEntities(db.id).map((e) => [w.entityName(e), e.id]));
     const issueIds = byName(issuesT), featureIds = byName(featuresT), relIds = byName(relT);
-    /* Reconciled, not added to (Issue #244). Rows are additive so a locally
-       filed Issue or Feature survives an update, but a release row is
-       manifest-owned — no instance links its own rows into an upstream
-       release — and additive linking made a wrong claim permanent on every
-       instance that synced before the correction: the corrected manifest
-       names fewer targets, and `link` only ever adds. The exporter omits an
-       empty relation, so a missing `fixes`/`ships` key means empty here. */
     const reconcile = (id, field, wantIds) => {
       const cur = w.readEntity(id).raw[field] ?? [];
       const stale = cur.filter((x) => !wantIds.includes(x));
@@ -576,9 +469,6 @@ export function syncDevelopment(w, manifest) {
       reconcile(id, 'Ships', (r.ships ?? []).map((n) => featureIds.get(n)).filter(Boolean));
     }
   }
-  /* The stamp says "this build is fully applied", so only a whole pass earns
-     it: a pass that skipped a row is retried on the next boot, where a
-     widened field or a fixed workspace may take it (Issue #245). */
   if (!skipped.length) w.state.meta.developmentSync = stamp;
   w.save();
   return { applied: true, created, updated, skipped };

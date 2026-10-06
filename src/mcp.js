@@ -1,30 +1,17 @@
-// MCP (Model Context Protocol) server core: JSON-RPC 2.0 messages over two
-// transports — newline-delimited stdio (local agents) and POST /api/mcp
-// (Feature #99, the hosted instance). One handler serves both.
-
 import { readFileSync } from 'node:fs';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
 const PROTOCOL_VERSION = '2024-11-05';
-// Lazy-tolerant, same reason as pdf.js's font path: module-top file reads
-// crash the workerd bundle at cold start. The HTTP transport passes the real
-// version in; 'dev' is only ever the stdio fallback on a broken checkout.
 let VERSION = 'dev';
 try {
   VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-} catch { /* bundled runtime — version arrives via handleMcpMessage opts */ }
+} catch {}
 
-// One line: indentation is bytes an agent re-reads on every later turn (Issue #596).
 function textResult(data) {
   return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data) }] };
 }
 
-/* Issue #596: an MCP write answers with what the next call needs — id,
-   publicId, name, and a field's type and stored config — instead of echoing
-   the whole row or table (3-5 KB a call in the 2026-10-02 eval, re-read every
-   turn after). `verbose: true` on any of these returns the full object. Only
-   the MCP door compacts; dispatchTool, REST and the CLI keep the full reply. */
 export const COMPACT_TOOLS = new Set([
   'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_restore_entity',
   'weave_set_state', 'weave_link', 'weave_unlink',
@@ -32,7 +19,6 @@ export const COMPACT_TOOLS = new Set([
   'weave_create_table', 'weave_update_table', 'weave_move_table', 'weave_duplicate_table', 'weave_restore_table',
   'weave_add_field', 'weave_update_field', 'weave_add_relation',
 ]);
-// next and hints are a schema write's guidance (src/field-hints.js), kept whole.
 const BRIEF_KEYS = ['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged', 'next', 'hints'];
 function brief(obj) {
   const out = {};
@@ -46,8 +32,6 @@ function compactResult(name, result) {
 }
 const VERBOSE = { type: 'boolean', description: 'Return the whole object' };
 
-// Only the keys a caller actually named: an absent key means "leave it", and
-// the engine's patches distinguish that from an explicit null.
 function pick(args, keys) {
   const out = {};
   for (const k of keys) if (k in args) out[k] = args[k];
@@ -264,9 +248,6 @@ export const TOOLS = [
       required: ['entity', 'name', 'contentBase64'],
     },
   },
-  /* ---------- configuration: every choice the UI can make, as a tool ----------
-     The web UI reaches all of this over REST; an agent had to shell out to
-     curl for it, which is a human gate wearing a shell prompt. */
   {
     name: 'weave_vocabulary',
     description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. Name every section you need in one call (sections:["icons","optionColors"]); query searches the icon names by name, category and synonym ("wallet, bank" searches both).',
@@ -387,8 +368,6 @@ export const TOOLS = [
     },
   },
   {
-    // Feature #253: the one-call build. Under ~1,500 characters with one full
-    // example: a worked input raises accuracy on nested parameters.
     name: 'weave_build',
     description: 'Build in ONE call: spaces, tables, fields, relations and rows. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Rows are values by field name; a relation value is the target row\'s Name. Re-sending the whole spec is safe: existing spaces, tables and same-typed fields are reused; rows append, so pass skipExistingRows:true to skip rows whose Name is already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped, with reason), errors:[{path, error}], computed:{field: its first values}}. Example spec:\n'
       + '{"workspace":"personal-finance","spaces":[{"name":"Budget","icon":"lucide:wallet","tables":[{"name":"Account","icon":"lucide:credit-card","fields":[{"name":"Kind","type":"select","options":[{"name":"Credit card"},{"name":"Checking"}]}],"rows":[{"Name":"Amex Gold","Kind":"Credit card"}]},{"name":"Transaction","fields":[{"name":"Amount","type":"number","format":"currency","currency":"USD"},{"name":"Date","type":"date"},{"name":"Account","type":"relation","to":"Account","cardinality":"many-to-one"}],"rows":[{"Name":"Whole Foods","Amount":142.18,"Date":"2026-08-03","Account":"Amex Gold"}]}]}]}\n'
@@ -498,20 +477,11 @@ export const TOOLS = [
 ];
 for (const t of TOOLS) if (COMPACT_TOOLS.has(t.name)) t.inputSchema.properties.verbose = VERBOSE;
 
-/* Issue #595: 56 definitions cost about 12,000 tokens on every turn, and a
-   workspace build uses about twelve of them. tools/list answers the core
-   build set plus weave_call by default; weave_call reaches the rest, and its
-   description names each of them in one line. `weave mcp --tools all` or
-   WEAVE_MCP_TOOLS=all lists every tool. weave_build joins the core set when
-   it exists. */
 export const CORE_TOOLS = new Set([
   'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
   'weave_create_space', 'weave_create_table', 'weave_add_field', 'weave_update_field', 'weave_add_relation',
   'weave_import_csv', 'weave_vocabulary', 'weave_workspace', 'weave_search', 'weave_build', 'weave_call',
 ]);
-// One line per tool: weave_call shows the lines for the tools the core list
-// leaves out, and scripts/agent-docs.mjs prints all of them in AGENTS.md's
-// tool map (Feature #258).
 export const SUMMARY = {
   weave_build: 'spaces, tables, fields, relations and rows in one call (dryRun checks)',
   weave_schema: 'every space, table and field, with types and options',
@@ -594,11 +564,8 @@ export function listTools(profile = toolProfile()) {
   return profile === 'all' ? TOOLS : TOOLS.filter((t) => CORE_TOOLS.has(t.name));
 }
 
-// WEAVE_ORIGIN as the invite links root it: trimmed, no trailing slash, '' when unset.
 const envOrigin = () => process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
 
-/* tools/call, with weave_call unwrapped: the inner tool gets the same admin
-   gate, compact reply and verbose switch as a direct call. */
 function callTool(weave, name, rawArgs, caller) {
   if (name === 'weave_call') {
     let inner = rawArgs.args ?? {};
@@ -616,19 +583,11 @@ function callTool(weave, name, rawArgs, caller) {
   return verbose === true ? result : compactResult(name, result);
 }
 
-/* The one gate for accounts, the wall, the keystore and whole-workspace
-   import (Issue #482). REST and the MCP dispatcher both ask it, so the two
-   doors cannot drift: anyone until `on` holds an account, an architect of `on`
-   after. `on` is the workspace for accounts and import, and the hub root for
-   keys, because one keystore serves the whole process (Issue #480). */
 export function mayAdminister(on, role) {
   return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
 }
 const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root' };
 
-/* A row write names its values in one map (Issue #600). Agents send the
-   entity alone, or `fields` where `values` belongs; refuse by name before the
-   engine reaches the missing map, and name every key the tool does not take. */
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 function checkRowArgs(name, args, required) {
   const props = TOOLS.find((t) => t.name === name).inputSchema.properties;
@@ -639,11 +598,6 @@ function checkRowArgs(name, args, required) {
   if (unknown.length) throw new Error(`${name} takes ${Object.keys(props).join(', ')}${extra}; field values go in values`);
 }
 
-/* caller: { role, root, rootRole, updateWorkspace } — who is calling over
-   HTTP, verified by the dispatcher, and the hub's rename door. The stdio
-   server passes none: its caller is the local operator who started
-   `weave mcp` on the data file, the same trust as the CLI, and that is also
-   how the first account is bootstrapped. */
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   if (caller && ADMIN_TOOLS[name]) {
     const atRoot = ADMIN_TOOLS[name] === 'root';
@@ -651,8 +605,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       throw new Error(`${name} needs an architect token${atRoot ? ' on the hub root' : ''}`);
     }
   }
-  // The MCP server is long-running: pick up commits from other processes
-  // (CLI, HTTP server) before every tool call.
   weave.maybeRefresh?.();
   switch (name) {
     case 'weave_schema':
@@ -740,8 +692,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon', 'template']));
     case 'weave_template_list':
       return { templates: weave.listTemplates() };
-    /* The copy lands in another workspace, which only the hub can name, so
-       the HTTP dispatcher hands its door in as caller.useTemplate. */
     case 'weave_template_use':
       if (!caller?.useTemplate) {
         throw new Error('weave_template_use copies into another workspace of a hub, and this stdio server holds one workspace. Call it over the HTTP door (POST /api/mcp, or /mcp on the hosted instance), or run weave template use <space> --into <other.db> on the CLI.');
@@ -776,7 +726,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_apply_schema':
       return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive) }) };
     case 'weave_build': {
-      // A spec passed bare, without the `spec` wrapper, is taken as meant.
       const { spec, dryRun, skipExistingRows, ...bare } = args;
       return JSON.stringify(weave.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) }));
     }
@@ -810,7 +759,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_workspace':
       switch (args.action ?? 'get') {
         case 'get': return weave.getWorkspace();
-        // Over HTTP the hub re-keys and refuses a held slug (Issue #599).
         case 'update': return (caller?.updateWorkspace ?? ((p) => weave.updateWorkspace(p)))(pick(args, ['name', 'description', 'linkPreview']));
         case 'logo': return weave.setWorkspaceLogo({ name: args.name ?? 'logo.png', mime: args.mime ?? 'image/png', bytes: args.contentBase64 });
         case 'clear-logo': weave.deleteWorkspaceLogo(); return { logo: false };
@@ -824,15 +772,11 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'require-auth': return weave.setRequireAuth(Boolean(args.on));
         case 'sessions': return { sessions: weave.listSessions(args.account ?? args.name) };
         case 'revoke-session': return weave.revokeSession(args.account ?? args.name, { id: args.session ?? null, all: Boolean(args.all) });
-        /* Door C (Feature #212, Feature #252): the issuer defaults to the
-           configured provider. ponytail: the url is the default workspace's
-           address; a hub member's invite opens under /w/<name>/ instead. */
         case 'link-identity': {
           const made = weave.linkIdentity(args.account ?? args.name, { issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER, email: args.email });
           return { ...made, url: inviteUrl(envOrigin(), made.code) };
         }
         case 'unlink-identity': return weave.unlinkIdentity(args.account ?? args.name, { issuer: args.issuer ?? null, subject: args.subject });
-        // A new person, invited to this workspace (Issue #569).
         case 'invite': {
           const made = weave.inviteMember({ email: args.email, role: args.role ?? 'editor', issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER });
           return { ...made, url: inviteUrl(envOrigin(), made.code) };
@@ -848,8 +792,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'share': return weave.grantKey(args.name, args.account);
         case 'unshare': return weave.revokeKey(args.name, args.account);
         case 'delete': return weave.deleteKey(args.name);
-        /* No `reveal`. An agent can name, set, share and drop a credential —
-           everything except carry the secret out (Feature #143). */
         case 'reveal': throw new Error('Revealing a secret is not an agent action — use `weave key reveal` or the app.');
         default: throw new Error(`Unknown keys action '${args.action}' (list, set, share, unshare, delete)`);
       }
@@ -868,10 +810,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_relation_map':
       return { mermaid: weave.relationMapMmd() };
     case 'weave_export_json':
-      // Structure, not bytes. An agent reads this dump; a file-backed
-      // workspace can hold tens of megabytes of attachments, and base64 in
-      // a tool result buys the reader nothing (Issue #121). `weave export`
-      // and GET /api/export are the backup surfaces and carry the blobs.
       return weave.exportJSON({ blobs: args.blobs === true });
     case 'weave_import_json':
       return { ok: true, ...weave.importJSON(args.state) };
@@ -880,15 +818,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   }
 }
 
-/* One JSON-RPC message in, one response (or null for notifications) out —
-   transport-free, so stdio and POST /api/mcp (Feature #99) cannot drift.
-   HTTP note: requests are stateless, so the actor set by `initialize` lasts
-   one request; HTTP clients name themselves per call with x-weave-actor. */
-/* Feature #258: initialize.instructions is what an MCP client shows its model
-   before the first call, and Claude Code keeps the first 2,048 characters. The
-   primer is src/mcp-primer.md, read on the first initialize rather than at
-   module top (the workerd note above); without the file the handshake simply
-   carries no instructions. */
 let PRIMER;
 export function primer() {
   if (PRIMER === undefined) {
@@ -904,7 +833,6 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
   try {
     switch (method) {
       case 'initialize':
-        // The MCP client names itself in the handshake; mutations carry it.
         weave.actor = 'mcp:' + (params?.clientInfo?.name ?? 'client');
         return reply({
           protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
@@ -914,7 +842,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
         });
       case 'notifications/initialized':
       case 'initialized':
-        return null; // notification, no response
+        return null;
       case 'ping':
         return reply({});
       case 'tools/list':

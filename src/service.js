@@ -1,16 +1,9 @@
-// Service management — launchd auto-start for the local instance.
-// Pure logic only: plist generation, launchctl-output parsing, status
-// assembly. Nothing here shells out or touches the network; bin/weave.js
-// wires these to the real launchctl and the live /api/health probe.
-
 import { homedir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const BIN_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
-// Resolve flags into the full set of absolute paths a launch agent needs.
-// launchd runs with no cwd and no shell env, so every path must be absolute.
 export function serviceOptions(flags = {}, { home = homedir(), cwd = process.cwd(), nodePath = process.execPath } = {}) {
   const port = Number(flags.port ?? 4400);
   const label = flags.label && flags.label !== true ? String(flags.label) : `ai.grunion.weave.${port}`;
@@ -55,9 +48,6 @@ ${args.map((a) => `    <string>${escapeXml(a)}</string>`).join('\n')}
 `;
 }
 
-// `launchctl print gui/$UID/<label>` output is key = value lines inside a
-// brace block. Only the fields status needs are extracted; anything absent
-// stays null so callers can distinguish "idle" from "never parsed".
 export function parseLaunchctlPrint(text) {
   if (!text || !String(text).trim()) return { loaded: false };
   const s = String(text);
@@ -73,8 +63,6 @@ export function parseLaunchctlPrint(text) {
   };
 }
 
-// Live probe of /api/health. fetchImpl is injectable so tests never open a
-// socket; any thrown error (refused, timeout) collapses to unreachable.
 export async function probeHealth(port, { fetchImpl = fetch, timeoutMs = 2000 } = {}) {
   try {
     const res = await fetchImpl(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(timeoutMs) });
@@ -85,15 +73,9 @@ export async function probeHealth(port, { fetchImpl = fetch, timeoutMs = 2000 } 
   }
 }
 
-// Assemble the three independent facts — plist on disk, launchctl's view,
-// the live health probe — into one report with a one-line verdict.
 export function buildStatus({ label, port, plistPath, plistInstalled, launchctl, health, localVersion }) {
   const reachable = health?.reachable === true && health?.ok !== false;
   const versionStale = reachable && localVersion != null && health.version != null && health.version !== localVersion;
-  /* The commit-level verdict /api/health carries (Issue #114). Most commits
-     do not bump the version, so a process serving a checkout newer than
-     itself reads as current to the comparison above — which is how the CLI
-     said 'running' on 2026-08-28 while the browser's saves failed silently. */
   const buildStale = reachable && health.stale === true;
   const stale = versionStale || buildStale;
   let summary;

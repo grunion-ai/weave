@@ -1,16 +1,3 @@
-/* Every closed set a configuration value can come from, and what the choice
-   looks like on screen. An agent configuring a table has to guess otherwise:
-   the option palette and the format lists live in browser-only code, the type
-   list lives in the engine's private constants, and the icon names live in a
-   vendored file nobody serves. Served as data — `weave_vocabulary`,
-   `weave vocabulary`, GET /api/vocabulary — so a tool description, a guide and
-   the engine cannot drift apart. test/vocabulary.test.mjs holds them together.
-
-   Zero imports on purpose: this module is read by the CLI, the MCP server, the
-   HTTP server and the worker bundle. */
-
-/* The `renders` line is the point of the file — it says what a reader of the
-   grid sees, which is the thing an agent cannot look at. */
 export const FIELD_TYPE_VOCABULARY = [
   { type: 'text', renders: 'inline text input', config: ['default'] },
   { type: 'number', renders: 'right-aligned, tabular figures; with a `display` of bar, ring or heat, a small graphic filled to the value\'s share of the `scale` (the column max, or a fixed number) beside the text, drawn in the field\'s `color` (ink, icon or accent)', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'color', 'default'] },
@@ -35,14 +22,6 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'view', renders: 'the row as its chip (inline: name, then the state and a few fields behind a caret) or its card (a tile: the #id link, name, state, description preview, a few fields); every table has one of each, minted and hidden', config: ['shape', 'link', 'state', 'description', 'fields'] },
 ];
 
-/* The option palette, generated from the ten-hue ramp public/chip-core.js owns
-   so the served names cannot drift from the ones the engine accepts (Issue
-   #551): this list used to stop at eight and to call pink "magenta", and a
-   write carrying the published name was stored as slate with no error. The
-   ramp names are what weave stores; `aliases` names what an older caller may
-   still send for the same hue. Anything outside both is refused, by name.
-   Slate is the honest default: colour earns its place by carrying meaning
-   (red for blocked, green for done), not by decorating a list. */
 await import('../public/chip-core.js');
 const RAMP = globalThis.chipCore;
 export const OPTION_COLORS = Object.entries(RAMP.HUE_HEX).map(([name, value]) => {
@@ -50,31 +29,12 @@ export const OPTION_COLORS = Object.entries(RAMP.HUE_HEX).map(([name, value]) =>
   return { value, name, ...(aliases.length ? { aliases } : {}) };
 });
 
-/* Weave's icon inventory — Lucide shapes carrying movingicons.dev motion,
-   curated in public/field-dialog-core.js (ICON_CATEGORIES) — vendored at
-   public/vendor/lucide-moving.{js,css}; public/icon-registry.js is the list,
-   generated with them by scripts/build-lucide-moving.mjs. The VALUE stored on
-   a space, a table or a workflow state is `lucide:<name>` — a bare name
-   renders as the literal text "bell", which is what the fallback is for: any
-   other string paints as itself, so an emoji is a legal icon too. The names
-   weave stored before 2026-09-02 (`iconly:<name>`, Iconly free plus the eight
-   money icons it drew) keep resolving through the registry's aliases. */
 await import('../public/icon-registry.js');
 await import('../public/field-dialog-core.js');
 const REGISTRY = globalThis.weaveIconRegistry;
 export const ICON_FORM = 'lucide:<name>';
-/* The inventory — every name the picker offers. The vendored set also holds
-   the twins a legacy value or a mark resolves to; those draw but are reached
-   through the mark, not offered twice. */
 export const ICONS = globalThis.fieldDialogCore.ICON_INVENTORY;
 
-/* Icon search and the nearest-name suggestion in a refusal (Issue #591). The
-   2026-10-02 agent eval guessed real Lucide names the curated inventory lacks
-   (building-2, handshake, tags, repeat) 17 times; a refusal that names the
-   nearest inventory icons lets the next write land without the 4.4k-token
-   list. Ranking is by name only: an exact stem or substring, then edit
-   distance, with a short synonym list for the words agents reach for first.
-   ponytail: grow ICON_SYNONYMS from refusals in the eval logs, not by guess. */
 const ICON_SYNONYMS = [
   ['building buildings office company factory warehouse city', 'landmark house'],
   ['handshake deal partner partnership', 'users briefcase heart'],
@@ -99,23 +59,17 @@ function editDistance(a, b) {
   }
   return prev[b.length];
 }
-/* Lower is nearer: a synonym beats everything (< 0), then a stem or substring
-   (0.2), a legacy alias word (0.25), a shared word (0.3), then edit distance
-   over the whole name or one of its words. */
 function iconDistance(q, qw, name) {
-  for (const [k, names] of ICON_SYNONYMS) if (qw.includes(k) && names.includes(name)) return -1 + names.indexOf(name) / 100; // listed order is the ranking
+  for (const [k, names] of ICON_SYNONYMS) if (qw.includes(k) && names.includes(name)) return -1 + names.indexOf(name) / 100;
   const nw = iconWords(name);
   const gap = (a, b) => editDistance(a, b) / Math.max(a.length, b.length);
-  // Whole name, or one word of it (a typo in 'mesage' is one letter from the word 'message').
   let d = Math.min(gap(q, name), 0.1 + Math.min(...qw.flatMap((t) => nw.map((u) => gap(t, u))), 1));
   if (q.length >= 3 && (name.includes(q) || (name.length >= 3 && q.includes(name)))) d = Math.min(d, 0.2);
   if (qw.some((t) => t.length >= 3 && nw.some((u) => u === t))) d = Math.min(d, 0.3);
-  if (qw.some((k) => REGISTRY.ALIASES[k] === name)) d = Math.min(d, 0.25); // the legacy Iconly words ('home' → house)
+  if (qw.some((k) => REGISTRY.ALIASES[k] === name)) d = Math.min(d, 0.25);
   return d;
 }
 const iconEntry = (name) => ({ name, category: iconCategory(name) });
-/* Up to `limit` inventory icons nearest to a guessed value ('lucide:building-2',
-   a bare word). Empty when nothing is close: a far suggestion would mislead. */
 export function nearestIcons(value, limit = 3) {
   const q = iconQuery(value);
   if (!q) return [];
@@ -126,9 +80,6 @@ export function nearestIcons(value, limit = 3) {
     .slice(0, limit)
     .map((m) => iconEntry(m.name));
 }
-/* The icons section filtered by a query: names containing it, icons filed
-   under a category of that name, and the synonyms of a word that starts with
-   it. With no such hit, the nearest names by edit distance, marked fuzzy. */
 export function searchIcons(query, limit = 20) {
   const q = iconQuery(query);
   const hit = (name) => name.includes(q) || iconCategory(name) === q
@@ -138,12 +89,6 @@ export function searchIcons(query, limit = 20) {
   if (direct.length) return { ...out, matches: direct.slice(0, limit).map(iconEntry) };
   return { ...out, fuzzy: true, matches: nearestIcons(q, 5) };
 }
-/* One section of the vocabulary, several, or all of it; `query` searches
-   icons. The three doors (MCP, REST, CLI) share this so they answer alike.
-   Several sections or queries ride one call (Issue #625): an agent spent 4 to
-   15 calls a run on one section each, and every call re-read the whole
-   context. Either is a list or a comma-separated string; several sections
-   answer keyed by name, several queries answer as `searches`. */
 const listOf = (v) => (Array.isArray(v) ? v : String(v ?? '').split(',')).map((s) => String(s ?? '').trim()).filter(Boolean);
 export function vocabularyView(section, query) {
   const qs = listOf(query);
@@ -158,15 +103,9 @@ export function vocabularyView(section, query) {
   return names.length === 1 ? one(names[0]) : Object.fromEntries(names.map((n) => [n, one(n)]));
 }
 
-/* The formula functions, verbatim from the dialog's catalog: name, signature,
-   grammar group, one sentence of doc and an example that parses. The chip a
-   person hovers and the entry an agent reads are one list (direction A,
-   2026-09-07); test/vocabulary.test.mjs pins the names to FUNCS. */
 export const FORMULA_FUNCTIONS = globalThis.fieldDialogCore.FORMULA_FUNCTIONS;
 export const FORMULA_GROUPS = globalThis.fieldDialogCore.FORMULA_GROUPS;
 
-/* The marks an author may pick, read from the drawn set so this list and the
-   shapes cannot drift apart. */
 await import('../public/mark-icons.js');
 const MARK_CHARS = Object.keys(globalThis.weaveMarkIcons.MARKS);
 
@@ -177,63 +116,35 @@ export const VOCABULARY = {
     form: ICON_FORM,
     legacy: 'iconly:<name> — the set stored before 2026-09-02; every name still resolves to its Lucide twin (see aliases)',
     aliases: REGISTRY.ALIASES,
-    // A mark is stored as its own character and drawn as a vector from the
-    // same canvas as the flat set (Issue #87), so the two forms are one
-    // vocabulary rather than two.
     marks: MARK_CHARS,
     fallback: 'Anything else is refused — an emoji is not an icon. A legacy iconly:<name> resolves through aliases; a mark character (✓, ◔) is its own value.',
     names: ICONS,
   },
   numberFormats: ['number', 'currency', 'percent', 'compact'],
-  // How a number is drawn (Feature #230); `scale` is 'column' or a number.
   numberDisplays: ['text', 'bar', 'ring', 'heat'],
-  // A formula that returns a list also takes `display: sparkline` (Feature #232).
   sparklineStyles: ['line', 'column', 'winloss'],
-  /* The colour a rich cell is drawn in (Feature #235): ink (Quiet ink, the
-     default), icon (Color by icon) or accent (One accent hue). On a rating,
-     a number with a display, and a formula with a display. */
   cellColors: ['ink', 'icon', 'accent'],
   dateFormats: ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'],
-  /* A date's grain is which of year · month · day it stores — any contiguous
-     run (year, year·month, month·day, month, day) or none at all with a time
-     of day. A style that needs a part the grain does not store is refused:
-     month and quarter need a month, ordinal a day, relative a year. Stored
-     forms are ISO 8601 truncations: 2026-08, 2026, --08-15, --08, ---15, 09:15. */
   dateGrains: ['year', 'month', 'day'],
-  // config.grain is a list of those parts (or the dialog's {year, month, day} flags); a word is refused (Issue #590).
   dateGrainForm: 'a list of parts, e.g. ["year","month"] for a month or ["year"] for a year',
   dateStyleNeeds: { month: ['month'], quarter: ['month'], ordinal: ['day'], relative: ['year'] },
   clocks: ['24h', '12h'],
-  // What a clock time means: floating (the wall clock as typed, no zone —
-  // the default), fixed (zoneName travels with the field), instant (stored
-  // as UTC, read in the reader's own zone).
   zones: ['floating', 'fixed', 'instant'],
   documentKinds: ['markdown', 'html', 'code'],
   cardinalities: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'],
   stateCategories: ['not-started', 'in-progress', 'done', 'canceled'],
   aggregates: ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'],
-  // Off by default; add them where provenance is part of the record.
   systemFields: ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'],
-  // The kinds a saved-view block can take: the ones the UI draws. The board
-  // went in Issue #75 and left this list in Issue #438.
   viewKinds: ['table'],
   columnWidth: {
     min: 60,
     unsetCap: 260,
     note: 'An unset column caps at 260px and ellipsises. A set width is a floor as well as a ceiling, so the column holds that width in a grid wider than its card.',
   },
-  // Every field (the two views aside) may carry a description: what the
-  // value represents and how it is written. Read it before filling a row.
   fieldDescription: {
     key: 'description',
     note: 'config.description on any field type except view: plain text saying what the value represents and how it is written. Emitted by the schema as the field\'s `description`, drawn under the label on the entity page and as the column tooltip. null clears it. On a view field, `description` is the description SIZE (none, small, medium, large) instead.',
   },
-  // Writing a registry row runs the same validation as the schema verb,
-  // because it is the schema verb.
-  // Every function a formula may call, with the card the builder shows —
-  // sig, group (logic, text, number, date), doc, example. Field references
-  // are bare names or [bracketed]; a formula may not read a document, an
-  // attachments field, or itself.
   formulaFunctions: FORMULA_FUNCTIONS,
   formulaGroups: FORMULA_GROUPS,
   registries: {

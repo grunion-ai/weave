@@ -1,13 +1,3 @@
-/* One place a list of values becomes a number. The rollup resolver, the
-   table stats report (`weave stats`, GET /api/tables/:ref/stats) and the
-   grid footer all read these, so a median can only be computed one way.
-   Zero imports on purpose: the engine, the CLI and a worker bundle share it.
-
-   Two families. NUMERIC aggregates read the numbers in the list and ignore
-   the rest; COUNTING aggregates read the rows — how many, how many say
-   something, how many distinct things they say. `join` stands alone: it
-   reads display strings. */
-
 export const NUMERIC_AGGREGATES = ['sum', 'avg', 'min', 'max', 'median', 'stdev', 'range'];
 export const COUNTING_AGGREGATES = ['count', 'filled', 'empty', 'distinct'];
 
@@ -17,8 +7,6 @@ const flat = (vals) => vals.flatMap((v) => (Array.isArray(v) ? v : [v]));
 
 function sorted(nums) { return [...nums].sort((a, b) => a - b); }
 
-/* Linear interpolation between ranks (the numpy default), so a quartile of
-   ten values lands between two of them rather than on a coin flip. */
 function quantile(sortedNums, q) {
   const n = sortedNums.length;
   if (!n) return null;
@@ -35,8 +23,6 @@ function stdev(nums) {
   return Math.sqrt(ss / (nums.length - 1));
 }
 
-/* Min and max read numbers when there are any; otherwise they compare the
-   strings, which is what an ISO date wants. */
 function extreme(vals, pick) {
   const nums = numbers(vals);
   if (nums.length) return pick === 'min' ? Math.min(...nums) : Math.max(...nums);
@@ -45,10 +31,6 @@ function extreme(vals, pick) {
   return strs.reduce((a, b) => ((pick === 'min' ? b < a : b > a) ? b : a));
 }
 
-/* aggregate(name, values, { display, separator }) → one value or null.
-   `values` are raw resolved values, one per row (a list per row for a
-   multiselect); `display` is the same list dressed, which only `join` and
-   `distinct` read. */
 export function aggregate(name, vals, { display = null, separator = ', ' } = {}) {
   switch (name) {
     case 'count': return vals.length;
@@ -67,7 +49,6 @@ export function aggregate(name, vals, { display = null, separator = ', ' } = {})
   }
 }
 
-/* The five-number summary plus the moments, for one numeric column. */
 export function describeNumbers(vals) {
   const nums = sorted(numbers(vals));
   if (!nums.length) return { n: 0, sum: 0, avg: null, median: null, min: null, max: null, p25: null, p75: null, range: null, stdev: null };
@@ -86,8 +67,6 @@ export function describeNumbers(vals) {
   };
 }
 
-/* Equal-width buckets. The top edge belongs to the last bucket, so the
-   maximum is counted rather than falling off the end. */
 export function histogram(vals, bins = 10) {
   const nums = numbers(vals);
   if (!nums.length) return [];
@@ -99,9 +78,6 @@ export function histogram(vals, bins = 10) {
   return out;
 }
 
-/* How often each value occurs — a select's options, a checkbox's two states,
-   a multiselect's chips one by one. Blanks count under null. Ranked by count,
-   then by name so equal counts draw in a stable order. */
 export function distribution(vals) {
   const counts = new Map();
   for (const v of vals) {

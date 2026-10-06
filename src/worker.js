@@ -1,16 +1,3 @@
-// Cloudflare Worker entry (Feature #84): the same dispatcher node serves,
-// wrapped for workerd. One workspace = one SQLite-backed Durable Object;
-// the outer Worker routes /w/<name>/* to that workspace's DO and everything
-// else to the default workspace's. Static assets are served by the Assets
-// binding before this code runs; the one non-file asset path (Vditor's
-// mermaid probe) is aliased here, same as the node adapter does.
-//
-// Deliberate v1 limits, lifted in later increments:
-// - POST /api/workspaces is refused (workspace enumeration needs the registry
-//   DO — a static DO-per-name namespace has nothing to enumerate)
-// - /api/search?all= degrades to the current workspace (same reason)
-// - file blobs persist in-DO (store.path is null → engine keeps them in
-//   state.fileBlobs); R2 offload is the next increment
 import { Weave, WeaveError } from './engine.js';
 import { CFStore } from './store-cf.js';
 import { createRequestHandler, statusFor } from './routes.js';
@@ -28,17 +15,12 @@ export class WeaveWorkspace {
     if (this.#handle) return;
     this.#bootedAt = Date.now();
     const store = new CFStore(this.ctx.storage);
-    // A fresh DO is named for the route that addressed it, not
-    // personal-workspace (Issue #594); one still carrying the old seed name
-    // takes it too.
     const weave = new Weave({ store, actor: 'web', name });
     if (!weave.state.meta.name || weave.state.meta.name === 'Weave Workspace') {
       weave.state.meta.name = name;
       weave.save();
     }
     const self = weave.state.meta.name;
-    // A single-member hub: each DO only ever sees its own traffic — the outer
-    // Worker already routed /w/<name>/* here. The registry DO replaces this.
     const hub = {
       get defaultName() { return self; },
       get(n) { return (n === self || (n === 'weave' && self === 'weaver')) ? weave : null; },
@@ -58,7 +40,7 @@ export class WeaveWorkspace {
     this.#handle = createRequestHandler(hub, {
       version: this.env.WEAVE_VERSION || 'dev',
       uptime: () => (Date.now() - this.#bootedAt) / 1000,
-      serveStatic: null, // the Assets binding served files before we ran
+      serveStatic: null,
     });
   }
 
@@ -90,8 +72,6 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = decodeURIComponent(url.pathname);
-    // Vditor lazy-loads mermaid from inside its own dist tree; alias onto the
-    // vendored build instead of shipping a second copy (same as node's adapter).
     if (path === '/vendor/vditor/dist/js/mermaid/mermaid.min.js' && env.ASSETS) {
       return env.ASSETS.fetch(new Request(new URL('/vendor/mermaid.min.js', url), request));
     }

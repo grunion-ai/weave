@@ -1,19 +1,3 @@
-/* The task applet — one table, one screen, one thumb.
-
-   A passcode-gated single page over a single table, built for mobile Safari
-   and nothing else. It is deliberately NOT part of the web app: no workspace
-   rail, no table switcher, no schema. Open it, type, press return.
-
-   Why the page is generated here and not dropped in public/: on the
-   Cloudflare adapter the [assets] binding serves public/ *before* the Worker
-   runs (see src/worker.js), so a file there would be permanently ungated.
-   Generating it inside the dispatcher means node and workerd gate it the
-   same way.
-
-   The passcode lives in WEAVE_APPLET_PASSCODE. With no passcode set there is
-   no applet at all — not even a gate to guess at. It is never written to the
-   workspace, so it can never leave through /api/export. */
-
 import '../public/vendor/lucide-moving.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { renderMarkdown } from './markdown.js';
@@ -24,29 +8,18 @@ import { esc } from './mail.js';
 const COOKIE = 'wv_applet';
 const YEAR = 31536000;
 
-/* Wrong guesses are cheap over a LAN; this makes them cost time. The window
-   is per process — the applet is a single-user surface, not a login page. */
 const MAX_TRIES = 8;
 const WINDOW_MS = 10 * 60 * 1000;
-// Per workspace, not per process: one workspace being hammered must not lock
-// the passcode out of every other one.
 const tries = new WeakMap();
 
 const passcodeOf = () => (process.env.WEAVE_APPLET_PASSCODE ?? '').trim();
 const tableOf = () => (process.env.WEAVE_APPLET_TABLE ?? 'Product/Task').trim();
-/* Values every task made here starts with — WEAVE_APPLET_DEFAULTS as JSON,
-   e.g. {"Assignee":"Kyle"}. Field names, not a hardcoded notion of "me". */
 const defaultsOf = () => {
   try { return JSON.parse(process.env.WEAVE_APPLET_DEFAULTS ?? '{}'); } catch { return {}; }
 };
 
 const tokenFor = (pass) => createHash('sha256').update(`wv-applet-v1:${pass}`).digest('hex');
 
-/* TextEncoder, not Buffer.from: Buffer pools its memory, so a short Buffer is
-   a window onto a shared 8KB arena — and workerd's timingSafeEqual compares
-   the backing store, which makes two identical passcodes disagree. Verified
-   live on the hosted instance, 2026-08-28: both sides 8 bytes, still false.
-   TextEncoder hands back a tight array, and the comparison tells the truth. */
 const sameSecret = (a, b) => {
   const enc = new TextEncoder();
   const x = enc.encode(String(a));
@@ -62,10 +35,6 @@ const cookieValue = (header, name) => {
   return null;
 };
 
-/* What the phone needs to know about the table it is pointed at. The applet
-   bakes in no field names: the workflow field is whichever one has that type,
-   the states are its own, and every other field is drawn from its type. Point
-   WEAVE_APPLET_TABLE somewhere else and the page follows. */
 function schemaOf(weave, table) {
   const db = weave.getTable(table);
   const order = db.fieldOrder ?? Object.keys(db.fields);
@@ -84,7 +53,6 @@ function schemaOf(weave, table) {
   };
 }
 
-/* A row is its name, its fields as they are, and its files. No allowlist. */
 function rowOf(weave, e) {
   const flat = (v) => (Array.isArray(v)
     ? v.map((x) => (x && typeof x === 'object' ? x.name ?? '' : x))
@@ -101,23 +69,18 @@ function rowOf(weave, e) {
   };
 }
 
-/* Active is a question about categories, not about the word "Open". */
 const activeStates = (schema) => (schema.workflow?.states ?? [])
   .filter((x) => x.category !== 'done' && x.category !== 'canceled')
   .map((x) => x.name);
 
-/* Handle everything under <prefix>/t. Returns a response, or null so the
-   dispatcher carries on. Mounted ahead of the auth wall, like a share link:
-   the passcode is its own authorization. */
 export function handleApplet({ weave, rx, path, out, mount }) {
   const passcode = passcodeOf();
-  if (!passcode) return null;                       // no applet configured
+  if (!passcode) return null;
   if (path !== '/t' && !path.startsWith('/t/')) return null;
 
   const deny = () => out(401, { error: 'Locked', code: 'unauthorized' });
   const unlocked = sameSecret(cookieValue(rx.header('cookie'), COOKIE) ?? '', tokenFor(passcode));
 
-  // ---- unlock ------------------------------------------------------------
   if (path === '/t/unlock' && rx.method === 'POST') {
     const now = Date.now();
     const rec = tries.get(weave);
@@ -135,13 +98,10 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     tries.delete(weave);
     const secure = String(rx.header('x-forwarded-proto') ?? '').toLowerCase() === 'https' ? '; Secure' : '';
     return out(200, { ok: true }, {
-      // Set by the server and never touched by page script: WebKit caps
-      // script-written cookies at 7 days, server-set ones it leaves alone.
       'Set-Cookie': `${COOKIE}=${tokenFor(passcode)}; Path=${mount}; Max-Age=${YEAR}; HttpOnly; SameSite=Lax${secure}`,
     });
   }
 
-  // ---- the page ----------------------------------------------------------
   if (path === '/t' && rx.method === 'GET') {
     return out(200, appPage(mount, !unlocked), {
       'Content-Type': 'text/html; charset=utf-8',
@@ -151,11 +111,8 @@ export function handleApplet({ weave, rx, path, out, mount }) {
 
   if (!unlocked) return deny();
 
-  // ---- data (all of it behind the cookie) --------------------------------
   const table = tableOf();
   const body = rx.body ?? {};
-  // Every id the applet accepts must belong to its own table. Without this
-  // the applet would be a hole straight into the rest of the workspace.
   const mine = (id) => {
     const e = weave.state.entities[id];
     if (!e) return null;
@@ -170,8 +127,6 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     const scope = rx.searchParams.get('scope') ?? 'active';
     const wf = schema.workflow;
     const where = scope === 'all' || !wf ? [] : [[wf.field, 'in', activeStates(schema)]];
-    // query() cannot sort on the update stamp (#pathValue has no entry for
-    // it), so the order the applet is built around is applied here.
     const res = weave.query(table, { where, limit: 300 });
     const items = res.items
       .map((e) => rowOf(weave, e))
@@ -219,7 +174,6 @@ export function handleApplet({ weave, rx, path, out, mount }) {
   if ((m = path.match(/^\/t\/entity\/([^/]+)\/doc$/)) && (rx.method === 'PUT' || rx.method === 'POST')) {
     const e = mine(m[1]);
     if (!e) return out(404, { error: 'No such task', code: 'not-found' });
-    // The two keys the API route takes, and no silent empty fallback (Issue #572).
     const text = body.doc ?? body.markdown;
     if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither.', 'invalid');
     weave.setDoc(e.id, text, body.field ?? null);
@@ -239,7 +193,6 @@ export function handleApplet({ weave, rx, path, out, mount }) {
   }
 
   if ((m = path.match(/^\/t\/file\/([^/]+)$/)) && rx.method === 'GET') {
-    // Only files that hang off this table's rows.
     const owner = Object.values(weave.state.entities)
       .find((e) => (e.files ?? []).some((f) => f.id === m[1]));
     if (!owner || !mine(owner.id)) return out(404, 'Not found');
@@ -249,8 +202,6 @@ export function handleApplet({ weave, rx, path, out, mount }) {
 
   return out(404, { error: 'No such applet route', code: 'not-found' });
 }
-
-/* ---------------------------------------------------------------- markup */
 
 const HEAD = (mount, title, extra) => `<!doctype html>
 <html lang="en"><head>
@@ -547,15 +498,8 @@ const GATE_CSS = `
 .wv-key.flat{background:none; border-color:transparent; font-size:15px; color:var(--muted)}
 `;
 
-/* The report button draws the inventory's bug — the same outlined bug the
-   desktop's sidebar and its own report button draw (Kyle, 2026-09-02: "why
-   is this bug icon different?"). The traced ant retired with the Iconly set. */
 const BUG_GLYPH = (globalThis.LUCIDE_MOVING?.bug ?? '<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true"></svg>').replace(/ data-mi="[^"]*"/g, '');
 
-/* The marks are inlined, not <img>-referenced: WebKit rasterizes an SVG mask
-   inside an <img> with ragged, feathered edges — the rope's under-gaps render
-   as dark smears on iOS. The same document inlined is clean in every engine.
-   markParts namespaces the mask ids, so four marks share one page safely. */
 const inlineMark = (cls, id, c2, size) => {
   const { defs, body } = markParts({ c1: PALETTE.blue, c2, id });
   return `<svg class="${cls}" viewBox="0 0 48 48"${size ? ` width="${size}" height="${size}"` : ''}`
@@ -616,8 +560,6 @@ document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: fals
 </body></html>`;
 }
 
-/* The applet's whole client. One recipe, with every choice named at the top
-   so a different one is a one-line change, not a rewrite. */
 const CLIENT = `
 (() => {
   const MOUNT = '__MOUNT__';
