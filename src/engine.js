@@ -2530,8 +2530,38 @@ export class Weave {
       }
     }
 
-    const links = [];
+    const relationOf = (tb, key) => {
+      const f = this.findField(tb.db, key);
+      return f?.type === 'relation' ? f : null;
+    };
+    const resolves = (f, v) => {
+      try { this.#normalizeRelationInput(f, v); return true; } catch { return false; }
+    };
+    const needs = new Map(tables.map((tb) => [tb, new Set()]));
     for (const tb of tables) {
+      for (const row of Array.isArray(tb.spec.rows) ? tb.spec.rows : []) {
+        if (!isObj(row)) continue;
+        for (const [key, v] of Object.entries(row)) {
+          const f = relationOf(tb, key);
+          if (!f || v == null) continue;
+          for (const id of this.relationTargetDbIds(f)) {
+            for (const other of tables) if (other !== tb && other.db.id === id) needs.get(tb).add(other);
+          }
+        }
+      }
+    }
+    const rowOrder = [];
+    const visit = (tb, path) => {
+      if (rowOrder.includes(tb) || path.has(tb)) return;
+      path.add(tb);
+      for (const other of needs.get(tb)) visit(other, path);
+      path.delete(tb);
+      rowOrder.push(tb);
+    };
+    for (const tb of tables) visit(tb, new Set());
+
+    const links = [];
+    for (const tb of rowOrder) {
       const held = skipExistingRows ? new Set(this.listEntities(tb.db.id).map((e) => this.entityName(e))) : null;
       listAt(`${tb.at}.rows`, tb.spec.rows).forEach((row, k) => {
         const at = `${tb.at}.rows[${k}]`;
@@ -2545,7 +2575,8 @@ export class Weave {
         const rel = {};
         for (const [key, v] of Object.entries(row)) {
           if (tb.failed.has(key)) continue;
-          (this.findField(tb.db, key)?.type === 'relation' ? rel : values)[key] = v;
+          const f = relationOf(tb, key);
+          (f && !resolves(f, v) ? rel : values)[key] = v;
         }
         const e = step(at, () => this.createEntity(tb.db.id, values));
         if (!e) return undefined;
@@ -6228,6 +6259,8 @@ export class Weave {
   #wfRows = null;
   #wfRules = null;
   #noWebhooks = false;
+  #wfRun = new Map();
+  webhookTimeoutMs = 5000;
 
   createAutomation(dbRef, { name, trigger, actions, enabled = true }) {
     const db = this.getTable(dbRef);
@@ -6281,7 +6314,7 @@ export class Weave {
         else if (!this.documentFields(db).length) throw new WeaveError(`Table '${db.name}' has no document to append to`, 'invalid');
         return act;
       }
-      if (a?.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), author: a.author ?? 'automation' };
+      if (a?.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), ...(a.author && a.author !== 'automation' ? { author: a.author } : {}) };
       if (a?.type === 'webhook') {
         if (!/^https?:\/\//.test(a.url ?? '')) throw new WeaveError('Webhook action needs an http(s) url', 'invalid');
         return { type: 'webhook', url: a.url };
@@ -6322,7 +6355,7 @@ export class Weave {
       const actions = c.actions.map((a) => {
         if (a.type === 'set-field') return { type: a.type, field: fname(a.fieldId), value: a.value };
         if (a.type === 'append-doc') return { type: a.type, ...(a.fieldId ? { field: fname(a.fieldId) } : {}), text: a.text };
-        if (a.type === 'add-comment') return { type: a.type, text: a.text, ...(a.author && a.author !== 'automation' ? { author: a.author } : {}) };
+        if (a.type === 'add-comment') return { type: a.type, text: a.text, ...(a.author ? { author: a.author } : {}) };
         return { type: a.type, url: a.url };
       });
       return { table: this.qualifiedName(db), trigger, actions };
@@ -6615,12 +6648,15 @@ export class Weave {
       if (t.toStateId && t.toStateId !== event.toStateId) continue;
       const name = reg.entityName(rule.row);
       let failure = null;
+      const run = { failed: false };
+      reg.#wfRun.set(rule.row.id, run);
       const person = this.actor;
       this.actor = workflowActor(rule.row.id);
       try {
-        for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth);
+        for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth, run);
       } catch (err) {
         failure = err.message;
+        run.failed = true;
       } finally {
         this.actor = person;
       }
@@ -6630,7 +6666,7 @@ export class Weave {
     }
   }
 
-  #runAction(rule, name, action, db, e, event, depth) {
+  #runAction(rule, name, action, db, e, event, depth, run) {
     if (action.type === 'set-field') {
       const f = db.fields[action.fieldId];
       if (f) {
@@ -6649,7 +6685,7 @@ export class Weave {
         e.modifiedBy = this.actor;
       }
     } else if (action.type === 'add-comment') {
-      const comment = { id: uuid(), author: action.author, text: this.#template(action.text, e, db), createdAt: nowISO() };
+      const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db), createdAt: nowISO() };
       e.comments.push(comment);
       this.#recordUndo('comment-add', e, { commentId: comment.id });
     } else if (action.type === 'webhook') {
@@ -6661,12 +6697,32 @@ export class Weave {
         automation: name,
         at: nowISO(),
       };
+      const reg = this.#reg;
+      const ms = this.webhookTimeoutMs;
       fetch(action.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).catch(() => {});
+        signal: AbortSignal.timeout(ms),
+      }).then((res) => {
+        res.body?.cancel().catch(() => {});
+        return res.ok ? null : `HTTP ${res.status}`;
+      }, (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.message ?? String(err)))
+        .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${new URL(action.url).host}: ${why}`); })
+        .catch(() => {});
     }
+  }
+
+  #webhookFailed(id, run, reason) {
+    if (this.#wfRun.get(id) !== run || run.failed) return;
+    run.failed = true;
+    const row = own(this.state.entities, id);
+    if (!row || row.deletedAt) return;
+    this.#stamp(row, () => {
+      this.#setOption(row, this.#wfField('Health'), 'Failed');
+      row.values[this.#wfField('Health Reason').id] = reason;
+    });
+    this.save();
   }
 
   #template(text, e, db) {
@@ -6680,7 +6736,8 @@ export class Weave {
       const f = this.findField(db, key);
       if (!f) return '';
       const v = this.#displayValue(db, f, this.#resolve(e, db, f, 0), e);
-      return v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v);
+      const s = v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v);
+      return s === '' ? `(no ${f.name})` : s;
     });
   }
 

@@ -4,8 +4,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { createServer } from 'node:http';
 import { Weave } from '../src/engine.js';
-import { dispatchTool } from '../src/mcp.js';
+import { dispatchTool, TOOLS } from '../src/mcp.js';
 
 const wf = (w) => w.getTable('Workspace/Workflows');
 const read = (w, id) => w.readEntity(id);
@@ -279,4 +280,82 @@ test('MCP weave_automations list reads the rows', () => {
   const auto = w.createAutomation(t.id, closeOut);
   const listed = dispatchTool(w, 'weave_automations', { action: 'list' }).automations;
   assert.deepEqual(listed.map((x) => [x.id, x.name, x.enabled]), [[auto.id, 'Close out on Done', true]]);
+});
+
+test('MCP weave_create_automation honours enabled:false as the row\'s On, lists it, and update switches it (Issue #683)', () => {
+  const { w, t } = demo();
+  const spec = TOOLS.find((x) => x.name === 'weave_create_automation');
+  assert.equal(spec.inputSchema.properties.enabled.type, 'boolean');
+  assert.match(spec.description, /enabled/, 'the description lists it');
+  const made = dispatchTool(w, 'weave_create_automation', { db: t.id, ...closeOut, enabled: false });
+  assert.equal(made.enabled, false);
+  assert.equal(read(w, made.id).fields.On, false, 'the row comes up Off');
+  const req = w.createEntity(t.id, { Name: 'R' });
+  w.setState(req.id, 'Status', 'Done');
+  assert.equal(read(w, req.id).fields.Resolved, false, 'an Off rule never fired');
+  assert.equal(dispatchTool(w, 'weave_create_automation', { db: t.id, ...closeOut, name: 'On by default' }).enabled, true);
+  assert.equal(dispatchTool(w, 'weave_automations', { action: 'update', automation: made.id, patch: { enabled: true } }).enabled, true);
+  assert.equal(read(w, made.id).fields.On, true);
+});
+
+async function hook(handler) {
+  const server = createServer(handler);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { server, url: `http://127.0.0.1:${server.address().port}/hook` };
+}
+
+async function until(fn) {
+  const deadline = Date.now() + 5000;
+  while (!fn() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+  return fn();
+}
+
+function notifier(w, t, url) {
+  return w.createAutomation(t.id, { name: 'Notify', trigger: { type: 'state-changed', field: 'Status', toState: 'Done' }, actions: [{ type: 'webhook', url }] });
+}
+
+test('a webhook that answers non-2xx marks its row Failed with the status; a later 2xx run reads Healthy with no reason (Issue #682)', async () => {
+  const statuses = [500, 200];
+  const { server, url } = await hook((req, res) => { req.resume(); res.statusCode = statuses.shift() ?? 200; res.end(); });
+  try {
+    const { w, t } = demo();
+    const auto = notifier(w, t, url);
+    const r1 = w.createEntity(t.id, { Name: 'R1' });
+    w.setState(r1.id, 'Status', 'Done');
+    assert.equal(read(w, r1.id).fields.Status, 'Done', 'the triggering write lands before the webhook answers');
+    assert.ok(await until(() => read(w, auto.id).fields.Health === 'Failed'));
+    assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: HTTP 500`);
+    assert.equal(read(w, auto.id).fields.On, true, 'a failing webhook never switches the row off');
+    const r2 = w.createEntity(t.id, { Name: 'R2' });
+    w.setState(r2.id, 'Status', 'Done');
+    assert.ok(await until(() => !statuses.length));
+    await new Promise((r) => setTimeout(r, 50));
+    const after = read(w, auto.id);
+    assert.equal(after.fields.Health, 'Healthy');
+    assert.equal(after.fields['Health Reason'] ?? null, null, 'the success clears the reason');
+  } finally { server.close(); }
+});
+
+test('a webhook to a host that refuses the connection marks its row Failed with the error code (Issue #682)', async () => {
+  const { server, url } = await hook(() => {});
+  await new Promise((r) => server.close(r));
+  const { w, t } = demo();
+  const auto = notifier(w, t, url);
+  const r1 = w.createEntity(t.id, { Name: 'R1' });
+  w.setState(r1.id, 'Status', 'Done');
+  assert.ok(await until(() => read(w, auto.id).fields.Health === 'Failed'));
+  assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: ECONNREFUSED`);
+});
+
+test('a webhook that never answers times out and marks its row Failed (Issue #682)', async () => {
+  const { server, url } = await hook((req) => { req.resume(); });
+  try {
+    const { w, t } = demo();
+    w.webhookTimeoutMs = 150;
+    const auto = notifier(w, t, url);
+    const r1 = w.createEntity(t.id, { Name: 'R1' });
+    w.setState(r1.id, 'Status', 'Done');
+    assert.ok(await until(() => read(w, auto.id).fields.Health === 'Failed'));
+    assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: timed out after 0.15 s`);
+  } finally { server.closeAllConnections(); server.close(); }
 });
