@@ -100,3 +100,26 @@ if (s) {
     await page.close();
   });
 }
+
+/* Found on live :4400 the day the fold landed (Issue #677): in a
+   412px dock against the window's right edge, the menu opened at the "…"
+   button's left and its long row names ran past the window. It stays on
+   screen now. */
+if (s) {
+  const { base, browser } = s;
+  test('the "…" menu stays inside the window when the dock sits at its right edge', async () => {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+    await page.addInitScript(() => localStorage.setItem('wv-dock-width', '420'));
+    await page.goto(`${base}/#/table/${steps.id}?e=${chain[0].id}`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value.startsWith('Step 0 '));
+    for (let i = 1; i <= 5; i++) {
+      await page.click(`#dock .entity-grid a[href="#/entity/${chain[i].id}"]`);
+      await page.waitForFunction((n) => document.querySelector('#dock .name-edit')?.value.startsWith(n), `Step ${i} `);
+    }
+    await page.click('#dock .crumb-more');
+    await page.waitForSelector('.crumb-fold-menu');
+    const r = await page.evaluate(() => { const b = document.querySelector('.crumb-fold-menu').getBoundingClientRect(); return { l: b.left, r: b.right, w: innerWidth }; });
+    assert.ok(r.l >= 0 && r.r <= r.w, `the menu is inside the window: ${JSON.stringify(r)}`);
+    await page.close();
+  });
+}

@@ -1279,6 +1279,10 @@ function crumbFoldMenu(btn, hidden) {
   const away = (e) => { if (!menu.contains(e.target) || e.target.closest('a')) setTimeout(close); };
   const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
   row.append(menu);
+  // Opened under the button, but never past the window's right edge: a dock
+  // sits against it, and the rows carry full Names.
+  const over = menu.getBoundingClientRect().right - (innerWidth - 8);
+  if (over > 0) menu.style.left = `${Math.max(8, r.left - over)}px`;
   btn.setAttribute('aria-expanded', 'true');
   addEventListener('click', away, true);
   addEventListener('keydown', esc, true);
