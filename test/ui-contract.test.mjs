@@ -126,6 +126,20 @@ test('the field "+" opens the add tray directly — relation is a grid tile, Man
   assert.doesNotMatch(body, /showPopover/);
 });
 
+test('one vocabulary for creating a field: every control that opens the tray says New field', () => {
+  const made = 'field|table|space|workspace|view|row|record';
+  const drift = [...APP.matchAll(new RegExp(`'Add (?:a |an )?(?:${made})s?'`, 'gi'))].map((m) => m[0]);
+  assert.deepEqual(drift, [], 'a thing being made is New; Add only attaches one that exists');
+  assert.match(APP, /class: 'add-field-btn', type: 'button', title: 'New field'/,
+    'the plus at the end of the field headers carries the one name');
+  assert.match(APP, /class: 'chip-pop-row table-filter-add-field'[\s\S]{0,200}'New field'/,
+    'so does the row the Filters popover offers');
+  assert.match(APP, /class: 'chip-pop-row fields-add'[\s\S]{0,200}'New field'/,
+    'so does the row the fields popover offers');
+  assert.match(APP, /tray\(isEdit \? `Edit \$\{existing\.name\}` : 'New field'/,
+    'and so does the tray all three of them open');
+});
+
 test('full-width grid rows derive their span from one column count', () => {
   assert.match(APP, /const colCount = cols\.length \+ 3;/, 'the table view derives it once');
   assert.match(APP, /const colCount = cols\.length \+ 2;/, 'so does the embedded related grid, from its own columns');

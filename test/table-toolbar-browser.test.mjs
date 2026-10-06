@@ -32,7 +32,7 @@ if (s) {
       assert.equal(await page.locator('.table-view-popover .view-clear').isVisible(), true);
     } finally { await page.close(); }
   });
-  test('Fields reorders with keyboard, hides independently, and both Add field controls open the field tray', async () => {
+  test('Fields reorders with keyboard, hides independently, and both New field controls open the field tray', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
@@ -55,7 +55,7 @@ if (s) {
       assert.equal(await page.locator('.table-fields-popover .drop-line').count(), 0, 'Escape drops the drag');
       await owner.locator('.eye-row').click();
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some(h => h.textContent.trim() === 'Owner'));
-      await page.locator('.table-fields-popover').getByRole('button', { name: 'Add field', exact: true }).click();
+      await page.locator('.table-fields-popover').getByRole('button', { name: 'New field', exact: true }).click();
       await page.waitForSelector('#tray .tray-form');
       assert.match(await page.textContent('#tray'), /field/i);
       await page.keyboard.press('Escape');
@@ -103,7 +103,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('Fields shows all, hides all, and restores one field while Add field stays visible', async () => {
+  test('Fields shows all, hides all, and restores one field while New field stays visible', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
@@ -114,7 +114,7 @@ if (s) {
       const fields = await pop.locator('.table-field-row').evaluateAll(rows => rows.map(row => row.dataset.field));
       assert.deepEqual(s.weave.tableView(table).views[0].fields, fields, 'every picker field is accepted and saved');
       assert.equal(fields.includes('Activity'), false, 'Activity is not a view system column');
-      const add = pop.getByRole('button', { name: 'Add field', exact: true });
+      const add = pop.getByRole('button', { name: 'New field', exact: true });
       assert.equal(await add.isVisible(), true);
       await pop.getByRole('button', { name: 'Hide all', exact: true }).click();
       await page.waitForFunction(() => [...document.querySelectorAll('.table-field-row .eye-row')].every(row => row.matches(':has(input:checked), [aria-checked="true"]') === false));

@@ -3481,7 +3481,7 @@ function tableFilterButton(ref) {
     const strip = filterStrip(db, () => keepScroll(() => showDatabase(db.id, db.view?.id)));
     const content = strip || el('div', { class: 'table-control-note' },
       'Workflow, toggle and select fields provide filters. This table has none.',
-      el('button', { class: 'chip-pop-row table-filter-add-field', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'Add field'));
+      el('button', { class: 'chip-pop-row table-filter-add-field', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'));
     pop = tableControlPopover(btn, db, 'table-filter-popover', [tableControlHeader('Filters', () => pop?.remove()), content]);
     if (pop) pop.beforeClose = () => strip?.flushPending();
   });
@@ -3623,7 +3623,7 @@ function tableFieldsPopover(anchor, db, trashCount) {
       el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => write(() => ({ fields: [] })) }, 'Hide all')),
     el('div', { class: 'table-field-legend' }, 'Show / hide', el('span', {}, 'Drag to reorder')),
     el('div', { class: 'table-field-list' }, ...order.map((n) => makeRow(n, shown.has(n)))),
-    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'Add field'),
+    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
     el('div', { class: 'eye-head' }, 'Rows'),
     el('label', { class: 'chip-pop-row eye-row', 'data-deleted': '' },
       el('input', { type: 'checkbox', class: 'form-check-input', checked: showsDeleted(db) ? '' : undefined, onchange: () => write((t) => ({ deleted: !showsDeleted(t) })) }),
@@ -6958,7 +6958,7 @@ function fieldDialog(db, existing, after) {
   drawCfg();
 
   let saved = null;
-  tray(isEdit ? `Edit ${existing.name}` : 'Add field', [
+  tray(isEdit ? `Edit ${existing.name}` : 'New field', [
     dsection('Name', nameInput),
     describable ? dsection('Description', descInput) : '',
     gridWrap, cfgWrap,
@@ -7117,7 +7117,7 @@ async function reorderField(db, fromName, toName, { after = false, onFail = () =
 
 
 function addFieldMenuButton(db) {
-  const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'Add a field' }, iconEl('+', 'wv-icon'));
+  const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'New field' }, iconEl('+', 'wv-icon'));
   btn.addEventListener('click', (e) => { e.stopPropagation(); addFieldDialog(db); });
   return btn;
 }
