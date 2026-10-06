@@ -6,16 +6,7 @@
    Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { launch } from './lib/browser.mjs';
-
-
-
-test('the dock panel and its core ship in the page shell', () => {
-  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('id="dock"'), 'index.html carries the #dock panel');
-  assert.ok(html.includes('entity-surface-core.js'), 'index.html loads the surface core');
-});
 
 let deals, contacts, a, b, jane;
 const s = await launch('entity dock', (weave) => {

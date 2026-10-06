@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { createServer } from '../src/server.js';
+import { fresh } from './lib/fixtures.mjs';
 
 /* The universal reference rule (Kyle, 2026-08-24): every entity — the
    workspace itself, spaces, tables, rows — is REFERENCED by its unique id
@@ -21,13 +22,6 @@ const req = async (port, path, opts = {}) => {
   try { json = JSON.parse(text); } catch { /* html */ }
   return { status: r.status, json, text };
 };
-
-function fresh() {
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  return w;
-}
 
 test('the workspace itself has a unique id, minted once and kept forever', () => {
   const w = fresh();

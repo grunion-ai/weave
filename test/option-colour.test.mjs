@@ -16,16 +16,11 @@ import { startServer } from '../src/server.js';
 import { VOCABULARY, OPTION_COLORS } from '../src/vocabulary.js';
 import { dispatchTool } from '../src/mcp.js';
 import { FIELD_DOCS, GUIDES } from '../src/handbook.js';
+import { ws } from './lib/fixtures.mjs';
 
 await import('../public/chip-core.js');
 const ramp = globalThis.chipCore;
 
-function ws() {
-  const w = new Weave();
-  w.createSpace({ name: 'Ops' });
-  const t = w.createTable({ space: 'Ops', name: 'Task' });
-  return { w, t };
-}
 const optionsOf = (f) => f.config.options.map((o) => ({ name: o.name, hue: o.hue, color: o.color }));
 // describeSchema() answers with one entry per space, each carrying its tables.
 const tableIn = (doc, name) => doc.flatMap((s) => s.tables).find((x) => x.name === name);

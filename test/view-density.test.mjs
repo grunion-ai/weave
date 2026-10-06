@@ -14,13 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
-
-function fresh() {
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  return w;
-}
+import { fresh } from './lib/fixtures.mjs';
 
 test('density is a view setting: compact and spacious are stored, comfortable is the default and reads as absent', () => {
   const w = fresh();

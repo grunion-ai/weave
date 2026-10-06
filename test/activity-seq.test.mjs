@@ -20,15 +20,9 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { workspace } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-
-function workspace(opts = {}) {
-  const w = new Weave(opts);
-  w.createSpace({ name: 'Ops' });
-  const t = w.createTable({ space: 'Ops', name: 'Ticket' });
-  return { w, t };
-}
 
 // Every stored entry in the workspace, tagged with the address the feed uses.
 const entries = (w) => Object.values(w.state.entities)

@@ -1,22 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, realpathSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { request, managerDirectory, resourceReason } from '../scripts/test-manager.mjs';
+import { managerHarness } from './lib/fixtures.mjs';
 
-const ROOT = resolve(import.meta.dirname, '..');
-const scratch = mkdtempSync(join(tmpdir(), 'weave-manager-test-'));
-const env = { ...process.env, WEAVE_TEST_MANAGER_DIR: scratch, WEAVE_TEST_JOB: '', NODE_TEST_CONTEXT: '', WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };
-test.after(async () => { await request({ type: 'stop' }, { directory: scratch }).catch(() => {}); rmSync(scratch, { recursive: true, force: true }); });
-function cli(args, overrides = {}) {
-  const child = spawn(process.execPath, ['scripts/test.mjs', ...args], { cwd: ROOT, env: { ...env, ...overrides } });
-  let out = '';
-  child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
-  return { child, done: new Promise(resolve => child.on('close', code => resolve({ code, out }))) };
-}
-function fixture(name, source) { const path = join(scratch, `${name}.test.mjs`); writeFileSync(path, source); return path; }
+const { ROOT, scratch, cli, fixture } = managerHarness('weave-manager-test-');
 
 test('manager directory is per-user and independent of a worktree', () => {
   const before = managerDirectory({});

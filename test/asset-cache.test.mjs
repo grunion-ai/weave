@@ -16,21 +16,12 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { Weave } from '../src/engine.js';
-import { startServer, createAssetVersions } from '../src/server.js';
+import { createAssetVersions } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const INDEX = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
 const IMMUTABLE = 'public, max-age=31536000, immutable';
-
-async function withServer(fn) {
-  const { server, port } = await startServer(new Weave(), { port: 0 });
-  try {
-    await fn((path, opts) => fetch(`http://127.0.0.1:${port}${path}`, opts));
-  } finally {
-    server.close();
-  }
-}
 
 const localRefs = (html) => [...html.matchAll(/(?:\b(?:src|href)="|\bfrom ")(\/[^"#?]+\.(?:js|mjs|css|svg|ico))(\?v=[0-9a-f]+)?"/g)]
   .map((m) => ({ url: m[1], v: m[2]?.slice(3) ?? null }));

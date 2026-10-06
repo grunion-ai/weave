@@ -11,19 +11,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-async function withServer(fn) {
-  const { server, port } = await startServer(new Weave(), { port: 0 });
-  try {
-    await fn((path, opts) => fetch(`http://127.0.0.1:${port}${path}`, opts));
-  } finally {
-    server.close();
-  }
-}
 
 test('statics carry Last-Modified and answer If-Modified-Since with 304', async () => {
   await withServer(async (get) => {

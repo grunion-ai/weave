@@ -2,13 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-
-function build() {
-  const w = new Weave();
-  w.createSpace({ name: 'Product' });
-  const tasks = w.createTable({ space: 'Product', name: 'Task' });
-  return { w, tasks };
-}
+import { build } from './lib/fixtures.mjs';
 
 test('every table gets a default Description document field', () => {
   const { w, tasks } = build();

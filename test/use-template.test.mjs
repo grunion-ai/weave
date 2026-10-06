@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Weave, templateDoc } from '../src/engine.js';
 import { dispatchTool } from '../src/mcp.js';
+import { normalise } from './lib/fixtures.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/weave.js', import.meta.url));
 const spacesRow = (w, name) => {
@@ -190,14 +191,6 @@ function costumed() {
   return w;
 }
 
-/* ids, urls and counts are the source's own: what is left must match. */
-function normalise(v) {
-  if (Array.isArray(v)) return v.map(normalise);
-  if (!v || typeof v !== 'object') return v;
-  return Object.fromEntries(Object.entries(v)
-    .filter(([k]) => !['id', 'spaceId', 'url', 'entityCount'].includes(k) && !/Ids?$/.test(k))
-    .map(([k, x]) => [k, normalise(x)]));
-}
 const entryOf = (w, name) => w.describeSchema().find((s) => s.space === name);
 const spacesRollups = (w) => (w.describeSchema().find((s) => s.system === 'workspace')?.tables.find((t) => t.system === 'spaces')?.fields ?? [])
   .filter((f) => f.type === 'rollup' && f.viaTable);

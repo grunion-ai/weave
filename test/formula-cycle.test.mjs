@@ -3,20 +3,13 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { references } from '../src/formula.js';
 import { startServer } from '../src/server.js';
+import { seeded } from './lib/fixtures.mjs';
 
 /* A cycle used to resolve to null: the recursion guard gave up at depth 8 and
    the cell read the same as a legitimately empty one (Issue #283). A formula
    that closes a cycle inside its own table is now refused when it is saved,
    and a cycle that only closes through a rollup or a lookup — which no save
    can see, since the loop needs two rows — reads `#CYCLE:` with the path. */
-
-function seeded() {
-  const w = new Weave();
-  w.createSpace({ name: 'Sales' });
-  const t = w.createTable({ space: 'Sales', name: 'Deals' });
-  w.addField(t.id, { name: 'Amount', type: 'number' });
-  return { w, t };
-}
 
 test('references lists every field a formula reads, both branches included', () => {
   assert.deepEqual(references('Amount * 2'), ['Amount']);

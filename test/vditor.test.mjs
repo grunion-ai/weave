@@ -25,8 +25,8 @@ const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
 // The toolbar's own rule block, so assertions don't match unrelated rules.
 const CSS_TOOLBAR = CSS.match(/\.doc-editor \.vditor-toolbar\s*\{[^}]*\}/)?.[0] ?? '';
+// The version and every file's hash are pinned in test/security/vendor-lock.test.mjs.
 const VENDOR = 'public/vendor/vditor';
-const PINNED = '3.11.3';
 
 let base, server;
 test.before(async () => {
@@ -59,11 +59,6 @@ test('the vendored tree carries every asset the editor loads at runtime', () => 
   ]) {
     assert.ok(existsSync(join(ROOT, VENDOR, rel)), `missing vendored asset: ${rel}`);
   }
-});
-
-test('the vendored build is the pinned version', () => {
-  const core = readFileSync(join(ROOT, VENDOR, 'dist/index.min.js'), 'utf8');
-  assert.ok(core.includes(PINNED), `vendored index.min.js should carry ${PINNED}`);
 });
 
 test('mermaid is vendored once, not twice', () => {

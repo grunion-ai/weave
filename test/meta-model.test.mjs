@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, WeaveError } from '../src/engine.js';
+import { fresh } from './lib/fixtures.mjs';
 
 /* Feature #12 — the hierarchical meta-model. Space- and workspace-level
    structure uses the SAME field-based table mechanics as ordinary tables:
@@ -10,13 +11,6 @@ import { Weave, WeaveError } from '../src/engine.js';
    get CRUD, relations, automations and custom fields on structure for free —
    and there is no second source of truth to drift, because every mutation
    funnels through the same verb no matter which side it started on. */
-
-function fresh() {
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  return w;
-}
 
 test('every workspace carries the Workspace system space with Spaces and Tables', () => {
   const w = new Weave();

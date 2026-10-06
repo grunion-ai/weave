@@ -57,23 +57,29 @@ if (s) {
     return page;
   };
 
-  test('a grid row: ⌘-click on a cell opens the record in a tab', async () => {
+  /* The shape six cases share: open a page, ⌘-click one thing, expect a tab
+     on `want` while the page keeps its route. Each case stays a literal
+     test() so the Quality mirror lists it. */
+  const opensTab = ({ hash, wait, click, opts, want, opened, stayed }) => async () => {
     const ctx = await browser.newContext();
-    const page = await open(ctx, `#/table/${s.deals.id}`, '.wv-grid tbody tr.entity-row');
-    const r = await modifierClick(ctx, page, `tr[data-eid="${s.acme.id}"] td[data-ftype="document"]`);
-    assert.ok(r.tab?.includes(`#/entity/${s.acme.id}`), `a tab opened on the record (got ${r.tab})`);
-    assert.ok(r.stayed, 'the table stayed put');
+    const page = await open(ctx, hash, wait);
+    const r = await modifierClick(ctx, page, click, opts);
+    assert.ok(r.tab?.includes(want), `${opened} (got ${r.tab})`);
+    assert.ok(r.stayed, stayed);
     await ctx.close();
-  });
+  };
 
-  test('a chip inside a row wins: ⌘-click opens what the chip points at', async () => {
-    const ctx = await browser.newContext();
-    const page = await open(ctx, `#/table/${s.deals.id}`, '.wv-grid tbody tr.entity-row');
-    const r = await modifierClick(ctx, page, `tr[data-eid="${s.acme.id}"] .k-rel a`);
-    assert.ok(r.tab?.includes(`#/entity/${s.ada.id}`), `the chip's own target opened (got ${r.tab})`);
-    assert.ok(r.stayed, 'the table stayed put');
-    await ctx.close();
-  });
+  test('a grid row: ⌘-click on a cell opens the record in a tab', opensTab({
+    hash: `#/table/${s.deals.id}`, wait: '.wv-grid tbody tr.entity-row',
+    click: `tr[data-eid="${s.acme.id}"] td[data-ftype="document"]`,
+    want: `#/entity/${s.acme.id}`, opened: 'a tab opened on the record', stayed: 'the table stayed put',
+  }));
+
+  test('a chip inside a row wins: ⌘-click opens what the chip points at', opensTab({
+    hash: `#/table/${s.deals.id}`, wait: '.wv-grid tbody tr.entity-row',
+    click: `tr[data-eid="${s.acme.id}"] .k-rel a`,
+    want: `#/entity/${s.ada.id}`, opened: 'the chip\'s own target opened', stayed: 'the table stayed put',
+  }));
 
   test('a grid row: the middle button opens the record in a tab too', async () => {
     const ctx = await browser.newContext();
@@ -99,41 +105,26 @@ if (s) {
     await ctx.close();
   });
 
-  test('the relation panel on an entity page: ⌘-click on a row opens a tab', async () => {
-    const ctx = await browser.newContext();
-    const page = await open(ctx, `#/entity/${s.ada.id}`, 'tbody tr.entity-row');
-    const r = await modifierClick(ctx, page, 'tbody tr.entity-row', { position: { x: 3, y: 3 } });
-    assert.ok(r.tab?.includes('#/entity/'), `a tab opened on the related record (got ${r.tab})`);
-    assert.ok(r.stayed, 'the entity page stayed put');
-    await ctx.close();
-  });
+  test('the relation panel on an entity page: ⌘-click on a row opens a tab', opensTab({
+    hash: `#/entity/${s.ada.id}`, wait: 'tbody tr.entity-row',
+    click: 'tbody tr.entity-row', opts: { position: { x: 3, y: 3 } },
+    want: '#/entity/', opened: 'a tab opened on the related record', stayed: 'the entity page stayed put',
+  }));
 
-  test('an activity row: ⌘-click opens the event in a tab', async () => {
-    const ctx = await browser.newContext();
-    const page = await open(ctx, '#/activity', 'tr.activity-row');
-    const r = await modifierClick(ctx, page, 'tr.activity-row td.activity-when');
-    assert.ok(r.tab?.includes('#/activity/'), `a tab opened on the event (got ${r.tab})`);
-    assert.ok(r.stayed, 'the feed stayed put');
-    await ctx.close();
-  });
+  test('an activity row: ⌘-click opens the event in a tab', opensTab({
+    hash: '#/activity', wait: 'tr.activity-row', click: 'tr.activity-row td.activity-when',
+    want: '#/activity/', opened: 'a tab opened on the event', stayed: 'the feed stayed put',
+  }));
 
-  test('the workspace home Activity row: ⌘-click opens a tab', async () => {
-    const ctx = await browser.newContext();
-    const page = await open(ctx, '#/', '.list-rows.system-tables .list-row');
-    const r = await modifierClick(ctx, page, '.list-rows.system-tables .list-row');
-    assert.ok(r.tab?.includes('#/activity'), `a tab opened on the feed (got ${r.tab})`);
-    assert.ok(r.stayed, 'home stayed put');
-    await ctx.close();
-  });
+  test('the workspace home Activity row: ⌘-click opens a tab', opensTab({
+    hash: '#/', wait: '.list-rows.system-tables .list-row', click: '.list-rows.system-tables .list-row',
+    want: '#/activity', opened: 'a tab opened on the feed', stayed: 'home stayed put',
+  }));
 
-  test('a relation-map node: ⌘-click opens the table in a tab', async () => {
-    const ctx = await browser.newContext();
-    const page = await open(ctx, '#/map', 'svg g.table-node');
-    const r = await modifierClick(ctx, page, 'svg g.table-node .node-box');
-    assert.ok(r.tab?.includes('#/table/'), `a tab opened on the table (got ${r.tab})`);
-    assert.ok(r.stayed, 'the map stayed put');
-    await ctx.close();
-  });
+  test('a relation-map node: ⌘-click opens the table in a tab', opensTab({
+    hash: '#/map', wait: 'svg g.table-node', click: 'svg g.table-node .node-box',
+    want: '#/table/', opened: 'a tab opened on the table', stayed: 'the map stayed put',
+  }));
 
   test('a registry row: ⌘-click opens the table it stands for, not a record page', async () => {
     const ctx = await browser.newContext();

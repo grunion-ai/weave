@@ -18,10 +18,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The version and every file's hash are pinned in test/security/vendor-lock.test.mjs.
 const KATEX = join(ROOT, 'public/vendor/vditor/dist/js/katex');
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
-const PINNED_KATEX = '0.16.47';
 
 test('the vendored tree carries every file the KaTeX render loads', () => {
   for (const rel of ['katex.min.js', 'katex.min.css', 'mhchem.min.js']) {
@@ -30,11 +30,6 @@ test('the vendored tree carries every file the KaTeX render loads', () => {
   // mhchem is not optional: Vditor's render chain is
   // katex.then(mhchem.then(render)) — no mhchem, no math at all.
   assert.ok(readFileSync(join(KATEX, 'mhchem.min.js'), 'utf8').length > 1000);
-});
-
-test('the vendored build is the pinned 0.16.x', () => {
-  const js = readFileSync(join(KATEX, 'katex.min.js'), 'utf8');
-  assert.ok(js.includes(PINNED_KATEX), `katex.min.js should carry ${PINNED_KATEX}`);
 });
 
 test('every woff2 the stylesheet names is vendored', () => {

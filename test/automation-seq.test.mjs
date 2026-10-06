@@ -22,15 +22,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { workspace } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-
-function workspace(opts = {}) {
-  const w = new Weave(opts);
-  w.createSpace({ name: 'Ops' });
-  const t = w.createTable({ space: 'Ops', name: 'Ticket' });
-  return { w, t };
-}
 
 // One rule per letter, each appending its letter to the new row's document,
 // so the document spells out the order the rules fired in.

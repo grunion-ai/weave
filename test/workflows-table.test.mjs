@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
+import { fresh } from './lib/fixtures.mjs';
 
 /* The Workspace system space gains a fourth table, `Workflows` (Kyle,
    2026-08-24): a real system table like the registries, but its rows are
@@ -12,12 +13,6 @@ import { Weave } from '../src/engine.js';
    and a Type select that ships EMPTY — types are designed and rolled out
    later, the field is the socket they plug into. */
 
-function fresh() {
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  return w;
-}
 const wfTable = (w) => w.getTable('Workspace/Workflows');
 const f = (db, name) => Object.values(db.fields).find((x) => x.name === name);
 
