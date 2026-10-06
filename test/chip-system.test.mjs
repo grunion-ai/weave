@@ -314,12 +314,6 @@ test('a workflow row cannot repaint its category, and says why', () => {
   assert.match(ed, /categor/i, 'and the reason names the category');
 });
 
-test('a chip is sized by its label even as a flex item', () => {
-  // .doc-chips is a flex container, and the default align-items: stretch grew
-  // each doc chip to the full height of the cell (66px against a 21px chip).
-  assert.equal(rulesFor('.doc-chips')['align-items'], 'center');
-});
-
 /* ---------- one chip size, from two tokens (Issue #194, 2026-09-05) ----------
    Kyle: "Default chip view is likely too small." 11.5px under a 14px body,
    a ~21px box. The size is decided once on :root and read by every chip

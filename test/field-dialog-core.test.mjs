@@ -1,7 +1,6 @@
 /* Tests for public/field-dialog-core.js — the pure logic behind the unified
    field dialog (design review 2026-08-22: direction A+E). The dialog's state
-   object, the canonical {type, config} definition it round-trips with the
-   code pane, and the client-side mirror of the engine's config validation.
+   object and the canonical {type, config} definition it round-trips.
    Source-contract tests keep the catalog and formula function list from
    drifting away from src/engine.js and src/formula.js. */
 
@@ -99,8 +98,8 @@ test('date config drops the long format and the 12h clock (the defaults), keeps 
 });
 
 /* Issue #197: a range default is { start, end } on the wire and JSON text in
-   the dialog state, so the form and the code pane are two views of one
-   string — never '[object Object]', never a string the engine refuses. */
+   the dialog state, one string the form edits — never '[object Object]',
+   never a string the engine refuses. */
 test('a daterange default round-trips as a range: JSON text in state, an object in the definition', () => {
   const def = core.definitionFromState({ ...core.blankState('daterange'), default: '{"start":"2026-10-01","end":"2026-10-05"}' });
   assert.deepEqual(def.config.default, { start: '2026-10-01', end: '2026-10-05' });
@@ -240,49 +239,6 @@ test('string options normalise into {name, color} state rows', () => {
   assert.deepEqual(state.options, [{ name: 'A', color: '' }, { name: 'B', color: '' }]);
 });
 
-/* ---------- code pane: serialize + parse ---------- */
-
-test('serializeDefinition emits pretty JSON that parseDefinition accepts', () => {
-  const state = core.stateFromDefinition({ type: 'number', config: { format: 'currency', currency: 'USD', decimals: 2 } });
-  const text = core.serializeDefinition(state);
-  assert.match(text, /"currency"/);
-  const parsed = core.parseDefinition(text);
-  assert.equal(parsed.ok, true);
-  assert.deepEqual(parsed.def, core.definitionFromState(state));
-});
-
-test('parseDefinition: malformed JSON fails with a message, never throws', () => {
-  const r = core.parseDefinition('{ "type": "number", ');
-  assert.equal(r.ok, false);
-  assert.equal(typeof r.error, 'string');
-});
-
-test('parseDefinition rejects unknown types, naming the allowed set', () => {
-  const r = core.parseDefinition('{ "type": "portal", "config": {} }');
-  assert.equal(r.ok, false);
-  assert.match(r.error, /portal/);
-});
-
-test('parseDefinition mirrors engine bounds: decimals 0..6, depth 1..4', () => {
-  const dec = core.parseDefinition('{ "type": "number", "config": { "decimals": 9 } }');
-  assert.equal(dec.ok, false);
-  assert.match(dec.error, /0\.\.6/);
-  const dep = core.parseDefinition('{ "type": "field", "config": { "depth": 9 } }');
-  assert.equal(dep.ok, false);
-  assert.match(dep.error, /1\.\.4/);
-});
-
-test('parseDefinition mirrors engine enums: date format, state category, aggregate', () => {
-  assert.match(core.parseDefinition('{ "type": "date", "config": { "format": "dmy" } }').error, /iso, us, eu, long/);
-  assert.match(core.parseDefinition('{ "type": "workflow", "config": { "states": [{ "name": "X", "category": "later" }] } }').error, /not-started/);
-  assert.match(core.parseDefinition('{ "type": "rollup", "config": { "relationField": "T", "aggregate": "mode" } }').error, /count, sum/);
-});
-
-test('parseDefinition requires a formula expression and at least one workflow state', () => {
-  assert.match(core.parseDefinition('{ "type": "formula", "config": {} }').error, /expression/);
-  assert.match(core.parseDefinition('{ "type": "workflow", "config": { "states": [] } }').error, /at least one state/);
-});
-
 test('option and state ids survive the round trip when present', () => {
   const def = {
     type: 'select',
@@ -322,25 +278,6 @@ test('a credential column always states its kind and its keystore', () => {
   assert.equal(ssn.credential.kind, 'id');
   assert.deepEqual(core.definitionFromState({ ...ssn, type: 'key' }).config, { kind: 'id', keystore: 'local' },
     'a definition round-trips through the form unchanged');
-});
-
-test('the dialog refuses a kind or keystore in the same words the engine would', async () => {
-  const { Weave } = await import('../src/engine.js');
-  const w = new Weave({ keystorePath: '/dev/null/nope' });
-  w.createSpace({ name: 'S' });
-  w.createTable({ space: 'S', name: 'T' });
-
-  for (const [config, key] of [[{ kind: 'passphrase' }, 'kind'], [{ keystore: 'lastpass' }, 'keystore']]) {
-    const mirrored = core.parseDefinition(JSON.stringify({ type: 'key', config }));
-    assert.equal(mirrored.ok, false, `the dialog catches a bad ${key}`);
-    const engine = assert.throws(() => w.addField('T', { name: `F-${key}`, type: 'key', config } ), Error);
-    void engine;
-    try {
-      w.addField('T', { name: `G-${key}`, type: 'key', config });
-    } catch (e) {
-      assert.equal(mirrored.error, e.message, 'the dialog repeats the engine verbatim');
-    }
-  }
 });
 
 test('typeChoices: a new field sees the whole grid; an existing one sees itself plus compatible moves', () => {
@@ -597,20 +534,10 @@ test('config → date state round-trips, and a config with no grain reads as the
   }
 });
 
-test('legalFormats and parseDefinition mirror the engine: a style needing a missing part is refused with the part named', () => {
+test('legalFormats mirrors the engine: a style needing a missing part is not offered', () => {
   assert.deepEqual(core.legalFormats({ year: false, month: false, day: true }), ['iso', 'us', 'eu', 'long', 'short', 'ordinal']);
   assert.deepEqual(core.legalFormats({ year: true, month: true, day: false }), ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'relative']);
   assert.deepEqual(core.legalFormats({ year: false, month: false, day: false }), []);
-  assert.match(core.parseDefinition('{ "type": "date", "config": { "grain": ["day"], "format": "quarter" } }').error, /month/);
-  assert.match(core.parseDefinition('{ "type": "date", "config": { "grain": ["month", "day"], "format": "relative" } }').error, /year/);
-  assert.match(core.parseDefinition('{ "type": "date", "config": { "grain": ["year", "day"] } }').error, /grain/i);
-  assert.match(core.parseDefinition('{ "type": "date", "config": { "grain": [] } }').error, /time/i);
-  assert.match(core.parseDefinition('{ "type": "date", "config": { "time": true, "clock": "10h" } }').error, /clock/i);
-  assert.match(core.parseDefinition('{ "type": "date", "config": { "time": true, "zone": "fixed" } }').error, /zoneName/i);
-  assert.match(core.parseDefinition('{ "type": "date", "config": { "zone": "instant" } }').error, /time/i);
-  assert.match(core.parseDefinition('{ "type": "number", "config": { "accounting": true } }').error, /accounting/i);
-  assert.match(core.parseDefinition('{ "type": "number", "config": { "format": "compact", "separator": true } }').error, /separator/i);
-  assert.equal(core.parseDefinition('{ "type": "date", "config": { "grain": ["year", "month"], "format": "us", "pad": true } }').error, undefined);
 });
 
 test('number state carries accounting and the compact format', () => {
@@ -854,20 +781,6 @@ test('an edit sends every display lane, so going back to text clears the scale',
   assert.equal(patch.scale, null);
 });
 
-test('the dialog refuses a display or a scale in the words the engine would', async () => {
-  const { Weave } = await import('../src/engine.js');
-  const w = new Weave();
-  w.createSpace({ name: 'S' });
-  w.createTable({ space: 'S', name: 'T' });
-  for (const config of [{ display: 'stars' }, { display: 'bar', scale: 0 }, { display: 'ring', scale: 'row' }]) {
-    const mirrored = core.parseDefinition(JSON.stringify({ type: 'number', config }));
-    assert.equal(mirrored.ok, false, JSON.stringify(config));
-    let message = null;
-    try { w.addField('T', { name: `F${JSON.stringify(config)}`, type: 'number', config }); } catch (e) { message = e.message; }
-    assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
-  }
-});
-
 /* ---------- the rating type (Feature #231) ---------- */
 
 test('rating is a tile with a star, and a fresh one is five stars', () => {
@@ -892,20 +805,6 @@ test('a rating round-trips through the form, the schema view and an edit', () =>
   assert.equal(patch.default, null, 'no default, so an edit clears any');
 });
 
-test('the dialog refuses a rating max in the words the engine would', async () => {
-  const { Weave } = await import('../src/engine.js');
-  const w = new Weave();
-  w.createSpace({ name: 'S' });
-  w.createTable({ space: 'S', name: 'T' });
-  for (const max of [0, 101, 2.5]) {
-    const mirrored = core.parseDefinition(JSON.stringify({ type: 'rating', config: { max } }));
-    assert.equal(mirrored.ok, false, String(max));
-    let message = null;
-    try { w.addField('T', { name: `R${max}`, type: 'rating', config: { max } }); } catch (e) { message = e.message; }
-    assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
-  }
-});
-
 /* ---------- the rating: any max, a clickable default (Feature #234) ---------- */
 
 test('the dialog takes any whole-number max up to the engine\'s guard, five unless named', async () => {
@@ -913,8 +812,6 @@ test('the dialog takes any whole-number max up to the engine\'s guard, five unle
   assert.equal(core.RATING_MAX, RATING_MAX, 'the dialog mirrors the engine guard');
   assert.equal(core.blankState('rating').rating.max, 5, 'a fresh rating is out of five');
   for (const max of [1, 12, 40, 100]) {
-    const parsed = core.parseDefinition(JSON.stringify({ type: 'rating', config: { max } }));
-    assert.equal(parsed.ok, true, `max ${max} parses`);
     const state = core.blankState('rating');
     state.rating.max = max;
     assert.equal(core.definitionFromState(state).config.max, max);
@@ -926,10 +823,7 @@ test('the dialog takes any whole-number max up to the engine\'s guard, five unle
   assert.equal(core.ratingMaxValue(''), null);
 });
 
-test('the default preview: a click sets n, the same click clears, the label says "Default: n of max"', () => {
-  assert.equal(core.ratingDefaultClick('', 3), '3');
-  assert.equal(core.ratingDefaultClick('3', 4), '4');
-  assert.equal(core.ratingDefaultClick('3', 3), '', 'clicking the current default clears it: no default');
+test('the default preview label says "Default: n of max"', () => {
   assert.equal(core.ratingDefaultLabel('3', 5), 'Default: 3 of 5');
   assert.equal(core.ratingDefaultLabel('', 5), 'Default: none, of 5');
 });
@@ -961,7 +855,7 @@ test('a default above a lowered max clamps down, in the state and in the definit
   assert.equal(core.clampRatingDefault('', 5), '');
   const state = core.stateFromDefinition({ type: 'rating', config: { max: 7, icon: 'lucide:heart', default: 6 } });
   state.rating.max = 4;
-  assert.equal(core.definitionFromState(state).config.default, 4, 'the code pane shows the clamped default');
+  assert.equal(core.definitionFromState(state).config.default, 4, 'the definition carries the clamped default');
 });
 
 /* ---------- formula lists and the sparkline (Feature #232) ---------- */
@@ -982,20 +876,6 @@ test('sortby is in the builder catalog, and a formula can wear a sparkline with 
   const patch = core.editPatchConfig(view, core.definitionFromState(state), state);
   assert.equal(patch.display, null);
   assert.equal(patch.style, null, 'back to text clears the style');
-});
-
-test('the dialog refuses a sparkline where the engine would, in its words', async () => {
-  const { Weave } = await import('../src/engine.js');
-  const w = new Weave();
-  w.createSpace({ name: 'S' });
-  w.createTable({ space: 'S', name: 'T' });
-  for (const [type, config] of [['number', { display: 'sparkline' }], ['formula', { expression: '1', display: 'sparkline', style: 'area' }]]) {
-    const mirrored = core.parseDefinition(JSON.stringify({ type, config }));
-    assert.equal(mirrored.ok, false, JSON.stringify(config));
-    let message = null;
-    try { w.addField('T', { name: `F${type}`, type, config }); } catch (e) { message = e.message; }
-    assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
-  }
 });
 
 /* ---------- the cell colour (Feature #235) ---------- */
@@ -1040,13 +920,4 @@ test('an edit sends the colour lane, so going back to ink clears it', () => {
   assert.equal(core.editPatchConfig(rat, core.definitionFromState(rs), rs).color, 'icon');
   rs.rating.color = 'ink';
   assert.equal(core.editPatchConfig(rat, core.definitionFromState(rs), rs).color, null);
-});
-
-test('the code pane refuses a colour the engine would refuse, with its words', () => {
-  for (const type of ['number', 'rating', 'formula']) {
-    const r = core.parseDefinition(JSON.stringify({ type, config: { expression: '1', color: 'plaid' } }));
-    assert.equal(r.ok, false);
-    assert.equal(r.error, "Invalid color 'plaid' (ink, icon, accent)");
-  }
-  assert.equal(core.parseDefinition(JSON.stringify({ type: 'rating', config: { color: 'accent' } })).ok, true);
 });

@@ -21,7 +21,6 @@ const viewCore = globalThis.weaveViewCore;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
 
 // ---------- the dialog core ----------
 
@@ -44,19 +43,6 @@ test('a view round-trips schema → state → definition → patch', () => {
   const auto = core.stateFromDefinition({ type: 'view', config: { shape: 'chip', link: false, state: true, description: 'none', fields: null } });
   assert.equal(auto.view.fields, null);
   assert.equal(core.definitionFromState(auto).config.fields, null);
-});
-
-test('the code pane refuses what the engine would refuse, in the engine’s words', () => {
-  const bad = (config) => core.parseDefinition(JSON.stringify({ type: 'view', config }));
-  assert.match(bad({ shape: 'tile' }).error, /chip or a card/);
-  assert.match(bad({ shape: 'chip', description: 'huge' }).error, /none, small, medium, large/);
-  assert.match(bad({ shape: 'chip', fields: 'Due' }).error, /list of field names/);
-  assert.match(bad({ shape: 'chip', link: 'yes' }).error, /true or false/);
-  assert.ok(bad({ shape: 'card', fields: ['Due'], description: 'small' }).ok);
-  // The messages are the engine's, verbatim.
-  for (const msg of ['description is one of ${DESCRIPTION_SIZES.join(', ')}', 'fields is a list of field names, or null for the first few', 'is true or false']) {
-    assert.ok(ENGINE.includes(msg), `engine still says: ${msg}`);
-  }
 });
 
 // ---------- the shared renderer core ----------

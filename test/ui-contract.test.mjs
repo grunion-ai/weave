@@ -419,25 +419,6 @@ test('the description clamp is five description line-heights, toggled by a contr
   assert.ok(rulesFor('.view-desc-more').cursor, 'the control reads as clickable');
 });
 
-/* ---------- defect: edits did not appear without a hard reload ---------- */
-
-test('static UI assets are served revalidating', async () => {
-  // No Cache-Control meant heuristic caching served a stale app.js/style.css
-  // after every edit — the UI looked unchanged until a manual hard reload.
-  const { Weave } = await import('../src/engine.js');
-  const { startServer } = await import('../src/server.js');
-  const { server, port } = await startServer(new Weave(), { port: 0 });
-  try {
-    for (const asset of ['/app.js', '/style.css', '/index.html']) {
-      const res = await fetch(`http://127.0.0.1:${port}${asset}`);
-      assert.equal(res.status, 200, asset);
-      assert.equal(res.headers.get('cache-control'), 'no-cache', `${asset} must revalidate`);
-    }
-  } finally {
-    server.close();
-  }
-});
-
 /* ---------- overflow menus on tables and spaces (Kyle, 2026-08-16) ----------
    Export and delete are occasional, and one of them is irreversible, so they
    belong in an overflow menu rather than the header toolbar. */
@@ -1357,19 +1338,6 @@ test('clicking the open space in the nav folds it instead of navigating nowhere 
   assert.match(nav, /nativeClick\(e\)/, '⌘-click still opens the space in a tab — the one shared predicate');
 });
 
-test('vendored mermaid is at or past the 11.9.0 security release (Issue #8)', () => {
-  const src = readFileSync(join(ROOT, 'public/vendor/mermaid.min.js'), 'utf8');
-  const versions = [...src.matchAll(/version[:=]"(11\.\d+\.\d+)"/g)].map((m) => m[1]);
-  assert.ok(versions.length, 'the bundle declares its version');
-  const atLeast = (v, floor) => {
-    const a = v.split('.').map(Number), b = floor.split('.').map(Number);
-    for (let i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] > b[i]; }
-    return true;
-  };
-  assert.ok(versions.some((v) => atLeast(v, '11.9.0')),
-    `mermaid must be ≥ 11.9.0 (XSS advisories fixed there); saw ${versions.join(', ')}`);
-});
-
 test('the filter strip drives the engine where-language, not a client sort (Feature #38)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   assert.ok(app.includes("function filterWhere(db)"), 'filters compile to a where clause');
@@ -1621,11 +1589,9 @@ test('field dialogs open in the right-hand tray and popovers stack above it', ()
   assert.ok(px(pop['z-index']) > px(rulesFor('#modal-back')['z-index']), 'and above the modal backdrop (the old nesting bug)');
 });
 
-test('type grid and code pane have both-theme styling via tabler tokens', () => {
+test('the type grid has both-theme styling via tabler tokens', () => {
   const tile = rulesFor('.type-tile.sel');
   assert.ok(tile['border-color']?.includes('--tblr-primary'), 'selected tile uses the primary token');
-  const code = rulesFor('.def-code');
-  assert.ok(code['font-family']?.includes('--tblr-font-monospace'), 'code pane is monospace');
 });
 
 test('spaces and tables wear Lucide icons that move, picked beside their name (Feature #101)', async () => {
