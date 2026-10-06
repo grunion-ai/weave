@@ -1746,6 +1746,8 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .wv-rev-row:hover, .wv-rev-row.selected { background: var(--tblr-active-bg); }
 .wv-rev-row.selected .wv-rev-when { font-weight: 600; }
 .wv-rev-actor { color: var(--tblr-secondary); }
+.wv-rev-restored { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; color: var(--tblr-secondary); font-weight: 400; }
+.wv-rev-restored .wv-icon { width: 13px; height: 13px; }
 .wv-rev-delta { font-variant-numeric: tabular-nums; color: var(--tblr-secondary); min-width: 4ch; text-align: right; }
 .wv-rev-delta.pos { color: var(--tblr-success); }
 .wv-rev-delta.neg { color: var(--tblr-danger); }

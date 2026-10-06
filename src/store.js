@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS undo_log (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS doc_revisions (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, field_id TEXT NOT NULL,
-  at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL);
+  at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL, restored_from INTEGER);
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 `;
 
@@ -39,6 +39,11 @@ const LOAD_ORDER = {
 
 const UNDO_CAP = 200;
 export const DOC_REVISION_CAP = 200;
+
+function addRestoredFrom(exec) {
+  try { exec('ALTER TABLE doc_revisions ADD COLUMN restored_from INTEGER'); }
+  catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
+}
 
 function isWorkspaceShape(data) {
   return data && typeof data === 'object' && data.meta && (data.tables != null || data.databases != null);
@@ -104,6 +109,7 @@ export class Store {
       }
     }
     db.exec(SCHEMA);
+    addRestoredFrom((q) => db.exec(q));
     try {
       db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(id UNINDEXED, text)");
     } catch (err) {
@@ -176,10 +182,10 @@ export class Store {
   #memRevs = [];
   #memRevSeq = 0;
 
-  pushDocRevision({ entityId, fieldId, at, actor = null, text }) {
+  pushDocRevision({ entityId, fieldId, at, actor = null, text, restoredFrom = null }) {
     const len = text.length;
     if (!this.#db) {
-      const row = { seq: ++this.#memRevSeq, entityId, fieldId, at, actor, text, len };
+      const row = { seq: ++this.#memRevSeq, entityId, fieldId, at, actor, text, len, restoredFrom };
       this.#memRevs.push(row);
       const mine = this.#memRevs.filter((r) => r.entityId === entityId && r.fieldId === fieldId);
       if (mine.length > DOC_REVISION_CAP) {
@@ -188,8 +194,8 @@ export class Store {
       }
       return { seq: row.seq };
     }
-    const { lastInsertRowid } = this.#db.prepare('INSERT INTO doc_revisions (entity_id, field_id, at, actor, text, len) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(entityId, fieldId, at, actor, text, len);
+    const { lastInsertRowid } = this.#db.prepare('INSERT INTO doc_revisions (entity_id, field_id, at, actor, text, len, restored_from) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(entityId, fieldId, at, actor, text, len, restoredFrom);
     this.#db.prepare(`DELETE FROM doc_revisions WHERE entity_id = ? AND field_id = ? AND seq NOT IN
       (SELECT seq FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?)`)
       .run(entityId, fieldId, entityId, fieldId, DOC_REVISION_CAP);
@@ -208,18 +214,18 @@ export class Store {
   listDocRevisions(entityId, fieldId, { limit = 50 } = {}) {
     if (!this.#db) {
       return this.#memRevs.filter((r) => r.entityId === entityId && r.fieldId === fieldId)
-        .slice(-limit).reverse().map(({ seq, at, actor, len }) => ({ seq, at, actor, len }));
+        .slice(-limit).reverse().map(({ seq, at, actor, len, restoredFrom }) => ({ seq, at, actor, len, restoredFrom }));
     }
-    return this.#db.prepare('SELECT seq, at, actor, len FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?')
+    return this.#db.prepare('SELECT seq, at, actor, len, restored_from AS restoredFrom FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?')
       .all(entityId, fieldId, limit);
   }
 
   getDocRevision(entityId, fieldId, seq) {
     if (!this.#db) {
       const r = this.#memRevs.find((x) => x.seq === seq && x.entityId === entityId && x.fieldId === fieldId);
-      return r ? { seq: r.seq, at: r.at, actor: r.actor, len: r.len, text: r.text } : null;
+      return r ? { seq: r.seq, at: r.at, actor: r.actor, len: r.len, restoredFrom: r.restoredFrom, text: r.text } : null;
     }
-    return this.#db.prepare('SELECT seq, at, actor, len, text FROM doc_revisions WHERE seq = ? AND entity_id = ? AND field_id = ?')
+    return this.#db.prepare('SELECT seq, at, actor, len, restored_from AS restoredFrom, text FROM doc_revisions WHERE seq = ? AND entity_id = ? AND field_id = ?')
       .get(seq, entityId, fieldId) ?? null;
   }
 

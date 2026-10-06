@@ -32,7 +32,8 @@ function storeContract(name, makeStore) {
     assert.ok(b.seq > a.seq, 'seq grows');
     const list = s.listDocRevisions('e1', 'f1');
     assert.deepEqual(list.map((r) => r.seq), [b.seq, a.seq], 'newest first, scoped to entity + field');
-    assert.deepEqual(Object.keys(list[0]).sort(), ['actor', 'at', 'len', 'seq'], 'the list carries metadata only');
+    assert.deepEqual(Object.keys(list[0]).sort(), ['actor', 'at', 'len', 'restoredFrom', 'seq'], 'the list carries metadata only');
+    assert.equal(list[0].restoredFrom, null, 'an ordinary revision restored nothing');
     assert.equal(list[0].len, 7);
     assert.equal(list[0].actor, 'agent');
     assert.equal(s.getDocRevision('e1', 'f1', a.seq).text, 'one');
@@ -56,6 +57,18 @@ function storeContract(name, makeStore) {
     assert.equal(s.listDocRevisions('e1', 'f1').length, 0);
     assert.equal(s.listDocRevisions('e1', 'f2').length, 0);
     assert.equal(s.listDocRevisions('e2', 'f1').length, 1, 'another entity keeps its history');
+  });
+
+  test(`${name}: a restore's revision names the revision it brought back, listed and read (Issue #588)`, () => {
+    const s = makeStore();
+    const a = s.pushDocRevision({ entityId: 'e1', fieldId: 'f1', at: '2026-09-12T10:00:00.000Z', actor: 'kyle', text: 'one' });
+    s.pushDocRevision({ entityId: 'e1', fieldId: 'f1', at: '2026-09-12T10:20:00.000Z', actor: 'agent', text: 'two' });
+    const c = s.pushDocRevision({ entityId: 'e1', fieldId: 'f1', at: '2026-09-12T10:30:00.000Z', actor: 'kyle', text: 'one', restoredFrom: a.seq });
+    const [top] = s.listDocRevisions('e1', 'f1');
+    assert.equal(top.seq, c.seq);
+    assert.equal(top.restoredFrom, a.seq);
+    assert.equal(s.getDocRevision('e1', 'f1', c.seq).restoredFrom, a.seq);
+    assert.equal(s.getDocRevision('e1', 'f1', a.seq).restoredFrom, null);
   });
 
   test(`${name}: a document keeps its newest 200 revisions`, () => {
@@ -112,6 +125,28 @@ test('sqlite: revisions persist across a reopen and live outside the entity blob
   assert.ok(!row.json.includes('"first"'), 'the entity row carries only the current text');
   assert.ok(!JSON.stringify(w2.exportJSON()).includes('"first"'), 'export carries no prior text');
 });
+
+test('sqlite: a workspace whose revision log predates restoredFrom opens, gains the column, and reads its old rows as plain (Issue #588)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-rev-'));
+  test.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'ws.db');
+  const w = build({ path, revisionWindowMs: 0 });
+  const e = w.createEntity('Article', { name: 'A', doc: 'first' });
+  const raw = new DatabaseSync(path);
+  raw.exec(`CREATE TABLE old_revs AS SELECT seq, entity_id, field_id, at, actor, text, len FROM doc_revisions;
+    DROP TABLE doc_revisions;
+    CREATE TABLE doc_revisions (seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, field_id TEXT NOT NULL,
+      at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL);
+    INSERT INTO doc_revisions SELECT * FROM old_revs; DROP TABLE old_revs;`);
+  raw.close();
+  const w2 = new Weave({ path, revisionWindowMs: 0 });
+  const [old] = w2.listDocRevisions(e.id).revisions;
+  assert.equal(old.restoredFrom, null);
+  w2.setDoc(e.id, 'second');
+  w2.restoreDocRevision(e.id, null, old.seq);
+  assert.equal(w2.listDocRevisions(e.id).revisions[0].restoredFrom, old.seq);
+});
+
 
 test('a create with a document is its first revision; each later write is a revision of the new text', () => {
   const w = build({ revisionWindowMs: 0 });
@@ -195,6 +230,35 @@ test('restore is a normal setDoc: activity, undo and a fresh revision — never 
   assert.equal(w.getDocRevision(e.id, null, w.listDocRevisions(e.id).revisions[0].seq).text, 'v3');
 });
 
+test('a restore names the revision it brought back, on its revision and on its own activity entry (Issue #588)', () => {
+  const w = build();
+  const e = w.createEntity('Article', { name: 'A', doc: 'v1' });
+  w.actor = 'agent';
+  w.setDoc(e.id, 'v2');
+  const first = w.listDocRevisions(e.id).revisions.at(-1);
+  w.actor = 'kyle';
+  w.restoreDocRevision(e.id, null, first.seq);
+  const [top] = w.listDocRevisions(e.id).revisions;
+  assert.equal(top.restoredFrom, first.seq, 'the new revision says which revision it restored');
+  assert.equal(w.getDocRevision(e.id, null, top.seq).restoredFrom, first.seq);
+  const docs = w.getEntity(e.id).activity.filter((a) => a.kind === 'doc-updated');
+  const restore = docs.at(-1);
+  assert.equal(restore.actor, 'kyle', 'the restore is its own entry, not folded into the agent edit before it');
+  assert.equal(restore.detail.restoredFrom, first.seq, 'the entry carries the seq it restored');
+  assert.equal(restore.detail.restoredAt, first.at, 'and when that revision was written, so it can be named without a lookup');
+  assert.equal(restore.detail.restoredBy, first.actor, 'and who wrote it');
+  assert.equal(docs.at(-2).detail.restoredFrom, undefined, 'the write before it is plain');
+  w.setDoc(e.id, 'v1 edited');
+  const after = w.getEntity(e.id).activity.filter((a) => a.kind === 'doc-updated');
+  assert.equal(after.length, docs.length + 1, 'the write after the restore is a new entry, not folded into the restore');
+  assert.equal(after.at(-1).detail.restoredFrom, undefined, 'the flag does not leak into the next write');
+  assert.equal(after.at(-2).detail.restoredFrom, first.seq, 'the restore entry is untouched');
+  const list = w.listDocRevisions(e.id).revisions;
+  assert.equal(w.getDocRevision(e.id, null, list[1].seq).text, 'v1', 'the restore revision keeps the text it restored');
+  assert.equal(list[1].restoredFrom, first.seq);
+  assert.equal(list[0].restoredFrom, null);
+});
+
 test('a revision is looked up by its own document: a wrong field or seq is not-found', () => {
   const w = build({ revisionWindowMs: 0 });
   const e = w.createEntity('Article', { name: 'A', doc: 'v1' });
@@ -252,7 +316,7 @@ test('HTTP: list, read and restore a revision', async () => {
     assert.equal(list.status, 200);
     assert.equal(list.body.field, 'Description');
     assert.equal(list.body.revisions.length, 2);
-    assert.deepEqual(Object.keys(list.body.revisions[0]).sort(), ['actor', 'at', 'len', 'seq']);
+    assert.deepEqual(Object.keys(list.body.revisions[0]).sort(), ['actor', 'at', 'len', 'restoredFrom', 'seq']);
     const spec = await api('GET', `/api/entities/${e.id}/doc/revisions?field=Spec&limit=5`);
     assert.equal(spec.body.revisions.length, 1);
     const oldest = list.body.revisions[1].seq;
@@ -263,6 +327,8 @@ test('HTTP: list, read and restore a revision', async () => {
     assert.equal(restored.status, 200);
     assert.equal(restored.body.field, 'Description');
     assert.equal(w.getDoc(e.id), 'v1');
+    const relisted = await api('GET', `/api/entities/${e.id}/doc/revisions`);
+    assert.equal(relisted.body.revisions[0].restoredFrom, oldest, 'the restore is labelled in the list an agent reads (Issue #588)');
     const missing = await api('GET', `/api/entities/${e.id}/doc/revisions/999999`);
     assert.equal(missing.status, 404);
   } finally {

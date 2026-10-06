@@ -6071,7 +6071,9 @@ export class Weave {
     e.docs[f.id] = after;
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
-    this.#logActivity(e, 'doc-updated', docChange(f.name, before, after));
+    const r = this.#restoring;
+    this.#logActivity(e, 'doc-updated', r ? { ...docChange(f.name, before, after), restoredFrom: r.seq, restoredAt: r.at, restoredBy: r.actor ?? null }
+      : docChange(f.name, before, after));
     this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
     this.#recordDocRevision(e, f, before, after, { prior });
     this.save();
@@ -6099,6 +6101,7 @@ export class Weave {
   }
 
   #docRevisionFresh = false;
+  #restoring = null;
 
   #recordDocRevision(e, f, before, after, { prior = null, fresh = false } = {}) {
     if (this.#inMetaSync) return;
@@ -6109,11 +6112,12 @@ export class Weave {
     if (!latest && before) {
       this.store.pushDocRevision({ entityId: e.id, fieldId: f.id, at: prior?.at ?? now, actor: prior?.by ?? null, text: before });
     } else if (latest && !fresh && !this.#docRevisionFresh && latest.actor === this.actor
+      && latest.restoredFrom == null
       && Date.now() - Date.parse(latest.at) < this.revisionWindowMs) {
       this.store.replaceDocRevision(latest.seq, { at: now, text: after });
       return;
     }
-    this.store.pushDocRevision({ entityId: e.id, fieldId: f.id, at: now, actor: this.actor, text: after });
+    this.store.pushDocRevision({ entityId: e.id, fieldId: f.id, at: now, actor: this.actor, text: after, restoredFrom: this.#restoring?.seq ?? null });
   }
 
   listDocRevisions(entityId, fieldRef = null, { limit = 50 } = {}) {
@@ -6134,7 +6138,8 @@ export class Weave {
   restoreDocRevision(entityId, fieldRef, seq) {
     const rev = this.getDocRevision(entityId, fieldRef, seq);
     this.#docRevisionFresh = true;
-    try { this.setDoc(entityId, rev.text, fieldRef); } finally { this.#docRevisionFresh = false; }
+    this.#restoring = rev;
+    try { this.setDoc(entityId, rev.text, fieldRef); } finally { this.#docRevisionFresh = false; this.#restoring = null; }
     const e = this.getEntity(entityId);
     const f = this.#resolveDocField(this.state.tables[e.dbId], fieldRef);
     return { ok: true, field: f.name, seq: rev.seq, at: rev.at, length: rev.text.length };
@@ -6239,6 +6244,7 @@ export class Weave {
     const last = e.activity[e.activity.length - 1];
     if (kind === 'doc-updated' && last?.kind === 'doc-updated'
       && last.detail?.field === detail.field
+      && detail.restoredFrom == null && last.detail?.restoredFrom == null
       && Date.now() - Date.parse(last.ts) < 10 * 60 * 1000) {
       last.ts = nowISO();
       last.detail = { ...detail, prevLength: last.detail.prevLength, delta: detail.length - last.detail.prevLength };

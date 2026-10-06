@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS undo_log (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS doc_revisions (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, field_id TEXT NOT NULL,
-  at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL);
+  at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL, restored_from INTEGER);
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 `;
 
@@ -50,6 +50,8 @@ export class CFStore {
     for (const stmt of SCHEMA.split(';')) {
       if (stmt.trim()) this.#run(stmt);
     }
+    try { this.#run('ALTER TABLE doc_revisions ADD COLUMN restored_from INTEGER'); }
+    catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
     this.#run('CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(id UNINDEXED, text)');
     return this.#loadState();
   }
@@ -160,9 +162,9 @@ export class CFStore {
       .map((r) => JSON.parse(r.json));
   }
 
-  pushDocRevision({ entityId, fieldId, at, actor = null, text }) {
-    this.#run('INSERT INTO doc_revisions (entity_id, field_id, at, actor, text, len) VALUES (?, ?, ?, ?, ?, ?)',
-      entityId, fieldId, at, actor, text, text.length);
+  pushDocRevision({ entityId, fieldId, at, actor = null, text, restoredFrom = null }) {
+    this.#run('INSERT INTO doc_revisions (entity_id, field_id, at, actor, text, len, restored_from) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      entityId, fieldId, at, actor, text, text.length, restoredFrom);
     const [{ seq }] = this.#all('SELECT MAX(seq) AS seq FROM doc_revisions');
     this.#run(`DELETE FROM doc_revisions WHERE entity_id = ? AND field_id = ? AND seq NOT IN
       (SELECT seq FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?)`,
@@ -175,11 +177,11 @@ export class CFStore {
   }
 
   listDocRevisions(entityId, fieldId, { limit = 50 } = {}) {
-    return this.#all('SELECT seq, at, actor, len FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?', entityId, fieldId, limit);
+    return this.#all('SELECT seq, at, actor, len, restored_from AS restoredFrom FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?', entityId, fieldId, limit);
   }
 
   getDocRevision(entityId, fieldId, seq) {
-    return this.#all('SELECT seq, at, actor, len, text FROM doc_revisions WHERE seq = ? AND entity_id = ? AND field_id = ?', seq, entityId, fieldId)[0] ?? null;
+    return this.#all('SELECT seq, at, actor, len, restored_from AS restoredFrom, text FROM doc_revisions WHERE seq = ? AND entity_id = ? AND field_id = ?', seq, entityId, fieldId)[0] ?? null;
   }
 
   deleteDocRevisions(entityId) {

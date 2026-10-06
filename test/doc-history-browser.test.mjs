@@ -75,6 +75,27 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a restore reads as one: its history row and its Activity entry name the version it brought back (Issue #588)', async () => {
+    const [top] = revisions();
+    assert.ok(top.restoredFrom != null, 'the test before left a restore as the newest revision');
+    const source = weave.getDocRevision(id, null, top.restoredFrom);
+    const page = await open();
+    try {
+      await page.click('.doc-history-btn');
+      await page.waitForSelector('.wv-doc-history .wv-rev-row');
+      const first = await page.locator('.wv-doc-history .wv-rev-row').first().textContent();
+      assert.match(first, /Restored from/, `the restore row says it is a restore (${first})`);
+      assert.match(await page.locator('.wv-rev-row .wv-rev-restored').first().getAttribute('title'), new RegExp(new Date(source.at).getFullYear()),
+        'its title names the restored version by date');
+      await page.keyboard.press('Escape');
+      await page.goto(`${base}/#/activity/${id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.activity-row');
+      const text = await page.locator('.activity-row').first().textContent();
+      assert.match(text, /Description restored to the version from/, `the Activity entry reads as a restore (${text})`);
+      assert.doesNotMatch(text, /Description edited/, 'not as an ordinary edit');
+    } finally { await page.close(); }
+  });
+
   test('Escape and Back return to the editor; the panel paints in both themes', async () => {
     const page = await open();
     try {

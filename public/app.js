@@ -12008,8 +12008,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       const rows = revisions.map((rev, i) => {
         const prev = revisions[i + 1];
         const delta = prev ? rev.len - prev.len : rev.len;
+        const source = rev.restoredFrom == null ? null : revisions.find((r) => r.seq === rev.restoredFrom);
+        const restored = rev.restoredFrom == null ? null
+          : el('span', { class: 'wv-rev-restored', title: source ? `Restored the version from ${new Date(source.at).toLocaleString()}${source.actor ? ` by ${source.actor}` : ''}` : 'Restored a version no longer kept' },
+            iconEl('lucide:history', 'wv-icon'), source ? `Restored from ${relTime(source.at)}` : 'Restored an earlier version');
         const row = el('button', { class: 'wv-rev-row', type: 'button', title: new Date(rev.at).toLocaleString() },
-          el('span', { class: 'wv-rev-when' }, i === 0 ? 'Current' : relTime(rev.at)),
+          el('span', { class: 'wv-rev-when' }, i === 0 ? 'Current' : relTime(rev.at), restored),
           el('span', { class: 'wv-rev-actor' }, actorChipEl(rev.actor, { link: false }) || '—'),
           el('span', { class: 'wv-rev-delta' + (delta > 0 ? ' pos' : delta < 0 ? ' neg' : '') },
             delta > 0 ? `+${delta}` : delta < 0 ? `−${-delta}` : '±0'));
@@ -12806,6 +12810,9 @@ function activitySummary(a) {
     case 'undo': if (a.scope === 'field') return `${d.field}: ${(d.changed ?? []).join(', ')} put back`; return a.kind;
     case 'doc-updated':
     case 'doc-appended': {
+      if (d.restoredFrom != null) {
+        return `${d.field ?? 'Description'} restored to the version from ${d.restoredAt ? new Date(d.restoredAt).toLocaleString() : 'an earlier revision'}${d.restoredBy ? ` by ${d.restoredBy}` : ''}`;
+      }
       // The enriched detail is the point of the row: how much moved, where.
       const size = d.delta == null ? '' : ` ${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)} chars`;
       const where = d.line ? ` at line ${d.line}` : '';
