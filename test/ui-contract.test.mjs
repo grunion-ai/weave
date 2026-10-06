@@ -930,9 +930,10 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   // the table's do (Kyle, 2026-08-23: "move the entity 3 dots menu to be in
   // line with the breadcrumbs and include the show/hide eye just like on the
   // table view"). The title row is the title.
-  // The dock's back arrow leads the path where the page has its nav button,
-  // and its expand and close are the pose controls (Issue #583).
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*inPeek \? \(dockControls\?\.back \?\? null\) : navMenuButton\(\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
+  // The dock's Back and Forward lead the path where the page has its nav
+  // button and then its own Back and Forward (Issue #671); the dock's
+  // expand and close are the pose controls (Issue #583).
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
     'the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
   /* The side column (comments, activity, references) follows the table's own
      Activity system toggle — the same switch that adds the ⚡ column to the
@@ -2090,7 +2091,9 @@ test('dock: Escape defers to every overlay app.js can raise', () => {
   assert.ok(owners.includes('.doc-rail.open'), 'an open document outline owns Escape too');
   const esc = APP.match(/if \(e\.key !== 'Escape' \|\| !dock\) return;[\s\S]{0,400}?\}\);/)[0];
   assert.match(esc, /closest\?\.\('input, textarea, select, \[contenteditable\]'\)/, 'a focused editor keeps its Escape');
-  assert.match(esc, /weaveEntitySurface\.escape\(dock\.state\)/, 'the pop itself is the core rule, not a hand-rolled one');
+  // Issue #671: Esc is Back while the nav has somewhere to go back to, and
+  // closes the dock at the first row; both are the nav core's rules.
+  assert.match(esc, /weaveBreadcrumbs\.navCanBack\(crumbNav\)[\s\S]*weaveBreadcrumbs\.navBack\(crumbNav\)/, 'the step back is the nav core\'s rule, not a hand-rolled one');
 });
 
 test('dock: a repaint releases what the last pass mounted, and the docked row takes its light back', () => {
@@ -2124,7 +2127,9 @@ test('dock: the #id link docks plain rows only; registry rows and modified click
   const dockFn = fnBody('dockEntity');
   assert.match(dockFn, /dock && dock\.state\.anchor\.tableId === anchor\.id\s*\?\s*dock\.state/, 'a second open beside the same table keeps the pane state');
   assert.match(dockFn, /S\.init\(\{ tableId: anchor\.id, tableName: anchor\.name \}\)/, 'a different anchor re-inits');
-  assert.match(dockFn, /drill \? S\.drill\(st, frame\) : S\.open\(st, frame\)/, 'a hop from the dock drills the chain; any other open replaces it');
+  // Issue #670: the chain is the one nav's crumb, shared with the page.
+  assert.match(dockFn, /drill \? weaveBreadcrumbs\.navHop\(crumbNav, hop\) : weaveBreadcrumbs\.navOpen\(crumbNav, hop\)/, 'a hop from the dock extends the nav; any other open starts it over');
+  assert.match(dockFn, /syncDockChain\(\)/, 'and the dock\'s chain follows the nav');
   const opener = fnBody('openEntity');
   assert.match(opener, /if \(state\.route\?\.page !== 'db'\) \{/, 'the page only travels when no table is under the reader');
   assert.doesNotMatch(opener, /state\.route\.dbId === db\.id/, 'the entity\'s own table never decides a navigation');

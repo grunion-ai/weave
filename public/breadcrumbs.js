@@ -72,6 +72,41 @@
     return out;
   }
 
+  /* The click history behind the crumb (Issues #670, #671). One nav for
+     the dock and the full page, so a pose flip keeps the path. stack is
+     every row in the order it was opened; idx is where Back and Forward
+     stand. The crumb is the history up to idx run through pushTrail, so a
+     revisit cuts the crumb back while the arrows still replay the clicks:
+     crumbs show place, arrows show time (Kyle, 2026-10-05). */
+  const navCurrent = (nav) => nav?.stack?.[nav.idx] ?? null;
+  function navOpen(nav, hop) {
+    if (navCurrent(nav)?.id === hop.id) return nav;
+    return { stack: [hop], idx: 0 };
+  }
+  function navHop(nav, hop) {
+    const cur = navCurrent(nav);
+    if (!cur) return { stack: [hop], idx: 0 };
+    if (cur.id === hop.id) return nav;
+    const stack = [...nav.stack.slice(0, nav.idx + 1), hop];
+    return { stack, idx: stack.length - 1 };
+  }
+  const navCanBack = (nav) => !!nav && nav.idx > 0;
+  const navCanForward = (nav) => !!nav && nav.idx < nav.stack.length - 1;
+  const navBack = (nav) => (navCanBack(nav) ? { stack: nav.stack, idx: nav.idx - 1 } : nav);
+  const navForward = (nav) => (navCanForward(nav) ? { stack: nav.stack, idx: nav.idx + 1 } : nav);
+  /* The crumb's rows: the trail behind the current row, then the row. */
+  function navPath(nav) {
+    const seq = nav?.stack?.slice(0, nav.idx + 1) ?? [];
+    if (!seq.length) return [];
+    let trail = [];
+    for (let i = 1; i < seq.length; i++) trail = pushTrail(trail, { page: 'entity', entity: seq[i - 1] }, seq[i]);
+    return [...trail, seq[seq.length - 1]];
+  }
+  function navUpdate(nav, hop) {
+    if (!nav?.stack) return nav;
+    return { stack: nav.stack.map((x) => (x.id === hop.id ? { ...x, ...hop } : x)), idx: nav.idx };
+  }
+
   /* The tab title (Issue #267): the row or table in front of the reader,
      then the workspace, so tabs, history entries and bookmarks tell places
      apart. The workspace page is the workspace name alone; "Weave" only
@@ -85,5 +120,8 @@
     return n && w ? `${n} · ${w}` : n || w || 'Weave';
   }
 
-  root.weaveBreadcrumbs = { pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, docTitle };
+  root.weaveBreadcrumbs = {
+    pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, docTitle,
+    navOpen, navHop, navBack, navForward, navCanBack, navCanForward, navCurrent, navPath, navUpdate,
+  };
 })(globalThis);

@@ -122,7 +122,7 @@ if (s) {
     visibleOneRow(r, 'close', r.close);
     await page.click('#dock .dock-back');
     await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Acme Working Capital');
-    assert.equal(await page.locator('#dock .dock-back').count(), 0, 'nothing behind the root: no back arrow');
+    assert.ok(await page.locator('#dock .dock-back').isDisabled(), 'nothing behind the root: Back is disabled');
     await page.close();
   });
 

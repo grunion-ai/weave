@@ -461,8 +461,9 @@ document.addEventListener('click', (e) => {
   if (!m) return;
   e.preventDefault();
   // A link inside the dock is a hop FROM the docked entity: it drills the
-  // chain (Issue #276). A link anywhere else opens afresh.
-  openEntity(m[1], { drill: !!a.closest('#dock') });
+  // chain (Issue #276). So is a link on the entity page, the same view in
+  // its expanded pose (Issue #670). A link anywhere else opens afresh.
+  openEntity(m[1], { drill: !!a.closest('#dock') || (state.route?.page === 'entity' && !!a.closest('#main')) });
 }, true);
 
 /* ---------- the clicks the browser owns (Issue #134) ----------
@@ -607,11 +608,31 @@ function poseGlyph(expanded) {
   return span;
 }
 
-/* Tabler's arrow-left, same family and scale as the pose glyphs. */
-function backGlyph() {
-  const span = el('span', { class: 'pose-glyph' });
-  span.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0"/><path d="M5 12l6 6"/><path d="M5 12l6 -6"/></svg>';
-  return span;
+/* The click history behind every entity crumb (Issues #670, #671): one
+   nav for the dock and the full page, so expand and collapse keep the path
+   taken. breadcrumbs.js holds the rules; the crumb is the history run
+   through the cut-back, and Back and Forward replay the clicks. */
+let crumbNav = null;
+
+/* Back and Forward, together at the left of the crumb row. They walk the
+   click order, whatever the crumb cut back to; a new hop after Back drops
+   the forward leg. Drawn once a second row has been opened, each disabled
+   where it has nowhere to go. */
+function navArrows(go) {
+  if (!crumbNav || crumbNav.stack.length < 2) return [];
+  const B = weaveBreadcrumbs;
+  return [
+    el('button', {
+      class: 'btn btn-sm btn-ghost-secondary crumb-nav dock-back', type: 'button',
+      title: 'Back (Esc)', 'aria-label': 'Back to the previous entity', disabled: B.navCanBack(crumbNav) ? undefined : '',
+      onclick: () => go(B.navBack(crumbNav)),
+    }, lucideEl('arrow-left')),
+    el('button', {
+      class: 'btn btn-sm btn-ghost-secondary crumb-nav dock-forward', type: 'button',
+      title: 'Forward', 'aria-label': 'Forward to the next entity', disabled: B.navCanForward(crumbNav) ? undefined : '',
+      onclick: () => go(B.navForward(crumbNav)),
+    }, lucideEl('arrow-right')),
+  ];
 }
 
 /* The two poses live in two mounts of the ONE renderer: split is the dock
@@ -635,6 +656,7 @@ function dockExpand() {
 /* ✕ on the entity page: same rule as the pose flip — the table is this
    place at a smaller pose, not a new destination. */
 async function closeToTable(entity) {
+  crumbNav = null; // closing ends the journey
   teardownDocEditors();
   history.replaceState(null, '', `#/table/${entity.dbId}`);
   await showDatabase(entity.dbId);
@@ -685,11 +707,31 @@ async function dockEntity(db, id, { drill = false } = {}) {
   let st = dock && dock.state.anchor.tableId === anchor.id
     ? dock.state
     : S.init({ tableId: anchor.id, tableName: anchor.name });
-  const at = drill ? st.chain.findIndex((f) => f.kind === 'entity' && f.id === id) : -1;
-  st = at >= 0 ? S.popTo(st, at) : drill ? S.drill(st, frame) : S.open(st, frame);
+  if (!st.chain.length) st = S.open(st, frame);
+  // A hop extends the one nav; a fresh open starts it over, unless it
+  // reopens the row already current (collapse from the page, a reload).
+  const known = crumbNav?.stack.find((h) => h.id === id);
+  const hop = { ...known, ...tableHop(db), id };
+  crumbNav = drill ? weaveBreadcrumbs.navHop(crumbNav, hop) : weaveBreadcrumbs.navOpen(crumbNav, hop);
   dock = { db, state: st, editors: dock?.editors ?? [] };
+  syncDockChain();
   dockSyncUrl();
   await drawDock();
+}
+
+/* The dock's chain is the nav's crumb rows, as the surface core's frames,
+   so the row light, the hash and the tab title follow the nav. */
+function syncDockChain() {
+  if (!dock) return;
+  dock.state = {
+    ...dock.state,
+    chain: weaveBreadcrumbs.navPath(crumbNav).map((h) => ({ kind: 'entity', id: h.id, name: h.name, publicId: h.publicId, tableId: h.tableId, tableName: h.table })),
+  };
+}
+
+/* What a row's table says about it before the row itself is fetched. */
+function tableHop(db) {
+  return { tableId: db.id, table: db.name, tableIcon: db.icon ?? null, space: db.space ?? '', spaceId: db.spaceId ?? '', spaceIcon: db.spaceIcon ?? null };
 }
 
 /* The dock is presentation, never a history entry — yet a refresh, a new
@@ -706,22 +748,19 @@ function dockSyncUrl() {
 }
 
 function dockDismiss() {
+  crumbNav = null; // closing ends the journey
   dockClose();
   dockSyncUrl();
 }
 
-/* Back walks the chain one frame (Issue #276): the same pop Esc makes. */
-function dockBack() {
-  if (!dock || dock.state.chain.length < 2) return;
-  dock.state = weaveEntitySurface.popTo(dock.state, dock.state.chain.length - 2);
+/* Back and Forward in the dock (Issues #276, #671): the nav moves, the
+   dock follows. Esc is Back while there is somewhere to go back to. */
+function dockGo(next) {
+  if (!dock || next === crumbNav) return;
+  crumbNav = next;
+  syncDockChain();
   dockSyncUrl();
   drawDock();
-}
-
-/* A dock frame as a crumb hop: its table's icon comes from the schema. */
-function frameHop(f) {
-  const t = allTables().find((d) => d.id === f.tableId);
-  return { id: f.id, publicId: f.publicId, name: f.name, table: f.tableName, tableId: f.tableId, tableIcon: t?.icon ?? null };
 }
 
 async function drawDock() {
@@ -731,12 +770,12 @@ async function drawDock() {
   try { entity = await api('GET', `/entities/${top.id}`); } catch (err) { dockClose(); return toast(err.message, true); }
   // The frame learns its name here, for the crumb of the next hop; the
   // dock's table follows the frame on top (its eye, its fields).
-  top.name = entity.name;
-  top.publicId = entity.publicId;
+  crumbNav = weaveBreadcrumbs.navUpdate(crumbNav, entityHop(entity));
+  syncDockChain();
   noteEntityRecent(entity);
   syncDocTitle();
   dock.db = allTables().find((d) => d.id === top.tableId) ?? dock.db;
-  const crumbs = weaveBreadcrumbs.dockCrumbs(dock.state.chain.map(frameHop));
+  const crumbs = weaveBreadcrumbs.dockCrumbs(weaveBreadcrumbs.navPath(crumbNav));
   releaseDockPanel();
   const panel = $('#dock');
   panel.hidden = false;
@@ -749,11 +788,7 @@ async function drawDock() {
      row of their own above the crumb sat outside the sticky band, so it
      left with the first scroll and the pane wore two toolbars. */
   const dockControls = {
-    back: dock.state.chain.length > 1 ? el('button', {
-      class: 'btn btn-sm btn-ghost-secondary dock-back', type: 'button',
-      title: 'Back (Esc)', 'aria-label': 'Back to the previous entity',
-      onclick: () => dockBack(),
-    }, backGlyph()) : null,
+    nav: navArrows(dockGo),
     pose: [
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
@@ -849,11 +884,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !dock) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
   if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
-  const next = weaveEntitySurface.escape(dock.state);
-  if (next.pose === 'closed') return dockDismiss();
-  dock.state = next;
-  dockSyncUrl();
-  drawDock();
+  if (!weaveBreadcrumbs.navCanBack(crumbNav)) return dockDismiss();
+  dockGo(weaveBreadcrumbs.navBack(crumbNav));
 });
 
 function allTables() {
@@ -11383,13 +11415,31 @@ async function showEntity(id) {
   // starts it fresh.
   noteEntityRecent(entity);
   const hop = entityHop(entity);
-  state.trail = weaveBreadcrumbs.pushTrail(state.trail, state.route, hop);
+  /* The same nav as the dock (Issue #670): expanding the docked row lands
+     on the row already current, so the path the dock took stays. Another
+     entity page reached from this one is a hop; anything else starts over. */
+  const B = weaveBreadcrumbs;
+  crumbNav = B.navCurrent(crumbNav)?.id === id ? B.navUpdate(crumbNav, hop)
+    : state.route?.page === 'entity' ? B.navHop(crumbNav, hop) : B.navOpen(crumbNav, hop);
+  state.trail = B.navPath(crumbNav).slice(0, -1);
   state.route = { page: 'entity', id, dbId: entity.dbId, entity: hop };
   syncDocTitle(entity.name);
   renderNav();
   const main = $('#main');
   main.replaceChildren();
   await renderEntityView(entity, { mount: main, refresh: () => showEntity(id) });
+}
+
+/* Back and Forward on the entity page: the nav moves and the page shows
+   its row in place. Like a pose flip this rewrites the history entry, so
+   the browser's own Back keeps meaning "the page before this one". */
+function pageGo(next) {
+  const to = weaveBreadcrumbs.navCurrent(next);
+  if (!to || next === crumbNav) return;
+  crumbNav = next;
+  teardownDocEditors();
+  history.replaceState(null, '', `#/entity/${to.id}`);
+  withPageLoader(() => showEntity(to.id));
 }
 
 function entityHop(entity) {
@@ -11518,7 +11568,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   mount.append(
     stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb crumb-row' },
-        inPeek ? (dockControls?.back ?? null) : navMenuButton(),
+        ...(inPeek ? (dockControls?.nav ?? []) : [navMenuButton(), ...navArrows(pageGo)]),
         crumbPath(inPeek
           /* The dock's crumb is its chain (Issues #276, #673); a caller
              without one gets the row alone. */

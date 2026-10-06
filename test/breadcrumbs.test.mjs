@@ -137,3 +137,55 @@ test('docTitle: <row or table> · <workspace>, the workspace alone, Weave with n
   assert.equal(docTitle(null, ''), 'Weave');
   assert.equal(docTitle(undefined, undefined), 'Weave');
 });
+
+/* Issues #670 and #671 (Kyle, 2026-10-05): one trail for both poses, and
+   Back and Forward that replay the clicks. The nav is the click history;
+   the crumb is that history run through pushTrail's cut-back, so crumbs
+   show place and the arrows show time. */
+const N = () => globalThis.weaveBreadcrumbs;
+const h = (id) => ({ id, name: id.toUpperCase(), tableId: 't1', table: 'People' });
+const ids = (hops) => hops.map((x) => x.id);
+
+test('nav: a fresh open starts the history; a hop extends it; reopening the current row keeps it', () => {
+  const { navOpen, navHop, navPath, navCurrent } = N();
+  let nav = navOpen(undefined, h('a'));
+  assert.deepEqual(ids(navPath(nav)), ['a']);
+  nav = navHop(nav, h('b'));
+  nav = navHop(nav, h('c'));
+  assert.deepEqual(ids(navPath(nav)), ['a', 'b', 'c']);
+  assert.equal(navCurrent(nav).id, 'c');
+  assert.equal(navOpen(nav, h('c')), nav, 'expand and collapse reopen the current row: the path survives the pose flip');
+  assert.equal(navHop(nav, h('c')), nav, 'a hop to the row you are on changes nothing');
+  assert.deepEqual(ids(navPath(navOpen(nav, h('z')))), ['z'], 'opening another row afresh starts over');
+});
+
+test('nav: the crumb cuts back on a revisit; Back and Forward replay the clicks', () => {
+  const { navOpen, navHop, navBack, navForward, navPath, navCanBack, navCanForward } = N();
+  // The journey from the review: #583 → v0.4.55 → #589 → v0.4.55.
+  let nav = navOpen(undefined, h('i583'));
+  nav = navHop(nav, h('r54'));
+  nav = navHop(nav, h('i589'));
+  nav = navHop(nav, h('r54'));
+  assert.deepEqual(ids(navPath(nav)), ['i583', 'r54'], 'crumb after click 3: #583 › v0.4.55');
+  assert.ok(!navCanForward(nav));
+  nav = navBack(nav);
+  assert.deepEqual(ids(navPath(nav)), ['i583', 'r54', 'i589'], 'Back returns to #589, the row you came from');
+  assert.ok(navCanForward(nav));
+  nav = navForward(nav);
+  assert.deepEqual(ids(navPath(nav)), ['i583', 'r54'], 'Forward returns to v0.4.55');
+  nav = navBack(navBack(navBack(nav)));
+  assert.deepEqual(ids(navPath(nav)), ['i583']);
+  assert.ok(!navCanBack(nav), 'nothing before the first click');
+  assert.equal(navBack(nav), nav);
+  // A new hop after Back drops the forward leg.
+  nav = navHop(navForward(nav), h('x'));
+  assert.ok(!navCanForward(nav), 'a new hop after Back discards the forward stack');
+  assert.deepEqual(ids(navPath(nav)), ['i583', 'r54', 'x']);
+});
+
+test('nav: navUpdate fills a hop in wherever it sits (a name learnt after the fetch, a rename)', () => {
+  const { navOpen, navHop, navUpdate, navPath } = N();
+  let nav = navHop(navOpen(undefined, { id: 'a' }), { id: 'b' });
+  nav = navUpdate(nav, { id: 'a', name: 'Ada', publicId: 7 });
+  assert.deepEqual(navPath(nav).map((x) => [x.id, x.name, x.publicId]), [['a', 'Ada', 7], ['b', undefined, undefined]]);
+});

@@ -142,7 +142,8 @@ if (s) {
     await dockedName(page, 'Acme Working Capital');
     assert.deepEqual(await crumbLabels(page), ['Acme Working Capital']);
     assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${a.id}`);
-    assert.equal(await page.locator('#dock .dock-back').count(), 0, 'nothing behind the root: no back arrow');
+    assert.ok(await page.locator('#dock .dock-back').isDisabled(), 'nothing behind the root: Back is disabled');
+    assert.ok(await page.locator('#dock .dock-forward').isEnabled(), 'and Forward can undo the step back (Issue #671)');
     await page.close();
   });
 

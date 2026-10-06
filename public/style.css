@@ -2470,6 +2470,11 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .crumb-path.crumb-measure > .crumb-slot { flex: none; }
 .crumb-slot > a.crumb-item { min-width: 0; overflow: hidden; }
 .crumb-more { flex: none; padding: 1px 6px; line-height: 0; }
+/* Back and Forward lead the crumb row (Issue #671). */
+.crumb-nav { flex: none; padding: 4px; line-height: 0; }
+.crumb-nav .wv-icon { margin-right: 0; }
+.crumb-nav + .crumb-nav { margin-left: -8px; }
+.crumb-nav:disabled { background: transparent; border-color: transparent; opacity: .35; }
 .crumb-more .wv-icon { margin-right: 0; }
 .crumb-fold-menu { max-width: 340px; }
 .crumb-fold-row { min-width: 0; text-decoration: none; font-size: 13px; }
