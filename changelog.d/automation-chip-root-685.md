@@ -1,1 +1,0 @@
-- **The automation chip opens its row from a member workspace** (Issue #685): in a workspace other than the root, the Modified By chip linked to the Workflows row inside that workspace, whose page failed with "Cannot read properties of undefined (reading 'systemFields')". It now links to the root, where the Workflows registry lives.
