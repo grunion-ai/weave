@@ -1359,7 +1359,20 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .activity-when { white-space: nowrap; color: var(--tblr-secondary); }
 .activity-row { cursor: pointer; }
 /* A field definition on its event page wraps rather than widening the page (Issue #428). */
-.activity-def { overflow-wrap: anywhere; white-space: pre-wrap; }
+.activity-def { overflow-wrap: anywhere; white-space: pre-wrap; margin: 0; font-size: 12px; background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 8px 10px; max-height: 360px; overflow: auto; }
+.field-change { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field-change-item, .field-change.field-change-value { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
+.field-change-arrow { display: inline-flex; color: var(--tblr-secondary); }
+.field-change-arrow .wv-icon { width: 14px; height: 14px; }
+.field-change-marks, .field-change-unchanged { font-size: 12px; color: var(--tblr-secondary); }
+.field-change-before { color: var(--tblr-secondary); text-decoration: line-through; }
+.field-change-text code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.field-change-text ins { text-decoration: none; background: color-mix(in oklab, var(--tblr-success) 18%, transparent); border-radius: 3px; }
+.field-change-text del { background: color-mix(in oklab, var(--tblr-danger) 15%, transparent); border-radius: 3px; }
+.activity-defs > summary { cursor: pointer; color: var(--tblr-secondary); font-size: 13px; }
+.activity-defs[open] > summary { margin-bottom: 8px; }
+.activity-defs-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 10px; }
+.activity-defs-head { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--tblr-secondary); margin-bottom: 4px; }
 .activity-rollback-reason { color: var(--tblr-secondary); }
 .entity-head .activity-title { font-size: 24px; font-weight: 700; padding: 2px 4px; flex: 1; min-width: 0; }
 .chip.rel.deleted a { text-decoration: line-through; color: var(--tblr-secondary); }
