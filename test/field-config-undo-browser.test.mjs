@@ -68,6 +68,37 @@ if (s) {
       } finally { await page.close(); }
     });
 
+    test(`a recolour reads as the option's two chips; the definitions wait behind Show definitions (Issue #554, ${colorScheme})`, async () => {
+      const opts = (p3) => [{ id: 'p0', name: 'P0', hue: 'red' }, { id: 'p1', name: 'P1', hue: 'orange' }, { id: 'p2', name: 'P2', hue: 'amber' }, { id: 'p3', name: 'P3', hue: p3 }];
+      const f = weave.addField(t, { name: `Priority ${colorScheme}`, type: 'select', config: { options: opts('teal') } });
+      weave.updateField(t.id, f.id, { config: { options: opts('green') } });
+      const entry = entryFor(f.id);
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme });
+      try {
+        await page.goto(`${base}/#/activity/${entry.id}`, { waitUntil: 'networkidle' });
+        await page.waitForSelector('.field-change');
+        const items = page.locator('.field-change-item');
+        assert.equal(await items.count(), 1, 'only the option that changed is listed');
+        const item = await items.first().evaluate((n) => ({
+          chips: [...n.querySelectorAll('.k-select')].map((c) => ({ text: c.textContent.trim(), cls: c.className })),
+          marks: n.querySelector('.field-change-marks')?.textContent ?? '',
+        }));
+        assert.deepEqual(item.chips.map((c) => c.text), ['P3', 'P3'], 'the option before and after, as chips');
+        assert.match(item.chips[0].cls, /hue-teal/);
+        assert.match(item.chips[1].cls, /hue-green/);
+        assert.match(item.marks, /recoloured/i);
+        assert.match(await page.locator('.field-change-unchanged').textContent(), /3 unchanged/);
+        assert.equal(await page.locator('.activity-defs').evaluate((n) => n.open), false, 'the definitions start folded');
+        assert.equal(await page.locator('.activity-defs pre').first().isVisible(), false, 'no raw JSON on the page until asked');
+        await page.click('.activity-defs > summary');
+        const before = await page.locator('.activity-defs pre').first().textContent();
+        assert.match(before, /^\{\n {2}"name": "Priority/, 'pretty-printed with a two-space indent');
+        assert.ok(await page.locator('.activity-rollback').isVisible(), 'Roll back is still on the page');
+        const colours = await page.locator('.field-change-item .k-select').first().evaluate((n) => ({ fg: getComputedStyle(n).color, bg: getComputedStyle(n).backgroundColor }));
+        assert.notEqual(colours.fg, colours.bg, 'the chip is legible in this theme');
+      } finally { await page.close(); }
+    });
+
     test(`a type change in the tray offers Undo, and Undo brings the numbers back (${colorScheme})`, async () => {
       const name = `Count ${colorScheme}`;
       const f = weave.addField(t, { name, type: 'number' });

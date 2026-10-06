@@ -1112,7 +1112,7 @@ weave field add Order "Due" date --description "When the invoice falls due; ISO 
 
 Saving a field in its tray shows a toast, \`Qty updated\`, with **Undo**. Undo puts the field's definition back the way it was before that save: its name, options and their colours, states, formula, format, default and description.
 
-The toast lasts a few seconds. The record of the change stays in Activity: every change to a field's configuration is an entry on its table, \`field-config-updated\`, with the definition before and after. It shows in the Activity table with the table as its record, and its own page has a **Roll back** button. The column width is the exception: a width belongs to the view, so resizing a column records nothing.
+The toast lasts a few seconds. The record of the change stays in Activity: every change to a field's configuration is an entry on its table, \`field-config-updated\`, with the definition before and after. It shows in the Activity table with the table as its record, and its own page has a **Roll back** button. The page shows each changed setting in the field's own terms: an option or a state as its chip before and after, marked added, removed, renamed, recoloured, icon changed or moved; a formula as its text with the words that changed marked; a name, format or default as its value before and after. The whole definitions wait under **Show definitions**. The column width is the exception: a width belongs to the view, so resizing a column records nothing.
 
 A roll back checks first. If the field has changed since the entry, the page says so and changes nothing: roll back the newer change first. Undo and Roll back each write an \`undo\` entry of their own, which can itself be rolled back.
 

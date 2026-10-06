@@ -12922,6 +12922,39 @@ function rollbackControl(a) {
   }, `Roll back ${a.detail.field}`);
 }
 
+function fieldChangeChip(type, o) {
+  if (!o) return el('span', { class: 'field-change-none' }, '—');
+  if (type === 'workflow') {
+    const cat = chipCore.categoryOrDefault(o.category ?? 'not-started');
+    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` }, o.icon ? iconEl(o.icon, 'ico wv-icon') : null, chipLabel(o.name));
+  }
+  return el('span', { class: `k k-select hue-${o.hue || chipCore.hueFromHex(o.color)}` }, o.icon ? iconEl(o.icon, 'ico wv-icon') : null, chipLabel(o.name));
+}
+
+function fieldChangeRows(d, row) {
+  const D = window.WeaveFieldDiff;
+  const arrow = () => el('span', { class: 'field-change-arrow', 'aria-label': 'to' }, iconEl('lucide:arrow-right', 'wv-icon'));
+  return D.changes(d).map((c) => {
+    if (c.kind === 'list') {
+      const type = d.after?.type ?? d.before?.type;
+      return row(c.label, el('div', { class: 'field-change field-change-list' },
+        ...c.items.map((it) => el('div', { class: 'field-change-item' },
+          it.before ? fieldChangeChip(type, it.before) : null,
+          it.before && it.after ? arrow() : null,
+          it.after ? fieldChangeChip(type, it.after) : null,
+          el('span', { class: 'field-change-marks' }, it.marks.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(', ')))),
+        c.unchanged ? el('div', { class: 'field-change-unchanged' }, `${c.unchanged} unchanged`) : null));
+    }
+    if (c.kind === 'text') {
+      return row(c.label, el('div', { class: 'field-change field-change-text' },
+        el('code', {}, ...c.diff.map((p) => (p.op === '=' ? p.text : el(p.op === '+' ? 'ins' : 'del', {}, p.text))))));
+    }
+    return row(c.label, el('div', { class: 'field-change field-change-value' },
+      el('span', { class: 'field-change-before' }, D.formatValue(c.before)), arrow(),
+      el('span', { class: 'field-change-after' }, D.formatValue(c.after))));
+  });
+}
+
 /* One event's own page, laid out like any entity page: the crumb carries its
    table (Activity) and a copyable permalink, the title is the summary, and the
    values are label/value field rows. The event is the entity here — its
@@ -12949,9 +12982,13 @@ async function showActivityDetail(id) {
     // A field configuration entry (Issue #428) reads as the field, what
     // changed, and the two definitions whole; the ids and seq stay in the API.
     ...(field
-      ? [row('Field', d.field), row('Changed', (d.changed ?? []).join(', ')),
-        row('Before', el('code', { class: 'activity-def' }, JSON.stringify(d.before))),
-        row('After', el('code', { class: 'activity-def' }, JSON.stringify(d.after))),
+      ? [row('Field', d.field),
+        ...fieldChangeRows(d, row),
+        row('Definitions', el('details', { class: 'activity-defs' },
+          el('summary', {}, 'Show definitions'),
+          el('div', { class: 'activity-defs-body' },
+            el('div', { class: 'activity-defs-col' }, el('div', { class: 'activity-defs-head' }, 'Before'), el('pre', { class: 'activity-def' }, JSON.stringify(d.before, null, 2))),
+            el('div', { class: 'activity-defs-col' }, el('div', { class: 'activity-defs-head' }, 'After'), el('pre', { class: 'activity-def' }, JSON.stringify(d.after, null, 2)))))),
         // A type change's values (Issue #467): kept, or dropped under the bound.
         ...(d.lossy ? [row('Values', d.snapshot
           ? `${d.snapshot.rows} ${d.snapshot.rows === 1 ? 'value' : 'values'} from before this change kept for a roll back`
