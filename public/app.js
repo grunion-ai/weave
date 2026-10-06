@@ -2276,14 +2276,12 @@ function viewChipEl(v, { lead = null, tail = null, extra = null, href = null } =
   const segs = viewCore.viewSegments(v);
   const a = el('a', { href: href ?? `#/entity/${v.id}`, title: String(v?.name ?? ''), onclick: (e) => e.stopPropagation() },
     lead, el('span', { class: 'k-label' }, viewCore.viewTitle(v)), tail,
-    ...(segs.length ? [
-      el('button', {
-        type: 'button', class: 'mention-caret', 'aria-expanded': 'false', title: 'Show fields',
-        onclick: (e) => { e.preventDefault(); e.stopPropagation(); toggleMentionCaret(e.currentTarget); },
-      }, '›'),
-      el('span', { class: 'mention-fields' }, ...segs.map(viewSegmentEl)),
-    ] : []));
-  const chip = el('span', { class: 'k k-rel' + (segs.length ? ' has-segs' : '') }, a);
+    segs.length ? el('span', { class: 'mention-fields' }, ...segs.map(viewSegmentEl)) : '');
+  const chip = el('span', { class: 'k k-rel' + (segs.length ? ' has-segs' : '') }, a,
+    segs.length ? el('button', {
+      type: 'button', class: 'mention-caret', 'aria-expanded': 'false', title: 'Show fields',
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); toggleMentionCaret(e.currentTarget); },
+    }, '›') : '');
   if (extra) chip.append(extra);
   return el('span', { class: 'mention-wrap' }, chip);
 }
@@ -8403,7 +8401,6 @@ async function resolveRefs(refs) {
       if (ent) href = `#/entity/${ent[1]}`;
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
       a.querySelector('.mention-fields')?.remove();
-      a.querySelector('.mention-caret')?.remove();
       refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });
     });
   } catch {}

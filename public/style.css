@@ -1653,7 +1653,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .target-set-row { display: flex; align-items: center; gap: 6px; width: 100%; }
 .target-set-row .picker-wrap { flex: 1; }
 
-.k-rel > a > .mention-caret { margin-left: 2px; }
+.k-rel > .mention-caret { margin-left: 2px; margin-right: 6px; }
 .k-rel > a > .mention-fields { align-items: center; }
 .k-rel .mention-fields .k-state, .wv-seg-state { font-size: .82em; padding: 0 6px; line-height: 1.5; }
 .wv-card {
@@ -1841,7 +1841,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
   content: ''; position: absolute; left: 50%; top: 50%;
   width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%);
 }
-.mention-caret::after { width: 100%; }
 
 .crumb-actions .table-search { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); gap: 0; }
 .crumb-actions .table-search-btn { border: 0; background: none; }

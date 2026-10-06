@@ -219,9 +219,9 @@ if (s) {
   test('clicking the ↗ of a relation chip opens that entity', async () => {
     const page = await grid();
     try {
-      const chip = page.locator('.wv-grid tbody .k-rel').first();
-      await chip.scrollIntoViewIfNeeded();
-      const box = await chip.boundingBox();
+      const link = page.locator('.wv-grid tbody .k-rel > a').first();
+      await link.scrollIntoViewIfNeeded();
+      const box = await link.boundingBox();
       await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
       await page.waitForSelector('#dock:not([hidden]) .name-edit', { timeout: 3000 });
       assert.match(page.url(), /#\/table\//, 'the arrow docks; the dock is not a navigation');

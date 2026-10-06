@@ -191,12 +191,12 @@ if (s) {
     const page = await open(`#/table/${issue.id}`, '.wv-grid tbody tr.entity-row', 'light');
     try {
       await page.hover('#nav .nav-db');
-      for (const h of await hitArea(page, ['#nav-collapse', 'button.add-field-btn', '.nav-db-menu .dots-btn', 'td.pid-cell a.open-link'])) {
+      for (const h of await hitArea(page, ['#nav-collapse', 'button.add-field-btn', '.nav-db-menu .dots-btn', 'td.pid-cell a.open-link', 'button.mention-caret'])) {
         assert.ok(!h.missing, `${h.sel} is on the page`);
         assert.equal(h.misses, 0, `${h.sel} (${h.box}) takes a click across 24px`);
       }
-      const [caret] = await hitArea(page, ['button.mention-caret'], false);
-      assert.ok(!caret.missing && caret.misses === 0, `the mention caret (${caret.box}) takes a click 24px tall`);
+      assert.equal(await page.$eval('button.mention-caret', (c) => c.closest('a') ? 'inside the link' : 'beside the link'), 'beside the link',
+        'the caret is its own target, so the 24px box can claim the pixels around it');
     } finally { await page.close(); }
     const ent = await open(`#/entity/${entityId}`, '.entity-head', 'light');
     try {

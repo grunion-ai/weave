@@ -72,12 +72,14 @@ function renderInline(text, resolveMention) {
               + (resolved.name ? ` data-name="${escapeHtml(resolved.name)}">` : '>')
               + `${escapeHtml(label ?? resolved.label)}`
               + (fields.length
-                ? `<button type="button" class="mention-caret" aria-expanded="false" aria-label="Show fields">${ICON_SVG?.['chevron-right'] ?? '▸'}</button>`
-                  + `<span class="mention-fields">${fields.map((f) =>
-                    `<span class="mention-f"><span class="mention-f-label">${escapeHtml(f.label)}</span>${escapeHtml(String(f.value))}</span>`).join('')}</span>`
+                ? `<span class="mention-fields">${fields.map((f) =>
+                  `<span class="mention-f"><span class="mention-f-label">${escapeHtml(f.label)}</span>${escapeHtml(String(f.value))}</span>`).join('')}</span>`
                 : '')
               + '</a>';
-            const chip = `<span class="k k-rel k-inline${fields.length ? ' has-segs' : ''}">${a}</span>`;
+            const caret = fields.length
+              ? `<button type="button" class="mention-caret" aria-expanded="false" aria-label="Show fields">${ICON_SVG?.['chevron-right'] ?? '▸'}</button>`
+              : '';
+            const chip = `<span class="k k-rel k-inline${fields.length ? ' has-segs' : ''}">${a}${caret}</span>`;
             out += fields.length ? `<span class="mention-wrap">${chip}</span>` : chip;
             i = end + 2;
             continue;
@@ -358,8 +360,6 @@ a { color: var(--accent); }
 .mention-table::before { content: "▦"; }
 .mention-space::before { content: "◇"; }
 .mention-workspace::before { content: "⬡"; }
-/* Collapsed chip shows the name; the caret opens the preview segments. The
-   whole chip is the link — the caret is the only non-navigating pixel. */
 .mention-wrap { display: inline; }
 .mention-fields { display: none; }
 .mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--line); color: var(--muted); font-size: .85em; }
