@@ -222,10 +222,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_automation',
-    description: 'Create an automation rule as a Workspace/Workflows row, switched On; its Script holds the rule as JSON. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text}] — text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) templates.',
+    description: 'Create an automation rule as a Workspace/Workflows row; its Script holds the rule as JSON. enabled (default true) is the row\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url}] — text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) templates.',
     inputSchema: {
       type: 'object',
-      properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' } },
+      properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' }, enabled: { type: 'boolean' } },
       required: ['db', 'trigger', 'actions'],
     },
   },
@@ -679,7 +679,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_add_relation':
       return weave.addRelation(args.db, { name: args.name, targetDb: args.targetDb, targetDbs: args.targetDbs, cardinality: args.cardinality ?? 'many-to-one', inverseName: args.inverseName });
     case 'weave_create_automation':
-      return weave.createAutomation(args.db, { name: args.name, trigger: args.trigger, actions: args.actions });
+      return weave.createAutomation(args.db, { name: args.name, trigger: args.trigger, actions: args.actions, enabled: args.enabled });
     case 'weave_export_csv':
       return weave.exportCSV(args.db);
     case 'weave_import_csv':

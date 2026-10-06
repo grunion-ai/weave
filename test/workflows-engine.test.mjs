@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../src/engine.js';
-import { dispatchTool } from '../src/mcp.js';
+import { dispatchTool, TOOLS } from '../src/mcp.js';
 
 const wf = (w) => w.getTable('Workspace/Workflows');
 const read = (w, id) => w.readEntity(id);
@@ -279,4 +279,20 @@ test('MCP weave_automations list reads the rows', () => {
   const auto = w.createAutomation(t.id, closeOut);
   const listed = dispatchTool(w, 'weave_automations', { action: 'list' }).automations;
   assert.deepEqual(listed.map((x) => [x.id, x.name, x.enabled]), [[auto.id, 'Close out on Done', true]]);
+});
+
+test('MCP weave_create_automation honours enabled:false as the row\'s On, lists it, and update switches it (Issue #683)', () => {
+  const { w, t } = demo();
+  const spec = TOOLS.find((x) => x.name === 'weave_create_automation');
+  assert.equal(spec.inputSchema.properties.enabled.type, 'boolean');
+  assert.match(spec.description, /enabled/, 'the description lists it');
+  const made = dispatchTool(w, 'weave_create_automation', { db: t.id, ...closeOut, enabled: false });
+  assert.equal(made.enabled, false);
+  assert.equal(read(w, made.id).fields.On, false, 'the row comes up Off');
+  const req = w.createEntity(t.id, { Name: 'R' });
+  w.setState(req.id, 'Status', 'Done');
+  assert.equal(read(w, req.id).fields.Resolved, false, 'an Off rule never fired');
+  assert.equal(dispatchTool(w, 'weave_create_automation', { db: t.id, ...closeOut, name: 'On by default' }).enabled, true);
+  assert.equal(dispatchTool(w, 'weave_automations', { action: 'update', automation: made.id, patch: { enabled: true } }).enabled, true);
+  assert.equal(read(w, made.id).fields.On, true);
 });
