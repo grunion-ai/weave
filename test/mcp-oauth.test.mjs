@@ -11,9 +11,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { Weave } from '../src/engine.js';
-import { startServer, mcpOriginsFromEnv } from '../src/server.js';
-import { createOidc } from '../src/oidc.js';
-import { startIdp } from './lib/idp.mjs';
+import { mcpOriginsFromEnv } from '../src/server.js';
+import { startIdp, serveOidc } from './lib/idp.mjs';
 
 const KYLE = { sub: 'user_kyle' };
 const ANN = { sub: 'user_ann' };
@@ -35,29 +34,20 @@ async function serve({ configured = true, origin = null, mcpOrigins } = {}) {
   docs.createAccount({ name: 'ann', role: 'architect' });
   pin(docs, 'ann', idp.issuer, ANN.sub);
   docs.setRequireAuth(true);
-  const oidc = configured ? createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' }) : null;
-  const { server } = await startServer(w, { port: 0, origin, oidc, workspaces: { docs }, ...(mcpOrigins ? { mcpOrigins } : {}) });
-  const port = server.address().port;
-  const base = `http://localhost:${port}`;
-  const call = (method, path, { token, body, headers = {} } = {}) => fetch(base + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
-    body: method === 'POST' ? JSON.stringify(body ?? {}) : undefined,
-    redirect: 'manual',
-  });
+  const s = await serveOidc(w, idp, { configured, origin, workspaces: { docs }, ...(mcpOrigins ? { mcpOrigins } : {}) });
   const rpc = async (path, token, method, params) => {
-    const res = await call('POST', path, { token, body: { jsonrpc: '2.0', id: 1, method, params } });
+    const res = await s.call('POST', path, { token, body: { jsonrpc: '2.0', id: 1, method, params } });
     return { res, data: res.status === 200 ? await res.json() : await res.json().catch(() => null) };
   };
   /* fetch will not send a Host of our choosing; node:http will. */
   const withHost = (host, path) => new Promise((resolve, reject) => {
-    request({ host: '127.0.0.1', port, path, headers: { Host: host } }, (res) => {
+    request({ host: '127.0.0.1', port: s.port, path, headers: { Host: host } }, (res) => {
       let raw = '';
       res.on('data', (c) => { raw += c; });
       res.on('end', () => resolve({ status: res.statusCode, body: raw }));
     }).on('error', reject).end();
   });
-  return { w, docs, idp, admin, base, call, rpc, withHost, stop: () => { server.close(); idp.stop(); } };
+  return { w, docs, idp, admin, ...s, rpc, withHost };
 }
 
 test('metadata: RFC 9728 names the provider as the authorization server, for the root, /mcp and a workspace', async () => {

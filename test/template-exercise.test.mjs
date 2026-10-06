@@ -22,6 +22,7 @@ import { Weave, templateDoc } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { exerciseTable, exerciseSpace, engineApi, sampleRow } from '../scripts/template-exercise-core.mjs';
 import { runLive } from '../scripts/template-exercise.mjs';
+import { normalise } from './lib/fixtures.mjs';
 
 await import('../public/starter-core.js');
 const S = globalThis.WeaveStarters;
@@ -30,14 +31,6 @@ const FIXTURES = fileURLToPath(new URL('./fixtures/templates/', import.meta.url)
 const fixtures = readdirSync(FIXTURES).filter((f) => f.endsWith('.json')).sort()
   .map((file) => ({ file, doc: JSON.parse(readFileSync(FIXTURES + file, 'utf8')) }));
 
-/* ids, urls and counts are the source's own: what is left must match. */
-function normalise(v) {
-  if (Array.isArray(v)) return v.map(normalise);
-  if (!v || typeof v !== 'object') return v;
-  return Object.fromEntries(Object.entries(v)
-    .filter(([k]) => !['id', 'spaceId', 'url', 'entityCount'].includes(k) && !/Ids?$/.test(k))
-    .map(([k, x]) => [k, normalise(x)]));
-}
 const entryOf = (w, name) => w.describeSchema().find((s) => s.space === name);
 const userRows = (w) => Object.values(w.state.entities).filter((e) => !w.state.tables[e.dbId]?.system);
 

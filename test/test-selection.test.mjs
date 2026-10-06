@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { selectTests, affectedTests } from '../scripts/test-selection.mjs';
+import { lanes } from '../scripts/test.mjs';
 
 const files = ['test/core.test.mjs', 'test/editor-browser.test.mjs', 'test/other.test.mjs'];
 test('test-only changes select sorted unique existing tests', () => {
@@ -53,4 +54,13 @@ test('isolated rehearsal source selects its regression and CLI contracts', () =>
 test('missing mapped coverage and mixed shared changes expand to full', () => {
   assert.equal(selectTests({ files, changed: ['src/rehearse.js'] }).mode, 'full');
   assert.equal(selectTests({ files: [...files, ...rehearsalFiles], changed: ['src/rehearse.js', 'src/engine.js'] }).mode, 'full');
+});
+
+/* This file names 'test/lib/browser.mjs' in its data above, and the runner
+   once read that as driving a browser and ran it at half concurrency. Only
+   an import counts, static or awaited (Issue #648). */
+test('a suite that only names the browser harness stays in the unit lane', () => {
+  const { unit, browser } = lanes(['test/test-selection.test.mjs', 'test/nav.test.mjs', 'test/security/security-headers.test.mjs']);
+  assert.deepEqual(unit, ['test/test-selection.test.mjs']);
+  assert.deepEqual(browser, ['test/nav.test.mjs', 'test/security/security-headers.test.mjs']);
 });

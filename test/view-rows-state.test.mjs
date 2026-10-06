@@ -16,13 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
-
-function fresh() {
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  return w;
-}
+import { fresh } from './lib/fixtures.mjs';
 
 test('deleted and rollups are view settings: absent by default, stored when set, copied with the view', () => {
   const w = fresh();

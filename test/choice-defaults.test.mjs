@@ -16,13 +16,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { ws } from './lib/fixtures.mjs';
 
-function ws() {
-  const w = new Weave();
-  w.createSpace({ name: 'Ops' });
-  const t = w.createTable({ space: 'Ops', name: 'Task' });
-  return { w, t };
-}
 const read = (w, e) => w.readEntity(e.id).fields;
 
 test('a workflow whose states mark no default starts a row empty', () => {

@@ -3,9 +3,12 @@
    client, the redirect and the PKCE verifier, and a userinfo endpoint. The
    browser's trip through the provider's sign-in page is approve(): it takes
    the authorize URL weave redirected to and returns the callback URL the
-   provider would send the browser back to. */
+   provider would send the browser back to. serveOidc() puts a workspace
+   behind it on a free port, for every suite that signs in through door C. */
 import { createServer } from 'node:http';
 import { createHash, createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
+import { startServer } from '../../src/server.js';
+import { createOidc } from '../../src/oidc.js';
 
 const b64 = (v) => Buffer.from(typeof v === 'string' ? v : JSON.stringify(v)).toString('base64url');
 
@@ -114,4 +117,34 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
     },
     stop: () => server.close(),
   };
+}
+
+export const cookieOf = (res) => (res.headers.get('set-cookie') ?? '').split(';')[0];
+
+/* `w` served on a free port with `idp` as its door C (none when configured is
+   false); the other options reach startServer. call() never follows a
+   redirect. signIn() is one trip: start at weave, sign in at the provider,
+   come back. stop() closes the server and the provider. */
+export async function serveOidc(w, idp, { configured = true, ...options } = {}) {
+  const oidc = configured ? createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' }) : null;
+  const { server } = await startServer(w, { port: 0, origin: null, oidc, ...options });
+  const port = server.address().port;
+  // localhost, not 127.0.0.1: the loopback origin the callback comes back to.
+  const base = `http://localhost:${port}`;
+  const call = (method, path, { token, body, cookie, headers = {} } = {}) => fetch(base + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}), ...headers },
+    body: ['POST', 'PUT', 'PATCH'].includes(method) ? JSON.stringify(body ?? {}) : undefined,
+    redirect: 'manual',
+  });
+  const signIn = async (claims, { next, invite } = {}) => {
+    const q = new URLSearchParams({ ...(next ? { next } : {}), ...(invite ? { invite } : {}) }).toString();
+    const start = await call('GET', `/api/auth/oidc/start${q ? `?${q}` : ''}`);
+    const authorize = start.headers.get('location');
+    const trip = cookieOf(start);
+    const back = idp.approve(authorize, claims);
+    const res = await call('GET', back.pathname + back.search, { cookie: trip });
+    return { start, authorize, back, trip, res, cookie: cookieOf(res) };
+  };
+  return { port, base, call, signIn, stop: () => { server.close(); idp.stop(); } };
 }

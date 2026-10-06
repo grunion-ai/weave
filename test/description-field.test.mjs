@@ -18,13 +18,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-
-function build() {
-  const w = new Weave();
-  w.createSpace({ name: 'Product' });
-  const tasks = w.createTable({ space: 'Product', name: 'Task' });
-  return { w, tasks };
-}
+import { build } from './lib/fixtures.mjs';
 
 // A workspace on disk, so a change can be proved to survive a fresh open.
 function onDisk() {

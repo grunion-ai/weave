@@ -2,9 +2,9 @@
 /* The suite runner. `npm test`, the Gerrit gate and the GitHub matrix all
    come through here.
 
-   Sixty-eight of the 192 suites drive a real Chromium. Under the full run
-   they share a machine with each other and with whatever else is on it, and
-   a wait for a menu to paint can lose to a thirty-second budget: a different
+   The browser suites drive a real Chromium. Under the full run they share
+   a machine with each other and with whatever else is on it, and a wait
+   for a menu to paint can lose to a thirty-second budget: a different
    browser case has been failing on roughly every other full run while the
    same file alone is green eight times out of eight (Issues #44, #199, #216,
    #239). Each of those cost a Verified −1 on a change that was fine, and a
@@ -78,8 +78,10 @@ export function testFiles(root = ROOT) {
 }
 
 /* A browser suite is one that drives Chromium: a -browser file, or one that
-   loads the shared harness or playwright under another name. */
-const BROWSER = /lib\/browser\.mjs|import\(['"]playwright/;
+   imports the shared harness or playwright under another name. Only an
+   import statement counts: a suite that merely names test/lib/browser.mjs
+   in its data or its assertions is a unit suite (Issue #648). */
+const BROWSER = /^(?:import\s[^;]*?from\s*|(?:const|let)\s[^=;]*=\s*await\s+import\(\s*)['"](?:[^'"\n]*\/lib\/browser\.mjs|playwright)['"]/m;
 export function lanes(files, root = ROOT) {
   const browser = [], unit = [];
   for (const f of files) {

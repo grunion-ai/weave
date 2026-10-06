@@ -9,9 +9,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer, originFromEnv, trustProxyFromEnv } from '../src/server.js';
-import { createOidc } from '../src/oidc.js';
-import { startIdp } from './lib/idp.mjs';
+import { originFromEnv, trustProxyFromEnv } from '../src/server.js';
+import { startIdp, serveOidc } from './lib/idp.mjs';
 
 /* ---------------------------------------------------------------- engine */
 test('engine: a session is a hash at rest with a sliding 30-day expiry; revoke by id, all, or all-but-this', () => {
@@ -80,27 +79,7 @@ async function serve({ requireAuth = true, origin, limits = { options: 1000, fai
   w.createAccount({ name: 'eye', role: 'reader' });
   for (const [name, who] of [['kyle', KYLE], ['eye', EYE]]) w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: who.sub });
   if (requireAuth) w.setRequireAuth(true);
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const { server } = await startServer(w, { port: 0, origin: origin ?? null, limits, oidc, ...(trustProxy ? { trustProxy } : {}) });
-  const port = server.address().port;
-  // localhost, not 127.0.0.1: the loopback origin the callback comes back to.
-  const base = `http://localhost:${port}`;
-  const call = (method, path, { token, body, cookie, headers = {} } = {}) => fetch(base + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}), ...headers },
-    body: ['POST', 'PUT', 'PATCH'].includes(method) ? JSON.stringify(body ?? {}) : undefined,
-    redirect: 'manual',
-  });
-  const cookieOf = (res) => (res.headers.get('set-cookie') ?? '').split(';')[0];
-  /* One trip through the provider; returns the callback's answer and the
-     session cookie it set. */
-  const signIn = async (claims) => {
-    const start = await call('GET', '/api/auth/oidc/start');
-    const back = idp.approve(start.headers.get('location'), claims);
-    const res = await call('GET', back.pathname + back.search, { cookie: cookieOf(start) });
-    return { res, cookie: cookieOf(res) };
-  };
-  return { w, task, admin, base, call, cookieOf, signIn, stop: () => { server.close(); idp.stop(); } };
+  return { w, task, admin, ...await serveOidc(w, idp, { origin: origin ?? null, limits, ...(trustProxy ? { trustProxy } : {}) }) };
 }
 
 test('routes: a provider sign-in sets a session cookie that opens the wall; logout closes it again', async () => {

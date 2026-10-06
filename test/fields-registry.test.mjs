@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
+import { fresh } from './lib/fixtures.mjs';
 
 /* Feature #52 — Fields as entities. The Workspace system space gains a third
    registry table, `Fields`: one row per field of every user table, related to
@@ -11,13 +11,6 @@ import { Weave } from '../src/engine.js';
    uses (#12). Non-definable types (relation, lookup, rollup, formula) appear
    as rows too — the registry is complete — but their Definition is empty and
    their shape is edited through the schema verbs that understand them. */
-
-function fresh() {
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  return w;
-}
 
 const rowsOf = (w) => w.listEntities(w.getTable('Fields').id);
 const rowNamed = (w, name) => rowsOf(w).find((e) => w.entityName(e) === name);

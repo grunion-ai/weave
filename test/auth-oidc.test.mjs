@@ -9,10 +9,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { createOidc, oidcFromEnv } from '../src/oidc.js';
 import { renderAuthPage } from '../src/auth-page.js';
-import { startIdp } from './lib/idp.mjs';
+import { startIdp, serveOidc, cookieOf } from './lib/idp.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -190,8 +189,6 @@ test('page: the sign-in page names the provider only when one is configured', ()
 });
 
 /* ---------------------------------------------------------------- routes */
-const cookieOf = (res) => (res.headers.get('set-cookie') ?? '').split(';')[0];
-
 async function serve({ idpOptions, link = 'user_kyle', configured = true, limits = { options: 1000, failed: 1000 } } = {}) {
   const idp = await startIdp(idpOptions);
   const w = new Weave();
@@ -202,26 +199,7 @@ async function serve({ idpOptions, link = 'user_kyle', configured = true, limits
   w.createAccount({ name: 'kyle', role: 'writer' });
   if (link) w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: link });
   w.setRequireAuth(true);
-  const oidc = configured ? createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' }) : null;
-  const { server } = await startServer(w, { port: 0, origin: null, oidc, limits });
-  const base = `http://localhost:${server.address().port}`;
-  const call = (method, path, { token, body, cookie } = {}) => fetch(base + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}) },
-    body: ['POST', 'PUT', 'PATCH'].includes(method) ? JSON.stringify(body ?? {}) : undefined,
-    redirect: 'manual',
-  });
-  /* One trip: start at weave, sign in at the provider, come back. */
-  const signIn = async (claims, { next, invite } = {}) => {
-    const q = new URLSearchParams({ ...(next ? { next } : {}), ...(invite ? { invite } : {}) }).toString();
-    const start = await call('GET', `/api/auth/oidc/start${q ? `?${q}` : ''}`);
-    const authorize = start.headers.get('location');
-    const trip = cookieOf(start);
-    const back = idp.approve(authorize, claims);
-    const res = await call('GET', back.pathname + back.search, { cookie: trip });
-    return { start, authorize, back, trip, res, cookie: cookieOf(res) };
-  };
-  return { w, idp, admin, reader, base, call, signIn, stop: () => { server.close(); idp.stop(); } };
+  return { w, idp, admin, reader, ...await serveOidc(w, idp, { configured, limits }) };
 }
 
 const KYLE = { sub: 'user_kyle', email: 'kyle@example.com', email_verified: true };

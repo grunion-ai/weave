@@ -13,25 +13,10 @@ import { fileURLToPath } from 'node:url';
 process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
 const { Weave } = await import('../src/engine.js');
 const { createWorkspaceHub } = await import('../src/server.js');
-const { createRequestHandler } = await import('../src/routes.js');
+const { client } = await import('./lib/fixtures.mjs');
 const { dispatchTool } = await import('../src/mcp.js');
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-
-function client(hub) {
-  const handle = createRequestHandler(hub, { version: 'test' });
-  return async (method, path, { body, token } = {}) => {
-    const url = new URL(path, 'http://localhost:4400');
-    const headers = { host: 'localhost:4400', ...(token ? { authorization: `Bearer ${token}` } : {}) };
-    const res = await handle({
-      method, path: decodeURIComponent(url.pathname), searchParams: url.searchParams,
-      header: (n) => headers[n.toLowerCase()], readBody: async () => body ?? {}, remote: '127.0.0.1',
-    });
-    let json = null;
-    try { json = JSON.parse(res.body); } catch { /* not json */ }
-    return { status: res.status, json };
-  };
-}
 
 function build() {
   const w = new Weave();

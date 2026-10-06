@@ -25,13 +25,8 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { workspace } from './lib/fixtures.mjs';
 
-function workspace(opts = {}) {
-  const w = new Weave(opts);
-  w.createSpace({ name: 'Ops' });
-  const t = w.createTable({ space: 'Ops', name: 'Ticket' });
-  return { w, t };
-}
 const val = (w, id, name) => w.getEntity(id).values[w.getField(w.getEntity(id).dbId, name).id];
 const newest = (w, t, kind = 'field-config-updated') => w.activityFeed({ entityId: t.id, kinds: [kind] }).items[0];
 

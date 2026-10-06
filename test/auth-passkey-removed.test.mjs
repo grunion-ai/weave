@@ -20,10 +20,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
-import { createOidc } from '../src/oidc.js';
 import { renderAuthPage } from '../src/auth-page.js';
-import { startIdp } from './lib/idp.mjs';
+import { startIdp, serveOidc } from './lib/idp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -51,23 +49,7 @@ async function serve({ requireAuth = true } = {}) {
   w.save();
   w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
   if (requireAuth) w.setRequireAuth(true);
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const { server } = await startServer(w, { port: 0, origin: null, oidc, limits: { options: 1000, failed: 1000 } });
-  const base = `http://localhost:${server.address().port}`;
-  const call = (method, path, { token, body, cookie } = {}) => fetch(base + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}) },
-    body: ['POST', 'PUT', 'PATCH'].includes(method) ? JSON.stringify(body ?? {}) : undefined,
-    redirect: 'manual',
-  });
-  const cookieOf = (res) => (res.headers.get('set-cookie') ?? '').split(';')[0];
-  const signIn = async (claims) => {
-    const start = await call('GET', '/api/auth/oidc/start');
-    const back = idp.approve(start.headers.get('location'), claims);
-    const res = await call('GET', back.pathname + back.search, { cookie: cookieOf(start) });
-    return { res, cookie: cookieOf(res) };
-  };
-  return { w, idp, admin, base, call, signIn, stop: () => { server.close(); idp.stop(); } };
+  return { w, idp, admin, ...await serveOidc(w, idp, { limits: { options: 1000, failed: 1000 } }) };
 }
 
 test('routes: the passkey ceremonies and the credential delete are unknown routes, with or without a token', async () => {

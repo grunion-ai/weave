@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
+import { fresh } from './lib/fixtures.mjs';
 
 /* Feature #13 — the schema as an editable document. describeSchema() was
    already the read half; applySchema() closes the loop: hand back an edited
@@ -10,13 +10,6 @@ import { Weave } from '../src/engine.js';
    recreate is the honest spelling). Names are identity in the document, so a
    rename cannot be expressed here — that is what the registry rows (#12/#52)
    are for. */
-
-function fresh() {
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  return w;
-}
 
 test('a round-trip is a no-op', () => {
   const w = fresh();

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { check } from '../src/formula.js';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { seeded } from './lib/fixtures.mjs';
 
 /* ---------- check(): static validation, no row needed ---------- */
 
@@ -47,14 +48,6 @@ test('check handles brackets, keywords and function-name collisions', () => {
 });
 
 /* ---------- engine: invalid formulas cannot be saved ---------- */
-
-function seeded() {
-  const w = new Weave();
-  w.createSpace({ name: 'Sales' });
-  const t = w.createTable({ space: 'Sales', name: 'Deals' });
-  w.addField(t.id, { name: 'Amount', type: 'number' });
-  return { w, t };
-}
 
 test('addField rejects a formula that does not parse', () => {
   const { w, t } = seeded();

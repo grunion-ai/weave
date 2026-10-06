@@ -16,10 +16,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
 const { Weave } = await import('../src/engine.js');
-const { startServer } = await import('../src/server.js');
-const { createOidc } = await import('../src/oidc.js');
 const { dispatchTool } = await import('../src/mcp.js');
-const { startIdp } = await import('./lib/idp.mjs');
+const { startIdp, serveOidc, cookieOf } = await import('./lib/idp.mjs');
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const ISS = 'https://idp.test';
@@ -117,8 +115,6 @@ test('cli: invite, invite list and invite revoke', () => {
 });
 
 /* ---------------------------------------------------------------- routes */
-const cookieOf = (res) => (res.headers.get('set-cookie') ?? '').split(';')[0];
-
 async function serve() {
   const idp = await startIdp();
   const w = new Weave();
@@ -130,24 +126,16 @@ async function serve() {
   other.updateWorkspace({ name: 'other' });
   const otherArchitect = other.createAccount({ name: 'boss', role: 'architect' }).token;
   other.setRequireAuth(true);
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const { server } = await startServer(w, { port: 0, origin: null, oidc, workspaces: { other }, limits: { options: 1000, failed: 1000 } });
-  const base = `http://localhost:${server.address().port}`;
-  const call = (method, path, { token, body, cookie } = {}) => fetch(base + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}) },
-    body: ['POST', 'PUT', 'PATCH'].includes(method) ? JSON.stringify(body ?? {}) : undefined,
-    redirect: 'manual',
-  });
+  const s = await serveOidc(w, idp, { workspaces: { other }, limits: { options: 1000, failed: 1000 } });
   /* Open the invite link (or any start URL), sign in at the provider, come back. */
   const follow = async (startPath, claims) => {
-    const start = await call('GET', startPath);
+    const start = await s.call('GET', startPath);
     if (start.status !== 302) return { start, res: start };
     const back = idp.approve(start.headers.get('location'), claims);
-    const res = await call('GET', back.pathname + back.search, { cookie: cookieOf(start) });
+    const res = await s.call('GET', back.pathname + back.search, { cookie: cookieOf(start) });
     return { start, res, cookie: cookieOf(res) };
   };
-  return { w, other, idp, architect, editor, otherArchitect, base, call, follow, stop: () => { server.close(); idp.stop(); } };
+  return { w, other, idp, architect, editor, otherArchitect, ...s, follow };
 }
 
 const path = (url) => { const u = new URL(url); return u.pathname + u.search; };
