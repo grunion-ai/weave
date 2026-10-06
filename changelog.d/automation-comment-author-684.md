@@ -1,1 +1,0 @@
-- **A comment an automation adds names its Workflows row** (Issue #684): an `add-comment` action signed its comment "automation" while the same rule's field writes carried `workflow:<row id>` (Issue #674). The comment author is now that same actor string, so it renders as the rule's chip. An action that names its own `author` keeps it. `test/workflow-actor.test.mjs` checks both.
