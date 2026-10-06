@@ -241,7 +241,7 @@ test('automations: state-changed trigger with templated actions', () => {
   w.setState(t.id, 'State', 'Done');
   const read = w.readEntity(t.id);
   assert.ok(read.fields['Completed On']);
-  assert.match(read.doc, /Completed Ship it on \d{4}-\d{2}-\d{2}/);
+  assert.match(read.doc, /Completed Ship it on [A-Z][a-z]{2} \d{1,2}, \d{4}/, '{{Today}} wears the date costume (Issue #676)');
   assert.equal(read.comments[0].text, 'Done: Ship it');
 });
 

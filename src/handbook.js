@@ -896,7 +896,7 @@ The PDF writer is in-tree and embeds DejaVu, so accented text, Greek, arrows and
 
 ## Written by an agent, read by a person
 
-An automation can append to a document on a state change, with \`{{Name}}\` and \`{{Today}}\` filled in from the row:
+An automation can append to a document on a state change, with \`{{Name}}\` and \`{{Today}}\` filled in from the row. \`{{Today}}\` and date fields print the way the grid prints dates (Oct 6, 2026); \`{{Today:iso}}\` prints 2026-10-06 for a script to parse:
 
 \`\`\`json
 { "type": "append-doc", "text": "---\\n\\n✅ Completed on {{Today}}." }

@@ -15,7 +15,7 @@ test('demo seed builds a coherent workspace', () => {
 
   // Automation fired when t3 hit Done.
   const done = w.readEntity(t3.id);
-  assert.match(done.doc, /✅ Completed on \d{4}-\d{2}-\d{2}/);
+  assert.match(done.doc, /✅ Completed on [A-Z][a-z]{2} \d{1,2}, \d{4}/, '{{Today}} wears the date costume (Issue #676)');
   assert.ok(done.comments.some((c) => c.text.includes('moved to Done')));
 
   // Lookup + formula computed.

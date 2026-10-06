@@ -8416,7 +8416,12 @@ export class Weave {
     return text.replace(/\{\{([^}]+)\}\}/g, (_, name) => {
       const key = name.trim();
       if (key === 'PublicId') return String(e.publicId);
-      if (key === 'Today') return new Date().toISOString().slice(0, 10);
+      // The workspace's date costume, the one every date cell wears (Issue
+      // #676); `Today:iso` keeps the machine form for scripts that parse it.
+      if (key === 'Today' || key === 'Today:iso') {
+        const iso = this.now().toISOString().slice(0, 10);
+        return key === 'Today' ? dressDate({ now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, iso) : iso;
+      }
       const f = this.findField(db, key);
       if (!f) return '';
       const v = this.#displayValue(db, f, this.#resolve(e, db, f, 0), e);
