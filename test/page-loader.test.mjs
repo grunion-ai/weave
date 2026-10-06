@@ -191,11 +191,17 @@ test('both themes are shipped and selected the same way as the rail mark', () =>
   assert.match(CSS, /\[data-bs-theme="dark"\] #page-loader \.mark-dark \{ display: block; \}/);
 });
 
-test('the served loaders are byte-identical to the generated brand assets', () => {
-  const file = 'weave-loader-rope.html';
-  assert.equal(read(`public/brand/${file}`), read(`brand/assets/${file}`),
-    `public/brand/${file} is a stale copy — re-run brand/build-logos.mjs and copy it across`);
-  assert.equal(read(`brand/assets/${file}`), FRAGMENT + '\n', `brand/assets/${file} is stale — re-run brand/build-logos.mjs`);
+test('the served brand files are the generator output, kept in public/brand only (Issue #651)', () => {
+  assert.equal(read('public/brand/weave-loader-rope.html'), FRAGMENT + '\n',
+    'public/brand/weave-loader-rope.html is stale — re-run node brand/build-logos.mjs');
+  for (const { file, svg } of VARIANTS.filter((v) => v.served)) {
+    assert.equal(read(`public/brand/${file}`), svg + '\n', `public/brand/${file} is stale — re-run node brand/build-logos.mjs`);
+  }
+  for (const file of [...VARIANTS.map((v) => v.file), 'weave-loader-rope.html', 'png/favicon-32.png', 'png/favicon.ico']) {
+    const name = file.replace('png/', '');
+    assert.ok(!(existsSync(join(ROOT, 'brand/assets', file)) && existsSync(join(ROOT, 'public/brand', name))),
+      `${name} is in both brand/assets and public/brand; keep one`);
+  }
 });
 
 test('the README\'s inline HTML survives GitHub\'s tag scanner', () => {
