@@ -37,6 +37,25 @@ const STARTED_AT = new Date().toISOString();
    is configured, a Bearer token, a share link. */
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
+/* ---------- link previews (Feature #264) ----------
+   A permalink is read by link fetchers (Slack, Messages) that run no script,
+   so the head they read is rendered here. The uuid stays the address; the
+   preview carries the reading: path, public id, name, state and fields. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const metaAttr = (s) => escapeHtml(s).replace(/\r?\n/g, '&#10;');
+// Rasters only: Messages and Slack ignore an SVG og:image.
+const RASTER = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+/* The first line of a markdown description with its marks dropped.
+   ponytail: strips emphasis, heading and quote marks only; a link keeps its
+   brackets. */
+const plainLine = (md) => String(md ?? '').split('\n').map((l) => l.replace(/[*_`#>]/g, '').trim()).find(Boolean) ?? '';
+/* What a signed-out fetcher gets when the workspace allows a preview before
+   sign-in: the head, no app shell (nothing that would call the API), and
+   the jump to sign-in that /permalink.js makes. */
+const previewPageHtml = (head, authHref) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${head}<meta name="weave-route" content="${metaAttr(authHref)}" data-sign-in><link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg"><link rel="alternate icon" href="/brand/favicon.ico"><script src="/permalink.js"></script><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style></head><body><p><a href="${escapeHtml(authHref)}">Sign in</a> to open this in weave.</p></body></html>`;
+
 /* ---------- sign-in plumbing (Feature #222 part 2, Feature #212) ----------
    A provider trip's secrets live five minutes in memory, keyed by the state
    value the provider echoes back; rate limits are per IP, in memory, sized
@@ -258,7 +277,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     // its own authorization, so it sits ahead of the auth wall — and it is
     // generated here rather than dropped in public/, which the Cloudflare
     // assets binding would serve before this dispatcher ever runs.
-    if (path === '/t' || path.startsWith('/t/')) {
+    // /t/<table uuid> is a table permalink (Feature #264), never an applet route.
+    if (path === '/t' || (path.startsWith('/t/') && !UUID_RE.test(path.slice(3)))) {
       const appletBody = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody().catch(() => ({})) : {};
       try {
         const hit = handleApplet({
@@ -279,6 +299,92 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
     }
 
+    /* The preview head of a permalink (Feature #264): `/` for the workspace,
+       /e/<uuid or Table#n>, /s/<space uuid>, /t/<table uuid>. Null for any
+       other path and for a miss, so a caller treats null as "no preview"
+       and decides between the wall and the branded 404 itself. `route` is
+       the hash route the app opens, null at the root. */
+    const linkPreview = (p, { signedOut = false } = {}) => {
+      const m = p.match(/^\/([est])\/([^/]+)$/);
+      if (p !== '/' && !m) return null;
+      /* Signed out, only the uuid form previews: Table#n counts up from 1,
+         so answering it would let a stranger list every row's name. */
+      if (signedOut && m && !UUID_RE.test(m[2])) return null;
+      const ws = weave.state.meta;
+      const site = ws.title ?? ws.name;
+      const base = origin ?? `http://${rx.header('host')}`;
+      /* og:url names the workspace by slug even for the hub's default, which
+         also answers at /w/<slug>/; the jump keeps the prefix the request
+         came in on, as the 302 it replaced did. */
+      const home = `/w/${ws.name || hub.defaultName}`;
+      let image = `${base}/brand/weave-mark-512.png`;
+      if (ws.logo) {
+        try {
+          const { meta: logo, bytes } = weave.getWorkspaceLogo();
+          if (RASTER.has(logoType(bytes))) image = `${base}${home}/api/workspace/logo?v=${logo.id.slice(0, 8)}`;
+        } catch { /* a missing blob previews the mark */ }
+      }
+      const live = (tables) => tables.reduce((n, d) => n + weave.listEntities(d.id).length, 0);
+      let title, trail, detail, url, route = null, fields = [];
+      try {
+        if (!m) {
+          const tables = weave.userTables();
+          title = site;
+          detail = plainLine(ws.description) || `${count(new Set(tables.map((d) => d.spaceId)).size, 'space')} · ${count(tables.length, 'table')}`;
+          url = `${home}/`;
+        } else if (m[1] === 'e') {
+          const e = weave.getEntity(m[2]);
+          if (e.deletedAt) return null;
+          const db = weave.state.tables[e.dbId];
+          const name = weave.entityName(e).trim();
+          title = clip(`${db.name} #${e.publicId}${name ? ` · ${name}` : ''}`, 80);
+          trail = [site, weave.state.spaces[db.spaceId]?.name, db.name];
+          fields = weave.previewFields(e.id);
+          detail = fields.map((f) => `${f.label} ${f.value}`).join(' · ');
+          url = `${home}/e/${e.id}`;
+          route = `${wsPrefix}/#/entity/${e.id}`;
+        } else if (m[1] === 's') {
+          const sp = Object.hasOwn(weave.state.spaces, m[2]) ? weave.state.spaces[m[2]] : null;
+          if (!sp || sp.deletedAt) return null;
+          const tables = weave.listTables(sp.id);
+          title = `${sp.name} · space`;
+          trail = [site, sp.name];
+          detail = `${count(tables.length, 'table')} · ${count(live(tables), 'row')}`;
+          url = `${home}/s/${sp.id}`;
+          route = `${wsPrefix}/#/space/${sp.id}`;
+        } else {
+          const db = weave.listTables().find((d) => d.id === m[2]);
+          if (!db) return null;
+          const space = weave.state.spaces[db.spaceId]?.name;
+          title = `${space} / ${db.name} · table`;
+          trail = [site, space, db.name];
+          detail = count(live([db]), 'row');
+          url = `${home}/t/${db.id}`;
+          route = `${wsPrefix}/#/table/${db.id}`;
+        }
+      } catch (err) {
+        if (err instanceof WeaveError) return null; // an unknown or ambiguous ref
+        throw err;
+      }
+      // The root's path is its own title: the detail alone says the rest.
+      const description = m ? `${trail.filter(Boolean).join(' › ')}${detail ? `\n${detail}` : ''}` : detail;
+      const tag = (attr, key, value) => `<meta ${attr}="${key}" content="${metaAttr(value)}">`;
+      const head = [
+        `<title>${escapeHtml(title === site ? site : `${title} · ${site}`)}</title>`,
+        tag('name', 'description', description),
+        tag('property', 'og:title', title),
+        tag('property', 'og:description', description),
+        tag('property', 'og:site_name', site),
+        tag('property', 'og:url', base + url),
+        tag('property', 'og:type', m?.[1] === 'e' ? 'article' : 'website'),
+        tag('property', 'og:image', image),
+        tag('name', 'twitter:card', 'summary'),
+        // Slack draws these pairs as a two-column list under the title.
+        ...fields.flatMap((f, i) => [tag('name', `twitter:label${i + 1}`, f.label), tag('name', `twitter:data${i + 1}`, String(f.value))]),
+      ].join('\n');
+      return { head, route };
+    };
+
     /* The wall covers every route, not just /api (Feature #222 phase 0,
        closing Feature #194 problem 2): with requireAuth on, an entity page,
        doc.html, entity.pdf, a deck or the app shell needs a token like the
@@ -297,7 +403,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     /* /privacy and /terms (Feature #251) are public by nature: a sign-in
        provider's consent screen links them for people with no account. */
     const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms');
-    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage
+    /* A preview before sign-in names the workspace logo as its image, so the
+       fetcher that reads the head may read the logo too (Feature #264). */
+    const previewLogo = path === '/api/workspace/logo' && ['GET', 'HEAD'].includes(rx.method) && !!weave.state.meta.linkPreview;
+    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || previewLogo
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
     /* Who is here (Feature #222 part 2): a Bearer token wins when both are
@@ -379,7 +488,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(rx), 'Cache-Control': 'no-store' }, body: '' };
       }
     } else if (weave.state.meta.requireAuth && !openDoor) {
-      return path.startsWith('/api/') ? deny(401, 'This workspace requires authentication') : wall();
+      if (path.startsWith('/api/')) return deny(401, 'This workspace requires authentication');
+      /* Link preview before sign-in (Feature #264): the head only, then the
+         sign-in jump. No shell, no entity payload; a miss is walled like
+         anything else, so a stranger learns nothing from a wrong guess. */
+      const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
+      if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return wall();
     }
     // The caps reach the page routes too: every page is a read, so an
     // observer may GET any of them and POST at none but a comment (Feature
@@ -569,9 +684,22 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         });
       }
 
-      if ((m = path.match(/^\/e\/([^/]+)$/))) {
-        const entity = weave.readEntity(m[1]); // 404s if missing
-        return { status: 302, headers: { Location: `${wsPrefix}/#/entity/${entity.id}` }, body: '' };
+      /* Permalinks (Feature #264): /e/<uuid or Table#n>, /s/<space>, /t/<table>
+         and the workspace root answer the shell with their preview head. A
+         permalink's shell carries the hash route it opens; /permalink.js
+         moves the address there with replaceState before the app boots, so
+         Back leaves in one step, as the 302 this replaced did. */
+      if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
+        throw new WeaveError(`A permalink answers GET, not ${rx.method}`, 'not-found'); // JSON, as before
+      }
+      if (['GET', 'HEAD'].includes(rx.method) && (path === '/' || m)) {
+        const preview = linkPreview(path);
+        if (!preview && path !== '/') throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
+        // ponytail: a platform that serves the shell itself (the Worker) keeps the bare 302.
+        if (preview?.route && !serveStatic) return { status: 302, headers: { Location: preview.route }, body: '' };
+        const jump = preview?.route ? `\n<meta name="weave-route" content="${metaAttr(preview.route)}">\n<script src="/permalink.js"></script>` : '';
+        const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + jump }) : null;
+        if (hit) return hit;
       }
 
       /* ---------- the sign-in page (Feature #222 part 2; passkeys removed, Feature #243) ---------- */
@@ -844,7 +972,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         // Accounts (Feature #14). Once any account exists, only an architect
         // token manages them — the anonymous door closes behind the first key.
-        if (path.startsWith('/api/accounts') || path.startsWith('/api/invites') || (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {}))) {
+        // Link preview before sign-in opens part of the wall, so it is the same call (Feature #264).
+        if (path.startsWith('/api/accounts') || path.startsWith('/api/invites') || (route === 'PATCH /api/workspace' && ('requireAuth' in (body ?? {}) || 'linkPreview' in (body ?? {})))) {
           if (!mayAdminister(weave, role)) {
             return deny(role ? 403 : 401, 'Managing accounts needs an architect token');
           }
@@ -1022,8 +1151,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (Object.keys(body).length === 1) return out(200, { requireAuth: weave.state.meta.requireAuth });
         }
         if (route === 'PATCH /api/workspace') {
-          const ws = updateWorkspace({ name: body.name ?? null, description: body.description ?? null });
-          return out(200, { id: ws.id, url: `/w/${ws.id}/`, name: ws.name, title: ws.title, description: ws.description });
+          const ws = updateWorkspace({ name: body.name ?? null, description: body.description ?? null, linkPreview: body.linkPreview ?? null });
+          return out(200, { id: ws.id, url: `/w/${ws.id}/`, name: ws.name, title: ws.title, description: ws.description, linkPreview: ws.linkPreview });
         }
         if (route === 'POST /api/markdown') {
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });

@@ -97,9 +97,10 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
     const guideId = guides.items[0].id;
     const docHtml = await (await fetch(`${base}/w/weave/e/${guideId}/doc.html`)).text();
     assert.match(docHtml, /<h1>/);
-    const redirect = await fetch(`${base}/w/weave/e/${guideId}`, { redirect: 'manual' });
-    assert.equal(redirect.status, 302);
-    assert.match(redirect.headers.get('location'), /^\/w\/weave\/#\/entity\//);
+    // The permalink answers its preview head and names the scoped hash route (Feature #264).
+    const permalink = await fetch(`${base}/w/weave/e/${guideId}`, { redirect: 'manual' });
+    assert.equal(permalink.status, 200);
+    assert.match(await permalink.text(), new RegExp(`<meta name="weave-route" content="/w/weave/#/entity/${guideId}">`));
 
     // Unknown workspace 404s
     assert.equal((await fetch(`${base}/w/nope/api/health`)).status, 404);
@@ -116,7 +117,8 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
 
     // Static UI served under the workspace path too
     const page = await (await fetch(`${base}/w/weave/`)).text();
-    assert.match(page, /<title>Weave<\/title>/);
+    assert.match(page, /id="app"/);
+    assert.match(page, /<title>weave<\/title>/, 'the shell wears the workspace title before the app runs (Feature #264)');
 
     // .mmd document format
     const mmd = await fetch(`${base}/w/weave/e/${guideId}/doc.mmd`);

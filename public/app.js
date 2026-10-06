@@ -5016,7 +5016,13 @@ function tableChrome(db, trashCount) {
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
       { label: db.space, href: `#/space/${db.spaceId}` },
     ],
-    permalink: () => `${location.origin}${WS_PREFIX}/${ref.db.view ? viewHref(ref.db, ref.db.view) : `#/table/${ref.db.id}`}`,
+    /* The default view copies the server-seen permalink that unfurls in a
+       chat (Feature #264); any other view keeps its own hash. */
+    permalink: () => {
+      const v = ref.db.view;
+      const byDefault = !v || v.id === pickTableView(allTables().find((d) => d.id === ref.db.id) ?? ref.db, null)?.id;
+      return `${location.origin}${WS_PREFIX}/${byDefault ? `t/${ref.db.id}` : viewHref(ref.db, v)}`;
+    },
     title: db.name,
     icon: db.icon,
     kind: 'table',
@@ -9753,7 +9759,7 @@ async function showSpace(spaceId) {
   main.replaceChildren(
     viewHeader({
       crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
-      permalink: `${location.origin}${WS_PREFIX}/#/space/${spaceId}`,
+      permalink: `${location.origin}${WS_PREFIX}/s/${spaceId}`, // unfurls in a chat (Feature #264)
       title: space.space,
       kind: 'space',
       onRename: async (name) => {
@@ -12743,12 +12749,24 @@ async function showHome() {
       },
       description: ws.description,
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
-      ...(deletable ? {
-        actions: [dotsMenu([{
+      actions: [dotsMenu([
+        /* Link preview before sign-in (Feature #264): on a walled workspace,
+           whether a pasted permalink unfurls for someone signed out. */
+        {
+          label: `Link preview before sign-in: ${ws.linkPreview ? 'on' : 'off'}`,
+          run: async () => {
+            try {
+              const r = await api('PATCH', '/workspace', { linkPreview: !ws.linkPreview });
+              toast(`Link preview before sign-in is ${r.linkPreview ? 'on' : 'off'}`);
+              showHome();
+            } catch (err) { toast(err.message, true); }
+          },
+        },
+        ...(deletable ? [{
           label: 'Delete workspace…', danger: true,
           run: () => confirmDeleteWorkspace(wsRow, { current: true }),
-        }], { title: 'Workspace actions', align: 'right' })],
-      } : {}),
+        }] : []),
+      ], { title: 'Workspace actions', align: 'right' })],
     }),
     ...(mine.length ? [] : [emptyWorkspace()]),
     /* The system tables live below the workspace's own, marked as weave's
