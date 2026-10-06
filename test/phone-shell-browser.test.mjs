@@ -1,22 +1,3 @@
-/* The phone shell (Issues #262, #326; design pass F1, 2026-09-26).
-
-   At 390×844 the 52px workspace rail and the 264px sidebar stayed in the
-   flow, #main got about 66px, the entity title wrapped a letter per line and
-   every view scrolled sideways (document scrollWidth 705 on a Task table,
-   622 on a Task record, 573 on the Issue table, 570 on a Guide record, 407
-   on the relation map). Below 900px the sidebar is now a drawer — the
-   collapsed-nav peek overlay, opened by the crumb bar's menu button — and
-   below 600px the rail folds into it.
-
-   Each view loads at 390×844 in both themes and must not scroll the page
-   sideways, with #main at least 350px wide. The drawer opens from the menu
-   button, holds only 32px tap targets, and closes on Esc, on the scrim and
-   on navigation. Tables may scroll inside their own wrapper; the page may
-   not. Playwright is NOT a dependency; the suite skips when absent.
-   The entity dock (Issue #549): below 600px a docked record used to stay in
-   the flex row, where the table's 320px floor left it 56px and the name stood
-   one letter per line. It is now a sheet over the whole screen, in Chromium
-   and in WebKit, and its close and Esc hand the table back. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
@@ -49,13 +30,11 @@ if (s) {
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main .nav-menu', { state: 'attached' });
-    await page.waitForTimeout(300); // the view header settles on a ResizeObserver
+    await page.waitForTimeout(300);
     return page;
   };
-  // The drawer slides in over 160ms; measure where it lands, not mid-flight.
   const openDrawer = async (page) => {
     await page.click('#main .nav-menu');
-    // A cancelled animation rejects its promise; only the ones that run matter.
     await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
   };
   const shell = (page) => page.evaluate(() => {
@@ -111,7 +90,7 @@ if (s) {
     await page.keyboard.press('Escape');
     assert.equal(await isOpen(), false, 'Esc closes it');
     await page.click('#main .nav-menu');
-    await page.mouse.click(370, 500); // right of the 316px drawer: the scrim
+    await page.mouse.click(370, 500);
     assert.equal(await isOpen(), false, 'a tap outside closes it');
     assert.ok(page.url().endsWith(views['Task table']), 'the scrim swallowed the tap: nothing under it opened');
     await openDrawer(page);
@@ -145,14 +124,11 @@ if (s) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.click('#main .nav-menu');
     await page.setViewportSize({ width: 1280, height: 844 });
-    // The media query's change event lands after the resize, not with it.
     await page.waitForFunction(() => !document.querySelector('#app').classList.contains('nav-peek'), null, { timeout: 3000 }).catch(() => {});
     assert.equal((await shell(page)).open, false, 'widening past 900px shuts an open drawer');
     await page.close();
   });
 
-  /* The sheet is measured in both engines whatever WEAVE_BROWSER says: the
-     report's sideways scroll (scrollWidth 392) was WebKit's alone. */
   const pw = await import('playwright');
   const engines = { chromium: null, webkit: null };
   test.after(() => Promise.all(Object.values(engines).map((b) => b?.close())));
@@ -169,7 +145,6 @@ if (s) {
       name: dock.querySelector('textarea.name-edit') && rect(dock.querySelector('textarea.name-edit')),
       gutter: rect(document.querySelector('#dock-gutter')),
       main: rect(document.querySelector('#main')),
-      // What a tap in the middle of the screen lands on.
       hit: !!document.elementFromPoint(195, 420)?.closest('#dock'),
     };
   });
@@ -218,7 +193,6 @@ if (s) {
   test('past 600px the dock is still a column beside its table', async () => {
     const page = await openDock({ width: 1280 });
     const seen = await sheet(page);
-    // A column of the shell, its own scroller, no longer sticky (Issue #609).
     assert.equal(seen.position, 'relative');
     assert.equal(seen.gutter.width, 16, 'with the divider between them');
     assert.ok(seen.main.width >= 320 && seen.dock.left > seen.main.left + seen.main.width, `the table keeps its floor (${seen.main.width}px) and the dock sits to its right`);

@@ -1,13 +1,3 @@
-/* Issue #388, the sparkline half: the formula tray's Sample drew a fixed
-   3, 5, 4, 7 … 12 whatever the column held, so a style or a colour could
-   not be judged against the field's own data. The Sample now draws the
-   series on the first row that holds one, names that row, and every Color
-   swatch draws the same series; a column with no list yet draws an example
-   under a note that says so. Both themes.
-
-   Issue #620: the Sample read the first 50 rows only, so a column whose
-   first list sat past row 50 said no row held one. It asks for the rows
-   whose value is not empty. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -26,10 +16,9 @@ const s = await launch('sparkline sample', (weave) => {
   weave.addField(accts, { name: 'Word counts', type: 'lookup', config: { relationField: 'Notes', targetField: 'Words' } });
   weave.addField(accts, { name: 'Trend', type: 'formula', config: { expression: '[Amounts]', display: 'sparkline', color: 'icon' } });
   weave.addField(accts, { name: 'Wordy', type: 'formula', config: { expression: '[Word counts]', display: 'sparkline' } });
-  weave.createEntity(accts, { name: 'Quiet' }); // no deals: its list is empty
+  weave.createEntity(accts, { name: 'Quiet' });
   const acme = weave.createEntity(accts, { name: 'Acme' });
   for (const amt of [12, 30, 18, 44]) weave.createEntity(deals, { name: `d${amt}`, values: { Amount: amt, Account: acme.id } });
-  // Issue #620: sixty rows with no list, then the first one that holds one.
   regions = weave.createTable({ space: 'Sales', name: 'Region' });
   const sales = weave.createTable({ space: 'Sales', name: 'Sale' });
   weave.addField(sales, { name: 'Total', type: 'number' });

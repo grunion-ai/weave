@@ -1,10 +1,3 @@
-/* The entity page shows its record's name once (F6, 2026-09-26 design pass).
-
-   A document that opens with an H1 repeating the record name used to render
-   that heading at 26px straight under the 20px page title, so the document
-   out-shouted the page. The page now hides that first H1 and the markdown
-   keeps it. The match rule is pure and lives in public/editor-lib.js; the
-   one-visible-title check runs in test/entity-hierarchy-browser.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

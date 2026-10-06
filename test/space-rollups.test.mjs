@@ -1,8 +1,3 @@
-/* Kyle's ruling (2026-09-06): "all footer values live at the space level."
-   A table-wide aggregate — the Σ under a column — is a rollup field on the
-   Spaces registry row that holds the table, addressable and lookup-able like
-   any field. `via` names the table (no relation to cross), `where` narrows
-   the rows, `aggregate` is any of the engine's list. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -130,11 +125,9 @@ test('the schema names the table a space rollup reads, and a round trip keeps it
   assert.equal(desc.aggregate, 'sum');
   assert.deepEqual(desc.where, [['Kind', '=', 'scheduled']]);
   assert.equal(desc.via, undefined, 'no relation is crossed');
-  // Apply the same schema back: nothing changes, nothing is lost.
   const before = JSON.stringify(spaceRow().raw);
   w.applySchema(w.describeSchema());
   assert.equal(JSON.stringify(spaceRow().raw), before);
-  // And into a fresh workspace: the field lands, pointed at the same table.
   const w2 = new Weave();
   w2.applySchema(w.describeSchema());
   const t2 = w2.describeSchema().flatMap((s) => s.tables).find((d) => d.system === 'spaces').fields.find((f) => f.name === 'Cost sum');
@@ -149,7 +142,6 @@ test('deleting the column a space rollup reads is refused; hard-deleting the tab
   w.deleteTable(t.id, { hard: true });
   const names = Object.values(w.getTable(spacesT.id).fields).map((f) => f.name);
   assert.ok(!names.includes('Cost sum') && !names.includes('N'), `dependants dropped: ${names}`);
-  // Every read still answers.
   assert.doesNotThrow(() => w.query(spacesT.id, {}));
 });
 

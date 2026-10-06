@@ -47,8 +47,6 @@ test('tables', () => {
 });
 
 test('entity mentions resolve via callback', () => {
-  // The resolver takes (kind, ref); see references.test.mjs for the other
-  // kinds a [[…]] reference can address.
   const resolve = (kind, ref) =>
     kind === 'entity' && ref === 'Task#12' ? { href: '/e/abc', label: 'Task #12 — Fix login' } : null;
   const html = renderMarkdown('Blocked by [[Task#12]] and [[Task#12|the login fix]] and [[Nope#9]].', { resolveMention: resolve });
@@ -97,17 +95,10 @@ test('isHtmlDocument: a complete HTML file, not a markdown doc with an HTML bloc
   assert.ok(!isHtmlDocument(null));
 });
 
-/* Kyle, 2026-08-23: "/line break in md editors gives a code block, not a line
-   break." Half of that bug was here: the renderer had no hard-break support
-   at all, so even a correctly written break rendered as a space. Both
-   markdown spellings — trailing double space and trailing backslash — are a
-   <br>, in paragraphs and in quotes. */
 test('hard line breaks: two trailing spaces or a backslash become <br>', () => {
   assert.match(renderMarkdown('a  \nb'), /<p>a<br>\nb<\/p>/);
   assert.match(renderMarkdown('a\\\nb'), /<p>a<br>\nb<\/p>/);
   assert.match(renderMarkdown('> a  \n> b'), /a<br>/);
-  // A single newline is still a soft wrap, not a break.
   assert.doesNotMatch(renderMarkdown('a\nb'), /<br>/);
-  // And trailing whitespace at the end of a paragraph makes no empty break.
   assert.doesNotMatch(renderMarkdown('a  '), /<br>/);
 });

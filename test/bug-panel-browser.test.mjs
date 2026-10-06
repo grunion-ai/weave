@@ -1,33 +1,12 @@
-/* The bug reporter's panel, driven through a real browser (Issue #93).
-
-   Kyle typed a report, clicked the grid behind the panel to look at the thing
-   he was reporting, and the panel — and everything he had written — was gone.
-   The trace he filed instead shows the shape of it exactly: forty-nine seconds
-   with nothing recorded (the recorder never keeps keystrokes), then one click
-   on a cell, then a two-line note that reads "had types an issue and los tit".
-
-   The panel is deliberately non-modal so the broken page stays visible while
-   the report is written. Clicking that page is therefore the intended gesture,
-   and it must not be the destructive one.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps,
-   nothing npm-installed). It is imported dynamically and the whole suite skips
-   when it is absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 import { seedWeaver } from '../src/weaver-seed.js';
 
-/* The panel files into Development/Issue, so the instance under test is the
-   seeded docs workspace — a report that cannot be sent cannot prove that
-   sending clears the draft. */
 const s = await launch('bug panel', (weave) => { seedWeaver(weave); }, { server: (weave) => ({ workspaces: { weave } }) });
 if (s) {
   const { base, browser, weave } = s;
 
-  /* Every case starts on a table, because that is where a report gets written:
-     looking at the thing that went wrong. */
   async function open() {
     const page = await browser.newPage();
     await page.goto(`${base}/`, { waitUntil: 'networkidle' });
@@ -39,8 +18,6 @@ if (s) {
 
   const note = (page) => page.$eval('#bug-panel .bug-note', (n) => n.value);
   const picked = (page) => page.$$eval('#bug-panel .bug-cat.picked', (ns) => ns.map((n) => n.dataset.cat));
-  // The page behind the panel — the bug itself, which is the thing a reporter
-  // is looking at when they reach for the mouse.
   const clickBehind = (page) => page.click('main#main', { position: { x: 8, y: 8 }, force: true });
 
   test('a started report survives a click on the page behind it', async () => {
@@ -53,8 +30,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Nothing typed is nothing to lose, so the click still means "put it away".
-     Otherwise a panel opened by accident becomes a thing to dismiss. */
   test('an untouched panel still closes when you click the page', async () => {
     const page = await open();
     try {
@@ -63,8 +38,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Escape is an explicit dismissal and still closes. What it must not do is
-     throw the writing away: reopening picks the report back up. */
   test('Escape puts the report away, and reopening brings it back', async () => {
     const page = await open();
     try {
@@ -80,8 +53,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* A filed report is finished. The next one starts blank, or every report
-     after the first opens wearing the last one's words. */
   test('a sent report leaves nothing behind for the next one', async () => {
     const page = await open();
     try {
@@ -95,11 +66,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Report by email (Feature #223): the link is live in the panel, rebuilt as
-     the report is written, and what it carries is the route shape — never
-     the workspace the reporter was in. */
   test('the email link carries the report as written and no workspace name', async () => {
-    // Opened at the workspace's own address, so there is a name to leak.
     const page = await browser.newPage();
     try {
       await page.goto(`${base}/w/weave/`, { waitUntil: 'networkidle' });

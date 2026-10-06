@@ -1,18 +1,3 @@
-/* Field resize, reorder and freeze (Feature #233) — the half only a real
-   browser can judge. Kyle approved the behaviour from a mockup (2026-09-25)
-   and set four rules; each is asserted here against the rendered grid:
-
-     1. a header label never truncates — measured off the header at the
-        floor, for several field types, after a drag and a keyboard nudge;
-     2. resizing, reordering, hiding, showing, adding or removing a field,
-        and freezing or unfreezing one, never changes another field's width
-        — every other column is read before and after each action;
-     3. every type has a default width, raised only by its own label;
-     4. the click that ends a drag, a resize or a freeze drop never opens
-        the field menu.
-
-   Drops are real pointer drags, and each asserts which column landed
-   where, not that an event fired (Kyle, 2026-09-02). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
@@ -52,7 +37,6 @@ if (s) {
     return page;
   };
   const head = (page, name) => page.locator(`.wv-grid thead th.col-head[data-col="${name}"]`);
-  /* Every field column's rendered box, header and first body cell. */
   const layout = (page) => page.evaluate(() => {
     const table = document.querySelector('.wv-grid');
     const heads = [...table.tHead.rows[0].querySelectorAll('th.col-head')];
@@ -66,7 +50,6 @@ if (s) {
     return out;
   });
   const order = (page) => page.$$eval('.wv-grid thead th.col-head', (hs) => hs.map((h) => h.dataset.col));
-  /* Rule 2: every column but the ones named keeps its width, header and cell. */
   const sameWidths = (before, after, except = [], label = '') => {
     for (const [name, b] of Object.entries(before)) {
       if (except.includes(name) || !after[name]) continue;
@@ -75,13 +58,6 @@ if (s) {
     }
   };
   const trayOpen = (page) => page.locator('#tray-back').count();
-  /* A real pointer drag: bring the header into the wrap's view, press on
-     it, travel to x (viewport; a function is read after the scroll), and
-     optionally read the grid mid-drag before releasing. `reaim`, when
-     given, is read once the pointer has arrived and the pointer moves there:
-     a path that crosses an auto-scroll band scrolls the grid for as long as
-     it dwells there, which is longer on a loaded machine (Issue #432), so a
-     target read before the drag can be stale by the time it lands. */
   const drag = async (page, name, x, during = null, { reaim = null } = {}) => {
     await head(page, name).evaluate((th) => th.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
     await page.waitForTimeout(50);
@@ -94,11 +70,7 @@ if (s) {
     if (reaim) await page.mouse.move(await reaim(), y);
     const seen = during ? await during() : null;
     await page.mouse.up();
-    // The view write is behind the in-place move.
     await page.waitForTimeout(200);
-    // The move itself is a 180 ms slide of every cell (flip); a box read
-    // before it lands reads the slide. Under load it outlasted the 200 ms
-    // above and a frozen column measured 19 to 447px off its pin (Issue #454).
     await settled(page.locator('.wv-grid'));
     return seen;
   };
@@ -116,10 +88,7 @@ if (s) {
       const l = await layout(page);
       const want = { Name: 260, Owner: 180, Status: 124, Points: 88, Price: 104, Link: 180 };
       for (const [name, w] of Object.entries(want)) assert.equal(Math.round(l[name].w), w, `${name} opens at ${w}px`);
-      // A date opens at 112, or at what its format's widest date needs, so a
-      // date is never cut (Issue #159): the format raises only its own column.
       assert.ok(l.Due.w >= 112 && l.Due.w < 160, `Due opens at 112 or just past it for its format (${l.Due.w})`);
-      // A checkbox's default is 56, and its label is its floor.
       const floorOf = (name) => head(page, name).evaluate((th) => {
         const cs = getComputedStyle(th);
         return Math.ceil(th.querySelector('.col-label').getBoundingClientRect().width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight));
@@ -130,12 +99,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issues #261 and #414: the Name column opens wide enough to read a
-     thirty-character name whole. Kyle raised Name's default from the
-     mockup's 220 to 260 on 2026-09-26; the dropped commit 41398c3 measured
-     240px leaving such a name one pixel of room in Chromium's fallback face.
-     The default is Feature #233's, so a stored width still wins and the "+"
-     column still trails the last field (Feature #240). */
   const THIRTY = 'Quickstart for a new workspace';
   for (const theme of ['light', 'dark']) {
     test(`${theme}: a thirty-character name reads whole at the Name default; a stored width still wins`, async () => {
@@ -164,8 +127,6 @@ if (s) {
         assert.equal(Math.round(got.width), 260, `Name opens at 260px, got ${got.width}`);
         assert.ok(Math.abs(got.cell - got.width) <= 1, `the cells follow the header: ${got.cell} vs ${got.width}`);
         assert.equal(got.clipped, false, `"${THIRTY}" reads whole in a ${Math.round(got.width)}px column`);
-        // Feature #240: the "+" trails the last field and the card's slack
-        // is left bare, so the grid ends short of its card.
         assert.ok(got.plus < 60, `the "+" column is as wide as its button (${got.plus}px)`);
         assert.ok(got.wrapRight - got.gridRight > 100, `the slack past the "+" is bare card (${got.gridRight} vs ${got.wrapRight})`);
       } finally { await page.close(); }
@@ -191,7 +152,6 @@ if (s) {
         await page.mouse.move(grip.x - 400, y, { steps: 6 });
         await page.mouse.up();
         await page.waitForTimeout(150);
-        // Alt+← past the floor changes nothing either.
         await head(page, name).focus();
         for (let i = 0; i < 3; i++) await page.keyboard.press('Alt+ArrowLeft');
         await page.waitForTimeout(50);
@@ -256,13 +216,11 @@ if (s) {
       assert.equal(Math.round(sized.Owner.w), Math.round(before.Owner.w) + 8);
       sameWidths(before, sized, ['Owner'], 'nudge');
       assert.equal(view(db).widths.Owner, Math.round(before.Owner.w) + 8);
-      // Owner is fourth: Name, Description, Status, Owner.
       await head(page, 'Owner').focus();
       await page.keyboard.press('Alt+Shift+ArrowLeft');
       await page.waitForTimeout(300);
       assert.deepEqual((await order(page)).slice(0, 4), ['Name', 'Description', 'Owner', 'Status']);
       assert.equal(await page.evaluate(() => document.activeElement?.dataset?.col), 'Owner', 'focus stays on the moved header');
-      // Name is first; stepping it left crosses the seam: it freezes, stays first.
       await head(page, 'Name').focus();
       await page.keyboard.press('Alt+Shift+ArrowLeft');
       await page.waitForTimeout(300);
@@ -296,7 +254,7 @@ if (s) {
       assert.equal(seen.ghost, 'Points', 'the ghost is the grabbed header');
       assert.ok(Number(seen.dimmed) < 1, 'the grabbed column dims');
       assert.equal(await trayOpen(page), 0, 'rule 4: the drop click opened nothing');
-      await head(page, 'Points').evaluate((th) => th.click()); // Safari's stray click of a captured drag
+      await head(page, 'Points').evaluate((th) => th.click());
       await page.waitForTimeout(150);
       assert.equal(await trayOpen(page), 0, 'even when the click lands on the header');
       const want = ['Name', 'Description', 'Points', 'Status', 'Owner', 'Due', 'Price', 'Done', 'Link', 'Approved by finance'];
@@ -306,7 +264,6 @@ if (s) {
       assert.deepEqual(view(db).fields, want, 'saved into the view');
       sameWidths(before, await layout(page), [], 'reorder');
       assert.equal(await page.locator('.wv-col-insert, .wv-col-ghost').count(), 0, 'the line and the ghost go with the drag');
-      // A drop where it already was draws no line and changes nothing.
       const noop = await drag(page, 'Owner', async () => { const o = (await layout(page)).Owner; return o.left + o.w / 2 + 3; }, () => insertLine(page));
       assert.equal(noop.count, 0, 'a no-op position hides the line');
       assert.deepEqual(await order(page), want);
@@ -317,10 +274,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Found while building this (filed as its own Issue row): the grid drew
-     its rows and its header from the column list it was opened with, so a
-     column moved in place snapped back on the next redraw (a sort from the
-     ⋮ menu) and rows built after the move carried the old cell order. */
   test('after a drag, a sort redraw keeps the new order in the header and every row', async () => {
     const db = ownTable();
     const page = await openGrid(db);
@@ -329,7 +282,7 @@ if (s) {
       const want = ['Due', 'Name', 'Description', 'Status', 'Owner', 'Points', 'Price', 'Done', 'Link', 'Approved by finance'];
       assert.deepEqual(await order(page), want);
       await head(page, 'Points').locator('.field-menu').click();
-      await page.locator('.chip-pop .wv-menu-row', { hasText: 'Largest to smallest' }).click(); // a number's descending row (Issue #254)
+      await page.locator('.chip-pop .wv-menu-row', { hasText: 'Largest to smallest' }).click();
       await page.waitForTimeout(400);
       assert.deepEqual(await order(page), want, 'the redraw kept the moved column');
       const rows = await page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => [...r.children].filter((c) => c.dataset.field).map((c) => c.dataset.field)));
@@ -350,7 +303,6 @@ if (s) {
       assert.equal(view(db).frozen, 1, 'and is frozen in the view');
       const frozen = await layout(page);
       sameWidths(before, frozen, [], 'freeze drop');
-      // Scrolled sideways, the frozen field stays beside # and the next scrolls away.
       const pinned = await page.evaluate(() => {
         const wrap = document.querySelector('.table-wrap');
         wrap.scrollLeft = 300;
@@ -368,15 +320,12 @@ if (s) {
       assert.doesNotMatch(seam, /rgba\(0, 0, 0, 0\)/, 'the seam hairline moved to the last frozen field while scrolled');
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 0; });
       await page.waitForTimeout(80);
-      // Drop it back across, to the right half of Status.
       const back = await drag(page, 'Owner', async () => {
-        // Status in the middle of the wrap, clear of the auto-scroll edges.
         await head(page, 'Status').evaluate((th) => th.scrollIntoView({ block: 'nearest', inline: 'center' }));
         await page.waitForTimeout(50);
         const st = (await layout(page)).Status;
         return st.left + st.w - 10;
       }, () => insertLine(page), {
-        // Outside the band the grid stands still; aim at where Status is now.
         reaim: async () => { const st = (await layout(page)).Status; return st.left + st.w - 10; },
       });
       assert.equal(back.tag, 'Unfreeze', 'the line says the drop unfreezes');
@@ -390,7 +339,6 @@ if (s) {
   test('the frozen zone stops at 60% of the visible grid; past it the drop lands on the scrolling side', async () => {
     const db = ownTable();
     weave.tableView(`${db.id}/${view(db).id}`, { widths: { Name: 300, Owner: 300 }, frozen: 1 });
-    // A ~900px grid: the cap is ~540px. # and Name (300) fit; Owner (300) would not.
     const page = await openGrid(db, { width: 1300 });
     try {
       const pidX = async () => { const b = await page.locator('.wv-grid thead th.pid-head').boundingBox(); return b.x + b.width / 2; };
@@ -398,7 +346,6 @@ if (s) {
       assert.equal(seen.tag, null, 'no freeze tag past the cap');
       assert.equal(view(db).frozen, 1, 'the zone did not grow');
       assert.deepEqual((await order(page)).slice(0, 2), ['Name', 'Owner'], 'Owner landed first on the scrolling side');
-      // A stored count past the cap draws only what fits.
       weave.tableView(`${db.id}/${view(db).id}`, { frozen: 3 });
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -449,16 +396,12 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #417 (Kyle, 2026-09-26): a header drag or a resize left a text
-     selection across the header labels. Headers are controls: nothing in the
-     header row selects, and a gesture clears any live selection. */
   test('a header drag, a resize and a fit select no header text; cell values stay selectable', async () => {
     const db = ownTable();
     weave.updateTable(db, { systemFields: ['Created At'] });
     const page = await openGrid(db);
     const selected = () => page.evaluate(() => getSelection().toString());
     try {
-      // A live selection from before the gesture goes too.
       await page.evaluate(() => { const r = document.createRange(); r.selectNodeContents(document.querySelector('.view-header') ?? document.body); getSelection().addRange(r); });
       await drag(page, 'Points', async () => (await layout(page)).Status.left + 12);
       assert.equal(await selected(), '', 'nothing is selected after a header drag');
@@ -478,7 +421,6 @@ if (s) {
         await page.waitForTimeout(300);
         assert.equal(await selected(), '', `nothing is selected after a fit on ${name}`);
       }
-      // Drag across the header row from a label, the way a reader sweeps text.
       const a = await head(page, 'Status').boundingBox();
       const b = await head(page, 'Due').boundingBox();
       await page.mouse.move(a.x + 6, a.y + a.height / 2);
@@ -500,10 +442,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #418 (Kyle, 2026-09-26: "system fields should be reorderable as
-     well"). A shown system column is a column like any field: it drags,
-     freezes across the seam, steps with Alt+Shift+arrows, and saves into
-     the view's one ordered list. Only # stays locked first. */
   test('system columns reorder, freeze and step like fields; every other width holds', async () => {
     const db = ownTable();
     weave.updateTable(db, { systemFields: ['Created At', 'Modified By'] });
@@ -513,7 +451,6 @@ if (s) {
     try {
       assert.deepEqual(await order(page), want0, 'system columns close the default view');
       const before = await layout(page);
-      // Between two regular fields: the right half of Status.
       const seen = await drag(page, 'Created At', async () => { const st = (await layout(page)).Status; return st.left + st.w - 10; }, () => insertLine(page));
       assert.equal(seen.count, 1, 'one insertion line');
       assert.equal(await trayOpen(page), 0, 'the drop opened nothing');
@@ -522,19 +459,16 @@ if (s) {
       for (const r of await sysCells()) assert.deepEqual(r, want1, 'every row moved with the header');
       assert.deepEqual(view(db).fields, want1, 'saved into the view\'s one list');
       sameWidths(before, await layout(page), [], 'system column reorder');
-      // And back, to the end.
       await drag(page, 'Created At', async () => { const m = (await layout(page))['Modified By']; return m.left + m.w - 6; });
       const want2 = ['Name', 'Description', 'Status', 'Owner', 'Due', 'Points', 'Price', 'Done', 'Link', 'Approved by finance', 'Modified By', 'Created At'];
       assert.deepEqual(await order(page), want2, 'and back past the last field');
       sameWidths(before, await layout(page), [], 'system column back');
-      // Freeze a system column across the seam.
       const pidX = async () => { const b = await page.locator('.wv-grid thead th.pid-head').boundingBox(); return b.x + b.width / 2; };
       const f = await drag(page, 'Modified By', pidX, () => insertLine(page));
       assert.equal(f.tag, 'Freeze here');
       assert.equal((await order(page))[0], 'Modified By', 'it froze first, after #');
       assert.equal(view(db).frozen, 1);
       sameWidths(before, await layout(page), [], 'system column freeze');
-      // Alt+Shift+→ steps it out of the zone in place.
       await head(page, 'Modified By').focus();
       await page.keyboard.press('Alt+Shift+ArrowRight');
       await page.waitForTimeout(400);
@@ -563,9 +497,6 @@ if (s) {
           const th = document.querySelector('.wv-grid thead th[data-col="Name"]');
           const top0 = th.getBoundingClientRect().top;
           scroller.scrollTop = 200;
-          // A row well inside the visible body, clear of the grid's sticky
-          // header and the page's view header above it.
-          // (The <thead> box scrolls away; its sticky cells are what stay.)
           const top = Math.max(...[...document.querySelectorAll('.wv-grid thead th')].map((h) => h.getBoundingClientRect().bottom),
             document.querySelector('#main > .view-header')?.getBoundingClientRect().bottom ?? 0);
           const cell = [...document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Name"]')]

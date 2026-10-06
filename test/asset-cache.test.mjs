@@ -1,14 +1,3 @@
-/* Issue #313: content-hashed asset URLs with immutable caching, and a boot
-   that does not block the parser once per script.
-   A warm load of `/` made 32 static requests, 24 of them answered 304: every
-   asset carried `no-cache`, so the browser revalidated each one, one round
-   trip apiece. weave has no build step, so the Node adapter versions the
-   shell at serve time: every local src/href/import in index.html gains
-   `?v=<content hash>`, and an asset asked for at its current hash is sent
-   `immutable`. The shell itself stays `no-cache`, with an ETag drawn from the
-   bytes it serves, because an asset can change under an unchanged
-   index.html. The Worker's Assets binding serves public/ untouched, so the
-   file on disk keeps plain URLs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync, utimesSync } from 'node:fs';
@@ -93,7 +82,5 @@ test('every classic boot script is deferred; the file on disk keeps plain URLs',
   const classic = tags.filter((a) => /\bsrc=/.test(a));
   assert.ok(classic.length >= 24, `expected the boot list, saw ${classic.length}`);
   for (const a of classic) assert.match(a, /\bdefer\b/, `<script${a}> blocks the parser`);
-  // The Worker's Assets binding serves this file as-is (Issue #231): a baked-in
-  // version would name bytes the binding no longer holds after the next edit.
   assert.doesNotMatch(INDEX, /\?v=/);
 });

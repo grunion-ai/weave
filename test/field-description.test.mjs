@@ -1,13 +1,3 @@
-/* Every field carries its own description (Issue #209, Kyle, 2026-09-07:
-   "each field needs its own description that is prominently visible to the
-   agent giving full context of what the field represents and how it is
-   formatted"). It is config on every field type — like width, it rides its
-   own lane so no other edit clobbers it — and the schema emits it as the
-   field's `description`, which is where an agent reads it.
-
-   The one exception is the pair of view fields: on Chip and Card the
-   `description` key has meant the description SIZE since Feature #175, and
-   that contract holds. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';

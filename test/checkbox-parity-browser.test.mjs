@@ -1,12 +1,3 @@
-/* One checkbox (Issue #441, Issue #384; Kyle, 2026-09-27: "checkboxes should
-   be the same as all of our other checkboxes"). weave's checkbox is the
-   `input.form-check-input` the field dialog, settings and the checkbox cell
-   draw. The grid's row selector, the Fields popover and the Filters popover
-   use that same input, so every surface computes the same box, radius,
-   border and checked fill in both themes, and each is a real checkbox: no
-   hand-drawn `.field-visible-check`, no role="switch" on a box. The field
-   dialog's checkbox rows sit on one line with their labels (Issue #384).
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -24,7 +15,6 @@ const s = await launch('one checkbox', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  // The parts of a checkbox a reader sees, unchecked and checked.
   const look = (box) => {
     const cs = getComputedStyle(box);
     return { w: cs.width, h: cs.height, radius: cs.borderTopLeftRadius, border: cs.borderTopColor, borderWidth: cs.borderTopWidth, appearance: cs.appearance, bg: cs.backgroundColor };
@@ -41,7 +31,7 @@ if (s) {
   }, look.toString());
   const readBox = (page, selector, checked) => page.$eval(selector, (box, [src, want]) => {
     const read = new Function(`return (${src})`)();
-    if (box.checked !== want) box.checked = want; // a look, never a write: no change event
+    if (box.checked !== want) box.checked = want;
     return { tag: box.tagName, type: box.type, cls: box.className, role: box.getAttribute('role'), ...read(box) };
   }, [look.toString(), checked]);
 

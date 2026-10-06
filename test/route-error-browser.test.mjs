@@ -1,18 +1,3 @@
-/* A route that fails says so, instead of holding the skeleton — Issue #118.
-
-   The reporter opened uno's Project table and watched the loading skeleton
-   forever. The grid's POST /tables/<id>/query answered 500 (a rollup whose
-   target field had been deleted; the engine crash behind it is Issue #206,
-   fixed 2026-09-06), showDatabase's await rejected, and nothing caught the
-   rejection. paintSkeleton had already replaced #main, so the page was left
-   holding the skeleton of a table that was never going to arrive.
-
-   The hole was every route's, not the grid's: showEntity alone caught, and
-   only to fall back to the workspace home. The catch now sits at the single
-   place every route passes through — the hashchange render and the first
-   render at boot — so a failed load names the failure and offers the retry.
-
-   Playwright is NOT a dependency; the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -41,8 +26,6 @@ if (s) {
   const { base, browser } = s;
   const TABLE_QUERY = `**/api/tables/${deals.id}/query`;
 
-  // The exact failure the reporter hit: the grid's own query, 500, no body
-  // the UI can turn into a table.
   const break500 = (page) => page.route(TABLE_QUERY, (r) => r.fulfill({
     status: 500,
     contentType: 'application/json',
@@ -64,8 +47,6 @@ if (s) {
   test('the same on a hash navigation, not just the first paint', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
-    // The home's registry grid folds under Schema (Issue #386); the
-    // Activity card is on every home's first paint.
     await page.waitForSelector('.system-tables');
     await break500(page);
     await page.evaluate((id) => { location.hash = `#/table/${id}`; }, deals.id);
@@ -83,12 +64,10 @@ if (s) {
     await page.click('#main .wv-route-error button');
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     assert.equal(await page.locator('#main .wv-route-error').count(), 0, 'the failure is cleared');
-    // The Name cell is an inline editor, so the row's name is a value, not text.
     assert.equal(await page.locator('.wv-grid tbody td.name-cell input').inputValue(), 'Acme');
     await page.close();
   });
 
-  // Chrome is chrome: it has to read in both themes (house rule).
   for (const theme of ['light', 'dark']) {
     test(`the failure is legible in the ${theme} theme`, async () => {
       const page = await browser.newPage();

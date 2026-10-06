@@ -7,13 +7,6 @@ import { Weave } from '../src/engine.js';
 import { createWorkspaceHub, startServer } from '../src/server.js';
 import { workspaceSlug } from '../src/workspace-name.js';
 
-/* A workspace carries a display name a person reads and a slug its URL
-   answers at (Issue #592): renaming to "Personal finance" was refused with
-   "Workspace name must be alphanumeric" while the old seed name "Weave
-   Workspace" had a space. Slugs are case-blind, like Slack, Notion and GitHub
-   (Issue #599): on a case-sensitive volume "Acme" and "acme" became two
-   workspaces, two files and two URLs. Existing files are never renamed. */
-
 const tmp = () => mkdtempSync(join(tmpdir(), 'weave-wsslug-'));
 
 test('workspaceSlug: a display name folds to lowercase letters, digits, - and _', () => {
@@ -90,7 +83,6 @@ test('HTTP + MCP: rename to a display name re-keys the hub; a case variant of an
     assert.equal((await call('GET', '/w/personal-finance/api/workspace')).body.title, 'Personal finance');
     assert.equal((await call('PATCH', '/w/personal-finance/api/workspace', { name: 'ACME' })).status, 409);
 
-    // The tool the Issue was found on renames through the hub too.
     const viaMcp = await mcp('personal-finance', { name: 'Household Budget' });
     assert.equal(viaMcp.body.result.isError, undefined, JSON.stringify(viaMcp.body));
     assert.equal((await call('GET', '/w/household-budget/api/workspace')).body.title, 'Household Budget');

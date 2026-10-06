@@ -3,14 +3,6 @@ import assert from 'node:assert/strict';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-/* Feature #65 — system fields. Every entity records who made it and who last
-   changed it, alongside the timestamps it already carries. The four are
-   SYSTEM fields: read-only, engine-maintained, shown or hidden per table —
-   never stored in db.fields, never writable through values. Actor identity
-   rides the engine instance (`w.actor`); each surface names its caller
-   (server: X-Weave-Actor header, CLI: WEAVE_ACTOR or the OS user, MCP: the
-   client name). This is the plumbing #14's audit log stands on. */
-
 function fresh(actor) {
   const w = new Weave(actor ? { actor } : {});
   w.createSpace({ name: 'Dev' });
@@ -75,7 +67,6 @@ test('the server names its caller from X-Weave-Actor', async () => {
     assert.equal(res.status, 201);
     const e = await res.json();
     assert.equal(e.createdBy, 'agent-7');
-    // No header → the surface's own name, not a stale one from last request.
     const res2 = await fetch(`${base}/api/tables/Task/entities`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Anonymous' }),
@@ -86,10 +77,6 @@ test('the server names its caller from X-Weave-Actor', async () => {
   }
 });
 
-/* Feature #95 — Activity joins the system columns: auto-present on every
-   table, hidden by default like the timestamps, showing how much history an
-   entity carries. The full related-table treatment converges with the side
-   panel (#48); the column is the per-table surface. */
 test('Activity is a system column with a count', () => {
   const w = fresh('ada');
   w.updateTable('Task', { systemFields: ['Activity'] });

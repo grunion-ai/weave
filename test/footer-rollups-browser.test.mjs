@@ -1,18 +1,3 @@
-/* The Σ row (Kyle, 2026-09-06: "all footer values live at the space level").
-   A grid's footer draws the space rollups pointed at the table, one cell per
-   column; a click on a footer cell offers the aggregates the column can wear,
-   and each switch creates or deletes a rollup field on the Workspace/Spaces
-   row — so the figure is a field, not a UI artefact. The space page draws
-   the same rollups as tiles; the table menu's Column stats… summarises every
-   column on demand. Driven through the page so the click → POST → repaint
-   path is what is proved.
-   Issue #233: the row is pinned under the field headers (thead, not tfoot)
-   so it stays put while the body scrolls, and the eye's Rows section
-   switches it off — `hideRollups` on the table, remembered on the Tables
-   row like the filter and the sort, never in the browser.
-   Issue #249: off is now the default, so the tables below opt in the way a
-   reader would — through the eye's switch, `hideRollups: false` — and the
-   last case proves a table nobody switched on draws no Σ row at all. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -27,18 +12,14 @@ const s = await launch('grid footer reads space rollups', (weave) => {
   for (const [n, c, k, d] of [['a', 1.5, 'interactive', '2026-09-01'], ['b', 2.5, 'interactive', '2026-09-03'], ['c', null, 'scheduled', '2026-08-30'], ['d', 10, 'scheduled', null]]) {
     weave.createEntity('Sessions', { name: n, values: { Cost: c, Kind: k, Started: d } });
   }
-  // A grid wider than its card: its wrap scrolls sideways, so it has to be
-  // the vertical scroller too for the header and the Σ row to stick.
   wide = weave.createTable({ space: 'Agent', name: 'Wide' });
   for (let i = 0; i < 12; i++) weave.addField(wide, { name: `A long column name ${i}`, type: 'number' });
   for (let i = 0; i < 40; i++) weave.createEntity('Wide', { name: `w${i}`, values: { 'A long column name 0': i } });
   spacesT = Object.values(weave.state.tables).find((t) => t.system === 'spaces');
   weave.addField(spacesT.id, { name: 'Wide · sum', type: 'rollup', config: { via: 'Agent/Wide', targetField: 'A long column name 0', aggregate: 'sum' } });
   weave.addField(spacesT.id, { name: 'Sessions · Cost · sum', type: 'rollup', config: { via: 'Agent/Sessions', targetField: 'Cost', aggregate: 'sum' } });
-  // Issue #249: both of these tables want the row, so both say so.
   weave.updateTable(sessions.id, { hideRollups: false });
   weave.updateTable(wide.id, { hideRollups: false });
-  // One table that never asked, to prove the default.
   quiet = weave.createTable({ space: 'Agent', name: 'Quiet' });
   weave.addField(quiet, { name: 'Cost', type: 'number' });
   weave.createEntity('Quiet', { name: 'q', values: { Cost: 3 } });
@@ -80,7 +61,6 @@ if (s) {
     await page.waitForFunction(() => document.querySelectorAll('thead tr.wv-foot td.foot-cell[data-col="Cost"] .foot-stat').length === 2);
     const vals = await footCell(page, 'Cost').locator('.foot-val').allInnerTexts();
     assert.deepEqual(vals, ['$14.00', '$4.67']);
-    // Off again: the field goes, the figure goes.
     await page.click('.chip-pop .foot-row[data-agg="avg"]');
     await page.waitForFunction(() => document.querySelectorAll('thead tr.wv-foot td.foot-cell[data-col="Cost"] .foot-stat').length === 1);
     assert.ok(!spaceRollups().includes('Sessions · Cost · avg'));
@@ -133,8 +113,6 @@ if (s) {
     await page.waitForSelector('#modal.wv-stats h3:has-text("By Kind")');
     const rows = await page.$$eval('#modal.wv-stats h3:has-text("By Kind") + .table-wrap tbody tr', (trs) => trs.map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent)));
     assert.deepEqual(rows, [['interactive', '2', '$4.00'], ['scheduled', '2', '$10.00']]);
-    // The panel is a modal dialog like modal()'s (Issue #263): named by its
-    // title, the table behind it inert, and the page back once Escape closes it.
     const held = await page.evaluate(() => {
       const m = document.querySelector('#modal.wv-stats');
       return { role: m.getAttribute('role'), label: document.getElementById(m.getAttribute('aria-labelledby'))?.textContent, appInert: document.querySelector('#app').inert };
@@ -147,38 +125,29 @@ if (s) {
   });
 
   test('the Σ row is pinned right under the field headers and no tfoot paints it (Issue #233)', async () => {
-    // Enough rows that the body scrolls past the viewport.
     for (let i = 0; i < 40; i++) weave.createEntity('Sessions', { name: `row ${i}`, values: { Cost: 1 } });
-    // 1480 so the grid fits its card and the PAGE scrolls: Name opens at 260
-    // since Issues #261 and #414, which put Sessions 34px past a 1400 card.
     const page = await open(`/table/${sessions.id}`, 1480);
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     assert.equal(await page.locator('tfoot').count(), 0, 'the footer is gone');
     assert.equal(await page.$eval('.wv-grid thead', (h) => h.rows.length), 2, 'header row, then the Σ row');
     assert.ok(await page.$eval('.wv-grid thead tr:nth-child(2)', (tr) => tr.classList.contains('wv-foot')));
     assert.ok(await page.$eval('.wv-grid tbody tr.entity-row', (tr) => tr.previousElementSibling === null), 'the first body row follows it');
-    // The header sticks to the page (Issue #236 made the wrap clip when the
-    // grid fits), and the Σ row sticks under it.
     const geo = () => page.evaluate(() => {
-      // A FIELD header, not the corner: th.col-head used to override the sticky.
       const th = document.querySelector('.wv-grid thead tr:first-child th.col-head').getBoundingClientRect();
       const foot = document.querySelector('thead tr.wv-foot td.foot-mark').getBoundingClientRect();
       return { pageScroll: document.querySelector('#main').scrollTop, headTop: th.top, headBottom: th.bottom, footTop: foot.top, footBottom: foot.bottom, innerHeight };
     });
     const before = await geo();
     assert.ok(Math.abs(before.footTop - before.headBottom) <= 1, `the Σ row sits flush under the header: ${JSON.stringify(before)}`);
-    // The page is the main panel's scroll since Issue #609.
     await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 600, behavior: 'instant' }));
     await page.waitForFunction(() => document.querySelector('#main').scrollTop > 300);
     await page.waitForTimeout(150);
     const after = await geo();
-    // Under the view header, which holds at the top edge itself (Issue #321).
     const chrome = await page.evaluate(() => document.querySelector('#main > .view-header').getBoundingClientRect().bottom);
     assert.ok(after.headTop >= chrome - 1 && after.headTop < chrome + 40, `the field headers stick under the view header: ${JSON.stringify({ ...after, chrome })}`);
     assert.ok(Math.abs(after.footTop - after.headBottom) <= 1, `the Σ row is still flush under them: ${JSON.stringify(after)}`);
     assert.ok(after.footBottom > 0 && after.footBottom < after.innerHeight, `on screen after a 600px scroll, not scrolled away: ${JSON.stringify(after)}`);
     assert.equal(await page.$eval('thead tr.wv-foot td.foot-mark', (td) => getComputedStyle(td).opacity), '1', 'the pinned row is opaque: rows slide under it, not through it');
-    // The picker still works from the pinned row.
     await footCell(page, 'Kind').click();
     await page.waitForSelector('.chip-pop .foot-row[data-agg="filled"]');
     await page.click('.chip-pop .foot-row[data-agg="filled"]');
@@ -235,11 +204,6 @@ if (s) {
     await page.close();
   });
 
-  /* Issue #249 (Kyle: "hide summation row by default"). A table nobody
-     switched on draws no Σ row, even with a space rollup pointed straight at
-     it — and switching it on from the eye is what brings the row and its
-     figure. Storing the opt-in explicitly is what keeps THIS switch-on from
-     reading like the untouched table above it. */
   test('a table nobody opted in has no Σ row, and the eye brings it (Issue #249)', async () => {
     const page = await open(`/table/${quiet.id}`);
     await page.waitForSelector('.wv-grid tbody tr.entity-row');

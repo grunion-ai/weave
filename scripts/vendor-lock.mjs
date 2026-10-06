@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-/* Shared by the vendor lock test and the advisory script; run directly with
-   --update to rehash every file the lock lists after a deliberate upgrade.
-   A new library still gets its entry (name, npm, version) by hand. */
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -25,7 +22,6 @@ export function vendorFiles(root = ROOT) {
     .sort();
 }
 
-/* Compare a lock against the tree: returns the three failure lists. */
 export function diffLock(lock, root = ROOT) {
   const listed = new Map();
   for (const lib of lock.libraries) for (const f of lib.files) listed.set(f.path, f.sha256);

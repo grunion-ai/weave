@@ -1,16 +1,3 @@
-/* The token-box picker, driven through a real browser.
-
-   The grammar is pure and covered in test/picker-core.test.mjs; what needs a
-   browser is the claim those cases cannot make — that the keys a person
-   presses reach that grammar and that the list they see is the list it
-   reasons about. Issue #63 was exactly that gap: every source-level assertion
-   passed while ↓ then Enter took a tag OUT of the field, because the row the
-   arrow landed on was one already chosen and Enter toggled it.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps,
-   nothing npm-installed). It is imported dynamically and the whole suite skips
-   when it is absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -34,12 +21,8 @@ const s = await launch('picker', (weave) => {
 });
 if (s) {
   const { base, browser, weave } = s;
-  /* One entity per case: a picker commits to the record, so cases that share
-     an entity would read each other's writes. */
   const freshTask = (values) => weave.createEntity(tasks, { name: 'Picker case', values }).id;
 
-  /* Opens a field's picker on the entity page and hands back the page with it
-     on screen, focused, exactly as a click would leave it. */
   async function openPicker(id, label) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
@@ -53,22 +36,12 @@ if (s) {
     return page;
   }
 
-  // A multiselect option draws as its own chip, a select option as a label —
-  // both are "the row's name" to a reader, so both count as one here.
   const NAME = '.picker-label, .k';
   const rows = (page) => page.$$eval(`.picker-row :is(${NAME})`, (ns) => ns.map((n) => n.textContent.trim()));
   const armed = (page) => page.$$eval(`.picker-row.active :is(${NAME})`, (ns) => ns.map((n) => n.textContent.trim()));
   const chips = (page) => page.$$eval('.picker-chip', (ns) => ns.map((n) => n.textContent.replace('×', '').trim()));
-  // Entity values are keyed by field id; the picker's job is done when the
-  // record carries them, so read the record the way the engine stores it.
   const valueOf = (id, field) => weave.resolveField(weave.getEntity(id), field);
 
-  /* A chip is a chip wherever it is drawn. The workflow picker handed its
-     rows and its staged chip a class without the `k` base, so every state
-     drew as tinted text with no padding and no corners — the cell beside it
-     had both (Kyle, 2026-09-02). The classes are read, not the pixels: the
-     `.k` rule is what carries the padding and the radius, so its presence is
-     the claim. */
   test('every chip in a picker wears the k base class, in the box and in the rows', async () => {
     const dressed = (page) => page.$$eval('.picker-pop :is(.k-state, .k-select, .k-multi)', (ns) => ns.map((n) => ({
       text: n.textContent.replace('×', '').trim(),
@@ -80,7 +53,6 @@ if (s) {
     let page = await openPicker(freshTask({ State: 'Done' }), 'State');
     try {
       const chips = await dressed(page);
-      // A state clears through its own — row since Issue #421, the way a select does.
       assert.deepEqual(chips.map((c) => c.text), ['Done', '—', 'Open', 'In Progress', 'Done'], 'the staged chip, the clear row, then every state as a row');
       assert.ok(chips.every((c) => c.k), 'each one carries the k base');
       assert.ok(chips.every((c) => c.pad === '8px' && c.radius === '4px'), 'so each one has a chip’s padding and corners');
@@ -101,8 +73,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #64. The chip in the box already says it; the row would say it
-     twice, and every row it pushes down is one you could still pick. */
   test('a chosen option is a chip in the box and not a row in the list', async () => {
     const page = await openPicker(freshTask({ Tags: ['bug'] }), 'Tags');
     try {
@@ -112,8 +82,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #63, the reported gesture on the data that produced it. Before the
-     fix ↓ armed "bug" — already chosen — and Enter emptied the field. */
   test('↓ then Enter adds a tag, and never takes the arrowed row back out', async () => {
     const page = await openPicker(freshTask({ Tags: ['bug'] }), 'Tags');
     try {
@@ -126,8 +94,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* The second half of the same grammar: nothing armed means Enter saves, so
-     pick-then-Enter is the whole edit without touching the mouse. */
   test('the Enter after a pick saves the set to the record', async () => {
     const id = freshTask({ Tags: ['bug'] });
     const page = await openPicker(id, 'Tags');
@@ -137,7 +103,6 @@ if (s) {
       await page.keyboard.press('Enter');
       await page.waitForSelector('.picker-pop', { state: 'detached' });
     } finally { await page.close(); }
-    // The save is a PATCH behind the closing box; poll rather than sleep.
     let saved;
     for (let i = 0; i < 20; i++) {
       saved = valueOf(id, 'Tags');
@@ -147,8 +112,6 @@ if (s) {
     assert.deepEqual(saved, ['bug', 'feature'], 'the record carries what the box held');
   });
 
-  /* Issue #65: "numbering" is quick-pick keys. ⌥ and not a bare digit — the
-     box is a search field and 1 has to be able to type a 1. */
   test('the rows are numbered and ⌥2 takes the second one', async () => {
     const page = await openPicker(freshTask({ Tags: [] }), 'Tags');
     try {
@@ -170,12 +133,9 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Single select is the other dialect: it overwrites, so its current value
-     stays listed, stays ticked, and a pick closes the picker on the spot. */
   test('a select keeps its current value listed and ticked', async () => {
     const page = await openPicker(freshTask({ Priority: 'P1' }), 'Priority');
     try {
-      // '—' is the select's own empty value, which is why it leads the list.
       assert.deepEqual(await rows(page), ['—', 'P0', 'P1', 'P2'], 'nothing is filtered out of a single picker');
       assert.equal(await page.locator('.picker-row .chip-pop-check').count(), 1, 'the current value keeps its ✓');
     } finally { await page.close(); }

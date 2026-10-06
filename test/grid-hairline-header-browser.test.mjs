@@ -1,17 +1,3 @@
-/* The hairline header and the trailing "+" (Feature #240, Kyle 2026-09-27).
-
-   The header was a grey band with rounded top corners, and the add-field "+"
-   sat in the one column with no width of its own, which took whatever the
-   fields left of the card: on a small table the grey ran past the last field
-   to the card's edge, ending in a rounded corner around a lonely "+". The
-   header now sits on the card surface over one hairline, a step stronger
-   than the row rule; the "+" trails the last field and the stretch after it
-   is bare card; on a grid wider than its card the "+" holds at the wrap's
-   right edge. Header behaviour (sticky, resize, reorder, freeze) is gated by
-   its own suites and is not re-tested here; this file asserts the look, in
-   both themes, off computed styles and rendered geometry.
-
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -24,7 +10,6 @@ const s = await launch('hairline grid header', (weave) => {
   small = weave.createTable({ space: 'Look', name: 'Small' });
   weave.addField(small, { name: 'Owner', type: 'text' });
   weave.addField(small, { name: 'Status', type: 'select', config: { options: ['Open', 'Done'] } });
-  // Tall enough that the page scrolls the header into its stuck place.
   for (let i = 0; i < 80; i++) weave.createEntity(small, { name: `row ${i}`, values: { Owner: 'Sam' } });
   wide = weave.createTable({ space: 'Look', name: 'Wide' });
   for (let i = 0; i < 14; i++) weave.addField(wide, { name: `A long column name ${i}`, type: 'text' });
@@ -41,11 +26,7 @@ if (s) {
     await page.waitForTimeout(150);
     return page;
   };
-  /* The page reads its own colours: the surface is #main's ground, and a
-     box-shadow list is split into its layers, each with its colour and
-     whether it is inset. */
   const PROBE = () => {
-    // A color-mix() computes to `color(srgb r g b [/ a])` in 0..1.
     const rgb = (c) => {
       const n = (c.match(/[\d.]+/g) ?? []).map(Number);
       return c.startsWith('color(srgb') ? n.map((v, i) => (i < 3 ? v * 255 : v)) : n;
@@ -55,7 +36,6 @@ if (s) {
     })));
     const lum = ([r, g, b]) => [r, g, b].map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
       .reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
-    // Composite a translucent rule over the surface before judging it.
     const over = (c, bg) => (c.length === 4 ? c.slice(0, 3).map((v, i) => v * c[3] + bg[i] * (1 - c[3])) : c.slice(0, 3));
     const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
     return { rgb, layers, over, contrast };
@@ -183,18 +163,16 @@ if (s) {
         const th = document.querySelector('.wv-grid > thead > tr:last-child > :last-child');
         return P.layers(getComputedStyle(th).boxShadow).filter((l) => !l.inset).length;
       }, PROBE.toString());
-      // The page scrolls a grid that fits its card.
       let page = await open(small, theme);
       try {
         assert.equal(await outer(page), 0, 'no shadow at rest');
-        await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 1500, behavior: 'instant' })); // the page's scroller (Issue #609)
+        await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 1500, behavior: 'instant' }));
         await page.waitForTimeout(150);
         assert.equal(await outer(page), 1, 'a shadow once the page scrolls the rows under it');
         await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 0, behavior: 'instant' }));
         await page.waitForTimeout(150);
         assert.equal(await outer(page), 0, 'and none back at the top');
       } finally { await page.close(); }
-      // A wide grid scrolls in its own wrap.
       page = await open(wide, theme);
       try {
         assert.equal(await outer(page), 0, 'no shadow at rest in a scrolling wrap');

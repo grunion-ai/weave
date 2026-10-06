@@ -10,8 +10,6 @@ test('every table gets a default Description document field', () => {
   const fields = w.documentFields(db);
   assert.equal(fields.length, 1);
   assert.equal(fields[0].name, 'Description');
-  // The name is only the seed. Without the role, this assertion cannot tell
-  // the engine that MEANS it from the one that guessed (test/description-field).
   assert.equal(db.descriptionFieldId, fields[0].id);
 });
 
@@ -35,21 +33,17 @@ test('multiple document fields per entity', () => {
   w.appendDoc(e.id, 'Follow-up item.', 'Meeting Notes');
   assert.equal(w.getDoc(e.id, 'Meeting Notes'), 'Notes from standup\n\nFollow-up item.');
 
-  // Docs are visible in reads, writable via updateEntity like any field.
   const read = w.readEntity(e.id);
   assert.equal(read.docs.Spec, '# Spec\n\nRequirements here.');
-  assert.equal(read.doc, 'Default description body'); // default-field compat
+  assert.equal(read.doc, 'Default description body');
   assert.equal(read.fields.Spec, '# Spec\n\nRequirements here.');
   w.updateEntity(e.id, { Spec: 'replaced' });
   assert.equal(w.getDoc(e.id, 'Spec'), 'replaced');
 
-  // Unknown/non-document fields rejected.
   assert.throws(() => w.getDoc(e.id, 'Name'), /not a document field/);
 
-  // Search covers every document field.
   assert.equal(w.search('standup')[0].name, 'T');
 
-  // Deleting a document field drops its content.
   w.deleteField(tasks, 'Spec');
   assert.throws(() => w.getDoc(e.id, 'Spec'), /not a document field/);
 });
@@ -60,7 +54,6 @@ test('v1 workspace migrates: databases key and entity.doc', () => {
   const t = w1.createTable({ space: 'S', name: 'Item' });
   const e = w1.createEntity(t, { name: 'X', doc: 'legacy body' });
 
-  // Fabricate a v1-shaped dump: tables→databases, docs→doc, no document field.
   const dump = w1.exportJSON();
   dump.version = 1;
   dump.databases = dump.tables;
@@ -101,7 +94,6 @@ test('universalSearch returns permalinks for all kinds', () => {
   assert.match(table.url, /^\/#\/table\//);
   const entity = hits.find((h) => h.kind === 'entity');
   assert.match(entity.url, /^\/e\//);
-  // Workspace name match (a fresh workspace is personal-workspace, Issue #594)
   const ws = w.universalSearch('personal-workspace');
   assert.equal(ws[0].kind, 'workspace');
   assert.equal(ws[0].url, '/');
@@ -109,26 +101,22 @@ test('universalSearch returns permalinks for all kinds', () => {
 
 test('search ranks an exact publicId match above text matches', () => {
   const { w, tasks } = build();
-  const first = w.createEntity(tasks, { name: 'Alpha' });             // #1
-  w.createEntity(tasks, { name: 'Beta' });                            // #2
-  const target = w.createEntity(tasks, { name: 'Ship the release' }); // #3
-  w.createEntity(tasks, { name: 'Contains 3 items', doc: 'mentions 3 twice: 3' }); // #4, text-matches "3"
+  const first = w.createEntity(tasks, { name: 'Alpha' });
+  w.createEntity(tasks, { name: 'Beta' });
+  const target = w.createEntity(tasks, { name: 'Ship the release' });
+  w.createEntity(tasks, { name: 'Contains 3 items', doc: 'mentions 3 twice: 3' });
 
-  // '#3' finds the entity whose number is 3, ranked first.
   const byHash = w.search('#3');
   assert.equal(byHash[0].publicId, target.publicId);
   assert.ok(byHash[0].score > 10, 'id match outranks a name match');
 
-  // A bare number works too, and still beats entities merely containing it.
   const byNum = w.search('3');
   assert.equal(byNum[0].publicId, target.publicId);
   assert.ok(byNum.some((h) => h.name === 'Contains 3 items'), 'text matches still surface');
 
-  // Table-qualified: 'task #1' scopes the id to the named table.
   const scoped = w.search('task #1');
   assert.equal(scoped[0].publicId, first.publicId);
 
-  // A wrong table prefix does not id-match.
   const wrong = w.search('nosuchtable #3');
   assert.ok(!wrong.length || wrong[0].publicId !== target.publicId || wrong[0].score <= 10);
 });
@@ -173,7 +161,7 @@ test('append-doc automation can target a named document field', () => {
   });
   const e = w.createEntity(tasks, { name: 'Widget' });
   assert.equal(w.getDoc(e.id, 'Log'), 'created Widget');
-  assert.equal(w.getDoc(e.id), ''); // Description untouched
+  assert.equal(w.getDoc(e.id), '');
 });
 
 test('HTTP: per-field doc endpoints and universal search', async () => {
@@ -192,7 +180,6 @@ test('HTTP: per-field doc endpoints and universal search', async () => {
     const defaultMd = await (await fetch(`${base}/e/${e.id}/doc.md`)).text();
     assert.equal(defaultMd, 'main body');
 
-    // API doc write to a named field
     await fetch(`${base}/api/entities/${e.id}/doc`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -201,7 +188,6 @@ test('HTTP: per-field doc endpoints and universal search', async () => {
     const got = await (await fetch(`${base}/api/entities/${e.id}/doc?field=Spec`)).json();
     assert.equal(got.doc, 'rewritten');
 
-    // Whole-entity PDF: fields summary + one page per document field.
     const entPdf = Buffer.from(await (await fetch(`${base}/e/${e.id}/entity.pdf`)).arrayBuffer()).toString('latin1');
     assert.ok(entPdf.startsWith('%PDF-1.4'));
     const pageCount = Number(entPdf.match(/\/Count (\d+)/)[1]);
@@ -216,10 +202,6 @@ test('HTTP: per-field doc endpoints and universal search', async () => {
   }
 });
 
-/* A document can be an app. When the stored text is itself a complete HTML
-   document (a slide deck, an interactive figure), the .html endpoint serves
-   it verbatim — no markdown page skeleton around it, no block splitting at
-   blank lines — so its own <style> and <script> run as written. */
 test('HTTP: a document that is an HTML document is served verbatim', async () => {
   const { w, tasks } = build();
   w.addField(tasks, { name: 'Slides', type: 'document' });
@@ -231,11 +213,9 @@ test('HTTP: a document that is an HTML document is served verbatim', async () =>
     const res = await fetch(`${base}/e/${e.id}/doc/Slides.html`);
     assert.match(res.headers.get('content-type'), /text\/html/);
     assert.equal(await res.text(), deck, 'byte-for-byte the stored document');
-    // Markdown documents still get the page skeleton.
     const md = await (await fetch(`${base}/e/${e.id}/doc/Description.html`)).text();
     assert.match(md, /<h1>plain markdown<\/h1>/);
     assert.match(md, /<!doctype html>/i);
-    // The raw .md export is untouched either way.
     assert.equal(await (await fetch(`${base}/e/${e.id}/doc/Slides.md`)).text(), deck);
   } finally {
     server.close();

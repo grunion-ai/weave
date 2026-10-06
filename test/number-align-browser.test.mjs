@@ -1,13 +1,3 @@
-/* Issue #574: a column of amounts reads as one column. A number cell whose
-   costume printed the same text as the raw value (44.22 at two decimals)
-   rested as the bare input, which sat flush left, while 44.20 and 50.00
-   rested as the dressed span on the right; formula and rollup cells holding
-   a number took no right-align at all. Every figure in a numeric column ends
-   on the same right edge, whichever element paints it.
-
-   Issue #575: a Description column with nothing in it opened at 280px, the
-   widest default on the grid, for a column of placeholders. An empty one
-   opens at the text width; one with prose keeps the long-text width. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -44,15 +34,10 @@ if (s) {
     await settle(page);
     return page;
   }
-  /* Where each cell's figure ends, measured against its cell's content box:
-     a text input's glyphs are not boxes, so the input reports where its text
-     is aligned and how much room it leaves; anything else reports the right
-     edge of its painted text. 0 is flush right. */
   const gaps = (page, field) => page.$$eval(`.wv-grid tbody tr.entity-row td[data-field="${field}"]`, (tds) => tds.map((td) => {
     const box = td.getBoundingClientRect();
     const pad = parseFloat(getComputedStyle(td).paddingRight) + parseFloat(getComputedStyle(td).borderRightWidth);
     const input = td.querySelector('input');
-    // The last painted text node: a computed cell leads with its ƒ or Σ mark.
     const walk = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
     let shown = null;
     for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.textContent.trim() && n.parentElement.offsetParent) shown = n;

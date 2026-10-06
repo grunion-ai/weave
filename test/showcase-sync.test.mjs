@@ -1,12 +1,3 @@
-/* Showcase sync: seedFieldShowcase built the Showcase once and returned early
-   when the space existed, so the columns Features #230 (bar, ring, heat),
-   #231 (rating) and #232 (sparkline) added to the seed never reached a docs
-   workspace seeded before them: :4400's Showcase had none of the three.
-   The additions are now data the fresh seed and an existing workspace both
-   go through, and boot applies them once per build (the Handbook sync's
-   shape, Issue #255). Additive and name-matched: a missing field is added
-   beside its anchor, a value lands only in an empty cell, and nothing a
-   person renamed, filled or kept is touched. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -22,9 +13,6 @@ const BIN = join(ROOT, 'bin', 'weave.js');
 const dir = mkdtempSync(join(tmpdir(), 'weave-showcase-sync-'));
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 
-/* The Showcase as a build before Features #230–#232 left it: the base
-   columns and rows, no rating, no graphic display, no list formula, and one
-   cell a person filled in by hand under a name the sync will add. */
 function olderShowcase(w = new Weave()) {
   w.createSpace({ name: 'Showcase' });
   const people = w.createTable({ space: 'Showcase', name: 'People' });
@@ -32,7 +20,7 @@ function olderShowcase(w = new Weave()) {
   const ft = w.createTable({ space: 'Showcase', name: 'Field Types' });
   w.addField(ft, { name: 'Count', type: 'number' });
   w.addField(ft, { name: 'Weight', type: 'number' });
-  w.addField(ft, { name: 'Progress', type: 'number' }); // a person's column, same name
+  w.addField(ft, { name: 'Progress', type: 'number' });
   w.addRelation(ft, { name: 'Peers', targetDb: people, cardinality: 'many-to-many', inverseName: 'Peer of' });
   w.addField(ft, { name: 'Days left', type: 'formula', config: { expression: '1' } });
   const ada = w.createEntity(people, { name: 'Ada Chen', values: { Age: 34 } });
@@ -53,12 +41,10 @@ test('an older Showcase gains the rating, the displays and the sparklines, besid
     assert.ok(field(w, 'Field Types', name), `Field Types gained ${name}`);
   }
   for (const name of ['Skill', 'Joined', 'Delta']) assert.ok(field(w, 'People', name), `People gained ${name}`);
-  // Placed beside the anchor, not dumped on the end.
   const ft = w.getTable('Showcase/Field Types');
   const order = ft.fieldOrder.map((id) => ft.fields[id].name);
   assert.equal(order[order.indexOf('Weight') + 1], 'Progress', 'the person\'s Progress keeps its place after Weight');
   assert.ok(order.indexOf('Age trend') > order.indexOf('Days left'), 'the sparklines sit after the formulas');
-  // Values fill empty cells only, on the rows the seed names.
   assert.equal(row(w, 'People', 'Ada Chen').values[field(w, 'People', 'Skill').id], 5);
   assert.equal(row(w, 'Field Types', 'Sensor board').values[field(w, 'Field Types', 'Fit').id], 4);
   const sensor = w.readEntity(row(w, 'Field Types', 'Sensor board').id).fields;

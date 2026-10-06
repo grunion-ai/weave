@@ -1,14 +1,3 @@
-/* A block command on a line that already has text (Issue #455).
-
-   Kyle, 2026-09-28: a heading line, then /task, left the heading where it was
-   and put a "To do" placeholder under it. The menu handed Vditor a fixed
-   string and nothing read the line. Now a line-prefix command travels as a
-   marker, and the line that holds the marker is rewritten as markdown: the old
-   block marker comes off, the new one goes on, the words stay.
-
-   The rewrite is pure (line in, command in, line out) and lives in
-   public/editor-lib.js, so it is tested here without a DOM. What Vditor and
-   Lute do with the result is test/slash-commands.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -21,8 +10,6 @@ const LIB = globalThis.WeaveEditorLib;
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 
 const M = (kind) => LIB.blockMarker(kind);
-
-/* ---------- one line ---------- */
 
 test('a paragraph becomes a task, a quote, a list item or a heading', () => {
   assert.equal(LIB.convertLine('Buy milk', 'task'), '- [ ] Buy milk');
@@ -38,7 +25,6 @@ test('the old block marker comes off before the new one goes on', () => {
   assert.equal(LIB.convertLine('- [ ] Plan', 'h2'), '## Plan', 'task to heading');
   assert.equal(LIB.convertLine('- [x] Done', 'h2'), '## Done', 'a checked box goes with its marker');
   assert.equal(LIB.convertLine('- [X] Done', 'bullet'), '- Done');
-  // Lute writes a task item back with two spaces after the box.
   assert.equal(LIB.convertLine('- [ ]  Plan', 'h3'), '### Plan');
   assert.equal(LIB.convertLine('- item', 'number'), '1. item', 'bulleted to numbered');
   assert.equal(LIB.convertLine('* item', 'number'), '1. item');
@@ -63,7 +49,6 @@ test('inline marks ride along untouched', () => {
   const line = '**Buy** `milk` and [eggs](https://example.com) for [[Task#12|the cake]]';
   assert.equal(LIB.convertLine(line, 'task'), `- [ ] ${line}`);
   assert.equal(LIB.convertLine(`## ${line}`, 'quote'), `> ${line}`);
-  // A line that opens on emphasis is not a bulleted list, and a #tag is not a heading.
   assert.equal(LIB.convertLine('*soon* and **now**', 'bullet'), '- *soon* and **now**');
   assert.equal(LIB.convertLine('**now**', 'h2'), '## **now**');
   assert.equal(LIB.convertLine('#tag first', 'task'), '- [ ] #tag first');
@@ -95,8 +80,6 @@ test('an unknown command changes nothing', () => {
   assert.equal(LIB.convertLine('## Plan', undefined), '## Plan');
 });
 
-/* ---------- the marker, and the document around the line ---------- */
-
 test('the marker is invisible, names its command, and is found again', () => {
   for (const kind of ['text', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'bullet', 'number', 'task', 'quote']) {
     const marker = M(kind);
@@ -119,7 +102,6 @@ test('only the line that holds the marker is rewritten', () => {
 });
 
 test('the words on both sides of the caret survive', () => {
-  // "Buy milk today", caret before " today", then " /task".
   assert.equal(LIB.convertMarkedLine(`Buy milk ${M('task')} today\n`).md, '- [ ] Buy milk today\n');
   assert.equal(LIB.convertMarkedLine(`${M('h2')} Plan\n`).md, '## Plan\n', 'marker first');
   assert.equal(LIB.convertMarkedLine(`## Plan${M('quote')}\n`).md, '> Plan\n', 'marker glued to the last word');
@@ -139,27 +121,20 @@ test('a nested item converts in place inside its list', () => {
 });
 
 test('a line that stops being a list item is set apart, so it cannot fold into its neighbours', () => {
-  // "- a\nb\n- c" reads b as the tail of item a: the blank lines are what
-  // make b a paragraph of its own.
   assert.deepEqual(LIB.convertMarkedLine(`- a\n- b ${M('text')}\n- c\n`), { md: '- a\n\nb\n\n- c\n', line: 2 });
   assert.deepEqual(LIB.convertMarkedLine(`- a\n- b ${M('h2')}\n- c\n`), { md: '- a\n\n## b\n\n- c\n', line: 2 });
   assert.deepEqual(LIB.convertMarkedLine(`one\ntwo ${M('quote')}\nthree\n`), { md: 'one\n\n> two\n\nthree\n', line: 2 });
-  // Already apart: nothing is added.
   assert.deepEqual(LIB.convertMarkedLine(`a\n\n## b ${M('text')}\n\nc\n`), { md: 'a\n\nb\n\nc\n', line: 2 });
   assert.deepEqual(LIB.convertMarkedLine(`## b ${M('text')}`), { md: 'b', line: 0 }, 'first and last line');
 });
 
 test('a table row and a line of code lose the marker and nothing else', () => {
-  // line -1: nothing was converted, so there is no line to send the caret to.
   assert.deepEqual(LIB.convertMarkedLine(`| a ${M('task')} | b |\n| --- | --- |\n`),
     { md: '| a | b |\n| --- | --- |\n', line: -1 });
   assert.deepEqual(LIB.convertMarkedLine(`\`\`\`\nconst a = 1; ${M('h1')}\n\`\`\`\n`),
     { md: '```\nconst a = 1;\n```\n', line: -1 });
-  // A closed fence above the line is prose again.
   assert.equal(LIB.convertMarkedLine(`\`\`\`\ncode\n\`\`\`\n\nPlan ${M('h1')}\n`).md, '```\ncode\n```\n\n# Plan\n');
 });
-
-/* ---------- the menu sends markers for line-prefix commands, and only those ---------- */
 
 const ITEMS = APP.slice(APP.indexOf('function slashItems'), APP.indexOf('function entityReference'));
 const insertOf = (label) => ITEMS.match(new RegExp(`label: '${label}'[^\\n]*?insert: ([^\\n]*?) \\},?\\n`))?.[1];
@@ -184,9 +159,6 @@ test('blocks that are not a line prefix still insert', () => {
 });
 
 test('the editor rewrites the marked line as it lands, puts the caret at its end and saves', () => {
-  /* Not from Vditor's input event: that runs on an 800ms timer which also
-     feeds the undo stack, so the marker would sit in the line for most of a
-     second and then come back on every undo. */
   const watch = APP.slice(APP.indexOf('function watchBlockMarkers'), APP.indexOf('function convertBlockLine'));
   assert.match(watch, /new MutationObserver\(/, 'a marker is seen the moment it is in the surface');
   assert.match(watch, /convertBlockLine\(host, editor, onInput\)/);

@@ -1,8 +1,3 @@
-/* Feature #261, the hub half: POST /api/spaces/:id/use on the source
-   workspace's API copies a template space into another workspace of the hub,
-   GET /api/templates lists them, and weave_template_use over HTTP MCP reaches
-   the same door. The caller reads the source and must be an architect on the
-   target. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -49,7 +44,6 @@ test('POST /api/spaces/:id/use copies the schema into the named workspace and an
     const schema = await (await fetch(`${base}/w/acme/api/schema`)).json();
     assert.ok(schema.find((s) => s.space === 'Sales'), 'the member serves the new space');
 
-    // The name defaults to the template's; the default workspace's url has no /w/.
     const back = await (await post(`${base}/w/acme/api/spaces/${made.id}/use`, { workspace: 'root', name: 'Sales' })).json();
     assert.equal(back.url, `/#/space/${root.getSpace('Sales').id}`);
     assert.equal((await (await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme' })).json()).space.name, 'CRM');
@@ -68,8 +62,6 @@ test('using a template needs an architect on the target', async () => {
     const editor = root.createAccount({ name: 'ed', role: 'editor' }).token;
     const architect = root.createAccount({ name: 'boss', role: 'architect' }).token;
     acme.createAccount({ name: 'own', role: 'architect' });
-    // Neither root token verifies on acme, which holds accounts of its own:
-    // the target verifies the caller's credential, whatever the source says.
     for (const token of [editor, architect]) {
       const res = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme' }, { Authorization: `Bearer ${token}` });
       assert.equal(res.status, 403);
@@ -89,17 +81,11 @@ test('an observer on the source may use a template into a workspace where it is 
   const { server } = await startServer(root, { port: 0, workspaces: { acme } });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    // A root session opens a member (the hub rule), so one browser session
-    // carries the caller to both: observer here, architect there is the case
-    // a Bearer token cannot make, so the role is set per workspace by account.
     const viewer = root.createAccount({ name: 'vee', role: 'observer' });
     const res = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme' }, { Authorization: `Bearer ${viewer.token}` });
-    // acme holds no account, so anyone may build there.
     assert.equal(res.status, 201, await res.clone().text());
     assert.ok(acme.getSpace('CRM'));
-    // Other writes stay closed to the observer.
     assert.equal((await post(`${base}/api/spaces`, { name: 'Nope' }, { Authorization: `Bearer ${viewer.token}` })).status, 403);
-    // Once acme holds accounts, a caller who is not its architect is refused.
     acme.createAccount({ name: 'own', role: 'architect' });
     const refused = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme', name: 'CRM 2' }, { Authorization: `Bearer ${viewer.token}` });
     assert.equal(refused.status, 403);
@@ -119,7 +105,6 @@ test('weave_template_use over HTTP MCP reaches the hub', async () => {
     const again = await rpc('weave_template_use', { space: 'CRM', workspace: 'acme', name: 'Sales' });
     assert.ok(again.isError);
     assert.match(again.content[0].text, /already has a space named 'Sales'/);
-    // weave_call reaches it too.
     const viaCall = await rpc('weave_call', { name: 'weave_template_use', args: { space: 'CRM', workspace: 'acme', name: 'Sales 2' } });
     assert.ok(!viaCall.isError, viaCall.content[0].text);
   } finally { server.close(); }

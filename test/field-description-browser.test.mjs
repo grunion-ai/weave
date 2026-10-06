@@ -1,10 +1,3 @@
-/* A field's description, where a reader meets it (Issue #209): under the
-   label on the entity page, as the column header's tooltip in the grid, on
-   the folded chip, and in the field tray where it is written.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and
-   the suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

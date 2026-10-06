@@ -1,9 +1,3 @@
-/* The prose a reader meets before the code. Issue #593: the README gave three
-   MCP tool counts and said weave had no authentication while Door C, wv_
-   tokens and three roles shipped; PARITY.md still scored the v0.1 build.
-   Issue #438: the board view went in Issue #75, but the vocabulary, the MCP
-   description, the CLI help and the Handbook kept offering it. Each claim is
-   held against the code here, so the next drift fails the suite. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -34,7 +28,6 @@ test('every tool count in the docs is the count src/mcp.js registers', () => {
   for (const file of DOCS) {
     const text = read(file).replace(/\s+/g, ' ');
     const claims = [
-      // "58 tools", "58 MCP tools"; "about twelve tools" is how many a build uses, not a count
       [/(?<!about )\b([\w-]+) (?:MCP )?tools\b(?! by default)/gi, total],
       [/\b([\w-]+) (?:MCP )?tools by default/gi, core],
       [/\b([\w-]+) listed by default/gi, core],
@@ -81,7 +74,6 @@ test('PARITY.md scores its own table and the build that ships', () => {
   assert.doesNotMatch(parity, /JSON file per workspace|\b23 tools/, 'PARITY.md describes the v0.1 build');
 });
 
-/* Every string an agent reads to decide what to build. */
 const offersBoard = /\bboards?\b/i;
 test('no agent-facing string offers the board view', () => {
   assert.deepEqual(VOCABULARY.viewKinds, ['table']);

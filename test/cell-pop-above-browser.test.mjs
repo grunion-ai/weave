@@ -1,17 +1,3 @@
-/* Issue #346 (supersedes Kyle's #327) — "it blocks click and edit, should
-   show above the row/cell instead" (Kyle, 2026-09-23).
-   The hover expansion of a clipped cell used to open OVER the value: a copy
-   pinned so its text sat exactly on the live text (2026-08-26). The copy is
-   pointer-events: none, so the click reached the cell, but the editor, the
-   caret and every typed character then sat under a static copy of the old
-   value. The rule now:
-     1. the pop opens ABOVE the cell — its bottom edge ~4px over the cell's
-        top, its content on the cell's content left;
-     2. it flips BELOW the row when the room above inside the wrap's visible
-        area is shorter than the pop, so the first rows still get one;
-     3. mousedown or focus inside the grid takes it down, and it never opens
-        over a cell whose control has focus.
-   Geometry and focus, not source: this suite drives a real browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -34,8 +20,6 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody td.name-cell.clipped');
     return page;
   }
-  // The clipped Name cell of body row `n` (0-based), tagged so Playwright can
-  // aim a real pointer at it.
   async function tag(page, n) {
     const ok = await page.evaluate((n) => {
       const rows = [...document.querySelectorAll('.wv-grid tbody tr')]
@@ -49,7 +33,6 @@ if (s) {
     assert.ok(ok, `row ${n} has a clipped name to hover`);
     return page.locator('[data-t="cell"]');
   }
-  // Hover the way a person does, then wait out CELL_POP_DELAY (Issue #67).
   async function hoverAndRead(page, cell) {
     await cell.hover({ position: { x: 30, y: 10 } });
     await page.waitForTimeout(400);
@@ -115,8 +98,6 @@ if (s) {
       await page.mouse.down();
       assert.equal(await page.locator('.cell-pop').count(), 0, 'mousedown takes it down');
       await page.mouse.up();
-      // The pointer rests on the cell while the editor has focus: a fresh
-      // mouseover must not put a copy back over what is being typed.
       await cell.hover({ position: { x: 60, y: 12 } });
       await page.waitForTimeout(400);
       const state = await page.evaluate(() => ({

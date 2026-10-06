@@ -1,9 +1,3 @@
-/* A link that leaves weave opens in a new tab (Kyle, 2026-09-07): a markdown
-   link in a table's description, rendered by the server, opens beside the
-   page rather than over it, and the far page never holds the opener. A
-   route stays a route: the entity link in the same description docks in
-   place. The far host is fulfilled by the test, so nothing leaves the
-   machine. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

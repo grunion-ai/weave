@@ -1,22 +1,3 @@
-/* Chip pickers commit when the page leaves them, and a commit shows at once
-   (Kyle, 2026-09-07, after Issue #135 landed: "this works for the field
-   name; for multi and single select chips it didn't work in the field config
-   tray; also changes do not update quickly enough — lag makes it look like
-   the edit didn't stick").
-
-   Issue #224 — a select writes on the pick; a multi-select stages its picks
-   in the popover and wrote them only on a click-off. Escape, a hash change,
-   a dock swap and a closing tab all removed the popover with the staged
-   picks still in it. commitActiveEdit() blurs inputs — a chip popover is
-   none of those — so every leaving path now commits an open multi picker
-   first, and Escape commits instead of discarding.
-
-   Issue #225 — after a pick the cell kept the old chip until PATCH → GET →
-   re-render finished. The editor already holds the value, so it paints it
-   the moment the pick is made; the round trip reconciles, a failure reverts.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and
-   the suite skips when absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -45,7 +26,6 @@ if (s) {
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     return page;
   };
-  // The entity in the dock beside its table — the tray Kyle edits in.
   const openDocked = async (id = order.id) => {
     const page = await open(`#/table/${orders.id}`);
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -61,13 +41,11 @@ if (s) {
   const stageGreen = async (page, scope = '#dock') => {
     await openMulti(page, scope);
     await row(page, 'green').click();
-    // Staged in the box, not written: the popover is still up.
     assert.equal(await page.locator('.picker-pop .picker-chip', { hasText: 'green' }).count(), 1, 'green is staged in the box');
     assert.deepEqual(stored('Tags'), ['red'], 'nothing written yet');
   };
   test.beforeEach(() => { weave.updateEntity(order.id, { Stage: 'Draft', Tags: ['red'], Vendor: null }); });
 
-  // ---- Issue #224: the pick sticks on every leaving path ----
   test('a select picked in the dock writes on the pick, with no Return', async () => {
     const page = await openDocked();
     await page.click('#dock .fieldrow[data-field="Stage"] .chip-trigger');
@@ -80,7 +58,7 @@ if (s) {
   test('a multi-select staged in the dock writes on click-off', async () => {
     const page = await openDocked();
     await stageGreen(page);
-    await page.click('#dock', { position: { x: 8, y: 120 } }); // the pane's own margin: a click on nothing
+    await page.click('#dock', { position: { x: 8, y: 120 } });
     assert.deepEqual(await settle('Tags', ['red', 'green']), ['red', 'green']);
     await page.close();
   });
@@ -128,7 +106,6 @@ if (s) {
     await page.close();
   });
 
-  // ---- Issue #225: the committed value shows at once ----
   const slowPatch = async (page, { status = 200, ms = 1500 } = {}) => {
     let release;
     const held = new Promise((r) => { release = r; });

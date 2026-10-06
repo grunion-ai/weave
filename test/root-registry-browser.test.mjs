@@ -1,8 +1,3 @@
-/* Feature #219, slice c (page half) — the registry at the root, on screen.
-   A member workspace's sidebar lists only its own spaces; its grids still
-   draw the Σ row and its picker still adds a space rollup, now on the root
-   Spaces table; the root's Tables grid carries a Workspace column and a row
-   from another workspace deep-links into that workspace. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -19,8 +14,6 @@ const s = await launch('root registry', (root) => {
   sessions = uno.createTable({ space: 'Agent', name: 'Sessions' });
   uno.addField(sessions, { name: 'Cost', type: 'number' });
   for (const [n, c] of [['a', 1.5], ['b', 2.5]]) uno.createEntity('Sessions', { name: n, values: { Cost: c } });
-  // The Σ row is off until a table asks for it (Issue #249); this one asks,
-  // because the case below is about where its rollup lands, not the default.
   uno.updateTable(sessions.id, { hideRollups: false });
 }, { server: () => ({ workspaces: { uno } }) });
 
@@ -63,7 +56,6 @@ if (s) {
     await page.waitForSelector('tbody tr');
     const headers = await page.locator('thead th').allInnerTexts();
     assert.ok(headers.some((h) => /workspace/i.test(h)), `no Workspace column: ${headers.join(' | ')}`);
-    // The Name cell is an editor, not text: pick rows by their Workspace chip.
     const row = page.locator('tbody tr', { hasText: 'uno' }).first();
     const href = await row.locator('a.open-link').getAttribute('href');
     assert.equal(href, `/w/${uno.state.meta.id}/#/table/${sessions.id}`);

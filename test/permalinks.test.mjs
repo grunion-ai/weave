@@ -4,13 +4,6 @@ import { Weave } from '../src/engine.js';
 import { createServer } from '../src/server.js';
 import { fresh } from './lib/fixtures.mjs';
 
-/* The universal reference rule (Kyle, 2026-08-24): every entity — the
-   workspace itself, spaces, tables, rows — is REFERENCED by its unique id
-   and carries an id-based permalink. Names are display labels: rename
-   anything and every stored reference and every permalink still resolves.
-   This is what makes the model extensible — new kinds get durable identity
-   for free by following the same rule. */
-
 const listen = (srv) => new Promise((res) => srv.listen(0, '127.0.0.1', () => res(srv.address().port)));
 const req = async (port, path, opts = {}) => {
   const r = await fetch(`http://127.0.0.1:${port}${path}`, {
@@ -19,7 +12,7 @@ const req = async (port, path, opts = {}) => {
   });
   const text = await r.text();
   let json = null;
-  try { json = JSON.parse(text); } catch { /* html */ }
+  try { json = JSON.parse(text); } catch {}
   return { status: r.status, json, text };
 };
 
@@ -27,14 +20,12 @@ test('the workspace itself has a unique id, minted once and kept forever', () =>
   const w = fresh();
   const id = w.state.meta.id;
   assert.match(id, /^[0-9a-f-]{36}$/, 'a uuid');
-  // The id survives the interchange format and a rename.
   const json = w.exportJSON();
   const w2 = new Weave();
   w2.importJSON(json);
   assert.equal(w2.state.meta.id, id, 'import keeps the identity');
   w2.state.meta.name = 'renamed';
   assert.equal(w2.state.meta.id, id, 'a rename never touches it');
-  // A legacy workspace without one grows one on load.
   delete json.meta.id;
   const w3 = new Weave();
   w3.importJSON(json);
@@ -47,7 +38,6 @@ test('every level answers to its id and reports an id-based permalink', () => {
   const db = w.getTable('Task');
   const row = w.createEntity(db.id, { Name: 'ship' });
 
-  // ids resolve regardless of names…
   w.updateSpace(space.id, { name: 'Engineering' });
   w.updateTable(db.id, { name: 'Story' });
   w.updateEntity(row.id, { Name: 'ship it' });
@@ -55,7 +45,6 @@ test('every level answers to its id and reports an id-based permalink', () => {
   assert.equal(w.getTable(db.id).name, 'Story');
   assert.equal(w.readEntity(row.id).name, 'ship it');
 
-  // …and every read carries the permalink, built from the id alone.
   assert.equal(w.readEntity(row.id).url, `/e/${row.id}`);
   const schema = w.describeSchema();
   const sp = schema.find((x) => x.spaceId === space.id);
@@ -84,7 +73,6 @@ test('/w/<workspace-id>/ routes to the workspace, before and after a rename', as
     assert.equal(byId.status, 200);
     assert.equal(byId.json.id, id);
 
-    // Rename through the API: the name alias moves, the id URL never does.
     const oldName = w.state.meta.name;
     await req(port, '/api/workspace', { method: 'PATCH', body: JSON.stringify({ name: 'renamedws' }) });
     const still = await req(port, `/w/${id}/api/workspace`);
@@ -116,14 +104,12 @@ test('mentions resolve by id, so a rename never breaks a document', () => {
   w.setDoc(doc.id, `See [[${row.id}]] and [[table:${db.id}]] and [[space:${w.getSpace('Dev').id}]].`);
 
   const before = w.readEntity(doc.id);
-  // Rename everything the mentions point at.
   w.updateEntity(row.id, { Name: 'ship it' });
   w.updateTable(db.id, { name: 'Story' });
   w.updateSpace('Dev', { name: 'Engineering' });
 
-  // The doc text is untouched (ids), and resolution follows the renames.
   assert.equal(w.readEntity(doc.id).docs.Description, before.docs.Description);
-  const html = w.renderDoc ? null : null; // resolution is exercised through the server below
+  const html = w.renderDoc ? null : null;
 });
 
 test('the server renders id mentions as live links with the CURRENT names', async () => {
@@ -144,17 +130,10 @@ test('the server renders id mentions as live links with the CURRENT names', asyn
   } finally { srv.close(); }
 });
 
-/* ---------- rich link previews (Feature #264) ----------
-   The uuid stays the address; the preview does the reading. A permalink
-   answers 200 with the app shell and a server-rendered head that a link
-   fetcher (Slack, Messages, iMessage) reads without running script, then
-   the shell moves itself to the hash route the app already knows. */
-
 const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 const SVG_LOGO = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>').toString('base64');
 
 const decode = (s) => s.replace(/&#10;/g, '\n').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-// The content of <meta property|name="key" content="…">, decoded; null when absent.
 const metaOf = (html, key) => {
   const m = html.match(new RegExp(`<meta (?:property|name)="${key.replace(/[.:]/g, '\\$&')}" content="([^"]*)"`));
   return m ? decode(m[1]) : null;
@@ -162,8 +141,6 @@ const metaOf = (html, key) => {
 const titleOf = (html) => decode(html.match(/<title>([^<]*)<\/title>/)?.[1] ?? '');
 const routeOf = (html) => { const m = html.match(/<meta name="weave-route" content="([^"]*)"/); return m ? decode(m[1]) : null; };
 
-/* A docs-shaped member workspace, Acme Docs › Development › Issue, beside
-   the default one, so every address carries a /w/<slug> prefix. */
 function previewHub({ requireAuth = false } = {}) {
   const root = fresh();
   const w = new Weave();
@@ -214,7 +191,6 @@ test('an entity permalink answers 200 with the shell and the exact preview head'
       [['Status', 'Fixed'], ['Severity', 'Medium'], ['Symptom', 'Wrong data']]);
     assert.equal(metaOf(html, 'twitter:label4'), null, 'the preview fields stop at three');
     assert.match(html, /<link rel="icon"/);
-    // The jump: the hash route the app knows, by the shell's own script.
     assert.equal(routeOf(html), `/w/acme-docs/#/entity/${s.row.id}`);
     assert.match(html, /<script src="\/permalink\.js[^"]*"><\/script>/);
     assert.match(html, /id="app"/, 'the app shell itself, so a person lands with no second request');
@@ -289,10 +265,8 @@ test('the workspace root carries the head with the workspace title and no jump',
     assert.equal(metaOf(r.text, 'og:description'), '1 space · 1 table');
     assert.equal(metaOf(r.text, 'og:url'), `${s.base}/w/acme-docs/`);
     assert.equal(routeOf(r.text), null, 'the root is already where the app lives');
-    // The description, when the workspace has one, says what it is.
     s.w.updateWorkspace({ description: 'The **docs** for Acme.\n\nMore below.' });
     assert.equal(metaOf((await s.get('/w/acme-docs/')).text, 'og:description'), 'The docs for Acme.');
-    // The shell keeps a validator drawn from what it served (Issue #313).
     const again = await s.get('/w/acme-docs/', { 'If-None-Match': r.headers.get('etag') });
     assert.equal(again.status, 200, 'the head changed, so the old validator no longer matches');
   } finally { s.srv.close(); }
@@ -329,9 +303,6 @@ test('og:image is the workspace logo when it is raster, the bundled mark otherwi
   } finally { s.srv.close(); }
 });
 
-/* ---------- the wall and Link preview before sign-in ---------- */
-
-// A provider is configured, so a signed-out browser is sent to sign in.
 const PROVIDER = { name: 'TestID', issuer: 'https://id.example.com' };
 
 test('the wall: with the setting off an anonymous permalink is a 302 to sign-in and no meta', async () => {
@@ -363,19 +334,15 @@ test('the wall: with the setting on an anonymous permalink gets the head only, t
     assert.match(r.text, /data-sign-in/);
     assert.ok(!/id="app"|\/app\.js/.test(r.text), 'no app shell: nothing runs that would call the API');
     assert.ok(!r.text.includes('classified-detail'), 'no field past the preview reaches the page');
-    // The logo the head names is readable by the fetcher that reads the head.
     const logo = await fetch(metaOf(r.text, 'og:image'));
     assert.equal(logo.status, 200);
     assert.equal(logo.headers.get('content-type'), 'image/png');
-    // Spaces, tables and the root preview the same way.
     assert.equal(metaOf((await s.get(`/w/acme-docs/s/${s.space.id}`)).text, 'og:title'), 'Development · space');
     assert.equal(metaOf((await s.get(`/w/acme-docs/t/${s.issue.id}`)).text, 'og:title'), 'Development / Issue · table');
     assert.equal(metaOf((await s.get('/w/acme-docs/')).text, 'og:title'), 'Acme Docs');
-    // Everything else stays walled: the API, the documents, an unknown ref.
     assert.equal((await s.get('/w/acme-docs/api/schema')).status, 401);
     assert.equal((await s.get(`/w/acme-docs/e/${s.row.id}/doc.html`)).status, 302);
     assert.equal((await s.get('/w/acme-docs/e/00000000-0000-4000-8000-000000000000')).status, 302, 'a miss says nothing either way');
-    // Table#n counts up from 1: signed out, it would list every row's name.
     assert.equal((await s.get('/w/acme-docs/e/Issue%231')).status, 302, 'only the unguessable uuid form previews signed out');
   } finally { s.srv.close(); }
 });

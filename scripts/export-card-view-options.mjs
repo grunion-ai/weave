@@ -1,24 +1,4 @@
 #!/usr/bin/env node
-/* docs/mockups/card-view-options.html — fifteen card-view options for one
-   Development/Issue row (Feature #181 A–E, Feature #184 F–O), every field
-   value drawn as the SAME chip the table cell and the entity view use, light
-   and dark side by side, a comparison matrix at the top and a note at the
-   foot on which options are the shipped renderer under a different Card
-   config and which need a new shape.
-
-   Kyle, 2026-09-05: "Need mockups of card view options. Need to show field
-   chips the same way we do in table and entity view, but within cards."
-   Then, after A–E: "I want more variations of card view options."
-
-   The chip CSS is not copied by hand: chipCss() lifts the live rules out of
-   public/style.css (the same lift the anatomy export uses), so a token change
-   moves the mockup too, and test/handbook.test.mjs fails when the checked-in
-   file no longer matches a fresh run. Card contract kept per option:
-   { shape: 'card', link, state, description: none|small|medium|large,
-   fields }. 4px radius; no fill behind a pointer chip.
-
-     node scripts/export-card-view-options.mjs            # writes the file
-     node scripts/export-card-view-options.mjs --stdout   # prints it */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -27,9 +7,6 @@ import { chipCss } from './export-chip-card-anatomy.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'mockups', 'card-view-options.html');
 
-/* Option O wears the edit costume, so the picker rules ride along too — the
-   same lift chipCss does, over the selectors the one selection dialect and
-   the date control use. Lifted, not copied, for the same reason. */
 const PICKER_SELECTORS = /^(\.picker-|\.chip-pop|\.date-pick-btn|\.date-text)/;
 export function pickerCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8')) {
   const out = [];
@@ -41,7 +18,6 @@ export function pickerCss(css = readFileSync(join(ROOT, 'public/style.css'), 'ut
   return out.join('\n');
 }
 
-/* ---- the row: Issue #193 as it stands in the weave workspace ---- */
 const ROW = {
   id: '#193',
   name: 'Collapsible chip: retract caret points down; it should face the text',
@@ -60,9 +36,6 @@ const ROW = {
   ],
 };
 
-/* Facts Issue #193 does not carry but H, N and L call for. Borrowed from the
-   tables that do (a person relation, a date range, a many-relation), so the
-   mockup is honest about where each chip comes from. */
 const EXTRA = {
   owner: { label: 'Owner', kind: 'person', value: 'Kyle Adriany', initials: 'KA', hue: 'teal', home: 'People' },
   due: { label: 'Due', kind: 'date', value: '2026-09-12' },
@@ -71,7 +44,6 @@ const EXTRA = {
   table: { name: 'Issue', icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>' },
 };
 
-/* ---- the chips: exactly the classes app.js emits for a cell ---- */
 const stateChip = (s) => `<span class="k k-state cat-${s.category} hue-${s.hue}"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>${s.name}</span>`;
 const selectChip = (f) => `<span class="k k-select hue-${f.hue}">${f.value}</span>`;
 const multiChips = (f) => f.values.map((v) => `<span class="k k-multi hue-${v.hue}">${v.value}</span>`).join(' ');
@@ -85,10 +57,7 @@ const labelled = (f) => `<span class="wv-cf"><span class="wv-cf-l">${f.label}</s
 const title = (link = true, wrapName = false) => `<a class="wv-card-title" href="#" onclick="return false">${link ? `<span class="wv-card-id">${ROW.id}</span>` : ''}${wrapName ? `<span class="wv-card-name">${ROW.name}</span>` : ROW.name}</a>`;
 const desc = (size) => (size === 'none' ? '' : `<div class="wv-card-desc wv-desc-${size}">${ROW.description[size]}</div>`);
 
-/* ---- round-2 costumes: the picker as app.js draws it, the range bar ---- */
 const rangeBar = (r) => `<div class="wv-range-bar" aria-label="${r.from} to ${r.to}"><span class="wv-range-tick">${r.fromShort}</span><span class="wv-range-fill"></span><span class="wv-range-tick">${r.toShort}</span></div>`;
-/* A chip in its edit costume: the picker box the cell becomes on click, the
-   chosen chip(s) inside ahead of the caret, the search input bare. */
 const editBox = (chips, placeholder = 'Search…') => `<div class="picker-box"><span class="picker-chips">${chips}</span><input class="picker-search" placeholder="${placeholder}" type="text" readonly></div>`;
 const editSelect = (f) => editBox(`<span class="k k-select hue-${f.hue} picker-chip">${f.value}<span class="x" title="Remove">×</span></span>`);
 const editMulti = (f) => editBox(f.values.map((v) => `<span class="k k-multi hue-${v.hue} picker-chip">${v.value}<span class="x" title="Remove">×</span></span>`).join(''));
@@ -96,11 +65,9 @@ const editRel = (f) => editBox(`<span class="k k-multi hue-slate picker-chip">${
 const editDate = (f) => `<div class="picker-box wv-date-edit"><input class="picker-search date-text" value="${f.value}" readonly><button class="date-pick-btn" type="button" aria-label="Pick a date">${dateChip({ value: '' }).replace(/<\/?span[^>]*>/g, '')}</button></div>`;
 const editState = (s) => editBox(`<span class="k k-state cat-${s.category} hue-${s.hue} picker-chip sel"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>${s.name}</span>`);
 const editChip = (f) => ({ select: editSelect, multi: editMulti, relation: editRel, date: editDate })[f.kind](f);
-/* The one picker that is open: Severity, Low is current, the caret on Medium. */
 const pickerOpen = (f, rows) => `<div class="chip-pop picker-pop wv-pop-inline"><div class="picker-title">${f.label}</div>${editSelect(f)}<div class="picker-list">${rows.map((r, i) => `<button class="chip-pop-row picker-row${i === 1 ? ' active' : ''}" type="button"><span class="picker-num">${i + 1}</span><span class="k k-select hue-${r.hue}">${r.value}</span>${r.value === f.value ? '<span class="chip-pop-check">✓</span>' : ''}</button>`).join('')}</div></div>`;
 const SEVERITIES = [{ value: 'Low', hue: 'green' }, { value: 'Medium', hue: 'amber' }, { value: 'High', hue: 'orange' }, { value: 'Blocking', hue: 'red' }];
 
-/* ---- the five options ---- */
 const OPTIONS = [
   {
     key: 'A', name: 'Header line', config: { link: true, state: true, description: 'small', fields: null },
@@ -145,7 +112,6 @@ const OPTIONS = [
   <div class="wv-card-foot wv-foot-labelled">${ROW.fields.map(labelled).join('')}</div>
 </div>`,
   },
-  /* ---- round 2 (Feature #184): axes A–E did not touch ---- */
   {
     key: 'F', name: 'Cover card', config: { link: true, state: true, description: 'small', fields: null }, renderer: 'new shape',
     optimises: 'a gallery read from across the room — the state owns a colour band across the top (an attachment thumbnail would take the same slot), so the column of cards reads as a heat map before a single word is read.',
@@ -247,7 +213,6 @@ const OPTIONS = [
   },
 ];
 
-/* ---- the matrix: options × the axes the brief names ---- */
 const MATRIX = {
   A: ['header line', 'medium', 'no', '+N in the head', 'chip in the head', 'small', 'config'],
   B: ['footer row', 'medium', 'no', '+N in the foot', 'chip in the head', 'medium', 'config'],
@@ -269,7 +234,6 @@ const AXES = ['Field placement', 'Density', 'Labels', 'Overflow', 'State', 'Desc
 
 const cfg = (c) => `{ shape: 'card', link: ${c.link}, state: ${c.state}, description: '${c.description}', fields: ${c.fields ? JSON.stringify(c.fields).replace(/"/g, "'") : 'null'} }`;
 
-/* ---- the page ---- */
 const TOKENS = `
 :root { --bg: #ecebe6; --fg: #1a1d23; --muted: #6b7280; --line: #d9d6ce; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
 [data-bs-theme="light"] {

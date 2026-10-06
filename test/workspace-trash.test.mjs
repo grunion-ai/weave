@@ -1,13 +1,3 @@
-/* Workspace trash (lifecycle regression gate, Phase 0b).
-
-   A workspace can now be deleted and restored like everything inside it.
-   The delete is a hub-level tombstone written into the workspace's own meta
-   (so it survives restarts and rescans): the workspace drops out of the hub
-   list and the switcher, but its .db file is untouched and its URL still
-   answers — the readable-by-id rule structures and entities already follow.
-   There is deliberately NO hard delete here: removing a .db file is a human
-   filesystem act, not an API call. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -48,11 +38,9 @@ test('a deleted workspace leaves the hub list but keeps its file and its URL', a
     assert.ok(!(await api('GET', '/api/workspaces')).data.some((w) => w.name === 'scratch'),
       'the hub list must hide the trash');
 
-    // The trash is visible when asked for, carrying its deletion time.
     const trashed = (await api('GET', '/api/workspaces?deleted=1')).data.find((w) => w.name === 'scratch');
     assert.ok(trashed?.deletedAt, 'the trashed workspace shows with ?deleted=1');
 
-    // Readable by URL, like a trashed entity is readable by id.
     assert.equal((await api('GET', '/w/scratch/api/health')).status, 200);
   });
 });
@@ -61,11 +49,10 @@ test('restore brings the workspace back to the list; delete is idempotent', asyn
   await withHub(async ({ api }) => {
     await api('POST', '/api/workspaces', { name: 'scratch' });
     await api('DELETE', '/api/workspaces/scratch');
-    await api('DELETE', '/api/workspaces/scratch'); // idempotent, no error
+    await api('DELETE', '/api/workspaces/scratch');
 
     assert.equal((await api('POST', '/api/workspaces/scratch/restore')).status, 200);
     assert.ok((await api('GET', '/api/workspaces')).data.some((w) => w.name === 'scratch'));
-    // Restoring a live workspace is a no-op, not an error.
     assert.equal((await api('POST', '/api/workspaces/scratch/restore')).status, 200);
   });
 });
@@ -116,8 +103,6 @@ test('a deleted name cannot be re-created while it sits in the trash', async () 
   });
 });
 
-/* Issue #190: the UI needs to know which rows it may offer a delete on, and
-   it addresses workspaces by durable id, so the routes must take the id. */
 test('the hub list says which workspaces are deletable: never the default, never weave', async () => {
   await withHub(async ({ api }) => {
     await api('POST', '/api/workspaces', { name: 'scratch' });

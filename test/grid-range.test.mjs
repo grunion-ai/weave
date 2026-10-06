@@ -1,18 +1,3 @@
-/* Grid ranges — the pure half (Feature #220).
-
-   Kyle, 2026-09-09: "I need a better way to select, drag to duplicate, copy
-   or paste values — like single or multi select dropdowns — across cells."
-
-   #134 made the cell rest as a value and #132 gave a selection of ROWS one
-   write (`bulk`). This is the rectangle between them: a range of cells, the
-   fill that drags one value across it, and the clipboard that carries typed
-   values rather than strings. No DOM here — a rectangle, a block of cells
-   and a table's field types resolve to the writes `bulk set` will make and
-   the field names that refused them.
-
-   The DOM half (drag, the handle, ⌘C/⌘V) is pinned in
-   test/grid-range-browser.test.mjs; the ⇧-arrow half of the keymap in
-   test/grid-keymap.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -20,7 +5,6 @@ await import('../public/selection-core.js');
 await import('../public/grid-range.js');
 const R = globalThis.WeaveGridRange;
 
-/* A table to plan against: three columns the grid can write, one it cannot. */
 const FIELDS = {
   Name: { type: 'text' },
   Kind: { type: 'select', options: [{ id: 'o-bug', name: 'bug' }, { id: 'o-chore', name: 'chore' }] },
@@ -34,8 +18,6 @@ const optionsOf = (n) => FIELDS[n]?.options ?? [];
 const cols = ['Name', 'Kind', 'Tags', 'Done', 'Score', 'Total'];
 const rowIds = ['e1', 'e2', 'e3', 'e4'];
 const ctx = { fields: cols, rowIds, typeOf, optionsOf };
-
-/* ── the rectangle ─────────────────────────────────────────────────────── */
 
 test('a rectangle is the two corners in either order', () => {
   assert.deepEqual(R.rect({ r: 2, c: 3 }, { r: 0, c: 1 }), { r0: 0, c0: 1, r1: 2, c1: 3 });
@@ -62,8 +44,6 @@ test('has() answers for a cell inside and outside', () => {
   assert.equal(R.has(rect, 2, 3), false);
 });
 
-/* ── ⇧-arrows grow it; the anchor holds ────────────────────────────────── */
-
 test('⇧-arrow moves the focus and leaves the anchor where it was', () => {
   const out = R.extend({ anchor: { r: 1, c: 1 }, focus: { r: 1, c: 1 }, dr: 1, dc: 0, rows: 4, cols: 6 });
   assert.deepEqual(out, { anchor: { r: 1, c: 1 }, focus: { r: 2, c: 1 } });
@@ -81,8 +61,6 @@ test('⇧-arrow at the edge holds rather than leaking out of the grid', () => {
   assert.equal(R.extend({ anchor: { r: 0, c: 0 }, focus: { r: 0, c: 0 }, dr: -1, dc: 0, rows: 4, cols: 6 }), null);
   assert.equal(R.extend({ anchor: { r: 3, c: 5 }, focus: { r: 3, c: 5 }, dr: 0, dc: 1, rows: 4, cols: 6 }), null);
 });
-
-/* ── what a copy carries ───────────────────────────────────────────────── */
 
 const valueAt = (r, c) => {
   const grid = [
@@ -122,8 +100,6 @@ test('empty text is no block at all rather than a block of one blank', () => {
   assert.equal(R.parseTSV('   \n  '), null);
 });
 
-/* ── where a paste lands ───────────────────────────────────────────────── */
-
 test('a paste onto one cell takes the block’s own shape from there', () => {
   const b = R.parseTSV('a\tb\nc\td');
   assert.deepEqual(R.target({ rect: { r0: 1, c0: 1, r1: 1, c1: 1 }, block: b, rows: 4, cols: 6 }),
@@ -150,8 +126,6 @@ test('tiling repeats the block across a wider target, row-major', () => {
   assert.equal(R.at(b, 3, 5).v, 'b');
 });
 
-/* ── the fill handle ───────────────────────────────────────────────────── */
-
 test('the handle drags down or across, whichever it moved further', () => {
   const rect = { r0: 0, c0: 0, r1: 0, c1: 0 };
   assert.deepEqual(R.fillTarget(rect, { r: 3, c: 1 }), { r0: 0, c0: 0, r1: 3, c1: 0 }, 'down');
@@ -163,8 +137,6 @@ test('the handle dragged back into the range, or up and left of it, fills nothin
   assert.equal(R.fillTarget(rect, { r: 2, c: 2 }), null);
   assert.equal(R.fillTarget(rect, { r: 0, c: 0 }), null);
 });
-
-/* ── the plan: what bulk will write, and what refused ──────────────────── */
 
 test('a fill of a select column down four rows writes the option ID four times', () => {
   const b = R.block({ rect: { r0: 0, c0: 1, r1: 0, c1: 1 }, fields: cols, valueAt });
@@ -207,7 +179,6 @@ test('a formula column refuses the paste and is named — the bulk precedent', (
 });
 
 test('a refusal takes only its own column: the rest of the block still lands', () => {
-  // Score (number) then Total (formula), side by side.
   const plan = R.plan({ block: R.parseTSV('1\tx\n2\ty'), rect: { r0: 0, c0: 4, r1: 1, c1: 5 }, ...ctx });
   assert.deepEqual(plan.refused, ['Total']);
   assert.deepEqual(plan.writes.map((w) => [w.eid, w.field, w.value]),
@@ -226,10 +197,7 @@ test('every unwritable type refuses, and the pasteable list is the settable one'
   }
 });
 
-/* ── the rules the types force ─────────────────────────────────────────── */
-
 test('a select id that the target field does not hold falls back to the label', () => {
-  // A block copied from another table: the option id is a stranger here.
   const far = { fields: ['Kind'], w: 1, h: 1, cells: [[{ type: 'select', v: 'far-id', d: 'chore' }]] };
   const plan = R.plan({ block: far, rect: { r0: 0, c0: 1, r1: 0, c1: 1 }, ...ctx });
   assert.equal(plan.writes[0].value, 'chore', 'matched on label, for the engine to resolve or refuse');
@@ -284,8 +252,6 @@ test('an empty cell pastes as empty rather than as the string “null”', () =>
   assert.equal(plan.writes[0].value, null);
 });
 
-/* ── what the toast says ───────────────────────────────────────────────── */
-
 test('the toast counts the cells that landed and names every column that refused', () => {
   const t = R.toast({ verb: 'Pasted', cells: 6, refused: ['Total'], unparsed: 0, results: [{ done: ['a', 'b'], failed: [] }] });
   assert.equal(t.err, false);
@@ -310,8 +276,6 @@ test('nothing to write says so instead of claiming a paste', () => {
   assert.match(t.msg, /Nothing pasted/);
   assert.match(t.msg, /Total/);
 });
-
-/* ── a relation links by name (Feature #224) ───────────────────────────── */
 
 const PEOPLE = [
   { id: 'p-ann', name: 'Ann', publicId: 1 },

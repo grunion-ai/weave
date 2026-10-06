@@ -1,8 +1,3 @@
-/* Kyle's three roles (2026-10-02): "Observer (free) can only view and
-   comment, Editor (paid seat) can view and create/edit entities, Architect
-   (paid) everything including create delete edit workspace spaces tables,
-   field definitions". They replace reader / writer / admin, which stay
-   accepted as input for one release and are rewritten on every open. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -60,7 +55,6 @@ test('migration: an account and its wv_ token stored under an old role name are 
     const a = new Weave({ path });
     const tokens = {};
     for (const [name, role] of [['boss', 'architect'], ['bot', 'editor'], ['eye', 'observer']]) tokens[name] = a.createAccount({ name, role }).token;
-    // What a pre-rename weave left on disk.
     const old = { boss: 'admin', bot: 'writer', eye: 'reader' };
     for (const acc of Object.values(a.state.meta.accounts)) acc.role = old[acc.name];
     a.save();
@@ -70,7 +64,6 @@ test('migration: an account and its wv_ token stored under an old role name are 
     assert.equal(b.verifyToken(tokens.bot).role, 'editor');
     assert.equal(b.verifyToken(tokens.boss).role, 'architect');
     b.store.close?.();
-    // The rewrite was saved, not just read through.
     const c = new Weave({ path });
     assert.deepEqual(Object.values(c.state.meta.accounts).map((x) => x.role).sort(), ['architect', 'editor', 'observer']);
   } finally { rmSync(dir, { recursive: true, force: true }); }

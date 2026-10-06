@@ -4,10 +4,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../src/engine.js';
 import { CFStore } from '../src/store-cf.js';
 
-/* A node-side shim of a Durable Object's ctx.storage: the same synchronous
-   sql.exec(query, ...bindings) + transactionSync(fn) surface, backed by
-   node:sqlite. This proves the adapter's logic; gate G2 re-runs the same
-   contract under `wrangler dev` (workerd) before anything deploys. */
 function shimStorage() {
   const db = new DatabaseSync(':memory:');
   return {
@@ -46,7 +42,6 @@ test('CFStore: engine boots, structures and entities persist through save/load',
   w.addField('Task', { name: 'Estimate', type: 'number' });
   const e = w.createEntity('Task', { name: 'A', values: { Estimate: 3 }, doc: 'notes here' });
 
-  // A second store over the SAME storage sees everything the first wrote.
   const w2 = build(storage);
   const r = w2.readEntity(e.id);
   assert.equal(r.name, 'A');
@@ -77,7 +72,7 @@ test('CFStore: undo works through the DO backend and survives a reopen', () => {
   const e = w.createEntity('T', { name: 'row', values: { N: 1 } });
   w.updateEntity(e.id, { N: 2 });
 
-  const w2 = build(storage); // fresh engine, same storage — the stack persisted
+  const w2 = build(storage);
   w2.undo();
   assert.equal(w2.readEntity(e.id).fields.N, 1);
 });
@@ -97,7 +92,6 @@ test('CFStore: a failed save rolls back atomically', () => {
   w.createSpace({ name: 'S' });
   w.createTable({ space: 'S', name: 'T' });
   const before = storage.sql.exec('SELECT COUNT(*) AS n FROM entities').toArray()[0].n;
-  // Poison one entity so JSON.stringify throws mid-save, inside the txn.
   const e = w.createEntity('T', { name: 'ok' });
   const cyc = {}; cyc.self = cyc;
   const bad = { ...w.getEntity(e.id), id: 'bad-row', values: cyc };

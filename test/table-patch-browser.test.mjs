@@ -1,24 +1,3 @@
-/* Issue #444: a toolbar change patches the grid, never the page. Every table
-   control (search, filter, view, Reset view, density, field show/hide, field
-   order, Add field) used to end in drawDatabase's main.replaceChildren():
-   breadcrumb, title, description, toolbar, header and rows all rebuilt, so
-   the description went blank until /markdown answered, a view switch
-   painted the route skeleton, and the search box was a new node every
-   keystroke. The chrome is now drawn once per route and the grid body is
-   swapped under it.
-
-   The probe watches the page the way the reader does: every animation frame
-   records whether #main holds the header, a grid with rows (or the search's
-   empty note), no skeleton, a filled-in description, and where the grid
-   starts; a MutationObserver counts element nodes removed from the page
-   header; the toolbar's controls are held by reference so a replaced node
-   shows up as disconnected. Each case prints its numbers as `#444 probe` so
-   the before and after can be read off a run.
-
-   Issue #433: a change that has to refetch dims the grid body (aria-busy)
-   at once, never the toolbar, and puts the rope over the grid only once the
-   wait passes the loader's 500 ms threshold. A second chip click during the
-   wait is kept, never lost. Playwright is NOT a dependency of weave. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -37,8 +16,6 @@ const s = await launch('table patch', (weave) => {
   weave.tableView(`${table.id}/Narrow`, { fields: ['Name', 'Status'] });
 });
 
-/* Installed once per page. start() tags the chrome and begins sampling;
-   stop() returns the counts for the stretch in between. */
 function installProbe() {
   const P = { on: false, frames: [], headerRemoved: 0, navRemoved: 0, controls: [] };
   const main = document.querySelector('#main');
@@ -103,7 +80,6 @@ if (s) {
   const rows = (page) => page.locator('.wv-grid tbody tr.entity-row').count();
   const settle = async (page) => {
     await page.waitForLoadState('networkidle');
-    // The description renders off /markdown; give a stray re-render its frames.
     await page.waitForTimeout(300);
   };
   async function open(view = '') {
@@ -112,8 +88,6 @@ if (s) {
     await page.goto(`${base}/#/table/${table.id}${view}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.waitForSelector('.view-desc .view-desc-body');
-    /* A description renders off /markdown. Held a little here, as a busy
-       server holds it: a page that re-renders its header paints it blank. */
     await page.route('**/markdown', async (route) => { await new Promise((r) => setTimeout(r, 120)); await route.continue(); });
     await page.evaluate(installProbe);
     return page;
@@ -217,7 +191,6 @@ if (s) {
       clean(hide, 'field hide');
       const order = await measure(page, 'field reorder', async () => {
         await page.locator('.table-field-row[data-field="Status"] .field-reorder-handle').focus();
-        // Hidden Owner sits between Description and Status in the picker.
         await page.keyboard.press('ArrowUp');
         await page.keyboard.press('ArrowUp');
         await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].map((h) => h.textContent.trim()).join(',') === 'Name,Status,Description');
@@ -241,7 +214,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #433. The query is held so the wait is long enough to see. */
   test('a slow refetch dims the grid at once, shows the rope over it past 500 ms, and keeps a second click', async () => {
     const page = await open();
     try {
@@ -253,7 +225,6 @@ if (s) {
       hold = 1200;
       await page.click('.table-filter-btn');
       await page.locator('.table-filter-popover .filter-chip:text-is("Done")').click();
-      // The debounce (250 ms) then the held query: busy from the click, not from the fetch.
       await page.waitForTimeout(120);
       const early = await page.evaluate(() => ({
         busy: document.querySelector('#main .table-wrap')?.closest('[aria-busy="true"]') ? true : false,
@@ -262,17 +233,14 @@ if (s) {
         pageRope: !document.querySelector('#page-loader')?.hidden,
       }));
       assert.deepEqual(early, { busy: true, toolbarBusy: false, rope: false, pageRope: false }, 'the grid dims at once, the toolbar does not, and no rope yet');
-      // The dim is a short opacity transition; a loaded gate may not have painted its first frame yet.
       await page.waitForFunction(() => getComputedStyle(document.querySelector('#main .table-wrap')).opacity !== '1', null, { timeout: 400 }).catch(() => {});
       assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main .table-wrap')).opacity !== '1'), true, 'the stale rows are dimmed');
       await page.waitForTimeout(500);
       assert.equal(await page.locator('#main .grid-loader:not([hidden])').count(), 1, 'past 500 ms the rope covers the grid');
-      // A second chip while the first is still loading.
       await page.locator('.table-filter-popover .filter-chip:text-is("Doing")').click();
       assert.equal(await page.locator('#main .grid-loader svg').count() > 0, true, 'the rope is the weave loader');
       assert.equal(await page.evaluate(() => document.querySelector('#page-loader').hidden), true, 'the page-wide rope stays down');
       hold = 0;
-      // 40 rows match; the window draws the ones in view, more than Done's 20.
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length > 20 && !document.querySelector('#main [aria-busy="true"]'), null, { timeout: 15000 });
       await page.waitForLoadState('networkidle');
       const drawn = await page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => r.dataset.eid));

@@ -1,12 +1,3 @@
-/* The filter strip coalesces a burst of chip clicks (Issue #269). Each chip
-   click used to PATCH the table, re-read the schema and re-query the grid on
-   its own, and every click after the first read the selection the strip was
-   drawn with — so three quick clicks were three round-trips and the table
-   kept only the last chip. A burst now paints each chip at once, lands as
-   one PATCH and one query, and the rows are the ones the engine's
-   where-language returns for the whole selection. The strip still filters
-   on the server, never client-side (Feature #38).
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -37,10 +28,8 @@ if (s) {
       const hits = { query: 0, patch: 0 };
       page.on('request', (r) => {
         if (r.method() === 'POST' && r.url().endsWith(`/tables/${tasks.id}/query`)) hits.query++;
-        // The strip saves into the view on screen (Feature #229).
         if (r.method() === 'PATCH' && r.url().includes(`/tables/${tasks.id}/views/`)) hits.patch++;
       });
-      // Three clicks in one task: Open on, Doing on, Done on then off again.
       const painted = await page.evaluate(() => {
         const chip = (name) => [...document.querySelectorAll('.filter-strip .filter-chip')].find((b) => b.textContent === name);
         for (const name of ['Open', 'Doing', 'Done', 'Done']) chip(name).click();

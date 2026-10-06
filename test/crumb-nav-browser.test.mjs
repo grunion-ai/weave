@@ -1,10 +1,3 @@
-/* One trail for both poses, and Back with Forward (Issues #670, #671).
-   Expanding a docked row to the full page rebuilt the crumb from scratch
-   (ws › space › table › row), dropping the hops the dock had taken, and the
-   dock had a Back arrow with no Forward, so a step back could not be
-   undone. Kyle's ruling of 2026-10-05: crumbs show place (a revisit cuts
-   the crumb back), the arrows show time (they replay the clicks).
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

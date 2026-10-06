@@ -1,13 +1,3 @@
-/* A second click on a calendar button or a picker's trigger closes what it
-   opened (follow-up to Issue #320). datePopover() and searchPicker() each
-   carried their own copy of the outside-click listener #320 fixed in
-   showPopover(): capture phase, with the trigger counted as outside. A second
-   click on the trigger closed the dialog and that same click's own handler
-   opened a fresh one, so it never closed: the date's and the range's
-   calendar buttons, a select chip and a multiselect box all looped. Escape,
-   a pick and a genuine outside click still close, the trigger reopens after
-   each, and another trigger still switches in one click. Playwright is NOT a
-   dependency; the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -24,11 +14,8 @@ const s = await launch('picker toggle', (weave) => {
 
 if (s) {
   const { base, browser, weave } = s;
-  // One entity per case: a pick writes to the record.
   const fresh = () => weave.createEntity(sprints, { name: 'Toggle case', values: { Due: '2026-09-15', Priority: 'P1' } }).id;
   const count = (page, sel) => page.evaluate((q) => document.querySelectorAll(q).length, sel);
-  // A close that the same click undoes lands within a frame or two; give it
-  // two frames and a beat before reading.
   const settle = (page) => page.evaluate(() => new Promise((r) =>
     requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50)))));
   const entity = async (id, colorScheme) => {
@@ -71,8 +58,6 @@ if (s) {
           await page.waitForSelector(pop);
           await page.keyboard.press('Escape');
           await page.waitForFunction((q) => !document.querySelector(q), pop);
-          // Escape leaves the capture listener hooked until the next click;
-          // that click must open the dialog, not be swallowed as a "close".
           await trigger(page, field, sel).click();
           await page.waitForSelector(pop);
           await page.mouse.click(4, 4);
@@ -85,8 +70,6 @@ if (s) {
     }
   }
 
-  /* The dialogs open below their trigger and cover the rows under it, so
-     each case opens the lower field first and switches to the one above. */
   test("with the range's calendar open, the date's button switches to its own dialog in one click", async () => {
     const page = await entity(fresh(), 'light');
     try {

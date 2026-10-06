@@ -1,14 +1,3 @@
-/* A field mid-edit saves when the page leaves it, driven through a real
-   browser (Kyle, 2026-09-07: "automatic save for any field on click off or
-   nav away").
-   A plain input commits through its native `change`, which the browser fires
-   on blur — so a click elsewhere already saved. A route change (back button,
-   a typed hash, a keyboard shortcut), a dock closing, and a tab closing all
-   tore the input out of the page with no blur, and the keystrokes went with
-   it. Now every one of those commits the active edit first, and a write
-   started while the page unloads rides `keepalive` so the browser finishes it.
-   Playwright is NOT a dependency of weave; it is imported dynamically and
-   the suite skips when absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -36,7 +25,6 @@ if (s) {
     for (let i = 0; i < 50 && stored(field) !== want; i++) await new Promise((r) => setTimeout(r, 100));
     return stored(field);
   };
-  // The entity page's row for a field: its input, focused with fresh text.
   const typeInto = async (page, field, text) => {
     const sel = `.entity-values .fieldrow[data-field="${field}"] input, .fieldrow[data-field="${field}"] input`;
     await page.waitForSelector(sel);
@@ -94,7 +82,6 @@ if (s) {
     await page.click(`tr[data-eid="${order.id}"] .open-link`);
     await page.waitForSelector(`#dock:not([hidden]) .fieldrow[data-field="Note"] input`);
     await page.fill(`#dock .fieldrow[data-field="Note"] input`, 'docked note');
-    // A scripted click (a shortcut, a palette pick) swaps the dock with no pointerdown to blur the input.
     await page.evaluate((id) => document.querySelector(`tr[data-eid="${id}"] .open-link`).click(), other.id);
     await page.waitForSelector(`tr[data-eid="${other.id}"].row-docked`);
     assert.equal(await settle('Note', 'docked note'), 'docked note');

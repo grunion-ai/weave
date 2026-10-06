@@ -1,9 +1,3 @@
-/* Feature #253: one call builds a workspace outline. A 2026-10-02 eval ran 32
-   stock agents against weave over MCP; a five-table budget workspace took 50
-   to 100 turns, one field, relation or row per call, and weave_apply_schema
-   was used 0 times because it takes the 22 KB document weave_schema emits.
-   build() takes the short spec an agent writes by hand and runs it through
-   the verbs that already exist. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -71,7 +65,6 @@ test('a three-table build makes the spaces, tables, fields, relations and rows, 
   assert.equal(wf.raw.Doubled, 284.36);
   const amount = w.findField(w.findTable('Transaction'), 'Amount');
   assert.deepEqual([amount.config.format, amount.config.currency], ['currency', 'USD']);
-  // The inverse was made by addRelation, so the account sees its transaction.
   const amex = w.query('Account', { where: [['Name', '=', 'Amex Gold']] }).items[0];
   assert.equal(w.readEntity(amex.id).fields.Transactions.length, 1);
 });
@@ -139,8 +132,6 @@ test('existing spaces, tables and same-typed fields are reused; rows always appe
   assert.match(clash.errors[0].error, /already exists as select/);
 });
 
-/* Second eval, 2026-10-02 (8 runs against a proxy build tool): three ways a
-   build failed that are now the common path. */
 test('a refused icon or colour is dropped and reported, never a cascade', () => {
   const w = new Weave();
   const r = w.build({ spaces: [{ name: 'Budget', icon: 'wallet', tables: [
@@ -175,7 +166,6 @@ test('resending the whole spec is a no-op for structure; skipExistingRows skips 
   assert.ok(again.existing.includes('field Budget/Transaction.Account'));
   assert.ok(again.existing.includes('row Budget/Account: Amex Gold'));
   assert.equal(w.query('Transaction', {}).total, 2);
-  // Without the flag a re-run appends the rows again, as documented.
   assert.equal(w.build(SPEC()).created.rows, 5);
   assert.equal(w.query('Transaction', {}).total, 4);
 });

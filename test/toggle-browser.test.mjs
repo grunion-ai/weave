@@ -1,9 +1,3 @@
-/* The toggle field in a real browser (Feature #202): the cell rests as a
-   switch wearing the word of its state; a click flips it and so does Space
-   on the resting cell — the one cell where Space is not row selection; the
-   entity page draws the same switch; the field dialog edits the two labels
-   and the default and round-trips them; the filter strip offers the labels;
-   and the switch reads in the dark theme too. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -33,12 +27,6 @@ if (s) {
   });
   const word = (page, id) => page.locator(`${cell(id)} .wv-toggle-word`).textContent();
   const isOn = (page, id) => page.locator(`${cell(id)} .wv-toggle`).evaluate((l) => l.classList.contains('on'));
-  /* A flip paints at once and then reconciles through the PATCH. `flip`
-     registers the write before the gesture and waits for it to come back,
-     then for the word to read as expected and the cursor to be on the cell —
-     or the next press lands in the frame the reconcile is still in. Before
-     Issue #257 the signal was a marked <tbody> being replaced by the grid's
-     redraw; a commit that patches its row in place never replaces one. */
   const flip = async (page, id, gesture, expect) => {
     const landed = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
     await gesture();
@@ -77,7 +65,6 @@ if (s) {
       assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'TD', 'the cell keeps the focus, not the box');
       await flip(page, paused.id, () => page.keyboard.press('Space'), 'Paused');
       assert.equal(stored(paused.id), false, 'and back — one flip per press, never two');
-      // Space on a text cell still picks the row up.
       await page.focus(`tr[data-eid="${paused.id}"] td[data-field="Note"]`);
       await page.keyboard.press('Space');
       assert.equal(stored(paused.id), false, 'a text cell does not flip the neighbour');
@@ -110,7 +97,6 @@ if (s) {
       await on.press('Tab');
       await off.fill('Disabled');
       await off.press('Tab');
-      // The default control names the states with the words just typed.
       const enabled = page.locator('.tray-form .seg-ctl .seg-opt', { hasText: 'Enabled' });
       await enabled.waitFor();
       await enabled.click();

@@ -1,11 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-/* The type-or-pick control's parser (Feature #44). A classic script that also
-   loads in node: importing it registers parseNaturalDate on globalThis. */
 await import('../public/nl-date.js');
 const parse = globalThis.parseNaturalDate;
-const NOW = new Date(2026, 7, 21); // Fri Aug 21 2026, local
+const NOW = new Date(2026, 7, 21);
 
 test('typed dates beat phrases', () => {
   assert.equal(parse('2026-08-21', NOW), '2026-08-21');
@@ -29,9 +27,6 @@ test('garbage is null, never a throw', () => {
   assert.equal(parse('not a date at all', NOW), null);
 });
 
-/* Smart typing (Kyle, 2026-08-23): "type the date month year in any format
-   and autodetect, like Airtable and Fibery". Everything a person pastes or
-   types lands on the day they meant. */
 test('any numeric order: slashes, dashes, dots, 2- or 4-digit years, day-first when unambiguous', () => {
   assert.equal(parse('9/15/2026', NOW), '2026-09-15');
   assert.equal(parse('15/9/2026', NOW), '2026-09-15', 'day > 12 means day-first');

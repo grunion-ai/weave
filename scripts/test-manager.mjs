@@ -1,5 +1,3 @@
-/* One per-user queue across worktrees. The socket and all state are private.
-   ponytail: FIFO, no result cache; immutable batching can follow measured demand. */
 import net from 'node:net';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync, lstatSync, chmodSync, unlinkSync, readFileSync, statfsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
@@ -11,22 +9,12 @@ import { createHash, randomUUID } from 'node:crypto';
 
 const SELF = fileURLToPath(import.meta.url);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-/* The socket directory is keyed on this file's own source: a long-lived
-   manager started from an older worktree must not serve newer code, so a
-   changed manager gets its own queue and the old one idles out (change 446). */
 const SOURCE = createHash('sha256').update(readFileSync(SELF)).digest('hex').slice(0, 12);
 export const managerDirectory = (env = process.env) => env.WEAVE_TEST_MANAGER_DIR || join('/tmp', `weave-test-manager-${process.getuid?.() ?? 'local'}-${SOURCE}`);
-/* A job that never ran is not a red run. The manager answers a job it did
-   not admit (queue wait spent, or the manager stopped first) with 75,
-   EX_TEMPFAIL, and scripts/test.mjs prints `# TEST MANAGER NOT ADMITTED:
-   <reason>` and exits 75, so a gate can skip its vote instead of rejecting. */
 export const NOT_ADMITTED = 75;
-/* The gate caps the whole suite at 3600 s; the job default matches it. */
 export const DEFAULT_JOB_TIMEOUT_MS = 60 * 60_000;
 export const jobTimeout = ms => Math.max(100, Math.min(Number(ms) || DEFAULT_JOB_TIMEOUT_MS, DEFAULT_JOB_TIMEOUT_MS));
 export const queueWait = (env = {}) => Number(env.WEAVE_TEST_QUEUE_WAIT_MS) || 30 * 60_000;
-/* What a caller may set to change admission. A job carries them in its env;
-   a browser lease must send them too (test/lib/browser.mjs). */
 export const ADMISSION_ENV = ['WEAVE_TEST_MIN_FREE_GB', 'WEAVE_TEST_MIN_MEMORY_PERCENT', 'WEAVE_TEST_MAX_LOAD', 'WEAVE_TEST_QUEUE_WAIT_MS'];
 export const admissionEnv = (env = process.env) => Object.fromEntries(ADMISSION_ENV.filter(k => env[k] !== undefined && env[k] !== '').map(k => [k, env[k]]));
 const send = (socket, data) => { if (!socket.destroyed) socket.write(JSON.stringify(data) + '\n'); };
@@ -118,7 +106,6 @@ function pressure(root, env) {
 export async function serve(directory) {
   secureDirectory(directory);
   const socketPath = join(directory, 'manager.sock');
-  // Compare the inode captured before probing: a rival may replace a stale socket.
   let stale; try { stale = lstatSync(socketPath); } catch {}
   try { const live = await connect(directory); live.end(); return; }
   catch (error) { if (error.code === 'ECONNREFUSED') { try { const now = lstatSync(socketPath); if (stale && now.ino === stale.ino && now.birthtimeMs === stale.birthtimeMs) unlinkSync(socketPath); } catch {} } else if (error.code !== 'ENOENT') throw error; }
@@ -157,7 +144,6 @@ export async function serve(directory) {
     job.finishing = true; clearTimeout(job.timer);
     if (launching) await launching.catch(() => {});
     kill(job);
-    // Reap descendants before handing the resource allocation to the next job.
     if (job.child) { await sleep(150); try { process.kill(-job.child.pid, 'SIGKILL'); } catch {} }
     if (job.type === 'run' && code === 0 && fingerprint(job.root, job.files) !== job.fingerprint) { code = 1; error = 'worktree changed during tests; result invalid, rerun'; }
     if (job.usedBrowser) browserJobs++;
@@ -257,8 +243,6 @@ export async function serve(directory) {
 
 if (process.argv[1] && resolve(process.argv[1]) === SELF && process.argv[2] === '--serve') await serve(process.argv[3]);
 
-// A responsive process owns the test group while run() waits synchronously.
-// Parent death closes IPC even on SIGKILL; no orphan suite survives the broker.
 if (process.argv[1] && resolve(process.argv[1]) === SELF && process.argv[2] === '--worker') {
   const child = spawn(process.execPath, process.argv.slice(3), { stdio: 'inherit', env: process.env });
   let cleaning = false;

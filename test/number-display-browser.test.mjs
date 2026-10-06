@@ -1,9 +1,3 @@
-/* Feature #230 in the page: a number column with a display draws a bar, a
-   ring or a heat tint in its grid cell, beside the value's own text, against
-   the column's max or a fixed scale. The graphic cell is never marked
-   clipped, a click still hands over the raw number, a numeric formula and a
-   rollup draw the same way, a chip and a card carry the meter, and the field
-   dialog's Display picker previews the choice live. Both themes. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -23,16 +17,12 @@ const s = await launch('number display costume', (weave) => {
   acme = weave.createEntity(accounts, { name: 'Acme' });
   big = weave.createEntity(deals, { name: 'Big', values: { Progress: 0.6, Score: 8, Heat: 9, Plain: 3, Account: acme.id } });
   small = weave.createEntity(deals, { name: 'Small', values: { Progress: 0.2, Score: 2, Heat: 1, Plain: 4, Account: acme.id } });
-  /* Issue #388: the Showcase column the tray got wrong — three figures, a
-     bar, and the column's own max as 100%. `Unset` is the same column with
-     nothing in it. */
   sprints = weave.createTable({ space: 'Sales', name: 'Sprint' });
   weave.addField(sprints, { name: 'Points', type: 'number', config: { display: 'bar' } });
   weave.addField(sprints, { name: 'Unset', type: 'number', config: { display: 'bar' } });
   weave.createEntity(sprints, { name: 'One', values: { Points: 72 } });
   weave.createEntity(sprints, { name: 'Two', values: { Points: 100 } });
   weave.createEntity(sprints, { name: 'Three', values: { Points: 15 } });
-  // The chip of a deal shows its progress; the account grid shows it on the relation.
   weave.updateField(deals, 'Chip', { config: { fields: ['Progress'] } });
 });
 
@@ -46,7 +36,6 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
   }
-  /* The field's settings tray, opened from its column header. */
   async function openFieldDialog(page, field) {
     const th = page.locator('.wv-grid thead th.col-head', { hasText: field }).first();
     await th.hover();
@@ -64,7 +53,6 @@ if (s) {
         assert.equal((await fill(page, cell(big.id, 'Progress'))).width, '60', 'a fixed scale of 1: 0.6 is 60%');
         assert.equal(await page.getAttribute(`${cell(big.id, 'Progress')} .cg-wrap`, 'aria-label'), '60%', 'a screen reader reads the value');
         assert.equal(await page.textContent(`${cell(big.id, 'Progress')} .cg-text`), '60%');
-        // Score is on the column scale: 8 is the max, so Big is full and Small a quarter.
         const C = 2 * Math.PI * 7;
         assert.equal((await fill(page, cell(big.id, 'Score'))).dash.split(' ')[0], String(Math.round(C * 100) / 100));
         assert.equal((await fill(page, cell(small.id, 'Score'))).dash.split(' ')[0], String(Math.round(C * 0.25 * 100) / 100));
@@ -72,9 +60,7 @@ if (s) {
         const cool = Number((await fill(page, cell(small.id, 'Heat'))).opacity);
         assert.ok(hot > cool, `the hotter row is more tinted (${hot} > ${cool})`);
         assert.equal(await page.locator(`${cell(big.id, 'Plain')} svg`).count(), 0, 'a plain number draws no graphic');
-        // The formula wears its bar on the column scale: 16 is the max.
         assert.equal((await fill(page, cell(small.id, 'Double'))).width, '25');
-        // The heat text stays legible: the tint sits behind it.
         const color = await page.$eval(`${cell(big.id, 'Heat')} .cg-text`, (n) => getComputedStyle(n).color);
         assert.ok(color && color !== 'rgba(0, 0, 0, 0)', color);
         if (shots) await page.locator('.wv-grid').screenshot({ path: `${shots}/number-display-grid-${colorScheme}.png` });
@@ -119,7 +105,6 @@ if (s) {
     try {
       await page.waitForSelector(`${cell(acme.id, 'Avg progress')} .cg-wrap.cg-bar`);
       assert.equal((await fill(page, cell(acme.id, 'Avg progress'))).width, '40', 'the average of 60% and 20%');
-      // The relation chips on the account: open a chip's fields.
       const chip = page.locator(`${cell(acme.id, 'Deals')} .mention-wrap`).first();
       await chip.locator('.mention-caret').click();
       await page.waitForSelector(`${cell(acme.id, 'Deals')} .mention-f .cg-wrap.cg-bar`);
@@ -160,8 +145,6 @@ if (s) {
       }
     });
 
-    /* Issue #388: the Sample used to draw 0.25, 0.6 and 1 whatever the column
-       held, so a reader could not judge the scale from the tray. */
     test(`the Sample draws the column's own figures against the column's max (${colorScheme})`, async () => {
       const page = await grid(sprints.id, colorScheme);
       try {
@@ -172,7 +155,6 @@ if (s) {
         assert.deepEqual(await page.$$eval('.tray-form .cg-preview .cg-fill', (ns) => ns.map((n) => n.getAttribute('width'))),
           ['15', '72', '100'], '100% is the column max of 100');
         assert.equal(await page.locator('.tray-form .cg-preview-note').count(), 0, 'real values are not examples');
-        // A fixed scale moves the bars and leaves the figures alone.
         const scale = page.locator('.tray-form .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: /^Scale$/ }) });
         await scale.locator('.seg-opt', { hasText: 'fixed' }).click();
         await page.locator('.tray-form input[aria-label="Fixed scale"]').fill('200');

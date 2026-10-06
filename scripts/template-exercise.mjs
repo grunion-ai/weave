@@ -1,22 +1,4 @@
 #!/usr/bin/env node
-/* The template exercise against a running instance (Feature #262).
-
-     node scripts/template-exercise.mjs --base http://127.0.0.1:4400 --from weave --into test [--keep]
-
-   For every template space of the --from workspace (GET /w/<from>/api/templates):
-   exercises each of its tables over HTTP (scripts/template-exercise-core.mjs:
-   add a row with every field, link and unlink every relation from both ends,
-   check every lookup, rollup and formula, trash and restore the row, then
-   hard-delete every row it made); uses the template into the --into
-   workspace as "<space> check <yyyymmdd-hhmmss> <4 hex>" through POST
-   /w/<from>/api/spaces/<id>/use; exercises every table of the copy the same
-   way; and purges the copy, also when a step failed, so a run leaves nothing
-   in <into>, not even trash. --keep leaves the copy live for a look.
-
-   The copy's name is unique per run (Issue #644): it carried only the
-   minute, and a soft-deleted copy kept holding its name in the trash, so a
-   second run in the same minute was refused with a 409. Prints one table
-   per template and exits 1 on any failure. */
 import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { exerciseSpace, httpApi } from './template-exercise-core.mjs';
@@ -31,10 +13,8 @@ function table(rows) {
   return cells.map((c) => c.map((x, i) => x.padEnd(widths[i])).join('  ').trimEnd()).join('\n');
 }
 
-/* The run, as a function the suite calls against an in-process hub. */
 export async function runLive({ base, from = 'weave', into = 'test', stamp = stampOf(), keep = false, headers = {}, log = console.log } = {}) {
   const root = base.replace(/\/+$/, '');
-  // Two runs stamped the same second still get two names.
   const suffix = randomBytes(2).toString('hex');
   const src = httpApi(`${root}/w/${from}`, { headers });
   const dst = httpApi(`${root}/w/${into}`, { headers });

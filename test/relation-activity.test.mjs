@@ -1,10 +1,3 @@
-/* A relation write moves two rows, so it belongs in two histories (Issue #286).
-   Before this, only the row the caller touched logged `relation-updated`; the
-   far row's inverse field changed under it with nothing in its activity to say
-   so, and the steal case — a single-value inverse moving to a new holder — left
-   the losing row silent as well. Fibery logs the link on both feeds; so do we.
-   The far entry carries `inverse: true`, which is how a reader tells the write
-   it made from the write it received. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -56,7 +49,7 @@ test('a stolen single-value inverse logs the loss on the row it was taken from',
   const task = w.createEntity(tasks, { name: 'Ship the editor' });
   w.link(apollo.id, 'Tasks', task.id);
 
-  w.link(gemini.id, 'Tasks', task.id); // steals the task: a Task holds one Project
+  w.link(gemini.id, 'Tasks', task.id);
 
   assert.equal(w.getEntity(task.id).values[w.getField(tasks, 'Project').id], gemini.id);
   assert.deepEqual(rel(w, apollo.id).at(-1).detail,

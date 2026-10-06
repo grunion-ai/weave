@@ -8,14 +8,6 @@ process.env.WEAVE_KEYSTORE ??= join(mkdtempSync(join(tmpdir(), 'weave-sec-')), '
 const { Weave } = await import('../../src/engine.js');
 const { startServer, frameAncestorsFromEnv } = await import('../../src/server.js');
 const { launch } = await import('../lib/browser.mjs');
-/* Issue #494: no response carried a security header. Every response now
-   sends X-Content-Type-Options: nosniff and Referrer-Policy: same-origin; an
-   HTML response sends Content-Security-Policy: frame-ancestors 'self' (so
-   another site cannot frame weave and click through it) plus a report-only
-   policy naming the target state; Strict-Transport-Security goes out only on
-   a request that arrived over https, which behind a proxy means
-   WEAVE_TRUST_PROXY and X-Forwarded-Proto: https. weave's own previews
-   (deck, document, file viewer) frame same-origin pages, and still load. */
 
 const call = (port, path, headers = {}, method = 'GET') => new Promise((resolve, reject) => {
   const req = request({ host: '127.0.0.1', port, path, method, headers }, (res) => { res.resume(); res.on('end', () => resolve(res)); });
@@ -98,14 +90,12 @@ if (ctx) {
     try {
       await page.goto(`${base}/e/${note.id}/doc.html`);
       assert.match(await frameText(page, `/e/${note.id}/doc.html`), /hello from the frame/);
-      // The deck and file previews frame the same routes the same way.
     } finally { await page.close(); }
   });
 
   test('another origin cannot frame a weave page', async () => {
     const page = await browser.newPage();
     try {
-      // localhost and 127.0.0.1 are different origins on the same server.
       await page.goto(`${base.replace('127.0.0.1', 'localhost')}/e/${note.id}/doc.html`);
       assert.doesNotMatch(await frameText(page, `${base}/e/${note.id}/doc.html`), /hello from the frame/);
     } finally { await page.close(); }

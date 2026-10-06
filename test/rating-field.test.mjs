@@ -1,10 +1,3 @@
-/* The `rating` field type (Feature #231): a whole number from 0 to the
-   field's max, drawn as that many icons you click to fill. The config is
-   `{ max, icon }` (max any whole number 1..100 since #234, 5 unless named, the dialog offering 3, 5 and 7 as shortcuts; one icon from
-   the inventory per field, a star unless said). The value is a number to
-   everything that reads it: formulas, sort, filter, CSV, the API. A lookup
-   or a rollup over a rating reads its max and icon, so it can draw the same
-   icons, read-only. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -102,7 +95,6 @@ test('a value is a whole number held to 0..max: rounded, clamped, numeric text a
   w.updateEntity(e.id, { Fit: null });
   assert.equal(read().raw.Fit, null, 'unrated is empty, 0 is a rating of nothing');
   assert.throws(() => w.updateEntity(e.id, { Fit: 'great' }), /'great' is not a rating/);
-  // Lowering the max holds every stored value to the new ceiling.
   w.updateEntity(e.id, { Fit: 5 });
   w.updateField(t, 'Fit', { config: { max: 3 } });
   assert.equal(read().raw.Fit, 3);
@@ -117,8 +109,6 @@ test('a default is a rating like any other', () => {
 
 test('a default rides with the max: raised together it keeps, lowered it clamps down (Feature #234)', () => {
   const { w, t } = ws({ default: 4 });
-  // The field dialog sends max and default in one patch; the default is read
-  // against the NEW max, not the old one.
   w.updateField(t, 'Fit', { config: { max: 12, default: 11 } });
   assert.equal(w.getField(t, 'Fit').config.default, 11, 'a default above the old max, sent with the new max, keeps');
   assert.equal(w.readEntity(w.createEntity(t, { name: 'a' }).id).raw.Fit, 11, 'a new row starts at it');
@@ -180,7 +170,6 @@ test('a lookup and a rollup over a rating carry its max and icon; the chip and t
   assert.deepEqual(avg.rating, { max: 5, icon: 'lucide:heart', color: 'ink' }, 'an average stays on the scale');
   assert.equal(described(w, 'Account', 'Total fit').rating, undefined, 'a sum leaves the scale and draws as a number');
   assert.equal(described(w, 'Vendor', 'Account name').rating, undefined, 'a lookup of a name is not a rating');
-  // A lookup straight onto the rating column.
   const back = w.createTable({ space: 'Ops', name: 'Review' });
   w.addRelation(back, { name: 'Vendor', targetDb: t, cardinality: 'many-to-one', inverseName: 'Reviews' });
   w.addField(back, { name: 'Vendor fit', type: 'lookup', config: { relationField: 'Vendor', targetField: 'Fit' } });

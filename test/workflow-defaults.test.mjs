@@ -1,17 +1,3 @@
-/* A new state field arrives with states already in it (Issue #251).
-
-   A workflow field with no `states` used to be a refusal — "Workflow field
-   needs at least one state" — so every new state column made you invent and
-   type a status vocabulary before the column could exist at all, in the tray
-   and on the CLI alike. The engine already knows four state categories, and
-   those four ARE the sensible starting lifecycle: Not started · In progress ·
-   Done · Canceled. None is the default since Issue #421: a new row's state
-   is empty until the author marks one.
-
-   The seed sits at the point of blankness, not in a weakened validation: a
-   config that OMITS states gets the four, a config that carries an empty
-   array is still invalid — a list someone deliberately emptied is not a
-   lifecycle. The browser half is workflow-defaults-browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -44,7 +30,6 @@ test('a workflow field with no config is created with the four default states', 
   assert.deepEqual(f.config.states.map((s) => s.category), CATS);
   assert.deepEqual(f.config.states.map((s) => s.default), [false, false, false, false],
     'Not started leads, and none is the default (Issue #421)');
-  // A row starts with no state until the author marks a default.
   const e = w.createEntity(t, { name: 'Ship it' });
   assert.equal(w.readEntity(e.id).fields.Status, null);
 });
@@ -53,7 +38,6 @@ test('an explicitly empty states array is still refused', () => {
   const { w, t } = ws();
   assert.throws(() => w.addField(t, { name: 'Status', type: 'workflow', config: { states: [] } }),
     /at least one state/i, 'a list emptied on purpose is not a lifecycle');
-  // And an edit cannot empty one either.
   const f = w.addField(t, { name: 'Stage', type: 'workflow' });
   assert.throws(() => w.updateField(t, f.id, { config: { states: [] } }), /at least one state/i);
   assert.equal(w.getField(t, f.id).config.states.length, 4, 'the refusal left the field intact');
@@ -113,12 +97,10 @@ test('the tray hands back the same four states the engine seeds', () => {
   const blank = FDC.blankState('workflow');
   assert.deepEqual(blank.states.map((s) => s.name), NAMES, 'a fresh workflow tray is not an empty list');
   assert.deepEqual(blank.states.map((s) => s.category), CATS);
-  // Saving the tray untouched is a definition the engine takes.
   const def = FDC.definitionFromState(blank);
   const { w, t } = ws();
   const f = w.addField(t, { name: 'Status', ...def });
   assert.deepEqual(f.config.states.map((s) => s.name), NAMES);
-  // A definition pasted with no states reads back as the defaults too.
   assert.deepEqual(FDC.stateFromDefinition({ type: 'workflow', config: {} }).states.map((s) => s.name), NAMES);
   assert.deepEqual(FDC.stateFromDefinition({ type: 'workflow', config: { states: [] } }).states, [],
     'an emptied list stays empty');

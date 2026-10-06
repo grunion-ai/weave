@@ -1,8 +1,3 @@
-/* Feature #168 — the Name field is configurable: rename it, make it a formula
-   (a computed name), never delete it. Kyle, 2026-09-02: "why can't the name
-   field be renamed or retyped? doesn't make sense". The role (`nameFieldId`)
-   already existed; these tests pin that every consumer now reads the role, so
-   the literal 'Name' is an alias rather than a load-bearing string. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -27,8 +22,6 @@ test('the Name field can be renamed; the role, the alias and the row identity al
   assert.equal(w.getTable(db.id).fields[nameField.id].name, 'Title');
   assert.equal(w.entityName(w.state.entities[e.id]), 'Acme renewal', 'identity is the role, not the label');
   assert.equal(w.readEntity(e.id).name, 'Acme renewal');
-  // 'Name' stays an alias for the name-role field, so every existing caller —
-  // MCP weave_create_entity {name}, CSV import, `values: { Name }` — keeps working.
   w.updateEntity(e.id, { Name: 'Acme renewal 2027' });
   assert.equal(w.readEntity(e.id).name, 'Acme renewal 2027');
   const made = w.createEntity(db.id, { name: 'Globex' });
@@ -53,7 +46,6 @@ test('a renamed Name field survives the declarative door into a fresh workspace'
   assert.equal(t.fields[t.nameFieldId].name, 'Title', 'the minted Name field was renamed, not duplicated');
   assert.equal(Object.values(t.fields).filter((f) => f.name === 'Title' || f.name === 'Name').length, 1);
   assert.equal(fresh.termOf(t).singular, 'deal', 'and the term rode along');
-  // Applying a rename onto an existing workspace is an update, not a create.
   const again = new Weave();
   again.applySchema(w.describeSchema().filter((s) => !s.system).map((s) => ({ ...s, tables: s.tables.map((tb) => ({ ...tb, fields: tb.fields.map((f) => (f.role === 'name' ? { ...f, name: 'Name' } : f)) })) })));
   const plan = again.applySchema(doc);
@@ -66,13 +58,11 @@ test('a computed Name that reads later fields survives the declarative door, fre
   const { w, db, nameField } = deals();
   w.updateField(db.id, nameField.id, { type: 'formula', config: { expression: 'Company + " · " + Amount' } });
   const doc = w.describeSchema().filter((s) => !s.system);
-  // Fresh: the table is created, Name first in the document, Company after it.
   const fresh = new Weave();
   fresh.applySchema(doc);
   const t = fresh.getTable('Sales/Deal');
   assert.equal(t.fields[t.nameFieldId].type, 'formula');
   assert.equal(t.fields[t.nameFieldId].config.expression, 'Company + " · " + Amount');
-  // Existing: a bare table with a text Name gains Company and a computed Name in one apply.
   const again = new Weave();
   again.createSpace({ name: 'Sales' });
   again.createTable({ space: 'Sales', name: 'Deal' });
@@ -96,8 +86,6 @@ test('the Name field can become a formula: the name is computed, the term surviv
   assert.equal(w.readEntity(e.id).name, 'Acme · 1200');
   w.updateEntity(e.id, { Company: 'Acme Corp' });
   assert.equal(w.readEntity(e.id).name, 'Acme Corp · 1200', 'follows its inputs');
-  // Creating with a name is the shape every caller reaches for; a computed
-  // name ignores it instead of failing the create.
   const made = w.createEntity(db.id, { name: 'typed by a human', values: { Company: 'Globex', Amount: 5 } });
   assert.equal(w.readEntity(made.id).name, 'Globex · 5');
   const inline = w.createEntity(db.id, { name: '' });
@@ -123,8 +111,6 @@ test('a computed name is what search finds, and turning it back into text freeze
     assert.ok(hits.some((h) => (h.entityId ?? h.id) === e.id), `the computed name is indexed: ${JSON.stringify(hits).slice(0, 200)}`);
     w.updateEntity(e.id, { Company: 'Umbrella' });
     assert.ok(w.search('Umbrella pilot').some((h) => (h.entityId ?? h.id) === e.id), 're-indexed on the row\'s own write');
-    // formula -> text: the computed value is frozen into every row, so
-    // nothing a reader saw disappears when the computation stops.
     w.updateField(db.id, nameField.id, { type: 'text' });
     assert.equal(w.getTable(db.id).fields[nameField.id].type, 'text');
     assert.equal(w.readEntity(e.id).name, 'Umbrella pilot');
@@ -139,7 +125,6 @@ test('only text and formula are legal shapes for a name', () => {
   const { w, db, nameField } = deals();
   assert.throws(() => w.updateField(db.id, nameField.id, { type: 'number' }), /name/i);
   assert.throws(() => w.updateField(db.id, nameField.id, { type: 'formula', config: {} }), /expression/i);
-  // Any other text field can become a formula too — the door is the same.
   const company = w.getTable(db.id).fields;
   const c = Object.values(company).find((f) => f.name === 'Company');
   w.updateField(db.id, c.id, { type: 'formula', config: { expression: 'Amount * 2' } });

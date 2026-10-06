@@ -6,17 +6,10 @@ import {
   DECK, composeDeckModel, composeSlideModel, deckRole, newSlideVersion, renderDeck,
 } from '../src/deck.js';
 
-/* Feature #118 — the slide composer. A deck is an entity whose `Slides`
-   many-relation holds slide entities; each slide carries one decklet slide
-   object in its `Model` document. The deck's own `Chrome` and `Style`
-   documents are the deck-wide layer. Composition is a read: nothing is
-   stored, so a deck is never stale with respect to its slides. */
-
 function slideDoc(text, extra = {}) {
   return JSON.stringify({ layout: 'content', els: [{ role: 'H1', x: 60, y: 100, w: 800, text }], ...extra });
 }
 
-// A workspace with the Decks shape the composer reads, and two slides in one deck.
 function fresh() {
   const w = new Weave();
   w.createSpace({ name: 'Decks' });
@@ -50,9 +43,6 @@ test('a table is a deck or a slide by the fields it carries', () => {
   const other = w.createTable({ space: 'Decks', name: 'Note' });
   assert.equal(deckRole(w.getTable(other.id)), null);
 
-  /* A many-relation named Slides that points at something with no models is
-     not a deck — a customer's slide library collects slides, it does not
-     present them. Only the registry-aware call can tell. */
   const customer = w.createTable({ space: 'Decks', name: 'Customer' });
   w.addRelation(customer.id, { name: 'Slides', targetDb: other.id, cardinality: 'many-to-many', inverseName: 'Customers' });
   assert.equal(deckRole(w.getTable(customer.id), w.state.tables), null);

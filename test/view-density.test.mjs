@@ -1,9 +1,3 @@
-/* Row density is view configuration (Feature #239). It rides the one view
-   verb (`tableView` / `weave_table_view` / `weave table view` /
-   `/api/tables/:t/views/:v`) beside filter, sort and field order, by name,
-   so an agent reads and sets it the way it sets every other view setting.
-   Comfortable is the default and reads as absent, so a view nobody has
-   set reads exactly as before. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -23,7 +17,6 @@ test('density is a view setting: compact and spacious are stored, comfortable is
   assert.equal(w.tableView('Task/Standard').density, 'spacious', 'and it stays');
   assert.equal(w.tableView('Task/Standard', { density: 'Compact' }).density, 'compact', 'any case');
   assert.equal(w.tableView('Task/Standard', { density: 'comfortable' }).density, undefined, 'comfortable clears it');
-  // A second view keeps its own; a copy takes its source's.
   w.tableView('Task/Standard', { density: 'compact' });
   assert.equal(w.tableView('Task/Wide', { fields: ['Name'] }).density, undefined, 'a new view starts at Comfortable');
   assert.equal(w.tableView('Task/Copy', { from: 'Standard' }).density, 'compact');

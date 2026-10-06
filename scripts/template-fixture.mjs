@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-/* Rewrite a template fixture from a running instance (Feature #262).
-
-     node scripts/template-fixture.mjs [--base http://127.0.0.1:4400/w/weave] [--space CRM]
-
-   Reads the workspace's describeSchema() at <base>/api/schema, takes the
-   space named --space and writes it through templateDoc() to
-   test/fixtures/templates/<space>.json: the document Use Template would
-   apply, with the source's ids, urls and counts gone. Every file in that
-   folder is a template test/template-exercise.test.mjs exercises, so this
-   keeps the suite on the live template. */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -34,8 +24,6 @@ if (!entry) {
   process.exit(1);
 }
 if (!entry.template) console.error(`warning: '${space}' is not marked as a template on ${base}`);
-// ponytail: the Workspace/Spaces rollups over the space's tables are left out;
-// the fixtures exercise rows, and a space rollup has none of its own.
 const { doc, skipped } = templateDoc(entry, { name: space });
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, `${JSON.stringify(doc, null, 2)}\n`);

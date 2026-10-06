@@ -1,17 +1,3 @@
-/* Moving the field block, the documents and the related tables (Issue #89).
-
-   The body used to be hard-sorted — values, then documents, then attachments,
-   then related tables — and nothing a reader did could say otherwise. Kyle
-   wants the whole field block to move above or below a document or a related
-   table, and those to move too, so every block carries a reposition anchor
-   and the order is a table setting.
-
-   The two drags do not mix: a field moves inside the field block and writes
-   fieldOrder, a block moves among blocks and writes bodyOrder.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -49,8 +35,6 @@ if (s) {
     const a = document.querySelector(`[data-block="${f}"]`);
     const b = document.querySelector(`[data-block="${t}"]`);
     const handle = a.querySelector('[draggable="true"]') ?? a;
-    /* Stands in for a hand: dragging forward ends in the target's bottom
-       half, dragging back in its top half. The slot opens there. */
     const forward = !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     const r = b.getBoundingClientRect();
     const at = { clientX: r.left + 30, clientY: forward ? r.bottom - 2 : r.top + 2 };
@@ -100,9 +84,6 @@ if (s) {
   });
 
   test('holding a block opens the same slot the rows use, between the blocks', async () => {
-    /* One cue for the whole page: a block being moved opens a slot among the
-       blocks, the way a row opens one among the rows, so the two drags stop
-       having two grammars (review, 2026-09-03). */
     const page = await open(build().id);
     const cue = await page.evaluate(() => {
       const dt = new DataTransfer();
@@ -134,11 +115,6 @@ if (s) {
   });
 
   test('the field block folds on a caret, like a document, and stays folded', async () => {
-    /* Description wears a caret; the field block wore only a name (Kyle,
-       2026-09-03). Same caret, same memory: the fold is remembered per entity
-       in the browser, the way a document section's is, so the page opens the
-       way it was left. The caret is a button in a draggable head — clicking
-       it folds, it does not move the block. */
     const { id } = build();
     const page = await open(id);
     const head = '[data-block="@values"] .block-head';

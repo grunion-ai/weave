@@ -1,11 +1,3 @@
-/* Issue #582: a stock agent stored a transaction's account as text beside an
-   Account table, and weave had no way back short of a rebuild: text could
-   not become a relation. weave_update_field {type:"relation", config:
-   {targetDb}} now converts the column in place. Each value links to the
-   target row of that name; a value no row carries is refused by name unless
-   createMissing:true makes the row. The field keeps its id, width and
-   description, the target gains the inverse, and the change rolls back with
-   its values like any other type change (Issue #467). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, TYPE_MIGRATIONS } from '../src/engine.js';

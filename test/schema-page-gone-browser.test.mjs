@@ -1,19 +1,3 @@
-/* The legacy "<Space> / <Table> — fields" schema page is gone (Issue #196).
-
-   Kyle, 2026-09-05, with a screenshot of "Workspace / Spaces — fields": "what
-   is this page and why is it needed?" It was openSchemaEditor(), the v0.3.0
-   one-table-per-screen schema editor the field tray (Feature #109) and the
-   column ⋮ menu (Feature #144) replaced. Nothing opened it on purpose; the
-   add-field tray's after-hook fell back to it whenever the add did not
-   start on a #/table route — which is every registry grid: the Spaces grid
-   on the workspace home, the Tables grid on a space page. Add a column
-   there and you landed on a page with no undo, no reorder, no type detail.
-
-   Now the tray hands you back to wherever you were: the table keeps its
-   scroll, any other surface redraws its route. openSchemaEditor and the
-   addRelationDialog only it reached are deleted; the source gate below
-   keeps them out. Playwright is NOT a dependency; the suite skips when
-   absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -39,7 +23,6 @@ const s = await launch('schema page gone', (weave) => {
 
 if (s) {
   const { base, browser, weave } = s;
-  // The registry grids fold under Schema (Issue #386); these pages open it.
   const schemaOpen = async () => {
     const page = await browser.newPage();
     await page.addInitScript(() => localStorage.setItem('weave-schema-open', '1'));

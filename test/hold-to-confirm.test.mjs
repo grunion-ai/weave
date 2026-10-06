@@ -1,12 +1,3 @@
-/* holdToConfirm, driven headless (review of change 143, 2026-09-02).
-
-   Kyle: "hold to delete sticks when more than half done and doesn't stop on
-   release." The browser gate (hold-release-browser.test.mjs) skips on a bare
-   checkout, so the timer and release logic is exercised here against the
-   REAL function lifted out of public/app.js, with a fake element that only
-   knows listeners, classes and text. Every release kind cancels; only a hold
-   carried through the sweep AND the 80ms grace fires; a re-press inside the
-   grace is a new press and never inherits the old one's confirm. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,8 +11,6 @@ const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
 
 const GRACE = 80;
 
-/* The least element that can host the function: listeners, a classList, a
-   textContent, and a pointer-capture that records what it was asked. */
 class FakeEl {
   constructor(tag, attrs = {}) {
     this.tagName = tag; this.attrs = attrs; this.children = [];
@@ -45,7 +34,6 @@ const iconEl = (name, cls) => el('i', { class: cls, 'data-icon': name });
 const src = fnBody('holdToConfirm');
 const holdToConfirm = liftFunction('holdToConfirm', { el, iconEl });
 
-/* A button wired to count confirms, plus the fill to fire transitionend on. */
 const make = () => {
   let confirms = 0;
   const btn = holdToConfirm('Delete', async () => { confirms++; }, { holdingLabel: 'Hold to delete…' });
@@ -95,7 +83,7 @@ for (const release of ['pointerup', 'pointerleave', 'blur', 'pointercancel', 'lo
     btn.fire(release);
     assert.ok(!btn.classes.has('holding'), `${release} disarms`);
     assert.equal(btn.textContent, 'Delete', 'and the label comes back');
-    sweep(); // the compositor finished the sweep anyway (or a late event arrives)
+    sweep();
     await sleep(GRACE + 40);
     assert.equal(confirms(), 0);
   });
@@ -104,7 +92,7 @@ for (const release of ['pointerup', 'pointerleave', 'blur', 'pointercancel', 'lo
     const { btn, sweep, confirms } = make();
     btn.fire('pointerdown', { pointerId: 1 });
     sweep();
-    await sleep(GRACE / 4); // the queued release lands late, but before the grace is up
+    await sleep(GRACE / 4);
     btn.fire(release);
     await sleep(GRACE + 40);
     assert.equal(confirms(), 0, `a ${release} the main thread delivered late must still win`);
@@ -124,7 +112,7 @@ test('keyboard: Enter or Space arms, keyup disarms, other keys do nothing', asyn
   assert.equal(confirms(), 0);
   btn.fire('keydown', { key: ' ' });
   assert.ok(btn.classes.has('holding'), 'Space arms too');
-  btn.fire('keydown', { key: ' ' }); // auto-repeat while held
+  btn.fire('keydown', { key: ' ' });
   sweep();
   await sleep(GRACE + 40);
   assert.equal(confirms(), 1, 'a held key fires once, auto-repeat notwithstanding');
@@ -135,7 +123,7 @@ test('a release-and-re-press inside the grace is a new press: the old sweep neve
   btn.fire('pointerdown', { pointerId: 1 });
   sweep();
   btn.fire('pointerup');
-  btn.fire('pointerdown', { pointerId: 2 }); // re-pressed within the grace
+  btn.fire('pointerdown', { pointerId: 2 });
   await sleep(GRACE + 40);
   assert.equal(confirms(), 0, 'the first sweep belonged to a press that was released');
   assert.ok(btn.classes.has('holding'), 'the second press is still armed and sweeping');
@@ -163,7 +151,6 @@ test('a second pointerdown while armed does not restart or double-arm', async ()
   assert.equal(confirms(), 1);
 });
 
-/* Source and CSS contracts the timer path rests on. */
 test('the release list names every way a pointer stream can end', () => {
   const m = src.match(/for \(const ev of \[([^\]]*)\]\) btn\.addEventListener\(ev, stop\)/);
   assert.ok(m, 'the releases are one list wired to stop');

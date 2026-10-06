@@ -1,7 +1,3 @@
-/* The configuration commands, driven as a terminal would drive them.
-   Everything here was browser-only or curl-only before: a table's icon and
-   noun, a field's rename and width, saved views, automations read back, the
-   activity feed, the workspace record, files, the registry. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -48,9 +44,6 @@ test('a table takes its icon, noun, hidden columns and order from the terminal',
   assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description', 'Chip', 'Card'], 'the views close the order; a caller may leave them out');
 });
 
-/* Issue #249: the Σ row is off unless a table asks for it, so asking has to
-   be sayable from the terminal — it was browser-only while the default was
-   on and nobody had to ask. */
 test('the terminal switches the Σ rollup row on and off', () => {
   assert.ok(!('hideRollups' in table()), 'nothing stored until someone asks');
   cli('table', 'update', 'Ops/Invoice', '--rollup-row', 'on');

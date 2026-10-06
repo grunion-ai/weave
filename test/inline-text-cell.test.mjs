@@ -1,14 +1,3 @@
-/* A text cell holding markdown must not read as markdown.
-
-   Space and table descriptions are `text` fields whose values are written in
-   markdown — the description box on the space page is a markdown editor. In
-   the registry grids those same values were painted into an <input>, so the
-   Spaces grid read `**Official documentation and how-tos** — the pages`.
-
-   The fix follows the formatted-number pattern (Issue #97): the cell wears
-   its costume at rest and hands over the raw text the moment it is clicked.
-   inlineTokens() is the pure half — the marks, in order, with no syntax left
-   in the text. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -21,8 +10,6 @@ const LIB = globalThis.WeaveEditorLib;
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 
 const plain = (md) => LIB.inlineTokens(md).map((t) => t.text).join('');
-
-/* ---------- the marks ---------- */
 
 test('plain text is one unmarked token', () => {
   assert.deepEqual(LIB.inlineTokens('just words'), [{ text: 'just words', mark: null }]);
@@ -65,8 +52,6 @@ test('lone punctuation is text, not an unclosed mark', () => {
   assert.equal(plain('snake_case_name'), 'snake_case_name');
   assert.equal(plain('a ** b'), 'a ** b');
 });
-
-/* ---------- wiring ---------- */
 
 test('a markdown text cell wears the rendered costume until it is clicked', () => {
   assert.match(APP, /function dressedText\(/, 'the costume is built from the tokens');

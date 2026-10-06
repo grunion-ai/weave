@@ -11,7 +11,6 @@ function tmp() {
   return mkdtempSync(join(tmpdir(), 'weave-sqlite-'));
 }
 
-// Build a small workspace and return the engine.
 function seed(w) {
   w.createSpace({ name: 'Product' });
   w.createTable({ space: 'Product', name: 'Task' });
@@ -55,7 +54,6 @@ test('legacy .json workspace auto-migrates to sibling .db; json preserved untouc
   assert.deepEqual(readFileSync(jsonPath), originalBytes, 'legacy json was rewritten');
   assert.equal(w.entityName(w.findEntity('Task', '#1')), 'First');
 
-  // Reopening via the .json path must use the .db (mutations persist there, json stays frozen).
   w.createEntity('Task', { name: 'Third' });
   const w2 = new Weave({ path: jsonPath });
   assert.ok(w2.findEntity('Task', '#3'), 'mutation lost on reopen via .json path');
@@ -102,7 +100,6 @@ test('cross-connection freshness: second engine sees committed writes via maybeR
   assert.equal(b.maybeRefresh(), true);
   assert.ok(b.findEntity('Task', 'From A'));
 
-  // B writes; A refreshes and sees it — no clobbering in either direction.
   b.createEntity('Task', { name: 'From B' });
   assert.equal(a.maybeRefresh(), true);
   assert.ok(a.findEntity('Task', 'From A'));
@@ -196,7 +193,6 @@ test('schema cascades persist across reopen (deleteField, deleteTable)', () => {
 
 test('hub discovers .db siblings and dedupes a migrated json/db pair', async () => {
   const dir = tmp();
-  // Default workspace as .db; one legacy sibling json; one native sibling db; one junk json.
   const main = seed(new Weave({ path: join(dir, 'main.db') }));
   main.state.meta.name = 'main';
   main.save();
@@ -215,7 +211,6 @@ test('hub discovers .db siblings and dedupes a migrated json/db pair', async () 
     const list = await (await fetch(`${base}/api/workspaces`)).json();
     const names = list.map((x) => x.name).sort();
     assert.deepEqual(names, ['main', 'nativedb', 'siblingjson']);
-    // The sibling json is now migrated; a second listing must not duplicate it.
     const list2 = await (await fetch(`${base}/api/workspaces`)).json();
     assert.equal(list2.length, 3);
     assert.ok(existsSync(join(dir, 'siblingjson.db')));
@@ -243,14 +238,10 @@ test('in-memory engine (no path) still works with no sqlite side effects', () =>
   assert.equal(w.readFile(e.files[0].id).bytes.toString(), 'hi');
 });
 
-/* Two processes booting on the same workspace at the same instant must both
-   come up — the 2026-08-21 incident: the second boot died with "database is
-   locked" because busy_timeout was set AFTER the WAL switch, and the WAL
-   switch is exactly the statement that needs to wait. */
 test('simultaneous boots on one workspace both survive', async () => {
   const dir = tmp();
   const dbPath = join(dir, 'race.db');
-  seed(new Weave({ path: dbPath })); // the file exists; both boots open it
+  seed(new Weave({ path: dbPath }));
   const boot = `
     import { Weave } from '${new URL('../src/engine.js', import.meta.url).pathname}';
     const w = new Weave({ path: '${dbPath}' });

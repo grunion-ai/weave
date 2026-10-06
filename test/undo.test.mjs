@@ -32,7 +32,6 @@ test('undo restores a field update', () => {
   assert.equal(undone.length, 1);
   assert.equal(undone[0].kind, 'update');
   assert.equal(w.readEntity(e.id).fields.Estimate, 3);
-  // the reversal is itself on the record
   const kinds = w.getEntity(e.id).activity.map((a) => a.kind);
   assert.ok(kinds.includes('undo'));
 });
@@ -117,7 +116,7 @@ test('undo steps back automation effects and fires no automations itself', () =>
   const e = w.createEntity('Task', { name: 'A' });
   w.updateEntity(e.id, { Estimate: 9 });
   assert.equal(w.readEntity(e.id).fields.State, 'Done', 'automation fired on the forward edit');
-  const { undone } = w.undo({ steps: 2 }); // the user's edit, then the automation's effect
+  const { undone } = w.undo({ steps: 2 });
   assert.equal(undone.length, 2);
   const r = w.readEntity(e.id);
   assert.equal(r.fields.Estimate, null);

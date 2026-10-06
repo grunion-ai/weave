@@ -1,14 +1,3 @@
-/* Bulk verbs (Feature #132, slice 3): one call for a whole selection.
-   The puck's Set a field…, Link to…, Move to table… and Roll up… each want
-   ONE write at the engine layer rather than a per-row loop from the browser
-   (the slice 2 record). `bulk(ids, op, params)` is that verb, and it reports
-   per row: `done` names what landed, `failed` names what did not and why —
-   a bulk command that half works and reports success is how a row goes
-   missing quietly.
-
-   The same verb is reachable from HTTP, MCP and the CLI (the agent-surface
-   gate), each row's change is undoable, and each row carries its own
-   activity entry. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -32,8 +21,6 @@ function build() {
     { name: 'Open', category: 'not-started', default: true }, { name: 'Done', category: 'done' }] } });
   w.addField(tasks, { name: 'Double', type: 'formula', config: { expression: 'Estimate * 2' } });
   w.addRelation(tasks, { name: 'Project', targetDb: projects, cardinality: 'many-to-one', inverseName: 'Tasks' });
-  // Bug shares Estimate and Kind (same type) with Task; Status is a text
-  // field there, so it must NOT carry over — same name, different type.
   w.addField(bugs, { name: 'Estimate', type: 'number' });
   w.addField(bugs, { name: 'Kind', type: 'select', config: { options: ['Chore', 'Feature'] } });
   w.addField(bugs, { name: 'Status', type: 'text' });
@@ -53,22 +40,16 @@ test('bulk set writes one value across the selection, undoably, with activity pe
     assert.equal(e.fields.Status, 'Done');
     assert.ok(e.activity.some((a) => a.kind === 'field-updated' && a.detail.field === 'Estimate'), 'each row logs its own change');
   }
-  // Each row is its own undo step, so the stack walks back row by row.
   w.undo({ steps: ids.length });
   for (const id of ids) assert.equal(w.readEntity(id).fields.Estimate, 1);
 });
 
-/* `changed` is how a caller knows how deep to step back (Feature #220): a
-   fill or a paste writes the same value across a rectangle, and a row that
-   already held it pushes no undo entry. Counting `done` and undoing that
-   many would walk past this write into somebody else's. */
 test('bulk set names the rows that actually CHANGED, not just the ones it visited', () => {
   const { w, ids } = build();
   w.updateEntity(ids[0], { Estimate: 5 });
   const r = w.bulk(ids, 'set', { values: { Estimate: 5 } });
   assert.deepEqual(r.done, ids, 'every row was visited');
   assert.deepEqual(r.changed, ids.slice(1), 'the row that already held 5 wrote nothing');
-  // And that is exactly the depth of the undo stack this call left behind.
   w.undo({ steps: r.changed.length });
   assert.deepEqual(ids.map((id) => w.readEntity(id).fields.Estimate), [5, 1, 1]);
 });
@@ -82,7 +63,6 @@ test('a set of nothing changes nothing, and says so', () => {
 
 test('bulk names what did NOT land, per row, and still lands the rest', () => {
   const { w, ids, apollo } = build();
-  // Apollo is a Project: Estimate is not a field there.
   const r = w.bulk([...ids, apollo.id, 'nope'], 'set', { values: { Estimate: 9 } });
   assert.deepEqual(r.done, ids);
   assert.equal(r.failed.length, 2);
@@ -124,13 +104,10 @@ test('bulk move re-creates each row in the target table by field name and trashe
   assert.equal(bug.fields.Estimate, 1, 'same name, same type: carried');
   assert.equal(bug.fields.Kind, 'Chore', 'options carry by NAME, not by option id');
   assert.equal(bug.fields.Status ?? null, null, 'same name, different type: not carried');
-  // What did not fit is named, so the toast can say it. Double is computed
-  // and recomputes on its own — it is not "left behind".
   assert.deepEqual(m.skipped.sort(), ['Project', 'Status']);
   assert.ok(bug.activity.some((a) => a.kind === 'moved' && a.detail.from === 'Product/Task' && a.detail.publicId === 1));
   assert.ok(w.readEntity(ids[0]).deletedAt, 'the original is in the trash, not gone');
   assert.equal(w.listTrash(tasks.id).length, 1);
-  // Undo walks back both halves: the trash, then the copy.
   w.undo({ steps: 2 });
   assert.equal(w.readEntity(ids[0]).deletedAt ?? null, null);
   assert.ok(w.readEntity(m.to).deletedAt);
@@ -145,7 +122,6 @@ test('bulk refuses an unknown op, an empty selection, and moving to a system tab
   assert.match(r.failed[0].error, /system table/);
 });
 
-/* ── the three doors ─────────────────────────────────────────────────── */
 test('POST /api/bulk is the HTTP door', async () => {
   const { w, ids, apollo } = build();
   const { server } = await startServer(w, { port: 0 });

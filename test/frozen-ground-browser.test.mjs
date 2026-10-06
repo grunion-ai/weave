@@ -1,25 +1,3 @@
-/* The frozen # pair paints one solid ground, whatever the row is wearing
-   (Issue #409).
-
-   Kyle scrolled uno > Buyer > Shopping List sideways with a row open in the
-   dock and read `$1,119` printed across `#1 ↗`. The frozen cells were
-   see-through on that row: the docked row's light is
-   `background: var(--tblr-active-bg)` on EVERY cell of the row, a 4% accent
-   over nothing, and it out-ranked the frozen pair's opaque ground. Whatever
-   scrolled under the pair showed through it, tint doubled on tint.
-
-   The other suite (frozen-id-column-browser) reads computed styles and asks
-   the document what is on top. Neither question catches this: the frozen
-   cell IS on top, it just is not opaque. So this suite looks at pixels.
-   It scrolls a Shopping-List-shaped grid until a currency value sits under
-   the # link, puts the row in each state it can wear (at rest, under the
-   pointer, open in the dock, chosen), and samples every pixel of the frozen
-   pair outside its own checkbox and link. They must all be one colour, and
-   that colour must be the row's own ground as the reader sees it past the
-   seam: nothing from underneath, and no tint laid twice.
-
-   Both engines: the gate's browser, and WebKit as well when it is
-   installed, because Kyle reads weave in Safari. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -61,8 +39,6 @@ if (s) {
     }
   }
 
-  /* Open the grid, scroll it until the first row's currency value sits under
-     the # link, and return the page. `docked` opens row 0 in the dock. */
   const open = async (b, { theme, viewport, docked }) => {
     const page = await b.newPage({ viewport, deviceScaleFactor: 1 });
     const q = docked ? `?e=${rows[0].id}` : '';
@@ -75,8 +51,6 @@ if (s) {
       const row = document.querySelector('.wv-grid tbody tr.entity-row');
       const price = row.querySelector('td[data-field="Best Price"]');
       const pid = row.querySelector('td.pid-cell');
-      // Price's right edge (where its right-aligned digits end) lands on the
-      // middle of the # cell.
       const pr = price.getBoundingClientRect(), dr = pid.getBoundingClientRect();
       wrap.scrollLeft += pr.right - (dr.left + dr.width / 2);
       return wrap.scrollLeft;
@@ -86,8 +60,6 @@ if (s) {
     return page;
   };
 
-  /* Every pixel of row `i`'s frozen pair outside its own checkbox and link,
-     against the row's ground just past the seam. */
   const sample = async (page, i) => {
     const g = await page.evaluate((n) => {
       const row = document.querySelectorAll('.wv-grid tbody tr.entity-row')[n];
@@ -103,13 +75,9 @@ if (s) {
     }, i);
     const png = decodePng(await page.screenshot());
     const [l, t, r, b] = g.pair.map(Math.round);
-    // The row's ground past the seam: the top-left corner of the first cell
-    // there, inside its padding and clear of the rule above.
     const ground = png.at(Math.round(g.past[0]) + 2, Math.round(g.past[1]) + 3);
     const inHole = (x, y) => g.holes.some(([hl, ht, hr, hb]) => x >= hl - 1 && x <= hr + 1 && y >= ht - 1 && y <= hb + 1);
     const foreign = [];
-    // Inset by 2px: the seam on the right and the row rules top and bottom
-    // are borders, drawn on purpose.
     for (let y = t + 2; y < b - 2; y++) {
       for (let x = l; x < r - 2; x++) {
         if (inHole(x, y)) continue;
@@ -138,13 +106,9 @@ if (s) {
           } finally { await page.close(); }
         });
 
-        /* Below 600px the dock is a sheet over the whole screen (Issue
-           #549): the docked row is under it, and there is no pixel of the
-           table to read until the sheet closes. */
         if (viewport.width > 600) test(`${at}: the row open in the dock keeps its frozen pair opaque`, async () => {
           const page = await open(b, { theme, viewport, docked: true });
           try {
-            // The pointer is elsewhere: the dock's light alone.
             await page.mouse.move(1, viewport.height - 1);
             await page.waitForTimeout(150);
             const rest = await sample(page, 0);
@@ -162,18 +126,11 @@ if (s) {
     }
 
     test(`${name}: a field frozen beside # wears the docked light over the surface, not over nothing`, async () => {
-      /* Feature #233's frozen fields take the # pair's layers from the
-         grid's layout sheet, and the docked row's light with them. Only #
-         is frozen by default; this view asks for one more, then puts it
-         back. */
       const views = await (await fetch(`${base}/api/tables/${shop.id}/views`)).json();
       const view = (views.views ?? views).find((v) => v.default) ?? (views.views ?? views)[0];
       const url = `${base}/api/tables/${shop.id}/views/${encodeURIComponent(view.name)}`;
       const patch = (body) => fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      // Name is narrowed so it sits inside the frozen zone's cap (60% of the
-      // visible grid) beside the dock.
       assert.ok((await patch({ frozen: 1, widths: { Name: 200 } })).ok, 'the view takes a frozen field');
-      // Wide enough that the dock leaves the grid room for a frozen Name.
       const page = await open(b, { theme: 'light', viewport: { width: 1600, height: 800 }, docked: true });
       try {
         const bg = await page.evaluate(() => {
@@ -196,8 +153,6 @@ if (s) {
       try {
         await page.click('.wv-grid tbody tr.entity-row td.sel-cell .sel-box');
         await page.waitForSelector('.wv-grid tbody tr.row-selected');
-        // The click leaves the box focused, and its focus ring spills past
-        // the 16px hit box; the ring is the box's own paint, not a leak.
         await page.evaluate(() => document.activeElement?.blur());
         await page.mouse.move(1, VIEWPORTS[0].height - 1);
         await page.waitForTimeout(250);

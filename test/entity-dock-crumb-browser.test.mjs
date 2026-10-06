@@ -1,12 +1,3 @@
-/* The table's crumb line with an entity docked (Issue #437). Docking an
-   entity shrinks the table panel to 560–650 px at 1440, and the toolbar
-   (Search, view, density, Fields, Filters, ⋮) kept its width while the
-   crumb trail was squeezed to one word per line and drawn underneath the
-   controls. The trail stays one line, truncating with an ellipsis, and the
-   toolbar drops to its own row below it when the two do not fit side by
-   side: nothing draws on top of the crumb. Checked with the nav open, the
-   nav collapsed, and the table pressed to its 320 px floor.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

@@ -1,7 +1,3 @@
-/* Refusals an agent can act on (Issues #600, #626). A stock agent that sends
-   the wrong argument shape gets a refusal naming the argument and the shape
-   weave takes, never a raw JavaScript TypeError or a field lookup on the
-   whole malformed value. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -15,8 +11,6 @@ function fresh() {
   w.addField('Txn', { name: 'Amount', type: 'number' });
   return w;
 }
-
-/* ---------- #600: weave_update_entity without values ---------- */
 
 test('weave_update_entity without values is refused by name, not a TypeError', () => {
   const w = fresh();
@@ -57,8 +51,6 @@ test('the well-formed calls still land, verbose included', () => {
   const r = dispatchTool(w, 'weave_update_entity', { entity: e.id, values: { Amount: 7 }, verbose: true });
   assert.equal(r.fields.Amount, 7);
 });
-
-/* ---------- #626: a Sort written as JSON or "-Date" ---------- */
 
 const viewRow = (w, name) => w.listEntities(w.getTable('Views').id).map((e) => w.readEntity(e.id))
   .find((r) => r.name === name);

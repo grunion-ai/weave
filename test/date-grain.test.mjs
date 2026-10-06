@@ -1,33 +1,9 @@
-/* Grain and costume (2026-09-02, Kyle's ruling over the field-costumes
-   explorer). A date field declares two things separately:
-
-     grain   — which parts it CAPTURES and stores: any contiguous run of
-               year · month · day, plus a time of day. Rent falls on the 15th
-               of no particular month; a card expires in a month, never on a
-               day. Storing the missing part would store a lie.
-     costume — how the stored parts PRINT: a style (iso us eu long short month
-               quarter ordinal relative), a clock (24h | 12h), what a clock
-               time means (floating | fixed zone | instant), zero-padding.
-
-   The rule between them: a costume that needs a part the grain never stored
-   is refused at definition time, not rendered as a guess.
-
-   Storage follows ISO 8601 truncated forms (XSD gYear / gYearMonth /
-   gMonthDay / gDay): 2026-08 · 2026 · --08-15 · ---15 · --08 · 09:15.
-   Every existing date field is grain year·month·day with a floating clock,
-   which is exactly what its values already are — nothing migrates.
-
-   Engine and public/date-core.js render through one rule, contract-tested
-   here the same way the four original formats are in date-core.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 await import('../public/date-core.js');
 const core = globalThis.weaveDateCore;
 
-/* A fixed clock: Wednesday 26 Aug 2026, 14:32. `short` drops a current-year
-   year and `relative` counts from today, so both read the engine's clock,
-   which a test may pin. */
 const NOW = new Date(2026, 7, 26, 14, 32);
 
 function fresh(config = {}, type = 'date') {
@@ -47,15 +23,11 @@ const shown = (w, value) => {
   const e = w.createEntity('T', { name: 'x', values: { D: value } });
   return w.readEntity(e.id).fields.D;
 };
-/* The browser renders through date-core with the same config the engine
-   holds; a costume the two disagree on is a bug in one of them. */
 const both = (config, value, expected, msg) => {
   const w = fresh(config);
   assert.equal(shown(w, value), expected, `engine: ${msg ?? expected}`);
   assert.equal(core.formatDate(stored(w, value), { ...fieldOf(w).config, now: NOW, viewerZone: 'UTC' }), expected, `date-core: ${msg ?? expected}`);
 };
-
-/* ---------- grain: what the field captures ---------- */
 
 test('grain is a contiguous run of year·month·day, stored in canonical order, omitted when full', () => {
   assert.deepEqual(fieldOf(fresh({ grain: ['day', 'month'] })).config.grain, ['month', 'day']);
@@ -68,10 +40,6 @@ test('grain is a contiguous run of year·month·day, stored in canonical order, 
   assert.deepEqual(fieldOf(fresh({ grain: [], time: true })).config.grain, [], 'a time-of-day field');
 });
 
-/* Issue #590: agents send grain as a word ({grain:'month'}, {grain:'day'}). A
-   string used to collapse to no parts and the engine blamed the time of day.
-   A bare 'month' is ambiguous (month alone, or year·month), so no alias is
-   accepted: the refusal teaches the list shape instead. */
 test('a grain sent as a string is refused with the shape a grain takes, never the time-of-day error', () => {
   const SHAPE = 'grain is a list of parts, e.g. ["year","month"] for a month or ["year"] for a year; parts are year, month, day';
   for (const grain of ['month', 'day', 'year', 'year-month', 'iso', 3, true]) {
@@ -79,7 +47,6 @@ test('a grain sent as a string is refused with the shape a grain takes, never th
   }
   assert.throws(() => fresh({ grain: 'day', format: 'iso' }), (e) => e.message === SHAPE);
   assert.throws(() => globalThis.weaveDateGrain.normalizeGrain('month'), (e) => e.message === SHAPE, 'the pure rule says it too, so the dialog and the engine cannot differ');
-  // Both accepted shapes still work, and a field updated with a string is refused the same way.
   assert.deepEqual(fieldOf(fresh({ grain: ['year', 'month'], format: 'month' })).config.grain, ['year', 'month']);
   assert.deepEqual(fieldOf(fresh({ grain: { month: true, day: true } })).config.grain, ['month', 'day']);
   const w = fresh({});
@@ -165,8 +132,6 @@ test('formulas read the parts a partial value actually holds', () => {
   assert.equal(r.DayOf, 15);
 });
 
-/* ---------- costume: how the parts print ---------- */
-
 test('a style that needs a part the grain never stored is refused at definition time', () => {
   assert.throws(() => fresh({ grain: ['day'], format: 'month' }), /month/i);
   assert.throws(() => fresh({ grain: ['day'], format: 'quarter' }), /month/i);
@@ -251,9 +216,6 @@ test('a partial grain dresses only the parts it holds — even iso, which prints
   both({ ...m, format: 'quarter' }, '--08', 'Q3');
 });
 
-/* Kyle, 2026-09-07: long is the default date format and AM/PM the default
-   clock. A field that says nothing wears them; iso and 24h are now choices a
-   field has to make, so they are stored when chosen. */
 test('a field that says nothing wears long and AM/PM — the defaults live on date-grain, once', () => {
   assert.equal(core.DEFAULT_FORMAT, 'long');
   assert.equal(core.DEFAULT_CLOCK, '12h');
@@ -288,13 +250,11 @@ test('what a clock time means: floating (today\'s silent rule, now named), a fix
   assert.throws(() => fresh({ time: true, zone: 'fixed', zoneName: 'Mars/Olympus' }), /zone/i);
   assert.throws(() => fresh({ time: true, zone: 'sometimes' }), /zone/i);
 
-  // fixed: the wall clock stays as typed and the zone travels with the field.
   const iso24 = { format: 'iso', clock: '24h' };
   both({ ...iso24, time: true, zone: 'fixed', zoneName: 'America/Los_Angeles' }, '2026-08-15T09:15', '2026-08-15 09:15 PDT');
   both({ ...iso24, time: true, zone: 'fixed', zoneName: 'America/Los_Angeles' }, '2026-01-15T09:15', '2026-01-15 09:15 PST', 'the abbreviation follows the date');
   both({ time: true, zone: 'fixed', zoneName: 'Europe/Berlin', clock: '12h', format: 'long' }, '2026-08-15T17:40', 'Aug 15, 2026 5:40 PM GMT+2');
 
-  // instant: stored as UTC, rendered in whatever zone is reading it.
   const w = fresh({ ...iso24, time: true, zone: 'instant' });
   assert.equal(stored(w, '2026-08-15T16:15Z'), '2026-08-15T16:15Z');
   assert.equal(stored(w, '2026-08-15T09:15-07:00'), '2026-08-15T16:15Z', 'an offset is folded into UTC');
@@ -308,8 +268,6 @@ test('what a clock time means: floating (today\'s silent rule, now named), a fix
   assert.equal(core.toInstant('2026-01-15T09:15', 'America/Los_Angeles'), '2026-01-15T17:15Z', 'and respects DST');
   assert.equal(core.fromInstant('2026-08-15T16:15Z', 'America/Los_Angeles'), '2026-08-15T09:15');
 });
-
-/* ---------- ranges ---------- */
 
 test('a range wears the grain and costume at both ends; elapsed time is opt-in and derived, never stored', () => {
   const rng = (config) => {
@@ -332,8 +290,6 @@ test('a range wears the grain and costume at both ends; elapsed time is opt-in a
   assert.throws(() => fresh({ elapsed: true }, 'daterange'), /time/i, 'elapsed needs a clock at both ends');
   assert.equal(rng({ format: 'long' })({ start: '2026-08-01', end: '2026-09-15' }), 'Aug 1 – Sep 15, 2026', 'the same-year collapse survives');
 });
-
-/* ---------- the schema surfaces ---------- */
 
 test('grain and costume travel through describeSchema, updateField lanes, and the definition sentence', () => {
   const w = fresh({ grain: ['year', 'month'], format: 'us', pad: true });
@@ -358,7 +314,6 @@ test('grain and costume travel through describeSchema, updateField lanes, and th
   assert.equal(td.zone, 'fixed');
   assert.equal(td.zoneName, 'Europe/Berlin');
 
-  // The registry's one-line description of a field names a partial grain.
   const reg = fresh({ grain: ['day'], format: 'ordinal' });
   reg.addField('T', { name: 'Def', type: 'field', config: {} });
   const e = reg.createEntity('T', { name: 'x', values: { Def: { type: 'date', config: { grain: ['day'], format: 'ordinal' } } } });
@@ -382,14 +337,6 @@ test('a schema document round-trips every grain and costume key', () => {
   assert.deepEqual(w2.applySchema(doc, { dryRun: true }), [], 'applying the same document again is a no-op');
 });
 
-/* ---------- a formula that returns a date (Issue #576) ----------
-   A tester picked Date, unticked year and day, ticked Formula and pointed it
-   at a date: the column showed 2026-08-15. The grain was dropped three times
-   (the dialog, addField, the display). A formula opts into the date costume
-   by carrying `grain`, written whole even when it is the full grain, so a
-   formula that says nothing keeps its raw ISO (formulas do date math, in
-   number-format.test.mjs). */
-
 const withFormula = (config) => {
   const w = fresh();
   w.addField('T', { name: 'F', type: 'formula', config: { expression: '[D]', ...config } });
@@ -409,7 +356,6 @@ test('a date formula wears its grain: month alone, year·month, the full grain',
   assert.deepEqual(full.formula.config.grain, ['year', 'month', 'day'], 'the full grain is written down: it is the opt-in');
   assert.equal(full.shown(), dressed({}));
   assert.equal(withFormula({}).shown(), '2026-08-15', 'a formula without a grain keeps its raw ISO');
-  // raw is the value the formula computed, untouched by the costume.
   assert.equal(month.w.readEntity(month.e.id).raw.F, '2026-08-15');
 });
 

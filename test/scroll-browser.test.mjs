@@ -1,13 +1,3 @@
-/* Programmatic scrolling, driven through a real browser (Issue #69).
-
-   The pure arithmetic is in test/scroll.test.mjs. What needs a browser is the
-   claim the whole Issue rests on: `Element.scrollIntoView()` scrolls every
-   scrollable ancestor of its target, so jumping to a heading in a docked
-   document used to drag the page behind the dock along with it. Weave's own
-   helper moves one box. Only a live layout — a document that overflows its
-   dock, inside a table page that overflows its panel — can show that. The
-   page behind the dock is the main panel's scroll since Issue #609.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -21,8 +11,6 @@ const s = await launch('programmatic scrolling', (weave) => {
   table = weave.createTable({ space: 'Scratch', name: 'Note' });
   target = weave.createEntity(table, { name: 'Outlined' });
   weave.setDoc(target.id, RAIL_DOC, 'Description');
-  // The page behind the dock has to have somewhere to go, or the test proves
-  // nothing about leaving it alone.
   for (let i = 0; i < 60; i++) weave.createEntity(table, { name: `Row ${i}` });
 });
 
@@ -31,10 +19,6 @@ if (s) {
 
   async function dockedDoc() {
     const page = await browser.newPage();
-    // Wide enough that the grid beside the dock fits its card and the PAGE
-    // is what scrolls: every field keeps its default width now (Feature
-    // #233), so Name and Description no longer squeeze into a narrow card.
-    // 1900 since Name opens at 260 (Issues #261, #414).
     await page.setViewportSize({ width: 1900, height: 700 });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -63,15 +47,12 @@ if (s) {
       await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 295, null, { timeout: 20000 });
       const before = await page.evaluate(() => Math.round(document.querySelector('#main').scrollTop));
 
-      // The first click anywhere on the rail opens the outline; only then
-      // does a dash click jump.
       await page.evaluate(() => document.querySelector('#dock .doc-rail').click());
       await page.waitForSelector('#dock .doc-rail.open', { timeout: 20000 });
       await page.evaluate(() => document.querySelectorAll('#dock .doc-rail-dash')[1].click());
 
       await page.waitForFunction(() => document.querySelector('#dock').scrollTop > 100,
         null, { timeout: 20000 });
-      // Let a smooth scroll finish before reading the page's own position.
       await page.waitForTimeout(700);
       const after = await page.evaluate(() => ({
         dock: document.querySelector('#dock').scrollTop,
@@ -94,7 +75,7 @@ if (s) {
           .find((x) => x.textContent.includes('Two'));
         const dock = document.querySelector('#dock').getBoundingClientRect();
         const gap = h.getBoundingClientRect().top - dock.top;
-        return gap > 40 && gap < 140; // the 80px reading line, give or take
+        return gap > 40 && gap < 140;
       }, null, { timeout: 20000 });
     } finally { await page.close(); }
   });

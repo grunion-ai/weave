@@ -1,18 +1,3 @@
-/* The formula builder's chips teach, driven through a real browser
-   (design review 2026-09-01, direction A; landed 2026-09-07).
-
-   Twenty-two flat chips made the vocabulary look bigger than it is, and the
-   title-attribute tooltip was the only place a signature lived — invisible
-   on touch and to an agent reading the DOM. Now the function chips sit in
-   the four groups the grammar has (logic, text, number, date), and hovering,
-   focusing or tapping a chip shows a card with the signature, one sentence
-   of doc and an example. Fields a formula cannot read (documents,
-   attachments) are listed greyed with the reason instead of vanishing —
-   a silent absence reads as a bug.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and
-   the suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -33,7 +18,6 @@ const s = await launch('formula builder chips', (weave) => {
 if (s) {
   const { browser, base } = s;
 
-  /* The add-field tray with the ƒ toggle on: the builder is drawn. */
   const openBuilder = async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
@@ -67,7 +51,6 @@ if (s) {
     assert.equal(await card.locator('.sig').textContent(), 'dateadd(date, n, unit)');
     assert.match(await card.locator('.doc').textContent(), /\w{4,}/);
     assert.match(await card.locator('.eg').textContent(), /^dateadd\(/);
-    // Leave the chip: the card goes. Focus it from the keyboard: the card returns.
     await page.mouse.move(5, 5);
     await card.waitFor({ state: 'hidden' });
     await chip.focus();
@@ -81,7 +64,6 @@ if (s) {
     const chip = page.locator('#tray .fx-chip.fn', { hasText: 'upper()' });
     await chip.click();
     assert.equal(await page.inputValue('#tray .fx-expr'), 'upper()');
-    // The caret landed between the parens.
     const pos = await page.evaluate(() => document.querySelector('#tray .fx-expr').selectionStart);
     assert.equal(pos, 6);
     await page.close();
@@ -101,15 +83,12 @@ if (s) {
     assert.match(await card.locator('.doc').textContent(), /document/);
     await notes.click({ force: true });
     assert.equal(await page.inputValue('#tray .fx-expr'), '', 'a greyed chip inserts nothing');
-    // A readable field still inserts its token.
     await page.locator('#tray .fx-chip:not(.fn):not(.excluded)', { hasText: 'Close Date' }).click();
     assert.equal(await page.inputValue('#tray .fx-expr'), '[Close Date]');
     await page.close();
   });
 }
 
-/* Direction C: the agent panel — a collapsed footer under the script that
-   prints the equivalent CLI lines and MCP sequence, live with the typing. */
 if (s) {
   const { browser, base } = s;
   test('the script section carries a collapsed "As an agent would do it" footer that follows the typing', async () => {
@@ -129,15 +108,12 @@ if (s) {
     assert.ok(text.includes(`weave formula check Deals 'upper([Name])'`), text);
     assert.ok(text.includes(`weave field add Deals Health formula --config '{"expression":"upper([Name])"}'`), text);
     assert.ok(text.includes('weave_check_formula → weave_add_field → weave_get_entity'), text);
-    // The name follows too.
     await page.fill('#tray input[name="name"]', 'Shout');
     await page.waitForFunction(() => document.querySelector('#tray .fx-agent pre')?.textContent.includes('Deals Shout formula'));
     await page.close();
   });
 }
 
-/* Direction B: a typed result badge, a row cycler, and the null/error count
-   from a scan of the table; the number costume only for a numeric result. */
 if (s) {
   const { browser, base } = s;
   const openBuilder = async () => {
@@ -184,9 +160,6 @@ if (s) {
   });
 }
 
-/* Direction D: autocomplete in the expression itself — `[` offers fields,
-   two letters offer functions, in a popover positioned at the caret; up,
-   down, Enter and Escape from the keyboard, no editor dependency. */
 if (s) {
   const { browser, base } = s;
   const openBuilder = async () => {
@@ -216,7 +189,6 @@ if (s) {
     await pop.waitFor({ state: 'hidden' });
     assert.equal(await page.inputValue('#tray .fx-expr'), 'concat([Close Date]');
     assert.equal(await caret(page), 19);
-    // The popover sat at the caret, inside the textarea's box, not at 0,0.
     await page.keyboard.type(', [');
     await pop.waitFor({ state: 'visible' });
     const left = await pop.evaluate((n) => parseFloat(n.style.left));
@@ -251,10 +223,6 @@ if (s) {
   });
 }
 
-/* Issue #576, the tester's path: Date picked, Year and Day unticked, Formula
-   ticked, the Close Date chip, named Month. The grain controls stay under
-   the script, the field stores its grain, and the new column's first paint
-   is the month, never the ISO date. */
 if (s) {
   const { browser, base, weave } = s;
   test('a formula over the Date tile keeps its grain, and the new column paints the month first time', async () => {

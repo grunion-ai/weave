@@ -1,7 +1,3 @@
-/* The navigation trail behind entity breadcrumbs (2026-08-23). Kyle went
-   People → Ada Chen → (relation link) Sensor board and the crumb showed
-   only Showcase › Sensor board. The crumb now carries the path taken:
-   ws › Showcase › People › Ada Chen › Field Types › Sensor board. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -30,8 +26,6 @@ test('a refresh of the same entity leaves the trail alone', () => {
   assert.deepEqual(pushTrail([ada], { page: 'entity', entity: board }, board).map((e) => e.id), ['a']);
 });
 
-/* Issue #672: MAX_TRAIL = 4 dropped the oldest hop with no sign it had
-   been there. The trail keeps every hop; the crumb folds the middle. */
 test('the trail is uncapped: every hop stays, oldest first', () => {
   let trail = [];
   let prev = { page: 'db' };
@@ -42,12 +36,10 @@ test('the trail is uncapped: every hop stays, oldest first', () => {
   }
   assert.deepEqual(trail.map((e) => e.id), ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']);
   assert.equal(globalThis.weaveBreadcrumbs.MAX_TRAIL, undefined, 'no cap left to apply');
-  // Wrap-around still cuts back (Kyle, 2026-10-05: crumbs show place).
   const cut = pushTrail(trail, { page: 'entity', entity: { ...ada, id: 'e9' } }, { ...ada, id: 'e2' });
   assert.deepEqual(cut.map((e) => e.id), ['e0', 'e1']);
 });
 
-/* Issue #668: the overflow fold, as a pure choice of which crumbs hide. */
 test('foldPlan: nothing folds when the trail fits', () => {
   const { foldPlan } = globalThis.weaveBreadcrumbs;
   assert.deepEqual(foldPlan([100, 100, 100], 300), []);
@@ -56,7 +48,6 @@ test('foldPlan: nothing folds when the trail fits', () => {
 
 test('foldPlan: the middle folds in order until the rest and the button fit', () => {
   const { foldPlan } = globalThis.weaveBreadcrumbs;
-  // 600 of crumbs in 400: fold 1 (500+40 > 400), fold 2 (440 > 400), fold 3 (340 fits).
   assert.deepEqual(foldPlan([100, 100, 100, 100, 100, 100], 400, { more: 40 }), [1, 2, 3]);
   assert.deepEqual(foldPlan([100, 100, 100, 100, 100, 100], 560, { more: 40 }), [1]);
 });
@@ -79,10 +70,6 @@ test('foldPlan: `from` keeps a head on screen (the full page keeps workspace ›
   assert.deepEqual(foldPlan([60, 80, 70, 120, 120, 200], 100, { from: 4, more: 40 }), [], 'from at the tail: nothing left to fold');
 });
 
-/* Issues #669 and #673 (Kyle, 2026-10-05): every crumb wears its icon; a
-   row crumb is its table's icon, a muted #id and the Name, the current row
-   included. The full page keeps workspace › space › table in front; the
-   row icons carry later tables, so no table crumb sits mid-trail. */
 const adaH = { ...ada, publicId: 7, tableIcon: 'lucide:user', spaceIcon: 'lucide:briefcase' };
 const boardH = { ...board, publicId: 3, tableIcon: 'lucide:cpu', spaceIcon: 'lucide:briefcase' };
 const leoH = { ...leo, publicId: 9, tableIcon: 'lucide:user', spaceIcon: 'lucide:briefcase' };
@@ -120,17 +107,11 @@ test('dockCrumbs: the rows of the path, no table in front, the last one current'
   assert.deepEqual(dockCrumbs([]), []);
 });
 
-/* Issue #267: the tab title reads the place — the row or table in front of
-   the reader, then the workspace — so tabs, history entries and bookmarks
-   stop all reading "Weave". The bare workspace page is the workspace name;
-   "Weave" is left only where no workspace has loaded. */
 test('docTitle: <row or table> · <workspace>, the workspace alone, Weave with neither', () => {
   const { docTitle } = globalThis.weaveBreadcrumbs;
   assert.equal(docTitle('Issue', 'weave'), 'Issue · weave');
   assert.equal(docTitle('Acme Working Capital', 'uno'), 'Acme Working Capital · uno');
   assert.equal(docTitle(null, 'weave'), 'weave');
-  // The workspace page: its own name IS the workspace's, and a tab reading
-  // "weave \u00b7 weave" says nothing the first word did not.
   assert.equal(docTitle('weave', 'weave'), 'weave');
   assert.equal(docTitle('  ', 'weave'), 'weave');
   assert.equal(docTitle('Deals', ''), 'Deals');
@@ -138,10 +119,6 @@ test('docTitle: <row or table> · <workspace>, the workspace alone, Weave with n
   assert.equal(docTitle(undefined, undefined), 'Weave');
 });
 
-/* Issues #670 and #671 (Kyle, 2026-10-05): one trail for both poses, and
-   Back and Forward that replay the clicks. The nav is the click history;
-   the crumb is that history run through pushTrail's cut-back, so crumbs
-   show place and the arrows show time. */
 const N = () => globalThis.weaveBreadcrumbs;
 const h = (id) => ({ id, name: id.toUpperCase(), tableId: 't1', table: 'People' });
 const ids = (hops) => hops.map((x) => x.id);
@@ -161,7 +138,6 @@ test('nav: a fresh open starts the history; a hop extends it; reopening the curr
 
 test('nav: the crumb cuts back on a revisit; Back and Forward replay the clicks', () => {
   const { navOpen, navHop, navBack, navForward, navPath, navCanBack, navCanForward } = N();
-  // The journey from the review: #583 → v0.4.55 → #589 → v0.4.55.
   let nav = navOpen(undefined, h('i583'));
   nav = navHop(nav, h('r54'));
   nav = navHop(nav, h('i589'));
@@ -177,7 +153,6 @@ test('nav: the crumb cuts back on a revisit; Back and Forward replay the clicks'
   assert.deepEqual(ids(navPath(nav)), ['i583']);
   assert.ok(!navCanBack(nav), 'nothing before the first click');
   assert.equal(navBack(nav), nav);
-  // A new hop after Back drops the forward leg.
   nav = navHop(navForward(nav), h('x'));
   assert.ok(!navCanForward(nav), 'a new hop after Back discards the forward stack');
   assert.deepEqual(ids(navPath(nav)), ['i583', 'r54', 'x']);

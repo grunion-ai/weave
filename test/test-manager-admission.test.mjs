@@ -1,6 +1,3 @@
-/* Feature #236 review (change 446, patchset 2): a job the manager never
-   admits must say so in a way the gate can tell apart from a red suite, and
-   a manager started from older code must not serve newer worktrees. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync } from 'node:fs';

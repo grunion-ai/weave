@@ -1,9 +1,3 @@
-/* The vendored icon set and its registry (moving icons, 2026-09-02).
-   Three generated files have to agree with each other and with the app:
-   every registered name draws, every legacy Iconly name weave ever stored
-   still resolves, every state mark with a Lucide twin names one that exists,
-   and the motion CSS is scoped so 595 icons' keyframes cannot collide — and
-   never loops (Kyle: "fire on load but not loop"). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -16,8 +10,6 @@ const svg = globalThis.LUCIDE_MOVING;
 const core = globalThis.fieldDialogCore;
 const CSS = readFileSync(new URL('../public/vendor/lucide-moving.css', import.meta.url), 'utf8');
 
-/* The set weave shipped 2026-08-22 → 2026-09-02: Iconly free (101) plus the
-   eight it drew for money. A row that stored any of these keeps drawing. */
 const LEGACY = [
   '2user', '3user', 'activity', 'adduser', 'arrow-down', 'arrow-down2', 'arrow-down3', 'arrow-downcircle',
   'arrow-downsquare', 'arrow-left', 'arrow-left2', 'arrow-left3', 'arrow-leftcircle', 'arrow-leftsquare', 'arrow-right', 'arrow-right2',

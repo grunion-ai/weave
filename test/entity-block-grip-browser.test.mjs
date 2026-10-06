@@ -1,17 +1,3 @@
-/* The entity page's block chrome, driven through a real browser.
-
-   Issue #210 — "visual dots artifact when hiding fields": clicking the
-   fold caret left the block's ⠿ anchor lit after the pointer had gone,
-   because the caret kept focus and the anchor showed on :focus-within. The
-   anchor is now the same Lucide grip every row wears, and it lights for a
-   hover or a keyboard focus (:focus-visible) — never for a mouse click.
-
-   Issue #208 — "appears as is hidden and should not show": the Appears-as
-   strip follows the eye — a hidden Chip or Card is not drawn there either.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and
-   the suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, styleOf } from './lib/browser.mjs';
@@ -48,9 +34,7 @@ if (s) {
     const focused = await page.evaluate(() => document.activeElement?.className ?? '');
     assert.match(focused, /doc-caret/, 'the caret keeps focus after the click (that is what used to light the grip)');
     const grip = page.locator(`${HEAD} .opt-grip`);
-    // The grip fades over .12s; read it once the fade has landed, not after a guess (Issue #454).
     assert.equal(await styleOf(grip, 'opacity', '0'), '0', 'the grip is not lit once the pointer has gone');
-    // A keyboard reader still sees the handle: Tab onto the caret lights it.
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
     if (/doc-caret/.test(await page.evaluate(() => document.activeElement?.className ?? ''))) {
@@ -77,7 +61,6 @@ if (s) {
     await page.waitForSelector('.wv-appears');
     const slots = await page.$$eval('.wv-appears-slot', (ns) => ns.map((n) => n.className));
     assert.deepEqual(slots, ['wv-appears-slot wv-appears-chip'], 'only the unhidden view is drawn');
-    // Docked beside the table, the same rule: the pane is the same view.
     await page.goto(`${base}/#/table/${orders.id}`, { waitUntil: 'networkidle' });
     await page.click(`tr[data-eid="${order.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .wv-appears');

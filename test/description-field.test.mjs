@@ -1,17 +1,3 @@
-/* The description is a role, not a name (Kyle, 2026-08-27).
-
-   "description should be a default field in all entities. it can be renamed
-   or deleted." Every table got one already — createTable minted it — but the
-   role lived in the literal string 'Description' and in the accident of being
-   the first document field. So a rename quietly moved the default document to
-   whichever document happened to sort first, and a DELETE did not stick: the
-   migration pass on the next constructor found zero document fields and put
-   'Description' back.
-
-   A table now points at its description by id. The pointer survives a rename
-   for free, and deleting the field sets it to null — the tombstone that lets
-   the migration tell "the owner removed it" from "this table predates the
-   role" (undefined). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -20,7 +6,6 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { build } from './lib/fixtures.mjs';
 
-// A workspace on disk, so a change can be proved to survive a fresh open.
 function onDisk() {
   const path = join(mkdtempSync(join(tmpdir(), 'weave-desc-')), 'uno.json');
   const w = new Weave({ path });
@@ -103,10 +88,6 @@ test('the system registry tables never take a description role', () => {
   for (const db of system) {
     assert.equal(db.descriptionFieldId, undefined, `${db.name} claims a description role`);
     assert.equal(w.descriptionField(db), null, `${db.name} answers to descriptionField()`);
-    // Some registry tables DO carry documents — Workflows holds Script and
-    // Diagram — but the registry's own 'Description' is a TEXT column
-    // mirroring the real space/table description. Same word, different thing,
-    // and the migration must never confuse the two.
     const own = w.findField(db, 'Description');
     if (own) assert.equal(own.type, 'text', `${db.name}.Description is not the registry's text column`);
   }
@@ -117,7 +98,6 @@ test('the default document follows the role, not field order', () => {
   w.addField(tasks, { name: 'Spec', type: 'document' });
   const db = w.getTable(tasks);
   const spec = w.findField(db, 'Spec');
-  // Put Spec ahead of the description; the positional guess would switch.
   db.fieldOrder = [db.nameFieldId, spec.id, db.descriptionFieldId];
 
   const e = w.createEntity(tasks, { name: 'T', doc: 'the description body' });
@@ -126,9 +106,6 @@ test('the default document follows the role, not field order', () => {
 });
 
 test('the role cannot be orphaned by a type change, because a document has none', () => {
-  // The engine refuses to migrate a document to any other type, so the role
-  // can only ever end in one of two states: pointing at a document, or null.
-  // Deleting is the way out, and that is the path the tombstone covers.
   const { w, tasks } = onDisk();
   const before = w.getTable(tasks).descriptionFieldId;
   assert.throws(() => w.updateField(tasks, 'Description', { type: 'text' }), /document field can become nothing else/);

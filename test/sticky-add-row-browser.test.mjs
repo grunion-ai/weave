@@ -1,27 +1,7 @@
-/* The "+ New" row floats at the foot of the viewport (Feature #196).
-
-   On a table of hundreds of rows the add row sat below the fold: adding a
-   row meant scrolling to the end first. Now the row is position:sticky at
-   the bottom of the page — visible from the top of the table, resting in its
-   natural place (the last row) once the reader reaches the end.
-
-   Why the header was never sticky on the table page either: `.table-wrap`
-   scrolled horizontally (`overflow-x: auto`), which makes it a scroll
-   container, and a sticky cell sticks to the NEAREST scroll container — a
-   box exactly as tall as the table, so nothing ever stuck to the window. The
-   wrap is measured: one whose grid fits clips (`.wv-fit`), so the table
-   scrolls with the page and both edges stick; a wider one keeps its
-   horizontal scroll, as before — and so does a wrap nobody measures.
-
-   A new row must land ABOVE the floating foot, not behind it: focusNewRow
-   scrolls with a bottom cover the height of the foot.
-
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-// Feature #233: every field keeps its default width (Name 260, Description 280, …), so this table fits its card from 1600px, not 1280.
 const FIT = { width: 1600, height: 720 };
 
 let tasks, wide, projects, alpha, seeded;
@@ -34,7 +14,6 @@ const s = await launch('sticky add row', (weave) => {
   alpha = weave.createEntity(projects, { name: 'Alpha' });
   seeded = [];
   for (let i = 0; i < 200; i++) seeded.push(weave.createEntity(tasks, { name: `task ${i}`, values: { Note: 'n' } }).id);
-  // Enough columns that the grid outgrows a 1280px window.
   wide = weave.createTable({ space: 'Work', name: 'Wide' });
   for (let i = 0; i < 12; i++) weave.addField(wide, { name: `A long column name ${i}`, type: 'text' });
   weave.createEntity(wide, { name: 'one' });
@@ -47,8 +26,6 @@ if (s) {
     return n ? { ...n.getBoundingClientRect().toJSON(), ih: innerHeight, iw: innerWidth } : null;
   }, sel);
   const inView = (r) => r.top >= 0 && r.bottom <= r.ih && r.height > 0;
-  // Sub-pixel slack: a 44px row (Feature #239) can land its bottom a quarter
-  // pixel under the foot's top edge, which no one can see.
   const overlap = (a, b) => a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5 && a.left < b.right && b.left < a.right;
   const openTasks = async (page) => {
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
@@ -59,14 +36,11 @@ if (s) {
   test('the + New row is on screen from the top of a 200-row table, once', async () => {
     const page = await browser.newPage({ viewport: FIT });
     await openTasks(page);
-    // The main panel is the page's scroller (Issue #609).
     assert.equal(await page.evaluate(() => document.querySelector('#main').scrollTop), 0, 'the page opens at the top');
     assert.equal(await page.locator('.wv-grid .add-entity-btn').count(), 1, 'one foot button');
     const btn = await rect(page, '.wv-grid .add-entity-btn');
     assert.ok(inView(btn), `the foot sits inside the viewport: ${JSON.stringify(btn)}`);
     assert.ok(btn.bottom > btn.ih - 60, 'and at its bottom edge');
-    // The header holds at the top edge too — the wrap no longer swallows sticky.
-    // It parks under the view header, which holds there itself (Issue #321).
     await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 2000, behavior: 'instant' }));
     await page.waitForTimeout(150);
     const th = await rect(page, '.wv-grid thead th.col-head');
@@ -89,7 +63,6 @@ if (s) {
     const last = await rect(page, `tr[data-eid="${seeded[199]}"]`);
     assert.ok(inView(btn), 'visible at the end');
     assert.ok(btn.top >= last.bottom - 1, 'below the last row');
-    // The Σ row moved under the field headers (Issue #233): nothing sits below the foot.
     assert.equal(await page.locator('.wv-grid tfoot').count(), 0, 'no footer under it');
     assert.ok(await page.$eval('.wv-grid tr.add-entity-row', (tr) => tr.nextElementSibling === null && tr.closest('table').tFoot === null), 'the foot is the last row');
     await page.close();
@@ -130,7 +103,6 @@ if (s) {
     });
     assert.equal(wrap.overflowX, 'auto');
     assert.ok(wrap.scrolls, 'the wide grid scrolls sideways inside its card');
-    // Tasks fits, so it clips: no scroll container between the grid and the page.
     await openTasks(page);
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.table-wrap')).overflowX === 'clip');
     await page.close();

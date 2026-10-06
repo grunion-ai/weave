@@ -7,12 +7,6 @@ import { readFileSync, statSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-/* Feature #64 — the key field type. A key field's VALUE is only a name; the
-   secret lives in a keystore outside workspace data and never crosses into
-   state, exports, or any read endpoint. The cell says which key and whether
-   the keystore holds it — nothing more. This is how workspace rows (#12) can
-   carry API credentials without the workspace file becoming a secret. */
-
 function fresh() {
   const dir = mkdtempSync(join(tmpdir(), 'weave-keys-'));
   const w = new Weave({ keystorePath: join(dir, 'keystore.json') });
@@ -41,9 +35,6 @@ test('the keystore file is private and survives reopening', () => {
   w.setKey('a', 'one');
   const path = join(dir, 'keystore.json');
   assert.equal(statSync(path).mode & 0o777, 0o600, 'keystore is chmod 600');
-  // Since #143 the secret is sealed rather than sitting in the file; the NAME
-  // stays in the clear so listing works without the key. The envelope itself
-  // is covered by test/keystore-crypto.test.mjs.
   assert.ok(readFileSync(path, 'utf8').includes('"a"'), 'the keystore holds the name');
 
   const w2 = new Weave({ keystorePath: path });
@@ -56,7 +47,6 @@ test('key is a definable, defaultable-free value type', () => {
   const { w } = fresh();
   const f = w.addField('Service', { name: 'K', type: 'key' });
   assert.equal(f.type, 'key');
-  // A key rides the Fields registry like any definable type.
   const row = w.listEntities(w.getTable('Fields').id).find((e) => w.entityName(e) === 'K');
   assert.ok(row);
 });
@@ -72,8 +62,6 @@ test('the API sets and lists keys but can never read one back', async () => {
     });
     assert.equal(set.status, 201);
     const list = await (await fetch(`${base}/api/keys`)).json();
-    // Since #143 a listing also says who owns each credential and whether it
-    // is shared — facts about access, never the secret itself.
     assert.deepEqual(list.map((k) => k.name), ['stripe']);
     assert.equal(list[0].set, true);
     assert.ok(!JSON.stringify(list).includes('hush'));

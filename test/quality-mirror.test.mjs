@@ -1,13 +1,3 @@
-/* The Quality mirror, derived instead of hand-kept.
-
-   Quality/Suite + Quality/Case rows exist to let weave describe its own test
-   suite as data. A hand-maintained copy drifts silently (the old seed listed
-   9 suites and invented case names). The mirror is now GENERATED: scanSuites
-   reads the test files, syncQualityMirror reconciles a workspace to them,
-   and the seed uses the same path — so a fresh workspace's mirror is correct
-   by construction, and the live one is re-synced by the main watcher after
-   every landing. These tests gate the generator itself. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
@@ -32,8 +22,6 @@ test('scanSuites finds every test file with its declared case names', () => {
     assert.ok(s.name && s.file.startsWith('test/'), 'every suite carries a name and a repo-relative file');
     assert.ok(s.cases.length >= 1, `${s.file} declares at least one case`);
   }
-  // A dynamic declaration (test(`slash: ${name}`)) is mirrored as written —
-  // one row for the declaration, not one per runtime expansion.
   const slash = byFile['test/slash-commands.test.mjs'];
   assert.ok(slash.cases.some((c) => c.includes('${')), 'template declarations are kept verbatim');
 });
@@ -60,12 +48,6 @@ test('syncQualityMirror reconciles an existing drifted mirror without duplicatin
   const suite = w.getTable('Quality/Suite');
   const cases = w.getTable('Quality/Case');
 
-  // Drift it four ways: a stale suite, a stale case, a renamed case, and a
-  // SECOND row for a file that already has one. The live mirror grew two of
-  // those twins (test/applet.test.mjs, test/structure-trash.test.mjs) and no
-  // reconcile ever cleared them: keying the existing rows by File into a Map
-  // let the later row overwrite the earlier, so the loser was invisible to
-  // both the update pass and the prune pass and survived every sync.
   w.createEntity(suite, { name: 'Ghost suite', values: { File: 'test/ghost.test.mjs' } });
   const someRow = w.listEntities(suite.id)[0];
   w.createEntity(cases, { name: 'a case that no longer exists', values: { Suite: someRow.id } });
@@ -79,7 +61,6 @@ test('syncQualityMirror reconciles an existing drifted mirror without duplicatin
 
   assert.equal(w.listEntities(suite.id).length, scanned.length, 'ghost suite purged');
 
-  // One row per File, and the survivor carries the current name and cases.
   const fileField = Object.values(suite.fields).find((f) => f.name === 'File');
   const files = w.listEntities(suite.id).map((r) => r.values[fileField.id]);
   assert.equal(new Set(files).size, files.length, 'no test file is mirrored by two Suite rows');

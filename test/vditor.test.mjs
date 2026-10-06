@@ -1,17 +1,3 @@
-/* The embedded markdown editor (Feature #45).
-
-   Vditor is vendored pinned under public/vendor/vditor, per the house rule
-   that third-party code is never npm-installed at runtime. Vditor lazy-loads
-   its own sub-resources from `${cdn}/dist/js/...` at runtime, which makes two
-   things testable and worth pinning: that the tree we vendored actually
-   contains every path the editor will reach for, and that `cdn` points at our
-   copy so a weave instance with no internet still renders documents.
-
-   The editor contracts (always-rendered, no mode switch, no save button,
-   formatting under a slash menu) are asserted at source level for the same
-   reason as test/ui-contract.test.mjs — the UI is dependency-free vanilla JS
-   with no DOM runtime available to node --test. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -23,9 +9,7 @@ import { startServer } from '../src/server.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-// The toolbar's own rule block, so assertions don't match unrelated rules.
 const CSS_TOOLBAR = CSS.match(/\.doc-editor \.vditor-toolbar\s*\{[^}]*\}/)?.[0] ?? '';
-// The version and every file's hash are pinned in test/security/vendor-lock.test.mjs.
 const VENDOR = 'public/vendor/vditor';
 
 let base, server;
@@ -35,21 +19,14 @@ test.before(async () => {
 });
 test.after(() => server.close());
 
-/* ---------- the vendored tree ---------- */
-
 test('the vendored tree carries every asset the editor loads at runtime', () => {
-  // Each of these is a path Vditor's own code builds as `${cdn}/dist/...`.
-  // A missing one fails silently in the browser as an unrendered document,
-  // so the install gate is here rather than in a smoke test.
   for (const rel of [
     'dist/index.min.js',
     'dist/index.css',
-    'dist/js/lute/lute.min.js',      // the markdown engine itself
+    'dist/js/lute/lute.min.js',
     'dist/js/i18n/en_US.js',
     'dist/js/icons/ant.js',
     'dist/js/highlight.js/highlight.min.js',
-    // Vditor requests this straight after highlight.min.js. Pruning it left a
-    // 404 in every document that contains a code block.
     'dist/js/highlight.js/third-languages.js',
     'dist/js/highlight.js/styles/github.min.css',
     'dist/js/highlight.js/styles/github-dark.min.css',
@@ -62,19 +39,13 @@ test('the vendored tree carries every asset the editor loads at runtime', () => 
 });
 
 test('mermaid is vendored once, not twice', () => {
-  // Vditor ships its own 3.5MB mermaid. weave already vendors its own mermaid (≥ 11.9.0, Issue #8), so the
-  // editor is pointed at that copy through a server alias instead.
   assert.ok(!existsSync(join(ROOT, VENDOR, 'dist/js/mermaid/mermaid.min.js')),
     'a second mermaid build must not be vendored under vditor/');
   assert.ok(existsSync(join(ROOT, 'public/vendor/mermaid.min.js')),
     'the single mermaid copy must still be there');
 });
 
-/* ---------- offline: nothing may reach a public CDN ---------- */
-
 test('the editor is pointed at the vendored copy, never a public CDN', () => {
-  // Vditor's `cdn` option defaults to https://unpkg.com/vditor@<version>.
-  // Leaving the default would make documents depend on the public internet.
   assert.match(APP, /cdn:\s*['"]\/vendor\/vditor['"]/,
     'app.js must set cdn to the vendored path');
   for (const host of ['unpkg.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com']) {
@@ -83,8 +54,6 @@ test('the editor is pointed at the vendored copy, never a public CDN', () => {
   }
 });
 
-/* ---------- the always-rendered contract ---------- */
-
 test('the editor is instant-rendering, never split view or mode-switched', () => {
   assert.match(APP, /mode:\s*['"]ir['"]/, "Vditor must run in 'ir' (Typora-style) mode");
   assert.doesNotMatch(APP, /mode:\s*['"]sv['"]/, 'split view is the model Kyle ruled out');
@@ -92,12 +61,7 @@ test('the editor is instant-rendering, never split view or mode-switched', () =>
 });
 
 test('there is no edit mode, no preview toggle and no save button', () => {
-  // The pre-Vditor entity page had an Edit/Preview toggle over an iframe and a
-  // View/MD/MMD/PDF switcher. Rendering IS editing now, so the toggle is gone;
-  // MD/MMD/PDF survive only as downloads.
   assert.doesNotMatch(APP, /doc-frame/, 'the preview iframe is gone');
-  // (.doc-app is not a preview: it is an HTML document running as itself —
-  // the markdown editor for its source is a toggle away, not a mode.)
   assert.doesNotMatch(APP, /'Preview'/, 'no Preview control');
   for (const label of ['Save', 'Saving']) {
     assert.doesNotMatch(APP, new RegExp(`>\\s*${label}\\s*<`), `no ${label} button`);
@@ -143,17 +107,12 @@ test('the toolbar is a selection bubble, not a fixed strip', () => {
   assert.ok(CSS_TOOLBAR, 'the toolbar has its own rule block in style.css');
 });
 
-/* ---------- slash menu ---------- */
-
 test('markdown formatting is reachable from a slash menu', () => {
   assert.match(APP, /key:\s*['"]\/['"]/, "hint.extend must register the '/' trigger");
   assert.match(APP, /slashItems/, 'the menu contents must come from one list');
 });
 
 test('the slash menu covers the markdown-native block set', () => {
-  // The toolbar is hidden, so anything absent here is unreachable.
-  // The whole function, not a fixed window: the catalogue outgrew 3000 chars
-  // and the last commands silently fell outside the slice.
   const from = APP.indexOf('function slashItems');
   const list = APP.slice(from, APP.indexOf('\n}\n', from));
   for (const needle of ['Text', 'Heading 1–6', 'Bold', 'Italic', 'Inline code', 'Code block',
@@ -161,9 +120,6 @@ test('the slash menu covers the markdown-native block set', () => {
     'Link', 'Mermaid', 'Entity', 'Space / workspace']) {
     assert.ok(list.includes(needle), `slash menu is missing: ${needle}`);
   }
-  /* Every row is a glyph, a name and the syntax it writes — the syntax column
-     is what makes the menu teach rather than just insert — and every command
-     belongs to a group the menu knows how to title. */
   const rows = [...list.matchAll(/\{ label: '[^']+',[^}]*\}/g)].map((m) => m[0]);
   assert.ok(rows.length >= 20, `expected the full catalogue, found ${rows.length} rows`);
   for (const row of rows) {
@@ -176,11 +132,6 @@ test('the slash menu covers the markdown-native block set', () => {
   }
 });
 
-/* The vendored hint renders a fixed maximum number of rows, and Vditor ships
-   eight (`if(!(n>7))` in index.min.js). Eight cannot hold a grouped catalogue
-   of twenty: REFERENCE and FORMAT would sit below a fold with nothing to
-   scroll. The vendored file therefore carries a one-number patch to 64, and it
-   is pinned here — a re-vendor that drops it silently truncates the menu. */
 test('the vendored hint renders the whole catalogue, not the first eight rows', () => {
   const vendor = readFileSync(join(ROOT, 'public/vendor/vditor/dist/index.min.js'), 'utf8');
   assert.ok(vendor.includes('if(!(n>63))'), 'the hint row cap must be patched up from 8 to 64');
@@ -188,18 +139,11 @@ test('the vendored hint renders the whole catalogue, not the first eight rows', 
 });
 
 test('the theme is applied before the first render', () => {
-  /* Defect this guards: boot called wireThemeToggle() after the first route,
-     so editors mounted with no data-bs-theme on <html>. The editor chrome
-     caught up through setTheme, but a mermaid diagram renders its SVG once at
-     mount — measured live on a dark page, node fill was rgb(236,236,255), the
-     light palette, under a rgb(17,24,39) body. */
   const boot = APP.indexOf('withPageLoader(() => loadSchema()');
   const theme = APP.indexOf('wireThemeToggle();');
   assert.ok(theme > 0 && boot > 0, 'boot sequence not found');
   assert.ok(theme < boot, 'wireThemeToggle() must run before the first render');
 });
-
-/* ---------- served correctly ---------- */
 
 test('the server serves the vendored editor with usable content types', async () => {
   const js = await fetch(`${base}/vendor/vditor/dist/index.min.js`);
@@ -215,8 +159,6 @@ test('the server serves the vendored editor with usable content types', async ()
 });
 
 test('the editor gets mermaid from the single vendored copy', async () => {
-  // Vditor asks for mermaid under its own dist tree; the server aliases that
-  // path onto the one build weave already ships.
   const alias = await fetch(`${base}/vendor/vditor/dist/js/mermaid/mermaid.min.js`);
   assert.equal(alias.status, 200, 'the alias must resolve');
   const canonical = await fetch(`${base}/vendor/mermaid.min.js`);

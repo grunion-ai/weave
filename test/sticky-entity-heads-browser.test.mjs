@@ -1,19 +1,3 @@
-/* The entity header and each document's section head hold while the reader
-   scrolls (Issue #411).
-
-   Kyle: "entity header should be frozen at the top on scroll, so should each
-   document header when scrolling in that document". The full page already
-   pinned its header (Issue #321), but the docked pane, the pose a table row
-   opens into, set its header back in the flow, so the title, breadcrumbs and
-   actions left with the first screen. And no section head pinned anywhere:
-   a screen into a long Description, the page no longer said which document
-   it was showing, and history, copy and the section menu were out of reach.
-
-   A section head holds under the entity header while its own section is in
-   view, then leaves with the section's end, so the next document's head
-   takes the same place.
-
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -39,14 +23,10 @@ if (s) {
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     if (theme) await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     await page.waitForSelector('.doc-section-head');
-    await page.waitForTimeout(500); // the header height is published on a ResizeObserver
+    await page.waitForTimeout(500);
     return page;
   };
 
-  /* One reading of the page: the entity header, each section head, and the
-     section each head belongs to, in viewport coordinates. `pane` names the
-     box that scrolls: #main on the full page (the window never scrolls since
-     Issue #609), #dock in the split. */
   const read = (page, pane) => page.evaluate((pane) => {
     const root = pane === 'dock' ? document.querySelector('#dock') : document;
     const header = root.querySelector(pane === 'dock' ? '.dock-entity > .view-header' : '#main > .view-header');
@@ -59,15 +39,11 @@ if (s) {
     return { header: r(header).toJSON(), secs, paneTop: r(document.querySelector(pane === 'dock' ? '#dock' : '#main')).top, ih: innerHeight };
   }, pane);
   const scroll = (page, pane, y) => page.evaluate(([pane, y]) => {
-    // Instant: Tabler's reboot makes the root scroll smoothly, and a glide
-    // would still be under way when the reading is taken.
     document.querySelector(pane === 'dock' ? '#dock' : '#main').scrollTo({ top: y, behavior: 'instant' });
   }, [pane, y]).then(() => page.waitForTimeout(250));
   const section = (reading, name) => reading.secs.find((x) => x.name.toLowerCase() === name.toLowerCase());
   const near = (a, b, msg) => assert.ok(Math.abs(a - b) <= 2, `${msg}: ${a} vs ${b}`);
 
-  /* The scroll offset that puts `name`'s section a given distance above the
-     top of its pane, measured in the unscrolled layout. */
   const offsetInto = async (page, pane, name, into) => {
     await scroll(page, pane, 0);
     const at = await read(page, pane);
@@ -96,7 +72,6 @@ if (s) {
 
     test(`${pane}: a section head leaves with its section, and the next head takes its place`, async () => {
       const page = await open(hash);
-      // A little way into Brief: Description has ended above the pane.
       await scroll(page, pane, await offsetInto(page, pane, 'Brief', 400));
       const r = await read(page, pane);
       const desc = section(r, 'Description');
@@ -116,7 +91,6 @@ if (s) {
       const desc = section(r, 'Description');
       assert.ok(desc.head.bottom <= r.header.bottom + 1, `the folded Description head went by: ${desc.head.bottom}`);
       near(section(r, 'Brief').head.top, r.header.bottom, 'and the open Brief head holds');
-      // Unfold again: the choice is stored per browser.
       await page.click(pane === 'dock' ? '#dock .doc-section .doc-caret' : '#main .doc-section .doc-caret');
       await page.close();
     });

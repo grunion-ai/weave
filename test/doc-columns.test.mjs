@@ -1,24 +1,9 @@
-/* One document field, one column, one declared kind (Kyle, 2026-08-31).
-
-   The grid used to fold every non-description document into a shared
-   `Docs (n)` cell — three documents legible only as a count. Each document
-   field is now a column of its own: it hides behind the eye, reorders and
-   resizes like any field, and its cell is the named chip with its kind badge.
-
-   The kind a field DECLARES (`config.kind`: markdown / html / code) rules how
-   the entity page renders the document — an html field runs in its frame, a
-   code field edits in a code box — and content sniffing survives only as the
-   fallback for fields that declare nothing, which is every field made before
-   kinds mattered. Declared kind rules rendering; it never rejects content. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP } from './lib/source.mjs';
 
 await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
-
-/* ---------- the view mode a document field asks for ---------- */
 
 test('a declared kind rules the viewer, whatever the content says', () => {
   assert.equal(LIB.docViewMode('html', '# not html at all'), 'app');
@@ -38,9 +23,6 @@ test('no declared kind falls back to the sniff every existing field relies on', 
 });
 
 test('a sniffed diagram or model gets a viewer of its own (Issues #188, #189)', () => {
-  /* Kyle, 2026-09-05: "diagram doc type doesn\'t render" and "data and code
-     formatting looks wrong" — an undeclared field holding mermaid source or a
-     JSON model went to the markdown editor, which drew the source as prose. */
   assert.equal(LIB.docViewMode(undefined, 'graph LR\n A-->B'), 'diagram', 'mermaid source draws as a diagram');
   assert.equal(LIB.docViewMode(undefined, 'flowchart TD\n F[a] --> D{b}'), 'diagram');
   assert.equal(LIB.docViewMode(undefined, '{"slides": []}'), 'code', 'a JSON model edits in the code box');
@@ -65,8 +47,6 @@ test('the document section mounts a diagram viewer for the diagram mode', () => 
   assert.match(section, /class: 'doc-diagram'/, 'inside its own box');
 });
 
-/* ---------- the chip badge ---------- */
-
 test('the chip wears the declared kind; sniffing is for the undeclared', () => {
   assert.equal(LIB.docChipKind('html', 'anything at all'), 'html');
   assert.equal(LIB.docChipKind('code', 'def f(): pass'), 'code');
@@ -80,8 +60,6 @@ test('an empty document has no kind to claim, declared or not', () => {
   assert.equal(LIB.docChipKind('code', '   \n'), null);
   assert.equal(LIB.docChipKind(undefined, null), null);
 });
-
-/* ---------- the grid: one column per document ---------- */
 
 test('every document field is a column; the shared Docs cell is gone', () => {
   const cols = APP.match(/function visibleCols\([^]*?\n\}/)[0];
@@ -103,8 +81,6 @@ test('document fields hide behind the eye like any field', () => {
   assert.doesNotMatch(APP, /db\.fields\.filter\(\(f\) => f\.type !== 'document'\)\.map\(\(f\) => row\(/,
     'the visibility popover stopped excluding documents');
 });
-
-/* ---------- the entity page honours the declared kind ---------- */
 
 test('the document section asks docViewMode, not a local sniff', () => {
   assert.match(APP, /docViewMode\(f\.kind/, 'the section routes on the field’s declared kind');

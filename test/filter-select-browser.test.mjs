@@ -1,12 +1,3 @@
-/* The Filters popover offers single-select and multi-select fields beside
-   workflow and toggle fields, with the same option picking (Issue #319),
-   and its footer reads "X of N <row term plural>" (Issue #448; Kyle,
-   2026-09-27). Options in one field widen the match (OR), fields narrow it
-   (AND), a multi-select row matches on any chosen option. X counts the rows
-   left after the filters and the search, N every undeleted row; the plural
-   stays even at 1. The count is one node, updated in place and announced
-   politely, with Clear all on its right. Playwright is NOT a dependency of
-   weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -102,7 +93,6 @@ if (s) {
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
       await page.click('.table-filter-btn');
       await settled(page, '1 of 5 bugs');
-      // Deleted rows shown in the grid still leave N alone.
       await page.keyboard.press('Escape');
       await page.fill('.table-search-input', '');
       weave.tableView(`${bugs.id}/${view().id}`, { deleted: true });

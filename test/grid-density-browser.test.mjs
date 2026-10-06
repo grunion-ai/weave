@@ -1,35 +1,3 @@
-/* The density flip keeps the reader's place (Issue #342).
-
-   Density is a way of READING the table (Kyle, 2026-08-24), so flipping it
-   part way down a long grid should leave the row under the reader's eye
-   under it. It did not: the row window is placed from a body-relative
-   offset divided by the row height, and shorter rows put a different row
-   under the same offset, so a flip at row 209 drew from row 332.
-
-   Both scrollers are pinned, because the geometry differs. A grid wider
-   than its card scrolls inside its own wrap with the toolbar standing
-   still, which is the flip a reader actually makes; a grid that fits
-   scrolls the page, and its control is above the fold, so the pick is
-   dispatched rather than clicked. The third case is the strip itself: it
-   rebuilt its buttons on every pick, so the button the reader had just
-   clicked left the document and focus fell to <body>.
-
-   The fourth pair is Issue #413: a page-scrolled grid of UNEVEN rows (every
-   third one carries a body with code in it, the way real weave grids do)
-   at the reporter's 2187x1359, flipped both ways in both themes. There the
-   flip landed one row off, row 224 heading the view where 223 had: the row
-   was put back under the header once, and the re-window that followed moved
-   it again.
-
-   The rest is Feature #239 (Issue #440): three densities held to a DECLARED
-   row height. A table with one field of every type, each holding its worst
-   case (600 characters of markdown, 12 chips, a computed card, an image),
-   paints every row at exactly 32, 44 or 72px in both themes; only the
-   height moves (font sizes and column widths are the same at all three);
-   a multi-value cell shows whole chips and counts the rest; and the density
-   is saved in the view, each view keeping its own.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -37,15 +5,12 @@ import { launch } from './lib/browser.mjs';
 const N = 600;
 const ROW = { compact: 32, comfortable: 44, spacious: 72 };
 const LABEL = { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' };
-// A 1x1 PNG: the image an attachments cell holds.
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 let narrow, wide, tall, every, everyViews, legacy;
 const s = await launch('the density flip', (weave) => {
   weave.createSpace({ name: 'Quality' });
   narrow = weave.createTable({ space: 'Quality', name: 'Case' });
   weave.addField(narrow, { name: 'Status', type: 'select', config: { options: ['pass', 'fail'] } });
-  // Ten text columns take the grid past its card, so its wrap is the box
-  // that scrolls and the toolbar stays on screen.
   wide = weave.createTable({ space: 'Quality', name: 'Run' });
   const notes = {};
   for (let k = 0; k < 10; k++) { weave.addField(wide, { name: `Note ${k}`, type: 'text' }); notes[`Note ${k}`] = `note ${k} value`; }
@@ -54,7 +19,6 @@ const s = await launch('the density flip', (weave) => {
     weave.createEntity(narrow, { name, values: { Status: i % 2 ? 'pass' : 'fail' } });
     weave.createEntity(wide, { name, values: notes });
   }
-  // Issue #413's shape: 600 rows that fit their card, uneven in height.
   tall = weave.createTable({ space: 'Quality', name: 'Ledger' });
   for (let i = 0; i < N; i++) {
     weave.createEntity(tall, {
@@ -63,7 +27,6 @@ const s = await launch('the density flip', (weave) => {
     });
   }
 
-  /* Feature #239: one field of every type, every row at its worst case. */
   const people = weave.createTable({ space: 'Quality', name: 'People' });
   const folks = Array.from({ length: 12 }, (_, k) => weave.createEntity(people, { name: `Person number ${k} with a long name` }));
   every = weave.createTable({ space: 'Quality', name: 'Every' });
@@ -88,7 +51,6 @@ const s = await launch('the density flip', (weave) => {
   add('Twice', 'formula', { expression: 'Count * 2' });
   add('Owner names', 'lookup', { relationField: 'Owners', targetField: 'Name' });
   add('Brief', 'document');
-  // Every table has its computed Card (a view field, minted hidden).
   weave.updateField(every, 'Card', { config: { shape: 'card', link: true, state: true, description: 'medium', fields: ['Stage', 'Due'] } });
   const MD = `# A heading in the description\n\n${'A **long** paragraph with `code`, a [link](https://example.com) and _marks_ that runs on. '.repeat(5)}\n\n- a list item\n- another list item\n\n> a quote`.slice(0, 600);
   for (let i = 0; i < 12; i++) {
@@ -110,7 +72,6 @@ const s = await launch('the density flip', (weave) => {
   weave.tableView(`${every.id}/${first}`, { show: ['Card'] });
   weave.tableView(`${every.id}/Second`, { from: first });
   everyViews = weave.tableView(every).views;
-  // A table whose views predate the setting, for the localStorage handover.
   legacy = weave.createTable({ space: 'Quality', name: 'Legacy' });
   for (let i = 0; i < 5; i++) weave.createEntity(legacy, { name: `legacy ${i}` });
 });
@@ -127,16 +88,10 @@ if (s) {
     await page.waitForTimeout(300);
     return page;
   };
-  // Which box scrolls, the index of the row at the top edge (a row still on
-  // its way holds its place, so every row with a data-i counts), and what a
-  // row measures at.
   const view = (page) => page.evaluate(() => {
     const wrap = document.querySelector('.table-wrap');
     const table = document.querySelector('.wv-grid');
     const box = wrap.classList.contains('wv-grid-scroll') ? wrap : null;
-    // The lower edge of a STUCK field header is where the readable body
-    // starts, in either box — and below the view header, which holds at the
-    // top of the page itself (Issue #321).
     const edge = table.querySelector('thead th').getBoundingClientRect().bottom;
     let top = null;
     for (const tr of table.querySelectorAll('tbody tr[data-i]')) {
@@ -185,11 +140,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* A grid that fits scrolls the page, so the toolbar is off the top of the
-     window by the time the reader is this far down and a real click would
-     have to travel to it first. The pick is dispatched instead: what is
-     under test is the arithmetic on the page scroller, where the body's
-     offset is read against the window rather than against a box. */
   test('a density flip on a page-scrolling grid leaves the reader on the same row', async () => {
     const page = await open(narrow);
     try {
@@ -208,9 +158,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #413. The flip is dispatched for the reason above; what is pinned
-     is the row heading the view after each flip, read off the stuck header
-     cells, in both directions and both themes. */
   for (const theme of ['light', 'dark']) {
     test(`a density flip keeps the row heading a page-scrolled grid of uneven rows, both ways (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 2187, height: 1359 } });
@@ -256,7 +203,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* ---------- Feature #239: a declared row height ---------- */
   const pickDensity = async (page, d) => {
     await page.evaluate((label) => {
       document.querySelector('.table-density-btn').click();
@@ -275,7 +221,6 @@ if (s) {
     return page;
   };
   const viewUrl = (db, v) => `#/table/${db.id}/view/${v.id}`;
-  // Every painted row, and what each field column is drawn at.
   const measure = (page) => page.evaluate(() => {
     const table = document.querySelector('.wv-grid');
     const rows = [...table.querySelectorAll('tbody tr.entity-row')];
@@ -284,7 +229,6 @@ if (s) {
       heights: rows.map((r) => Math.round(r.getBoundingClientRect().height * 100) / 100),
       widths: [...table.querySelectorAll('thead tr:first-child > th')].map((th) => Math.round(th.getBoundingClientRect().width * 100) / 100),
       fonts: [...rows[0].querySelectorAll('td, td *')].map((n) => getComputedStyle(n).fontSize),
-      // The tallest thing in each field cell, by type, for the failure message.
       tallest: Object.fromEntries([...rows[0].querySelectorAll('td[data-ftype]')].map((td) => [td.dataset.ftype, Math.round(td.getBoundingClientRect().height)])),
     };
   });
@@ -380,7 +324,6 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     const key = `weave-grid-density:${legacy.id}`;
     try {
-      // The key as an older build left it, set before the first paint only.
       await page.goto(`${base}/#/`, { waitUntil: 'load' });
       await page.evaluate((k) => localStorage.setItem(k, 'compact'), key);
       await page.goto(`${base}/#/table/${legacy.id}`, { waitUntil: 'load' });
@@ -393,8 +336,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* The flip anchor into and out of the two-line density, deep in a table:
-     row 400 of 600 heads the view before and after both flips. */
   test('a flip into and out of Spacious at row 400 of 600 keeps the row heading the view', async () => {
     const page = await open(narrow);
     try {

@@ -1,11 +1,3 @@
-/* Issue #114, in a real browser: when the process is older than the checkout
-   that served the page, the instance chip has to SAY so and the toast has to
-   be on screen. Asserted here rather than in source because the 2026-08-28
-   failure was silence — a message the framework switches off (Issue #92) is
-   the same silence with more code behind it.
-
-   Playwright is NOT a dependency of weave; the harness skips the suite when
-   it is absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

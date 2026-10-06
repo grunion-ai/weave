@@ -1,12 +1,3 @@
-/* Soft delete (weave Feature #38, first half).
-
-   Deleting an entity is recoverable by default: the row keeps its id, its
-   publicId, its relations and its documents, and simply stops being visible.
-   Everything that reads "the rows of a table" — list, query, search, relation
-   targets, lookups and rollups — must agree on that, or a deleted entity
-   leaks back in through whichever surface forgot to ask. Purging is the
-   explicit, irreversible opt-in. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -38,7 +29,6 @@ test('a deleted entity disappears from list, query and search but is still reada
   assert.equal(w.query(tasks, {}).total, 1);
   assert.equal(w.search('Alpha').length, 0, 'deleted entities must not surface in search');
 
-  // Direct access still works — the trash view and restore both need it.
   const read = w.readEntity(a.id);
   assert.equal(read.name, 'Alpha');
   assert.ok(read.deletedAt, 'readEntity must expose deletedAt');
@@ -51,7 +41,6 @@ test('deleting is recorded in activity and is idempotent', () => {
   const at = w.deleteEntity(a.id).deletedAt;
   assert.ok(at);
   assert.equal(w.readEntity(a.id).activity.at(-1).kind, 'deleted');
-  // A second delete must not move the timestamp or stack another activity row.
   assert.equal(w.deleteEntity(a.id).deletedAt, at);
   assert.equal(w.readEntity(a.id).activity.filter((x) => x.kind === 'deleted').length, 1);
 });
@@ -71,7 +60,6 @@ test('deleted entities drop out of relations, lookups and rollups', () => {
   assert.deepEqual(read.fields.Tasks.map((t) => t.name), ['Beta'],
     'the relation collection must not list deleted targets');
 
-  // Filtering by a related value must not match through a deleted row either.
   assert.equal(w.query(projects, { where: [['Tasks.Name', '=', 'Alpha']] }).total, 0);
 });
 
@@ -85,7 +73,6 @@ test('restore brings the entity and its relations back intact', () => {
   assert.equal(w.readEntity(apollo.id).fields['Task count'], 2, 'relations survive the round trip');
   assert.equal(w.readEntity(a.id).activity.at(-1).kind, 'restored');
   assert.equal(w.readEntity(a.id).publicId, a.publicId, 'the public id is preserved');
-  // Restoring a live entity is a no-op, not an error.
   assert.equal(w.restoreEntity(a.id).activity.filter((x) => x.kind === 'restored').length, 1);
 });
 
@@ -110,10 +97,6 @@ test('includeDeleted opts a read back into seeing the trash', () => {
   assert.equal(w.query(tasks, { includeDeleted: true, where: [['Name', '=', 'Alpha']] }).total, 1);
 });
 
-/* The table page's trash count (Issue #270): opening a table asked for the
-   whole trash list — every trashed row read in full — only to print a number
-   in the eyeball. The query answers the count on request instead, for the
-   table as a whole (a filter narrows the rows, not the trash). */
 test('query answers the trash count on request, without the trash list', () => {
   const { w, tasks, projects, a, b, apollo } = buildWorkspace();
   assert.equal('trashCount' in w.query(tasks, {}), false, 'no count unless asked');
@@ -163,13 +146,9 @@ test('a soft-deleted entity can be purged from the trash', () => {
   assert.throws(() => w.getEntity(a.id), /not found/);
 });
 
-/* Purging the container really drops it: a hard table delete takes every
-   row with it, live and trashed alike, so nothing is left pointing at a
-   table that no longer exists. (The soft default is structure-trash.test.mjs
-   territory.) */
 test('hard-deleting a table purges its rows, live and trashed alike', () => {
   const { w, tasks, a } = buildWorkspace();
-  w.deleteEntity(a.id); // one already in the trash, one still live
+  w.deleteEntity(a.id);
   w.deleteTable(tasks.id, { hard: true });
 
   assert.deepEqual(w.listTrash(), [], 'no orphans may survive their table');
@@ -204,8 +183,6 @@ test('csv export and entity counts reflect only live rows', () => {
   assert.ok(csv.includes('Beta'));
 });
 
-/* ---------- REST surface ---------- */
-
 test('REST: delete is soft, restore un-deletes, ?hard=1 purges', async () => {
   const { w, tasks, a, b } = buildWorkspace();
   const { server } = await startServer(w, { port: 0 });
@@ -232,8 +209,6 @@ test('REST: delete is soft, restore un-deletes, ?hard=1 purges', async () => {
     server.close();
   }
 });
-
-/* ---------- agent surfaces: MCP and CLI must not be second-class ---------- */
 
 test('MCP exposes the same delete / restore / trash contract', () => {
   const { w, a } = buildWorkspace();

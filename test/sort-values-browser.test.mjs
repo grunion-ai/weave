@@ -1,22 +1,8 @@
-/* The grid's order against a real page (Issue #279).
-
-   uno's Agent/Sessions put "Sep 9, 2026 9:51 AM" above every row created on
-   Sep 12: the comparator was handed the painted string. The value rule is
-   pinned in test/sort-values.test.mjs; this suite proves the two paths a
-   grid can take to an order land in the same place — the table page sorts on
-   the server (it pages its data, Issue #271), and the eyeball's "Deleted
-   rows" switch turns paging off and sorts in public/app.js.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
 let sessions, entries, journal;
-// Deliberately out of creation order, so neither insertion order nor the
-// public id can pass for a working sort.
-// The two spans that open on Sep 9 are what makes the end matter: a range
-// sorts by its start, then by its end (Issue #287).
 const ROWS = [
   { name: 'sep-09', Created: '2026-09-09T09:51', Cache: 15829984, Window: { start: '2026-09-09', end: '2026-09-12' } },
   { name: 'oct-01', Created: '2026-10-01T00:05', Cache: 900, Window: { start: '2026-10-01', end: '2026-10-03' } },
@@ -25,15 +11,11 @@ const ROWS = [
 const s = await launch('a grid sorts by value, not costume', (weave) => {
   weave.createSpace({ name: 'Agent' });
   sessions = weave.createTable({ space: 'Agent', name: 'Session' });
-  // The uno field exactly: a date wearing the long format with a clock.
   weave.addField(sessions, { name: 'Created', type: 'date', config: { format: 'long', time: true } });
   weave.addField(sessions, { name: 'Cache Read', type: 'number', config: { separator: true } });
   weave.addField(sessions, { name: 'Window', type: 'daterange', config: { format: 'long' } });
   for (const r of ROWS) weave.createEntity(sessions, { name: r.name, values: { Created: r.Created, 'Cache Read': r.Cache, Window: r.Window } });
   weave.updateTable(sessions, { sort: [{ field: 'Created', dir: 'desc' }] });
-  /* The system columns (Issues #254, #273): Created At switched on in the
-     eye, stamped by hand so its order is neither the name's nor the #'s.
-     Made middle, oldest, newest, so the # column reads #1, #2, #3. */
   entries = weave.createTable({ space: 'Agent', name: 'Entry' });
   weave.addField(entries, { name: 'Stage', type: 'select', config: { options: ['Now', 'Next', 'Later'] } });
   for (const [name, at] of [['middle', '2026-09-10T08:00:00.000Z'], ['oldest', '2026-09-01T08:00:00.000Z'], ['newest', '2026-09-12T08:00:00.000Z']]) {
@@ -41,9 +23,6 @@ const s = await launch('a grid sorts by value, not costume', (weave) => {
     weave.state.entities[e.id].createdAt = at;
   }
   weave.updateTable(entries, { systemFields: ['Created At', 'Activity'] });
-  /* Sorted by Modified At, newest first: every edit rewrites the stamp, so an
-     edited row belongs at the top whatever field it touched. j01 is the
-     newest, j12 the oldest. */
   journal = weave.createTable({ space: 'Agent', name: 'Journal' });
   weave.addField(journal, { name: 'Note', type: 'text' });
   for (let i = 1; i <= 12; i++) {
@@ -56,17 +35,13 @@ const s = await launch('a grid sorts by value, not costume', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
   const open = async () => {
-    // Deleted rows are saved in the view since Issue #442: every case starts paged.
     for (const t of Object.values(weave.state.tables)) if (!t.system) for (const v of t.tableViews ?? []) if (v.deleted) weave.tableView(`${t.id}/${v.id}`, { deleted: false });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/#/table/${sessions.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
   };
-  // Every grid cell is its field's editor, so the value is on the control.
   const order = (page) => page.$$eval('.wv-grid tbody tr.entity-row td.name-cell', (tds) => tds.map((td) => td.querySelector('input')?.value ?? td.textContent.trim()));
-  // The eyeball's Rows section: showing deleted rows is the one path that
-  // asks for the whole table, so the grid sorts locally from there on.
   const stopPaging = async (page) => {
     await page.click('.eye-btn');
     await page.waitForSelector('.chip-pop .eye-row');
@@ -103,9 +78,6 @@ if (s) {
     const page = await open();
     const cells = await page.$$eval('.wv-grid tbody tr.entity-row td[data-field="Window"] input', (ins) => ins.map((i) => i.value));
     assert.ok(cells.every((c) => / – /.test(c)), `the cells wear the painted span: ${cells.join(' | ')}`);
-    // Ascending on the costume read "Oct 1 – Oct 3, 2026" first, because
-    // "O" < "S". The server orders page one; the eyeball's Deleted switch
-    // hands the whole table to app.js, which must land in the same order.
     await page.locator('.wv-grid thead th', { hasText: 'Window' }).locator('.field-menu').click();
     await page.locator('.chip-pop .wv-menu-row', { hasText: 'Oldest to newest' }).first().click();
     await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'sep-09');
@@ -123,9 +95,6 @@ if (s) {
     await page.close();
   });
 
-  /* Kyle, 2026-09-12, clicking the Created At header six times: "system
-     fields need the same 3 dots menu for sorting". And 2026-09-09: the rows
-     read by type, "most recent to oldest", "largest smallest". */
   const openEntries = async (theme) => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/#/table/${entries.id}`, { waitUntil: 'networkidle' });
@@ -136,7 +105,6 @@ if (s) {
   const menuOf = async (page, th) => {
     await th.hover();
     const btn = th.locator('.field-menu');
-    // Quiet until hovered, like a field's ⋮, and legible when it shows.
     await page.waitForFunction((b) => getComputedStyle(b).opacity === '1', await btn.elementHandle());
     const ink = await btn.evaluate((b) => [getComputedStyle(b).color, getComputedStyle(b.closest('th')).backgroundColor]);
     assert.notEqual(ink[0], ink[1], `the ⋮ does not vanish into its header: ${ink.join(' on ')}`);
@@ -155,15 +123,12 @@ if (s) {
         let pop = await menuOf(page, head);
         assert.equal((await pop.locator('.wv-menu-title').textContent()).trim(), 'Created At');
         assert.equal((await pop.locator('.wv-menu-kind').textContent()).trim(), 'system');
-        // Nothing to edit, insert beside or delete on a system column.
         assert.deepEqual(await labels(pop), ['Oldest to newest', 'Newest to oldest']);
         await pop.locator('.wv-menu-row', { hasText: 'Newest to oldest' }).click();
         await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'newest');
         assert.deepEqual(await order(page), ['newest', 'middle', 'oldest'], 'paged: the server orders by the stamp');
         assert.equal(await head.locator('.wv-icon-xs').count(), 1, 'the header wears the sort arrow');
         assert.deepEqual(s.weave.describeSchema().flatMap((sp) => sp.tables).find((x) => x.id === entries.id).sort, [{ field: 'Created At', dir: 'desc' }], 'the direction stored is still desc (on the default view, Feature #229)');
-        // The sort is the table's now: a reload opens on it, and the menu
-        // opens with the live row checked.
         await page.reload({ waitUntil: 'networkidle' });
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -185,7 +150,6 @@ if (s) {
       await pop.locator('.wv-menu-row', { hasText: 'Oldest to newest' }).click();
       await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'oldest');
       assert.deepEqual(await order(page), ['oldest', 'middle', 'newest'], 'whole table: app.js orders by the stamp too');
-      // Activity links to the history; it has no value to order by.
       assert.equal(await page.locator('.wv-grid thead th.sys-head', { hasText: 'Activity' }).locator('.field-menu').count(), 0);
       pop = await menuOf(page, page.locator('.wv-grid thead th.pid-head'));
       assert.equal((await pop.locator('.wv-menu-title').textContent()).trim(), '#');
@@ -193,7 +157,6 @@ if (s) {
       await pop.locator('.wv-menu-row', { hasText: 'Largest to smallest' }).click();
       await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'newest');
       assert.deepEqual(await order(page), ['newest', 'oldest', 'middle'], '#3, #2, #1');
-      // And a select's rows name its option order (Issue #318).
       pop = await menuOf(page, page.locator('.wv-grid thead th.col-head', { hasText: 'Stage' }));
       const words = await labels(pop);
       assert.ok(words.includes('Option order') && words.includes('Reverse option order'), words.join(' | '));
@@ -201,10 +164,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* An edit moves a row on a Modified At sort (Issue #254). A cell commit
-     patches its row in place when the edited field is not the sort's
-     (Issue #257), but every edit rewrites Modified At: the row sat at the
-     bottom with a fresh stamp while the server had it first. */
   test('an edit deep in a Modified At sort lifts the row to the top without a reload', async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {

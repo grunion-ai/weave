@@ -1,5 +1,3 @@
-/* A literal text field paints its characters (Issue #86), in a real grid.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

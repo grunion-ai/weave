@@ -2,13 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, WeaveError } from '../src/engine.js';
 
-/* Option F (Kyle, 2026-08-28): the table's view configuration is fields on
-   its registry row. Field Order and Hidden Fields already live there; this
-   adds Filter (workflow-state sets, formerly per-browser localStorage,
-   Feature #38) and Sort (formerly ephemeral client state). Both are table
-   truth: validated by updateTable, mirrored to the Tables row as text, and
-   editable from either side through the same verb. */
-
 function fresh() {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });
@@ -28,7 +21,6 @@ function fresh() {
   return w;
 }
 
-// Since Feature #229 the filter and sort live on the default view.
 const dv = (w) => w.tableView('Task/Standard');
 const tableRowOf = (w, dbName) =>
   w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === dbName);
@@ -110,17 +102,6 @@ test('a sort without a direction defaults asc when parsed from the row', () => {
   assert.deepEqual(dv(w).sort, [{ field: 'Due', dir: 'asc' }]);
 });
 
-/* Issue #233: the Σ row (space rollups pinned under the field headers) has a
-   visibility switch that is table truth like the filter and the sort —
-   `hideRollups` on the table, mirrored as the Hide Rollups checkbox on the
-   Tables row.
-
-   Issue #249 (Kyle, 2026-09-08) inverts the default: a table has no Σ row
-   until someone asks for one. That forced the flag to be honest in both
-   directions — `hideRollups: false` is now STORED, and means "this table opts
-   in", so a table Kyle switched on is no longer indistinguishable from one he
-   never touched. Absent reads as hidden, which is what every table that
-   predates this change already was under the old default. */
 test('a table hides the Σ row until it opts in, and the opt-in is stored', () => {
   const w = fresh();
   assert.equal(w.getTable('Task').hideRollups, undefined, 'nothing stored on a new table');
@@ -158,20 +139,13 @@ test('describeSchema, export/import and duplicate carry hideRollups in both dire
   assert.equal(find(w, 'Task').hideRollups, true);
 });
 
-/* No migration, by construction (Issue #249): every table stored before this
-   change is either `hideRollups: true` (hidden then, hidden now) or absent
-   (shown then — and now hidden, which IS the ask). Nothing stored has to be
-   rewritten for the new default to read correctly. */
 test('a workspace written under the old default reads without a rewrite', () => {
-  // Old "off" — the only thing the old shape ever stored — still reads off,
-  // and the Tables row still says so, with nothing rewritten.
   const w = fresh();
   w.updateTable('Task', { hideRollups: true });
   const w2 = new Weave();
   w2.importJSON(JSON.parse(JSON.stringify(w.exportJSON())));
   assert.equal(w2.getTable('Task').hideRollups, true, 'the stored value is untouched');
   assert.equal(tval(w2, tableRowOf(w2, 'Task'), 'Hide Rollups'), true);
-  // Old "on" was the absence, and the absence is now off — Kyle's ask.
   const w3 = fresh();
   const w4 = new Weave();
   w4.importJSON(JSON.parse(JSON.stringify(w3.exportJSON())));

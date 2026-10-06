@@ -1,11 +1,3 @@
-/* An entity keeps its newest ACTIVITY_CAP activity entries; older ones are
-   dropped (Issue #281). Before this, the drop was silent: a busy entity's
-   history read as complete when it was not. Now the entity counts what it
-   dropped (`activityDropped`), and every read surface says so: the entity
-   read (engine, route, CLI, MCP) and the activity feed's `dropped`.
-   Entities truncated before the count existed have no recoverable number, so
-   they report 0 rather than a guess. The workspace audit log (Feature #14)
-   records structural actions only; it never held entity activity. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -24,7 +16,6 @@ function busy(w) {
   const t = w.createTable({ space: 'Ops', name: 'Ticket' });
   const quiet = w.createEntity(t, { name: 'quiet' });
   const e = w.createEntity(t, { name: 'busy' });
-  // `created` is entry 1; each comment adds one more.
   for (let i = 0; i < ACTIVITY_CAP + OVER - 1; i++) w.addComment(e.id, { text: `c${i}` });
   return { e, quiet, t };
 }

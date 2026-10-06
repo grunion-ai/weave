@@ -1,37 +1,11 @@
-/* The flicker probe and its arithmetic (harness routine weave-flicker).
-
-   A flicker is something the reader SAW that should not have been there: a
-   node painted for a beat and gone, a list painted empty and refilled, a
-   class that flipped and flipped back, content that jumped with no input.
-   The probe is a page init script that watches the DOM with a
-   MutationObserver and samples it once after every paint (a rAF, then a
-   task: the state the task reads is the state that was painted). Anything
-   that changed and changed back inside one task never reached the screen
-   and is not reported, which is what keeps weave's own whole-#main
-   re-renders out of the count.
-
-   The screencast is the second, slower witness: recordFrames() keeps every
-   frame Chromium composited, and frameFlashes() reads A, B, A where B lasted
-   less than a flash. It catches what the DOM cannot say (a transition, a
-   theme flash) and is the sweep's alone; the gate reads the DOM kinds only.
-
-   Pure parts are pinned in test/flicker-core.test.mjs, the probe against a
-   real page in test/flicker-probe-browser.test.mjs. */
 import { decodePng } from './png.mjs';
 
-/* Longest a thing can live and still be a flash, in ms. */
 export const FLASH_MS = 150;
 
-/* The kinds a loaded machine cannot invent: the gate's ratchet reads these.
-   'jank' (a long animation frame) and 'frame' (the screencast) are timing
-   and stay with the sweep. */
 export const GATED = ['transient', 'blank', 'revert', 'shift'];
 
-/* The last two steps of the selector: a state class further up the tree
-   (td.clipped beside td) would otherwise split one defect into two rows. */
 export const fingerprint = (journey, e) => `${journey}|${e.kind}|${String(e.sel).split(' > ').slice(-2).join(' > ')}`;
 
-/* The browser half. Serialised by addInitScript, so it closes over nothing. */
 function probe(MAX) {
   const out = window.__flicker = [];
   const now = () => performance.now();
@@ -56,9 +30,6 @@ function probe(MAX) {
     if (r.width < 2 || r.height < 2 || r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
     return n.checkVisibility ? n.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : true;
   };
-  // A swap that lands right after a keystroke or a press is the answer to
-  // it (typing redraws a block per key), not a state the reader was shown
-  // by mistake. Gesture time, read at report time.
   let input = -Infinity;
   for (const type of ['keydown', 'pointerdown', 'input', 'beforeinput']) {
     addEventListener(type, () => { input = now(); }, { capture: true, passive: true });
@@ -105,8 +76,6 @@ function probe(MAX) {
         }
       }
     }
-    // Gone: a removed subtree is one flicker, named at its top, and
-    // siblings that went together are one, named by their parent.
     const gone = new Map();
     for (const [n, b] of born) if (!n.isConnected) { born.delete(n); gone.set(n, b); }
     const groups = new Map();
@@ -115,8 +84,6 @@ function probe(MAX) {
       let up = n.parentElement;
       while (up && !gone.has(up)) up = up.parentElement;
       if (up) continue;
-      // Swapped for an identical twin: drawn twice, seen once. Worth knowing
-      // (it costs a render and can drop focus), not a flicker.
       const twin = added.find((a) => a.isConnected && a.parentElement === b.parent && a.localName === n.localName && a.outerHTML === n.outerHTML);
       if (twin) { push({ kind: 'rerender', sel: b.sel, ms: Math.round(t - b.t) }); continue; }
       const g = groups.get(b.parent) ?? [];
@@ -132,7 +99,6 @@ function probe(MAX) {
   });
   if (document.documentElement) start(); else document.addEventListener('readystatechange', start, { once: true });
 
-  // After paint: a rAF, then a task.
   const chan = new MessageChannel();
   chan.port1.onmessage = () => {
     const t = now();
@@ -148,7 +114,6 @@ function probe(MAX) {
       for (const [name, e] of m) {
         if (t - e.t > MAX) m.delete(name);
         else if (!e.painted && (seen(n) || seen(n.parentElement))) {
-          // Rewritten to what it was (same class tokens, same string) is no change on screen.
           const mid = n.getAttribute(name);
           if (name === 'class' ? !tokens(e.orig, mid) : mid === e.orig) continue;
           e.painted = true; e.sel = sel(n); e.mid = mid;
@@ -171,26 +136,23 @@ function probe(MAX) {
         }
       }
     }).observe({ type: 'layout-shift', buffered: true });
-  } catch { /* no Layout Instability API in this engine */ }
+  } catch {}
   try {
     new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
         if (e.duration < 100) continue;
         const s = e.scripts?.[0];
-        // The origin carries the port, which changes every run.
         const who = s ? (s.sourceFunctionName || String(s.invoker || 'script').replace(/^https?:\/\/[^/]+/, '')) : 'render';
         push({ kind: 'jank', sel: who, ms: Math.round(e.duration) });
       }
     }).observe({ type: 'long-animation-frame', buffered: true });
-  } catch { /* no Long Animation Frames API in this engine */ }
+  } catch {}
 }
 
 export const installProbe = (page, { maxMs = FLASH_MS } = {}) => page.addInitScript(probe, maxMs);
 export const readProbe = (page) => page.evaluate(() => window.__flicker?.slice() ?? []);
 export const resetProbe = (page) => page.evaluate(() => { if (window.__flicker) window.__flicker.length = 0; });
 
-/* Every composited frame from now until stop(), as { t (ms), png, px }.
-   Chromium only (CDP); resolves to null elsewhere. */
 export async function recordFrames(page, { maxWidth = 640, maxHeight = 480 } = {}) {
   const cdp = await page.context().newCDPSession(page).catch(() => null);
   if (!cdp) return null;
@@ -212,7 +174,6 @@ export async function recordFrames(page, { maxWidth = 640, maxHeight = 480 } = {
 const differ = (p, q) => Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) + Math.abs(p[2] - q[2]) > 24;
 const stepOf = (a) => Math.max(1, Math.floor(Math.min(a.width, a.height) / 120));
 
-/* Share of sampled pixels that differ between two decoded frames. */
 export function diffRatio(a, b) {
   if (a.width !== b.width || a.height !== b.height) return 1;
   const step = stepOf(a);
@@ -223,7 +184,6 @@ export function diffRatio(a, b) {
   return n ? d / n : 0;
 }
 
-/* The box the change covers, in frame pixels. */
 export function diffBox(a, b) {
   const step = stepOf(a);
   let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
@@ -236,8 +196,6 @@ export function diffBox(a, b) {
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + step, h: y1 - y0 + step };
 }
 
-/* A, B, A: B differs from A by at least `min`, the frame after B is back to
-   A within `eps`, and B was up for less than `maxMs`. */
 export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005 } = {}) {
   const out = [];
   for (let i = 1; i + 1 < frames.length; i++) {
@@ -252,9 +210,6 @@ export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005 } =
   return out;
 }
 
-/* The three frames a row carries. A DOM flicker was up from at - ms until
-   at: the last frame before it, the last frame inside it, the first after.
-   A frame flash already names its middle frame by index. */
 export function evidenceFrames(frames, e) {
   if (!frames.length) return [];
   const at = (k) => frames[Math.min(frames.length - 1, Math.max(0, k))];
@@ -264,8 +219,6 @@ export function evidenceFrames(frames, e) {
   return [at(last(e.at - (e.ms || 0))), at(last(e.at)), at(after < 0 ? frames.length - 1 : after)];
 }
 
-/* runs: [{ journey: events[] }, …]. Keeps the fingerprints `min` runs saw,
-   one count per run however often a run saw it. */
 export function confirm(runs, { min = 2 } = {}) {
   const agg = new Map();
   for (const run of runs) {
@@ -284,7 +237,6 @@ export function confirm(runs, { min = 2 } = {}) {
   return [...agg.values()].filter((a) => a.runs >= min).sort((x, y) => y.runs - x.runs || x.fp.localeCompare(y.fp));
 }
 
-/* The ratchet: gated fingerprints in `fixed` that came back. */
 export function regressed(seen, fixed) {
   const back = new Set();
   for (const [journey, events] of Object.entries(seen)) {

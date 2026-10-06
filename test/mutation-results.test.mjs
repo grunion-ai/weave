@@ -1,8 +1,3 @@
-/* Every engine mutation answers with a result. The four deletes that used to
-   return nothing reached the CLI as the literal word "undefined" and reached
-   MCP as a content item with no text at all, because those surfaces pass the
-   engine's return value straight through while HTTP wraps its own literal.
-   The rule pinned here: a delete says what it deleted, on every door. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';

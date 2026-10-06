@@ -1,16 +1,3 @@
-/* The accessibility baseline (Issue #378, finding F2 of the 2026-09-26 design
-   pass). axe-core runs on the four surfaces a reader spends the day in — a
-   plain table, a table with every cell kind, an entity page and the map — in
-   both themes, and each must come back clean on the rules the pass measured:
-   every control has a name, every pixel sits in a landmark, text clears
-   WCAG AA contrast. Then the keyboard: one branded focus ring that clears 3:1
-   against whatever it sits on, a skip link ahead of the sidebar, and hit
-   areas of at least 24px on the small controls.
-
-   axe-core is vendored pinned (test/vendor/axe-4.10.2.min.js, MPL-2.0) and
-   injected by content, so nothing reaches the network. Vditor's own markup is
-   excluded: its violations are the vendor's, noted in the Issue, not fixed
-   here. Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -64,7 +51,6 @@ if (s) {
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(ready);
-    // Let transitions (pills, icon fades) settle before colors are sampled.
     await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
     return page;
   };
@@ -93,11 +79,6 @@ if (s) {
     }
   }
 
-  /* ---------- the focus ring ---------- */
-
-  /* WCAG 2.4.11 / 1.4.11: a focus indicator is non-text contrast, 3:1 against
-     the colour it sits on. The ring is an outline, so "sits on" is the first
-     opaque background at or above the element. */
   const ringContrast = (page, sel) => page.evaluate((selector) => {
     const target = document.querySelector(selector);
     if (!target) return { missing: selector };
@@ -135,7 +116,7 @@ if (s) {
     test(`${theme}: toolbar, dock, sidebar and name field carry one ring at 3:1 or better`, async () => {
       const page = await open(`#/table/${issue.id}`, '.wv-grid tbody tr.entity-row', theme);
       try {
-        await page.keyboard.press('Tab'); // keyboard modality, so .focus() reads as :focus-visible
+        await page.keyboard.press('Tab');
         for (const sel of ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn']) {
           const r = await ringContrast(page, sel);
           assert.ok(r.focused && r.visible, `${sel} takes keyboard focus (${JSON.stringify(r)})`);
@@ -144,7 +125,6 @@ if (s) {
           assert.equal(r.alpha, 1, `${sel} ring is opaque`);
           assert.ok(r.ratio >= 3, `${sel} ring contrast ${r.ratio}:1 in ${theme}`);
         }
-        // The docked entity's own toolbar: pose and Close.
         await page.click('td.pid-cell a.open-link');
         await page.waitForSelector('#dock .pose-btn');
         await page.keyboard.press('Shift+Tab');
@@ -196,10 +176,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* WCAG 2.5.8: 24 by 24 CSS pixels. The glyphs stay their size and an
-     invisible ::after grows the target, so the check is where a click lands:
-     the four corners of a 24px square around the control's centre must all
-     hit it. A bounding box cannot see a pseudo-element; elementFromPoint can. */
   const hitArea = (page, sels, square = true) => page.evaluate(([list, sq]) => list.map((sel) => {
     const n = [...document.querySelectorAll(sel)].find((x) => x.getClientRects().length);
     if (!n) return { sel, missing: true };
@@ -214,13 +190,11 @@ if (s) {
   test('small controls offer a 24px hit area', async () => {
     const page = await open(`#/table/${issue.id}`, '.wv-grid tbody tr.entity-row', 'light');
     try {
-      await page.hover('#nav .nav-db'); // the row's ⋮ shows on hover
+      await page.hover('#nav .nav-db');
       for (const h of await hitArea(page, ['#nav-collapse', 'button.add-field-btn', '.nav-db-menu .dots-btn', 'td.pid-cell a.open-link'])) {
         assert.ok(!h.missing, `${h.sel} is on the page`);
         assert.equal(h.misses, 0, `${h.sel} (${h.box}) takes a click across 24px`);
       }
-      // The mention caret nests inside its chip's link, so it grows in height
-      // only: sideways it would take the ↗'s clicks (Issue #397).
       const [caret] = await hitArea(page, ['button.mention-caret'], false);
       assert.ok(!caret.missing && caret.misses === 0, `the mention caret (${caret.box}) takes a click 24px tall`);
     } finally { await page.close(); }

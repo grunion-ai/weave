@@ -1,26 +1,3 @@
-/* Typed `[[…]]` references (Kyle, 2026-08-16).
-
-   `[[Table#12]]` addressed entities only. A document can now point at
-   anything addressable, in a form that stays readable in raw markdown:
-
-     [[Feature#70]]                  entity (unchanged)
-     [[table:Development/Feature]]   table
-     [[space:Development]]           space
-     [[workspace]]                   this workspace
-     [[space:Development|the team]]  any of them with a label
-
-   The parser only splits kind from reference; the resolver decides what each
-   kind addresses and what it links to, so exactly one place knows the URL
-   shapes. Two invariants are load-bearing and tested below:
-
-   1. A reference that cannot be resolved renders as a BROKEN CHIP, never a
-      dead link and never a 500 — a document is user input and an ambiguous
-      or malformed reference must not be able to take a page down.
-   2. The in-app preview (POST /api/markdown) and the standalone document
-      page (/e/:id/doc.html) go through the SAME renderer and must produce
-      byte-identical chips. This is the argument against adopting a second
-      markdown engine, so it is pinned rather than asserted in prose. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -36,8 +13,6 @@ function buildWorkspace() {
   return { w, tasks, t };
 }
 
-// Starts a server, runs body(helpers), always closes. Keeps every HTTP test
-// from repeating the same six lines of setup and teardown.
 async function withServer(w, body, { workspaces = {} } = {}) {
   const { server } = await startServer(w, { port: 0, workspaces });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -61,13 +36,10 @@ async function withServer(w, body, { workspaces = {} } = {}) {
   }
 }
 
-// Every resolved chip in a fragment, as [class, href, text] triples.
 const chips = (html) =>
   [...html.matchAll(/<a class="(mention mention-\w+)" href="([^"]+)"(?: data-name="[^"]*")?>([^<]*)<\/a>/g)]
     .map((m) => [m[1], m[2], m[3]]);
 
-// The renderer is handed a resolver; these tests use a recording stub so the
-// parse contract can be checked without a server.
 function recordingResolver(calls = []) {
   const fn = (kind, ref) => {
     calls.push([kind, ref]);
@@ -76,8 +48,6 @@ function recordingResolver(calls = []) {
   fn.calls = calls;
   return fn;
 }
-
-/* ---------- parsing: kind and reference ---------- */
 
 test('the resolver is called with a kind and a reference', () => {
   const r = recordingResolver();
@@ -108,8 +78,6 @@ test('surrounding whitespace inside the brackets is tolerated', () => {
 });
 
 test('the kind prefix is case-sensitive', () => {
-  // Lowercase is the documented form; accepting variants would mean two
-  // spellings of the same reference living in documents.
   const html = renderMarkdown('[[Space:Product]]', { resolveMention: recordingResolver() });
   assert.match(html, /mention broken/);
 });
@@ -129,8 +97,6 @@ test('a label is trimmed but its inner spacing is kept', () => {
   const html = renderMarkdown('[[space:Product|  the  team  ]]', { resolveMention: recordingResolver() });
   assert.equal(chips(html)[0][2], 'the  team');
 });
-
-/* ---------- parsing: what is NOT a reference ---------- */
 
 test('an unknown prefix is not mistaken for a kind', () => {
   const r = recordingResolver();
@@ -152,7 +118,6 @@ test('an unclosed reference is left as literal text', () => {
 });
 
 test('references inside code are text, not links', () => {
-  // Someone documenting the syntax must be able to show it.
   const inline = renderMarkdown('Type `[[space:Product]]` to link.', { resolveMention: recordingResolver() });
   assert.match(inline, /<code>\[\[space:Product\]\]<\/code>/);
   assert.doesNotMatch(inline, /mention/);
@@ -161,8 +126,6 @@ test('references inside code are text, not links', () => {
   assert.match(fenced, /<pre><code>\[\[space:Product\]\]/);
   assert.doesNotMatch(fenced, /mention/);
 });
-
-/* ---------- failure is always a broken chip ---------- */
 
 test('an unresolvable reference renders as broken, not as a dead link', () => {
   const html = renderMarkdown('[[space:Nope]] [[Ghost#9]]', { resolveMention: () => null });
@@ -184,8 +147,6 @@ test('a resolver that throws does not take the document down', () => {
   assert.match(html, /after/, 'the rest of the document still renders');
 });
 
-/* ---------- references compose with the rest of markdown ---------- */
-
 test('references render inside headings, emphasis, lists and tables', () => {
   const r = recordingResolver();
   for (const md of [
@@ -205,8 +166,6 @@ test('several references in one line each resolve independently', () => {
   assert.deepEqual(chips(html).map((c) => c[2]), ['space:A', 'space:B', 'workspace:']);
 });
 
-/* ---------- escaping ---------- */
-
 test('html in a label or a reference is escaped, not executed', () => {
   const label = renderMarkdown('[[space:P|<img src=x onerror=alert(1)>]]', { resolveMention: recordingResolver() });
   assert.match(label, /&lt;img src=x onerror=alert\(1\)&gt;/);
@@ -215,7 +174,6 @@ test('html in a label or a reference is escaped, not executed', () => {
   const ref = renderMarkdown('[[space:<script>alert(1)</script>]]', { resolveMention: recordingResolver() });
   assert.doesNotMatch(ref, /<script>/);
 
-  // A hostile href from a resolver is escaped too.
   const href = renderMarkdown('[[space:P]]', {
     resolveMention: () => ({ href: '"><script>alert(1)</script>', label: 'x' }),
   });
@@ -227,8 +185,6 @@ test('a broken chip escapes its contents as well', () => {
   assert.match(html, /&lt;b&gt;x&lt;\/b&gt;/);
   assert.doesNotMatch(html, /<b>/);
 });
-
-/* ---------- the server's resolver is the authority on links ---------- */
 
 test('the server resolves every kind to a real, working URL', async () => {
   const { w, t } = buildWorkspace();
@@ -244,9 +200,7 @@ test('the server resolves every kind to a real, working URL', async () => {
     assert.match(ws, /href="\/"/);
     assert.match(ws, />demo</, 'the workspace mention is labelled with its name');
 
-    // A table is addressable by bare name too, the way the CLI accepts it.
     assert.match(await render('[[table:Task]]'), new RegExp(`href="/?#/table/${table.id}"`));
-    // …and a miss is broken rather than a link to nowhere.
     assert.match(await render('[[space:Nope]]'), /mention broken/);
   });
 });
@@ -255,7 +209,6 @@ test('an entity reference is labelled with its table, id and name', async () => 
   const { w } = buildWorkspace();
   await withServer(w, async ({ render }) => {
     assert.equal(chips(await render('[[Task#1]]'))[0][2], 'Task#1 — Ship it');
-    // The editor's live chip shows the name alone (F6); it reads data-name.
     assert.match(await render('[[Task#1]]'), /data-name="Ship it"/);
   });
 });
@@ -265,12 +218,10 @@ test('an ambiguous bare table name is a broken chip, not a 500', async () => {
   w.createSpace({ name: 'A' });
   w.createSpace({ name: 'B' });
   w.createTable({ space: 'A', name: 'Task' });
-  w.createTable({ space: 'B', name: 'Task' }); // same bare name in two spaces
+  w.createTable({ space: 'B', name: 'Task' });
   await withServer(w, async ({ render }) => {
     assert.match(await render('[[table:Task]]'), /mention broken/);
-    // Qualifying it disambiguates.
     assert.match(await render('[[table:A/Task]]'), /mention mention-table/);
-    // The entity resolver goes through the same lookup, so it degrades too.
     assert.match(await render('[[Task#1]]'), /mention broken/);
   });
 });
@@ -309,12 +260,9 @@ test('links carry the workspace prefix when the request is scoped', async () => 
     assert.match(scoped, /href="\/w\/side\/#\/space\//, 'a scoped space link keeps its prefix');
     assert.match(scoped, /href="\/w\/side\/"/, 'the workspace link points at that workspace');
     assert.match(scoped, />side</, 'and is labelled with that workspace name');
-    // The default workspace is unprefixed, and cannot see the sibling's space.
     assert.match(await render('[[space:S]]'), /mention broken/);
   }, { workspaces: { side } });
 });
-
-/* ---------- one renderer, two surfaces ---------- */
 
 test('the in-app preview and the document page render identical chips', async () => {
   const { w, t } = buildWorkspace();
@@ -354,21 +302,18 @@ test('storing a reference never rewrites the markdown', async () => {
   const md = 'See [[space:Product]] and [[table:Product/Task|the tasks]].';
   w.setDoc(t.id, md);
   assert.equal(w.getDoc(t.id), md);
-  // …and it round-trips through export/import unchanged.
   const copy = new Weave();
   copy.importJSON(w.exportJSON());
   assert.equal(copy.getDoc(t.id), md);
 });
-
-/* ---------- kind glyphs ---------- */
 
 test('both stylesheets give every kind the same glyph', async () => {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const { dirname, join } = await import('node:path');
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const page = readFileSync(join(root, 'src/markdown.js'), 'utf8');   // standalone document page
-  const app = readFileSync(join(root, 'public/style.css'), 'utf8');   // in-app preview
+  const page = readFileSync(join(root, 'src/markdown.js'), 'utf8');
+  const app = readFileSync(join(root, 'public/style.css'), 'utf8');
   for (const [kind, glyph] of [['entity', '#'], ['table', '▦'], ['space', '◇'], ['workspace', '⬡']]) {
     const rule = new RegExp(`mention-${kind}::before \\{ content: "${glyph}"`);
     assert.match(page, rule, `${kind} glyph missing from the document page`);

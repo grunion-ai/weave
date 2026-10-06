@@ -1,19 +1,3 @@
-/* ⌘-click opens a tab, everywhere (Issue #134).
-
-   A reader who holds ⌘ (or Ctrl, or Shift, or presses the middle button)
-   is telling the browser "not here" — and weave has to hand that click
-   back whatever chrome it lands on. Real anchors do it for free. The
-   surfaces that navigate WITHOUT being a link — a grid row, the relation
-   panel on an entity page, an activity row, a ⌘K hit, the relation map —
-   used to swallow the modifier and route the current tab instead.
-
-   One rule now covers all of them: a navigating surface declares its
-   destination as data-href, and a single capture-phase listener turns a
-   native click into a real tab before any routing handler runs. Form
-   controls keep their modifiers, so shift-click still extends a text
-   selection and the checkbox range-select survives.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -35,9 +19,6 @@ const s = await launch('modifier clicks', (weave) => {
 if (s) {
   const { base, browser } = s;
 
-  /* One click, one question: did the app hand the click to the browser?
-     Returns { tab, stayed } — the URL of the tab that opened (null when
-     none did) and whether this page kept its route. */
   const modifierClick = async (ctx, page, selector, opts = {}) => {
     const before = await page.evaluate(() => location.hash);
     const opened = ctx.waitForEvent('page', { timeout: 3000 }).catch(() => null);
@@ -57,9 +38,6 @@ if (s) {
     return page;
   };
 
-  /* The shape six cases share: open a page, ⌘-click one thing, expect a tab
-     on `want` while the page keeps its route. Each case stays a literal
-     test() so the Quality mirror lists it. */
   const opensTab = ({ hash, wait, click, opts, want, opened, stayed }) => async () => {
     const ctx = await browser.newContext();
     const page = await open(ctx, hash, wait);
@@ -135,8 +113,6 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     const row = page.locator('tr.entity-row').first();
     assert.match(await row.getAttribute('data-href'), /^#\/table\//, 'the row points at the table it stands for');
-    // Every cell in the registry grid is an editor; the click lands on the
-    // padding at the far edge of the last one, which belongs to the row.
     const cell = row.locator('td[data-field="Workflows"]');
     const box = await cell.boundingBox();
     const r = await modifierClick(ctx, page, 'tr.entity-row td[data-field="Workflows"]', { position: { x: box.width - 4, y: box.height - 4 } });

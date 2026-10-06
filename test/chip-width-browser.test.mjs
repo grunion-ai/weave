@@ -1,19 +1,3 @@
-/* No control of fixed shape is cut by a field resize (Issue #614). Kyle,
-   2026-10-03: "make sure no part of the toggle or box can be cut off by
-   field resize." Before, a select, a multi-select, a state and a rating
-   floored at their header label only, so a State column dragged under a
-   "Setup incomplete" chip cut it mid-word. Asserted here on the rendered
-   grid:
-     - a drag, three keyboard nudges and a double-click fit stop where the
-       widest chip (a multi-select: one chip and its +N count) or every
-       rating icon still shows whole, and no further;
-     - the floor is the widest OPTION, not the widest value on screen, and
-       an option added later raises it;
-     - a stored width under the floor is raised to it, while free text keeps
-       a narrow width and truncates;
-     - a checkbox column at its label floor still holds its whole box;
-     - no other column's width moves (Feature #233, rule 2).
-   The toggle's floor (Issue #586) is held by test/toggle-width-browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled, eventually } from './lib/browser.mjs';
@@ -65,10 +49,6 @@ if (s) {
       assert.ok(Math.abs(after[name] - w) <= 0.5, `${label}: ${name} kept its width (${w} → ${after[name]})`);
     }
   };
-  /* What one column paints: its width, its header label's floor, and for
-     each row the controls it shows — whether any is ellipsized or hangs past
-     the cell's content edge, and the slack between the last one and that
-     edge (how much narrower the column could have gone). */
   const read = (page, name) => page.evaluate((col) => {
     const th = document.querySelector(`.wv-grid thead th.col-head[data-col="${col}"]`);
     const hs = getComputedStyle(th);
@@ -99,7 +79,6 @@ if (s) {
       assert.ok(r.overhang <= 0.5, `${label}: ${name}'s ${JSON.stringify(r.texts)} ends inside the cell (${r.overhang}px over)`);
     }
   };
-  // The tightest row is the one the floor was cut for: under 2px of slack.
   const tight = (got, name, label) => {
     const slack = Math.min(...got.rows.map((r) => r.slack));
     assert.ok(slack < 2, `${label}: ${name} stops at its widest control, not past it (${slack}px slack at ${got.width}px)`);
@@ -131,7 +110,6 @@ if (s) {
 
         before = await widths(page);
         await head(page, name).focus();
-        // A burst of nudges writes once, 350 ms after the last press.
         const nudged = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/views\//.test(r.url()));
         for (let i = 0; i < 3; i++) await page.keyboard.press('Alt+ArrowLeft');
         await nudged;
@@ -168,8 +146,6 @@ if (s) {
       whole(got, 'Kind', 'after a drag');
     } finally { await page.close(); }
 
-    // The long option on a row now: it opens at the same floor, whole, with
-    // nothing to spare.
     weave.updateEntity(lit.id, { Kind: LONG_KIND });
     page = await openGrid(db);
     try {

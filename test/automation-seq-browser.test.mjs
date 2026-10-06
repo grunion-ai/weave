@@ -1,9 +1,3 @@
-/* Issue #285, the rules list: the relation map stacks a table's automations as
-   pills under its card, in the order GET /api/automations returns them. That
-   order was the order the store happened to read the rules back in; it is now
-   seq, the fire order: since Feature #249 the Workflows row number. The seed
-   builds two rules. Playwright is NOT a dependency; the suite skips when
-   absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -26,7 +20,6 @@ if (s) {
 
     await page.goto(`${base}/#/map`, { waitUntil: 'networkidle' });
     await page.waitForSelector('svg.relmap g.auto');
-    // Pills are drawn top to bottom in list order; read them back by height.
     const pills = await page.$$eval('svg.relmap g.auto', (gs) => gs
       .map((g) => ({ y: Number(g.querySelector('rect').getAttribute('y')), text: g.querySelector('title').textContent }))
       .sort((a, b) => a.y - b.y).map((p) => p.text));

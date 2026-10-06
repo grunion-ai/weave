@@ -1,21 +1,3 @@
-/* The `field` field type — a field whose VALUE is a field definition.
-
-   Requested by Kyle (2026-08-16): "the new field type called field has
-   predefined options and its definition also defines the down-hierarchy
-   field, in this case we can do pure D and the config becomes the field
-   entity page as the control surface."
-
-   The point of the type is that it terminates the meta-model's recursion.
-   A space-level `Fields` table needs fields to describe fields; with this
-   type the innermost descriptor is an ordinary engine primitive whose
-   options come from FIELD_TYPES — a plain array below the entity layer —
-   so nothing is circular.
-
-   The load-bearing invariant is that a `field` VALUE and a real field are
-   validated by the SAME normalizer. If they can drift, a definition can
-   describe a field the engine would refuse to create, and the down-hierarchy
-   materialisation (next phase) would fail at write time instead of at
-   definition time. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, FIELD_TYPES, DEFINABLE_TYPES } from '../src/engine.js';
@@ -61,7 +43,6 @@ test('a definition is normalised by the SAME rules as a real field', () => {
   } });
   const defined = w.readEntity(e.id).raw.Definition.config.options;
 
-  // The same input through addField must produce the same normalised shape.
   const real = w.createTable({ space: 'Product', name: 'Task' });
   w.addField(real, { name: 'Priority', type: 'select', config: { options: ['P0', 'P1'] } });
   const actual = w.getField(real, 'Priority').config.options;
@@ -95,16 +76,12 @@ test('an invalid config fails at definition time, not at materialisation time', 
 
 test('recursion is bounded, and the bound is the down-hierarchy depth', () => {
   const { w, fields } = ws();
-  // Default depth 1: a definition describes a leaf field, so it may not itself
-  // be a `field`.
   assert.throws(
     () => w.createEntity(fields, { name: 'Nested', values: {
       Definition: { type: 'field', config: {} },
     } }),
     /depth/i);
 
-  // depth 2 = workspace → space → table: the definition may define a field
-  // that itself defines a field.
   const deep = w.createTable({ space: 'Product', name: 'SpaceFields' });
   w.addField(deep, { name: 'Definition', type: 'field', config: { depth: 2 } });
   const e = w.createEntity(deep, { name: 'Nested', values: {
@@ -112,7 +89,6 @@ test('recursion is bounded, and the bound is the down-hierarchy depth', () => {
   } });
   assert.equal(w.readEntity(e.id).raw.Definition.type, 'field');
 
-  // ...but not three levels deep on a depth-2 field.
   assert.throws(
     () => w.createEntity(deep, { name: 'TooDeep', values: {
       Definition: { type: 'field', config: { depth: 2 } },
@@ -154,8 +130,6 @@ test('definitions survive an export/import round-trip', () => {
   assert.deepEqual(back.config.options.map((o) => o.name), ['P0', 'P1']);
 });
 
-/* ---------- UI contract for the new type ---------- */
-
 test('a field cell is not rendered as an editable text box', async () => {
   const { readFileSync } = await import('node:fs');
   const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -179,10 +153,6 @@ test('describeSchema exposes the definable types on a field field', () => {
   assert.equal(f.depth, 1);
 });
 
-/* Materialisation: a stored definition becomes a real column through the
-   same path addField uses — the shared normaliser makes divergence impossible,
-   so the verb is thin by design. The binding (how a Fields row names the
-   table it lands on) is Feature #52's question, not this one's. */
 test('materializeField turns a definition value into a working column', () => {
   const w = new Weave();
   w.createSpace({ name: 'S' });
@@ -201,29 +171,19 @@ test('materializeField turns a definition value into a working column', () => {
   assert.throws(() => w.materializeField('Task', 'Empty', null), /definition/i);
 });
 
-/* ---------- UI half of Feature #85: the entity page is the control surface ---------- */
 import { readFileSync as readUi } from 'node:fs';
 
 test('field cells show the engine sentence, and the entity page edits the raw definition', () => {
   const app = readUi(new URL('../public/app.js', import.meta.url), 'utf8');
   const start = app.indexOf("if (f.type === 'field')");
   const branch = app.slice(start, app.indexOf('const input = el(', start));
-  // Display is the engine's sentence (item.fields); the editor works on the
-  // definition itself (item.raw) — never on the display string.
   assert.ok(branch.includes('item.raw?.[f.name]'), 'the editor reads the raw definition');
   assert.ok(branch.includes('String(val)'), 'the chip prints the engine display sentence');
-  // Compact surfaces stay read-only; the entity page opens the editor and its
-  // type choices come from config.types, never a hard-coded list.
   assert.ok(branch.includes('if (compact) return chip'));
   assert.ok(branch.includes('f.types'), 'type choices come from the schema payload');
-  // Validation failures keep the dialog open: the save path must throw through
-  // the modal, not go through patch() which swallows errors into a toast.
   assert.ok(branch.includes("await api('PATCH'"));
 });
 
-/* The sentence is what a confirm and an undo offer quote back (Issue #90).
-   'Clear the number definition' names nothing a reader could recognise, so a
-   definition wearing a costume says what the costume is. */
 test('a costume is part of the sentence, so a clear can name what it takes', () => {
   const { w, fields } = ws();
   const say = (definition) =>
@@ -236,11 +196,9 @@ test('a costume is part of the sentence, so a clear can name what it takes', () 
   assert.equal(say({ type: 'date', config: { format: 'long' } }), 'date', 'long is the default and says nothing');
   assert.equal(say({ type: 'date', config: { time: true } }), 'date · with time');
   assert.equal(say({ type: 'document', config: { kind: 'code' } }), 'document · code');
-  // A definition that IS a definition needs a host deep enough to hold one.
   const deep = ws();
   deep.w.addField(deep.fields, { name: 'Nested', type: 'field', config: { depth: 2 } });
   const nested = deep.w.createEntity(deep.fields, { name: 'N', values: { Nested: { type: 'field', config: { depth: 1 } } } });
   assert.equal(deep.w.readEntity(nested.id).fields.Nested, 'field · depth 1');
-  // A bare definition still reads as its bare type.
   assert.equal(say({ type: 'checkbox', config: {} }), 'checkbox');
 });

@@ -1,11 +1,3 @@
-/* Finder duplicates never land (Issue #277). Phase 2 of Feature #222 dragged
-   six `* 2.*` copies into the tree — `test/auth-session.test 2.mjs`,
-   `test/lib/authenticator 2.mjs`, `src/webauthn 2.js` and their siblings —
-   and the runner walks `test/**` by suffix, so two suites ran twice on every
-   gate and every green vote counted the duplicate. Finder names a copy by
-   appending a space and a counter before the extension; nothing in this repo
-   is named that way on purpose, so any tracked path that matches is a copy
-   that slipped past `git add`. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';

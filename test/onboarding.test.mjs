@@ -1,18 +1,3 @@
-/* Feature #248 — onboarding: a short welcome that starts by naming the first
-   workspace. The welcome runs once per person, on an instance where that
-   person has built nothing yet; it names the workspace they are in (a
-   default arrives filled in), optionally builds a starter from
-   starter-core's build spec, and remembers that it ran, finished or skipped.
-
-   Who "the person" is: the signed-in account (a session or a Bearer token),
-   whose row carries the mark; with nobody signed in (a loopback instance
-   with no sign-in) the hub root's own meta carries it. The trigger:
-     not onboarded
-     AND may rename this workspace (no role, or architect)
-     AND this workspace has no tables of its own
-     AND no other workspace the person can open has any, the weave docs
-         workspace aside (it ships with its own).
-   An existing person with a populated workspace never sees it. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, copyFileSync } from 'node:fs';
@@ -57,9 +42,6 @@ test('the engine keeps the mark: on the account row, or on the workspace with no
   assert.throws(() => w.markOnboarded('nope'), /not found/);
 });
 
-/* A fresh self-hosted install: the root workspace (named for its data file)
-   beside the seeded weave docs workspace. The docs workspace is seeded once
-   and copied: seeding it takes seconds. */
 const DOCS = join(mkdtempSync(join(tmpdir(), 'weave-onboard-docs-')), 'weave.db');
 seedWeaver(new Weave({ path: DOCS })).store.close?.();
 test.after(() => rmSync(join(DOCS, '..'), { recursive: true, force: true }));
@@ -113,7 +95,6 @@ test('the rename path stores the typed name, folded to a workspace name, and the
     assert.equal((await f.call('GET', '/api/workspace')).body.name, 'acme-team');
     const list = (await f.call('GET', '/api/workspaces')).body;
     assert.ok(list.find((x) => x.name === 'acme-team' && x.default), 'the default workspace answers to its new name');
-    // Renaming from the rail still works after onboarding.
     const again = await f.call('PATCH', '/api/workspace', { name: 'acme' });
     assert.equal(again.body.name, 'acme');
   } finally { f.close(); }
@@ -146,7 +127,6 @@ test('the starter path builds each template in one build call and names its firs
     assert.equal(Math.round(month.Net * 100), Math.round((month.Earned - month.Spent) * 100));
     assert.equal((await f.call('POST', '/api/onboarding', { template: 'nope' })).status, 400);
   } finally { f.close(); }
-  // Docs is gone from the list (Feature #244, 2026-10-03).
   const docs = await fresh();
   try {
     assert.equal((await docs.call('POST', '/api/onboarding', { template: 'docs' })).status, 400);
@@ -154,10 +134,6 @@ test('the starter path builds each template in one build call and names its firs
   } finally { docs.close(); }
 });
 
-/* Every path through the one POST: the name kept or edited, times no starter
-   or each template. Each lands named, built exactly as the template's spec
-   says (tables, field types, relation inverses, sample rows), opened on its
-   first table, and marked. */
 const qualified = (w) => w.userTables().map((t) => w.qualifiedName(t)).sort();
 const tablesOf = (t) => (t ? S.spec(t).spaces[0].tables : []);
 const builds = (t) => tablesOf(t).map((x) => `${t.space}/${x.name}`).sort();
@@ -242,7 +218,6 @@ test('an existing person with a workspace of their own never sees it', async () 
   try {
     assert.equal((await populated.call('GET', '/api/onboarding')).body.show, false, 'tables in this workspace');
   } finally { populated.close(); }
-  // An empty root beside a populated sibling: they already have a workspace.
   const sibling = await fresh({
     seed: (root, dir) => {
       const uno = new Weave({ path: join(dir, 'uno.db') });
@@ -256,7 +231,6 @@ test('an existing person with a workspace of their own never sees it', async () 
     assert.equal((await sibling.call('GET', '/api/onboarding')).body.show, false, 'tables in another workspace');
     assert.equal((await sibling.call('GET', '/w/uno/api/onboarding')).body.show, false);
   } finally { sibling.close(); }
-  // The docs workspace itself never offers it.
   const f = await fresh();
   try {
     assert.equal((await f.call('GET', '/w/weave/api/onboarding')).body.show, false);
@@ -279,9 +253,7 @@ test('once per person: each account carries its own mark, and its first name is 
     assert.ok(f.root.onboardedAt(kyle.account.id), 'on the account row');
     assert.equal(f.root.onboardedAt(), null, 'not on the workspace');
     assert.equal((await f.call('GET', '/api/onboarding', undefined, as(kyle))).body.show, false);
-    // Maya has not been onboarded, and the instance is still empty.
     assert.equal((await f.call('GET', '/api/onboarding', undefined, as(maya))).body.show, true);
-    // A session minted at sign-in counts the same as the token.
     const minted = f.root.createSession(maya.account.id, { ua: 'test' });
     const cookie = { Cookie: `wv_session=${minted.token}` };
     assert.equal((await f.call('GET', '/api/onboarding', undefined, cookie)).body.show, true);

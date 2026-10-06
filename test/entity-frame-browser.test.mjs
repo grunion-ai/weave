@@ -1,18 +1,3 @@
-/* The entity frame holds while its body scrolls (Issue #608).
-   Kyle's screenshots, v0.4.54, Issue #601 open full page: at rest the card
-   showed its rounded top edge, its top padding, the crumb row and the title.
-   After a scroll the crumb row and the title stayed, but the card's top edge
-   and the padding above the crumb row scrolled away, and the header floated
-   against the window edge with no frame round it. The dock did the same
-   inside its pane: its header climbed 14px into the pane's padding. Kyle:
-   "entity frame should be visible at top, only things below the title should
-   scroll."
-   Both poses, both themes, a desktop window and a phone: scroll the body to
-   the bottom and the card's top edge, the header band, the crumb row and the
-   title keep the top they had at rest, while the document under them really
-   moved. The band above the crumb row is still the header's own ground, so
-   nothing from the body shows through it.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -40,17 +25,14 @@ if (s) {
     await page.goto(`${base}/${poses[pose].hash()}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`${poses[pose].pane} .name-edit`);
     await page.waitForSelector(`${poses[pose].pane} .doc-section .vditor-reset p`);
-    await page.waitForTimeout(400); // the header height is published on a ResizeObserver
+    await page.waitForTimeout(400);
     return page;
   };
-  // Where the frame is: the card's top edge, the header band, the crumb row,
-  // the title, and a paragraph of the body to prove the body moved.
   const frame = (page, pose) => page.evaluate(({ pane, header }) => {
     const top = (n) => (n ? Math.round(n.getBoundingClientRect().top * 10) / 10 : null);
     const card = document.querySelector(pane);
     const head = document.querySelector(header);
     const r = card.getBoundingClientRect();
-    // Just inside the card's top edge, mid-width: the header's ground, never the body.
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 3);
     return {
       card: top(card), head: top(head),
@@ -61,7 +43,6 @@ if (s) {
       doc: document.scrollingElement.scrollTop,
     };
   }, { pane: poses[pose].pane, header: poses[pose].header });
-  // Scroll the way a reader does, with the wheel over the body, until it stops.
   const wheelToBottom = async (page, pose) => {
     const box = await page.evaluate((pane) => {
       const r = document.querySelector(pane).getBoundingClientRect();

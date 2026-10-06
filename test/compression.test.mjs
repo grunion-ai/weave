@@ -1,11 +1,3 @@
-/* Issue #258: a cold load of `/` moved 2.1 MB because nothing was
-   compressed — app.js went out as 475 KB of plain text and /api/schema as
-   96 KB of JSON, whatever the browser said it could inflate. The Node adapter
-   now gzips text-shaped answers (statics and JSON alike) when the request
-   carries Accept-Encoding: gzip, and statics carry an ETag so a revalidation
-   answers 304 on If-None-Match as well as on If-Modified-Since.
-   Raw node:http is used on purpose: fetch() inflates transparently and would
-   hide exactly the bytes these tests are about. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';

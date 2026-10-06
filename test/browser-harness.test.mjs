@@ -1,9 +1,3 @@
-/* The browser harness is one file. A suite that drives a real page imports
-   launch() from test/lib/browser.mjs; none re-implements the import, the
-   skip, the server or the browser lifecycle. Twenty-four suites once carried
-   the same 22 lines each, and the copies drifted (one-line vs three-line
-   imports, an after() that also removed a temp dir, a workspaces option) —
-   this pins the shape so the twenty-fifth cannot start over. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';

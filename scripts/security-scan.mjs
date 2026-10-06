@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/* The repeatable security checks (Issue #532), run by hand and by
-   .github/workflows/security.yml. In order, each only if its binary is on the PATH:
-     gitleaks   git history, security/gitleaks.toml
-     semgrep    security/semgrep/weave.yml over src bin public, against baseline.json
-     zizmor     .github/workflows
-     actionlint .github/workflows
-     hadolint   Dockerfile, security/hadolint.yaml
-     vendor     scripts/vendor-advisories.mjs (OSV, network)
-   One summary line per tool: pass, fail or skipped. Exit 1 on any fail.
-   --require-all (CI) turns a skipped tool into a fail.
-   --update-baseline rewrites security/semgrep/baseline.json from a fresh run;
-   do that only after reading each new result and deciding it is not a defect.
-   Semgrep's taint results can vary between runs on a loaded machine, so a baseline
-   entry that does not reproduce is never a failure; regenerate until the count is stable. */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname, delimiter, isAbsolute } from 'node:path';
@@ -22,14 +8,11 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const BASELINE = join(ROOT, 'security/semgrep/baseline.json');
 export const SCAN_DIRS = ['src', 'bin', 'public'];
 
-/* A finding is identified by rule, file and the text of the lines it matched,
-   never by line number, so an unrelated edit above it does not read as new. */
 export function fingerprint(result, source) {
   const lines = source.split('\n').slice(result.start.line - 1, result.end.line);
   return `${result.check_id.split('.').pop()}|${result.path}|${lines.map((l) => l.trim().replace(/\s+/g, ' ')).join(' ')}`;
 }
 
-/* Multiset compare: a fingerprint seen more often than the baseline allows is new. */
 export function newFindings(fingerprints, baseline) {
   const allowed = new Map();
   for (const f of baseline) allowed.set(f, (allowed.get(f) ?? 0) + 1);
@@ -66,8 +49,6 @@ function semgrepStep(update) {
     '--exclude', 'vendor', ...SCAN_DIRS]);
   let out;
   try { out = JSON.parse(r.stdout); } catch { return { status: 'fail', detail: `no JSON from semgrep: ${tail(r)}` }; }
-  // A rule that cannot load is a failure; a file semgrep cannot parse is not (public/app.js carries a raw NUL in a template literal).
-  // A timeout would drop results silently, so it fails too.
   const broken = out.errors.filter((e) => e.type !== 'PartialParsing' && !/Syntax error/.test(e.message));
   if (broken.length) return { status: 'fail', detail: broken.map((e) => e.message.split('\n')[0]).join('; ') };
   const fps = out.results.map((x) => fingerprint(x, readFileSync(join(ROOT, x.path), 'utf8')));
@@ -89,7 +70,6 @@ export function steps(update = false) {
   return [
     simple('gitleaks', 'gitleaks', ['git', '--no-banner', '--redact', '--config', 'security/gitleaks.toml', '.']),
     () => (onPath('semgrep') ? { name: 'semgrep', ...semgrepStep(update) } : { name: 'semgrep', status: 'skipped', detail: 'semgrep not on PATH' }),
-    // zizmor asks the GitHub API to check pinned SHAs when it has a token; without one it stays offline.
     simple('zizmor', 'zizmor', [...(process.env.GH_TOKEN || process.env.GITHUB_TOKEN ? [] : ['--offline']), '--no-progress', '.github/workflows']),
     simple('actionlint', 'actionlint', []),
     simple('hadolint', 'hadolint', ['--config', 'security/hadolint.yaml', 'Dockerfile']),

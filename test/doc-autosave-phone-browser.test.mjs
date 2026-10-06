@@ -1,21 +1,3 @@
-/* A document typed on a phone is saved before the phone can lose it (Issue #247).
-
-   Kyle, from the phone, 2026-09-08: "mobile descriptions not captured on
-   save". The editor saves on a pause: Vditor hands the text over 800ms after
-   the last keystroke (its undoDelay) and weave writes it 600ms after that. A
-   phone rarely waits 1.4s. The app switcher, the lock button and a tap on
-   another app fire visibilitychange and pagehide, and then iOS freezes the
-   tab and may discard it: no timer runs again. Before this fix the leaving
-   flush only wrote what was already queued, which the 800ms hand-over had not
-   reached yet, and nothing flushed on a hide at all, so the text was lost on
-   every background in WebKit and Chromium, for the Description and for any
-   other markdown document field.
-
-   Each case types on a phone-profile page (390x844, touch, mobile), leaves
-   the field the way a phone user does, and asserts a PUT carrying the text
-   leaves the page within 400ms of the last keystroke, well inside the old 1.4s window. Then the
-   server must hold it. WEAVE_BROWSER=webkit runs the same cases in WebKit.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -39,7 +21,6 @@ if (s) {
   const { browser, base, weave } = s;
   let n = 0;
 
-  // A fresh row per case, so no case reads another's text.
   const open = async (field, { hash } = {}) => {
     const id = weave.createEntity(table, { name: `Row ${++n}` }).id;
     const ctx = await browser.newContext(PHONE);
@@ -52,13 +33,9 @@ if (s) {
     return { id, ctx, page, section, surface };
   };
 
-  // Types `word`; `put` settles on the first PUT that carries it, or fails
-  // 400ms after the last keystroke. Wrapped, because an async function that
-  // returned the bare promise would make its caller wait for the PUT.
   const typeAndWatch = async (page, surface, word, { compose = false } = {}) => {
     await surface.tap();
     if (compose) {
-      // An on-screen keyboard's predictive text arrives as a composition.
       await surface.evaluate((node) => node.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' })));
       await page.keyboard.insertText(word);
       await surface.evaluate((node, w) => node.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: w })), word);
@@ -154,8 +131,6 @@ if (s) {
     test(`${field}: an untouched document writes nothing when the phone leaves it`, async () => {
       const { id, ctx, page, surface } = await open(field);
       try {
-        // Stored text Lute rewrites on load (list marker, no trailing newline):
-        // the leaving flush must compare against the built surface, not this.
         weave.setDoc(id, '* one\n* two', field);
         await page.reload({ waitUntil: 'networkidle' });
         await surface.waitFor();
@@ -173,9 +148,6 @@ if (s) {
     test(`${field}: a document over the 64KB keepalive cap still saves on background`, async () => {
       const { id, ctx, page, surface } = await open(field);
       try {
-        // 40,000 accented letters: under 60,000 characters, about 80KB of
-        // bytes. The browser refuses a keepalive body that size, so the
-        // write must go as a plain fetch or it is never sent at all.
         weave.setDoc(id, 'é'.repeat(40_000), field);
         await page.reload({ waitUntil: 'networkidle' });
         await surface.waitFor();

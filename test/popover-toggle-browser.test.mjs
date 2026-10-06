@@ -1,13 +1,3 @@
-/* Issue #320: "visibility toggle dialog doesn't close on icon click".
-   showPopover's outside-click listener runs in the capture phase and counted
-   the trigger itself as outside, so a second click on the eye closed the
-   popover and that same click's own handler opened a fresh one: the dialog
-   never closed. The trigger now toggles its popover. After a flip the eye is
-   redrawn as a new node, so the eye's popover recognises the replacement too;
-   a click on a DIFFERENT trigger (the docked entity's eye, another column's
-   ⋮) still switches popovers in one click, and Escape and a genuine outside
-   click still close. Playwright is NOT a dependency; the suite skips when it
-   is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -24,8 +14,6 @@ const s = await launch('popover toggle', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
   const isOpen = (page) => page.evaluate(() => !!document.querySelector('.chip-pop'));
-  // A close that the same click undoes lands within a frame or two; give it
-  // two frames and a beat before reading.
   const settle = (page) => page.evaluate(() => new Promise((r) =>
     requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50)))));
   const table = async (theme) => {
@@ -57,8 +45,6 @@ if (s) {
       await page.waitForSelector('.chip-pop .eye-row');
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => !document.querySelector('.chip-pop'));
-      // Escape leaves the capture listener hooked until the next click; that
-      // click must open the eye, not be swallowed as a "close".
       await page.click('#main .eye-btn');
       await page.waitForSelector('.chip-pop .eye-row');
       await page.mouse.click(4, 4);
@@ -69,8 +55,6 @@ if (s) {
       await page.close();
     });
 
-    /* Since Issue #444 a flip redraws the grid under the toolbar, not the
-       toolbar: the eye keeps its node, and a click on it still closes. */
     test(`after a flip redraws the grid, a click on the eye still closes (${theme})`, async () => {
       const page = await table(theme);
       await page.click('#main .eye-btn');
@@ -95,7 +79,6 @@ if (s) {
     await page.waitForSelector('#dock:not([hidden]) .eye-btn');
     await page.click('#main .eye-btn');
     await page.waitForSelector('.chip-pop .eye-row');
-    // The table's eye carries the Rows section; the entity's does not.
     assert.ok(await page.evaluate(() => [...document.querySelectorAll('.chip-pop .eye-head')].some((h) => h.textContent === 'Rows')));
     await page.click('#dock .eye-btn');
     await settle(page);

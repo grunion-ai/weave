@@ -1,18 +1,3 @@
-/* The key sheet (Issue #268), against a real page.
-
-   The audit found a whole spreadsheet keymap and nothing in the UI that said
-   so: no ? binding, no Help entry, one footer line in ⌘K. Kyle filed the
-   same complaint about one key: he sent a problem report with ⌘Return and
-   wrote "there is not clue that this is possible in the ui" in it.
-
-   What this suite proves is the DOM half. The rows themselves are held to
-   the keymap in test/grid-keymap.test.mjs; here, ? on a resting cell and the
-   rail's ? chip both open one sheet that prints every one of those rows, ?
-   inside an open cell is still a character, Esc closes the sheet and puts
-   focus back where it was, and the problem report shows its ⌘Return. Both
-   themes, since the sheet is new chrome.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -43,8 +28,6 @@ if (s) {
   });
   const sheetOpen = (page) => page.locator('#modal.wv-keys').count();
 
-  /* What the sheet prints, and whether a reader can see it: every key chip
-     and description, plus the contrast of the body text on the sheet. */
   const readSheet = (page) => page.evaluate(() => {
     const lum = (c) => {
       const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map((v) => {
@@ -135,8 +118,6 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    /* Kyle's own report: ⌘Return sent it, and nothing on the panel said it
-       would. The hint sits beside Send, where the eye already is. */
     test(`the problem report shows that ⌘Return sends it (${theme})`, async () => {
       const page = await grid(theme);
       try {

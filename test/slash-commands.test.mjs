@@ -1,16 +1,3 @@
-/* Every slash command, driven through a real browser.
-
-   The rest of the editor's contracts are asserted at source level, because the
-   UI is dependency-free vanilla JS with no DOM runtime under `node --test`.
-   Insertion is different: what a menu item actually produces depends on Lute,
-   contenteditable and Vditor's IR reconciliation, and none of that can be
-   inferred from reading app.js. "Code blocks are broken" was invisible to
-   every source-level test in the suite.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps,
-   nothing npm-installed). It is imported dynamically and the whole suite skips
-   when it is absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -24,35 +11,17 @@ let dir, tableRef;
 const s = await launch('slash commands', (weave) => {
   dir = mkdtempSync(join(tmpdir(), 'weave-slash-'));
   weave.createSpace({ name: 'Scratch' });
-  // A new table already carries a Description document field.
   tableRef = weave.createTable({ space: 'Scratch', name: 'Note' });
-  // A stable, distinctly named entity for the link picker to find.
   weave.createEntity(tableRef, { name: 'Zebrafish target' });
 });
 if (s) {
   const { base, browser, weave } = s;
   test.after(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
 
-  /* Each case gets its own entity. Saves are debounced, so a document shared
-     across cases receives a previous case's write after the next one has
-     navigated — the suite then asserts against whichever save landed last. */
   function freshEntity(name = 'Slash case') {
     return weave.createEntity(tableRef, { name }).id;
   }
 
-  /* Runs one slash command end to end: clear the document, type the trigger,
-     let the menu filter, take the highlighted item, and return the markdown
-     the editor actually holds afterwards. */
-  /* The hint menu re-renders on every keystroke, and waitForSelector resolves
-     on whichever render happens to be up — usually the one for a character
-     earlier in the query. Reading it there measures the UNFILTERED catalogue,
-     which is why the failures named a random command ("/head" chose "Text")
-     and why they moved around under load.
-
-     Settling on "the rows stopped changing" is not enough: a stale menu is a
-     stable menu. Typing promotes the matches into their own group, so the
-     leading group no longer reading ALL COMMANDS is the positive signal that
-     the menu on screen belongs to the query that was typed. */
   const hintFiltered = (page) => page.waitForFunction(() => {
     const first = document.querySelector('.vditor-hint:not(.vditor-panel--arrow) button');
     return !!first && !/^ALL COMMANDS/.test(first.textContent.trim());
@@ -70,18 +39,6 @@ if (s) {
     return seen;
   }
 
-  /* Vditor hides the hint menu on ANY scroll — a listener on the window and
-     one on the editor's own element, both calling its hide(['hint']). That is
-     what made the wheel case below flake (Issue #275): pressing Enter in an
-     eighty-paragraph document leaves the page parked at the document's end,
-     the next keystroke animates it back to the caret over about a second, and
-     the menu that keystroke opened is shut by the first scroll event of that
-     animation. Twenty-one rows in the DOM, display:none, and thirty seconds
-     spent waiting for something visible — three times in Gerrit 334's gate,
-     on a change that had not touched the editor.
-     So the page says when it has stopped moving, instead of a sleep guessing
-     at it: every scroll, captured at the document, stamps a clock, and this
-     resolves once that clock has been quiet. */
   async function scrollStopped(page, quiet = 250) {
     await page.evaluate(() => {
       if (!window.__scrollMark) {
@@ -110,10 +67,6 @@ if (s) {
     await hintFiltered(page);
     const label = await page.textContent('.vditor-hint:not(.vditor-panel--arrow) button');
     await page.keyboard.press('Enter');
-    /* Poll rather than sleep: a headless page is backgrounded, Chrome throttles
-       the timers Vditor dispatches its input event on, and a command that
-       finishes itself (a reference, a raw HTML block) settles one step after
-       that. Read until the document stops changing. */
     let markdown = '';
     for (let i = 0; i < 30; i++) {
       const now = await page.evaluate(() =>
@@ -126,15 +79,11 @@ if (s) {
     } finally { await page.close(); }
   }
 
-  // query → what the resulting markdown must contain. One case per menu item,
-  // so a regression names the command that broke rather than "the menu".
   const CASES = [
     ['text', /^Text$/m],
     ['head', /^# /m],
     ['heading 2', /^## /m],
     ['heading 3', /^### /m],
-    // One "Heading 1–6" row, six levels behind it: /h4 must reach level four
-    // without the menu carrying six rows for headings alone.
     ['h4', /^#### /m],
     ['raw html', /^<div>/m],
     ['bold', /\*\*.+\*\*/],
@@ -162,8 +111,6 @@ if (s) {
   }
 
   test('slash: a fenced block is a real block, not escaped text', async () => {
-    // The reported defect: the fence arrived as literal characters inside a
-    // paragraph, so the document held \`\`\` as text rather than a code block.
     const { markdown } = await runSlash('code block');
     assert.doesNotMatch(markdown, /\\`/, 'backticks must not arrive escaped');
     assert.doesNotMatch(markdown, /&#96;|&gt;|&lt;/, 'no HTML entities in stored markdown');
@@ -181,12 +128,8 @@ if (s) {
     await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
     await page.keyboard.press('Enter');
-    // The command hands off to the same search the ⌘K palette uses, rather
-    // than inserting a placeholder the writer has to fix up by hand.
     await page.waitForSelector('#cmdk', { state: 'visible' });
     await page.keyboard.type('Zebrafish');
-    // An option of THIS search, not a Recent row the empty palette opened
-    // on: Enter against either would insert the wrong target.
     await page.waitForSelector('#cmdk-results[data-query="Zebrafish"] [role="option"]');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(150);
@@ -195,14 +138,6 @@ if (s) {
     assert.match(markdown, /\[\[[^\]]+#\d+(\|[^\]]+)?\]\]/,
       `expected a [[Table#id]] reference, got: ${JSON.stringify(markdown)}`);
 
-    /* The reference has to RESOLVE, not just be shaped right. A qualified
-       Space/Table#id that the renderer cannot find still parses — it just
-       renders as a broken chip, which would make the command look like it
-       worked while producing dead links.
-
-       Flush rather than wait: a headless page is backgrounded and Chrome
-       throttles its timers, so the 600ms debounce may not fire for a minute.
-       This is the same flush the app runs on unload and on route change. */
     await page.evaluate(() => window.__weaveFlushDocSaves());
     let html = '';
     for (let i = 0; i < 40 && !html.includes('mention'); i++) {
@@ -216,10 +151,6 @@ if (s) {
       'no broken references');
     await page.close();
   });
-
-  /* ---------- the menu itself ----------
-     With the toolbar hidden the menu IS the editor's UI, so its shape is a
-     contract: what it groups, what it teaches, and what it puts first. */
 
   test('the menu is grouped, and every row shows the syntax it writes', async () => {
     const page = await browser.newPage();
@@ -236,8 +167,6 @@ if (s) {
       labels: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item b')].map((b) => b.textContent),
       syntax: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item')]
         .map((i) => i.querySelector('.slash-syntax')?.textContent ?? null),
-      // A glyph is either a typographic mark (B, I, H, ¶) or a flat icon —
-      // never an emoji, which is why an <svg> counts and text is optional.
       icons: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item')]
         .map((i) => {
           const slot = i.querySelector('.slash-icon');
@@ -247,8 +176,6 @@ if (s) {
 
     assert.deepEqual(menu.groups, ['ALL COMMANDS', 'REFERENCE', 'FORMAT · APPLIES TO SELECTION'],
       'an unfiltered menu is the catalogue, grouped by what the commands do');
-    // The vendored hint renders at most 64 rows (patched up from 8): the whole
-    // catalogue has to fit, or the groups below the fold are unreachable.
     assert.ok(menu.rows >= 20, `the whole catalogue renders, got ${menu.rows} rows`);
     assert.ok(menu.syntax.every(Boolean), 'every row carries its syntax hint');
     assert.ok(menu.icons.every(Boolean), 'and its glyph');
@@ -273,8 +200,6 @@ if (s) {
     assert.equal(menu.groups[0], 'INSERT', 'matches lead the menu');
     assert.deepEqual(menu.labels.slice(0, 2).sort(), ['Table', 'Task list'],
       'and they are the rows whose names start with what was typed');
-    // A query narrows the top of the menu without emptying the rest of it:
-    // a near-miss must never leave the writer with nothing to pick.
     assert.ok(menu.groups.includes('ALL COMMANDS'), 'the catalogue stays underneath');
     assert.ok(menu.labels.includes('Quote'), 'including commands that do not match at all');
     await page.close();
@@ -290,10 +215,6 @@ if (s) {
       ed.setValue('vermilion');
       ed.focus();
     });
-    /* Select the line, the way a writer would before reaching for bold.
-       Typing "/" then replaces the selection — which is exactly why the menu
-       has to have remembered it. (A dblclick lands on the padding as often as
-       the word in a one-line document, so the keyboard does the selecting.) */
     await page.click('.vditor-ir [contenteditable="true"] p');
     await page.keyboard.press('End');
     await page.keyboard.down('Shift');
@@ -311,20 +232,6 @@ if (s) {
     await page.close();
   });
 
-  /* ---------- a block command on a line with text (Issue #455) ----------
-     Kyle, 2026-09-28: a heading line, then /task, kept the heading and put a
-     "To do" placeholder under it. A line-prefix command now takes the line it
-     was typed on: the words stay, the block type changes. The rewrite itself
-     is test/slash-convert-line.test.mjs; these cases are what Vditor and Lute
-     make of it, where the caret ends up, and what reaches the server. */
-
-  /* Writes `md`, puts the caret at the end of the text in `sel` (the last
-     block when there is none), `back` characters short of it, types ` /query`
-     and takes the promoted row. Returns the markdown the editor holds, where
-     the caret is, and what was saved. `then(page)` runs on the page before
-     it closes, after the save, and its answer comes back as `after`.
-     `recorded` waits, before the command is typed, for Vditor's undo stack to
-     hold the document: a writer pauses, a test does not. */
   async function convertLine(md, query, { sel = null, back = 0, then = null, recorded = false } = {}) {
     const id = freshEntity('Convert case');
     const page = await browser.newPage();
@@ -335,13 +242,12 @@ if (s) {
         const ed = window.__weaveEditors.values().next().value;
         ed.setValue(md);
         ed.focus();
-        if (!md) return; // an empty document has one place for the caret
+        if (!md) return;
         const root = document.querySelector('.vditor-ir .vditor-reset');
         const block = sel ? root.querySelector(sel) : root.lastElementChild;
         const texts = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
         let last = null;
         for (let n = texts.nextNode(); n; n = texts.nextNode()) {
-          // A nested list is another item's text, not this one's.
           if (n.textContent.trim() && n.parentElement.closest('li, [data-block]') === block.closest('li, [data-block]')) last = n;
         }
         const range = document.createRange();
@@ -361,7 +267,6 @@ if (s) {
       await hintFiltered(page);
       const label = (await page.textContent('.vditor-hint:not(.vditor-panel--arrow) button')).trim();
       await page.keyboard.press('Enter');
-      // Until the marker is gone and the document has stopped changing.
       let markdown = null;
       for (let i = 0; i < 60; i++) {
         const now = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
@@ -379,7 +284,6 @@ if (s) {
         const before = document.createRange();
         before.selectNodeContents(block);
         before.setEnd(r.startContainer, r.startOffset);
-        // The line's own text: a nested list under it is not part of the line.
         const own = [...block.childNodes].filter((n) => !(n.nodeType === 1 && /^(UL|OL)$/.test(n.tagName)))
           .map((n) => n.textContent).join('');
         return { collapsed: r.collapsed, before: before.toString().trim(), line: own.trim(), inEditor: !!el.closest('.vditor-ir') };
@@ -398,7 +302,6 @@ if (s) {
 
   const said = (r) => `chose "${r.label}" and produced:\n${JSON.stringify(r.markdown)}`;
 
-  // [name, document, query, options, the line it must become, what must be gone]
   const CONVERSIONS = [
     ['a paragraph becomes a task', 'Buy milk', 'task', {}, /^- \[ \] +Buy milk$/m, /To do|^Buy milk/m],
     ['a heading becomes a task', '## Plan', 'task', {}, /^- \[ \] +Plan$/m, /To do|^#/m],
@@ -423,7 +326,6 @@ if (s) {
   }
 
   test('convert: the words on both sides of the caret survive', async () => {
-    // Caret after "milk", so " today" sits to its right when the command runs.
     const r = await convertLine('Buy milk today', 'task', { back: ' today'.length });
     assert.match(r.markdown, /^- \[ \] +Buy milk +today$/m, said(r));
     assert.doesNotMatch(r.markdown, /To do|\u2063/, said(r));
@@ -455,12 +357,6 @@ if (s) {
     assert.match(r.after, /^- \[ \] +Buy milk and eggs\n?$/, `typed on and got ${JSON.stringify(r.after)}`);
   });
 
-  /* Vditor feeds its undo stack from the same 800ms timer as its input event.
-     A marker still in the line when that timer fires is on the stack for
-     good: undo brings it back, it converts again, and undo never gets past the
-     line. The conversion runs before the timer, so the stack holds what was
-     typed and what it became. Polled, because a headless page throttles
-     timers. */
   test('convert: undo goes back to what was typed, never to the marker', async () => {
     const r = await convertLine('Buy milk', 'task', {
       recorded: true,
@@ -469,7 +365,6 @@ if (s) {
           const v = window.__weaveEditors.values().next().value.vditor;
           return { depth: v.undo.ir.undoStack.length, last: v.undo.ir.lastText };
         });
-        // The converted line reaches the stack when the timer fires.
         await page.waitForFunction(() =>
           /checkbox/.test(window.__weaveEditors.values().next().value.vditor.undo.ir.lastText),
         null, { timeout: 15000, polling: 100 });
@@ -513,7 +408,6 @@ if (s) {
       ed.focus();
     });
     await page.click('.vditor-ir [contenteditable="true"]');
-    // The alias, because "table" itself belongs to the block that inserts one.
     await page.keyboard.type('/link table');
     await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
@@ -538,10 +432,6 @@ if (s) {
     await page.close();
   });
 
-  /* ---------- # is the entity search ----------
-     Two steps became one: the caret is already where the reference goes, so
-     the document is the search box. */
-
   test('# searches records under the caret and Enter drops the reference in', async () => {
     const page = await browser.newPage();
     const id = freshEntity('Hash search case');
@@ -560,7 +450,6 @@ if (s) {
       [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item b')].map((b) => b.textContent));
     assert.ok(labels.some((l) => /Zebrafish/.test(l)), `expected the fixture record, got ${labels.join(' | ')}`);
 
-    // Arrow keys move the highlight, exactly as they do in the command menu.
     await page.keyboard.press('ArrowDown');
     await page.waitForTimeout(100);
     const highlighted = await page.evaluate(() =>
@@ -574,7 +463,6 @@ if (s) {
     assert.match(markdown, /^Blocked by \[\[[^\]]+#\d+\|[^\]]+\]\]/,
       `the reference lands inline, got ${JSON.stringify(markdown)}`);
 
-    // And the chip layer turns the literal into a chip that covers it.
     await page.waitForTimeout(600);
     const chips = await page.evaluate(() =>
       [...document.querySelectorAll('.doc-ref-chip')].map((c) => getComputedStyle(c).backgroundColor));
@@ -596,8 +484,6 @@ if (s) {
     await page.close();
   });
 
-  /* ---------- an unlabelled code block colours itself ---------- */
-
   test('a fence with no language is detected, and a diagram source is not', async () => {
     const page = await browser.newPage();
     const id = freshEntity('Detect case');
@@ -608,10 +494,6 @@ if (s) {
       ed.setValue('```\n{ "a": 1, "b": [true, null] }\n```\n\n```\ngraph TD\n  A --> B\n```\n');
       ed.focus();
     });
-    /* The detector waits for Vditor to fetch highlight.js, so poll for it —
-       for the block the assertions actually read, not for any block. Breaking
-       on "some block has spans" let a half-applied highlight through, and a
-       four-second budget was not enough for the fetch on a loaded machine. */
     let blocks = [];
     for (let i = 0; i < 120; i++) {
       blocks = await page.evaluate(() => [...document.querySelectorAll('.vditor-ir__preview > code')]
@@ -625,11 +507,6 @@ if (s) {
     assert.equal(blocks[1].spans, 0, 'a mermaid source in a plain fence stays plain text');
     await page.close();
   });
-  /* Issue #137 (Kyle, 2026-09-01): "too big of a slash command menu; also it
-     disappears when trying to scroll". Vditor closes the menu on any window
-     scroll, and a wheel over a menu that cannot absorb it chained to the
-     page — so scrolling the menu closed the menu. The menu is capped short
-     and the wheel stops at its edge. */
   test('a wheel over the slash menu never scrolls the page out from under it', async () => {
     const id = freshEntity('Wheel case');
     weave.setDoc(id, '# Top\n\n' + 'filler line\n\n'.repeat(80) + 'end\n', 'Description');
@@ -637,12 +514,9 @@ if (s) {
     await page.setViewportSize({ width: 1280, height: 700 });
     await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.vditor-ir [contenteditable="true"]');
-    // The menu opens on an empty line: a "/" glued to a word is that word.
     await page.click('.vditor-ir [contenteditable="true"] p');
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
-    /* Let the page come to rest, then put the caret in the middle of it, so
-       the "/" below has no scrolling left to cause. See scrollStopped. */
     await scrollStopped(page);
     const centred = await page.evaluate(() => {
       const n = getSelection().anchorNode;
@@ -655,9 +529,6 @@ if (s) {
     await page.keyboard.type('/');
     await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
-    /* The cap comes from a MutationObserver watching the menu's style, so for
-       a frame the menu is its uncapped self — the wrong height to assert and
-       the wrong box to aim a pointer at. Read the menu that carries the cap. */
     await page.waitForFunction(() => {
       const h = document.querySelector('.vditor-hint:not(.vditor-panel--arrow)');
       return !!h && h.style.display !== 'none' && h.style.maxHeight !== '';
@@ -669,11 +540,9 @@ if (s) {
     });
     assert.ok(before.h <= 400, `the menu is capped short (${before.h}px)`);
     await page.mouse.move(before.cx, before.cy);
-    // A wheel that misses the menu proves nothing, and would pass for it.
     const onMenu = await page.evaluate(([x, y]) =>
       !!document.elementFromPoint(x, y)?.closest('.vditor-hint'), [before.cx, before.cy]);
     assert.ok(onMenu, 'the pointer sits over the menu');
-    // Far past the menu's own travel: what it cannot absorb must stop here.
     for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 600);
     await scrollStopped(page);
     const after = await page.evaluate(() => ({

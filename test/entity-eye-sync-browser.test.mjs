@@ -1,8 +1,3 @@
-/* One hidden set, two visible surfaces (one entity surface; Kyle,
-   2026-09-02: "visibility in entity doc is different than in table").
-   In the split, a field hidden from either eye must vanish from BOTH the
-   grid and the docked entity, immediately — not after a reopen.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
@@ -20,7 +15,6 @@ if (s) {
     [...document.querySelectorAll('#main .wv-grid thead th')].some((th) => th.textContent.includes('Amount')));
   const paneHasAmount = (page) => page.evaluate(() =>
     [...document.querySelectorAll('#dock .entity-fields .fieldrow label')].some((l) => l.textContent.trim() === 'Amount'));
-  // The Amount row's switch state, read off the live popover.
   const amountChecked = () => [...document.querySelectorAll('.chip-pop .eye-row')]
     .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount')?.matches(':has(input:checked), [aria-checked="true"]').toString();
   const flipAmount = async (page) => {
@@ -29,12 +23,6 @@ if (s) {
       [...document.querySelectorAll('.chip-pop .eye-row')]
         .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount').click();
     });
-    // Both surfaces redraw asynchronously (PATCH, schema reload, two
-    // renders); the popover's fresh rows carry the flipped switch, which is
-    // the signal that the round trip has landed. The signal is the whole
-    // point, so it waits on the default budget: the 5s cap that used to sit
-    // here is the same guess that flaked next door, and this round trip took
-    // 8.7s on the gate that voted it −1 (Issue #216).
     await page.waitForFunction((was) => {
       const row = [...document.querySelectorAll('.chip-pop .eye-row')]
         .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount');
@@ -45,9 +33,6 @@ if (s) {
     await page.click(`${scope} .eye-btn`);
     await page.waitForSelector('.chip-pop .eye-row');
     await flipAmount(page);
-    // Dismiss the reopened popover with a click on neutral chrome, never
-    // Escape — with no popover left, Esc would rightly pop the dock itself
-    // and the assertions would read an empty pane.
     await page.mouse.click(4, 4);
   };
 
@@ -70,8 +55,6 @@ if (s) {
       await dockRead;
       assert.equal(await gridHasAmount(page), false, 'the grid has completed its half of the update');
       assert.equal(await paneHasAmount(page), true, 'the held dock read still shows its previous field');
-      // The table's eye is a checkbox since Issue #441: it shows the click at
-      // once, so the round trip is read off the grid and the pane, not the box.
       release();
       await flipping;
       await page.waitForFunction(() => ![...document.querySelectorAll('#dock .entity-fields .fieldrow label')].some((l) => l.textContent.trim() === 'Amount'), null, { timeout: 10000 }).catch(() => {});
@@ -88,11 +71,7 @@ if (s) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
-    // Amount is hidden from the previous test, so the pane may hold no
-    // fieldrows at all — wait on the name instead.
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
-    // The field starts hidden from the previous test's flip; show it again,
-    // from the pane, and expect the grid to grow the column back.
     await toggleAmount(page, '#dock');
     assert.equal(await paneHasAmount(page), true, 'the pane shows Amount again');
     assert.equal(await gridHasAmount(page), true, 'and the grid follows without a redraw by hand');
@@ -106,8 +85,6 @@ if (s) {
     await page.click('#main .eye-btn');
     await page.waitForSelector('.chip-pop .eye-row');
     await page.evaluate(() => { document.querySelector('.chip-pop').dataset.marker = 'held'; });
-    // Measure after the pop-in animation lands, not after a guess at how long
-    // a loaded machine takes to play it (Issue #454).
     await settled(page.locator('.chip-pop'));
     const before = await page.evaluate(() => {
       const r = document.querySelector('.chip-pop').getBoundingClientRect();

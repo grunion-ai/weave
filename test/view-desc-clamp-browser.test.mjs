@@ -1,10 +1,3 @@
-/* The header description clamps to five lines (Feature #186, Kyle,
-   2026-09-07): a long glossary under a table title was pushing the grid a
-   full screen down. The rendered markdown shows its first five lines; when
-   more is hidden a `Show more` control sits under it and toggles to
-   `Show less`. Short descriptions carry no control, and the control never
-   opens the editor — a click on the prose still does. One viewHeader serves
-   table, space and workspace pages, so the same probe runs on each. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -70,8 +63,6 @@ if (s) {
       await page.click('.view-desc-more');
       let r = await probe(page);
       assert.equal(r.clamped, false, 'the clamp is off');
-      // Opened past a fifth of the window, the rest scrolls inside the held
-      // header instead of pushing it off screen (Issue #412).
       assert.ok(r.shown === r.full || (r.overflow === 'auto' && r.shown > r.lineHeight * 5 + 1),
         `nothing is hidden: ${JSON.stringify(r)}`);
       assert.equal(r.more, 'Show less');

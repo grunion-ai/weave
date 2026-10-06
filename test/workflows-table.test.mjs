@@ -3,17 +3,6 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { fresh } from './lib/fixtures.mjs';
 
-/* The Workspace system space gains a fourth table, `Workflows` (Kyle,
-   2026-08-24): a real system table like the registries, but its rows are
-   DATA, not mirrors of structure — each row is one workflow. Shape:
-   which tables and spaces it touches (relations into the registries), the
-   executable automation script itself (a code document), Version, State
-   (Setup incomplete / Ready since Feature #249), Health (Healthy / Warning /
-   Failed / No runs) with its Health Reason, Last Run (a datetime), a Diagram
-   document holding the workflow's mermaid,
-   and a Type select that ships EMPTY — types are designed and rolled out
-   later, the field is the socket they plug into. */
-
 const wfTable = (w) => w.getTable('Workspace/Workflows');
 const f = (db, name) => Object.values(db.fields).find((x) => x.name === name);
 
@@ -97,7 +86,6 @@ test('a workflow row is ordinary data: create, link, run, document', () => {
   assert.equal(read.raw.Version, 1);
   assert.equal(read.fields.Version, '1', 'the display value wears the number costume');
 
-  // State is the engine's: a hand-set state is judged back on the write.
   w.setState(wf.id, 'State', 'Ready');
   w.updateEntity(wf.id, { Health: 'Healthy' });
   const after = w.readEntity(wf.id);
@@ -105,7 +93,6 @@ test('a workflow row is ordinary data: create, link, run, document', () => {
   assert.equal(after.fields.Health, 'Healthy');
   assert.equal(after.fields.Tables[0].name, 'Task', 'a row with no rule keeps the Tables written by hand');
 
-  // Ordinary rows of a system table delete like data — soft first, restorable.
   w.deleteEntity(wf.id);
   assert.ok(w.getEntity(wf.id) === undefined || w.readEntity(wf.id).deletedAt, 'soft-deleted');
   w.restoreEntity(wf.id);
@@ -116,12 +103,10 @@ test('workflow rows do not collide with the registry interceptors', () => {
   const w = fresh();
   const t = wfTable(w);
   const wf = w.createEntity(t.id, { Name: 'Weekly digest' });
-  // A rename is a row rename, not a structural verb aimed at nothing.
   w.updateEntity(wf.id, { Name: 'Weekly digest v2', Version: 2 });
   const read = w.readEntity(wf.id);
   assert.equal(read.name, 'Weekly digest v2');
   assert.equal(read.raw.Version, 2);
-  // A hard delete is a row delete, not a schema delete.
   w.deleteEntity(wf.id, { hard: true });
   assert.throws(() => w.readEntity(wf.id), /not found/i);
 });
@@ -131,8 +116,6 @@ test('a legacy workspace grows the Workflows table on load', () => {
   const json = w.exportJSON();
   const t = Object.values(json.tables).find((x) => x.system === 'workflows');
   delete json.tables[t.id];
-  // True legacy has neither side: strip the inverse relation fields the
-  // registries would have gained, exactly as a pre-Workflows export lacks them.
   for (const reg of Object.values(json.tables)) {
     for (const [fid, fld] of Object.entries(reg.fields ?? {})) {
       if (fld.name === 'Workflows' && fld.type === 'relation' && fld.config.targetDb === t.id) {
@@ -151,16 +134,9 @@ test('a Workflows row is ordinary data: a blank name is accepted, as on any tabl
   const w = fresh();
   const row = w.createEntity(wfTable(w).id, { name: '' });
   assert.equal(w.entityName(w.getEntity(row.id)), '');
-  // The registries still refuse a nameless row: the row IS the space.
   assert.throws(() => w.createEntity(w.getTable('Workspace/Spaces').id, { name: '' }), /Name is required/);
 });
 
-/* Feature #249 (Kyle, 2026-10-02): each automation is a row of this table
-   and the table is the control panel, so every row carries an On switch. It
-   is a system toggle worded On / Off that starts off, and it leads the row's
-   own columns, straight after Name. It is the user's switch: the engine
-   reads it and never writes it, and State beside it is setup (Kyle,
-   2026-10-03), tested in workflows-engine.test.mjs. */
 const names = (t, ids) => ids.map((id) => t.fields[id]?.name ?? id);
 
 test('every Workflows row carries a system On toggle, worded On / Off, off until switched', () => {
@@ -209,8 +185,6 @@ test('a workspace from before the switch grows it on load, once, and a later mov
   assert.deepEqual(names(t2, t2.fieldOrder).slice(0, 2), ['Name', 'On'], 'it lands first after Name');
   for (const v of t2.tableViews) assert.deepEqual(names(t2, v.fields).slice(0, 2), ['Name', 'On']);
 
-  // Re-sync is idempotent: the field is not minted twice, and a column the
-  // reader moved stays where they put it.
   const id = f(t2, 'On').id;
   const view = t2.tableViews[0];
   w2.tableView(`${t2.id}/${view.id}`, { fields: [...names(t2, view.fields).filter((n) => n !== 'On'), 'On'] });

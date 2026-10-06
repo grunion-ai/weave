@@ -127,15 +127,12 @@ test('webhook automation fires on state change', async () => {
     });
     const e = w.createEntity(db, { name: 'Deploy' });
     w.setState(e.id, 'State', 'Done');
-    // fire-and-forget: poll to a deadline rather than one fixed beat — a busy
-    // machine can hold the fetch past any single sleep (Issue #27).
     const deadline = Date.now() + 5000;
     while (!received.length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
     assert.equal(received.length, 1);
     assert.equal(received[0].event, 'state-changed');
     assert.equal(received[0].entity.name, 'Deploy');
 
-    // invalid url rejected at creation
     assert.throws(() => w.createAutomation(db, {
       name: 'bad', trigger: { type: 'entity-created' }, actions: [{ type: 'webhook', url: 'ftp://x' }],
     }), /http/);
@@ -143,20 +140,6 @@ test('webhook automation fires on state change', async () => {
     hook.close();
   }
 });
-
-// ---------- repo contract: one test command, not two ----------
-// `npm test` ran the bare directory form while CI, the README, CONTRIBUTING
-// and AGENTS.md all ran the glob form. The two are not equivalent: the bare
-// path resolves `test` as a module specifier, so a gitignored workspace file
-// named `test.json` beside the repo root — which the README's own quickstart
-// can create — is loaded as a test and the whole run dies with
-// ERR_IMPORT_ATTRIBUTE_MISSING. CI stayed green the entire time because it
-// never used the npm script. Pin them together.
-// The command is now `npm test` everywhere, and what it runs — scripts/test.mjs,
-// which asks a failed file again before it votes, Issue #44 — is pinned by
-// test/test-runner.test.mjs. A surface that spells the bare run out again goes
-// around that, and drifts the same way this test was written to stop.
-// (Line comments, not a block: the glob itself contains a comment terminator.)
 
 test('npm test runs exactly the command CI and the docs run', async () => {
   const { readFileSync } = await import('node:fs');

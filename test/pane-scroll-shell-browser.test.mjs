@@ -1,15 +1,3 @@
-/* The app shell scrolls its panes, never the window (Issue #609).
-   Kyle's screenshots, v0.4.54: a long table or record scrolled the whole
-   document. `#app` was `min-height: 100vh` and `#main` grew to its content,
-   so the left nav and the workspace rail faked staying put with
-   `position: sticky; height: 100vh`, and the dock was a sticky box with a
-   scroller of its own: the dock scrolled alone while the main panel scrolled
-   with the page. The shell is now a fixed frame: the document never scrolls,
-   and the rail, the left nav (#sidebar), the main panel (#main) and the dock
-   (#dock) each own one scroller. A wheel over one moves that one only.
-   The grid's row window still follows the scroll it lives in: a 2,000-row
-   table paints its last row when the main panel reaches the bottom.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, styleOf } from './lib/browser.mjs';
@@ -18,7 +6,6 @@ const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph
 const ROWS = 2000;
 
 const s = await launch('pane scroll shell', (weave) => {
-  // Enough tables that the left nav outgrows a 900px window.
   for (const space of ['Sales', 'Product', 'Ops', 'Finance']) {
     weave.createSpace({ name: space });
     for (let i = 0; i < 14; i++) weave.createTable({ space, name: `${space} table ${i + 1}` });
@@ -39,17 +26,12 @@ if (s) {
   const open = async (hash, { width = 1440, height = 900, theme = 'light', dockWidth = null, ready = '#main .wv-grid tbody tr[data-i]' } = {}) => {
     const page = await browser.newPage({ viewport: { width, height } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
-    // A dock pinned narrow leaves the grid room to fit its panel, so the
-    // panel itself is the scroller rather than the grid's own wrap.
     if (dockWidth) await page.addInitScript((w) => localStorage.setItem('wv-dock-width', w), String(dockWidth));
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(ready);
-    await page.waitForTimeout(300); // the view header settles on a ResizeObserver
+    await page.waitForTimeout(300);
     return page;
   };
-  /* Every scroller the shell has, and the document's own. A grid wider than
-     its panel scrolls in its own wrap (Issue #233), which is part of the
-     panel it sits in, so a pane's reading counts its grid wraps too. */
   const tops = (page) => page.evaluate(() => {
     const top = (q) => {
       const n = document.querySelector(q);
@@ -62,7 +44,6 @@ if (s) {
     const r = document.querySelector(sel).getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }, q);
-  // A real wheel over the pane, then a frame or two for the scroll to land.
   const wheelOver = async (page, q, dy = 600) => {
     const { x, y } = await centreOf(page, q);
     await page.mouse.move(x, y);
@@ -96,7 +77,6 @@ if (s) {
         await wheelOver(page, `#${pane}`);
         onlyMoved(before, await tops(page), pane);
       }
-      // The panels hold their place in the window, whatever scrolled.
       const frame = await page.evaluate(() => ['#ws-rail', '#sidebar', '#main', '#dock'].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().top)));
       assert.deepEqual(frame, [0, 0, 8, 8], `rail and nav at the window top, the panels 8px under it: ${frame}`);
       await page.close();
@@ -116,14 +96,6 @@ if (s) {
     await page.close();
   });
 
-  /* Issue #451, Kyle on the uno home at 1470x794: wheeling the left nav past
-     its end scrolled the main panel with it. The nav is its own scroller, so
-     the wheel it could not use chained to the document, which outgrew the
-     window before the shell landed. Two things stop that and both are pinned
-     here: the document has no scroll of its own, and the nav keeps
-     `overscroll-behavior: contain` in every pose it takes. The in-flow
-     column, the nav-peek overlay (Issue #77) and the phone drawer
-     (Issue #262) are the same element moved, so none of them may reset it. */
   test('scroll chaining stops at the nav edge: a wheel past the bottom of the left nav moves nothing (Issue #451)', async () => {
     const page = await open(`#/table/${big.id}`, { width: 1470, height: 794 });
     const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
@@ -137,9 +109,6 @@ if (s) {
     assert.equal(after.main, before.main, 'the main panel did not take the leftover wheel');
     assert.equal(after.rail, before.rail, 'the workspace rail did not take it either');
     assert.ok(after.sidebar >= before.sidebar - 1, 'the nav stays at its end');
-    /* The other two poses are a class on #app and a width, so each is read
-       as a style rather than driven: the interactions that set them are
-       covered by the nav-peek and phone suites. */
     const chain = () => styleOf(page.locator('#sidebar'), 'overscrollBehaviorY', 'contain');
     assert.equal(await chain(), 'contain', 'the in-flow nav contains its chain');
     await page.evaluate(() => document.querySelector('#app').classList.add('nav-collapsed', 'nav-peek'));
@@ -149,20 +118,11 @@ if (s) {
     await page.close();
   });
 
-  /* Issue #452, Kyle on the uno home at 1470x794: "+ New space" sat in the
-     nav's own scrolling flow, so a workspace with enough spaces pushed it out
-     of sight — measured on v0.4.64, its top was at 1028px in a 794px window,
-     reachable only by scrolling the nav to its end. It now rides the pinned
-     strip at the sidebar's foot, above the records line, so it holds the
-     bottom edge however long the space list grows. The name input it opens
-     is a child of the same strip and is pinned with it. */
   for (const theme of ['light', 'dark']) {
     test(`${theme}: + New space holds the sidebar's bottom edge however far the nav scrolls (Issue #452)`, async () => {
       const page = await open(`#/table/${big.id}`, { theme, width: 1470, height: 794 });
       const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
       assert.ok(spare > 300, `the nav has more content than room, so an unpinned foot would scroll away: ${spare}`);
-      // Where the button sits in the window, and how much of the sidebar's
-      // own box it is inside: a pinned control is wholly within it, always.
       const seen = (q) => page.evaluate((sel) => {
         const n = document.querySelector('#sidebar');
         const box = n.getBoundingClientRect();
@@ -177,16 +137,9 @@ if (s) {
       const atEnd = await seen(btn);
       assert.ok(atEnd.scroll >= spare - 1, `the nav is at its end: ${atEnd.scroll} of ${spare}`);
       assert.ok(atEnd.within, `+ New space is still in the sidebar's window at the nav's end: ${JSON.stringify(atEnd)}`);
-      /* The strip is pinned, not carried: a nav row travels the whole
-         `spare`, the button barely moves. It rises by the strip's own
-         14px ground at the very end, where sticky hands back to the flow
-         (Issue #380), so the slack here is that band, not the scroll. */
       assert.ok(Math.abs(atEnd.top - atTop.top) <= 20, `the button held its place while the nav ran ${spare}px: ${atTop.top} -> ${atEnd.top}`);
-      // The strip stays the strip: the records line and the instance chip
-      // keep their order under the button (Issue #380).
       const order = await page.evaluate(() => [...document.querySelectorAll('#sidebar .nav-stats > *')].map((n) => n.className.split(' ')[0]));
       assert.deepEqual(order.slice(0, 2), ['nav-foot', 'nav-stats-line'], `the button leads the strip, the records line follows: ${order}`);
-      // The name input opens inside the pinned strip, so it is in view too.
       await page.click(btn);
       await page.waitForTimeout(150);
       const input = await seen('.nav-inline-add');
@@ -221,7 +174,6 @@ if (s) {
   });
 
   test('phone 390x844: the main panel, the full-screen dock and the nav drawer each scroll alone', async () => {
-    // A long record on the full page: nothing in it scrolls but the panel.
     let page = await open(`#/entity/${first.id}`, { width: 390, height: 844, ready: '#main .doc-section .vditor-reset p' });
     let before = await tops(page);
     await wheelOver(page, '#main');
@@ -229,7 +181,6 @@ if (s) {
     assert.equal(after.doc, 0, 'the document never scrolls on a phone');
     assert.ok(after.main > before.main + 50, `the main panel scrolls: ${before.main} -> ${after.main}`);
 
-    // The drawer: the nav slides over the page and scrolls on its own.
     await page.click('#main .nav-menu');
     await page.waitForTimeout(250);
     before = await tops(page);
@@ -240,7 +191,6 @@ if (s) {
     assert.equal(after.main, before.main, 'the page under the drawer holds');
     await page.close();
 
-    // The dock is a sheet over the whole screen and keeps its own scroll.
     page = await open(`#/table/${big.id}?e=${first.id}`, { width: 390, height: 844 });
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
     await page.waitForTimeout(300);

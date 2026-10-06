@@ -1,10 +1,3 @@
-/* Link and image targets pass a scheme allowlist (Issue #490).
-   src/markdown.js wrote `[x](javascript:…)` and `![x](data:text/html…)`
-   straight into href and src, so one click on a rendered document ran script
-   on the workspace origin (doc.html, the entity export, /api/markdown output
-   that the app inserts). A target is emitted only when it is relative, an
-   in-page anchor, or http, https or mailto; images also take inline PNG,
-   JPEG, GIF and WebP data. Anything else renders its text with no anchor. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';

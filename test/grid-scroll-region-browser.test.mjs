@@ -1,19 +1,3 @@
-/* One scroll region on the table page (Issue #136).
-
-   Kyle filed it against the Issue table in Safari: "double nested scroll bar
-   when trying to scroll past the end". Issue #233 gave a grid wider than its
-   card a vertical scroller of its own — the header and the Σ row stick to
-   that box — and its suite pins the other half of the deal, that the page
-   behind it does not scroll. The floor in that height (`max(50vh, …)`) broke
-   the deal on a short window: a box half the screen tall, hung below chrome
-   that already used more than half, pushes the page past the viewport, and
-   the reader gets the two nested bars back — the inner one ends, the outer
-   one takes over.
-
-   The rule under test is the whole of it: on the table page exactly one box
-   scrolls vertically. Heights below are ordinary laptop windows, not corner
-   cases; the description above the grid is what makes the chrome tall, which
-   is what every real weave table looks like. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -23,8 +7,6 @@ const DESC = Array.from({ length: 10 }, (_, i) => `Line ${i + 1} of the table de
 let wide;
 const s = await launch('one scroll region on the table page', (weave) => {
   weave.createSpace({ name: 'Ledger' });
-  // Wider than its card, so the wrap is the scroller (Issue #233), and long
-  // enough that it has somewhere to scroll.
   wide = weave.createTable({ space: 'Ledger', name: 'Wide', description: DESC });
   for (let i = 0; i < 12; i++) weave.addField(wide, { name: `A long column name ${i}`, type: 'number' });
   for (let i = 0; i < 40; i++) weave.createEntity('Wide', { name: `w${i}`, values: { 'A long column name 0': i } });
@@ -38,11 +20,6 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      // The description renders on its own schedule and moves the box down
-      // when it lands, so a page whose chrome is still arriving says nothing
-      // about the cut. Wait for the box to come to rest — its own position,
-      // read on two consecutive frames — and read the geometry then. Where
-      // the box ends is what is under test, so it is not part of the wait.
       await page.waitForFunction(() => {
         const w = document.querySelector('.table-wrap.wv-grid-scroll');
         if (!w || !w.style.maxHeight) return false;

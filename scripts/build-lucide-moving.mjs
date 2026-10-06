@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/* Builds the vendored icon set (Feature: moving icons, 2026-09-02).
-   Two upstream checkouts in, three files out:
-     public/vendor/lucide-moving.js   root.LUCIDE_MOVING = { name: '<svg…>' }
-     public/vendor/lucide-moving.css  the hover motion, one scoped block per icon
-     public/icon-registry.js          names, categories, motion, legacy aliases, mark twins
-   Usage:
-     node scripts/build-lucide-moving.mjs --moving <jis3r/icons checkout> --lucide <lucide-icons/lucide checkout>
-   movingicons.dev (github.com/jis3r/icons, MIT) ships Svelte 5 components: a
-   Lucide SVG whose parts gain classes while `animate` is true, plus scoped CSS
-   keyframes. Weave is vanilla, so each component is lifted here: the SVG keeps
-   its classes as `data-mi`, the CSS is scoped under `.mi-<name>` with renamed
-   keyframes, and the browser toggles the classes once per trigger. A component
-   whose motion is driven by script (17 of 555, e.g. eye, bot) draws still.
-   Motion never loops: `infinite` becomes a single run (Kyle, 2026-09-02). */
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -26,7 +12,6 @@ if (!MI || !LU || !fs.existsSync(MI) || !fs.existsSync(LU)) {
 }
 const OUT = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 
-/* ---------- legacy: every Iconly name weave ever stored, and the eight it drew ---------- */
 const ALIAS = {
   '2user': ['users'], '3user': ['users-round', 'users'], activity: ['activity'], adduser: ['user-plus'],
   'arrow-down': ['arrow-down'], 'arrow-down2': ['chevron-down'], 'arrow-down3': ['arrow-down'], 'arrow-downcircle': ['circle-arrow-down'], 'arrow-downsquare': ['square-arrow-down'],
@@ -48,17 +33,13 @@ const ALIAS = {
   volumedown: ['volume-1'], volumeoff: ['volume-x'], volumeup: ['volume-2'], wallet: ['wallet'], work: ['briefcase'],
   dollar: ['dollar-sign'], euro: ['euro'], card: ['credit-card'], coins: ['coins'], invoice: ['receipt'], bank: ['landmark'], trend: ['trending-up'], percent: ['percent'],
 };
-/* A mark that Lucide also draws takes the Lucide shape; the six progress rings
-   have no twin and stay hand-drawn in public/mark-icons.js. */
 const MARK_TWINS = {
   '✓': ['check'], '✕': ['x'], '★': ['star'], '!': ['circle-alert'], '?': ['circle-question-mark', 'circle-help'],
   '▶': ['play'], '⏸': ['pause'], '⊘': ['ban', 'circle-slash'], '⚑': ['flag'], '◎': ['target'], '⛓': ['link'], '⌁': ['zap'],
   '→': ['arrow-right'], '+': ['plus'],
-  // chrome marks (Issue #87): the same shapes Lucide draws, so the chrome moves too
   '⧉': ['copy'], '⟳': ['refresh-cw'], '⛶': ['maximize-2'], '↑': ['arrow-up'], '↓': ['arrow-down'], '‹': ['chevron-left'],
 };
 
-/* ---------- porting one component ---------- */
 const kfSafe = (s) => s.replace(/[^\w-]/g, '-');
 function scopeCss(css, root) {
   css = css.replace(/:global\(([^)]*)\)/g, '$1');
@@ -99,7 +80,6 @@ function portMoving(name) {
   const ms = Number((script.match(/\},\s*(\d+)\s*\)/) || [, 0])[1]) || 0;
   const hold = /onmouseleave/.test(src);
   const lookup = (id) => (script.match(new RegExp('(?:const|let)\\s+' + id + '\\s*=\\s*(?:\\$state\\()?[\'"`]([^\'"`]*)[\'"`]')) || [])[1];
-  // Svelte formats a closing tag as `</svg\n>` when attributes wrap.
   let svg = (src.match(/<svg[\s\S]*?<\/svg\s*>/) || [''])[0].replace(/<\/svg\s*>$/, '</svg>');
   svg = svg.replace(/<(\w+)([^>]*?)(\/?)>/g, (m, tag, attrs, sc) => {
     const classes = [];
@@ -113,7 +93,7 @@ function portMoving(name) {
     if (classes.length) attrs += ` data-mi="${classes.join(' ')}"`;
     return `<${tag}${attrs}${sc}>`;
   }).replace(/\s*\n\s*/g, ' ').replace(/>\s+</g, '><');
-  if (!svg.startsWith('<svg') || /\{[^}]*\}/.test(svg)) return null; // script-driven or unusual markup: no CSS port
+  if (!svg.startsWith('<svg') || /\{[^}]*\}/.test(svg)) return null;
   const style = (src.match(/<style[^>]*>([\s\S]*?)<\/style>/) || [, ''])[1];
   const css = scopeCss(style, `mi-${name}`);
   return { svg, css, ms: ms || (hold ? 900 : 1000) };
@@ -127,7 +107,6 @@ const hasMoving = (n) => fs.existsSync(`${MI}/${n}.svelte`);
 const hasStatic = (n) => fs.existsSync(`${LU}/${n}.svg`);
 const category = (n) => { try { return JSON.parse(fs.readFileSync(`${LU}/${n}.json`, 'utf8')).categories?.[0] || 'other'; } catch { return 'other'; } };
 
-/* ---------- the set ---------- */
 const SVG = {}, MOTION = {}, CATEGORY = {}, still = [];
 const add = (name) => {
   if (SVG[name]) return true;
@@ -139,10 +118,6 @@ const add = (name) => {
   return true;
 };
 const CSS = [];
-/* The inventory is curated in public/field-dialog-core.js (Kyle, 2026-09-02:
-   every icon weave offers across the tool, not the whole library); the set
-   vendors those names, then whatever a legacy alias or a mark twin resolves
-   to, so nothing stored goes blank. */
 await import(path.join(OUT, 'public/field-dialog-core.js'));
 await import(path.join(OUT, 'public/mark-icons.js'));
 for (const n of globalThis.fieldDialogCore.ICON_INVENTORY) { if (!add(n)) throw new Error(`inventory: ${n} exists in neither jis3r/icons nor lucide`); }
@@ -154,12 +129,7 @@ const resolve = (cands, what) => {
 const ALIASES = Object.fromEntries(Object.entries(ALIAS).map(([k, c]) => [k, resolve(c, `alias ${k}`)]));
 const TWINS = Object.fromEntries(Object.entries(MARK_TWINS).map(([k, c]) => [k, resolve(c, `mark ${k}`)]));
 const NAMES = Object.keys(SVG).sort();
-/* The six progress rings have no Lucide shape; in a document they go by an
-   ascii alias (`:ring-quarter:`) because a shortcode is letters and dashes. */
 const RING_ALIASES = { '○': 'ring-empty', '◔': 'ring-quarter', '◐': 'ring-half-left', '◑': 'ring-half', '◕': 'ring-three-quarters', '●': 'ring-full' };
-/* One static svg per name under public/vendor/icons — what Lute draws for a
-   `:name:` shortcode in a document (an <img>, so the ink is fixed; the dark
-   theme recolours it with a filter). */
 const ICON_DIR = path.join(OUT, 'public/vendor/icons');
 fs.mkdirSync(ICON_DIR, { recursive: true });
 for (const f of fs.readdirSync(ICON_DIR)) if (f.endsWith('.svg')) fs.unlinkSync(path.join(ICON_DIR, f));
@@ -167,7 +137,6 @@ const stillSvg = (svg) => svg.replace(/ data-mi="[^"]*"/g, '').replace('<svg ', 
 for (const n of NAMES) fs.writeFileSync(path.join(ICON_DIR, `${n}.svg`), stillSvg(SVG[n]) + '\n');
 for (const [ch, alias] of Object.entries(RING_ALIASES)) fs.writeFileSync(path.join(ICON_DIR, `${alias}.svg`), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" style="color:#1f2937" aria-hidden="true">${globalThis.weaveMarkIcons.MARKS[ch]}</svg>\n`);
 
-/* ---------- write ---------- */
 const header = (what) => `/* ${what} — GENERATED by scripts/build-lucide-moving.mjs, do not edit.
    Shapes: Lucide (ISC, lucide.dev). Motion: movingicons.dev (MIT, github.com/jis3r/icons). */\n`;
 fs.writeFileSync(path.join(OUT, 'public/vendor/lucide-moving.js'),

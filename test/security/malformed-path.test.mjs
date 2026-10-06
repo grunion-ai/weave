@@ -5,12 +5,6 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ROOT } from '../lib/source.mjs';
-/* Issue #484: `decodeURIComponent` ran on the request path inside the async
-   listener with nothing around it, so one malformed percent-escape was an
-   unhandled rejection and node ended the process. The server runs in a child
-   here because that failure takes its host process with it. The listener's
-   whole body is guarded: a malformed path is a 400, anything else that throws
-   is a 500, and the next request is served either way. */
 
 const CHILD = `
   import { Weave } from ${JSON.stringify(join(ROOT, 'src/engine.js'))};

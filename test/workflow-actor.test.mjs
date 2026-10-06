@@ -2,14 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 
-/* Issue #674: a row an automation changed named the person as Modified By.
-   On Net, moving Request #3 to Done over MCP let "Close out on Done" tick
-   Resolved, and the grid and the activity log both credited "kyle via …"
-   with the tick. Writes made inside an automation run now carry the
-   automation as actor, spelled `workflow:<Workflows row id>` (the UI draws
-   that string as the row's chip), and the automation-ran entry keeps the
-   person whose write fired it, with detail.workflow naming the row. */
-
 function demo() {
   const w = new Weave({ actor: 'kyle' });
   w.createSpace({ name: 'Workflow Demo' });

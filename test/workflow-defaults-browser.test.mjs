@@ -1,12 +1,3 @@
-/* The state field's default lifecycle, in a real tray (Issue #251).
-
-   Adding a State column used to open on an empty list and then refuse the
-   save — "Workflow field needs at least one state" — so the column cost you a
-   status vocabulary before it existed. The tray now opens on the four the
-   engine seeds, and a save with nothing touched works.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -22,8 +13,6 @@ if (s) {
   const { base, browser, weave } = s;
   const NAMES = ['Not started', 'In progress', 'Done', 'Canceled'];
 
-  /* The add-field tray, opened from the grid's `+` head and switched to the
-     workflow tile — the exact path a hand takes. */
   const openWorkflowTray = async (theme) => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
@@ -42,8 +31,6 @@ if (s) {
       assert.equal(await rows.count(), 4, 'four rows are already there');
       assert.deepEqual(await page.locator('#tray-back .opt-list .opt-name').evaluateAll(
         (els) => els.map((e) => e.value)), NAMES);
-      // The colour swatch on each row reads its category, so the four are
-      // visibly distinct in whichever theme is on.
       const hues = await page.locator('#tray-back .opt-list .opt-color').evaluateAll(
         (els) => els.map((e) => e.className));
       assert.equal(new Set(hues).size, 4, 'each category wears its own hue');
@@ -62,7 +49,6 @@ if (s) {
       : null;
     assert.ok(field, 'the column exists');
     assert.deepEqual(field.config.states.map((st) => st.name), NAMES);
-    // No state is the default until one is picked (Issues #421, #422).
     assert.equal(field.config.states.some((st) => st.default), false, 'no default unless picked');
     await page.close();
   });
@@ -72,7 +58,7 @@ if (s) {
     await page.fill('#tray-back input[name="name"]', 'Stage');
     const names = page.locator('#tray-back .opt-list .opt-name');
     await names.nth(0).fill('Queued');
-    await names.nth(3).click();           // commit the edit, then drop a state
+    await names.nth(3).click();
     await page.locator('#tray-back .opt-list .opt-row').nth(3).locator('.opt-del').click();
     await page.click('#tray-back button[type="submit"]');
     await page.waitForSelector('#tray-back', { state: 'detached' });

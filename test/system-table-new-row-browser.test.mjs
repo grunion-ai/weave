@@ -1,14 +1,3 @@
-/* + New on the Workspace registries (Issue #241).
-   The grid foot on a regular table posts a blank row and lands the caret in
-   its Name cell. On Workspace/Spaces the engine refused the blank row —
-   `Name is required` — and the grid swallowed the 400: no row, no toast,
-   focus left on <body>. Kyle read it as a dead button. The row IS the space,
-   so it is born as "New space" with the name selected for the caret to
-   replace (the home page already did this); a Tables or Fields row needs
-   more than a name and the foot opens the dialog that asks for it; a
-   Workflows row is ordinary data and takes the ordinary path; a refused
-   create always surfaces as a toast. Playwright is NOT a dependency; the
-   suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -103,7 +92,6 @@ if (s) {
     const known = ids(tablesT);
     await page.click('.wv-grid .add-entity-btn');
     await page.waitForSelector('#modal input[name="name"]');
-    // The space is picked in the one dialect (search bar, list under it).
     await page.click('#modal .picker-face');
     await page.waitForSelector('.chip-pop .picker-row');
     const spaces = await page.$$eval('.chip-pop .picker-row', (rs) => rs.map((r) => r.textContent.trim()));

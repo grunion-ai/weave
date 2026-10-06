@@ -1,13 +1,3 @@
-/* The flicker loop's arithmetic (harness routine weave-flicker; the probe
-   and journeys live in test/lib/flicker.mjs and test/lib/journeys.mjs).
-
-   A sweep runs every journey three times. One run's events are noise until
-   a second run sees the same thing: confirm() keeps a fingerprint seen in
-   two runs of three. The frame layer reads A, B, A in the screencast — a
-   frame that differs from both neighbours while they match each other, and
-   that stayed up for less than a flash's worth of time — as a flash. The
-   gate's ratchet is regressed(): a fingerprint in test/flicker-fixed.json
-   that shows up again. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -48,7 +38,6 @@ test('confirm takes the threshold it is given', () => {
   assert.equal(got.length, 1);
 });
 
-// A frame is a function from (x, y) to [r, g, b]; these are 4×4 solids.
 const solid = (c) => ({ width: 4, height: 4, at: () => c });
 const W = [255, 255, 255], K = [0, 0, 0];
 
@@ -93,9 +82,7 @@ test('every fixed fingerprint names the Issue that fixed it', () => {
 
 test('evidence: a DOM flicker gets the frames around its window; a frame flash gets A, B, A itself', () => {
   const fr = [0, 100, 140, 200, 300].map((t) => ({ t }));
-  // A transient up from 120 until 190: last frame before it, last inside it, first after it.
   assert.deepEqual(evidenceFrames(fr, { kind: 'transient', at: 190, ms: 70 }).map((f) => f.t), [100, 140, 200]);
-  // A frame flash at index 2 is frames 1, 2, 3, whatever its timestamps say.
   assert.deepEqual(evidenceFrames(fr, { kind: 'frame', i: 2, at: 140, ms: 60 }).map((f) => f.t), [100, 140, 200]);
   assert.deepEqual(evidenceFrames([], { kind: 'blank', at: 5, ms: 1 }), []);
 });

@@ -1,9 +1,3 @@
-/* The `toggle` field type (Feature #202): a boolean that wears two named
-   states. Same storage as checkbox — true/false is what a formula, a filter,
-   a CSV cell and the API read — but the config names the states (`on`,
-   `off`) and picks which one a new row starts in (`default`), and the chip
-   and the card say the label, not the boolean. checkbox ⇄ toggle is a
-   lossless migration both ways. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, FIELD_TYPES, TYPE_MIGRATIONS } from '../src/engine.js';

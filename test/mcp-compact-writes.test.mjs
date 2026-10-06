@@ -1,10 +1,3 @@
-/* Issue #596: an MCP write answers with what the next call needs — id,
-   publicId, name, and a field's type and config — not the whole object. Every
-   reply stays in an agent's conversation and is re-read on every later turn;
-   the 2026-10-02 disclosure eval measured weave_create_entity at 3,352 bytes a
-   call and weave_update_table at 5,564, and no agent used more than the id and
-   the name. `verbose: true` still returns the full object. Only the MCP door
-   changes: dispatchTool, REST and the CLI keep their replies. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -29,7 +22,6 @@ function fixture() {
   return w;
 }
 
-// next and hints are a schema write's guidance (src/field-hints.js), not an echo.
 const BRIEF = new Set(['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged', 'next', 'hints']);
 const bare = (obj) => Object.keys(obj).filter((k) => k !== 'next' && k !== 'hints').sort();
 const assertBrief = (obj, label) => {
@@ -148,9 +140,5 @@ test('a build sequence costs a fraction of the old echo (Issue #596 budget)', ()
   run('weave_add_relation', { db: 'Task', name: 'Project', targetDb: 'Project', cardinality: 'many-to-one', inverseName: 'Tasks' });
   run('weave_create_entity', { db: 'Project', name: 'Apollo', values: { Due: '2026-11-01' } });
   for (let i = 1; i <= 4; i++) run('weave_create_entity', { db: 'Task', name: 'Task ' + i, values: { Hours: i, Priority: 'High', Project: 'Apollo' } });
-  // 17,244 bytes before this change (v0.4.54), 1,614 after. The schema
-  // writes' next[] and hints[] (Issues #579, #581) add about 620: the
-  // settings a type takes and the slips to fix, which the 2026-10-02 eval
-  // found reach a model that never asks.
   assert.ok(bytes < 2400, `13 build calls answered in ${bytes} bytes`);
 });

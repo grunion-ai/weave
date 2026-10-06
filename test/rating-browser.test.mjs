@@ -1,14 +1,6 @@
-/* Feature #231 in the page: a rating cell shows `max` icons with the first
-   n filled; clicking the nth sets n, clicking the current one clears to 0; on
-   the resting cell a digit sets it and Backspace clears it; a screen reader
-   hears "3 of 5". A rollup over the rating draws the same icons read-only,
-   rounded. The field dialog offers 3, 5 and 7 and the icon picker. Both
-   themes. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-// The widths under test are computed here (Issue #404); the cases below
-// hold its three geometry numbers to what the browser paints.
 await import('../public/column-resize.js');
 const CR = globalThis.WeaveColumnResize;
 
@@ -144,17 +136,12 @@ if (s) {
         assert.equal(await page.locator(`${cell(a.id, `Quality ${colorScheme}`)} .wv-rate-ico`).count(), 7);
       } finally {
         await page.close();
-        try { weave.deleteField(vendors, `Quality ${colorScheme}`); } catch { /* not created */ }
+        try { weave.deleteField(vendors, `Quality ${colorScheme}`); } catch {}
       }
     });
   }
 }
 
-/* Feature #234: the max is any whole number (typed, or 3/5/7 at a click),
-   and the default is picked on a live row of the field's own icons: click
-   the nth for n, the same one again to clear; arrows, digits and Backspace
-   when it has focus; it follows the icon and the max, clamping down. A row
-   made after that starts at the default. */
 if (s) {
   const { base, browser, weave } = s;
   const shots = process.env.WEAVE_SHOT_DIR;
@@ -177,7 +164,6 @@ if (s) {
         await labelIs(page, 'Default: none, of 5');
         assert.equal(await page.locator(`${preview} .wv-rate-ico`).count(), 5);
         assert.equal(await page.locator('.tray-form .dlg-sec input[placeholder="none"]').count(), 0, 'no default text box');
-        // Any quantity: 12 icons, past the old cap of 10.
         await maxBox.fill('12');
         await page.waitForFunction((sel) => document.querySelectorAll(`${sel} .wv-rate-ico`).length === 12, preview);
         await page.click(`${preview} .wv-rate-ico[data-n="9"]`);
@@ -185,7 +171,6 @@ if (s) {
         assert.equal(await page.locator(`${preview} .wv-rate-ico.on`).count(), 9);
         await page.click(`${preview} .wv-rate-ico[data-n="9"]`);
         await labelIs(page, 'Default: none, of 12');
-        // The keys, with the row focused.
         await page.focus(preview);
         await page.keyboard.press('ArrowRight');
         await labelIs(page, 'Default: 1 of 12');
@@ -196,7 +181,6 @@ if (s) {
         assert.equal(await page.evaluate((sel) => document.activeElement === document.querySelector(sel), preview), true, 'focus stays on the row');
         await page.keyboard.press('Backspace');
         await labelIs(page, 'Default: none, of 12');
-        // A default above a lowered max clamps down.
         await page.click(`${preview} .wv-rate-ico[data-n="11"]`);
         await labelIs(page, 'Default: 11 of 12');
         await page.locator('.tray-form .seg-opt', { hasText: /^3$/ }).click();
@@ -205,7 +189,6 @@ if (s) {
         await page.locator('.tray-form .seg-opt', { hasText: /^5$/ }).click();
         await page.click(`${preview} .wv-rate-ico[data-n="4"]`);
         await labelIs(page, 'Default: 4 of 5');
-        // The preview follows the icon.
         await page.click('.tray-form .wv-rating-icon');
         await page.fill('.picker-pop input', 'heart');
         await page.locator('.picker-pop .picker-cell[aria-label="heart"]').first().click();
@@ -216,7 +199,6 @@ if (s) {
         await page.locator('.tray-form button[type="submit"]').click();
         await page.waitForFunction(() => !document.querySelector('.tray-form'));
         assert.deepEqual(weave.getField(vendors, name).config, { max: 5, icon: 'lucide:heart', default: 4 });
-        // A row made now starts at the default.
         await page.click('.wv-grid .add-entity-btn');
         let fresh = null;
         for (let i = 0; i < 50 && !fresh; i++) {
@@ -231,21 +213,12 @@ if (s) {
       } finally {
         await page.close();
         for (const e of weave.query(vendors, {}).items) if (!before.has(e.id)) weave.deleteEntity(e.id);
-        try { weave.deleteField(vendors, name); } catch { /* not created */ }
+        try { weave.deleteField(vendors, name); } catch {}
       }
     });
   }
 }
 
-/* Issue #404: a rating column opens at the width its own icons need, so a
-   long max never cuts its last icons. Before this every rating column opened
-   at the type default of 104px whatever its max, and the showcase's Love
-   (max 7, 132px of icons) and Brightness (max 12, 227px) clipped: a 7 of 7
-   read like a 5 of 7 and the right-most icon could not be clicked. The width
-   comes from public/column-resize.js, which carries the cell's icon
-   geometry as three numbers; the first case holds those numbers to what the
-   browser actually paints, so a CSS change to the icon cannot drift away
-   from the width silently. */
 if (s) {
   const { base, browser, weave } = s;
   let gauge;
@@ -266,11 +239,8 @@ if (s) {
     weave.createEntity(gauge, { name: 'g1', values: { Effort: 2, Fit: 4, Love: 7, Brightness: 9 } });
     return gauge;
   };
-  /* What the browser paints for a mid-row rating cell: the icon box, the
-     gap between two icons, and the cell's ordinary horizontal padding. */
   const geometry = (page) => page.evaluate(() => {
     const td = document.querySelector('.wv-grid tbody tr.entity-row td[data-field="Love"]');
-    // The icons, not the compact "★ 7/7" a narrow column swaps in (hidden here).
     const icons = td.querySelectorAll('.wv-rating > .wv-rate-ico');
     const cs = getComputedStyle(td);
     const ico = icons[0].getBoundingClientRect();
@@ -280,9 +250,6 @@ if (s) {
       pad: ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0),
     };
   });
-  /* Every rating column as drawn: its width, what its icons measure, and
-     the content box they have to live in (the cell's width less its own
-     padding and border, which is what the cell's overflow clips to). */
   const columns = (page) => page.evaluate(() => {
     const tr = document.querySelector('.wv-grid tbody tr.entity-row');
     return Object.fromEntries([...tr.querySelectorAll('td[data-field]')].flatMap((td) => {

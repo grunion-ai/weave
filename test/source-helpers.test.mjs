@@ -1,8 +1,3 @@
-/* The readers under the source-regex suites, and the one parse gate.
-
-   Source greps passed for a whole release while app.js failed to parse, so
-   five files each grew an "app.js still parses" test. One is enough, and it
-   lives beside the readers every one of those files now shares. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP, CSS, rulesFor, fnBody, fnBodyOf, liftFunction } from './lib/source.mjs';
@@ -12,7 +7,6 @@ test('public/app.js parses (source greps are not a parse gate; this is)', () => 
 });
 
 test('rulesFor reads merged declarations for a selector', () => {
-  // #main is declared twice in style.css; both declarations must merge.
   const main = rulesFor('#main');
   assert.equal(main.position, 'relative');
   assert.ok(main.padding, '#main should still declare padding');

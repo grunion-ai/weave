@@ -1,17 +1,3 @@
-/* The grid keymap, REST (Feature #134), the pure half.
-
-   Kyle, 2026-08-24: "I want to nav with L and R and tab". ← and → cannot
-   navigate while a cell is a live text input — the caret already owns them —
-   so cells REST as values and open on purpose. At rest the grid is a map:
-   every arrow and Tab move, Space picks the row up, Return or a character
-   opens the cell. Open, the caret takes ← and → back until Tab, Return or
-   Esc; EDGE (step out at the text edge) is the one branch this file does
-   not carry.
-
-   public/grid-keymap.js is the 2026-08-24 keymap study's core ported into
-   the app, and this suite pins the port plus the two
-   pieces the app needs that a mockup did not: where a move lands on a real
-   grid of stops, and how ⇧↑/⇧↓ grow a selection keyed on entity ids. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -22,8 +8,6 @@ const k = (key, mod = {}) => ({ key, shift: false, meta: false, alt: false, ...m
 const st = (over = {}) => ({ mode: 'rest', readonly: false, sel: new Set(), ...over });
 const at = (key, mod, over) => KM.keymap(k(key, mod), st(over));
 const act = (key, mod, over) => at(key, mod, over).type;
-
-/* ── at rest: the grid is a map ────────────────────────────────────────── */
 
 test('at rest, every arrow moves — L and R included', () => {
   assert.deepEqual(at('ArrowLeft'), { type: 'move', dr: 0, dc: -1 });
@@ -52,14 +36,10 @@ test('the resting state hands over row selection for free', () => {
   assert.deepEqual(at('ArrowDown', { shift: true }, rows), { type: 'extendSelect', dir: 1 });
   assert.equal(act('a', { meta: true }), 'selectAll');
   assert.equal(act('Escape', {}, rows), 'clearSelect');
-  // The first and the last row of the whole table (Issue #271): the grid
-  // draws a window of rows, and a move past it scrolls the row in first.
   assert.deepEqual(at('End'), { type: 'move', to: 'end' });
   assert.deepEqual(at('Home'), { type: 'move', to: 'home' });
   assert.equal(act('Escape'), 'none', 'Escape with nothing chosen is the browser’s');
 });
-
-/* ── ⇧-arrows grow a range of CELLS (Feature #220) ─────────────────────── */
 
 test('with no row picked up, ⇧↑ / ⇧↓ grow a range of cells', () => {
   assert.deepEqual(at('ArrowUp', { shift: true }), { type: 'extendRange', dr: -1, dc: 0 });
@@ -67,8 +47,6 @@ test('with no row picked up, ⇧↑ / ⇧↓ grow a range of cells', () => {
 });
 
 test('Space still picks the ROW up, and ⇧↑ / ⇧↓ still extend that run (Feature #134)', () => {
-  // The one rule that keeps both readings honest: rows first. Space is
-  // unchanged, and once a row is up the vertical shift-arrows are its.
   assert.equal(act(' '), 'toggleSelect');
   const rows = { sel: new Set(['r1', 'r2']) };
   assert.equal(act('ArrowUp', { shift: true }, rows), 'extendSelect');
@@ -104,8 +82,6 @@ test('⇧Return makes the next row; ⌘Return opens the record', () => {
   assert.equal(act('Enter', { meta: true }), 'open');
 });
 
-/* ── open: the caret takes ← and → back ────────────────────────────────── */
-
 test('open, ← and → belong to the caret — REST never steps out', () => {
   for (const key of ['ArrowLeft', 'ArrowRight']) {
     assert.equal(act(key, {}, { mode: 'edit' }), 'none', `${key} is the caret’s`);
@@ -113,21 +89,14 @@ test('open, ← and → belong to the caret — REST never steps out', () => {
   }
 });
 
-/* Issue #260: a bare End inside an open cell used to be the browser's, and
-   Chromium reads it in a single-line field as "scroll to the end of the
-   document" — the windowed grid (Issue #271) scrolled away, the row under
-   the editor was recycled and the caret never moved, so the next keystroke
-   landed in the middle of the old value. The grid places the caret itself. */
 test('open, Home and End place the caret — the window does not move', () => {
   const open = { mode: 'edit' };
   assert.deepEqual(at('End', {}, open), { type: 'caret', to: 'end' });
   assert.deepEqual(at('Home', {}, open), { type: 'caret', to: 'home' });
-  // The modified forms are real editing commands and stay the browser's.
   for (const mod of [{ shift: true }, { alt: true }, { meta: true }]) {
     assert.equal(act('End', mod, open), 'none', `${JSON.stringify(mod)} End is the browser’s`);
     assert.equal(act('Home', mod, open), 'none', `${JSON.stringify(mod)} Home is the browser’s`);
   }
-  // At rest they are still the first and the last ROW of the table (#271).
   assert.deepEqual(at('End'), { type: 'move', to: 'end' });
   assert.deepEqual(at('Home'), { type: 'move', to: 'home' });
 });
@@ -152,16 +121,12 @@ test('open, ⇧Return and ⌘Return mean what they mean at rest', () => {
   assert.equal(act('Enter', { meta: true }, { mode: 'edit' }), 'open');
 });
 
-/* ── the keystroke, read off a DOM event ───────────────────────────────── */
-
 test('keyOf reads ⌘ and Ctrl as one modifier, and carries shift and alt', () => {
   assert.deepEqual(KM.keyOf({ key: 'a', metaKey: true, ctrlKey: false, shiftKey: false, altKey: false }),
     { key: 'a', meta: true, shift: false, alt: false });
   assert.deepEqual(KM.keyOf({ key: 'a', metaKey: false, ctrlKey: true, shiftKey: true, altKey: true }),
     { key: 'a', meta: true, shift: true, alt: true });
 });
-
-/* ── where a move lands ────────────────────────────────────────────────── */
 
 test('an arrow at the edge of the grid stays put rather than leaking out', () => {
   const g = { r: 0, c: 0, rows: 3, cols: 4 };
@@ -183,8 +148,6 @@ test('a move of nothing is nothing', () => {
   assert.equal(KM.step({ r: 1, c: 1, rows: 3, cols: 4 }, { dr: 0, dc: 0 }), null);
 });
 
-/* ── ⇧↑ / ⇧↓ extend a selection of ids, keyed like the checkbox column ── */
-
 test('extending from nothing anchors on the row you are on and takes the next', () => {
   const ids = ['a', 'b', 'c', 'd'];
   const out = KM.extend({ ids, anchor: null, at: 'b', dir: 1 });
@@ -198,7 +161,6 @@ test('extending walks the cursor and keeps the span between anchor and cursor', 
   const two = KM.extend({ ids, anchor: 'c', at: one.at, dir: -1 });
   assert.deepEqual([...two.selected], ['a', 'b', 'c']);
   assert.equal(two.at, 'a');
-  // Walking back toward the anchor shrinks the run again.
   const three = KM.extend({ ids, anchor: 'c', at: two.at, dir: 1 });
   assert.deepEqual([...three.selected], ['b', 'c']);
 });
@@ -210,22 +172,12 @@ test('extending past either end holds the cursor at the end', () => {
   assert.deepEqual([...out.selected], ['a', 'b', 'c']);
 });
 
-/* ── the one branch not built ──────────────────────────────────────────── */
-
 test('the port names where EDGE would go, and nothing more', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../public/grid-keymap.js', import.meta.url), 'utf8');
   assert.match(src, /EDGE/, 'the open-cell keymap says where the edge-through branch belongs');
   assert.ok(!/caret\.atEnd|caret\.atStart/.test(src), 'and does not build it');
 });
-
-/* ── the clipboard follows the selection (Feature #221) ─────────────────── */
-
-/* Kyle, 2026-09-12 (B+): a click opens the cell exactly as before; ⌘C and
-   ⌘V follow the selection, and when there is none they take the CELL. Text
-   selected inside an open control is the browser's own copy and paste; a
-   collapsed caret, a picker's popover, a checkbox and a resting cell all
-   read as "no selection". */
 
 test('at rest, ⌘C and ⌘V take the cell', () => {
   assert.equal(KM.clipboardTarget({ mode: 'rest' }), 'cell');
@@ -254,17 +206,6 @@ test('on a rating cell a digit sets it and Backspace clears it to 0 (Feature #23
   assert.equal(act('3', {}, { mode: 'edit', rate: 5 }), 'none');
 });
 
-/* ── the key sheet reads the keymap's own rows (Issue #268) ─────────────── */
-
-/* The sheet a reader opens on ? renders KM.bindings, so the two are one list
-   only if nothing the keymap answers is missing from it and nothing on it is
-   a key the keymap no longer answers. The probe presses every key the
-   keymap names, plus a spread of characters, under ⌘ and ⇧ in each state
-   that changes an answer (rows picked up, a range, a toggle cell, read-only).
-   ⌥ is left out: the keymap only reads it to hand a key back to the browser.
-   A character is a character: the sheet's "any character" row stands for
-   every printable key, so the comparison is on (key, verb) with every
-   printable key but ? folded into one. */
 const PROBE_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'Escape', 'Home', 'End',
   ' ', 'Backspace', 'Delete', 'PageUp', 'PageDown', 'F2', 'a', 'x', 'Q', '1', '/', '?', ';'];
 const PROBE_MODS = [{}, { meta: true }, { shift: true }, { meta: true, shift: true }];
@@ -304,8 +245,6 @@ test('every row on the key sheet is a key the keymap still answers, with words t
     assert.ok(['rest', 'edit'].includes(b.mode), `${b.keys}: a known mode`);
     assert.ok(b.keys && b.does, `${JSON.stringify(b)}: keys and what they do, as the sheet prints them`);
     assert.ok(b.press.length > 0, `${b.keys}: at least one press`);
-    // A row the browser keeps (the caret's ← →, a typed space) says so, and
-    // the keymap must still be letting those keys through.
     const live = answers(b.mode, b.press).size > 0;
     assert.equal(live, !b.browser, b.browser
       ? `${b.mode} ${b.keys} is marked the browser's, but the keymap now claims it`

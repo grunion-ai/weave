@@ -1,10 +1,3 @@
-/* Issue #428 in a real browser: a field configuration change saved silently,
-   with no toast, no Undo and nothing in Activity. Now the field tray's save
-   shows the existing toast with Undo, the Undo puts the definition back, the
-   change is an Activity entry whose page offers Roll back, and a roll back
-   that has gone stale refuses instead of overwriting the newer change. Both
-   themes. Playwright is imported dynamically by ./lib/browser.mjs; the suite
-   skips on a bare checkout (house rule: zero runtime deps). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -75,7 +68,6 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    // Issue #467: a type change keeps the values it converts.
     test(`a type change in the tray offers Undo, and Undo brings the numbers back (${colorScheme})`, async () => {
       const name = `Count ${colorScheme}`;
       const f = weave.addField(t, { name, type: 'number' });
@@ -150,7 +142,6 @@ if (s) {
       try {
         await page.goto(`${base}/#/activity/${entry.id}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('.activity-rollback');
-        // Another tab changes the field after this page loaded.
         weave.updateField(t.id, f.id, { config: { options: [{ id: 's', name: 'S' }, { id: 'l', name: 'L' }] } });
         await page.click('.activity-rollback');
         await page.waitForFunction(() => [...document.querySelectorAll('#wv-toasts .wv-toast.err .wv-toast-msg')].some((m) => /changed again/.test(m.textContent)), null, { timeout: 10000 });

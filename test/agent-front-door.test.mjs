@@ -1,12 +1,3 @@
-/* Feature #258: the agent front door. An agent that knows nothing about weave
-   reads one of three things first: the MCP server's initialize.instructions,
-   AGENTS.md, or the README. The 2026-10-02/03 evals (stock Claude Code, no
-   weave skills) found that Claude Code keeps the first 2,048 characters of
-   the instructions, that a primer naming weave_build and dryRun in its first
-   line lifted the score from 0.72 to 0.91 (Sonnet) and 0.78 to 0.94 (Opus),
-   and that Sonnet does not call optional lookup tools. So the primer is one
-   file, served as-is on stdio and HTTP and copied verbatim into AGENTS.md,
-   and the tool map in AGENTS.md is generated from src/mcp.js. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -24,7 +15,6 @@ const PRIMER = read('src/mcp-primer.md');
 const AGENTS = read('AGENTS.md');
 const README = read('README.md');
 
-/* The text between the first `## <heading>` line and the next `## ` heading. */
 const section = (doc, heading) => {
   const start = doc.indexOf(`\n## ${heading}\n`);
   if (start < 0) return null;
@@ -39,7 +29,6 @@ test('the primer fits what Claude Code keeps and leads with the build', () => {
   assert.match(first, /dryRun/, 'line one names dryRun');
   const head = PRIMER.slice(0, 300);
   assert.ok(head.includes('weave_build') && head.includes('dryRun'), 'both in the first 300 characters');
-  // The lessons the evals paid for, each named.
   for (const [what, re] of [
     ['one workspace per domain, named as a slug', /slug/],
     ['a value naming another row is a relation', /relation/],
@@ -98,7 +87,6 @@ test('Using weave carries the primer verbatim and stays a short read', () => {
   const using = section(AGENTS, 'Using weave');
   assert.ok(using, 'AGENTS.md has a Using weave section');
   assert.ok(using.includes('```text\n' + PRIMER.trimEnd() + '\n```'), 'the primer appears verbatim in a text fence');
-  // About 1,500 to 2,500 tokens at four bytes a token.
   assert.ok(using.length <= 11000, `Using weave is ${using.length} bytes; keep the front door short`);
   for (const h of ['Model', 'Surfaces', 'Tool map', 'Plans', 'Pitfalls']) {
     assert.match(using, new RegExp(`\\n### ${h}\\n`), `Using weave has a ${h} part`);

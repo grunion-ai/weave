@@ -1,9 +1,3 @@
-/* The dock's geometry, driven through a real browser (one entity surface,
-   review round: Kyle, 2026-09-02). The split defaults to an even half of
-   the room left of the nav, the dock's side padding matches #main's so the
-   entity reads on the page's grid, and the divider on the dock's left edge
-   drags to a remembered width — double-click restores the even split.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -60,7 +54,6 @@ if (s) {
     const widened = await page.evaluate(() => document.querySelector('#dock').getBoundingClientRect().width);
     const stored = await page.evaluate(() => Number(localStorage.getItem('wv-dock-width')));
     assert.ok(Math.abs(stored - widened) <= 2, `the drag is remembered: ${stored} vs ${widened}`);
-    // Reopen: close the dock, dock again — the pinned width comes back.
     await page.click('#dock .crumb-row button[aria-label="Close"]');
     await page.waitForSelector('#dock', { state: 'hidden' });
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
@@ -94,19 +87,13 @@ if (s) {
     const y = box.y + 200;
     await page.mouse.move(box.x + 4, y);
     await page.mouse.down();
-    await page.mouse.move(60, y, { steps: 5 }); // far past the sidebar
+    await page.mouse.move(60, y, { steps: 5 });
     await page.mouse.up();
     const mainW = await page.evaluate(() => document.querySelector('#main').getBoundingClientRect().width);
     assert.ok(mainW >= 300, `the table survives an over-drag: ${mainW}px`);
     await page.close();
   });
 
-  /* Issue #326 (Kyle, 2026-09-20, at 1470 px): "left panel needs minimum
-     width to avoid responsive break". A dock pinned wide on a big window
-     came back at full width on a smaller one and took the table's room,
-     because the stored pin was applied unclamped and #main may shrink to
-     nothing. The table keeps 320 px beside any pin at any window, and the
-     pin itself is never rewritten by a window that is only small. */
   const MAIN_MIN = 320;
   const geometry = (page) => page.evaluate(() => ({
     main: document.querySelector('#main').getBoundingClientRect().width,
@@ -129,7 +116,6 @@ if (s) {
 
   for (const theme of ['light', 'dark']) {
     test(`a dock pinned wide leaves the table its minimum at a narrow window (Issue #326, ${theme})`, async () => {
-      // 900 px is a pin the drag allows at 1600; the report's window was 1470.
       for (const width of [1470, 1100]) {
         const page = await openPinned(theme, 900, width);
         const g = await geometry(page);
@@ -169,11 +155,6 @@ if (s) {
       await page.close();
     });
 
-    /* A window too narrow for a 360px dock squeezes it to what the table's
-       floor leaves (340px at 1000). A drag there stored that squeezed width,
-       and applyDockWidth drops any pin under DOCK_MIN, so every later open
-       fell back to the even split. The drag stores the width shown, floored
-       at DOCK_MIN, which is always a pin the next open honours. */
     test(`a drag on a window too narrow for the dock leaves a pin a wide window honours (Issue #326, ${theme})`, async () => {
       const page = await openPinned(theme, 0, 1000);
       const squeezed = await geometry(page);

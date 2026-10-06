@@ -1,17 +1,3 @@
-/* Issue #380 (design pass finding F3): fixed corner chrome covered content.
-   The version chip sat on the grid's "200 of 333 loaded" note, the bug
-   button sat on Save changes, and a toast (fixed at bottom 18, right 48)
-   landed on the open bug panel at 390px. The approved design (Kyle,
-   2026-09-26): the chip moves into the sidebar under the stats line, bug and
-   trash keep the corner, and toasts get a lane. At 1000px and wider the lane
-   runs between the content panel and a 300px corner reserve and the stack
-   centres at its bottom; below 1000px it moves to the top of the screen.
-   Every toast behaves the same: a close button, Esc, a clock that pauses
-   under the pointer, three at most, repeats counted, live regions for
-   screen readers.
-
-   Playwright is NOT a dependency of weave; the harness skips the suite when
-   it is absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -25,7 +11,6 @@ const s = await launch('toast lane', (weave) => {
   weave.state.meta.name = 'main';
   weave.createSpace({ name: 'S' });
   weave.createTable({ space: 'S', name: 'Task' });
-  // Enough tables that the nav scrolls under the sidebar foot at 900px.
   for (let i = 1; i <= 30; i++) weave.createTable({ space: 'S', name: `Table ${i}` });
   scratch = new Weave();
   scratch.state.meta.name = 'scratch';
@@ -33,7 +18,6 @@ const s = await launch('toast lane', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  // A workspace in the trash, so the trash glyph is drawn in the corner.
   const trashScratch = async () => {
     const { id, deletedAt } = (await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json())).find((w) => w.name === 'scratch');
     if (!deletedAt) await fetch(`${base}/api/workspaces/${id}`, { method: 'DELETE' });
@@ -44,7 +28,6 @@ if (s) {
     const page = await browser.newPage({ viewport: { width, height } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(base + '/');
-    // Below 900px the sidebar is a drawer, closed at rest: the chip rides in it.
     await page.waitForSelector('#sidebar .nav-health', { state: 'attached' });
     await page.waitForSelector('#ws-trash');
     return page;
@@ -76,7 +59,6 @@ if (s) {
           assert.ok(t.x >= 0 && t.right <= w && t.y >= 0 && t.bottom <= h, `${w}: toast inside the viewport`);
         }
         if (w >= 1000) {
-          // Bottom lane, centred between the content panel and the corner reserve.
           const main = (await rect(page, '#main'))[0];
           for (const t of stack) {
             assert.ok(t.bottom > h / 2, 'the stack sits at the bottom');
@@ -121,7 +103,6 @@ if (s) {
       assert.deepEqual([g.inSidebar, g.inCorner, g.count], [true, false, 1]);
       assert.ok(g.chip >= g.stats, 'under the stats line');
       assert.match(g.title, /weave instance/, 'the tooltip survives the move');
-      // A re-render of the nav keeps the one chip.
       await page.evaluate(() => loadSchema());
       assert.equal(await page.locator('#sidebar .nav-health').count(), 1);
       assert.equal(await page.locator('#hub-foot .nav-health').count(), 0);
@@ -164,7 +145,6 @@ if (s) {
       assert.deepEqual(await toasts(page).allInnerTexts().then((t) => t.map((x) => x.trim())), ['first']);
       await page.locator('#wv-toasts .wv-toast-close').click();
       assert.equal(await toasts(page).count(), 0);
-      // Esc belongs to an open tray first: it closes the tray and leaves the toast.
       await page.evaluate(() => { tray('Edit', [], async () => {}, 'Save changes'); toast('kept'); });
       await page.keyboard.press('Escape');
       await page.waitForSelector('#tray-back', { state: 'detached' });

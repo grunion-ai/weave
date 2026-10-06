@@ -1,15 +1,3 @@
-/* Issue #121 — "file missing?".
-
-   An attachment whose blob is gone kept the full chrome of one that is
-   there: the entity page drew a live-looking anchor, and clicking it landed
-   the reader on raw 404 JSON. That is why the report is a question — the
-   reporter could not tell whether the file was lost or the app was broken.
-
-   A blob that is gone must SAY it is gone, on the entity page and in the
-   grid cell, in both themes, and it must not offer a link that cannot work.
-
-   Rendering, not engine state: this suite drives a real browser. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -26,8 +14,6 @@ const s = await launch('missing attachments', (weave) => {
   row = weave.createEntity(decks, { name: 'Q3 review' });
   here = weave.attachToField(row.id, 'Slides', { name: 'kept.html', mime: 'text/html', bytes: Buffer.from('<h1>a</h1>') });
   gone = weave.attachToField(row.id, 'Slides', { name: 'c-json-editor.html', mime: 'text/html', bytes: Buffer.from('<h1>b</h1>') });
-  // The blob evaporates; the metadata row survives. Exactly the state Kyle's
-  // uno workspace was in — an export/import round trip left it that way.
   delete weave.state.fileBlobs[gone.id];
 });
 
@@ -57,8 +43,6 @@ if (s) {
       assert.equal(lost.missing, true, 'the lost file is not marked');
       assert.equal(lost.href, null, 'a lost file still offers a link that 404s');
       assert.match(lost.text, /missing/i, 'the lost file does not say it is gone');
-      // The mark must be visible, not merely in the DOM: it reads in the
-      // colour the rest of the app dims with, in both themes.
       const dimmed = await page.$eval('.attach-item.is-missing', (n) => {
         const rgb = getComputedStyle(n).color.match(/[\d.]+/g).map(Number);
         return { rgb, opaque: rgb.length < 4 || rgb[3] > 0.5 };

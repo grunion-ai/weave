@@ -1,15 +1,3 @@
-/* docs/mockups/chip-anatomy-alternatives.html (Feature #185): five chip
-   alternatives, P–T, that drop the avatar, the ↗ and (mostly) the ×, and
-   draw the in-chip segments as the live state / select / multiselect chips
-   at the shared chip size. Each option is the real chip markup in three
-   surfaces (relation cell, [[…]] mention, References list), light and dark
-   side by side, hitboxes outlined as the anatomy guide (#180) does. The
-   page is generated — scripts/export-chip-anatomy-alternatives.mjs lifts
-   the chip rules out of public/style.css — and this suite holds every
-   option to Kyle's rulings. It does not hold the checked-in file to a fresh
-   run of the generator or to today's style.css rules (Issue #665): that
-   coupling failed the gate on unrelated style.css changes until someone
-   regenerated the mockup. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -53,7 +41,6 @@ test('every option is drawn in three surfaces, light and dark, at the live chip 
     assert.ok(/class="mention-wrap/.test(s), `${key}: a mention wrapper, as app.js emits`);
     assert.ok(/class="k-home"/.test(s), `${key}: keeps the home badge (ruling: keep 4)`);
   }
-  // Surfaces are what the brief names.
   assert.ok(/<p class="doc-mock">[^<]+<span class="mention-wrap/.test(HTML), 'the mention sits inside running text');
   assert.ok(/class="ref-backlinks"/.test(HTML), 'the References list is the entity page’s .ref-backlinks');
   assert.ok(/class="cell-mock"/.test(HTML), 'the relation cell is drawn as a grid cell');
@@ -73,7 +60,6 @@ test('the rulings: no avatar, no ↗, segments are live chips at the shared size
     assert.ok(/class="k k-select hue-/.test(s) && /class="k k-multi hue-/.test(s), `${key}: select and multiselect segments are the cell’s chips`);
     assert.ok(/class="mention-caret/.test(s), `${key}: keeps the caret (ruling: keep 5)`);
   }
-  // × : only option T, only its relation-cell panels.
   for (const key of KEYS) {
     const s = section(key);
     for (const surface of SURFACES) {

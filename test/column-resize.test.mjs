@@ -1,6 +1,3 @@
-/* The pure half of a column resize (public/column-resize.js).
-   Issue #100: a header may never be narrower than its own label.
-   Issue #160: the width painted mid-drag IS the width stored on release. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -25,9 +22,6 @@ test('the drag width stops at the floor', () => {
   assert.equal(CR.width({ base: 200, startX: 500, x: 100, floor: 60 }), 60);
 });
 
-/* Issue #586: a toggle column never cuts its switch or its word. Its value
-   floor is the track, the gap, the wider of its two words and the cell's
-   padding; the floor a column keeps is the larger of that and its label's. */
 test('a toggle floor holds the track, the gap, the wider word and the cell padding', () => {
   assert.deepEqual(CR.TOGGLE_METRICS, { track: 28, gap: 7, pad: 8 });
   assert.equal(CR.toggleWidth({ on: 16.4, off: 20.2 }), 64, 'the default words: 28 + 7 + the wider word, 20.2, + 8, rounded up');
@@ -52,11 +46,6 @@ test('a value floor past the default wins for that column only; a stored width u
   assert.equal(CR.width({ base: 124, startX: 500, x: 300, floor: 63 }), 63, 'a drag stops at it');
 });
 
-/* Issue #614: no control of fixed shape is cut by a resize. A select or a
-   state floors at its widest option's chip; a multi-select at its widest
-   chip plus the +N count that says more are hidden, never the sum of every
-   chip. app.js measures the chips off the rendered cell; this composes them
-   with the cell's padding. Free text is not floored. */
 test('a chip floor holds the widest chip and the cell padding', () => {
   assert.equal(CR.chipWidth({ chip: 112.3 }), 121, 'the widest chip, 112.3, + the ordinary cell\'s 8, rounded up');
   assert.equal(CR.chipWidth({ chip: 112, pad: 24 }), 136, 'the row\'s last cell carries Tabler\'s 20px right pad, measured and passed in');

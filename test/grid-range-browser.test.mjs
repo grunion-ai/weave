@@ -1,17 +1,3 @@
-/* Grid ranges, fill and paste against a real page (Feature #220).
-
-   The arithmetic is pinned in test/grid-range.test.mjs and the keystrokes in
-   test/grid-keymap.test.mjs. What this suite proves is the gestures: that a
-   drag across cells draws a rectangle without opening the editor Ledger's
-   rule gives a plain click, that the corner handle fills, that ⌘C and ⌘V
-   carry TYPED values through the system clipboard, that a formula column
-   refuses by name, and that one Undo on the toast steps a whole fill back.
-
-   Every write here goes through `POST /api/bulk` — the same verb the puck
-   uses (Feature #132) — so what is being tested is the gesture layer, never
-   a second write path.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -27,13 +13,9 @@ const s = await launch('grid ranges', (weave) => {
   weave.addField(rows, { name: 'Tags', type: 'multiselect', config: { options: ['red', 'blue', 'green'] } });
   weave.addField(rows, { name: 'Score', type: 'number' });
   weave.addField(rows, { name: 'Double', type: 'formula', config: { expression: 'Score * 2' } });
-  // A relation onto itself: the chip in Peer is the one-click door Feature
-  // #221 must leave alone.
   weave.addRelation(rows, { name: 'Peer', targetDb: 'Rows', cardinality: 'many-to-one' });
-  // Two relations into People, one of each cardinality (Feature #224).
   weave.addRelation(rows, { name: 'Peers', targetDb: people.id, cardinality: 'many-to-many', inverseName: 'Peer of' });
   weave.addRelation(rows, { name: 'Owner', targetDb: people.id, cardinality: 'many-to-one', inverseName: 'Owns' });
-  // Twenty rows, so the Verify list's "fill down 20" is the real thing.
   ids = Array.from({ length: 20 }, (_, i) =>
     weave.createEntity(rows, { name: `r${i}`, values: { Note: `n${i}`, Score: i } }).id);
   weave.updateEntity(ids[0], { Kind: 'bug', Tags: ['red', 'blue'] });
@@ -46,8 +28,6 @@ if (s) {
   const { base, browser, weave } = s;
 
   const grid = async () => {
-    // Tall enough that all twenty rows are on screen: a fill drag is a real
-    // pointer travelling to a real cell, and it cannot travel off the page.
     const ctx = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'], viewport: { width: 1280, height: 1500 } });
     const page = await ctx.newPage();
     await page.goto(`${base}/#/table/${s.rows.id}`, { waitUntil: 'networkidle' });
@@ -56,18 +36,14 @@ if (s) {
     return { ctx, page };
   };
   const sel = (i, field) => `tr[data-eid="${s.ids[i]}"] td[data-field="${field}"]`;
-  // The rectangle the page is painting, as row indices and field names.
   const painted = (page) => page.evaluate(() => [...document.querySelectorAll('.wv-grid td.wv-in-range')]
     .map((td) => `${td.parentElement.dataset.eid}:${td.dataset.field}`));
   const toastText = (page) => page.locator('#wv-toasts .wv-toast').first().innerText();
-  // Reads the ENGINE, not the page: what actually landed in the workspace.
   const value = (i, field) => weave.readEntity(s.ids[i]).fields[field];
   const raw = (i, field) => weave.readEntity(s.ids[i]).raw[field];
   const reset = () => {
     for (let i = 0; i < 20; i++) weave.updateEntity(s.ids[i], { Kind: i === 0 ? 'bug' : null, Tags: i === 0 ? ['red', 'blue'] : [], Note: `n${i}`, Score: i, Peers: i === 0 ? ['Ann', 'Cy'] : [], Owner: null });
   };
-
-  /* ── the range ────────────────────────────────────────────────────── */
 
   test('⇧-arrows grow a range of cells from the resting cursor', async () => {
     const { ctx, page } = await grid();
@@ -79,7 +55,6 @@ if (s) {
         `${s.ids[0]}:Note`, `${s.ids[0]}:Kind`,
         `${s.ids[1]}:Note`, `${s.ids[1]}:Kind`,
       ], 'a 2×2 rectangle, and the cursor is at its far corner');
-      // A bare arrow is the cursor leaving the rectangle it cornered.
       await page.keyboard.press('ArrowDown');
       assert.deepEqual(await painted(page), []);
     } finally { await ctx.close(); }
@@ -124,15 +99,11 @@ if (s) {
     } finally { await ctx.close(); }
   });
 
-  /* ── the fill handle ──────────────────────────────────────────────── */
-
   test('a fill of a select column down 20 rows writes 20 identical option ids, and ONE Undo takes it back', async () => {
     reset();
     const { ctx, page } = await grid();
     try {
       await page.focus(sel(0, 'Kind'));
-      // Kind sits near the card's right edge since Name opens at 260 (Issues
-      // #261, #414): bring it into the wrap's view so the handle is on screen.
       await page.locator(sel(0, 'Kind')).evaluate((td) => td.scrollIntoView({ block: 'nearest', inline: 'center' }));
       const handle = await page.locator(`${sel(0, 'Kind')} .wv-fill-handle`).boundingBox();
       assert.ok(handle, 'the resting cell wears the handle — a fill needs no range first');
@@ -147,7 +118,6 @@ if (s) {
       assert.deepEqual(wrote, Array(20).fill(raw(0, 'Kind')), 'twenty identical option ids');
       assert.equal(value(5, 'Kind'), 'bug');
 
-      // One gesture, the whole fill: 19 rows changed, 19 undo steps.
       await page.locator('.wv-toast-action').first().click();
       await page.waitForFunction(() => !document.querySelector('.wv-toast-action'));
       await page.waitForTimeout(200);
@@ -169,14 +139,10 @@ if (s) {
       await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
       await page.mouse.up();
       await page.waitForSelector('#wv-toasts .wv-toast');
-      // 'n2' is not an option of Kind, so the engine refuses it BY NAME
-      // rather than inventing one — the rule the types force.
       assert.match(await toastText(page), /not an option of 'Kind'/);
       assert.equal(value(2, 'Note'), 'n2', 'and nothing was half-written');
     } finally { await ctx.close(); reset(); }
   });
-
-  /* ── the clipboard ────────────────────────────────────────────────── */
 
   test('⌘C on a multi-select cell, ⌘V on four others: all four hold the same SET', async () => {
     reset();
@@ -210,8 +176,6 @@ if (s) {
     } finally { await ctx.close(); reset(); }
   });
 
-  /* ── a relation links by name (Feature #224) ────────────────────── */
-
   const names = (i, field) => { const v = value(i, field); return (Array.isArray(v) ? v : v ? [v] : []).map((x) => x.name); };
 
   test('⌘C on a relation cell, ⌘V on another row: the same rows are linked, chips appear, and ONE Undo takes it back', async () => {
@@ -227,8 +191,6 @@ if (s) {
       assert.match(await toastText(page), /Pasted 1 cell/);
       assert.deepEqual(names(1, 'Peers'), ['Ann', 'Cy'], 'linked by id — the block carried them');
       await page.waitForFunction((q) => /Ann/.test(document.querySelector(q)?.innerText ?? ''), sel(1, 'Peers'));
-      // Every chip is in the cell; the ones that do not fit whole are hidden
-      // behind its +N (Feature #239), so the text, not the paint, holds both.
       assert.match(await page.locator(sel(1, 'Peers')).textContent(), /Ann[\s\S]*Cy/, 'the chips are on the page');
       await page.locator('.wv-toast-action').first().click();
       await page.waitForFunction(() => !document.querySelector('.wv-toast-action'));
@@ -273,7 +235,6 @@ if (s) {
     try {
       await page.focus(sel(0, 'Note'));
       await page.keyboard.press('ControlOrMeta+c');
-      // Score then Double: one column takes a value, the other is a read.
       await page.focus(sel(1, 'Score'));
       await page.keyboard.press('Shift+ArrowRight');
       await page.keyboard.press('ControlOrMeta+v');
@@ -289,7 +250,6 @@ if (s) {
     reset();
     const { ctx, page } = await grid();
     try {
-      // Three rows × two columns: Note then Kind. Row 2's Score is prose.
       await page.evaluate(() => navigator.clipboard.writeText('a\tbug\nb\tchore\nc\tepic'));
       await page.focus(sel(1, 'Note'));
       await page.keyboard.press('Shift+ArrowDown');
@@ -340,7 +300,7 @@ if (s) {
     const { ctx, page } = await grid();
     try {
       await page.focus(sel(1, 'Note'));
-      await page.keyboard.press('Enter');           // open the text cell
+      await page.keyboard.press('Enter');
       await page.keyboard.press('ControlOrMeta+a');
       await page.keyboard.press('ControlOrMeta+c');
       await page.keyboard.press('Escape');
@@ -348,14 +308,6 @@ if (s) {
       assert.equal(text, 'n1', 'the input copied its own text; the grid stayed out of it');
     } finally { await ctx.close(); reset(); }
   });
-
-  /* ── the clipboard follows the selection (Feature #221) ──────────────
-     Kyle, 2026-09-12 (B+): a click opens the cell exactly as before. ⌘C
-     and ⌘V follow the selection: text selected in the open control is the
-     browser's own copy and paste; with no selection — a collapsed caret, a
-     picker open, a resting cell — they take the CELL, typed, through the
-     same `bulk set` as a paste onto a range, with one Undo. A clicked text
-     cell opens with its whole value selected so all three read the same. */
 
   const selection = (page) => page.evaluate(() => {
     const a = document.activeElement;
@@ -381,7 +333,7 @@ if (s) {
     const { ctx, page } = await grid();
     try {
       await page.locator(`${sel(1, 'Note')} input`).click();
-      await page.keyboard.press('ArrowRight');             // collapse the selection: a bare caret
+      await page.keyboard.press('ArrowRight');
       assert.equal((await selection(page)).start, 2);
       await page.keyboard.press('ControlOrMeta+c');
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'n1', 'the cell, not the (empty) caret selection');
@@ -393,8 +345,6 @@ if (s) {
       assert.match(await toastText(page), /Pasted 1 cell/);
       assert.equal(value(2, 'Note'), 'n1', 'written to the record through bulk set');
       assert.equal(await page.locator('.wv-toast-action').count(), 1, 'and the toast carries Undo');
-      // The toast is up before the row redraws and hands focus back to its
-      // cell; in between, focus is on <body> (Issue #454). Wait for the rest.
       await page.waitForFunction(() => document.activeElement?.tagName === 'TD', null, { timeout: 10000 }).catch(() => {});
       assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'TD', 'the cell rests after the paste');
     } finally { await ctx.close(); reset(); }
@@ -405,7 +355,7 @@ if (s) {
     const { ctx, page } = await grid();
     try {
       await page.evaluate(() => navigator.clipboard.writeText('typed'));
-      await page.locator(`${sel(3, 'Note')} input`).click();   // opens with n3 selected
+      await page.locator(`${sel(3, 'Note')} input`).click();
       await page.keyboard.press('ControlOrMeta+v');
       assert.equal(await page.inputValue(`${sel(3, 'Note')} input`), 'typed', 'the selection was replaced in place');
       assert.equal(value(3, 'Note'), 'n3', 'and nothing was written until the cell commits');

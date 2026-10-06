@@ -1,11 +1,3 @@
-/* One system default (Issue #442; Kyle, 2026-09-27: "Default + reset should
-   return to showing all fields, no deleted items and no rollup row"). Reset
-   view and + Add view share systemDefault(db): every field in schema
-   order, no filter, sort or search, no deleted rows, no Σ rollup row,
-   Comfortable. Deleted rows and the Σ row are saved per view, so a view
-   that shows them keeps them across a switch and a reload, and another
-   view does not inherit them. Playwright is NOT a dependency of weave; the
-   suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -86,7 +78,6 @@ if (s) {
       await page.waitForLoadState('networkidle');
       const made = weave.tableView(`${jobs.id}/View 2`);
       dirty();
-      // The dropdown is still open after the create.
       if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
       await page.click('.view-strip .view-row:has(.view-name:text-is("Standard")) .view-name');
       await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Standard'));

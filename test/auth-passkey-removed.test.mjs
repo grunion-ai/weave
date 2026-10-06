@@ -1,17 +1,3 @@
-/* The built-in passkey door is gone (Feature #243). Sign-in is one OpenID
-   Connect provider (door C, Feature #212) on the session machinery door B
-   introduced; the hand-rolled WebAuthn ceremonies, invites and credential
-   verbs went with Kyle's "rip out our hard coded passkey handing now we've
-   switched to clerk" (2026-09-29). What this file pins:
-   - the four ceremony routes and the credential delete answer as unknown
-     routes, with or without a token;
-   - the sign-in page carries no passkey or register-device control and still
-     offers the provider;
-   - the CLI refuses `account invite` and `account remove-credential`, and its
-     help does not list them;
-   - an account row that still carries a pre-removal credentials[] loads,
-     lists, exports and signs in through the provider without error;
-   - nothing under src/, bin/ or public/ imports or names webauthn. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -34,8 +20,6 @@ const PASSKEY_ROUTES = [
   ['DELETE', '/api/auth/credentials/abc'],
 ];
 
-/* A pre-removal account row: what a workspace that once registered a
-   passkey still holds. */
 const OLD_CREDENTIAL = { id: 'cred-old', publicKeyJwk: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' }, alg: -7, counter: 4, transports: ['internal'], label: 'Old phone', createdAt: '2026-09-01T00:00:00.000Z', lastUsedAt: null };
 
 async function serve({ requireAuth = true } = {}) {
@@ -87,12 +71,6 @@ test('page: the sign-in page has no passkey or register-device control and still
   } finally { s.stop(); }
 });
 
-/* Kyle, 2026-10-02 (Issue #569): "remove this page a redirect directly to
-   clerk login". With a provider, a signed-out browser never sees the wall
-   page: it gets a 302 to /auth, which goes on to the provider. An API
-   caller keeps the JSON 401, and a bad Bearer token keeps the 401 page,
-   since sign-in is no answer to a wrong token and the header would follow
-   the redirect round. */
 test('routes: with a provider, the wall sends a signed-out browser to sign-in; the API keeps its 401', async () => {
   const s = await serve();
   try {
@@ -114,12 +92,6 @@ test('routes: with a provider, the wall sends a signed-out browser to sign-in; t
   } finally { s.stop(); }
 });
 
-/* Kyle, 2026-10-01: the sign-in page at /auth sends people straight to the
-   provider. A signed-out browser gets a 302 to the start route, ?next kept,
-   and never sees an intermediate page. The page itself is for a signed-in
-   visitor (sessions, sign out) and for the moment right after sign-out,
-   where an automatic trip to the provider would sign the person straight
-   back in on the provider's own session. */
 test('routes: a signed-out visit to /auth goes straight to the provider, keeping ?next', async () => {
   const s = await serve();
   try {
@@ -134,22 +106,18 @@ test('routes: a signed-out visit to /auth goes straight to the provider, keeping
       const r = await s.call('GET', '/auth?next=' + encodeURIComponent(bad));
       assert.equal(r.headers.get('location'), '/api/auth/oidc/start', `${bad} is not carried`);
     }
-    // The start route it lands on goes on to the provider with that ?next.
     const start = await s.call('GET', kept.headers.get('location'));
     assert.equal(start.status, 302);
     const to = new URL(start.headers.get('location'));
     assert.equal(to.origin + to.pathname, `${s.idp.issuer}/oauth/authorize`);
-    // From the wall: a signed-out page lands on the provider in three hops.
     const wall = await s.call('GET', '/e/nope/doc.html');
     assert.equal(wall.status, 302);
     const hop = await s.call('GET', wall.headers.get('location'));
     assert.equal(hop.status, 302);
     assert.match(hop.headers.get('location'), /^\/api\/auth\/oidc\/start\?next=%2Fe%2Fnope%2Fdoc\.html$/);
-    // A dead session cookie is signed out too.
     const dead = await s.call('GET', '/auth', { cookie: 'wv_session=nope' });
     assert.equal(dead.status, 302);
     assert.equal(dead.headers.get('location'), '/api/auth/oidc/start');
-    // A typed 127.0.0.1 moves to localhost first, where the redirect URI lives.
     const port = new URL(s.base).port;
     const ip = await fetch(`http://127.0.0.1:${port}/auth?next=%2Fx`, { redirect: 'manual' });
     assert.equal(ip.status, 302);
@@ -170,7 +138,6 @@ test('routes: a signed-in visit to /auth, and the visit right after sign-out, ge
     assert.match(page, /Sign in with Clerk/);
     assert.doesNotMatch(page, /passkey/i);
   } finally { s.stop(); }
-  // Sign-out lands on that page rather than reloading into the provider.
   const html = renderAuthPage({ workspace: 'w', provider: 'Clerk' });
   assert.match(html, /\/auth\?signed-out=1/);
   assert.doesNotMatch(html, /location\.reload\(\)/);

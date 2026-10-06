@@ -1,17 +1,3 @@
-/* The journeys the flicker loop walks (harness routine weave-flicker).
-
-   Each journey is one thing a reader does every day: open the app, open a
-   table, scroll it, edit a cell, open a row beside its table, switch the
-   view, type in a document, trash and undo, flip the theme. setup() puts
-   the page where the journey starts and is not measured; run() is the
-   gesture, and every flicker the probe sees during it is the journey's.
-
-   The seed is deliberately untidy (UI builds need messy data): long names,
-   empty cells, a relation, a workflow, and enough rows that the grid
-   windows. scripts/flicker-sweep.mjs and test/flicker-gate-browser.test.mjs
-   both walk this list, so a journey whose selectors rot fails the gate
-   rather than going quiet in the sweep. */
-
 export const ROWS = 400;
 
 export function seed(weave) {
@@ -51,7 +37,6 @@ async function table(page, ctx) {
   await frames(page, 3);
 }
 
-/* Scroll the grid's own box to a fraction of the way down. */
 async function scrollTo(page, f) {
   await page.evaluate((k) => {
     const wrap = document.querySelector('.table-wrap');
@@ -97,8 +82,6 @@ export const JOURNEYS = [
     async run(page, ctx) {
       const id = ctx.ids[2];
       await page.click(`tr[data-eid="${id}"] td[data-field="Name"] input`);
-      // The click selects the cell's text, so this replaces it; a value of
-      // its own each walk, or the second walk writes nothing and waits.
       await page.keyboard.type(`Task 2, edited ${Date.now() % 1e6}`);
       const landed = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
       await page.keyboard.press('Tab');
@@ -143,7 +126,6 @@ export const JOURNEYS = [
       await page.click('.vditor-ir [contenteditable="true"]');
       await page.keyboard.press('End');
       await page.keyboard.type(' A sentence typed at a reading pace.', { delay: 15 });
-      // The debounced save lands inside this window.
       await page.waitForTimeout(1500);
     },
   },
@@ -174,8 +156,6 @@ export const JOURNEYS = [
   },
 ];
 
-/* Walk one journey on a fresh page with the probe installed. Resolves to
-   { events, frames } — frames only when `record` is given. */
 export async function walk(browser, journey, ctx, { probe, record = null, viewport = { width: 1400, height: 900 } } = {}) {
   const page = await browser.newPage({ viewport });
   try {
@@ -185,7 +165,6 @@ export async function walk(browser, journey, ctx, { probe, record = null, viewpo
     await probe.reset(page);
     const rec = record ? await record(page) : null;
     await journey.run(page, ctx);
-    // What a gesture sets in motion lands inside a beat; read after it.
     await page.waitForTimeout(600);
     await frames(page, 2);
     const events = await probe.read(page);

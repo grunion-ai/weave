@@ -1,8 +1,3 @@
-/* Issue #479: a file or logo id arriving in an imported workspace was used
-   as a path component, so `../` in it reached outside the workspace's
-   files/ directory, to write on import and to read on export, file read and
-   logo read. Ids now have to look like the uuids the engine mints, and an
-   import carrying any other id is refused before it changes anything. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
@@ -63,7 +58,6 @@ test('an import whose logo id leaves files/ is refused', () => {
 test('a hostile id already in state cannot reach outside files/ on read', () => {
   const { w, dir, e } = fresh();
   writeFileSync(join(dir, '..', 'secret.txt'), 'top secret');
-  // As if a crafted .db were opened: the id is in state without an import.
   w.state.entities[e.id].files.push({ id: '../secret.txt', name: 's', size: 10, mime: 'text/plain' });
   w.state.meta.logo = { id: '../secret.txt', name: 'l', size: 1, mime: 'image/png' };
   assert.throws(() => w.readFile('../secret.txt'), /file id/i);

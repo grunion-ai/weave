@@ -1,12 +1,3 @@
-/* Invite a new person to a workspace (Issue #569, bullet 3). A new person
-   who signed up at the provider used to reach a 403 with no way in but an
-   operator's CLI. An architect now invites them from the workspace: weave
-   keeps a pending invite (email, role, who invited, when) and hands back a
-   one-time sign-in link. Opening it and signing in at the provider makes the
-   account at the invited role, pins the provider's subject to it, spends the
-   invite and lands the person where they were going. The provider is asked
-   for no email (Feature #252): the link is the proof, and the email only says
-   who the invite is for, on the pending invite and nowhere else. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -22,7 +13,6 @@ const { startIdp, serveOidc, cookieOf } = await import('./lib/idp.mjs');
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const ISS = 'https://idp.test';
 
-/* ---------------------------------------------------------------- engine */
 test('engine: an invite keeps email, role, inviter and time; the code only as its hash', () => {
   const w = new Weave({ actor: 'kyle' });
   w.updateWorkspace({ name: 'ws' });
@@ -57,7 +47,6 @@ test('engine: redeeming makes the account at the invited role, de-duplicates the
   assert.equal(w.identityInvite(inv.code), null);
   assert.throws(() => w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_other' }), /already used/, 'an invite opens once');
   assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_dylan' }).name, 'dylan-2', 'the next sign-in needs no invite');
-  // A subject that already opens an account is refused, and the invite waits for the right person.
   const second = w.inviteMember({ email: 'ann@example.com', issuer: ISS });
   assert.throws(() => w.redeemIdentityInvite(second.code, { issuer: ISS, subject: 'user_dylan' }), /already opens 'dylan-2'/);
   assert.equal(w.listInvites().length, 1);
@@ -88,7 +77,6 @@ test('engine: invites stay out of the export and survive this workspace\'s own i
   assert.equal(w.identityInvite(inv.code).account, 'ann');
 });
 
-/* ---------------------------------------------------------------- surfaces */
 test('mcp: weave_accounts invite, invites and revoke-invite', () => {
   const w = new Weave();
   const inv = dispatchTool(w, 'weave_accounts', { action: 'invite', email: 'ann@example.com', role: 'observer', issuer: ISS });
@@ -114,7 +102,6 @@ test('cli: invite, invite list and invite revoke', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-/* ---------------------------------------------------------------- routes */
 async function serve() {
   const idp = await startIdp();
   const w = new Weave();
@@ -127,7 +114,6 @@ async function serve() {
   const otherArchitect = other.createAccount({ name: 'boss', role: 'architect' }).token;
   other.setRequireAuth(true);
   const s = await serveOidc(w, idp, { workspaces: { other }, limits: { options: 1000, failed: 1000 } });
-  /* Open the invite link (or any start URL), sign in at the provider, come back. */
   const follow = async (startPath, claims) => {
     const start = await s.call('GET', startPath);
     if (start.status !== 302) return { start, res: start };
@@ -173,9 +159,7 @@ test('routes: the invited person opens the link, signs in once, and lands with a
     assert.deepEqual([me.account.name, me.role], ['dylan', 'observer']);
     assert.equal((await s.call('GET', '/api/spaces', { cookie })).status, 200);
     assert.deepEqual(await (await s.call('GET', '/api/invites', { token: s.architect })).json(), [], 'the invite is spent');
-    // Spent: the link is refused at start, before the provider.
     assert.equal((await s.call('GET', path(inv.url))).status, 410);
-    // The next visit needs no invite: the subject is the identity now.
     const again = await s.follow('/api/auth/oidc/start', { sub: 'user_dylan' });
     assert.equal(again.res.status, 302);
     assert.equal(Object.keys(s.w.state.meta.accounts).length, 3);
@@ -188,17 +172,14 @@ test('routes: a revoked invite, another workspace\'s invite and no invite at all
     const gone = await (await s.call('POST', '/api/invites', { body: { email: 'ann@example.com' }, token: s.architect })).json();
     await s.call('DELETE', `/api/invites/${gone.id}`, { token: s.architect });
     assert.equal((await s.call('GET', path(gone.url))).status, 410, 'revoked');
-    // An invite to /w/other opens /w/other, never the root.
     const theirs = await (await s.call('POST', '/w/other/api/invites', { body: { email: 'bo@example.com' }, token: s.otherArchitect })).json();
     assert.match(theirs.url, /\/w\/other\/api\/auth\/oidc\/start\?invite=/);
     assert.equal((await s.call('GET', `/api/auth/oidc/start?invite=${theirs.code}`)).status, 410, 'wrong workspace');
-    // No invite: the refusal page, unchanged.
     const { res } = await s.follow('/api/auth/oidc/start', { sub: 'user_stranger' });
     assert.equal(res.status, 403);
     assert.equal(res.headers.get('set-cookie'), null);
     assert.match(await res.text(), /No access to/, "the refusal page Issue #570 owns");
     assert.equal(s.w.listAccounts().length, 2, 'nobody was provisioned');
-    // The right workspace takes it.
     const ok = await s.follow(path(theirs.url), { sub: 'user_bo' });
     assert.equal(ok.res.status, 302);
     assert.deepEqual(s.other.listAccounts().map((a) => [a.name, a.role]).sort(), [['bo', 'editor'], ['boss', 'architect']]);

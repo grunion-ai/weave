@@ -5,8 +5,6 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { seeded } from './lib/fixtures.mjs';
 
-/* ---------- check(): static validation, no row needed ---------- */
-
 const NAMES = ['Amount', 'Close Date', 'Stage', 'Name'];
 
 test('check accepts a valid expression', () => {
@@ -47,8 +45,6 @@ test('check handles brackets, keywords and function-name collisions', () => {
   assert.equal(check('dateadd([Close Date], 1, "quarter")', names).ok, false, 'a bad literal unit fails at check time');
 });
 
-/* ---------- engine: invalid formulas cannot be saved ---------- */
-
 test('addField rejects a formula that does not parse', () => {
   const { w, t } = seeded();
   assert.throws(() => w.addField(t.id, { name: 'Bad', type: 'formula', config: { expression: 'if(upper(' } }), /Unexpected end/);
@@ -75,14 +71,11 @@ test('a valid formula still saves and computes', () => {
 test('a legacy invalid expression does not block unrelated field edits', () => {
   const { w, t } = seeded();
   const f = w.addField(t.id, { name: 'Health', type: 'formula', config: { expression: 'Amount * 2' } });
-  // Simulate a formula saved before validation existed.
   f.config.expression = 'if(upper(';
   const updated = w.updateField(t.id, f.id, { config: { width: 240 } });
   assert.equal(updated.config.width, 240);
   assert.equal(updated.config.expression, 'if(upper(', 'the old expression is untouched');
 });
-
-/* ---------- engine.checkFormula: the agent verify loop ---------- */
 
 test('checkFormula validates and previews against a real row', () => {
   const { w, t } = seeded();
@@ -119,8 +112,6 @@ test('checkFormula previews a named entity, not just the first row', () => {
   assert.equal(r.preview, 200);
   assert.equal(r.previewEntity, 'Big');
 });
-
-/* ---------- REST: POST /api/tables/:id/formula-check ---------- */
 
 let base, server;
 test.before(async () => {
@@ -174,11 +165,6 @@ test('formula-check on a missing table is a 404, not a crash', async () => {
   assert.ok(r.status === 404 || r.status === 400, `got ${r.status}`);
 });
 
-/* ---------- scan: the whole table, not one row (direction B, 2026-09-07) ----------
-   One preview row proves the formula parses; it does not prove it is right.
-   scan:true evaluates over up to 200 rows and returns the null and error
-   counts, a sample row per outcome, and the result type — the numbers an
-   agent asserts against and the dialog draws. */
 function scanSeeded() {
   const w = new Weave();
   w.createSpace({ name: 'Sales' });
@@ -204,9 +190,6 @@ test('checkFormula reports the result type of the preview', () => {
 
 test('checkFormula scan counts nulls and errors over the table and samples each outcome', () => {
   const { w, t } = scanSeeded();
-  // The static check stubs every field as 0, so a unit read from a field
-  // has to sit behind a branch the stub does not take — the shape of the
-  // bug a scan exists to catch: valid on row 1, wrong further down.
   const r = w.checkFormula(t.id, 'datediff([Close Date], today(), if(Amount > 10, Unit, "days"))', { scan: true });
   assert.equal(r.ok, true);
   assert.equal(r.scan.rows, 3);
@@ -218,7 +201,6 @@ test('checkFormula scan counts nulls and errors over the table and samples each 
   assert.equal(r.scan.sampleByOutcome.ok.entity, 'Acme');
   assert.equal(typeof r.scan.sampleByOutcome.ok.value, 'number');
   assert.equal(r.type, 'number', 'the type comes from the rows that computed, not the first row alone');
-  // The preview row is still the first row.
   assert.equal(r.previewEntity, 'Acme');
 });
 

@@ -8,10 +8,6 @@ import { seedWeaver, syncDevelopment } from '../src/weaver-seed.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/* Development sync (2026-08-31): every build ships docs/development.json —
-   the canonical Issue/Feature lists — and boot applies it to the local docs
-   workspace, so updating weave updates the issue list. */
-
 const findIssue = (w, name) => {
   const db = w.listTables().find((t) => t.name === 'Issue');
   return w.listEntities(db.id).map((e) => w.readEntity(e.id)).find((e) => e.name === name);
@@ -81,9 +77,6 @@ test('the shipped manifest is present, well-formed, and matches the package vers
   }
 });
 
-/* Release notes (2026-09-04, Kyle): every release is a Development/Release
-   row whose Description holds the notes, and a build whose package version
-   has no such row with notes does not pass the suite. */
 const findRelease = (w, name) => {
   const db = w.listTables().find((t) => t.name === 'Release');
   return db && w.listEntities(db.id).map((e) => w.readEntity(e.id)).find((e) => e.name === name);
@@ -141,12 +134,6 @@ test('the shipped manifest carries release notes for the package version', () =>
   }
 });
 
-/* Issue #253: a bump reaches users only as a `v<version>` tag and a GitHub
-   Release. The main watcher publishes both (harness
-   `scripts/weave-release-tags.mjs`), taking the notes from the version's
-   `## v<version>` CHANGELOG section, so the written release order has to say
-   so: a digest under any other heading ships no Release, and the check that
-   one did is a person's or an agent's, not this gate's. */
 test('the written release order ends with the tag and the GitHub Release', () => {
   const dev = readFileSync(join(ROOT, 'DEVELOPMENT.md'), 'utf8');
   const start = dev.indexOf('## Releasing');
@@ -157,22 +144,12 @@ test('the written release order ends with the tag and the GitHub Release', () =>
   assert.match(releasing, /GitHub Release/, 'the Release');
   assert.match(releasing, /weave-release-tags\.mjs/, 'the script that publishes them');
   assert.match(releasing, /gh release list -R grunion-ai\/weave/, 'the check a person or agent runs');
-  /* Since harness PR #277 launchd runs the watcher from ~/.harness-serve, a
-     detached worktree refreshed to origin/main. The section once sent readers
-     to ~/Documents/harness.nosync to re-run the tagger, a checkout whose
-     branch no longer decides anything. */
   assert.match(releasing, /~\/\.harness-serve/, 'the checkout the watcher and the tagger run from');
   assert.doesNotMatch(releasing, /~\/Documents\/harness\.nosync/, 'not the shared harness checkout');
   const rule5 = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8').split('\n').find((l) => l.startsWith('5. **Every release'));
   assert.match(rule5, /land through Gerrit → .*`v<version>` tag.*GitHub Release/, 'CLAUDE.md rule 5 ends on the same step');
 });
 
-/* Issue #229: nine watcher rows were linked `Fixed in → v0.4.5` in a closing
-   sweep, and the manifest shipped that claim to every instance. The main
-   watcher files `gerrit/main @ <sha> did not reach …` rows about its own
-   mirror and deploy loop; those are incidents, resolved operationally (the
-   gh account switch), never carried by a release. A release that lists one
-   is the exact error the Release table exists to prevent. */
 const WATCHER_INCIDENT = /^gerrit\/main @ [0-9a-f]+ did not reach\b/;
 
 test('no release claims a watcher incident row as one of its fixes', () => {
@@ -183,12 +160,6 @@ test('no release claims a watcher incident row as one of its fixes', () => {
   assert.deepEqual(claimed, [], 'watcher mirror/deploy incidents are not release contents');
 });
 
-/* Issue #244: correcting the manifest fixed the canonical workspace and every
-   instance that had yet to sync, and left the one that synced the wrong
-   manifest holding the false claim forever — `link` adds, nothing unlinks. A
-   release row is manifest-owned, so its Fixes and Ships are reconciled to
-   exactly what the manifest names. Issue and Feature rows stay additive:
-   that is what protects locally filed rows, and a release carries none. */
 const relNames = (w, name, field) => (findRelease(w, name).fields[field] ?? []).map((x) => x.name ?? x).sort();
 
 test('a corrected manifest takes back a release claim the wrong one made', () => {
@@ -212,7 +183,6 @@ test('a release the corrected manifest empties keeps no fixes and no ships', () 
   syncDevelopment(w, manifest({ issues, features, releases: [{ ...base, fixes: [issue], ships: [feature] }] }));
   assert.deepEqual(relNames(w, 'v9.9.9', 'Ships'), [feature]);
 
-  // The exporter omits an empty relation entirely, so an absent key IS empty.
   syncDevelopment(w, manifest({ generatedAt: '2026-09-08T00:00:00.000Z', issues, features, releases: [base] }));
   assert.deepEqual(relNames(w, 'v9.9.9', 'Fixes'), []);
   assert.deepEqual(relNames(w, 'v9.9.9', 'Ships'), []);
@@ -232,13 +202,6 @@ test('reconciling a release leaves locally filed Issue and Feature rows alone', 
   assert.equal(still.fields.Status, 'Open');
   assert.deepEqual(still.fields['Fixed in'] ?? [], []);
 });
-
-/* Issue #245: the manifest is upstream of the seed. Its Feature rows carry
-   milestones (v0.4, v0.5) the seeded Milestone select never heard of, a
-   select validates on write, and the throw landed mid-pass: Issues applied,
-   Features applied up to the first unknown milestone, the release block
-   never reached, and the stamp — written last — never set, so every boot
-   repeated the same half-pass behind bin/weave.js's bare catch. */
 
 test('the shipped manifest applies whole to a freshly seeded workspace', () => {
   const w = seedWeaver(new Weave());
@@ -274,8 +237,6 @@ test('a milestone the seed never heard of widens the select instead of throwing'
 
 test('a row that cannot be applied is skipped and named, and the pass does not stamp itself done', () => {
   const w = seedWeaver(new Weave());
-  // A workflow state carries a category the manifest cannot supply, so an
-  // unknown status is the one value widening cannot rescue.
   const r = syncDevelopment(w, manifest({
     issues: [{ name: 'A bug with an unknown status', status: 'Wontfix', severity: 'Low' }],
     features: [{ name: 'A feature that applies fine', status: 'Planned', milestone: 'v0.3' }],
@@ -296,8 +257,6 @@ test('widening a select keeps the options already there, colours and all', () =>
   const featuresT = w.listTables().find((t) => t.name === 'Feature');
   const milestone = () => Object.values(w.getTable(featuresT.id).fields).find((f) => f.name === 'Milestone');
   const before = milestone();
-  // A ramp hue: an invented one is refused at this door now (Issue #551), and
-  // what this case is about is whether a widen keeps the colours it found.
   w.updateField(featuresT.id, before.id, { config: { options: before.config.options.map((o) => ({ ...o, hue: 'purple' })) } });
   const painted = milestone().config.options;
   syncDevelopment(w, manifest({ features: [{ name: 'A far-future feature', status: 'Planned', milestone: 'v9.9' }] }));

@@ -1,11 +1,3 @@
-/* Issue #258, the client half: the schema was fetched two or three times per
-   route. Boot loaded it, then the home page's relation map fetched it again
-   (as did every space page and #/map) although the tab already held it and
-   Issue #274's version stamp keeps that copy honest. A member workspace also
-   fetched its own schema, then the root registry's, then /workspace, one
-   after the other before routing could start. Now each route reads the
-   schema the tab holds, and the boot fetches go out together. Playwright is
-   NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -64,8 +56,6 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const prefix = `/w/${uno.state.meta.id}`;
     const seen = [];
-    // Hold the member's own schema until the other two boot reads have been
-    // asked for. Serial code never asks while it waits, and the hold times out.
     let release;
     const others = new Promise((r) => { release = r; });
     page.on('request', (r) => {
@@ -76,7 +66,7 @@ if (s) {
     await page.route(`**${prefix}/api/schema`, async (route) => {
       const both = await Promise.race([others, new Promise((r) => setTimeout(() => r(false), 3000))]);
       route.fallback().catch(() => {});
-      page.__concurrent ??= both; // the first, boot's own fetch
+      page.__concurrent ??= both;
     });
     await page.goto(`${base}${prefix}/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#nav .nav-db');

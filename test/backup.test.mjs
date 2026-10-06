@@ -1,10 +1,3 @@
-/* Feature #222 phase 3 (Feature #209, Issue #250): `weave backup` and
-   `weave restore`, the in-process nightly, and the SigV4 upload. Gate G4 of
-   the spec: backup → restore into a fresh dir → boot → entity counts equal,
-   one attachment byte-for-byte, the keystore round-trips with the passphrase.
-
-   Everything here runs against temp directories and an in-test HTTP server
-   standing in for the bucket. No network. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, readdirSync, statSync, openSync, writeSync, closeSync } from 'node:fs';
@@ -29,8 +22,6 @@ const tmp = (label) => mkdtempSync(join(tmpdir(), `weave-backup-${label}-`));
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 const PASS = 'correct horse battery staple';
 
-/* Two workspaces, one attachment, one orphaned reference, one credential.
-   Returns the paths and the facts the round trip must reproduce. */
 function seedDataDir({ passphrase = null } = {}) {
   const dir = tmp('data');
   const keystoreEnv = passphrase ? { WEAVE_KEYSTORE_PASSPHRASE: passphrase } : {};
@@ -46,7 +37,7 @@ function seedDataDir({ passphrase = null } = {}) {
   const bytes = Buffer.from('%PDF-1.4 the attachment, byte for byte\n'.repeat(40));
   const kept = alpha.attachFile(t1.id, { name: 'spec.pdf', mime: 'application/pdf', bytes });
   const orphan = alpha.attachFile(t1.id, { name: 'lost.png', mime: 'image/png', bytes: Buffer.from('png') });
-  rmSync(join(dir, 'files', orphan.id)); // Issue #250: a reference whose bytes are gone
+  rmSync(join(dir, 'files', orphan.id));
   alpha.setKey('stripe', 'sk_live_hush');
   const beta = open('beta');
   beta.state.meta.name = 'beta';
@@ -60,11 +51,9 @@ function seedDataDir({ passphrase = null } = {}) {
 
 const closeAll = (...ws) => ws.forEach((w) => w.store.close?.());
 
-/* ---------------------------------------------------------------- tar */
-
 test('the ustar writer and reader round-trip long names, empty files and binary bytes', () => {
   const dir = tmp('tar');
-  const long = 'files/' + 'a'.repeat(120) + '/' + 'b'.repeat(90) + '.bin'; // > 100 chars: needs the prefix field
+  const long = 'files/' + 'a'.repeat(120) + '/' + 'b'.repeat(90) + '.bin';
   const bin = Buffer.from(Array.from({ length: 1500 }, (_, i) => i % 256));
   writeFileSync(join(dir, 'on-disk.txt'), 'from a file\n');
   const out = join(dir, 'x.tar');
@@ -79,7 +68,6 @@ test('the ustar writer and reader round-trip long names, empty files and binary 
   assert.equal(entries[0].data.length, 0);
   assert.ok(entries[1].data.equals(bin), 'binary bytes survive');
   assert.equal(entries[2].data.toString(), 'from a file\n');
-  // GNU tar reads it too — the archive is not a private format.
   const listed = execFileSync('tar', ['-tf', out], { encoding: 'utf8' }).trim().split('\n');
   assert.deepEqual(listed, ['empty.txt', long, 'disk/on-disk.txt']);
 });
@@ -89,12 +77,10 @@ test('a corrupt header is refused rather than read as garbage', () => {
   const out = join(dir, 'x.tar');
   packTar(out, [{ name: 'a.txt', data: Buffer.from('aaa') }]);
   const buf = readFileSync(out);
-  buf[148] = 0x30; buf[149] = 0x30; // stomp the checksum
+  buf[148] = 0x30; buf[149] = 0x30;
   writeFileSync(out, buf);
   assert.throws(() => readTar(out), /checksum/i);
 });
-
-/* ---------------------------------------------------------------- crypto */
 
 test('an encrypted archive is opaque without the passphrase and refuses the wrong one', () => {
   const dir = tmp('enc');
@@ -123,8 +109,6 @@ test('the passphrase comes from WEAVE_BACKUP_PASSPHRASE, then the keystore passp
   assert.throws(() => resolvePassphrase({ env: {}, dataDir: dir, passphraseEnv: 'MISSING' }), /MISSING/);
 });
 
-/* ---------------------------------------------------------------- round trip (G4) */
-
 test('backup → restore → boot: counts equal, attachment identical, orphan reported, keystore.key never leaves', async () => {
   const src = seedDataDir();
   const outDir = tmp('out');
@@ -142,7 +126,6 @@ test('backup → restore → boot: counts equal, attachment identical, orphan re
   assert.deepEqual(r.orphans.list, [{ workspace: 'alpha', id: src.orphan.id, name: 'lost.png' }]);
   assert.equal(r.files, 1, 'one blob actually copied');
 
-  // Inspect the archive: keystore.json is in, keystore.key is not, the manifest is last.
   const tar = join(outDir, 'peek.tar');
   decryptFile(r.path, tar, readFileSync(join(src.dir, 'keystore.key'), 'utf8').trim());
   const names = readTar(tar).map((e) => e.name);
@@ -156,7 +139,6 @@ test('backup → restore → boot: counts equal, attachment identical, orphan re
   assert.equal(manifest.entries.find((e) => e.name === `files/${src.kept.id}`).sha256, sha256(src.bytes));
   assert.equal(manifest.orphans.count, 1);
 
-  // Restore into a fresh directory with the key file's material as the passphrase.
   const fresh = tmp('fresh');
   const keyMaterial = readFileSync(join(src.dir, 'keystore.key'), 'utf8').trim();
   const rr = await restore({ source: r.path, dataDir: fresh, env: { WEAVE_BACKUP_PASSPHRASE: keyMaterial } });
@@ -170,7 +152,6 @@ test('backup → restore → boot: counts equal, attachment identical, orphan re
     probe.close();
   }
 
-  // Boot on the restored files.
   const alpha = new Weave({ path: join(fresh, 'alpha.db'), keystorePath: join(fresh, 'keystore.json'), keystoreEnv: {} });
   const beta = new Weave({ path: join(fresh, 'beta.db') });
   assert.equal(Object.keys(alpha.state.entities).length, src.counts.alpha, 'alpha: every row, trashed ones included');
@@ -178,7 +159,6 @@ test('backup → restore → boot: counts equal, attachment identical, orphan re
   assert.equal(alpha.storageStats().entities, src.live.alpha);
   assert.ok(Buffer.from(alpha.readFile(src.kept.id).bytes).equals(src.bytes), 'the attachment is byte-identical');
   assert.throws(() => alpha.readFile(src.orphan.id), /missing/, 'the orphan is still an orphan — the backup cannot invent bytes');
-  // The keystore round-trips once the key material is back beside it.
   writeFileSync(join(fresh, 'keystore.key'), keyMaterial, { mode: 0o600 });
   assert.equal(alpha.resolveKey('stripe'), 'sk_live_hush');
   closeAll(alpha, beta);
@@ -222,13 +202,8 @@ test('--out may name the file itself', async () => {
   assert.ok(existsSync(file));
 });
 
-/* ---------------------------------------------------------------- live writer */
-
 test('a backup taken while a server holds the db open with an uncommitted write is consistent', async () => {
   const src = seedDataDir();
-  // src.alpha stays open (WAL mode, the live server's shape). A second
-  // connection starts a write and never commits — the shape of a request
-  // mid-flight when the nightly fires.
   const writer = new DatabaseSync(join(src.dir, 'alpha.db'));
   writer.exec('BEGIN IMMEDIATE');
   writer.prepare("INSERT INTO entities (id, db_id, public_id, updated_at, json) VALUES ('ghost', 'x', 99, null, '{\"id\":\"ghost\"}')").run();
@@ -246,16 +221,12 @@ test('a backup taken while a server holds the db open with an uncommitted write 
   probe.close();
 });
 
-/* ---------------------------------------------------------------- restore refusals */
-
 test('restore refuses a target a server holds open, and --force overrides', async () => {
   const src = seedDataDir();
   rmSync(join(src.dir, 'keystore.key'));
   const r = await backup({ dataDir: src.dir, out: tmp('out6'), env: {} });
-  // src.alpha is still open: the -wal sidecar is there.
   await assert.rejects(restore({ source: r.path, dataDir: src.dir, env: {} }), /held open|stop the server/i);
   closeAll(src.alpha, src.beta);
-  // Closed cleanly: the sidecars are gone, but the files exist — still a refusal without --force.
   await assert.rejects(restore({ source: r.path, dataDir: src.dir, env: {} }), /exists|--force/i);
   const rr = await restore({ source: r.path, dataDir: src.dir, env: {}, force: true });
   assert.ok(rr.landed.includes('alpha.db'));
@@ -268,17 +239,11 @@ test('restore refuses an archive whose bytes do not match its manifest', async (
   closeAll(src.alpha, src.beta);
   const entries = readTar(r.path);
   const i = entries.findIndex((e) => e.name === 'beta.db');
-  entries[i].data[100] ^= 0xff; // one bit inside a page, checksum still valid
+  entries[i].data[100] ^= 0xff;
   packTar(r.path, entries);
   await assert.rejects(restore({ source: r.path, dataDir: tmp('fresh7'), env: {} }), /sha256|mismatch/i);
 });
 
-/* ---------------------------------------------------------------- SigV4 */
-
-/* The two worked examples in the S3 API reference (Authenticating Requests:
-   Using the Authorization Header): same key pair, same clock, known
-   signatures. Matching both means the canonical request, the string to sign
-   and the signing key are all right. */
 const AWS = { keyId: 'AKIAIOSFODNN7EXAMPLE', secret: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', region: 'us-east-1', now: new Date('2013-05-24T00:00:00Z') };
 
 test('the signer reproduces the S3 reference GET example', () => {
@@ -315,10 +280,6 @@ test('the signer reproduces the S3 reference list example (query string)', () =>
     + 'Signature=34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7');
 });
 
-/* ---------------------------------------------------------------- the bucket */
-
-/* An S3-shaped server that records what it was asked and holds a key list.
-   ListObjectsV2 answers with the XML shape the real one uses. */
 function fakeBucket(keys = []) {
   const state = { keys: new Set(keys), requests: [], bodies: new Map() };
   const server = createServer(async (req, res) => {
@@ -363,7 +324,6 @@ test('upload puts the archive under the prefix and prunes past the newest thirty
     assert.equal(put.bytes, r.bytes, 'the whole archive went up');
     assert.equal(put.sha, sha256(readFileSync(r.path)), 'the payload hash is signed');
     assert.ok(state.bodies.get(`nightly/${r.archive}`).equals(readFileSync(r.path)));
-    // 32 old + 1 new = 33; keep 30, delete the three oldest; the unrelated key is not ours to touch.
     assert.deepEqual(r.pruned, old.slice(0, 3));
     assert.equal(state.keys.size, 31);
     assert.ok(state.keys.has('nightly/unrelated.txt'));
@@ -393,8 +353,6 @@ test('the s3 helper spells R2/B2 (path-style on an endpoint) and AWS (virtual-ho
   assert.deepEqual(s3.parse('s3://my-bucket'), { bucket: 'my-bucket', prefix: '' });
   assert.throws(() => s3.parse('https://not-s3'), /s3:\/\//);
 });
-
-/* ---------------------------------------------------------------- the nightly */
 
 test('the next fire is 04:00 UTC, today if still ahead, else tomorrow', () => {
   assert.equal(nextFireAt(new Date('2026-09-12T01:00:00Z')).toISOString(), '2026-09-12T04:00:00.000Z');
@@ -448,8 +406,6 @@ test('/api/health carries the last backup result when the nightly is on, and not
   } finally { on.server.close(); }
 });
 
-/* ---------------------------------------------------------------- the doors */
-
 test('weave backup and weave restore <archive> work from the CLI, and restore <ref> is still the entity verb', () => {
   const src = seedDataDir();
   rmSync(join(src.dir, 'keystore.key'));
@@ -464,7 +420,6 @@ test('weave backup and weave restore <archive> work from the CLI, and restore <r
   const restored = execFileSync('node', [BIN, 'restore', join(outDir, archive), '--data', fresh], { encoding: 'utf8' });
   assert.match(restored, /alpha\.db/);
   assert.ok(existsSync(join(fresh, 'beta.db')));
-  // The entity verb is untouched: a ref, not an archive.
   const back = execFileSync('node', [BIN, 'restore', src.gone.id, '--data', join(fresh, 'alpha.db')], { encoding: 'utf8' });
   assert.match(back, /Trashed/);
   const help = execFileSync('node', [BIN, 'help'], { encoding: 'utf8' });

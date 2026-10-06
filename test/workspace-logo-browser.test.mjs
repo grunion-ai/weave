@@ -1,14 +1,3 @@
-/* Updating a workspace's logo from the rail (Issue #202).
-   The rail chip menu from #190 offered "Set logo…" on the current chip only,
-   so a workspace that already carried a logo, or any sibling workspace, had
-   no way to change it from the rail. Kyle, 2026-09-05: "workspace left click
-   should be update logo and should show even for workspaces with logos."
-   Now every non-pinned chip's menu carries "Update logo…" — current or not,
-   logo or not — plus "Remove logo" when one exists; the upload targets THAT
-   chip's workspace, never the current one; and a plain left click on the
-   already-current chip (which used to reload the page) opens the same menu.
-   Both themes are checked. Playwright is NOT a dependency of weave; the suite
-   skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -19,7 +8,6 @@ const logoOf = (weave) => weave.state.meta.logo ? weave.getWorkspaceLogo().bytes
 
 let scratch, blank;
 const s = await launch('workspace logo from the rail', (weave) => {
-  // Onboarded already: these workspaces are empty, and the welcome (Feature #248) would sit over the rail.
   weave.markOnboarded();
   weave.state.meta.name = 'main';
   weave.setWorkspaceLogo({ name: 'main.svg', mime: 'image/svg+xml', bytes: svg('red') });
@@ -62,7 +50,6 @@ if (s) {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), 'dark');
     assert.equal(await chip(page, 'blank').locator('img').count(), 0, 'blank starts as a letter chip');
     const before = { main: logoOf(main), scratch: logoOf(scratch) };
-    // A chip with a logo already: the picker opens and the new file replaces it.
     await chip(page, 'scratch').click({ button: 'right' });
     const chooser = page.waitForEvent('filechooser');
     await page.locator('.ws-ctx .dropdown-item', { hasText: 'Update logo…' }).click();
@@ -74,7 +61,6 @@ if (s) {
     assert.equal(logoOf(blank), null, 'blank is untouched');
     const src = await chip(page, 'scratch').locator('img').getAttribute('src');
     assert.match(src, new RegExp(`^/w/${scratch.state.meta.id}/api/workspace/logo`), `the chip reads its own workspace's logo: ${src}`);
-    // A chip without a logo: the letter becomes an image.
     await chip(page, 'blank').click({ button: 'right' });
     const chooser2 = page.waitForEvent('filechooser');
     await page.locator('.ws-ctx .dropdown-item', { hasText: 'Update logo…' }).click();

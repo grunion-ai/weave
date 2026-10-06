@@ -1,11 +1,3 @@
-/* Deleted rows and the Σ rollup row are saved per view (Issue #442; Kyle,
-   2026-09-27: "A view carries filters, fields, sort, density, deleted rows
-   and the Σ row"). Two view keys on the one verb, beside density:
-   `deleted` (true shows the trashed rows in place) and `rollups` (true
-   draws the Σ row, false hides it). A view that never set `rollups`
-   follows the table's older `hideRollups` opt-in, so no grid changes on
-   the upgrade. Both ride every surface the verb has: engine, MCP, CLI,
-   REST, the schema document and the Workspace/Views row. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';

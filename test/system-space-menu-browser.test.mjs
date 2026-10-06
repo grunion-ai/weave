@@ -1,13 +1,3 @@
-/* Issue #248 — the space page's ⋮ menu offered "Delete space + N tables" on
-   the system Workspace space; holding it only ever produced the engine's
-   refusal toast. The sidebar already hides per-table menus for system tables;
-   the space page now does the same for the destructive item. A user space
-   keeps its Delete. Both themes are checked.
-   Issue #373 — the menu also listed one "Export <Table>.csv" per table, which
-   act on tables, not the space. Those are gone, so the system space has
-   nothing left to offer and renders no ⋮ at all; a user space holds only its
-   Delete.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

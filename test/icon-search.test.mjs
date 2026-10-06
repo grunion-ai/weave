@@ -1,11 +1,3 @@
-/* An icon an agent guesses outside the inventory (Issue #591). The 2026-10-02
-   agent eval had 17 refused writes for real Lucide names the curated set
-   lacks (building-2, handshake, tags, repeat). The refusal said only "use
-   lucide:<name> from the vocabulary", so the agent pulled the 4.4k-token
-   list or dropped the icon. The refusal now names the nearest inventory
-   icons, and the vocabulary searches icons on every door: MCP
-   {section:"icons", query}, REST ?section=icons&query=, CLI `vocabulary
-   icons <query>`. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -32,7 +24,6 @@ function workspace() {
 
 test('a guessed icon is refused with the nearest inventory names and their categories', () => {
   const w = workspace();
-  // lucide:message is real Lucide; the inventory has message-circle and message-square.
   const e = refusal(() => call(w, 'weave_update_table', { db: 'Deal', icon: 'lucide:message' }));
   assert.match(e.message, /^Icon 'lucide:message' is not in the inventory; nearest: /);
   assert.match(e.message, /lucide:message-circle \(messages\)/, 'the nearest name carries its category');
@@ -51,11 +42,9 @@ test('the names the eval agents guessed each get a suggestion that is a real, wr
     const named = [...e.message.matchAll(/lucide:([a-z0-9-]+) \(/g)].map((m) => m[1]);
     assert.ok(named.length >= 1, `${guess} gets at least one suggestion: ${e.message}`);
     assert.ok(named.length <= 3);
-    // Taking the first suggestion writes.
     call(w, 'weave_update_table', { db: 'Deal', icon: `lucide:${named[0]}` });
     assert.equal(call(w, 'weave_schema').find((s) => s.space === 'Ops').tables[0].icon, `lucide:${named[0]}`);
   }
-  // A guess that is in the inventory is not refused.
   call(w, 'weave_update_table', { db: 'Deal', icon: 'lucide:lightbulb' });
 });
 
@@ -101,23 +90,17 @@ test('weave_vocabulary {section:"icons", query} searches the inventory by name, 
   assert.ok(r.matches.some((m) => m.name === 'landmark'), 'building reaches the nearest real icon');
   for (const m of r.matches) { assert.ok(ICONS.includes(m.name)); assert.equal(m.category, category(m.name)); }
   assert.ok(JSON.stringify(r).length < 2000, 'a search costs a fraction of the 4.4k-token list');
-  // A substring of the name, case-insensitive, with or without the prefix.
   assert.deepEqual(call(w, 'weave_vocabulary', { section: 'icons', query: 'LUCIDE:phone' }).matches.map((m) => m.name).sort(), ['phone', 'phone-call', 'phone-missed', 'phone-off']);
-  // A category name lists its icons.
   assert.deepEqual(call(w, 'weave_vocabulary', { section: 'icons', query: 'time' }).matches.map((m) => m.name).sort(), ['calendar', 'calendar-range', 'clock', 'timer']);
-  // A query alone means the icons section: an agent that forgets `section` still lands.
   assert.deepEqual(call(w, 'weave_vocabulary', { query: 'phone' }), call(w, 'weave_vocabulary', { section: 'icons', query: 'phone' }));
-  // No substring hit falls back to the nearest names and says so.
   const fuzzy = call(w, 'weave_vocabulary', { section: 'icons', query: 'mesage' });
   assert.equal(fuzzy.fuzzy, true);
   assert.ok(fuzzy.matches.some((m) => m.name === 'message-circle'));
-  // A query on another section is refused, naming where it works.
   assert.match(refusal(() => call(w, 'weave_vocabulary', { section: 'optionColors', query: 'x' })).message, /query searches the icons section/);
 });
 
 test('the MCP tool schema declares section and query', () => {
   const t = TOOLS.find((x) => x.name === 'weave_vocabulary');
-  // sections (Issue #625) names several at once.
   assert.deepEqual(Object.keys(t.inputSchema.properties).sort(), ['query', 'section', 'sections']);
   assert.match(t.description, /section/);
   assert.match(t.description, /query/);

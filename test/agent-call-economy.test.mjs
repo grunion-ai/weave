@@ -1,10 +1,3 @@
-/* Issues #625, #627, #628: the calls an agent spent around a build. The
-   2026-10-03 disclosure eval (~/Documents/queue/weave-disclosure-eval) counted
-   4 to 15 weave_vocabulary calls a run, one section each; 3 to 10 weave_query
-   read-backs after a build to see whether rollups and formulas computed; and
-   up to 10 single registry-row writes to set column order, hidden columns and
-   sort. Each of those calls re-reads the whole context, so each test below
-   pins one call doing the work several did. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -22,8 +15,6 @@ const call = (w, name, args) => dispatchTool(w, name, args ?? {});
 const refusal = (fn) => { try { fn(); } catch (e) { return e; } assert.fail('expected a refusal'); };
 const json = (v) => JSON.parse(JSON.stringify(v));
 
-// ---------- #625: several vocabulary sections in one call ----------
-
 test('weave_vocabulary {sections:[...]} answers every named section in one call, keyed by name', () => {
   const w = new Weave();
   const r = call(w, 'weave_vocabulary', { sections: ['optionColors', 'numberFormats', 'formulaFunctions'] });
@@ -31,13 +22,10 @@ test('weave_vocabulary {sections:[...]} answers every named section in one call,
   assert.deepEqual(r.optionColors, VOCABULARY.optionColors);
   assert.deepEqual(r.numberFormats, VOCABULARY.numberFormats);
   assert.deepEqual(r.formulaFunctions, VOCABULARY.formulaFunctions);
-  // `section` takes the same list, or a comma-separated string.
   assert.deepEqual(call(w, 'weave_vocabulary', { section: ['optionColors', 'numberFormats'] }), { optionColors: VOCABULARY.optionColors, numberFormats: VOCABULARY.numberFormats });
   assert.deepEqual(call(w, 'weave_vocabulary', { section: 'optionColors, numberFormats' }), { optionColors: VOCABULARY.optionColors, numberFormats: VOCABULARY.numberFormats });
-  // The single-section form is unchanged.
   assert.deepEqual(call(w, 'weave_vocabulary', { section: 'numberFormats' }), VOCABULARY.numberFormats);
   assert.deepEqual(call(w, 'weave_vocabulary', { sections: ['numberFormats'] }), VOCABULARY.numberFormats);
-  // An unknown name is refused by name, listing the real ones.
   assert.match(refusal(() => call(w, 'weave_vocabulary', { sections: ['optionColors', 'nope'] })).message, /Unknown vocabulary section 'nope' \(fieldTypes, optionColors,/);
 });
 
@@ -46,7 +34,6 @@ test('a query rides along: it searches the icons section and leaves the others w
   const r = call(w, 'weave_vocabulary', { sections: ['icons', 'optionColors'], query: 'wallet' });
   assert.deepEqual(r.icons, searchIcons('wallet'));
   assert.deepEqual(r.optionColors, VOCABULARY.optionColors);
-  // A query alone with a non-icon section list still names where it works.
   assert.match(refusal(() => call(w, 'weave_vocabulary', { sections: ['optionColors', 'numberFormats'], query: 'x' })).message, /query searches the icons section/);
 });
 
@@ -56,9 +43,7 @@ test('several icon queries in one call: a list, or a comma-separated string', ()
   assert.equal(r.form, 'lucide:<name>');
   assert.deepEqual(r.searches, [searchIcons('wallet'), searchIcons('phone')].map(({ form, ...rest }) => rest));
   assert.deepEqual(call(w, 'weave_vocabulary', { query: 'wallet, phone' }), r);
-  // One query keeps its single-search shape.
   assert.deepEqual(call(w, 'weave_vocabulary', { section: 'icons', query: 'phone' }), searchIcons('phone'));
-  // Every icon query plus two more sections is still one short answer.
   const all = call(w, 'weave_vocabulary', { sections: ['icons', 'optionColors', 'numberFormats'], query: ['wallet', 'bank', 'tag', 'chart'] });
   assert.equal(all.icons.searches.length, 4);
   assert.ok(JSON.stringify(all).length < 6000, `the combined answer stays short: ${JSON.stringify(all).length}`);
@@ -80,8 +65,6 @@ test('the MCP schema declares sections; REST and CLI take the comma list', async
     assert.deepEqual(JSON.parse(out), json({ optionColors: VOCABULARY.optionColors, numberFormats: VOCABULARY.numberFormats }));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
-
-// ---------- #627: the build reply shows what computed fields computed ----------
 
 const BUDGET = () => ({
   spaces: [{
@@ -119,13 +102,10 @@ test('the build reply carries a few computed values per formula, lookup and roll
   const r = w.build(BUDGET());
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   assert.deepEqual(Object.keys(r.computed).sort(), ['Budget/Category.Spending', 'Budget/Transaction.Category name', 'Budget/Transaction.Doubled']);
-  // The values the grid shows, at most three a field, in row order.
   assert.deepEqual(r.computed['Budget/Category.Spending'], ['$200.00', '$30.00']);
   assert.deepEqual(r.computed['Budget/Transaction.Doubled'], [284.36, 115.64, 60]);
   assert.deepEqual(r.computed['Budget/Transaction.Category name'], ['Groceries', 'Groceries', 'Fun']);
-  // A plain field is not sampled: the agent wrote those values itself.
   assert.ok(!('Budget/Transaction.Amount' in r.computed));
-  // The reply is the one line the MCP tool returns.
   const mcp = JSON.parse(call(new Weave(), 'weave_build', { spec: BUDGET() }));
   assert.deepEqual(mcp.computed, r.computed);
 });
@@ -147,8 +127,6 @@ test('a computed field over an empty table says so; an existing field is not re-
   assert.equal(again.computed, undefined, 'no computed field made this time: the key is left out');
 });
 
-// ---------- #628: layout per table in the build spec ----------
-
 test('a table spec carries fieldOrder, hidden and sort, applied to its default view', () => {
   const w = new Weave();
   const spec = BUDGET();
@@ -161,10 +139,8 @@ test('a table spec carries fieldOrder, hidden and sort, applied to its default v
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   assert.deepEqual(r.ignored, [], 'the layout keys are taken, not dropped');
   const [view] = w.tableView('Budget/Transaction').views;
-  // The named fields lead in the order given; the rest keep theirs; hidden ones are gone.
   assert.deepEqual(view.fields, ['Amount', 'Category', 'Name', 'Doubled']);
   assert.deepEqual(view.sort, [{ field: 'Amount', dir: 'desc' }]);
-  // The schema order follows too, so the entity page and weave_schema agree with the grid.
   const tx = w.findTable('Transaction');
   assert.deepEqual(tx.fieldOrder.map((id) => tx.fields[id].name).slice(0, 3), ['Amount', 'Category', 'Name']);
 });

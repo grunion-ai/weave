@@ -1,18 +1,3 @@
-/* A table query answers what its reader draws (Issue #272).
-
-   `POST /api/tables/Case/query {}` answered 10,224,700 bytes for 2,060 rows:
-   every field of every row, each row's comments, activity and files, and for
-   a relation the full summary of the far row (its chip, whose segments can
-   hold a whole inverse relation's names) once per row that points at it,
-   so the same forty suites were serialised two thousand times. The grid
-   draws its visible columns and a chip per related row.
-
-   Two opt-ins, both off by default so every other caller keeps its shape:
-   - `fields: [...]` keeps the entity shape but cuts `fields`, `raw` and
-     `docs` to the named fields (and a system column), and leaves out the
-     comments, the activity and the files;
-   - `relations: 'chip'` answers a relation value as `{ id, publicId, name }`
-     and sends each far row's summary once, in `chips`, keyed by id. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -55,12 +40,9 @@ test('fields: the entity shape, cut to the named fields', () => {
   assert.deepEqual(Object.keys(b.raw), ['Name', 'Line']);
   assert.equal(b.fields.Line, a.fields.Line);
   assert.deepEqual(b.raw.Line, a.raw.Line);
-  // The row's identity and its stamps ride along: the grid's row chrome and
-  // its system columns read them.
   for (const k of ['id', 'publicId', 'db', 'dbId', 'name', 'createdAt', 'updatedAt', 'createdBy', 'modifiedBy', 'deletedAt', 'url']) {
     assert.deepEqual(b[k], a[k], `${k} is kept`);
   }
-  // The heavy parts are left out unless asked for.
   for (const k of ['comments', 'activity', 'files', 'doc', 'docField']) assert.equal(k in b, false, `${k} is left out`);
   assert.deepEqual(b.docs, {}, 'no document was named, so none is sent');
   assert.ok(a.comments.length && a.activity.length, 'the full read still carries them');
@@ -82,7 +64,6 @@ test('fields: a name that is not a field or a system column is refused', () => {
   assert.throws(() => w.query(cases, { fields: ['Nope'] }), /Field 'Nope' not found/);
   assert.throws(() => w.query(cases, { fields: 'Name' }), /fields/);
   assert.throws(() => w.query(cases, { fields: ['Name'], select: ['Line'] }), /select or fields/);
-  // A system column's own name is not an error: its value rides the row.
   assert.equal(w.query(cases, { fields: ['Created At', 'Modified By'] }).items.length, 6);
 });
 
@@ -95,7 +76,6 @@ test('relations: chip answers a reference per row and each far row once', () => 
   assert.deepEqual(chip.items[0].raw.Suite, full.items[0].raw.Suite, 'raw is the ids, as ever');
   assert.deepEqual(Object.keys(chip.chips).sort(), [grid.id, eng.id].sort(), 'each far row once');
   assert.deepEqual(chip.chips[grid.id], full.items[0].fields.Suite, 'the chip is the summary a full read embeds');
-  // The inverse side is a to-many relation: an array of references.
   const suites = w.query('Suite', { relations: 'chip', sort: ['Name'] });
   assert.deepEqual(suites.items.find((s) => s.id === grid.id).fields.Cases.map((c) => c.name), ['case 0', 'case 1', 'case 2', 'case 3']);
   assert.equal(Object.keys(suites.chips).length, 6);
@@ -119,7 +99,6 @@ test('fields and relations together: the grid page', () => {
   assert.equal(q.total, 6);
   assert.deepEqual(Object.keys(q.chips), [grid.id], 'only the far rows this page points at');
   assert.deepEqual(q.items[1].fields, { Name: 'case 1', Suite: { id: grid.id, publicId: grid.publicId, name: 'grid.test.mjs' } });
-  // A narrower answer, measurably.
   const full = JSON.stringify(w.query(cases, { sort: ['Line'], limit: 2 })).length;
   assert.ok(JSON.stringify(q).length < full / 2, `the cut page is under half the full one (${JSON.stringify(q).length} of ${full})`);
 });

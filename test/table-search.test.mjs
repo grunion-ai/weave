@@ -1,11 +1,3 @@
-/* Table search (Feature #228): the table page's search box narrows the grid
-   with the SAME matcher as the ⌘K palette — name, publicId (#143), text
-   fields, documents, comments — scoped to one table. One search
-   implementation, two entry points: `search(text, { table })` is the palette
-   scorer with a scope, and the table query takes `search` so a paged grid
-   gets the right page, the right order and the right total from the server.
-   The search is transient view state and never touches the table's saved
-   filter. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';

@@ -1,18 +1,9 @@
-/* The browser session, end to end without a browser (Feature #222 part 2,
-   Feature #208, Feature #141 §3). Door B introduced it for passkeys; since
-   Feature #243 removed the passkey door, the session is minted by the
-   provider door (Feature #212) and this file drives it through the provider
-   in software, test/lib/idp.mjs. What stays pinned: a session cookie that
-   opens the wall, sign out, the wall closed again; sliding expiry,
-   revocation by id, all, or all-but-this; the rate limits; and the two ways
-   a caller's standing is read (Bearer wins). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { originFromEnv, trustProxyFromEnv } from '../src/server.js';
 import { startIdp, serveOidc } from './lib/idp.mjs';
 
-/* ---------------------------------------------------------------- engine */
 test('engine: a session is a hash at rest with a sliding 30-day expiry; revoke by id, all, or all-but-this', () => {
   const w = new Weave();
   w.createAccount({ name: 'kyle', role: 'admin' });
@@ -24,14 +15,12 @@ test('engine: a session is a hash at rest with a sliding 30-day expiry; revoke b
   assert.equal(me.role, 'architect');
   assert.ok(!('tokenHash' in me));
   assert.equal(w.verifySession('nope'), null);
-  // Sliding: an old lastSeenAt is refreshed on use, and expiresAt moves with it.
   const h1 = me.sessionId;
   const row = w.state.meta.sessions[h1];
   row.lastSeenAt = new Date(Date.now() - 10 * 60_000).toISOString();
   row.expiresAt = new Date(Date.now() + 60_000).toISOString();
   w.verifySession(s1.token);
   assert.ok(Date.parse(row.expiresAt) > Date.now() + 29 * 24 * 3600_000, 'expiry slid 30 days out');
-  // Expired: gone on the next verify.
   row.expiresAt = new Date(Date.now() - 1).toISOString();
   assert.equal(w.verifySession(s1.token), null);
   assert.ok(!(h1 in w.state.meta.sessions));
@@ -62,12 +51,9 @@ test('engine: sessions never leave through an export', () => {
   assert.equal(far.state.meta.sessions, undefined);
 });
 
-/* ---------------------------------------------------------------- routes */
 const KYLE = { sub: 'user_kyle', email: 'kyle@example.com', email_verified: true };
 const EYE = { sub: 'user_eye', email: 'eye@example.com', email_verified: true };
 
-/* limits: the suites drive dozens of sign-ins from one IP; the rate-limit
-   case passes the real numbers back in. */
 async function serve({ requireAuth = true, origin, limits = { options: 1000, failed: 1000 }, trustProxy } = {}) {
   const idp = await startIdp();
   const w = new Weave();
@@ -85,7 +71,6 @@ async function serve({ requireAuth = true, origin, limits = { options: 1000, fai
 test('routes: a provider sign-in sets a session cookie that opens the wall; logout closes it again', async () => {
   const s = await serve();
   try {
-    // The wall sends a signed-out browser to the sign-in door (Issue #569).
     const walled = await s.call('GET', `/e/${s.task.id}/doc.html`);
     assert.equal(walled.status, 302);
     assert.equal(walled.headers.get('location'), `/auth?next=${encodeURIComponent(`/e/${s.task.id}/doc.html`)}`);
@@ -95,7 +80,6 @@ test('routes: a provider sign-in sets a session cookie that opens the wall; logo
     const kyle = await s.signIn(KYLE);
     assert.equal(kyle.res.status, 302);
     assert.match(kyle.res.headers.get('set-cookie'), /^wv_session=[A-Za-z0-9_-]+; HttpOnly; SameSite=Lax; Path=\/; Max-Age=2592000$/, 'no Secure on http');
-    // The cookie is a way through the wall, on pages and on the API.
     assert.equal((await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie })).status, 200);
     assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 200);
     const me = await (await s.call('GET', '/api/auth/me', { cookie: kyle.cookie })).json();
@@ -103,17 +87,14 @@ test('routes: a provider sign-in sets a session cookie that opens the wall; logo
     assert.equal(me.role, 'architect');
     assert.equal(me.sessions.length, 1);
     assert.equal(me.sessions[0].current, true);
-    // A write lands under the account's name.
     const row = await (await s.call('POST', '/api/tables/Task/entities', { cookie: kyle.cookie, body: { name: 'By cookie' } })).json();
     assert.equal(s.w.getEntity(row.id).createdBy, 'kyle');
-    // Sign out: the cookie is cleared and the wall is back.
     const bye = await s.call('POST', '/api/auth/logout', { cookie: kyle.cookie });
     assert.match(bye.headers.get('set-cookie'), /^wv_session=; .*Max-Age=0/);
     const after = await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie });
     assert.equal(after.status, 302, 'a dead cookie on a page redirects to the sign-in page');
     assert.match(after.headers.get('location'), /^\/auth\?next=%2Fe%2F/);
     assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 401, 'a dead cookie on the API is a JSON 401');
-    // Sign in again through the provider.
     const back = await s.signIn(KYLE);
     assert.equal((await s.call('GET', '/api/schema', { cookie: back.cookie })).status, 200);
   } finally { s.stop(); }
@@ -123,30 +104,24 @@ test('routes: Bearer wins when both are present; a reader session is read-only; 
   const s = await serve();
   try {
     const kyle = await s.signIn(KYLE);
-    // Bearer names root even with kyle's cookie along.
     const me = await (await s.call('GET', '/api/auth/me', { cookie: kyle.cookie, token: s.admin })).json();
     assert.equal(me.account.name, 'root');
-    // A reader's session: pages yes, writes no, sign-out yes.
     const eye = await s.signIn(EYE);
     assert.equal((await s.call('GET', `/e/${s.task.id}/doc.md`, { cookie: eye.cookie })).status, 200);
     assert.equal((await s.call('POST', '/api/tables/Task/entities', { cookie: eye.cookie, body: { name: 'x' } })).status, 403);
     assert.equal((await s.call('POST', '/api/auth/logout', { cookie: eye.cookie })).status, 200);
-    // Sessions: a second sign-in, then "others" ends it and this one stays.
     const again = await s.signIn(KYLE);
     assert.equal((await (await s.call('GET', '/api/auth/me', { cookie: kyle.cookie })).json()).sessions.length, 2);
     assert.deepEqual(await (await s.call('DELETE', '/api/auth/sessions/others', { cookie: kyle.cookie })).json(), { revoked: 1 });
     assert.equal((await s.call('GET', '/api/schema', { cookie: again.cookie })).status, 401);
     assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 200);
-    // One by id.
     const third = await s.signIn(KYLE);
     const other = (await (await s.call('GET', '/api/auth/me', { cookie: kyle.cookie })).json()).sessions.find((x) => !x.current);
     assert.deepEqual(await (await s.call('DELETE', `/api/auth/sessions/${other.id}`, { cookie: kyle.cookie })).json(), { revoked: 1 });
     assert.equal((await s.call('GET', '/api/schema', { cookie: third.cookie })).status, 401);
-    // The operator's verbs reach the same sessions: list, then revoke all.
     assert.equal(s.w.listSessions('kyle').length, 1);
     assert.deepEqual(s.w.revokeSession('kyle', { all: true }), { revoked: 1 });
     assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 401);
-    // Anonymous: the self-service verbs are 401, not 404.
     assert.equal((await s.call('GET', '/api/auth/me')).status, 401);
     assert.equal((await s.call('DELETE', '/api/auth/sessions/others')).status, 401);
   } finally { s.stop(); }
@@ -172,11 +147,8 @@ test('routes: rate limits — 10 sign-in starts a minute per IP, 5 failed callba
     assert.equal(last.status, 302);
     const eleventh = await s.call('GET', '/api/auth/oidc/start');
     assert.equal(eleventh.status, 429);
-    // A navigation, so a page with a way back (Issue #570), not JSON.
     assert.match(await eleventh.text(), /Too many sign-in attempts[\s\S]*href="\/auth\?signed-out=1"/);
-    // Not trusting the proxy: a forged X-Forwarded-For does not buy a fresh bucket.
     assert.equal((await s.call('GET', '/api/auth/oidc/start', { headers: { 'X-Forwarded-For': '203.0.113.9' } })).status, 429);
-    // Failed callbacks: five made-up states, then the sixth is refused before it is read.
     for (let i = 0; i < 5; i++) assert.equal((await s.call('GET', '/api/auth/oidc/callback?code=x&state=nope')).status, 400);
     assert.equal((await s.call('GET', '/api/auth/oidc/callback?code=x&state=nope')).status, 429);
   } finally { s.stop(); }

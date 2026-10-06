@@ -1,16 +1,3 @@
-/* Structure trash (lifecycle regression gate, Phase 0a).
-
-   Deleting a table or a space is now recoverable by default, the same
-   contract entities have had since Feature #38: the structure keeps its id
-   and its rows, and simply stops being visible. Restoring gives back exactly
-   what was trashed — rows, relations, registry row. Purging stays the
-   explicit, irreversible opt-in (`hard`), and it is still what the registry
-   calls "the real delete".
-
-   This re-rules the 2026-08 decision that structural deletes are always
-   final: the lifecycle regression pack requires create → delete → restore at
-   every level, so the tombstone moved up the ladder. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -37,7 +24,6 @@ test('a trashed table disappears from listTables, schema and search but keeps it
   assert.equal(w.search('Alpha').length, 0, 'rows of a trashed table are unsearchable');
   assert.ok(!w.universalSearch('Task').some((r) => r.kind === 'table'), 'and so is the table itself');
 
-  // Direct access still works — restore and the trash view both need it.
   assert.ok(w.getTable(tasks.id).deletedAt);
   assert.equal(w.readEntity(a.id).name, 'Alpha', 'the rows were kept, not purged');
   assert.equal(w.findTable('Product/Task'), undefined, 'name lookups skip the trash');
@@ -67,7 +53,6 @@ test('restoreTable brings the table, its rows and its relations back intact', ()
   assert.equal(w.readEntity(a.id).fields.Project.name, 'Apollo', 'relations survive the round trip');
   assert.deepEqual(w.readEntity(apollo.id).fields.Tasks.map((t) => t.name), ['Alpha']);
   assert.ok(w.listAudit().some((x) => x.action === 'table-restored'));
-  // Restoring a live table is a no-op, not an error.
   w.restoreTable(tasks.id);
 });
 
@@ -107,16 +92,14 @@ test('a table cannot be restored while its space is in the trash', () => {
 
 test('hard delete still purges — rows, registry rows, trash and all', () => {
   const { w, tasks, a } = buildWorkspace();
-  w.deleteTable(tasks.id); // from the trash…
-  w.deleteTable(tasks.id, { hard: true }); // …to gone
+  w.deleteTable(tasks.id);
+  w.deleteTable(tasks.id, { hard: true });
   assert.throws(() => w.getEntity(a.id), /not found/);
   assert.throws(() => w.getTable(tasks.id), /not found/);
   assert.deepEqual(w.listTrash(), [], 'a purge leaves nothing behind');
 
   w.deleteSpace('Product', { hard: true });
   assert.equal(w.findSpace('Product'), undefined);
-  // The four system tables keep their registry rows (Issue #126) — only the
-  // user structure is gone.
   const left = w.listEntities(w.getTable('Tables').id, { includeDeleted: true });
   assert.equal(left.filter((e) => !w.state.tables[e.sysId]?.system).length, 0);
 });
@@ -125,7 +108,7 @@ test('registry rows speak the same contract: soft by default, hard purges, resto
   const { w, tasks } = buildWorkspace();
   const row = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
 
-  w.deleteEntity(row.id); // soft — routes to the structural trash
+  w.deleteEntity(row.id);
   assert.ok(w.getTable(tasks.id).deletedAt, 'trashing the row trashes the table');
 
   w.restoreEntity(row.id);
@@ -144,8 +127,6 @@ test('structure trash survives an export/import round trip', () => {
   reopened.restoreTable(tasks.id);
   assert.equal(reopened.query('Product/Task', {}).total, 1);
 });
-
-/* ---------- REST surface ---------- */
 
 test('REST: table and space delete are soft, restore un-deletes, ?hard=1 purges', async () => {
   const { w, tasks } = buildWorkspace();

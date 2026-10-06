@@ -2,12 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 
-/* Feature #97 — number units & formatting, Fibery-style. A number field's
-   config can say how it reads: format (number | currency | percent), a free
-   unit rendered beside the value, decimals, and a thousands separator. The
-   stored value stays a plain number — formatting is display-only and never
-   round-trips into storage or formulas. */
-
 function fresh(config) {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });
@@ -30,8 +24,6 @@ test('unit, decimals and separator compose', () => {
   assert.equal(shown(w, 30), '30 days');
   const w2 = fresh({ decimals: 2, separator: true });
   assert.equal(shown(w2, 1234567.891), '1,234,567.89');
-  // A separator alone groups thousands and keeps the figure's own decimals:
-  // it truncated 44.22 to 44 (Issue #574).
   const w3 = fresh({ separator: true });
   assert.equal(shown(w3, 44.22), '44.22');
   assert.equal(shown(w3, 1234.5), '1,234.5');
@@ -41,8 +33,6 @@ test('unit, decimals and separator compose', () => {
 test('currency puts the unit in front; percent needs no unit at all', () => {
   const w = fresh({ format: 'currency', unit: '$', decimals: 2, separator: true });
   assert.equal(shown(w, 1200), '$1,200.00');
-  // Percent is the spreadsheet convention since Issue #127: the stored value
-  // is the fraction, the display is ×100.
   const w2 = fresh({ format: 'percent', decimals: 1 });
   assert.equal(shown(w2, 0.12345), '12.3%');
 });
@@ -77,9 +67,6 @@ test('updateField edits the costume without touching width or default', () => {
   assert.equal(f.config.decimals, 1);
 });
 
-/* Feature #44 — the date system's engine half: a display costume for date
-   fields (format + optional time) and date math in formulas. Values store as
-   ISO strings; the costume is display-only, exactly like numbers (#97). */
 test('date fields wear a format costume', () => {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });
@@ -133,8 +120,6 @@ test('updateField edits the date costume too', () => {
   assert.equal(f.config.format, 'us', 'width edits never clobber the costume');
 });
 
-/* Issue #127 — percent scales: stored fraction, displayed ×100, and values
-   written under the pre-fractional rule divide once at migration. */
 test('percent multiplies the stored fraction by 100 for display', () => {
   const w = fresh({ format: 'percent', decimals: 1 });
   assert.equal(shown(w, 0.325), '32.5%');
@@ -144,7 +129,7 @@ test('percent multiplies the stored fraction by 100 for display', () => {
 
 test('percent display carries no float noise', () => {
   const w = fresh({ format: 'percent' });
-  assert.equal(shown(w, 0.1), '10%'); // 0.1 × 100 = 10.000000000000002 raw
+  assert.equal(shown(w, 0.1), '10%');
 });
 
 test('pre-fractional percent values divide by 100 exactly once at load', async () => {
@@ -159,7 +144,6 @@ test('pre-fractional percent values divide by 100 exactly once at load', async (
     w.createTable({ space: 'Dev', name: 'Deal' });
     w.addField('Deal', { name: 'Share', type: 'number', config: { format: 'percent', decimals: 1 } });
     const e = w.createEntity('Deal', { name: 'X', values: { Share: 0.325 } });
-    // Forge the legacy state: value stored as the displayed number, flag off.
     w.updateEntity(e.id, { Share: 32.5 });
     delete w.state.meta.percentFractional;
     w.save();
@@ -171,9 +155,6 @@ test('pre-fractional percent values divide by 100 exactly once at load', async (
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-/* Compact and accounting (2026-09-02, from the field-costumes pass). Both
-   are display only, like every other costume: the stored number is
-   untouched, formulas and sorting never see the string. */
 test('compact abbreviates a figure that would outgrow its column; the value underneath is untouched', () => {
   const w = fresh({ format: 'compact' });
   assert.equal(shown(w, 1234567.891), '1.2M');
@@ -205,10 +186,6 @@ test('accounting parenthesises a negative currency amount', () => {
   assert.equal(field.config.currency, 'USD', 'without touching the rest of the costume');
 });
 
-/* Issue #388: the field dialog's Sample dresses a figure in the browser, so
-   the costume cannot live in the engine alone. It lives in
-   public/number-core.js and the engine reads it from there — this holds the
-   two to one answer. */
 test('the cell and the settings tray dress a figure through one costume', async () => {
   await import('../public/number-core.js');
   const { dressNumber } = globalThis.weaveNumberCore;

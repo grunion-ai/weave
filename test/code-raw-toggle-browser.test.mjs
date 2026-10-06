@@ -1,22 +1,3 @@
-/* A code block's markdown source sits behind a </> toggle (Issue #96).
-
-   Kyle, 2026-08-26, on a Description holding a mermaid diagram: "move show
-   raw formatting behind a code icon in the upper righthand corner of the code
-   panel and use this to hide and show". Vditor's IR mode expands a fenced
-   block into its markdown the moment the caret enters it: the ``` fence and
-   language line above the code, the closing fence below, and for a diagram
-   the source in place of the drawing. His trace is six clicks on the diagram,
-   each of which turned the picture back into text.
-
-   What holds now, measured here in both themes: the caret in a block leaves
-   it looking like itself (code stays code, a diagram stays a diagram), a
-   </> button sits in the panel's upper right, and that button, and only that
-   button, shows and hides the fence, the language and a diagram's source.
-   Typing in the code with the fences hidden still writes the markdown, on the
-   full page and on the phone dock's sheet (Issue #616), where the sheet's
-   overscroll-behavior once pinned the caret at the start of the code line.
-
-   Playwright is NOT a dependency of weave; the suite skips without it. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -48,15 +29,11 @@ if (s) {
     return page;
   }
 
-  // Waits for the debounced save to land and returns what the server holds.
   const settle = async (id, re) => {
     for (let i = 0; i < 60 && !re.test(weave.getDoc(id) ?? ''); i++) await new Promise((r) => setTimeout(r, 100));
     return weave.getDoc(id);
   };
 
-  /* Everything the assertions read, in one pass: which parts of the block
-     are on screen, where the toggle sits against the panel that is showing,
-     and the colours it paints on that panel. */
   const readBlock = (page) => page.evaluate(() => {
     const node = document.querySelector('.vditor-ir [data-type="code-block"]');
     const shown = (n) => !!n && n.getClientRects().length > 0;
@@ -72,7 +49,6 @@ if (s) {
     }
     return {
       expanded: node.classList.contains('vditor-ir__node--expand'),
-      // Vditor draws the fences as the node's own ::before and ::after.
       fence: !/^(none|normal)$/.test(getComputedStyle(node, '::before').content),
       info: shown(node.querySelector('[data-type="code-block-info"]')),
       close: !/^(none|normal)$/.test(getComputedStyle(node, '::after').content),
@@ -102,7 +78,6 @@ if (s) {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  // The upper right of the panel on screen: inside it, near its top-right corner.
   const assertUpperRight = (r, where) => {
     assert.ok(r.btn, `${where}: the </> button is on screen`);
     assert.ok(r.btn.right <= r.panel.right + 0.5 && r.panel.right - r.btn.right <= 16,
@@ -169,12 +144,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* The same keystroke on the phone pose, where the dock covers the screen as
-     a sheet (Issue #549). The sheet carried `overscroll-behavior: contain`,
-     and in Chromium that stops End from moving the caret inside a code block:
-     the caret stayed at the CODE element's offset 0 and the text landed at
-     the START of the line (Issue #616). #main and the desktop dock already
-     leave the property off for this reason (Issue #609). */
   async function openDocked(id) {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.addInitScript(() => localStorage.setItem('weave-theme', 'light'));
@@ -244,8 +213,6 @@ if (s) {
       await page.waitForSelector('button.doc-code-raw', { state: 'visible' });
       await page.click('button.doc-code-raw');
       await page.waitForFunction(() => document.querySelector('.doc-editor.wv-code-raw'));
-      // A route change runs teardownDocEditors; the focusout it causes queues
-      // one more placement pass, which must find nothing to put back.
       await page.evaluate(() => { location.hash = '#/'; });
       await page.waitForFunction(() => !document.querySelector('.doc-editor'));
       await page.waitForTimeout(300);
@@ -253,9 +220,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Kyle's own surface: the trace is a Description with a mermaid diagram,
-     clicked six times. A diagram's raw view is its source, so the drawing is
-     what stays on screen until </> asks for the source. */
   test('clicking a diagram keeps the drawing; </> swaps in its source and back', async () => {
     const id = entityWithDoc('Diagram', MERMAID_DOC);
     const page = await openEntity(id);

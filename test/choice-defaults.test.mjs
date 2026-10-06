@@ -1,17 +1,3 @@
-/* A new row's choice is empty unless its field names a default (Issue #421).
-
-   The engine marked the first state `default` on every workflow field that
-   marked none — in addField, in the normaliser every states edit goes
-   through, and in the seeded four — and type conversion fell back to that
-   state for an empty value. So a new row always carried a status, and
-   "nobody chose" read the same as "chose the first one". Kyle, 2026-09-26:
-   "select fields that don't have a blank or default value should not create
-   a value: null (empty) unless otherwise specified".
-
-   Existing workspaces: the engine always STORED the flag it implied, so a
-   workflow field made before this change carries `default: true` on its
-   first state and keeps starting rows there. Nothing is rewritten; the field
-   dialog's Default picker (Issue #422) is how a person clears it. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -84,11 +70,8 @@ test('a select or multi-select starts empty unless it names a default', () => {
 test('a select default follows a rename sent with it, and leaves with its option', () => {
   const { w, t } = ws();
   const f = w.addField(t, { name: 'Size', type: 'select', config: { options: ['S', 'M'], default: 'M' } });
-  // The dialog sends the options and the default in one save; the default
-  // names the option by its new name.
   w.updateField(t, f.id, { config: { options: [{ id: 's', name: 'S' }, { id: 'm', name: 'Medium' }], default: 'Medium' } });
   assert.equal(read(w, w.createEntity(t, { name: 'x' })).Size, 'Medium');
-  // An option removed takes the default with it rather than leaving an id nothing names.
   w.updateField(t, f.id, { config: { options: [{ id: 's', name: 'S' }] } });
   assert.equal(w.getField(t, f.id).config.default, undefined);
   assert.equal(read(w, w.createEntity(t, { name: 'y' })).Size, null);
@@ -104,7 +87,6 @@ test('converting to a workflow keeps empty cells empty and carries a select defa
   assert.deepEqual(wf.config.states.map((s) => s.default), [false, true], 'High stays the default');
   assert.equal(read(w, a).Pri, 'Low');
   assert.equal(read(w, b).Pri, null, 'an empty cell does not become the default state');
-  // Text with no default in play: an empty cell stays empty.
   const g = w.addField(t, { name: 'Note', type: 'text' });
   const c = w.createEntity(t, { name: 'c' });
   w.updateField(t, g.id, { type: 'select' });

@@ -1,13 +1,3 @@
-/* A text or date cell at rest ends in an ellipsis, not mid-letter (Issue #424).
-   Kyle's screenshot, uno › Travel › Points Balances: the Source cells read
-   "sc", "m", "er" at the column edge, and every empty As of cell showed the
-   date hint "today, 15 sep, 9" cut through the 9. Both are an
-   `input.inline-edit` resting in the cell, and the <td>'s own text-overflow
-   never reaches text inside an input, so the input clipped at its padding
-   box. At rest the input now ellipsizes; focused it clips again, so the caret
-   can scroll the value. An empty date cell rests blank and shows its hint
-   only on focus: the same hint on every empty row was noise.
-   Geometry, not source: this suite drives a real browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

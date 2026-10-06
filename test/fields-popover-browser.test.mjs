@@ -1,11 +1,3 @@
-/* The Fields popover's drag and height (Issues #445, #446; Kyle's rulings
-   2026-09-27). A row reads `grab` at rest over its name and its grip, never
-   an I-beam; a drag reads `grabbing` for its whole length, over other rows
-   and outside the list, and lets go on drop, Escape or pointercancel. The
-   insertion line is straight with square ends. The list grows to the room
-   below the Fields button before it scrolls, its header sits outside the
-   scroll box, and a scrolled list never shows half a row at its top.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -52,7 +44,6 @@ if (s) {
       assert.equal(await page.evaluate(() => document.documentElement.classList.contains('wv-grabbing')), false, 'the drop lets the cursor go');
       assert.equal(await page.locator('.table-fields-popover .drop-line').count(), 0);
       assert.equal(await page.locator('.table-field-row[data-field="Owner"] input').isChecked(), true, 'a drag is not a click: the field still shows');
-      // Escape ends a drag in flight without moving anything.
       const desc = await page.locator('.table-field-row[data-field="Description"] .eye-label').boundingBox();
       await page.mouse.move(desc.x + 4, desc.y + desc.height / 2);
       await page.mouse.down();

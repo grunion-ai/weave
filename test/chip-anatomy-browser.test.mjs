@@ -1,9 +1,3 @@
-/* Feature #180: the Handbook's "Chip and card anatomy" guide renders in-app.
-   Its figures are raw HTML carrying the real chip and card classes. Vditor's
-   IR renderer has to let them through whole — classes, inline outlines, the
-   numbered badges — at the app's own chip size, so the page shows the thing
-   it documents, not a picture of it. Playwright is imported by the shared
-   harness and the suite skips without it. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

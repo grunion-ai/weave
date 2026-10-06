@@ -1,9 +1,3 @@
-/* Crumb text and the crumb row's buttons share one vertical centre
-   (Issue #585). `.crumb-actions` wears `wv-toolbar`, whose 16px
-   margin-bottom made the actions box 28px of buttons plus 16px of margin;
-   `.crumb-row` centred that 44px box, so the buttons sat about 8px above
-   the breadcrumb text beside them, on the entity page and in the dock.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -17,9 +11,6 @@ const s = await launch('crumb row centre', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  /* Every button in the row's actions that sits on the path's line, with
-     its centre against the path's centre. A table toolbar that wraps to a
-     second line is a second line, not a misalignment, so it is left out. */
   const read = (page, scope) => page.evaluate((scope) => {
     const row = document.querySelector(`${scope} .view-header .crumb-row`);
     const path = row.querySelector('.crumb-path').getBoundingClientRect();

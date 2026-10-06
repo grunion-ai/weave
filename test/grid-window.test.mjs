@@ -1,15 +1,3 @@
-/* The row window, the pure half (Issue #271).
-
-   A grid used to draw every row: the Case table's 2,087 rows were 58,706 DOM
-   nodes and one 17–52 s task on open, for fifteen rows on screen. Kyle's
-   decision (2026-09-12): render the rows in view plus a buffer, keep the
-   buffer AHEAD of the scroll direction so the next rows are painted before
-   they scroll in, and hold the rest as two spacer rows whose heights keep the
-   scrollbar honest. Data arrives in pages of 200 in sort/filter order, and
-   the page past the window's leading edge is fetched before it is needed.
-
-   No DOM here: scroll geometry in, a window and the pages to have ready out.
-   public/app.js paints it. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -31,7 +19,6 @@ test('a table shorter than the viewport is drawn whole', () => {
 });
 
 test('at the top the window is one viewport plus two buffers ahead, and nothing behind', () => {
-  // 600 / 30 = 20 rows in view; the buffer is one viewport of rows (min 20).
   const w = win();
   assert.equal(w.start, 0);
   assert.equal(w.end, 20 + 2 * 20, 'view + 2 buffers ahead');
@@ -40,7 +27,7 @@ test('at the top the window is one viewport plus two buffers ahead, and nothing 
 });
 
 test('the buffer is never fewer than 20 rows, however short the viewport', () => {
-  const w = win({ viewportH: 90, total: 500 }); // 3 rows in view
+  const w = win({ viewportH: 90, total: 500 });
   assert.equal(w.end, 3 + 2 * 20);
 });
 
@@ -89,8 +76,6 @@ test('the spacers and the drawn rows always add up to the whole table', () => {
   }
 });
 
-/* ── pages: which 200-row slices the window needs, and the one to have ready ── */
-
 test('pagesFor names every page the window touches', () => {
   assert.deepEqual(GW.pagesFor({ start: 0, end: 60 }, 200, 2087), [0]);
   assert.deepEqual(GW.pagesFor({ start: 180, end: 260 }, 200, 2087), [0, 200]);
@@ -99,52 +84,29 @@ test('pagesFor names every page the window touches', () => {
 });
 
 test('prefetchOffset is the page past the leading edge, in the direction of travel', () => {
-  // Heading down from the top: the window ends at row 60, page 0 is loaded
-  // with it, so the page to have ready is the one after — 200.
   assert.equal(win().prefetchOffset, 200);
-  // Deep in the table heading down: the window [980, 1060) sits in page 800
-  // and 1000; the next is 1200.
   assert.equal(win({ scrollTop: 30 * 1000, direction: 1 }).prefetchOffset, 1200);
-  // Heading up from the same place: the window [960, 1040) starts in page
-  // 800; the one before it is 600.
   assert.equal(win({ scrollTop: 30 * 1000, direction: -1 }).prefetchOffset, 600);
-  // At either end there is nothing further to fetch.
   assert.equal(win({ scrollTop: 30 * 2087 }).prefetchOffset, null);
   assert.equal(win({ scrollTop: 0, direction: -1 }).prefetchOffset, null);
-  // A whole table in one page prefetches nothing.
   assert.equal(win({ total: 150 }).prefetchOffset, null);
 });
 
 test('scrollTopFor puts a row inside the viewport with the least motion', () => {
-  // scrollTop is body-relative: how many body pixels sit above the viewport's
-  // top edge; headH is the sticky header covering that edge.
   const rowH = 30, viewportH = 600, headH = 40;
-  // Already in view: no move.
   assert.equal(GW.scrollTopFor({ index: 25, rowH, viewportH, headH, scrollTop: 300 }), 300);
-  // Below the view: the row lands at the bottom edge.
   assert.equal(GW.scrollTopFor({ index: 100, rowH, viewportH, headH, scrollTop: 0 }), 101 * rowH - viewportH);
-  // Above the view (or under the header): the row lands just under the header.
   assert.equal(GW.scrollTopFor({ index: 3, rowH, viewportH, headH, scrollTop: 900 }), 3 * rowH - headH);
   assert.equal(GW.scrollTopFor({ index: 10, rowH, viewportH, headH, scrollTop: 290 }), 10 * rowH - headH, 'a row under the sticky header is not in view');
 });
 
 test('travelFor reads a direction from a row of travel, never from a pixel (Issue #317)', () => {
   const rowH = 30;
-  // The box correcting its own scroll at the bottom of a table: 27px
-  // backwards, under a row. Kyle felt that read as a direction — the buffer
-  // swapped to the far side of the window, the content height moved, the box
-  // clamped again, and it bounced once per wheel notch.
   assert.deepEqual(GW.travelFor({ scrollTop: 973, lastTop: 1000, direction: 1, rowH }), { direction: 1, lastTop: 1000 });
-  // The anchor stands through it, so a scroll that creeps accumulates to a
-  // flip instead of being rounded away one pixel at a time.
   assert.deepEqual(GW.travelFor({ scrollTop: 969, lastTop: 1000, direction: 1, rowH }), { direction: -1, lastTop: 969 });
-  // A row of travel either way is a gesture, and moves the anchor with it.
   assert.deepEqual(GW.travelFor({ scrollTop: 1030, lastTop: 1000, direction: -1, rowH }), { direction: 1, lastTop: 1030 });
   assert.deepEqual(GW.travelFor({ scrollTop: 940, lastTop: 1000, direction: 1, rowH }), { direction: -1, lastTop: 940 });
-  // Standing still is not a direction.
   assert.deepEqual(GW.travelFor({ scrollTop: 1000, lastTop: 1000, direction: -1, rowH }), { direction: -1, lastTop: 1000 });
-  // Down is the direction a grid opens in, and a row height nobody has
-  // measured yet falls back to the density's own, as windowFor does.
   assert.deepEqual(GW.travelFor({ scrollTop: 20, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 0 });
   assert.deepEqual(GW.travelFor({ scrollTop: 50, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 50 });
 });

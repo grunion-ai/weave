@@ -1,15 +1,3 @@
-/* A toggle column is never cut off (Issue #586). Before, a toggle's floor
-   was its header label alone, so a toggle named "On" dragged to about 50px:
-   its word ellipsized and then its track clipped. Kyle, 2026-10-02: "make
-   sure minimum field width is set so it is never cut off." Asserted here on
-   the rendered grid, for the default On / Off words, for a long custom pair
-   (Running / Paused) and for a word long enough to beat the 124px default:
-     - the cell paints the geometry public/column-resize.js computes with;
-     - a drag, three keyboard nudges and a double-click fit all stop where
-       the switch and the wider word still show whole, in an on row and an
-       off row alike;
-     - a stored width under the floor is raised to it;
-     - no other column's width moves (Feature #233, rule 2). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled, eventually } from './lib/browser.mjs';
@@ -51,11 +39,6 @@ if (s) {
       assert.ok(Math.abs(after[name] - w) <= 0.5, `${label}: ${name} kept its width (${w} → ${after[name]})`);
     }
   };
-  /* What one toggle column paints: its width, the floor the issue asks for
-     (the header label's, or the track + gap + the wider word + the cell's
-     padding, whichever is wider), and for each row whether the word or the
-     switch is cut. A word's natural width is read off a Range over its text,
-     which an ellipsis does not shorten. */
   const read = (page, name) => page.evaluate(([col, metrics]) => {
     const th = document.querySelector(`.wv-grid thead th.col-head[data-col="${col}"]`);
     const hs = getComputedStyle(th);
@@ -145,8 +128,6 @@ if (s) {
 
         before = await widths(page);
         await head(page, name).focus();
-        // A burst of nudges writes once, 350 ms after the last press; the
-        // fit below must not race that write.
         const nudged = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/views\//.test(r.url()));
         for (let i = 0; i < 3; i++) await page.keyboard.press('Alt+ArrowLeft');
         await nudged;

@@ -4,12 +4,6 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-/* Issue #489: three writer routes changed structure without the schema or
-   system-table check. POST /api/tables/:t/relations adds a field, so it is a
-   schema write (admin); POST /api/bulk and POST /api/tables/:t/import.csv
-   write rows the path does not name, so every row and target table they
-   reach takes the same system-table check as the single-entity doors. */
-
 process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');

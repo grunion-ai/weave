@@ -1,11 +1,3 @@
-/* The workspace logo's type comes from its bytes (Issue #492).
-   PUT /api/workspace/logo stored whatever content type the writer named and
-   GET served it back, so a writer could plant an HTML page at the logo URL
-   that ran script on the workspace origin. Upload now takes PNG, JPEG, GIF,
-   WebP and SVG (the logo picker offers image/* and the chip draws it through
-   an <img>), decided from the leading bytes, and refuses anything else with
-   415. The logo is served with the type its bytes prove, nosniff and a
-   sandbox policy, so an SVG opened on its own runs no script. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';

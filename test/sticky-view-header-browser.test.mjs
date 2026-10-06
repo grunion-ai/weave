@@ -1,26 +1,3 @@
-/* The view header never leaves the screen (Issue #321).
-
-   Kyle, reading a table in Safari: "some times table title and description
-   stays visible ... sometimes not, should always stay visible with
-   breadcrumbs and upper right toolbar". The "sometimes" is which box
-   scrolls. A grid wider than its card gets a vertical scroller of its own
-   (Issue #233), so the page never moves and the header only looked pinned;
-   a grid that fits clips, the page is the scroller, and the header left
-   with it. The header is sticky now, so both modes read the same.
-
-   The grid's field headers and the Σ rollup row are sticky too, and in the
-   page-scrolling mode they stick to the same box as the header. They start
-   where it ends instead of sliding under it.
-
-   "The page" is the main panel since the shell stopped scrolling the window
-   (Issue #609): #main is the box that scrolls, and the header holds at its
-   top edge, 8px under the window's.
-
-   An opened long description is capped (Issue #412): it scrolls inside the
-   header, so the held block never grows taller than the screen and the
-   rows keep the viewport.
-
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -30,23 +7,17 @@ const DESC = 'A description with enough words in it to wrap onto a second line o
 let tasks, wide, alpha, long;
 const s = await launch('sticky view header', (weave) => {
   weave.createSpace({ name: 'Work' });
-  // Two columns: the grid fits its card, so the PAGE is the scroller.
   tasks = weave.createTable({ space: 'Work', name: 'Tasks', description: DESC });
   weave.addField(tasks, { name: 'Note', type: 'number' });
   for (let i = 0; i < 200; i++) weave.createEntity('Tasks', { name: `task ${i}`, values: { Note: i } });
-  // Twelve long columns: the grid outgrows its card, so its WRAP is.
   wide = weave.createTable({ space: 'Work', name: 'Wide', description: DESC });
   for (let i = 0; i < 12; i++) weave.addField(wide, { name: `A long column name ${i}`, type: 'text' });
   for (let i = 0; i < 200; i++) weave.createEntity('Wide', { name: `w${i}` });
-  // The Σ row rides under the field headers (Issue #233) — it has to clear
-  // the view header too. The table opts in, as a reader would (Issue #249).
   const spacesT = Object.values(weave.state.tables).find((t) => t.system === 'spaces');
   weave.addField(spacesT.id, { name: 'Tasks · Note · sum', type: 'rollup', config: { via: 'Work/Tasks', targetField: 'Note', aggregate: 'sum' } });
   weave.updateTable(tasks.id, { hideRollups: false });
   const projects = weave.createTable({ space: 'Work', name: 'Projects' });
   alpha = weave.createEntity(projects, { name: 'Alpha' });
-  // Sixty paragraphs, far past the five-line clamp: opened in full, the
-  // header would be 1,340px tall, over a 900px window (Issue #412).
   long = weave.createTable({
     space: 'Work', name: 'Long',
     description: Array.from({ length: 60 }, (_, i) => `Paragraph ${i + 1} of a description nobody should have to scroll past to reach the rows.`).join('\n\n'),
@@ -61,7 +32,6 @@ if (s) {
     return n ? { ...n.getBoundingClientRect().toJSON(), ih: innerHeight, iw: innerWidth } : null;
   }, sel);
   const onScreen = (r) => r && r.height > 0 && r.top >= -1 && r.bottom <= r.ih + 1;
-  // The main panel is the page's scroller (Issue #609); its top edge is where a held header rests.
   const scrollMain = (page, y) => page.evaluate((t) => document.querySelector('#main').scrollTo({ top: t, behavior: 'instant' }), y);
   const mainTop = (page) => page.evaluate(() => ({ top: document.querySelector('#main').getBoundingClientRect().top, scrolled: document.querySelector('#main').scrollTop }));
   const open = async (id, theme = null) => {
@@ -70,7 +40,7 @@ if (s) {
     if (theme) await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     await page.waitForSelector('.wv-grid tbody tr[data-eid]');
     await page.waitForSelector('.view-desc-body');
-    await page.waitForTimeout(400); // the wrap is measured on a ResizeObserver
+    await page.waitForTimeout(400);
     return page;
   };
 
@@ -133,7 +103,6 @@ if (s) {
       assert.equal(paint.pos, 'sticky', `${theme}: the header is sticky`);
       assert.equal(paint.bg, paint.main, `${theme}: it wears the panel's own background, so rows cannot show through`);
       assert.ok(!/rgba\(0, 0, 0, 0\)/.test(paint.bg), `${theme}: and that background is opaque`);
-      // A transparent margin under it would be a band rows read through.
       assert.equal(paint.mar, '0px', `${theme}: the gap under the header is padding`);
       assert.ok(parseFloat(paint.pad) >= 8, `${theme}: and the padding is the gap`);
       await page.close();
@@ -144,9 +113,6 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await page.goto(`${base}/#/entity/${alpha.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main > .view-header');
-    // On the page it holds; in the dock the pane is its own scroller, and the
-    // header pins to the top of that pane (Issue #411 reversed the old rule
-    // that sat it in the flow; sticky-entity-heads-browser covers the scroll).
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main > .view-header')).position), 'sticky');
     assert.equal(await page.evaluate(() => {
       const d = document.createElement('div');
@@ -179,10 +145,6 @@ if (s) {
     assert.equal(after.dockPos, 'sticky', 'the dock\'s holds in its own pane (Issue #411)');
     assert.equal(after.v, after.measured, 'the reading still tracks the page header, not the dock\'s');
     assert.ok(parseFloat(before) > 0 && parseFloat(after.v) > 0, `both readings are real: ${before} then ${after.v}`);
-    // And it keeps tracking: a narrower window re-wraps the description, so
-    // the page header changes height while the dock is up. The invariant is
-    // that the reading is the PINNED page header's height, and 0 when it is
-    // not pinned — never a figure left behind by an earlier layout.
     await page.setViewportSize({ width: 900, height: 720 });
     await page.waitForTimeout(400);
     const narrow = await page.evaluate(() => {
@@ -236,7 +198,6 @@ if (s) {
         assert.equal(m.body.clamped, false, 'the description is open');
         assert.ok(m.body.scroll > m.body.client && m.body.overflow === 'auto', `the rest of it scrolls inside the block ${JSON.stringify(m.body)}`);
 
-        // The editor opens at the full markdown's height; it is capped the same way.
         await page.click('.view-desc-body p');
         await page.waitForSelector('.view-desc-edit');
         await page.waitForTimeout(300);

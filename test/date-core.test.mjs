@@ -1,7 +1,3 @@
-/* public/date-core.js — the pure half of the calendar popover and the
-   format examples in the field tray (2026-08-23). Display formatting is
-   contract-tested against the engine's own costume so the tray's examples
-   are exactly what a cell will show. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -29,7 +25,7 @@ test('formatDate never reads the local zone: the stored wall-clock parts are wha
 });
 
 test('calendarMonth lays out a Sunday-first grid of full weeks with in-month flags (the native picker Kyle liked)', () => {
-  const grid = core.calendarMonth(2026, 8); // August 2026 starts on a Saturday
+  const grid = core.calendarMonth(2026, 8);
   assert.equal(grid.length, 6);
   assert.equal(grid[0].length, 7);
   assert.equal(grid[0][6].iso, '2026-08-01');
@@ -62,13 +58,6 @@ test('default choices: none, today()/now(), or a specific value — parsed back 
   assert.equal(core.defaultKind('2026-08-21'), 'specific');
   assert.deepEqual(core.DYNAMIC_DATE_DEFAULTS, ['today()', 'now()']);
 });
-
-/* ---------- date ranges (Issue #91) ----------
-   A daterange stores `{ start, end }`. The read side had no case for it, so
-   the object walked all the way to the browser and painted itself as
-   '[object Object]'. Same contract as a single date: the costume lives in
-   date-core, the engine renders through the same rule, and the tray's
-   examples are exactly what a cell shows. */
 
 const rangeField = (config) => {
   const w = new Weave();

@@ -1,16 +1,3 @@
-/* Where the field block sits among the documents and the related tables.
-
-   The entity page used to hard-sort its body: values, then documents, then
-   attachments, then collections, and no amount of dragging could say
-   otherwise. Kyle wants the whole field block to move above or below a
-   document or a related table, and the documents and tables to move too
-   (2026-08-26) — so the order is a table setting, the way hiddenFields and
-   fieldOrder already are.
-
-   The value fields stay one block: `@values` is the sentinel that stands for
-   the run of them, so the grid is a thing you move rather than a thing you
-   take apart. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';

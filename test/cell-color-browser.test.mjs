@@ -1,12 +1,3 @@
-/* Feature #235 in the page: the colour setting, the redrawn cells and the
-   fitted column widths. Each setting (ink, icon, accent) paints a bar, a
-   rating and a sparkline in its own colours, in both themes, from tokens
-   that hold in both; the shapes are the mockup's (a 6px bar on an 80px
-   track, a 16px ring, 14px icons, an 80 by 18 sparkline); the Σ and ƒ
-   marks stay in the header and leave the rich cells; a 10-icon rating
-   opens without clipping (Issue #404) and a column dragged narrower draws
-   the compact form; the settings tray's Color picker shows three live
-   swatches and saves the pick. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -24,7 +15,6 @@ const s = await launch('cell colour setting', (weave) => {
   weave.addField(deals, { name: 'Heart', type: 'rating', config: { max: 5, icon: 'lucide:heart', color: 'icon' } });
   weave.addField(deals, { name: 'Ring', type: 'number', config: { display: 'ring', scale: 10 } });
   weave.addField(deals, { name: 'Ten', type: 'rating', config: { max: 10, icon: 'lucide:zap' } });
-  // The account reads its deals: a series for the sparklines, a rating rollup.
   weave.addRelation(deals, { name: 'Account', targetDb: accounts, cardinality: 'many-to-one', inverseName: 'Deals' });
   weave.addField(accounts, { name: 'Deltas', type: 'lookup', config: { relationField: 'Deals', targetField: 'Delta' } });
   for (const color of ['ink', 'icon', 'accent']) {
@@ -60,7 +50,6 @@ if (s) {
     await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
     await page.waitForSelector('.tray-form');
   }
-  // A computed colour as the browser resolves it: a token to rgb().
   const paint = (page, sel, prop) => page.$eval(sel, (n, p) => getComputedStyle(n)[p], prop);
 
   for (const colorScheme of ['light', 'dark']) {
@@ -78,21 +67,16 @@ if (s) {
           loss[c] = await paint(acc, `${cell(acme.id, `WL ${c}`)} .cg-loss`, 'fill');
           assert.ok(await page.locator(`${cell(big.id, `Bar ${c}`)} .cg-wrap.cg-c-${c}`).count(), `the bar wears cg-c-${c}`);
         }
-        // Quiet ink: the text colour, filled; the sparkline a step quieter.
         assert.equal(bar.ink, ink, 'an ink bar is the text colour');
         assert.equal(star.ink, ink, 'ink stars are filled in the text colour');
         assert.notEqual(line.ink, ink, 'an ink sparkline is the secondary text colour');
         assert.notEqual(win.ink, loss.ink, 'ink win/loss: text colour and muted');
-        // The three settings are three different paints.
         for (const set of [bar, star, line]) assert.equal(new Set(Object.values(set)).size, 3, JSON.stringify(set));
-        // Color by icon: a star and a heart are different hues; win green, loss red.
         const heart = await paint(page, `${cell(big.id, 'Heart')} .wv-rate-ico.on`, 'color');
         assert.notEqual(heart, star.icon, 'a heart is not a star\'s amber');
         assert.notEqual(win.icon, loss.icon);
-        // One accent hue: the bar, the stars and the line share it.
         assert.equal(star.accent, bar.accent);
         assert.equal(line.accent, bar.accent);
-        // Empty icons are hairline outlines, not filled.
         assert.equal(await paint(page, `${cell(big.id, 'Star ink')} .wv-rate-ico:not(.on) svg`, 'fill'), 'none');
         if (shots) await page.locator('.wv-grid').screenshot({ path: `${shots}/cell-color-grid-${colorScheme}.png` });
         if (shots) await acc.locator('.wv-grid').screenshot({ path: `${shots}/cell-color-spark-${colorScheme}.png` });
@@ -112,7 +96,6 @@ if (s) {
       const icons = await page.$$eval(`${cell(big.id, 'Star ink')} .wv-rate-ico`, (ns) => ns.map((n) => n.getBoundingClientRect()));
       assert.equal(Math.round(icons[0].width), 14);
       assert.equal(Math.round(icons[1].left - icons[0].right), 1, 'a 1px gap');
-      // The figure sits right of the bar, in tabular figures.
       const [barR, textL] = await page.$eval(`${cell(big.id, 'Bar ink')} .cg-wrap`, (n) => [n.querySelector('svg').getBoundingClientRect().right, n.querySelector('.cg-text').getBoundingClientRect().left]);
       assert.ok(textL >= barR, 'the figure is to the right of the bar');
       assert.equal(await paint(page, `${cell(big.id, 'Bar ink')} .cg-wrap`, 'fontVariantNumeric'), 'tabular-nums');
@@ -151,8 +134,6 @@ if (s) {
       assert.equal(await page.locator(`${sel} .wv-rating-compact`).isVisible(), false, 'the full row, not the compact form');
       if (shots) await page.locator('.wv-grid').screenshot({ path: `${shots}/cell-color-ten-${'light'}.png` });
     } finally { await page.close(); }
-    /* A width stored under the icons is raised to them (Issue #614): the
-       floor holds every icon, so a drag never reaches the compact form. */
     weave.updateField(deals, 'Ten', { config: { width: 90 } });
     const narrow = await grid(deals.id, 'light', 1400);
     try {
@@ -163,9 +144,6 @@ if (s) {
       assert.ok(fit.lastRight <= fit.tdRight, 'the tenth icon is inside the cell');
       assert.equal(await narrow.locator(`${sel} .wv-rating-compact`).isVisible(), false, 'the full row, not the compact form');
     } finally { await narrow.close(); }
-    /* Past the fit cap the floor stops at the cap, and the icons give way
-       to the compact form rather than being cut (Issue #404): 24 icons need
-       367px, the cap is 320. */
     weave.updateField(deals, 'Ten', { config: { max: 24 } });
     const long = await grid(deals.id, 'light', 1400);
     try {
@@ -227,7 +205,6 @@ if (s) {
       await openFieldDialog(page, 'Line ink');
       const sc = page.locator('.tray-form .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: /^Color$/ }) });
       await sc.waitFor();
-      // The swatches draw once the column's own series answers (Issue #388).
       await sc.locator('.wv-color-opt .cg-sparkwrap').nth(2).waitFor();
       assert.equal(await sc.locator('.wv-color-opt .cg-sparkwrap').count(), 3, 'each swatch is a sparkline');
       await sc.locator('.wv-color-opt[data-color="accent"]').click();

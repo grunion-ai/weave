@@ -1,14 +1,3 @@
-/* The marks, drawn (Issue #87) — and since 2026-09-02, drawn at the weight of
-   the Lucide set beside them.
-   A mark was the Unicode character rendered at the font size, so every one of
-   them came out a different optical size — Kyle: "bug quater done and 3/4 done
-   are too small… reflresh is also too small". A size scale cannot fix that;
-   the box was already right and the ink inside it was not. These are the same
-   marks as flat vectors on the 24 canvas.
-   The contract that matters most is the key: a row that stored '✓' months ago
-   must keep working and simply start drawing. Where Lucide draws the same
-   mark (a tick, a flag, a target) the character now draws the Lucide shape,
-   with its motion; the six progress rings have no twin and stay drawn here. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 await import('../public/field-dialog-core.js');
@@ -49,7 +38,6 @@ test('the drawn marks are inked at the stroke set\'s weight — 2.0, a 2.0 ring'
   for (const [ch, svg] of Object.entries(marks.MARKS)) {
     for (const m of svg.matchAll(/stroke-width="([\d.]+)"/g)) assert.equal(m[1], '2', `${ch} is stroked at ${m[1]}`);
   }
-  // Outer r 9.4, inner r 7.4: a 2.0 ring, level with a 2.0 stroke beside it.
   assert.match(marks.MARKS['○'], /a9\.4 9\.4[^Z]*Zm0 2a7\.4 7\.4/, 'the ring is 2.0 thick');
   assert.doesNotMatch(marks.MARKS['○'], /6\.9 6\.9/, 'the 2.5 ring is gone');
 });

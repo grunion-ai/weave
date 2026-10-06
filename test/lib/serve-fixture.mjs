@@ -1,4 +1,3 @@
-// Boot fixtures own the server until it closes, including failed starts.
 export async function bootAndStop(child, { timeout = 20000, killAfter = 1000 } = {}) {
   let log = '';
   let timer;
@@ -21,7 +20,6 @@ export async function bootAndStop(child, { timeout = 20000, killAfter = 1000 } =
     child.stdout.off('data', onData);
     child.stderr.off('data', onData);
     child.off('exit', onExit);
-    // Keep the error listener until close, including an unsuccessful spawn.
     let force;
     if (child.pid && child.exitCode === null && child.signalCode === null) {
       child.kill('SIGTERM');

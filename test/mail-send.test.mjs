@@ -1,8 +1,3 @@
-/* Sending the invite email (Feature #216, Issue #569). One POST to Resend,
-   switched on by WEAVE_MAIL_KEY and WEAVE_MAIL_FROM together. Without both,
-   nothing is sent and the invite flow is the copy-the-link one it was. A
-   failed send never fails the invite: the invite is made, the link is in the
-   answer, and `mailed: false` with `mailError` says what happened. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -53,7 +48,6 @@ test('a refused send throws with Resend\'s answer, and never the key', async () 
   });
 });
 
-/* ---------------------------------------------------------------- route */
 async function serve(mail) {
   const w = new Weave();
   w.updateWorkspace({ name: 'home' });

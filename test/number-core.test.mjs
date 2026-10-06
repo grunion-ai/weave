@@ -1,9 +1,3 @@
-/* public/number-core.js — the number costume and the figures a field's
-   settings tray samples (Issue #388). Pure: a value and a config in, a
-   dressed string out; a column summary in, the figures to draw out. The
-   engine dresses every number read through the same file, so the tray's
-   Sample and the grid cell cannot disagree (the engine side is held by
-   test/number-format.test.mjs). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,8 +8,6 @@ const nc = globalThis.weaveNumberCore;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test("the sample draws the column's own smallest, middle and largest figures", () => {
-  // Issue #388: the Showcase Progress column holds 72, 100 and 15, and the
-  // tray drew 0.25, 0.6 and 1 — figures the field never holds.
   const { values, example } = nc.sampleFigures({ n: 3, min: 15, median: 72, max: 100 }, 'column');
   assert.deepEqual(values, [15, 72, 100]);
   assert.equal(example, false, 'these are the field values, not examples');

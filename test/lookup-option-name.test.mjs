@@ -1,12 +1,3 @@
-/* A lookup of a select shows the option's name (Issue #598).
-
-   The lookup's display was the option's stored id, the slug: "credit-card"
-   where the select column on the far table shows "Credit card". An option
-   whose name is already a slug hides the bug, so every option here has a
-   name that differs from its id. The lookup wears the far field's costume:
-   option names for a select and a multiselect, the state name for a
-   workflow. `raw` keeps the stored ids. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -36,7 +27,6 @@ test('a lookup of a select, a multiselect and a workflow reads their names', () 
   assert.equal(read.fields['L K'], 'Credit card');
   assert.deepEqual(read.fields['L Tags'], ['Big Spend', 'Travel Cost']);
   assert.equal(read.fields['L Stage'], 'Paid Out');
-  // raw keeps the stored id.
   assert.notEqual(read.raw['L K'], 'Credit card');
 });
 

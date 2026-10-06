@@ -1,17 +1,3 @@
-/* The field block, folded, driven through a real browser.
-
-   Issue #89 — "with too many fields we need to be able to collapse the non
-   document fields so we still see the same information but compactly
-   organized at the top": a folded block keeps its values as one wrapping
-   line of label · value chips, drawn by the same editors the rows use.
-
-   Issue #129 — "fields checked to be visible but do not show": a field the
-   eye turns on is drawn whether the block is folded (a chip) or open (a
-   row); a table whose block was empty grows one.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and
-   the suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -28,7 +14,6 @@ const s = await launch('entity fields fold', (weave) => {
   weave.addField(orders, { name: 'Brief', type: 'document' });
   weave.updateTable(orders, { hiddenFields: [...(weave.getTable(orders).hiddenFields ?? []), 'Ref'] });
   order = weave.createEntity(orders, { name: 'Sensor boards', values: { Vendor: 'Nordic', Qty: 12, Stage: 'Sent', Ref: 'PO-7' } });
-  // A table whose only value field is hidden: no field block at all.
   bare = weave.createTable({ space: 'Ops', name: 'Note' });
   weave.addField(bare, { name: 'Topic', type: 'text' });
   weave.updateTable(bare, { hiddenFields: [...(weave.getTable(bare).hiddenFields ?? []), 'Topic'] });
@@ -78,7 +63,6 @@ if (s) {
     assert.equal(chip.title, 'Who we bought from — the legal name on the invoice', 'the field description rides the chip as its tooltip (Issue #209)');
     const stage = await page.$eval('.wv-sum[data-field="Stage"] .k', (n) => n.textContent.trim());
     assert.equal(stage, 'Sent', 'a select is its chip, not a plain string');
-    // The chips sit on one wrapping line above the document, well under the rows' height.
     const box = await page.$eval('.entity-values-summary', (n) => n.getBoundingClientRect().height);
     assert.ok(box < 80, `three chips fold to one line (${box}px)`);
     await page.reload({ waitUntil: 'networkidle' });

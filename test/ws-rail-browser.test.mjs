@@ -1,7 +1,3 @@
-/* The workspace rail's add button (Issue #191). Its Lucide glyph rode the
-   `.wv-icon` margin meant for an icon beside a label, so the plus sat left of
-   the button's centre. A stylesheet grep cannot say where a glyph lands; the
-   browser can. Both themes, because the rail restyles under dark. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

@@ -1,11 +1,3 @@
-/* Feature #232 — formula arrays and the sparkline display. A formula is
-   row-local, and a list comes in through a lookup over a to-many relation.
-   `sortby(values, keys)` orders a series by a parallel list (deal amounts by
-   close date); that only holds if two lookups over the same relation keep
-   their blank slots in position, so that is proven first. A formula may
-   return a list or null; the API returns the numbers. The formula's display
-   costume gains `sparkline` with a `style` (line, column, winloss), and a
-   sort or a filter on a sparkline column reads its last value. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -34,7 +26,6 @@ test('two lookups over the same relation keep blank slots in position, so they s
   const raw = w.readEntity(a.id).raw;
   assert.deepEqual(raw['Deal amounts'], [300, null, 100, 200], 'a blank amount holds its slot');
   assert.deepEqual(raw['Deal close dates'], ['2026-03-01', '2026-01-01', null, '2026-02-01'], 'a blank date holds its slot');
-  // A trashed row leaves both lists together, not one.
   w.deleteEntity(d4.id);
   const after = w.readEntity(a.id).raw;
   assert.equal(after['Deal amounts'].length, after['Deal close dates'].length);

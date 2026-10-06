@@ -1,16 +1,3 @@
-/* Issue #274 — an open tab drew fresh rows against a stale schema.
-
-   The repro, as filed: a tab sits on a grid, something else (the CLI, an
-   agent over MCP, an automation, a second tab) recolours a select's options,
-   and the tab keeps rendering `hue-slate` through every hash navigation until
-   someone hits reload. Feature #33's focus listener covered the second-tab
-   case only, because refocusing the window is what a person does after
-   editing in ANOTHER tab — nobody refocuses after an agent writes.
-
-   The tab now learns the schema moved from the query it was already making:
-   every API response stamps the structure's fingerprint, and a stamp the tab
-   has not seen refetches the schema and redraws. Playwright is NOT a
-   dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -37,13 +24,10 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     assert.equal(await page.locator('.wv-grid .k-select.hue-slate').count(), 1, 'the option starts uncoloured');
 
-    // The page must survive: a reload would fix the bug by accident.
     await page.evaluate(() => { window.__sameDocument = true; });
 
-    // Somewhere else entirely — an agent, the CLI, an automation.
     weave.updateField('Sales/Deals', 'Stage', { config: { options: [{ name: 'Open', color: AMBER }] } });
 
-    // Hash routing only: table → table, no reload.
     await page.evaluate((id) => { location.hash = `#/table/${id}`; }, notes.id);
     await page.waitForSelector('.wv-grid');
     await page.evaluate((id) => { location.hash = `#/table/${id}`; }, deals.id);

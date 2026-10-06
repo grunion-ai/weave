@@ -3,11 +3,6 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { WeaveWorkspace } from '../src/worker.js';
 
-/* The Durable Object entry, exercised in node: ctx.storage is shimmed onto
-   node:sqlite (same shim as the CFStore contract tests) and requests are the
-   standard fetch primitives node ships. What this cannot prove — workerd
-   module resolution, the Assets binding, DO routing — is gate G2's job under
-   `wrangler dev`. */
 function shimStorage() {
   const db = new DatabaseSync(':memory:');
   return {
@@ -78,7 +73,7 @@ test('worker DO: state persists across DO restarts (same storage, fresh instance
     return call(first, 'POST', '/api/tables/T/entities', { name: 'durable row' });
   })();
 
-  const second = makeDO(storage); // the isolate recycled; storage did not
+  const second = makeDO(storage);
   const read = await call(second, 'GET', `/api/entities/${made.data.id}`);
   assert.equal(read.status, 200);
   assert.equal(read.data.name, 'durable row');
@@ -95,7 +90,7 @@ test('worker DO: v1 limits are spoken, not silent', async () => {
 test('worker DO: workspace scoping serves /w/<own name>/ and 404s strangers', async () => {
   const storage = shimStorage();
   const dobj = makeDO(storage);
-  await call(dobj, 'GET', '/api/health'); // boot as 'scratch'
+  await call(dobj, 'GET', '/api/health');
   const own = await call(dobj, 'GET', '/w/scratch/api/health');
   assert.equal(own.status, 200);
   const stranger = await call(dobj, 'GET', '/w/nope/api/health');

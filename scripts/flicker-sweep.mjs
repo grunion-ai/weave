@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/* The flicker sweep (harness routine weave-flicker; probe and arithmetic in
-   test/lib/flicker.mjs, journeys in test/lib/journeys.mjs).
-
-   Walks every journey `--runs` times (default 3) against a seeded in-memory
-   workspace on a free port, with the DOM probe and the screencast both on,
-   and keeps what two runs saw (confirm). For each confirmed finding it
-   writes the screencast frames around the first sighting, so a row can
-   carry what the reader saw rather than a description of it.
-
-   Usage: node scripts/flicker-sweep.mjs [--runs 3] [--min 2] [--out DIR]
-                                          [--journey name[,name]] [--no-frames]
-   Writes DIR/findings.json (default ./flicker-out) and prints one line per
-   finding. Playwright comes from the gate's shared install, linked as
-   node_modules, exactly as the browser suites take it. */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -61,13 +47,11 @@ try {
       try { got = await walk(browser, j, ctx, { probe, record }); }
       catch (err) { failed.push({ journey: j.name, run: r, error: String(err.message).split('\n')[0] }); continue; }
       const events = [...got.events];
-      // The screencast's own witness: A, B, A in composited frames.
       for (const f of frameFlashes(got.frames)) {
         const box = diffBox(got.frames[f.i - 1].px, got.frames[f.i].px);
         events.push({ kind: 'frame', sel: box ? `box ${snap(box.x)},${snap(box.y)} ${snap(box.w)}x${snap(box.h)}` : 'box ?', ms: f.ms, value: f.ratio, at: f.at, i: f.i });
       }
       run[j.name] = events;
-      // Frames around the first sighting of each fingerprint.
       for (const e of events) {
         const fp = fingerprint(j.name, e);
         if (evidence.has(fp) || !got.frames.length) continue;
@@ -92,7 +76,7 @@ const findings = confirm(runs, { min: Number(a.min) }).map((f) => {
 });
 
 let sha = '';
-try { sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { /* not a checkout */ }
+try { sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim(); } catch {}
 const report = {
   at: new Date().toISOString(), sha, load: loadavg()[0], runs: Number(a.runs), min: Number(a.min),
   journeys: journeys.map((j) => j.name), failed, findings,

@@ -3,12 +3,6 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-/* Feature #17 — saved multi-table views with public share links. A view is a
-   named list of blocks — each a table plus an optional where — stored in the
-   workspace. Sharing mints a capability token: the share URL renders that
-   view read-only, and ONLY that view, even when the workspace requires auth.
-   Revoking the share kills the link. */
-
 function fresh() {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });

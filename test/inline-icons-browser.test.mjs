@@ -1,10 +1,3 @@
-/* Inline icons in the editor, driven through a real browser (Kyle,
-   2026-09-02: "show fully formatted real icons in the .md — these can replace
-   emojis", then: "rebuild from scratch"). The instant-render surface is the
-   document, so `:bell:` has to be a node of that surface — Lute's shortcode
-   node, drawn from the inventory table that replaces the GitHub emoji table —
-   in a table cell as much as in a sentence, and serialised back as the token.
-   Playwright is not a dependency; the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -57,17 +50,13 @@ if (s) {
 
   test('the stored markdown keeps the token — the node serialises back to :bell:', async () => {
     const page = await open();
-    // Type at the end of the document so Lute serialises the whole surface,
-    // nodes included, back through the save path.
     const typed = async () => {
       await page.locator('.vditor-ir .vditor-reset').first().click();
       await page.keyboard.press('End'); await page.keyboard.type(' more');
       return page.waitForFunction(() => document.querySelector('.vditor-ir .vditor-reset').textContent.includes(' more'), null, { timeout: 2000 })
         .then(() => true, () => false);
     };
-    // A busy box can drop the first click before the editor takes focus.
     if (!(await typed())) assert.ok(await typed(), 'the keystrokes reach the editor');
-    // The autosave lands when the engine holds the typed text; poll that.
     const until = Date.now() + 5000;
     while (!weave.getDoc(row).includes(' more') && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
     const stored = weave.getDoc(row);

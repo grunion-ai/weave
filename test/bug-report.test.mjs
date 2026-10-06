@@ -1,21 +1,3 @@
-/* The in-app bug reporter (Feature #141) — Kyle, 2026-08-25: "a quick bug
-   submission tool where a click presents 4 common selectors, the dialog floats
-   next to the bug button, and the submission carries the log of recent actions
-   or errors so agents can recreate the issue agentically".
-
-   Three halves to the contract, and every one of them is a promise about
-   whether an agent can actually replay what the reporter did:
-
-     public/bug-core.js  the recorder — a ring buffer of actions, what it is
-                         allowed to remember, and what it must never keep
-     src/bugreport.js    the renderer — categories, redaction, and the Replay
-                         section an agent re-executes
-     POST /api/bug-report the door — files the Issue into the weave workspace
-                         and stamps it with server truth the page cannot know
-
-   The fourth is source-level, in the style of chip-system.test.mjs: the UI is
-   dependency-free vanilla JS, so its promises are read out of app.js, index.html
-   and style.css. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -32,8 +14,6 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const APP = src('public/app.js');
 const CSS = src('public/style.css');
 const HTML = src('public/index.html');
-
-/* ---------- the four selectors ---------- */
 
 test('there are exactly four categories, because a reporter picks, never writes', () => {
   assert.equal(BUG_CATEGORIES.length, 4, 'four selectors — the ask was four');
@@ -62,8 +42,6 @@ test('an unknown category is refused rather than silently defaulted', () => {
   assert.equal(categoryById('nonsense'), null);
   assert.throws(() => renderBugReport({ categories: ['nonsense'], events: [] }), /category/i);
 });
-
-/* ---------- several symptoms, or none ---------- */
 
 test('a bug can be slow AND wrong: symptoms are a set, not a choice', () => {
   const r = renderBugReport({ categories: ['slow', 'wrong-data'], note: 'saving is slow and loses the value', events: [], client: CLIENT, server: SERVER });
@@ -106,8 +84,6 @@ test('symptoms toggle rather than replace, and either half makes a report', () =
 });
 
 test('the browser and the server agree on the four categories', () => {
-  // Same contract as chip-core ↔ field-dialog-core: the panel must render
-  // instantly, so it carries its own copy; this pins the copies together.
   assert.deepEqual(
     bug.CATEGORIES.map((c) => ({ id: c.id, label: c.label, severity: c.severity })),
     BUG_CATEGORIES.map((c) => ({ id: c.id, label: c.label, severity: c.severity })),
@@ -118,8 +94,6 @@ test('the browser and the server agree on the four categories', () => {
   }
 });
 
-/* ---------- the recorder ---------- */
-
 test('the recorder is a ring buffer: the newest actions survive, the oldest fall off', () => {
   const r = bug.createRecorder({ max: 3 });
   for (let i = 0; i < 5; i++) r.record({ kind: 'click', target: `b${i}`, t: i });
@@ -129,8 +103,6 @@ test('the recorder is a ring buffer: the newest actions survive, the oldest fall
 });
 
 test('errors are kept even when a flood of clicks would have pushed them out', () => {
-  // The one event class worth more than recency: an agent replaying a report
-  // needs the throw, not the twelve clicks that happened after it.
   const r = bug.createRecorder({ max: 4 });
   r.record({ kind: 'error', message: 'boom', t: 0 });
   for (let i = 0; i < 10; i++) r.record({ kind: 'click', target: `b${i}`, t: i + 1 });
@@ -150,8 +122,6 @@ test('the recorder counts what it holds, so the panel can say what it will send'
 });
 
 test('a click is remembered by what it is, never by what was typed into it', () => {
-  // Non-negotiable: this trace is pasted into a shared Issue. Control names
-  // are useful; the characters someone typed are theirs.
   const input = {
     tagName: 'INPUT', id: 'api-key', className: 'form-control',
     value: 'sk-live-do-not-leak', placeholder: 'Paste your key',
@@ -165,9 +135,6 @@ test('a click is remembered by what it is, never by what was typed into it', () 
 });
 
 test('a control is named by its own words, not by the badge sitting inside it', () => {
-  // `<a class="nav-db">Task<span class="count">5</span></a>` is the table
-  // called Task. Reading textContent called it "Task5" and sent an agent
-  // looking for a table that does not exist (seen live, 2026-08-25).
   const link = {
     tagName: 'A', className: 'nav-db', id: '', textContent: 'Task5',
     childNodes: [{ nodeType: 3, nodeValue: 'Task' }, { nodeType: 1, textContent: '5' }],
@@ -200,8 +167,6 @@ test('describeTarget survives the things a real DOM hands it', () => {
   assert.ok(bug.describeTarget(long).length < 80, 'one control, not a paragraph');
 });
 
-/* ---------- redaction ---------- */
-
 test('a secret never rides into an Issue on the back of a bug report', () => {
   assert.equal(redact('Authorization: Bearer wv_abcdef123456'), 'Authorization: Bearer ***');
   assert.equal(redact('/api/views/v1?share=6f8a9b0c1d2e'), '/api/views/v1?share=***');
@@ -215,8 +180,6 @@ test('redaction keeps the ids an agent needs to reproduce the bug', () => {
   assert.equal(redact('/w/uno/#/table/b3ca39b7-1d71-48d1-b212-0531732c9265'),
     '/w/uno/#/table/b3ca39b7-1d71-48d1-b212-0531732c9265');
 });
-
-/* ---------- the report an agent reads ---------- */
 
 const EVENTS = [
   { kind: 'nav', to: '#/table/Deals', t: 1000 },
@@ -258,8 +221,6 @@ test('a long note is trimmed in the title and kept whole in the body', () => {
 });
 
 test('the report carries the stale-server check that misdiagnoses everything else', () => {
-  // The single most common false bug in this project: a server older than the
-  // commit. Version + start time are on every report so nobody debugs a ghost.
   const md = renderBugReport({ categories: ['slow'], events: EVENTS, client: CLIENT, server: SERVER }).markdown;
   assert.match(md, /0\.4\.1/);
   assert.match(md, /2026-08-25T09:00:00\.000Z/);
@@ -314,8 +275,6 @@ test('the report says the trace holds no typed values, because a reader will won
   assert.match(md, /never captur/i);
 });
 
-/* ---------- the door ---------- */
-
 let base, server;
 
 test.before(async () => {
@@ -335,8 +294,6 @@ const post = async (path, body, headers = {}, attempt = 0) => {
       body: JSON.stringify(body),
     });
   } catch (err) {
-    // A socket-level 'fetch failed' under a loaded box is not a verdict on
-    // the route; one retry is what any client would do.
     if (attempt < 2 && err instanceof TypeError) {
       await new Promise((r) => setTimeout(r, 150));
       return post(path, body, headers, attempt + 1);
@@ -365,7 +322,6 @@ test('a submitted report becomes an Issue in the weave workspace', async () => {
   assert.equal(issue.fields.Status, 'Open');
   assert.match(issue.fields.Name, /Wrong data \+ Slow: my edit to Deals#3 did not stick/);
   assert.match(issue.docs.Description, /## Replay/);
-  // The whole point of the multiselect: a week of reports is filterable.
   assert.deepEqual(issue.fields[SYMPTOM_FIELD], ['Wrong data', 'Slow'],
     'the symptoms land in the field, not only in the prose');
   assert.deepEqual(r.data.symptoms, ['Wrong data', 'Slow']);
@@ -396,11 +352,6 @@ test('the reporter is named as the actor, so the audit log shows who filed it', 
 });
 
 test('a report still files when the Issue description has been renamed', async () => {
-  /* The handler named the field 'Description' and did not catch, so the
-     engine's "not a document field" threw the whole report away the moment
-     someone renamed it — on the one workspace where renaming things is the
-     point. Its own server, because the rename is destructive to the shared
-     fixture's assertions. */
   const docs = new Weave();
   seedWeaver(docs);
   const issues = docs.getTable('Development/Issue');
@@ -435,9 +386,6 @@ test('a note-only report is accepted and files with no symptom set', async () =>
 });
 
 test('a renamed option cannot swallow a report', async () => {
-  // Live, 2026-08-25: the field's options were edited while the server still
-  // held the old labels, and every report 400'd with "'Slow or stuck' is not
-  // an option of 'Symptom'". A label edit must cost the field, not the bug.
   const docs = new Weave();
   seedWeaver(docs);
   docs.updateField(docs.getTable('Development/Issue').id, SYMPTOM_FIELD, { config: { options: ['Something else'] } });
@@ -485,8 +433,6 @@ test('with no weave workspace to file into, the door says so instead of 500ing',
   lone.server.close();
 });
 
-/* ---------- the UI's own promises, read out of its source ---------- */
-
 test('the button is always there, and the panel opens beside it', () => {
   assert.match(APP, /bug-fab/, 'a floating report button');
   assert.match(APP, /bug-panel/, 'and a panel');
@@ -496,7 +442,6 @@ test('the button is always there, and the panel opens beside it', () => {
 });
 
 test('the corner affordance stays small', () => {
-  // Kyle, 2026-08-25: "all could be smaller". A corner button is not a form.
   const px = (decl, prop) => Number(decl.match(new RegExp(prop + ':\\s*(\\d+)px'))[1]);
   const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
   assert.ok(px(fab, 'width') <= 28, `the button is ${px(fab, 'width')}px`);
@@ -519,16 +464,12 @@ test('a symptom is a toggle, not a radio', () => {
 });
 
 test('the button becomes the receipt', () => {
-  // Kyle, 2026-08-25: "send should sent".
   const body = APP.slice(APP.indexOf('function openBugPanel'), APP.indexOf('// The loader is fetched'));
   assert.match(body, /send\.textContent = 'Sent'/);
   assert.match(CSS, /\.bug-send\.sent/, 'and it is styled as a confirmation, not a dead control');
 });
 
 test('the report button wears the vendored bug, drawn through iconEl like every mark', async () => {
-  // Kyle, 2026-08-25: "this is also good for the icon library" — the FAB, a
-  // space, a table or a state all draw the one `bug` the set carries, themed
-  // through currentColor like the rest. Since 2026-09-02 that set is Lucide's.
   await import('../public/vendor/lucide-moving.js');
   assert.match(globalThis.LUCIDE_MOVING.bug, /^<svg /, 'the set carries a bug');
   assert.match(APP, /const bugGlyph = \(\) => iconEl\('lucide:bug', 'bug-fab-icon'\)/,
@@ -536,11 +477,6 @@ test('the report button wears the vendored bug, drawn through iconEl like every 
   assert.ok(!/iconly:danger/.test(APP), 'the placeholder triangle is gone');
 });
 
-/* Issue #119: the "Issue #N" receipt toast landed on the report button, so a
-   second report meant waiting the toast out. Since Issue #380 the stack lives
-   in a lane that ends at a 300px corner reserve, wider than the button's
-   inset plus the 252px panel, so neither the button nor its open panel can
-   meet a toast. toast-lane-browser.test.mjs checks the pixels. */
 test('a toast never covers the report button', () => {
   const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
   const panel = CSS.match(/#bug-panel\s*{([^}]*)}/)[1];
@@ -552,15 +488,12 @@ test('a toast never covers the report button', () => {
 
 test('the report button stacks above the trash it shares a corner with', () => {
   const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
-  // The trash glyph is the corner cluster's lower row, #hub-foot (Issue #204).
   const foot = CSS.match(/#hub-foot\s*{([^}]*)}/)[1];
   const bottom = (decl) => Number(decl.match(/bottom:\s*(\d+)px/)[1]);
   assert.ok(bottom(fab) > bottom(foot), 'the report button stacks above the trash');
 });
 
 test('a quiet successful read is not evidence, and does not crowd out what is', () => {
-  // A page load fires a dozen 200-in-3ms GETs. Recorded, they fill the buffer
-  // with the app working correctly (measured live: 17 requests, 5 actions).
   const body = APP.slice(APP.indexOf('function installBugReporter'), APP.indexOf('function closeBugPanel'));
   assert.match(body, /worthRecording/, 'the wrapper decides, rather than recording everything');
   const rule = body.match(/const worthRecording = \([^)]*\) =>\s*([^;]+);/)[1];
@@ -573,16 +506,12 @@ test('a quiet successful read is not evidence, and does not crowd out what is', 
   assert.equal(decide('GET', 0, 3, '/api/schema'), true, 'so is a request that never arrived');
   assert.equal(decide('PATCH', 200, 3, '/api/entities/x'), true, 'a write is kept even when it succeeded — it is the question in a "did not save" report');
   assert.equal(decide('POST', 201, 3, '/api/tables/T/entities'), true);
-  // weave posts its reads — a filter travels in a body — so the verb alone
-  // would readmit exactly the noise this rule exists to remove.
   assert.equal(decide('POST', 200, 3, '/api/tables/T/query'), false, 'a query is a read wearing POST');
   assert.equal(decide('POST', 200, 3, '/api/markdown'), false, 'so is rendering markdown');
   assert.equal(decide('POST', 200, 4200, '/api/tables/T/query'), true, 'unless it was the slow thing');
 });
 
 test('a grid cell is named by its column and its row, not by what is typed in it', () => {
-  // A name cell holds an <input>; its only text is the user's value, and the
-  // trace must never carry that. data-field is the column, data-eid the row.
   const cell = {
     tagName: 'TD', className: 'name-cell', id: '', textContent: '',
     dataset: { field: 'Name', ftype: 'text' },
@@ -609,9 +538,6 @@ test('the recorder starts before the app does — a bug on first paint is still 
 });
 
 test('the browser sources actually parse', () => {
-  /* Source-level contract tests read app.js as text, so a syntax error walks
-     straight past them into a blank page (the traced glyph arrived with
-     potrace's line wraps still in the string literal, 2026-08-25). Parse it. */
   for (const file of ['public/app.js', 'public/bug-core.js']) {
     assert.doesNotThrow(() => new Function(src(file)), `${file} is valid JavaScript`);
   }
@@ -629,18 +555,6 @@ test('both themes are declared for the panel, not just the one it was built in',
   assert.ok(!/#bug-panel[^}]*background:\s*#(fff|ffffff)\b/i.test(CSS), 'surfaces come from Tabler tokens, so dark mode follows');
   assert.match(CSS, /#bug-panel\s*{[^}]*var\(--tblr-/, 'themed by token');
 });
-
-/* ---------- report by email (Feature #223) ----------
-   POST /api/bug-report files into THIS instance's Issue table. On a
-   self-hosted weave that table is on the operator's disk and Kyle never sees
-   it; an instance with no docs workspace answers 501. weave@grunion.ai is a
-   receive-only forward to Kyle's inbox, and the way out of any box is a
-   mailto: the page builds — the reporter's own client opens with the report
-   filled in, they read and edit every line, and nothing transits the server.
-   The builder is pure and lives in bug-core.js so the same source is tested
-   here and run in the page. Issue #230 is the precedent this section guards
-   against: what leaves the box is listed, and everything else is asserted
-   absent. */
 
 const WS = 'acme-legal';
 const EID = '9f1c2d3e-4b5a-6c7d-8e9f-0a1b2c3d4e5f';

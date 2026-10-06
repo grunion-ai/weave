@@ -1,10 +1,3 @@
-/* Issue #459 — `behind` said "differs from main", not "older than main".
-   describeBuild set `behind: latest !== head`, so a dev worktree one commit
-   ahead of main, a feature branch, or any checkout that already carried main's
-   tip read as behind and raised the amber chip and the "behind main" toast.
-   Behind now means main has a commit this checkout lacks: the boot HEAD does
-   not contain main's sha (`git merge-base --is-ancestor <latest> HEAD` fails,
-   which a sha missing from the local object store also does). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';

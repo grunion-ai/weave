@@ -1,22 +1,3 @@
-/* The eye's rows are taught, never swapped (Issue #240).
-
-   A flip is asynchronous — PATCH, loadSchema, redraw, and only then the
-   popover's tail. Idle, that tail is ~20ms; under load nothing bounds it, so
-   it can land between the next gesture's mousedown and its mouseup. While the
-   tail called `pop.replaceChildren`, the row the mousedown had focused was
-   detached: the mouseup landed on its replacement, no `click` fired at all,
-   the flip was lost with nothing on screen to say so, and focus fell to
-   <body> — where the popover's own keydown listener could not hear Escape.
-   showPopover's arrow-key walk broke the same way: it captures its row list
-   once, at open, so a swap left every arrow pointing at a detached node.
-
-   Kyle's 2026-09-02 ruling reads "same node, same position, same scroll —
-   only its rows learn the new truth". These cases hold it literally: the
-   nodes stay attached and learn the new switch state, and the rebuild is kept
-   only for the case teaching cannot cover — a row set that actually changed.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps);
-   the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -29,11 +10,7 @@ const s = await launch('eye rows are taught, not swapped', (weave) => {
   weave.addField(deals, { name: 'Stage', type: 'text' });
   weave.createEntity(deals, { name: 'Acme', values: { Amount: 12 } });
   weave.createEntity(deals, { name: 'Globex', values: { Amount: 30 } });
-  // The Σ row is off until a table opts in (Issue #249); this one wants it,
-  // because the last case drives its picker.
   weave.updateTable(deals, { hideRollups: false });
-  // A second table, for the cases where another surface or another page is
-  // on screen when a flip's repaint lands (Issue #243).
   contacts = weave.createTable({ space: 'Sales', name: 'Contact' });
   weave.addField(contacts, { name: 'Phone', type: 'text' });
   ann = weave.createEntity(contacts, { name: 'Ann', values: { Phone: '555' } });
@@ -41,10 +18,8 @@ const s = await launch('eye rows are taught, not swapped', (weave) => {
 
 if (s) {
   const { base, browser, weave } = s;
-  // The hidden set is the default view's since Feature #229; the schema speaks it.
   const hiddenOf = (table) => [...(weave.describeSchema().flatMap((sp) => sp.tables).find((t) => t.id === table.id).hiddenFields ?? [])].sort();
   const hiddenNow = () => hiddenOf(deals);
-  // Read one switch off the live popover. Hidden means the switch is off.
   const switchReads = ([name, want]) => [...document.querySelectorAll('.chip-pop .eye-row')]
     .find((r) => r.querySelector('.eye-label')?.textContent === name)
     ?.matches(':has(input:checked), [aria-checked="true"]') === (want === 'true');
@@ -56,10 +31,7 @@ if (s) {
     }
   };
   const flip = (page, name) => page.locator('.chip-pop .eye-row', { hasText: name }).first().click();
-  // A grid always has a view open (Feature #229), so a field flip PATCHes
-  // /tables/<id>/views/<view>; system columns and Σ still PATCH the table.
   const tableWrites = (table) => new RegExp(`/api/tables/${table.id}(/views/[^/?]+)?$`);
-  // Holds the first PATCH to `table` open until release(); later ones pass.
   const holdFirstPatch = async (page, table) => {
     let release, seen = 0;
     const held = new Promise((r) => { release = r; });
@@ -72,38 +44,30 @@ if (s) {
   const gridHeads = (page) => page.evaluate(() =>
     [...document.querySelectorAll('#main .wv-grid thead th')].map((th) => th.textContent));
   const open = async () => {
-    // Every case starts from one hidden set: nothing hidden.
     weave.updateTable(deals, { hiddenFields: [] });
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'load' });
     await page.click('.eye-btn');
     await page.waitForSelector('.chip-pop .eye-row');
-    // Measure pointer targets after the popover's entrance transform settles.
     await page.locator('.chip-pop').evaluate(pop => Promise.all(pop.getAnimations().map(a => a.finished)));
     return page;
   };
 
   test('a rebuild that lands mid-gesture does not swallow the click', async () => {
     const page = await open();
-    // Stretch the flip's tail so it is certain to land while the next
-    // gesture's button is still down — the race, made deterministic.
     await page.route('**/api/schema', async (route) => {
       await new Promise((r) => setTimeout(r, 700));
       await route.continue();
     });
     const stage = await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().boundingBox();
     await page.locator('.chip-pop .eye-row', { hasText: 'Amount' }).first().click();
-    // Press on Stage while that tail is still in flight, and hold it down
-    // across the whole round trip: PATCH, schema, redraw, rows.
     await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
     await page.mouse.down();
     await page.waitForFunction(switchReads, ['Amount', 'false']);
     await page.mouse.up();
     await page.waitForFunction(switchReads, ['Stage', 'false']);
-    // A checkbox shows the click at once; the write lands after (Issue #441).
     await until(() => JSON.stringify(hiddenNow()) === JSON.stringify(['Amount', 'Stage']), 'the hidden set').catch(() => {});
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'both flips reached the table');
-    // Focus never left the popover, so its own keydown listener hears Escape.
     assert.ok(await page.evaluate(() => !!document.activeElement?.closest?.('.chip-pop')),
       'focus stayed inside the popover');
     await page.keyboard.press('Escape');
@@ -113,7 +77,6 @@ if (s) {
 
   test('the rows stay the same nodes, and their handlers read the live table', async () => {
     const page = await open();
-    // Stamp every row: a swap loses the stamps, teaching keeps them.
     const rowCount = await page.evaluate(() => {
       const rows = [...document.querySelectorAll('.chip-pop .eye-row')];
       rows.forEach((r, i) => { r.dataset.stamp = String(i); });
@@ -124,29 +87,17 @@ if (s) {
     assert.equal(
       await page.evaluate(() => document.querySelectorAll('.chip-pop .eye-row[data-stamp]').length),
       rowCount, 'every row is the node it was before the flip');
-    // showPopover captures its arrow-key walk once, at open: swapped rows
-    // leave those arrows pointing at detached nodes, so ArrowDown moves
-    // nothing. The switch under the cursor is the pressed row.
     assert.equal(await page.evaluate(focusedLabel), 'Amount', 'the pressed row kept focus');
     await page.keyboard.press('ArrowDown');
     assert.notEqual(await page.evaluate(focusedLabel), 'Amount', 'ArrowDown still walks the rows');
-    // A taught row keeps the handler it was built with, so that handler has
-    // to read the table at click time — a set captured at build time is a
-    // flip out of date and would drop Amount back out of the hidden set.
     await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().click();
     await page.waitForFunction(switchReads, ['Stage', 'false']);
-    // A checkbox shows the click at once; the write lands after (Issue #441).
     await until(() => JSON.stringify(hiddenNow()) === JSON.stringify(['Amount', 'Stage']), 'the hidden set').catch(() => {});
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'the second flip added to the hidden set');
     await page.close();
   });
 
   test('two flips that overlap both reach the table', async () => {
-    // Reading the table at click time is half the fix; the other half is
-    // WHEN (Issue #243). Every flip PATCHes the whole hidden set, so a
-    // second flip that leaves while the first PATCH is still out reads the
-    // same pre-flip set, and whichever write lands last wins. Holding the
-    // first PATCH open makes the overlap certain rather than a load-only race.
     const page = await open();
     const patches = [];
     let release;
@@ -157,7 +108,6 @@ if (s) {
       if (patches.length === 1) await held;
       await route.continue();
     });
-    // One grid draw is one row query.
     let draws = 0;
     page.on('request', (r) => {
       if (r.method() === 'POST' && r.url().endsWith(`/api/tables/${deals.id}/query`)) draws++;
@@ -165,39 +115,28 @@ if (s) {
     await page.locator('.chip-pop .eye-row', { hasText: 'Amount' }).first().click();
     await until(() => patches.length === 1, 'the first PATCH');
     await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().click();
-    // Give a second PATCH every chance to leave beside the first.
     await page.waitForTimeout(400);
     assert.equal(patches.length, 1, 'the second flip is not on the wire while the first PATCH is out');
     release();
     await page.waitForFunction(switchReads, ['Amount', 'false']);
     await page.waitForFunction(switchReads, ['Stage', 'false']);
-    // A checkbox shows the click at once; the write lands after (Issue #441).
     await until(() => JSON.stringify(hiddenNow()) === JSON.stringify(['Amount', 'Stage']), 'the hidden set').catch(() => {});
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'neither flip overwrote the other');
     assert.deepEqual(patches, [{ hide: ['Amount'] }, { hide: ['Stage'] }],
       'the second flip read the table after the first one landed');
-    // Painting is off the write queue, and a burst paints once at its end.
     await until(() => draws >= 1, 'the redraw').catch(() => {});
     await page.waitForLoadState('networkidle');
     assert.equal(draws, 1, 'the pair redrew the grid once');
     await page.close();
   });
 
-  /* The repaint after a queued flip lands late, and by then the reader may
-     have closed the eye and opened something else. It teaches the eye's rows
-     to whatever popover is open only if that popover is an eye on the same
-     table, and each eye brings its own rows: a column's ⋮ menu, or the other
-     surface's eye, is not this one. */
   test("a late repaint leaves a column's ⋮ menu alone", async () => {
     const page = await open();
     const hold = await holdFirstPatch(page, deals);
     await flip(page, 'Amount');
     await until(() => hold.seen() === 1, 'the PATCH');
-    // A second click on the eye closes it (Issue #320); the ⋮ opens its menu.
     await page.click('#main .eye-btn');
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
-    // The grid is wider than its card here, and Stage ends at the wrap's
-    // right edge, under the sticky "+" (Feature #240): bring it clear first.
     await page.evaluate(() => document.querySelector('#main .wv-grid thead th:has(.field-menu[aria-label="Configure field Stage"])')
       .scrollIntoView({ block: 'nearest', inline: 'center' }));
     await page.locator('#main .wv-grid thead th:has(.field-menu[aria-label="Configure field Stage"]) .field-menu').click({ force: true });
@@ -212,9 +151,6 @@ if (s) {
   });
 
   test("a flip on one table still repaints when another table's eye flips behind it", async () => {
-    // The write queue is shared, so the dock's flip waits behind the grid's;
-    // "only the last flip paints" is judged per table, so the grid's flip
-    // still redraws the grid.
     weave.updateTable(deals, { hiddenFields: [] });
     weave.updateTable(contacts, { hiddenFields: [] });
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
@@ -225,7 +161,6 @@ if (s) {
     await page.waitForSelector('.chip-pop .eye-row');
     await flip(page, 'Amount');
     await until(() => hold.seen() === 1, 'the PATCH');
-    // The dock's eye opens its own popover in one click (Issue #320).
     await page.click('#dock .eye-btn');
     await page.waitForFunction(() => [...document.querySelectorAll('.chip-pop .eye-label')].some((l) => l.textContent === 'Phone'));
     await flip(page, 'Phone');
@@ -257,9 +192,6 @@ if (s) {
 
   test('a row set that actually changed still rebuilds, and focus follows the pressed row', async () => {
     const page = await open();
-    // A field arriving from elsewhere is the one case teaching cannot cover.
-    // The rebuild is right there — and Issue #223's focus restore is what
-    // keeps Escape working across it.
     weave.addField(deals, { name: 'Owner', type: 'text' });
     await page.locator('.chip-pop .eye-row', { hasText: 'Amount' }).first().click();
     await page.waitForFunction(switchReads, ['Amount', 'false']);
@@ -273,8 +205,6 @@ if (s) {
   });
 
   test('the Σ row picker holds its rows across a flip too', async () => {
-    // Its tail is the same shape as the eye's — create or delete the rollup
-    // field, then relearn the rows — so it wore the same hazard.
     weave.updateTable(deals, { hiddenFields: [] });
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'load' });

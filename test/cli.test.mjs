@@ -31,7 +31,6 @@ test('CLI end-to-end flow', () => {
   const created = JSON.parse(cli('create', 'Task', 'Design it', '--values', '{"Estimate": 5, "Project": "Apollo"}'));
   assert.equal(created.fields.Project.name, 'Apollo');
 
-  // Public-id ref form Db#n
   const got = JSON.parse(cli('get', 'Task#1'));
   assert.equal(got.name, 'Design it');
 
@@ -66,7 +65,6 @@ test('CLI end-to-end flow', () => {
   const schema = JSON.parse(cli('schema'));
   assert.equal(schema.find((sp) => !sp.system).space, 'Work');
 
-  // errors exit non-zero
   assert.throws(() => cli('get', 'Task#999'));
 });
 
@@ -76,5 +74,5 @@ test('CLI target-set relation: --target-dbs makes a one-way polymorphic field', 
   assert.deepEqual(made.field.config.targetDbs.length, 2);
   assert.equal(made.inverse, null);
   const t = JSON.parse(cli('create', 'Ticket', 'Bug', '--values', '{"Scope": ["Apollo"]}'));
-  assert.equal(t.fields.Scope.db, 'Work/Project'); // resolved across the set, single cardinality
+  assert.equal(t.fields.Scope.db, 'Work/Project');
 });

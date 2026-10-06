@@ -1,19 +1,3 @@
-/* A cell commit costs the cell, not the table (Issue #257).
-
-   Every commit used to fire PATCH → GET → the whole table query again, then
-   throw the grid away with `main.replaceChildren()` and put the reader back
-   with a remembered-focus dance. On the 2,087-row Case table that was the
-   17–52 s freeze; on a small table it was a flash and a lost place.
-
-   The server now says what a write touched (`affected` on the PATCH
-   response, pinned in test/cell-commit-patch.test.mjs) and the grid swaps
-   those rows' cells in place. This suite holds the DOM half: no table query
-   on a plain commit, the row count and the scroll unchanged, the focus Tab
-   reached untouched, a row whose lookup reaches the edited one repainted
-   from ONE read, and the full re-read still there when the edit moves the
-   row under the active sort.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -23,8 +7,6 @@ let cases, small, smallIds = [], ids = [];
 const s = await launch('a cell commit patches in place', (weave) => {
   weave.createSpace({ name: 'Quality' });
   const suites = weave.createTable({ space: 'Quality', name: 'Suite' });
-  // A table short enough to be drawn whole: no pager, so the grid holds and
-  // sorts the rows itself and a patched row has to reach that copy too.
   small = weave.createTable({ space: 'Quality', name: 'Small' });
   weave.addField(small, { name: 'Note', type: 'text' });
   for (const [n, note] of [['b row', 'x'], ['a row', 'y'], ['c row', 'z']]) {
@@ -33,8 +15,6 @@ const s = await launch('a cell commit patches in place', (weave) => {
   cases = weave.createTable({ space: 'Quality', name: 'Case' });
   weave.addField(cases, { name: 'Status', type: 'select', config: { options: ['pass', 'fail'] } });
   weave.addRelation(cases, { name: 'Suite', targetDb: suites, cardinality: 'many-to-one', inverseName: 'Cases' });
-  // A row that shows another row of the same table: renaming the parent has
-  // to repaint the child, and that is the read the client is allowed.
   weave.addRelation(cases, { name: 'Parent', targetDb: cases, cardinality: 'many-to-one', inverseName: 'Children' });
   weave.addField(cases, { name: 'Parent name', type: 'lookup', config: { relationField: 'Parent', targetField: 'Name' } });
   const st = weave.createEntity(suites, { name: 'engine' });
@@ -47,8 +27,6 @@ const s = await launch('a cell commit patches in place', (weave) => {
 if (s) {
   const { base, browser } = s;
 
-  // Every request the page makes, as "METHOD /path", from the moment the
-  // recorder is armed.
   const open = async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     page.__seen = [];
@@ -57,7 +35,7 @@ if (s) {
       try {
         page.__seen.push(`${r.method()} ${new URL(r.url()).pathname}`);
         page.__body.set(`${r.method()} ${new URL(r.url()).pathname}`, r.postData() ?? '');
-      } catch { /* not a URL we care about */ }
+      } catch {}
     });
     await page.goto(`${base}/#/table/${cases.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -65,11 +43,6 @@ if (s) {
   };
   const arm = (page) => { page.__seen.length = 0; page.__body.clear(); };
   const seen = (page, re) => page.__seen.filter((r) => re.test(r));
-  /* The write's own round trip, registered BEFORE the gesture: an already
-     loaded page is "network idle" the instant you ask it, so waiting on the
-     lifecycle would count requests that had not come back yet. Two frames
-     after it lands, whatever the commit was going to ask for has been asked
-     for. */
   const commitLands = (page) => page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
   const settle = async (page, landed) => {
     await landed;
@@ -84,7 +57,6 @@ if (s) {
   test('a Name commit fires one PATCH and no table query, and leaves the grid standing', async () => {
     const page = await open();
     try {
-      // Well down the table, where the old redraw cost the reader their place.
       await page.evaluate(() => {
         const wrap = document.querySelector('.table-wrap');
         (wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement).scrollTo({ top: 3000, behavior: 'instant' });
@@ -102,8 +74,6 @@ if (s) {
       const eid = await target.jsonValue();
       await target.dispose();
       await page.click(`tr[data-eid="${eid}"] td[data-field="Name"] input`);
-      // Read from where the reader actually IS — inside the open cell. What
-      // this Issue owns is the commit, not how a click places the window.
       const before = await shape(page);
       assert.ok(before.rows > 0 && before.rows < 200, `${before.rows} rows drawn`);
       arm(page);
@@ -157,8 +127,6 @@ if (s) {
   test('an edit to the sorted column still re-reads the table, and the row moves', async () => {
     const page = await open();
     try {
-      // Sorted by Name: the edit below changes where the row belongs, which
-      // the client cannot work out from the one page it holds.
       await page.evaluate((t) => fetch(`/api/tables/${t}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sort: [{ field: 'Name', dir: 'asc' }] }),
@@ -176,8 +144,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Sorting after an in-place commit: the grid holds the patched row in its
-     own copy of the table, and the reorder must not put the old value back. */
   test('a sort after an in-place commit still shows the committed value', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     page.__seen = []; page.__body = new Map();
@@ -190,8 +156,6 @@ if (s) {
       await landed;
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
-      // Sort by Name: a short table sorts in place and redraws from the rows
-      // it was handed, without asking the server for them again.
       await page.click('.wv-grid thead button[aria-label="Configure field Name"]');
       await page.locator('.chip-pop .wv-menu-row', { hasText: 'A to Z' }).first().click();
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row')[0]?.querySelector('td[data-field="Name"] input')?.value === 'a row', null, { timeout: 5000 });

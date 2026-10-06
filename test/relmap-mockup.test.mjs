@@ -1,8 +1,3 @@
-/* Feature #183, deliverable 1: the relation-map mockup page for polymorphic
-   junctions. The page is a design artefact, not shipped UI, so the contract
-   is small: it exists, it is self-contained (no network), it shows the four
-   options Kyle picks from in both themes, and it is drawn on the real
-   Showcase schema — the five target-set fields by name. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -19,7 +14,6 @@ test('the mockup page exists', () => {
 });
 
 test('no external resources: every asset is inline', () => {
-  // src=, href= and CSS url()/@import must never reach the network.
   const external = html.match(/(?:src|href)\s*=\s*["'](?:https?:)?\/\/[^"']*/gi) ?? [];
   assert.deepEqual(external, [], 'external src/href found');
   assert.doesNotMatch(html, /url\(\s*["']?(?:https?:)?\/\//i, 'external CSS url()');
@@ -32,7 +26,6 @@ test('names all four layout options, each with what it communicates and what it 
   for (const opt of ['A. Junction node', 'B. Bundled edges', 'C. Concentric', 'D. Matrix companion']) {
     assert.ok(html.includes(opt), `missing option "${opt}"`);
   }
-  // One caption line per option: "Communicates … Costs …".
   const captions = html.match(/class="caption"/g) ?? [];
   assert.equal(captions.length, 4, 'expected one caption per option');
   assert.equal((html.match(/<b>Communicates\.<\/b>/g) ?? []).length, 4);

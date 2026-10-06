@@ -1,9 +1,3 @@
-/* Column widths and the frozen zone are view configuration (Feature #233).
-   They ride the one view verb (`tableView` / `weave_table_view` /
-   `weave table view` / `/api/tables/:t/views/:v`) beside field order, by
-   name, and reads stay compact: a view with no widths and nothing frozen
-   past # reads exactly as before. Kyle's rule 2 is an engine rule too: a
-   hidden field keeps its width and its place for when it returns. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -77,14 +71,12 @@ test('a hidden field keeps its width and its place, and a frozen one its freeze'
   assert.equal(hidden.widths.Due, 150, 'the width stays with the view');
   assert.deepEqual(w.tableView('Task/Standard', { show: ['Due'] }).fields,
     ['Due', 'Name', 'Description', 'State', 'Points'], 'back where it was, not at its schema place');
-  // Frozen: Due and Name frozen; hiding Due takes one out of the zone, showing it puts it back.
   w.tableView('Task/Standard', { frozen: 2 });
   const h = w.tableView('Task/Standard', { hide: ['Due'] });
   assert.equal(h.frozen, 1, 'Name stays frozen alone; nothing else is pulled into the zone');
   const s = w.tableView('Task/Standard', { show: ['Due'] });
   assert.equal(s.frozen, 2);
   assert.deepEqual(s.fields.slice(0, 2), ['Due', 'Name']);
-  // Hiding a field that is not frozen leaves the zone alone.
   assert.equal(w.tableView('Task/Standard', { hide: ['Points'] }).frozen, 2);
 });
 
@@ -178,10 +170,6 @@ test('REST and CLI speak the same keys', async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-/* Issue #418 (Kyle, 2026-09-26: "system fields should be reorderable as
-   well"). The system columns a view shows are names in its one ordered
-   field list, beside the fields: they move, freeze, size, hide and come back
-   through the same verb. Only # stays out of the list, locked first. */
 test('system columns live in the view\'s one ordered list: shown, moved, frozen, sized by name', () => {
   const w = fresh();
   w.updateTable('Task', { systemFields: ['Created At', 'Modified By'] });
@@ -198,7 +186,6 @@ test('system columns live in the view\'s one ordered list: shown, moved, frozen,
   const back = w.tableView('Task/Standard', { show: ['created at'] });
   assert.deepEqual(back.fields.slice(0, 2), ['Created At', 'Name'], 'and its place, and its freeze');
   assert.equal(back.frozen, 1);
-  // Shown in another view by name, from the verb alone.
   assert.deepEqual(w.tableView('Task/Stamps', { fields: ['Modified By', 'Name'] }).fields, ['Modified By', 'Name']);
   assert.deepEqual(w.tableView('Task/Stamps', { show: ['Created By'] }).fields, ['Modified By', 'Name', 'Created By'],
     'a system column shown for the first time closes the list');

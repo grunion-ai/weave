@@ -1,16 +1,4 @@
 #!/usr/bin/env node
-/* Re-pin and re-render the architecture map (docs/architecture/).
-
-     node scripts/architecture.mjs [revision]
-
-   Sets meta.repository.revision in weave.architecture.json to <revision>
-   (default HEAD, which should be a landed commit so the source links resolve
-   on GitHub), then runs archify's `deliver`, which verifies every cited
-   file and line at that commit and writes weave.architecture.html. Run it in
-   the same change as a release bump, and whenever test/architecture-map
-   fails. archify is a dev tool, never a weave dependency: it is found at
-   $ARCHIFY or ~/.claude/skills/archify/bin/archify.mjs (github.com/tt-a1i/archify,
-   MIT). */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -33,10 +21,6 @@ const spec = JSON.parse(readFileSync(specPath, 'utf8'));
 spec.meta.repository.revision = revision;
 writeFileSync(specPath, JSON.stringify(spec, null, 2) + '\n');
 
-/* archify compares `git remote get-url origin` with meta.repository.url and
-   does not strip the user name this repo's origin carries
-   (https://grunion-ai@github.com/...). An insteadOf rewrite, for this one
-   process only, hands it the bare URL without touching the repo config. */
 const origin = git('remote', 'get-url', 'origin');
 const bare = origin.replace(/^https:\/\/[^@/]+@/, 'https://');
 const env = { ...process.env };

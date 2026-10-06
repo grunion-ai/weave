@@ -6,10 +6,6 @@ import { startServer } from '../src/server.js';
 import { WeaveWorkspace } from '../src/worker.js';
 import { PRIVACY, TERMS } from '../src/legal.js';
 
-/* Feature #251. The Google sign-in consent screen needs a privacy policy and
-   a terms of service URL that anyone can open, so /privacy and /terms answer
-   ahead of the wall on both adapters while every other route stays shut. */
-
 const ATTRIBUTION = /Adapted from the Basecamp open-source policies.*github\.com\/basecamp\/policies.*CC BY 4\.0/s;
 const PAGES = [['/privacy', 'Privacy policy'], ['/terms', 'Terms of Service']];
 
@@ -34,7 +30,6 @@ test('with requireAuth on, an anonymous visitor reads /privacy and /terms', asyn
       assert.match(html, new RegExp(`<title>${heading}`), `${path} lacks its title`);
       assert.match(html, ATTRIBUTION, `${path} lacks the CC BY attribution`);
       assert.match(html, /Effective date: 2026-10-02/);
-      // [Entity name] waits on Kyle naming the legal entity (Issue #613, 2026-10-03).
       assert.ok(html.includes('[Entity name]'), `${path} lost the entity placeholder`);
       assert.ok(!html.includes('[Contact email]'), `${path} still shows the contact email slot`);
       assert.ok(!html.includes('[Address]'), `${path} still shows the address slot`);
@@ -93,7 +88,6 @@ test('the Worker serves the same pages through the shared dispatcher', async () 
 test('the legal text names the contact address, keeps the entity slot and carries no em dash', () => {
   for (const [name, md] of [['privacy', PRIVACY], ['terms', TERMS]]) {
     assert.ok(!md.includes('—'), `${name} carries an em dash`);
-    // [Entity name] stays until Kyle names the legal entity (Issue #613, 2026-10-03).
     assert.ok(md.includes('[Entity name]'), `${name} lost the entity placeholder`);
     for (const gone of ['[Contact email]', '[Address]']) assert.ok(!md.includes(gone), `${name} still carries ${gone}`);
     assert.ok(md.includes('weave@grunion.ai'), `${name} lacks the contact address`);

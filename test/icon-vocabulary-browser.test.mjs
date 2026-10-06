@@ -1,16 +1,3 @@
-/* One icon vocabulary, driven through a real browser (Issue #87).
-
-   A space or table picked its icon from 101 flat SVGs through a searchable
-   picker. A select option or workflow state picked from fourteen typographic
-   marks, in a different file, through a different control, at a different
-   size — and the paint site printed the stored string as text, so an
-   `iconly:` name chosen for an option would have shown up as the literal
-   words. Kyle asked for the vocabularies to be expanded, unified and
-   normalised for size; these are the claims a source assertion cannot make.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -20,9 +7,6 @@ let tasks, pulse, row;
 const s = await launch('icon vocabulary', (weave) => {
   weave.createSpace({ name: 'Product' });
   tasks = weave.createTable({ space: 'Product', name: 'Task' });
-  // Two nav rows with moving icons of their own: the motion test below needs
-  // one to hover and one to prove untouched (Issue #192). Pulse doubles as the
-  // table that already wears an icon, for the name readout (Issue #142).
   pulse = weave.createTable({ space: 'Product', name: 'Pulse', icon: 'lucide:activity' });
   weave.createTable({ space: 'Product', name: 'Inbox', icon: 'lucide:bell' });
   weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: [
@@ -39,7 +23,6 @@ if (s) {
   const { base, browser, weave } = s;
   const entityPage = async () => {
     const page = await browser.newPage();
-    // Size gates measure resting boxes; the motion has its own test below.
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${base}/#/entity/${row}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.entity-fields .fieldrow');
@@ -65,8 +48,6 @@ if (s) {
   test('a mark still draws as itself — old rows keep their glyph', async () => {
     const page = await entityPage();
     const picked = await page.evaluate(() => {
-      // The picker's own list is what an author reads; both dialects come
-      // from one catalogue now.
       const choices = iconCatalogue();
       return { total: choices.length, marks: choices.filter((c) => c.mark).length, flat: choices.filter((c) => c.lucide).length, set: fieldDialogCore.ICON_INVENTORY.length };
     });
@@ -78,12 +59,10 @@ if (s) {
   test('a mark draws as a vector, at the size a flat icon draws', async () => {
     const page = await entityPage();
     const row = page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first();
-    // 'Later' wears '○'. Open the picker so both dialects are on screen at once.
     const box = await page.evaluate(() => {
       var out = {};
       var svgs = [].slice.call(document.querySelectorAll('.wv-icon svg, .ico svg'));
       out.count = svgs.length;
-      // Layout width, not the painted box: an icon mid-motion is scaled, not resized.
       out.widths = svgs.map(function (s) { return Math.round(parseFloat(getComputedStyle(s).width)); });
       return out;
     });
@@ -95,8 +74,6 @@ if (s) {
   test('every mark fills its canvas — none of them draws small', async () => {
     const page = await entityPage();
     const bad = await page.evaluate(() => {
-      // getBBox measures path geometry, so a stroked mark is painted half a
-      // stroke wider on each side than its box says.
       var out = [];
       var marks = window.weaveMarkIcons.MARKS;
       var host = document.createElement('div');
@@ -111,9 +88,6 @@ if (s) {
         if (x0 < -0.5 || y0 < -0.5 || x1 > 24.5 || y1 > 24.5) {
           out.push(k + ' overflows: ' + [x0, y0, x1, y1].map(Math.round).join(','));
         }
-        // Kyle's report was optical: a quarter-filled circle and a refresh
-        // glyph that came out visibly smaller than the marks beside them.
-        // Every mark has to span most of the canvas in its long axis.
         var span = Math.max(x1 - x0, y1 - y0);
         if (span < 15) out.push(k + ' spans only ' + Math.round(span) + ' of 24');
       });
@@ -144,8 +118,6 @@ if (s) {
     });
     assert.deepEqual(bad.out, [], 'icons overflowing the canvas');
     assert.ok(bad.median >= 19, `the set should fill its grid; median long axis ${bad.median} of 24`);
-    // Lucide draws a few glyphs small on purpose (ellipsis, minus, equal);
-    // the point is that they are the exception, not one icon in five.
     assert.ok(bad.small / bad.n < 0.05, `${bad.small} of ${bad.n} icons span under 15 of 24`);
     await page.close();
   });
@@ -191,8 +163,6 @@ if (s) {
     await page.close();
   });
 
-  /* Kyle, 2026-08-29: "Icons should be shown in a grid not a list, no names
-     are needed next to each, this takes up too much space." */
   async function openIconPicker(page) {
     await page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first().locator('.k-select').first().click();
     await page.waitForSelector('.chip-pop');
@@ -200,8 +170,6 @@ if (s) {
 
   test('the icon picker is a grid of icons, with no name beside any of them', async () => {
     const page = await entityPage();
-    // The field dialog is where a state or option icon is chosen; the table
-    // header is the other gate. Both open the same control.
     await page.goto(`${base}/#/table/${tasks.id ?? tasks}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.icon-btn');
     await page.locator('.icon-btn').first().click();
@@ -213,19 +181,11 @@ if (s) {
 
     const cells = page.locator('.picker-cell');
     assert.ok(await cells.count() > 90, 'the whole catalogue is offered');
-    // Every cell draws a shape and names nothing. The leading clear cell wears
-    // a ghost ring, which is a glyph, not a label — so the assertion is that
-    // no WORD reaches a cell.
     const text = (await cells.allTextContents()).join('');
     assert.doesNotMatch(text, /[a-z0-9]/i, `a cell is carrying a label: ${text.slice(0, 60)}`);
-    // The first cell is the clear control; the icons start after it.
     assert.equal(await cells.nth(1).locator('svg').count(), 1);
-    // The name is not gone, it moved to the tooltip.
     assert.ok(await cells.nth(1).getAttribute('title'), 'a cell must name itself on hover');
-    // The current value is the ring on a cell, not a chip eating the search
-    // box — an unset icon used to stage a "No icon" chip there.
     assert.equal(await page.locator('.picker-chip').count(), 0, 'the grid stages no chips');
-    // Clearing is the first cell, not a footer (Kyle, 2026-08-29).
     assert.equal(await page.locator('.picker-clear').count(), 0, 'no footer clear survives');
     assert.equal(await cells.first().getAttribute('title'), 'No icon', 'clearing leads the grid');
     assert.ok(await cells.first().locator('.icon-ghost').count(), 'and wears the ghost ring');
@@ -265,11 +225,6 @@ if (s) {
     await page.close();
   });
 
-  /* Issue #142, Kyle: "Icon names should show in sear bar on select or hover".
-     He set `star` on the Feature table, reopened the picker, and had no way to
-     read back which cell he had picked: the name lived in a native tooltip,
-     which makes a mouse wait and answers a keyboard not at all. The grid stays
-     a grid — the name goes in the picker's own search bar, one at a time. */
   const gridPickerOn = async (page, table) => {
     await page.goto(`${base}/#/table/${table.id ?? table}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.icon-btn');
@@ -289,12 +244,10 @@ if (s) {
     await page.waitForTimeout(120);
     assert.equal((await readout.textContent()).trim(), 'wallet', 'hovering a cell names it in the search bar');
 
-    // Off the grid, the readout goes back to the icon that is actually set.
     await page.locator('.picker-title').hover();
     await page.waitForTimeout(120);
     assert.equal((await readout.textContent()).trim(), 'activity', 'the name reverts when the pointer leaves');
 
-    // The grid itself is untouched: still no word inside any cell.
     const text = (await page.locator('.picker-cell').allTextContents()).join('');
     assert.doesNotMatch(text, /[a-z0-9]/i, 'the readout must not become a label on every cell');
     await page.close();
@@ -304,11 +257,8 @@ if (s) {
     const page = await entityPage();
     await gridPickerOn(page, pulse);
     const readout = page.locator('.picker-name');
-    // A mouse left resting on a cell must not answer for the keyboard: park
-    // the pointer on `flag` and never move it again.
     await page.locator('.picker-cell[title="flag"]').hover();
     await page.locator('.picker-search').focus();
-    // Tab out of the search box: the cells are buttons, so focus walks them.
     await page.keyboard.press('Tab');
     await page.waitForTimeout(80);
     assert.equal((await readout.textContent()).trim(), 'No icon', 'the clear cell names itself on focus');
@@ -326,26 +276,17 @@ if (s) {
     await gridPickerOn(page, bare);
     const readout = page.locator('.picker-name');
     assert.equal((await readout.textContent()).trim(), '', 'nothing is set, so nothing is named');
-    // Hovering the clear cell still answers: it is a cell like any other.
     await page.locator('.picker-cell.picker-none').hover();
     await page.waitForTimeout(120);
     assert.equal((await readout.textContent()).trim(), 'No icon');
     await page.close();
   });
 
-  /* Issue #336, Kyle: "fluttering when hovering over icons maybe with long
-     names, changes popover width for some reason". The readout was doing its
-     job and the popover was sizing itself to its contents, so the two fought:
-     a long name widened the box, the grid reflowed into the new width, the
-     cell slid out from under the pointer, the leave reset the name, the box
-     snapped back, and the pointer was over the cell again. The grid's width
-     is the grid's own — the name under the cursor never gets a vote. */
   test('naming the hovered icon never resizes the grid under the pointer', async () => {
     const page = await entityPage();
     await gridPickerOn(page, pulse);
     const pop = page.locator('.picker-pop');
     const rest = (await pop.boundingBox()).width;
-    // The worst case is the longest label the vocabulary carries, aliases and all.
     const longest = (await page.locator('.picker-cell').evaluateAll(
       (ns) => ns.map((n) => n.getAttribute('title')).filter(Boolean)))
       .sort((a, b) => b.length - a.length)[0];
@@ -363,11 +304,9 @@ if (s) {
       [Math.round(after.x), Math.round(after.y)],
       [Math.round(before.x), Math.round(before.y)],
       'the hovered cell must not move out from under the pointer');
-    // And the name still fits inside the box rather than pushing through it.
     const box = await page.locator('.picker-box').boundingBox();
     const name = await page.locator('.picker-name').boundingBox();
     assert.ok(name.x + name.width <= box.x + box.width + 1, 'the readout stays inside the box');
-    // Width is a box, not a colour, but the house rule reads both themes anyway.
     await page.evaluate(() => document.documentElement.setAttribute('data-bs-theme', 'dark'));
     await page.waitForTimeout(80);
     assert.equal((await pop.boundingBox()).width, rest, 'dark reads the same width');
@@ -376,7 +315,6 @@ if (s) {
 
   test('a picker that is not the grid stays a token box — no readout in its way', async () => {
     const page = await entityPage();
-    // The Priority chip opens the list dialect; its box holds chips and a caret.
     await page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first().locator('.k-select').first().click();
     await page.waitForSelector('.picker-row');
     const readout = page.locator('.picker-name');
@@ -387,9 +325,6 @@ if (s) {
   });
 
   test('an icon name that no longer resolves shows a ring, not its own prefix', async () => {
-    // Kyle, 2026-08-29, from a screenshot: an option was rendering the literal
-    // text `iconly:slides` into its icon slot, clipped to "iconl". A reference
-    // that does not resolve is not an emoji and must not paint itself.
     const page = await entityPage();
     const drawn = await page.evaluate(() => {
       const dead = iconEl('iconly:slides');
@@ -410,17 +345,11 @@ if (s) {
   });
 
   test('an icon rests lighter than its label and darkens when the row is current', async () => {
-    // Kyle, 2026-09-02: the greyed icons read better than full-weight ones.
-    // The token is the page's own ink at a fraction, so the grey keeps the
-    // kit's blue bias in both themes rather than going flat neutral.
     const page = await entityPage();
     const seen = await page.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
       const nav = document.querySelector('.nav-db .nav-icon') || document.querySelector('.nav-icon');
       const label = document.querySelector('.nav-db') || document.body;
-      // The resting colour carries an alpha, so what a reader sees is the ink
-      // composited over the page. Comparing the raw channels would compare the
-      // ink to itself.
       const ground = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).map(Number);
       const lum = (c) => {
         const p = c.match(/[\d.]+/g).map(Number);
@@ -438,25 +367,14 @@ if (s) {
     });
     assert.ok(seen.token, '--wv-icon-rest must be declared');
     assert.ok(seen.icon, 'the nav must draw an icon to measure');
-    // Lighter means closer to the page, so a higher luminance on a light ground.
     assert.ok(seen.iconLum > seen.textLum,
       `the icon (${seen.icon}) should rest lighter than its label (${seen.text})`);
     await page.close();
   });
 
-  /* Issue #192 (Kyle, 2026-09-05): every icon on screen used to play at
-     once on refresh or login — the "load wave" of 2026-09-02. The ruling is
-     one run per trigger, never a loop, and the trigger is the icon's OWN
-     hover or press, never the page arriving. Both themes, because the
-     chrome restyles under dark and the motion classes ride the same nodes. */
   const playingParts = (sel) => [...document.querySelectorAll(sel)].flatMap((h) => [...h.querySelectorAll('[data-mi]')])
     .filter((p) => p.classList.contains(p.dataset.mi.split(' ')[0])).length;
   const NAV = '#nav .wv-icon.mi:not([data-ms="0"])';
-  /* Record each run as it starts, in the page: a run is every part of one
-     host wearing its motion classes at once, and __runs lists the host index
-     each time one begins. Polling for the classes from the test side missed
-     a 200 ms run whenever the gate's load stalled the poll (Issue #401); the
-     record is written by the mutation itself, so it cannot. */
   const recordRuns = (sel) => {
     window.__recorder?.disconnect();
     const hosts = [...document.querySelectorAll(sel)];
@@ -477,30 +395,21 @@ if (s) {
       await page.goto(`${base}/#/entity/${row}`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector(NAV);
       assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
-      // t=0 and t=500ms: no icon anywhere wears its motion parts.
       assert.equal(await page.evaluate(playingParts, '.mi'), 0, 'an icon animated on mount');
       await page.waitForTimeout(500);
       assert.equal(await page.evaluate(playingParts, '.mi'), 0, 'an icon animated inside the first 500 ms');
       assert.ok(await page.locator(NAV).count() >= 2, 'the nav needs two moving icons to tell "only that one" apart');
-      // Hover one: that icon plays, every other one stays still.
       const host = page.locator(NAV).first();
       const ms = Number(await host.getAttribute('data-ms'));
       await page.evaluate(recordRuns, NAV);
       await host.hover();
-      // The suite runs under a gate at load 80-135, where the test side can
-      // stall past a whole run before its first poll (Issue #401: the first
-      // nav icon is a 200 ms chevron). Stall that long on purpose, so the
-      // read cannot depend on landing inside the run.
       await page.waitForTimeout(ms + 100);
       await page.waitForFunction(() => window.__runs.length > 0, null, { timeout: 3000 })
         .catch(() => assert.fail('a hover plays the icon'));
-      // …and it rests again: nothing loops.
       await page.waitForFunction((sel) => ![...document.querySelector(sel).querySelectorAll('[data-mi]')]
         .some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), NAV, { timeout: ms + 3000 })
         .catch(() => assert.fail(`after its ${ms} ms run the icon rests — it does not loop`));
       assert.deepEqual(await page.evaluate(() => window.__runs), [0], 'only the hovered icon plays, and only once');
-      // A press is the other trigger: the second icon plays on pointerdown.
-      // Pointing at it plays it once first; let that run end before pressing.
       const second = page.locator(NAV).nth(1);
       const box = await second.boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -513,7 +422,6 @@ if (s) {
       await page.waitForFunction(() => window.__runs.includes(1), null, { timeout: 3000 })
         .catch(() => assert.fail('a press plays the icon'));
       await page.mouse.up();
-      // Reload: still nothing on mount.
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForSelector(NAV);
       await page.waitForTimeout(500);

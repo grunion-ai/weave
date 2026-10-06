@@ -1,10 +1,3 @@
-/* A schema write tells the agent that made it what is still open and what it
-   likely got wrong (Issues #578, #579, #581, #582; src/field-hints.js). The
-   outside tester's stock agent built a budget with an amount and no currency,
-   an account column typed as text beside an Account table, every option
-   grey, and a workspace named for the task. Each of those writes now answers
-   with next[] (the settings the type takes, one layer at a time) and hints[]
-   (the slip and its fix), on MCP, REST and the CLI. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -95,7 +88,6 @@ test('a text field named like a table is steered to a relation, singular or plur
     const r = call(w, 'weave_add_field', { db: 'Transaction', name, type: 'text' });
     assert.ok(has(r.hints, /relation/) && has(r.hints, /targetDb:"Account"/), `${name}: ${JSON.stringify(r.hints)}`);
   }
-  // The hint's own call works: the column links to the Account rows by name.
   call(w, 'weave_create_entity', { db: 'Account', name: 'Checking' });
   call(w, 'weave_create_entity', { db: 'Transaction', name: 'Rent', values: { Account: 'Checking' } });
   const linked = call(w, 'weave_update_field', { db: 'Transaction', field: 'Account', type: 'relation', config: { targetDb: 'Account' } });

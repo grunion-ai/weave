@@ -4,9 +4,6 @@ import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-/* MCP over HTTP (Feature #99): POST /api/mcp speaks the same JSON-RPC the
-   stdio transport does — one handler, two transports. */
-
 let base, server, weave;
 
 async function rpc(msg, token) {

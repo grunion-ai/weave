@@ -1,9 +1,3 @@
-/* The entity dock, driven through a real browser (one entity surface,
-   change 2). The core's rules are covered in entity-surface-core.test.mjs;
-   what needs a browser is the wiring: the #id link docks the entity beside
-   the table instead of navigating, the docked row keeps its light, Esc
-   closes, and a second open swaps the pane in place.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -36,10 +30,6 @@ if (s) {
     await page.close();
   });
 
-  /* The dock is presentation, never a history entry (Issue #198) — but a
-     refresh, a new tab and a shared link must still find it. The docked
-     entity rides the table hash as ?e=<id>, written with replaceState so
-     Back never sees it (Issue #226). */
   test('docking writes ?e=<id> onto the table hash and a reload brings the dock back', async () => {
     const page = await freshTablePage();
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
@@ -91,8 +81,6 @@ if (s) {
     const page = await freshTablePage();
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden])');
-    // Park focus on inert chrome — a click into the grid would raise a cell
-    // editor and Escape would rightly go to it instead of the dock.
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
     await page.waitForSelector('#dock', { state: 'hidden' });
@@ -109,11 +97,7 @@ if (s) {
     await page.close();
   });
 
-  /* Issue #276 (Kyle, 2026-09-12): the dock follows the click, the page
-     stays. A relation hop from a docked row into another table used to tear
-     the table down, push #/table/<other> and restart the crumb there. */
   const dockedName = (page, n) => page.waitForFunction((name) => document.querySelector('#dock:not([hidden]) .name-edit')?.value === name, n);
-  // Every crumb's Name, the current row's included (Issue #669).
   const crumbLabels = (page) => page.$$eval('#dock .crumb-path .crumb-nm', (as) => as.map((x) => x.textContent));
   async function hopToJane(page) {
     await page.click(`tr[data-eid="${a.id}"] .open-link`);

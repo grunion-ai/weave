@@ -1,21 +1,7 @@
-/* A new record takes the caret (Issues #125, #195).
-
-   Clicking "+ New record" at the foot of a grid, or pressing Shift+Enter
-   from a row, creates the row — and must also put the reader IN it: the new
-   row's Name cell in edit mode, caret inside, row scrolled into view. Before
-   this suite the table page aimed at `td:nth-child(2) input`, which was the
-   Name cell until the selection column landed in front of it (Feature #132)
-   and has been the #id link — no input, silent no-op — ever since. The #125
-   fix only widened the Shift+Enter guard and leaned on that dead aim, so it
-   never held; the registry grids on the space page called a stale inlineAdd
-   from whatever table was visited last; the relation grid never focused.
-
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-// Feature #233: every field keeps its default width (Name 260, Description 280, …), so this table fits its card from 1600px, not 1280.
 const FIT = { width: 1600, height: 720 };
 
 let tasks, projects, alpha, seeded;
@@ -26,8 +12,6 @@ const s = await launch('new record focus', (weave) => {
   projects = weave.createTable({ space: 'Work', name: 'Projects' });
   weave.addRelation(projects, { name: 'Tasks', targetDb: 'Tasks', cardinality: 'one-to-many', inverseName: 'Project' });
   alpha = weave.createEntity(projects, { name: 'Alpha' });
-  // Enough rows that the foot of the grid sits below the fold, so landing
-  // in the new row is also a scroll.
   seeded = [];
   for (let i = 0; i < 60; i++) seeded.push(weave.createEntity(tasks, { name: `task ${i}`, values: { Note: 'n' } }).id);
 });
@@ -41,8 +25,6 @@ if (s) {
     for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== w; i++) btn.click();
   }, want);
 
-  /* Where focus is: the row, the column, the control — and whether the row
-     is on screen. Named so a failure says where the browser landed. */
   const focused = (page) => page.evaluate(() => {
     const at = document.activeElement;
     const cell = at?.closest?.('tr[data-eid] > td');
@@ -54,12 +36,10 @@ if (s) {
       caret: at.selectionStart != null ? [at.selectionStart, at.selectionEnd] : null,
     };
   });
-  // Focus has landed in a row that was not there before.
   const waitForNewRow = (page, known) => page.waitForFunction((ids) => {
     const cell = document.activeElement?.closest?.('tr[data-eid] > td');
     return !!cell && !ids.includes(cell.parentElement.dataset.eid);
   }, known, { timeout: 5000 });
-  // A beat past every pending redraw: the commit's and the create's.
   const settle = (page) => page.waitForTimeout(400);
 
   for (const theme of ['light', 'dark']) {
@@ -80,7 +60,6 @@ if (s) {
       assert.equal(at.onScreen, true, 'the new row is scrolled into view');
       assert.deepEqual(at.caret, [0, 0], 'the caret sits inside the empty cell');
 
-      // Typing goes straight into Name; Enter commits it.
       await page.keyboard.type('fresh');
       await page.keyboard.press('Enter');
       await page.waitForFunction((id) => document.querySelector(`tr[data-eid="${id}"] td[data-field="Name"] input`)?.value === 'fresh', at.eid);
@@ -98,8 +77,6 @@ if (s) {
     const known = await page.evaluate(() => [...document.querySelectorAll('tr[data-eid]')].map((r) => r.dataset.eid));
 
     await page.click(`tr[data-eid="${first}"] td[data-field="Name"] input`);
-    // The click opens the cell with its value selected (Feature #221); →
-    // collapses it to the end so the '!' is appended, the edit under test.
     await page.keyboard.press('ArrowRight');
     await page.keyboard.type('!');
     await page.keyboard.press('Shift+Enter');
@@ -113,7 +90,6 @@ if (s) {
     assert.equal(at.onScreen, true, 'the new row is scrolled into view');
     assert.equal(nameOf(first), 'task 0!', 'the edit Shift+Enter left behind was committed');
 
-    // Rapid entry: Shift+Enter again from the new row repeats the gesture.
     await page.keyboard.type('second');
     await page.keyboard.press('Shift+Enter');
     await waitForNewRow(page, [...known, at.eid]);
@@ -127,10 +103,7 @@ if (s) {
 
   test('+ New table on the space page creates the table here, not a row in the last table visited', async () => {
     const page = await browser.newPage({ viewport: FIT });
-    // The Tables registry grid folds under Schema (Issue #386); open it.
     await page.addInitScript(() => localStorage.setItem('weave-schema-open', '1'));
-    // Visit a user table first: the old add button called whatever inlineAdd
-    // that page had left behind.
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid .add-entity-btn');
     const before = weave.listEntities(tasks.id).length;
@@ -150,7 +123,6 @@ if (s) {
     const made = weave.listTables().find((t) => t.name === 'New table');
     assert.ok(made, 'a table named "New table" exists');
     assert.equal(made.spaceId, space, 'in this space');
-    // The placeholder name is selected whole, so typing replaces it.
     await page.keyboard.type('Bugs');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => !!document.querySelector('.wv-grid'));

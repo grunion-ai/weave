@@ -1,11 +1,3 @@
-/* Issue #389 in the page: a formula's Display and Style sat below about
-   sixty field and function chips, so on a 1000px window the setting that
-   decides how the column looks started below the fold, and the "Formula ·
-   any field can be computed" box said nothing about what unticking it
-   does. Now the result line is followed by Display, Style, Color and
-   Sample; the chips fold behind "Fields and functions", closed once a
-   formula exists and open on a new one; and the box says what it does.
-   Both themes. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -15,7 +7,6 @@ const s = await launch('formula tray layout', (weave) => {
   weave.createSpace({ name: 'Sales' });
   accts = weave.createTable({ space: 'Sales', name: 'Account' });
   const deals = weave.createTable({ space: 'Sales', name: 'Deal' });
-  // A wide table, so the chips are many: the Issue counted about sixty.
   for (let i = 1; i <= 24; i++) weave.addField(accts, { name: `Metric ${i}`, type: 'number' });
   weave.addField(deals, { name: 'Amount', type: 'number' });
   weave.addField(deals, { name: 'Close', type: 'date' });
@@ -45,9 +36,7 @@ if (s) {
     await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
     await page.waitForSelector('.tray-form');
   }
-  // A section by its own label: the Script section holds the others.
   const section = (page, label) => page.locator(`.tray-form .dlg-sec:has(> .dlg-lbl:text-is("${label}"))`);
-  // In view without scrolling: inside the tray body's box while it rests at the top.
   const unscrolledInView = (page, label) => page.evaluate((lbl) => {
     const body = document.querySelector('.tray-body');
     const sec = [...document.querySelectorAll('.tray-form .dlg-sec')].find((s) => s.querySelector(':scope > .dlg-lbl')?.textContent === lbl);
@@ -68,14 +57,12 @@ if (s) {
           assert.equal(v.scrollTop, 0, 'the tray has not scrolled');
           assert.ok(v.bottom <= v.limit, `${lbl} ends at ${v.bottom}px, inside the ${v.limit}px the tray shows`);
         }
-        // The result line comes first, then the look, then the reference.
         const order = await page.evaluate(() => {
           const at = (sel) => document.querySelector(sel)?.getBoundingClientRect().top ?? -1;
           const display = [...document.querySelectorAll('.tray-form .dlg-sec')].find((s) => s.querySelector(':scope > .dlg-lbl')?.textContent === 'Display');
           return [at('.tray-form .fx-status'), display.getBoundingClientRect().top, at('.tray-form .fx-ref')];
         });
         assert.ok(order[0] < order[1] && order[1] < order[2], `status → Display → reference (${order})`);
-        // The chips are folded away, not gone.
         const ref = page.locator('.tray-form details.fx-ref');
         assert.equal(await ref.evaluate((d) => d.open), false, 'closed once a formula exists');
         assert.equal(await page.locator('.tray-form .fx-chip.fn').first().isVisible(), false);

@@ -1,23 +1,3 @@
-/* The ⋮ panel stays on the page, measured in a browser (Issue #133).
-
-   Kyle's screenshot, 2026-09-01: the document section's downloads menu opened
-   past the right edge and the reader saw a sliver of "…ownloa". Reproduced
-   live before the fix at a 1280px viewport — the panel's box read
-   `left: 1205, right: 1383`, 178px of menu with 75px of it on screen.
-
-   That is a claim about painted geometry, and app.js cannot be read for it:
-   the source said `class: 'dl-menu'` and looked fine. Only a browser can say
-   where the box landed, so this suite opens every ⋮ on a real entity page and
-   measures each panel against the viewport it has to live in.
-
-   The general assertion is the point. The Issue was not "the doc menu is
-   wrong"; it was "the side is chosen where the menu is written". So the test
-   opens EVERY dotsMenu the page draws, not the one that was reported, and
-   fails if any of them paints outside — including at a narrow width, where
-   panels that fit at 1280 stop fitting.
-
-   Playwright is NOT a dependency of weave (zero runtime deps). The harness
-   imports it dynamically and the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -39,7 +19,6 @@ if (s) {
 
   async function entityPage(width = 1280) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
-    // Panels animate in; a scaled frame is not the box it rests at.
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${base}/#/entity/${doc.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.doc-section .doc-dl .dots-btn');
@@ -51,9 +30,6 @@ if (s) {
     for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== w; i++) btn.click();
   }, want);
 
-  /* Open one ⋮ by index and measure the panel it revealed. Every ⋮ shares the
-     document-level "one menu at a time" close, so opening the next one closes
-     the last without any bookkeeping here. */
   const openAndMeasure = (page, i) => page.evaluate(async (idx) => {
     const round = (n) => Math.round(n * 10) / 10;
     const wrap = document.querySelectorAll('.dl-wrap')[idx];
@@ -72,8 +48,6 @@ if (s) {
 
   const count = (page) => page.locator('.dl-wrap').count();
 
-  /* The reported defect, as its own measurement: the doc section's downloads
-     panel. Before the fix this read right: 1383 against a 1280 viewport. */
   test('the document downloads panel opens inside the page', async () => {
     const page = await entityPage(1280);
     const wraps = await page.locator('.dl-wrap').all();
@@ -97,16 +71,13 @@ if (s) {
     assert.ok(n >= 2, `the entity page draws more than one ⋮ (${n})`);
     for (let i = 0; i < n; i++) {
       const m = await openAndMeasure(page, i);
-      if (m.hidden) continue;               // a menu whose ⋮ is not clickable yet
+      if (m.hidden) continue;
       assert.ok(m.right <= m.clientWidth && m.left >= 0,
         `panel ${i} (${m.title}) painted at ${m.left}–${m.right}, viewport ${m.clientWidth}`);
     }
     await page.close();
   });
 
-  /* Narrow is the second half of the Issue: in a narrow pane the panel clips
-     against the edge instead of the window. A width chosen where the
-     left-aligned placement cannot fit. */
   test('a narrow viewport moves the panel rather than clipping it', async () => {
     const page = await entityPage(820);
     const n = await count(page);
@@ -119,12 +90,8 @@ if (s) {
     await page.close();
   });
 
-  /* A panel with room to its right is left where its caller put it — the flip
-     is a rescue, not a new default. */
   test('a panel that fits is not moved', async () => {
     const page = await entityPage(1600);
-    // Park the downloads ⋮ — a caller that asks for no alignment, so 'left' is
-    // its default — at the left edge: room on both sides, nothing to rescue.
     const i = await page.evaluate(() => {
       const wraps = [...document.querySelectorAll('.dl-wrap')];
       const at = wraps.findIndex((w) => w.querySelector('.dots-btn').title.includes('downloads'));

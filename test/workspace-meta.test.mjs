@@ -31,7 +31,6 @@ test('GET/PATCH /api/workspace: name + description, hub re-keys on rename', asyn
     assert.equal(patched.name, 'primary');
     assert.equal(patched.description, 'The **main** workspace');
 
-    // Hub now serves the workspace under the new name (it was the default).
     const list = await j(await fetch(`${base}/api/workspaces`));
     assert.ok(list.find((x) => x.name === 'primary' && x.default));
     assert.ok(!list.find((x) => x.name === 'uno'));
@@ -72,10 +71,6 @@ test('API responses carry no CORS allow-origin header (same-origin only)', async
   }
 });
 
-/* Feature #40 — what one row is called. A table of invoices holds invoices,
-   not "entities". Since 2026-09-02 the term is Name-field config
-   (`config.term = { singular, plural }`), so it rides the one field every table
-   keeps; `noun` stays as the alias the CLI and MCP already speak. */
 test('a table can name what its rows are', () => {
   const w = new Weave();
   w.createSpace({ name: 'Sales' });
@@ -133,9 +128,6 @@ test('a legacy workspace noun moves onto the Name field on first open', () => {
   assert.deepEqual(fresh.termOf(db), { singular: 'run', plural: 'runs', set: true });
 });
 
-/* Feature #51 — the workspace's shape as a read-only .mmd. One generator in
-   the engine; the home page and any doc that wants the map consume the same
-   source. User structure only — the registry describes itself. */
 test('relationMapMmd draws spaces, tables and relations', () => {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });
@@ -150,7 +142,6 @@ test('relationMapMmd draws spaces, tables and relations', () => {
   assert.ok(!mmd.includes('Spaces'), 'the registry stays out of the picture');
 });
 
-/* Feature #101 — spaces and tables carry an icon, edited beside their name. */
 test('spaces and tables carry an icon through the schema', () => {
   const w = new Weave();
   w.createSpace({ name: 'Ops' });
