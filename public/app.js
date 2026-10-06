@@ -9653,6 +9653,21 @@ function footAggregatesFor(db, f) {
 }
 
 const spaceRollupName = (db, col, agg) => (agg === 'count' ? `${db.name} · count` : `${db.name} · ${col} · ${agg}`);
+const RATING_SCALE_FOOT = ['avg', 'min', 'max', 'median'];
+const spaceRollupEntry = (db, col, agg, made) => {
+  const out = {
+    id: made.id, name: made.name, type: 'rollup', viaTable: db.qualified, viaTableId: db.id,
+    ...(agg === 'count' ? {} : { targetField: col }), aggregate: agg,
+  };
+  const f = agg === 'count' ? null : colField(db, col);
+  if ((f?.type === 'number' || f?.type === 'formula') && FOOT_NUMERIC.includes(agg) && ['bar', 'ring', 'heat'].includes(f.display)) {
+    out.display = f.display;
+    if (typeof f.scale === 'number') out.scale = f.scale;
+    out.color = f.color ?? 'ink';
+  }
+  if (f?.type === 'rating' && RATING_SCALE_FOOT.includes(agg)) out.rating = { max: f.max, icon: f.icon, color: f.color ?? 'ink' };
+  return out;
+};
 
 /* The Σ row: one cell per column, painted from the table's stats once they
    arrive. Empty cells still take a click, which is how the first Σ is added.
@@ -9683,7 +9698,7 @@ function renderFooter(db, cols) {
 
 /* Paint the Σ row from the live rollups. `rollups` may be handed in by a
    caller that already fetched them; otherwise one read. */
-async function fillFooter(db, foot, rollups = null) {
+async function fillFooter(db, foot, rollups = null, { col = null } = {}) {
   if (!foot) return;
   try {
     rollups ??= (await api('GET', `/tables/${db.id}/stats`)).rollups;
@@ -9692,15 +9707,17 @@ async function fillFooter(db, foot, rollups = null) {
   // the read, not before; a row a redraw replaced meanwhile is left alone.
   if (!foot.isConnected) return;
   const nameCol = db.fields.find((f) => f.role === 'name')?.name ?? 'Name';
+  const colOf = (r) => r.targetField ?? nameCol;
+  foot.rollups = col == null ? rollups : [...(foot.rollups ?? []).filter((r) => colOf(r) !== col), ...rollups];
   for (const td of foot.querySelectorAll('td.foot-cell')) {
-    const col = td.dataset.col;
-    const mine = rollups.filter((r) => (r.targetField ?? nameCol) === col && FOOT_LABELS[r.aggregate]);
+    if (col != null && td.dataset.col !== col) continue;
+    const mine = rollups.filter((r) => colOf(r) === td.dataset.col && FOOT_LABELS[r.aggregate]);
     td.replaceChildren(...mine.map((r) => el('span', { class: 'foot-stat', title: r.name + (r.where ? ' (filtered)' : '') },
       el('span', { class: 'foot-agg' }, FOOT_LABELS[r.aggregate]),
       el('span', { class: 'foot-val' }, r.display ?? '—'))));
     td.classList.toggle('has-stats', mine.length > 0);
   }
-  foot.dataset.rollups = String(rollups.length);
+  foot.dataset.rollups = String(foot.rollups.length);
 }
 
 /* The picker: one switch per aggregate the column can wear. On creates the
@@ -9713,29 +9730,59 @@ async function footerPicker(anchor, db, col) {
   if (!spacesT || !aggs.length) return;
   const nameCol = db.fields.find((x) => x.role === 'name')?.name ?? 'Name';
   let rollups = [];
-  const load = async () => { rollups = (await api('GET', `/tables/${db.id}/stats`)).rollups; };
+  const load = async () => { rollups = (await api('GET', `/tables/${db.id}/stats?field=${encodeURIComponent(f.id)}`)).rollups; };
   const have = (agg) => rollups.find((r) => (r.targetField ?? nameCol) === col && r.aggregate === agg && !r.where);
+  const tailKey = `Σ ${db.id} ${col}`;
+  const write = async (agg, on) => {
+    const cur = have(agg);
+    if (on && !cur) {
+      const made = await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
+      rollups = [...rollups, { fieldId: made.id, name: made.name, targetField: agg === 'count' ? null : col, aggregate: agg, where: null, value: null, display: null }];
+      const reg = registryTable('spaces');
+      if (reg) {
+        reg.fields.push(spaceRollupEntry(db, col, agg, made));
+        for (const v of reg.views ?? []) if (!v.fields.includes(made.name)) v.fields.push(made.name);
+      }
+    } else if (!on && cur) {
+      await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
+      rollups = rollups.filter((r) => r !== cur);
+      const reg = registryTable('spaces');
+      if (reg) {
+        reg.fields = reg.fields.filter((x) => x.id !== cur.fieldId);
+        for (const v of reg.views ?? []) {
+          v.fields = v.fields.filter((n) => n !== cur.name);
+          if (v.widths && cur.name in v.widths) {
+            delete v.widths[cur.name];
+            if (!Object.keys(v.widths).length) delete v.widths;
+          }
+        }
+      }
+    }
+  };
+  const flip = (node) => {
+    const agg = node.dataset.agg;
+    const on = node.getAttribute('aria-checked') !== 'true';
+    node.setAttribute('aria-checked', on ? 'true' : 'false');
+    node.querySelector('.switch')?.classList.toggle('on', on);
+    const turn = eyeWrites.then(async () => {
+      try { await write(agg, on); } catch (err) { toast(err.message, true); }
+      if (eyeTails.get(tailKey) === turn) await load().catch(() => {});
+    });
+    eyeWrites = turn;
+    eyeTails.set(tailKey, turn);
+    turn.then(() => {
+      if (eyeTails.get(tailKey) !== turn) return;
+      eyeTails.delete(tailKey);
+      if (pop.isConnected) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
+      fillFooter(db, anchor.closest('tr.wv-foot'), rollups, { col });
+    });
+  };
   const row = (agg) => {
     const on = !!have(agg);
     return el('button', {
       class: 'chip-pop-row eye-row foot-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
       dataset: { agg },
-      onclick: async (e) => {
-        e.stopPropagation();
-        try {
-          const cur = have(agg);
-          if (cur) await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
-          else await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
-          await load();
-          // Same tail, same hazard as the eye's (Issue #240): teach the rows.
-          const pop = document.querySelector('.chip-pop');
-          // On a rebuild the pressed row is a new node; focus follows it so
-          // Escape still closes and the arrows still move.
-          if (pop) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
-          fillFooter(db, anchor.closest('tr.wv-foot'), rollups);
-          loadSchema();
-        } catch (err) { toast(err.message, true); }
-      },
+      onclick: (e) => { e.stopPropagation(); flip(e.currentTarget); },
     }, el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg),
     el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
   };
@@ -9744,8 +9791,10 @@ async function footerPicker(anchor, db, col) {
     ...aggs.map(row),
     el('div', { class: 'chip-pop-note' }, 'Each switch is a rollup field on this space\'s row'),
   ];
-  try { await load(); } catch (err) { toast(err.message, true); return; }
-  showPopover(anchor, build());
+  const opened = eyeWrites.then(load);
+  eyeWrites = opened.catch(() => {});
+  try { await opened; } catch (err) { toast(err.message, true); return; }
+  const pop = showPopover(anchor, build());
 }
 
 /* The space page's tiles: every space rollup pointed at one of its tables,
