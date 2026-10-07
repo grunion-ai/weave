@@ -82,8 +82,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const fwd = trustProxy ? String(rx.header('x-forwarded-for') ?? '').split(',')[0].trim() : '';
     return fwd || rx.remote || 'unknown';
   };
-  const sessionCookie = (token, rx) => `wv_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Weave.SESSION_TTL_MS / 1000}${originFor(rx).startsWith('https:') ? '; Secure' : ''}`;
-  const clearCookie = (rx) => `wv_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${originFor(rx).startsWith('https:') ? '; Secure' : ''}`;
+  const LEGACY_COOKIE = 'wv_session';
+  const cookieName = (w) => `${LEGACY_COOKIE}_${w.state.meta.id}`;
+  const secureFlag = (rx) => (originFor(rx).startsWith('https:') ? '; Secure' : '');
+  const sessionCookie = (name, token, rx) => `${name}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`;
+  const clearCookie = (name, rx) => `${name}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureFlag(rx)}`;
   const withCookies = (res, jar) => {
     if (!res || !jar.length) return res;
     const own = [res.headers?.['Set-Cookie'] ?? []].flat();
@@ -278,10 +281,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     let role = null;
     let session = null;
     const cookies = parseCookies(rx.header('cookie'));
-    const verifyOn = (w) => {
-      const s = w.verifySession(cookies.wv_session);
-      if (s?.renewed) jar.push(sessionCookie(cookies.wv_session, rx));
-      return s;
+    const resolved = new Map();
+    const ownSession = (w) => {
+      if (resolved.has(w)) return resolved.get(w);
+      const name = cookieName(w);
+      const own = cookies[name] ? w.verifySession(cookies[name]) : null;
+      const legacy = !own && cookies[LEGACY_COOKIE] ? w.verifySession(cookies[LEGACY_COOKIE]) : null;
+      const token = own ? cookies[name] : cookies[LEGACY_COOKIE];
+      const hit = own ? { ...own, engine: w, cookie: name }
+        : legacy ? { ...legacy, engine: w, cookie: name, legacy: true } : null;
+      if (hit?.renewed || hit?.legacy) jar.push(sessionCookie(name, token, rx));
+      if (hit?.legacy) jar.push(clearCookie(LEGACY_COOKIE, rx));
+      resolved.set(w, hit);
+      return hit;
+    };
+    const sessionOn = (w) => {
+      const root = hub.get(hub.defaultName);
+      return ownSession(w) ?? (w !== root ? ownSession(root) : null);
     };
     const authz = rx.header('authorization');
     let oauth = null;
@@ -325,17 +341,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = oauth ? `${account.name} via ${oauth.client}`.slice(0, 120) : account.name;
       role = Weave.roleName(account.role);
-    } else if (cookies.wv_session) {
-      const root = hub.get(hub.defaultName);
-      session = verifyOn(weave) ?? (root !== weave ? verifyOn(root) : null);
-      if (session) {
-        weave.actor = session.name;
-        role = Weave.roleName(session.role);
-      } else if (weave.state.meta.requireAuth && !openDoor) {
-        return path.startsWith('/api/')
-          ? deny(401, 'Session expired or revoked')
-          : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(rx), 'Cache-Control': 'no-store' }, body: '' };
+    } else if ((session = sessionOn(weave))) {
+      weave.actor = session.name;
+      role = Weave.roleName(session.role);
+    } else if (weave.state.meta.requireAuth && !openDoor && (cookies[cookieName(weave)] || cookies[LEGACY_COOKIE])) {
+      const held = [cookies[cookieName(weave)], cookies[LEGACY_COOKIE]].filter(Boolean);
+      if (held.some((t) => weave.removedSession(t))) {
+        const ws = weave.state.meta.name;
+        if (path.startsWith('/api/')) return out(403, { error: `Your access to ${ws} was removed`, code: 'access-removed' }, { 'Cache-Control': 'no-store' });
+        return out(403, renderRefusalPage({
+          title: `Your access to ${ws} was removed`,
+          lines: [`A workspace architect removed your account from ${ws}, so this browser's session there has ended.`, 'Ask an architect for a new invite link, or sign in with a different account.'],
+          actions: [{ href: `${wsPrefix}/auth?signed-out=1`, label: 'Sign in with a different account' }],
+        }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
+      return path.startsWith('/api/')
+        ? deny(401, 'Session expired or revoked')
+        : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(cookieName(weave), rx), 'Cache-Control': 'no-store' }, body: '' };
     } else if (weave.state.meta.requireAuth && !openDoor) {
       if (path.startsWith('/api/')) return deny(401, 'This workspace requires authentication');
       const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
@@ -382,9 +404,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (w === weave) return role;
       if (oauth) return w === oauth.engine ? Weave.roleName(oauth.account.role) : null;
       if (authz && /^Bearer /i.test(authz)) return Weave.roleName(w.verifyToken(authz.slice(7).trim())?.role) ?? null;
-      if (!cookies.wv_session) return null;
-      const root = hub.get(hub.defaultName);
-      return Weave.roleName((verifyOn(w) ?? (w !== root ? verifyOn(root) : null))?.role) ?? null;
+      return Weave.roleName(sessionOn(w)?.role) ?? null;
     };
 
     const resolveMention = (kind, ref) => {
@@ -525,7 +545,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const ip = clientIp(rx);
           const tooMany = () => out(429, { error: 'Too many attempts — wait a minute and try again', code: 'rate-limited' });
           const who = () => session ?? (role ? weave.verifyToken(authz.slice(7).trim()) : null);
-          const holder = () => (session && verifyOn(weave)) ? weave : hub.get(hub.defaultName);
           if (path.startsWith('/api/auth/oidc/')) {
             if (!oidc) return notFound({ error: 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
             let mount = wsPrefix;
@@ -582,20 +601,25 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 return refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [await differentAccount(), signInAgain()]);
               }
               const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
-              return { status: 302, headers: { Location: c.next, 'Set-Cookie': sessionCookie(minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+              return { status: 302, headers: { Location: c.next, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
             }
             return notFound({ error: 'Unknown auth route', code: 'not-found' });
           }
           if (route === 'POST /api/auth/logout') {
-            if (session) {
-              try { holder().revokeSession(session.id, { id: session.sessionId }); } catch {}
+            const everywhere = ['1', 'true'].includes(rx.searchParams?.get('everywhere') ?? '');
+            const ending = everywhere ? hub.entries().map(([, w]) => ownSession(w)).filter(Boolean) : [session].filter(Boolean);
+            for (const hit of ending) {
+              try { hit.engine.revokeSession(hit.id, { id: hit.sessionId }); } catch {}
             }
-            return out(200, { ok: true }, { 'Set-Cookie': clearCookie(rx), 'Cache-Control': 'no-store' });
+            const names = new Set(everywhere
+              ? [...Object.keys(cookies).filter((n) => n === LEGACY_COOKIE || n.startsWith(`${LEGACY_COOKIE}_`)), ...ending.map((hit) => hit.cookie)]
+              : [session?.cookie ?? cookieName(weave), ...(session?.legacy ? [LEGACY_COOKIE] : [])]);
+            return out(200, { ok: true }, { 'Set-Cookie': [...names].map((n) => clearCookie(n, rx)), 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/auth/me') {
             const account = who();
             if (!account) return deny(401, 'Not signed in');
-            const engine = session ? holder() : weave;
+            const engine = session ? session.engine : weave;
             const sessions = engine.listSessions(account.id).map(({ accountId, ...s }) => ({ ...s, current: s.id === session?.sessionId }));
             const { credentials, ...pub } = engine.listAccounts().find((a) => a.id === account.id) ?? account;
             return out(200, { account: pub, role: account.role, sessions }, { 'Cache-Control': 'no-store' });
@@ -603,7 +627,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if ((m = path.match(/^\/api\/auth\/sessions\/([^/]+)$/)) && rx.method === 'DELETE') {
             const account = who();
             if (!account) return deny(401, 'Not signed in');
-            const engine = session ? holder() : weave;
+            const engine = session ? session.engine : weave;
             if (m[1] === 'others') return out(200, engine.revokeSession(account.id, { all: true, except: session?.sessionId ?? null }));
             return out(200, engine.revokeSession(account.id, { id: m[1] }));
           }
@@ -670,7 +694,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const root = hub.get(hub.defaultName);
           const token = authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null;
           const me = token ? { engine: weave, id: token.id, name: token.name }
-            : session ? { engine: verifyOn(weave) ? weave : root, id: session.id, name: session.name }
+            : session ? { engine: session.engine, id: session.id, name: session.name }
               : { engine: root, id: null, name: null };
           const taken = (n) => { const h = hub.get(n); return !!h && h !== weave; };
           const firstName = WeaveStarters.workspaceName(String(me.name ?? '').trim().split(/\s+/)[0].toLowerCase());

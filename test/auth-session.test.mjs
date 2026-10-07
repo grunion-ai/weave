@@ -79,7 +79,7 @@ test('routes: a provider sign-in sets a session cookie that opens the wall; logo
     assert.equal(door.headers.get('location'), '/api/auth/oidc/start');
     const kyle = await s.signIn(KYLE);
     assert.equal(kyle.res.status, 302);
-    assert.match(kyle.res.headers.get('set-cookie'), /^wv_session=[A-Za-z0-9_-]+; HttpOnly; SameSite=Lax; Path=\/; Max-Age=2592000$/, 'no Secure on http');
+    assert.match(kyle.res.headers.get('set-cookie'), new RegExp(`^wv_session_${s.w.state.meta.id}=[A-Za-z0-9_-]+; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000$`), 'no Secure on http');
     assert.equal((await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie })).status, 200);
     assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 200);
     const me = await (await s.call('GET', '/api/auth/me', { cookie: kyle.cookie })).json();
@@ -90,7 +90,7 @@ test('routes: a provider sign-in sets a session cookie that opens the wall; logo
     const row = await (await s.call('POST', '/api/tables/Task/entities', { cookie: kyle.cookie, body: { name: 'By cookie' } })).json();
     assert.equal(s.w.getEntity(row.id).createdBy, 'kyle');
     const bye = await s.call('POST', '/api/auth/logout', { cookie: kyle.cookie });
-    assert.match(bye.headers.get('set-cookie'), /^wv_session=; .*Max-Age=0/);
+    assert.match(bye.headers.get('set-cookie'), new RegExp(`^wv_session_${s.w.state.meta.id}=; .*Max-Age=0`));
     const after = await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie });
     assert.equal(after.status, 302, 'a dead cookie on a page redirects to the sign-in page');
     assert.match(after.headers.get('location'), /^\/auth\?next=%2Fe%2F/);
@@ -145,7 +145,8 @@ test('routes: a session used daily still opens on day 29 and comes back with a r
   const s = await serve();
   try {
     const kyle = await s.signIn(KYLE);
-    const token = kyle.cookie.split('=')[1];
+    const [name, token] = kyle.cookie.split('=');
+    assert.equal(name, `wv_session_${s.w.state.meta.id}`);
     const row = () => Object.values(s.w.state.meta.sessions)[0];
     const now = Date.now();
     Object.assign(row(), {
@@ -155,7 +156,7 @@ test('routes: a session used daily still opens on day 29 and comes back with a r
     });
     const day29 = await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie });
     assert.equal(day29.status, 200);
-    assert.equal(day29.headers.get('set-cookie'), `wv_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`, 'the slid session reissues the same token with a fresh lifetime');
+    assert.equal(day29.headers.get('set-cookie'), `${name}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`, 'the slid session reissues the same token with a fresh lifetime');
     assert.ok(Date.parse(row().expiresAt) > now + 29.9 * DAY);
     const again = await s.call('GET', '/api/schema', { cookie: kyle.cookie });
     assert.equal(again.status, 200);
@@ -164,7 +165,7 @@ test('routes: a session used daily still opens on day 29 and comes back with a r
     const idle = await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie });
     assert.equal(idle.status, 302);
     assert.match(idle.headers.get('location'), /^\/auth\?next=%2Fe%2F/);
-    assert.match(idle.headers.get('set-cookie'), /^wv_session=; .*Max-Age=0/);
+    assert.equal(idle.headers.get('set-cookie'), `${name}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 401);
   } finally { s.stop(); }
 });

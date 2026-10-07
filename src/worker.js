@@ -60,7 +60,9 @@ export class WeaveWorkspace {
           catch { throw new WeaveError('Invalid JSON body', 'invalid'); }
         },
       });
-      return new Response(outcome.body, { status: outcome.status, headers: outcome.headers });
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(outcome.headers ?? {})) for (const v of [value].flat()) headers.append(name, v);
+      return new Response(outcome.body, { status: outcome.status, headers });
     } catch (err) {
       const status = statusFor(err);
       return Response.json({ error: err.message, code: err.code ?? 'internal' }, { status });

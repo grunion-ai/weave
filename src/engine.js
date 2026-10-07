@@ -415,7 +415,7 @@ export const ONTOLOGY = {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
       definition: 'A named token holder with a role — architect, editor, or observer (admin, writer and reader before 2026-10-02, rewritten on open). Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a row by the passkey door removed in Feature #243 is kept and ignored. Provider identities ({ issuer, subject }, no email) live on the row as identities[] (Feature #212, Feature #252); an identity is linked by redeeming a one-time invite kept as its sha256 in meta.identityInvites.',
       identity: 'uuid; name unique in the workspace',
-      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'listSessions', 'revokeSession', 'linkIdentity', 'inviteMember', 'listInvites', 'revokeInvite', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
+      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'removedSession', 'listSessions', 'revokeSession', 'linkIdentity', 'inviteMember', 'listInvites', 'revokeInvite', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
     },
     {
       key: 'key', name: 'Credential', storedIn: 'keystore',
@@ -3007,8 +3007,17 @@ export class Weave {
     const a = own(accounts, ref) ?? Object.values(accounts).find((x) => x.name === ref);
     if (!a) throw new WeaveError(`Account '${ref}' not found`, 'not-found');
     delete accounts[a.id];
+    const sessions = this.state.meta.sessions ?? {};
+    const removedAt = nowISO();
+    let ended = 0;
+    for (const [h, s] of Object.entries(sessions)) {
+      if (s.accountId !== a.id) continue;
+      sessions[h] = { removedAt, expiresAt: s.expiresAt };
+      ended += 1;
+    }
     this.save();
     this.#audit('account-deleted', { name: a.name });
+    if (ended) this.#audit('session-revoked', { name: a.name, count: ended, all: true });
     return { id: a.id, deleted: true };
   }
 
@@ -3065,6 +3074,7 @@ export class Weave {
     if (!s) return null;
     const now = Date.now();
     if (Date.parse(s.expiresAt) <= now) { delete this.state.meta.sessions[h]; this.save(); return null; }
+    if (s.removedAt) return null;
     const a = this.state.meta.accounts?.[s.accountId];
     if (!a) return null;
     const renewed = now - Date.parse(s.lastSeenAt) > 60 * 1000;
@@ -3075,6 +3085,13 @@ export class Weave {
     }
     const { tokenHash, ...pub } = a;
     return { ...pub, sessionId: h, expiresAt: s.expiresAt, renewed };
+  }
+
+  removedSession(token) {
+    if (!token) return null;
+    const s = this.state.meta.sessions?.[this.#hash(token)];
+    if (!s?.removedAt || Date.parse(s.expiresAt) <= Date.now()) return null;
+    return { removedAt: s.removedAt };
   }
 
   listSessions(accountRef) {
