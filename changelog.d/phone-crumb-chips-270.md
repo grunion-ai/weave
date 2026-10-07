@@ -1,0 +1,1 @@
+- On a phone each breadcrumb is a 36px chip with its icon and label, and the current one is bold; the menu button and the row page's back and forward buttons are 44px glass circles. The workspace crumb is left off on a phone, where the menu names the workspace (Feature #270).
