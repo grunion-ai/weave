@@ -1,0 +1,1 @@
+- A signed-in browser stays signed in while it is used: each time the server extends a session (at most once a minute), the response reissues the `wv_session` cookie with the same token and a fresh 30-day lifetime. Before, the cookie was written once at sign-in and the browser dropped it on day 30 however active the person was (Issue #710).

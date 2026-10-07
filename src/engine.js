@@ -3067,13 +3067,14 @@ export class Weave {
     if (Date.parse(s.expiresAt) <= now) { delete this.state.meta.sessions[h]; this.save(); return null; }
     const a = this.state.meta.accounts?.[s.accountId];
     if (!a) return null;
-    if (now - Date.parse(s.lastSeenAt) > 60 * 1000) {
+    const renewed = now - Date.parse(s.lastSeenAt) > 60 * 1000;
+    if (renewed) {
       s.lastSeenAt = new Date(now).toISOString();
       s.expiresAt = new Date(now + Weave.SESSION_TTL_MS).toISOString();
       this.save();
     }
     const { tokenHash, ...pub } = a;
-    return { ...pub, sessionId: h };
+    return { ...pub, sessionId: h, expiresAt: s.expiresAt, renewed };
   }
 
   listSessions(accountRef) {

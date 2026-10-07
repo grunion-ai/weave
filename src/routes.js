@@ -82,10 +82,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const fwd = trustProxy ? String(rx.header('x-forwarded-for') ?? '').split(',')[0].trim() : '';
     return fwd || rx.remote || 'unknown';
   };
-  const sessionCookie = (token, rx) => `wv_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}${originFor(rx).startsWith('https:') ? '; Secure' : ''}`;
+  const sessionCookie = (token, rx) => `wv_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Weave.SESSION_TTL_MS / 1000}${originFor(rx).startsWith('https:') ? '; Secure' : ''}`;
   const clearCookie = (rx) => `wv_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${originFor(rx).startsWith('https:') ? '; Secure' : ''}`;
+  const withCookies = (res, jar) => {
+    if (!res || !jar.length) return res;
+    const own = [res.headers?.['Set-Cookie'] ?? []].flat();
+    const named = new Set(own.map((c) => c.split('=')[0]));
+    const add = new Map(jar.filter((c) => !named.has(c.split('=')[0])).map((c) => [c.split('=')[0], c]));
+    const all = [...own, ...add.values()];
+    return { ...res, headers: { ...res.headers, 'Set-Cookie': all.length === 1 ? all[0] : all } };
+  };
 
-  return async function handle(rx) {
+  const respond = async (rx, jar) => {
     let path = rx.path;
     const viewerZone = rx.header('x-weave-zone') || null;
     let versionOf = null;
@@ -270,6 +278,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     let role = null;
     let session = null;
     const cookies = parseCookies(rx.header('cookie'));
+    const verifyOn = (w) => {
+      const s = w.verifySession(cookies.wv_session);
+      if (s?.renewed) jar.push(sessionCookie(cookies.wv_session, rx));
+      return s;
+    };
     const authz = rx.header('authorization');
     let oauth = null;
     let mcpDoor = false;
@@ -314,7 +327,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       role = Weave.roleName(account.role);
     } else if (cookies.wv_session) {
       const root = hub.get(hub.defaultName);
-      session = weave.verifySession(cookies.wv_session) ?? (root !== weave ? root.verifySession(cookies.wv_session) : null);
+      session = verifyOn(weave) ?? (root !== weave ? verifyOn(root) : null);
       if (session) {
         weave.actor = session.name;
         role = Weave.roleName(session.role);
@@ -371,7 +384,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (authz && /^Bearer /i.test(authz)) return Weave.roleName(w.verifyToken(authz.slice(7).trim())?.role) ?? null;
       if (!cookies.wv_session) return null;
       const root = hub.get(hub.defaultName);
-      return Weave.roleName((w.verifySession(cookies.wv_session) ?? (w !== root ? root.verifySession(cookies.wv_session) : null))?.role) ?? null;
+      return Weave.roleName((verifyOn(w) ?? (w !== root ? verifyOn(root) : null))?.role) ?? null;
     };
 
     const resolveMention = (kind, ref) => {
@@ -512,7 +525,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const ip = clientIp(rx);
           const tooMany = () => out(429, { error: 'Too many attempts — wait a minute and try again', code: 'rate-limited' });
           const who = () => session ?? (role ? weave.verifyToken(authz.slice(7).trim()) : null);
-          const holder = () => (session && weave.verifySession(cookies.wv_session)) ? weave : hub.get(hub.defaultName);
+          const holder = () => (session && verifyOn(weave)) ? weave : hub.get(hub.defaultName);
           if (path.startsWith('/api/auth/oidc/')) {
             if (!oidc) return notFound({ error: 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
             let mount = wsPrefix;
@@ -657,7 +670,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const root = hub.get(hub.defaultName);
           const token = authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null;
           const me = token ? { engine: weave, id: token.id, name: token.name }
-            : session ? { engine: weave.verifySession(cookies.wv_session) ? weave : root, id: session.id, name: session.name }
+            : session ? { engine: verifyOn(weave) ? weave : root, id: session.id, name: session.name }
               : { engine: root, id: null, name: null };
           const taken = (n) => { const h = hub.get(n); return !!h && h !== weave; };
           const firstName = WeaveStarters.workspaceName(String(me.name ?? '').trim().split(/\s+/)[0].toLowerCase());
@@ -1200,5 +1213,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const json = { error: err.message, code: err.code ?? 'internal' };
       return status === 404 ? notFound(json) : out(status, json);
     }
+  };
+
+  return async function handle(rx) {
+    const jar = [];
+    return withCookies(await respond(rx, jar), jar);
   };
 }

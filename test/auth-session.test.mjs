@@ -139,6 +139,36 @@ test('routes: with requireAuth off the page is open, a session still names the a
   } finally { s.stop(); }
 });
 
+const DAY = 24 * 3600_000;
+
+test('routes: a session used daily still opens on day 29 and comes back with a refreshed cookie; one idle past 30 days goes to sign-in (Issue #710)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signIn(KYLE);
+    const token = kyle.cookie.split('=')[1];
+    const row = () => Object.values(s.w.state.meta.sessions)[0];
+    const now = Date.now();
+    Object.assign(row(), {
+      createdAt: new Date(now - 29 * DAY).toISOString(),
+      lastSeenAt: new Date(now - 5 * 60_000).toISOString(),
+      expiresAt: new Date(now - 5 * 60_000 + 30 * DAY).toISOString(),
+    });
+    const day29 = await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie });
+    assert.equal(day29.status, 200);
+    assert.equal(day29.headers.get('set-cookie'), `wv_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`, 'the slid session reissues the same token with a fresh lifetime');
+    assert.ok(Date.parse(row().expiresAt) > now + 29.9 * DAY);
+    const again = await s.call('GET', '/api/schema', { cookie: kyle.cookie });
+    assert.equal(again.status, 200);
+    assert.equal(again.headers.get('set-cookie'), null, 'inside the minute nothing slides, so nothing is reissued');
+    Object.assign(row(), { lastSeenAt: new Date(now - 31 * DAY).toISOString(), expiresAt: new Date(now - DAY).toISOString() });
+    const idle = await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie });
+    assert.equal(idle.status, 302);
+    assert.match(idle.headers.get('location'), /^\/auth\?next=%2Fe%2F/);
+    assert.match(idle.headers.get('set-cookie'), /^wv_session=; .*Max-Age=0/);
+    assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 401);
+  } finally { s.stop(); }
+});
+
 test('routes: rate limits — 10 sign-in starts a minute per IP, 5 failed callbacks; X-Forwarded-For only counts behind a trusted proxy', async () => {
   const s = await serve({ limits: null });
   try {
