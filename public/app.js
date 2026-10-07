@@ -8045,6 +8045,12 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
         e.stopPropagation();
         editor.vditor?.undo?.redo(editor.vditor);
       }, { capture: true });
+      host.addEventListener('beforeinput', (e) => {
+        const step = { historyUndo: 'undo', historyRedo: 'redo' }[e.inputType];
+        if (!step) return;
+        e.preventDefault();
+        editor.vditor?.undo?.[step](editor.vditor);
+      }, { capture: true });
       attachToolbarBubble(host);
       attachFileTools(host, editor, onInput);
       watchCommandMarkers(host, editor, onInput);

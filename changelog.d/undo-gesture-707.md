@@ -1,0 +1,1 @@
+- The iPhone undo and redo gestures (shake, three-finger swipe, the Undo key on an iPad keyboard bar) step through the document editor's own history. Before, they reached the browser's undo, which had nothing to take back (Issue #707).
