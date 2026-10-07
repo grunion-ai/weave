@@ -1631,7 +1631,7 @@ test('no surface says "entity" to a reader where a table has a row term', () => 
     "title: 'Add an entity'", "'Open entity page'", "Record noun", "Deleted entities",
     "'Search records…'", "title: 'Entity actions'", "'Roll up into a new entity…'",
     "? 'entity' : 'entities'", "${n.entityCount} entities", "New ${db.noun ?? db.name}",
-    "no entity to attach to",
+    "no entity to attach to", "'record' : 'records'",
   ]) {
     assert.ok(!APP.includes(literal), `app.js still says ${literal}`);
   }
@@ -1639,7 +1639,8 @@ test('no surface says "entity" to a reader where a table has a row term', () => 
   assert.match(APP, /countLabel\(sel\.size, db\.term\)/, 'the puck count');
   assert.match(APP, /termOfTable\(f\.targetDbId\)\.plural/, 'relation pickers speak the target\'s plural');
   assert.match(APP, /WeaveTerm\.count\(n\.entityCount, n\.term\)/, 'relation-map nodes');
-  assert.match(APP, /'record' : 'records'/, 'the workspace total speaks the default term');
+  assert.match(APP, /WeaveTerm\.DEFAULT\.singular : WeaveTerm\.DEFAULT\.plural/, 'the workspace total speaks the default term');
+  assert.doesNotMatch(APP, /\?\? 'record'/, 'no surface carries its own copy of the default noun');
 });
 
 test('the Name field\'s dialog carries the grouped term picker', () => {

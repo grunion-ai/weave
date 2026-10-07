@@ -38,7 +38,7 @@ globalThis.WeaveSelection = {
   moreCommands({ built = null, term = null, relations = [], otherTables = 1 } = {}) {
     const cmds = [];
     if (otherTables > 0) cmds.push({ id: 'move', label: 'Move to table…' });
-    if (relations.length) cmds.push({ id: 'rollup', label: `Roll up into a new ${(term && term.singular) || 'record'}…` });
+    if (relations.length) cmds.push({ id: 'rollup', label: `Roll up into a new ${(term && term.singular) || globalThis.WeaveTerm.DEFAULT.singular}…` });
     cmds.push({ id: 'copy', label: 'Copy links' });
     return built ? cmds.filter((c) => built.includes(c.id)) : cmds;
   },
@@ -56,7 +56,7 @@ globalThis.WeaveSelection = {
   },
 
   countLabel(n, term = null) {
-    const t = term && term.singular ? term : { singular: 'record', plural: 'records' };
+    const t = term && term.singular ? term : globalThis.WeaveTerm.DEFAULT;
     return `${n} ${n === 1 ? t.singular : t.plural}`;
   },
 };

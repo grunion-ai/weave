@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+await import('../public/term-core.js');
 await import('../public/selection-core.js');
 const SEL = globalThis.WeaveSelection;
 
@@ -76,8 +77,8 @@ test('trash is last, and it is the only destructive command on the bar', () => {
 });
 
 test('the count speaks the table\'s row term, singular at one — the puck says what it holds', () => {
-  assert.equal(SEL.countLabel(1), '1 record', 'no term: the default');
-  assert.equal(SEL.countLabel(12), '12 records');
+  assert.equal(SEL.countLabel(1), '1 row', 'no term: the default');
+  assert.equal(SEL.countLabel(12), '12 rows');
   assert.equal(SEL.countLabel(1, { singular: 'deal', plural: 'deals' }), '1 deal');
   assert.equal(SEL.countLabel(3, { singular: 'deal', plural: 'deals' }), '3 deals');
   assert.match(SEL.moreCommands({ term: { singular: 'deal', plural: 'deals' }, relations: ['P'] }).find((c) => c.id === 'rollup').label, /new deal/);

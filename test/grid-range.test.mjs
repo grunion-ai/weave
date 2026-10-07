@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+await import('../public/term-core.js');
 await import('../public/selection-core.js');
 await import('../public/grid-range.js');
 const R = globalThis.WeaveGridRange;

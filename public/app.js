@@ -1077,8 +1077,8 @@ function renderNav() {
       })),
     }, '+ New space'));
   const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
-  const line = el('span', { class: 'nav-stats-line', title: 'Records in this workspace · storage on disk' },
-    `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'record' : 'records'}`);
+  const line = el('span', { class: 'nav-stats-line', title: 'Rows in this workspace · storage on disk' },
+    `${entityTotal.toLocaleString()} ${entityTotal === 1 ? WeaveTerm.DEFAULT.singular : WeaveTerm.DEFAULT.plural}`);
   const stats = el('div', { class: 'nav-stats' }, foot, line);
   const wf = allTables().find((d) => d.system === 'workflows');
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
@@ -2647,7 +2647,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   }
   if (f.type === 'field') {
     const def = item.raw?.[f.name] ?? null;
-    const chip = el('span', { class: 'computed k k-computed' + (def == null ? ' is-empty' : ''), title: compact ? `field definition — edit on the ${db?.term?.singular ?? 'record'} page` : 'field definition — click to edit' },
+    const chip = el('span', { class: 'computed k k-computed' + (def == null ? ' is-empty' : ''), title: compact ? `field definition — edit on the ${db?.term?.singular ?? WeaveTerm.DEFAULT.singular} page` : 'field definition — click to edit' },
       el('span', { class: 'computed-mark' }, computedMarkNode('field')),
       def == null ? '—' : String(val));
     if (compact) return chip;
@@ -5987,7 +5987,7 @@ function viewSection(db, dlg, changed, redraw) {
         const r = await api('POST', `/tables/${db.id}/query`, { limit: 1 });
         sampleId = r.items?.[0]?.id ?? null;
       }
-      if (!sampleId) { previewBox.replaceChildren(el('span', { class: 'wv-muted' }, `No ${db.term?.singular ?? 'record'} to preview yet.`)); return; }
+      if (!sampleId) { previewBox.replaceChildren(el('span', { class: 'wv-muted' }, `No ${db.term?.singular ?? WeaveTerm.DEFAULT.singular} to preview yet.`)); return; }
       const cfg = { ...v, fields: Array.isArray(v.fields) ? v.fields : null };
       const view = await api('GET', `/entities/${sampleId}/view?shape=${encodeURIComponent(v.shape)}&config=${encodeURIComponent(JSON.stringify(cfg))}`);
       previewBox.replaceChildren(viewCell(view, { shape: v.shape }));
@@ -6076,7 +6076,7 @@ function statePreview(st) {
 function termSection(state, onChange) {
   const T = WeaveTerm;
   const face = el('button', { type: 'button', class: 'picker-face term-face', 'aria-haspopup': 'listbox' });
-  const reset = el('button', { type: 'button', class: 'term-reset', title: 'Back to Record' }, 'reset');
+  const reset = el('button', { type: 'button', class: 'term-reset', title: `Back to ${WeaveTerm.cap(WeaveTerm.DEFAULT.singular)}` }, 'reset');
   const plur = el('input', { class: 'form-control term-plural', readonly: '', tabindex: '-1', title: 'derived from the singular', value: T.resolve({ term: state.term }).plural });
   const preview = el('div', { class: 'modal-note term-preview' });
   const draw = () => {
@@ -6703,7 +6703,7 @@ function fieldDialog(db, existing, after) {
       note = el('div', { class: 'modal-note migrate-note' }, `Saving converts this ${existing.type} field to ${state.type}; every row's value is migrated in place.`);
     } else if (isEdit && !migratable) {
       note = el('div', { class: 'modal-note' }, existing.role === 'name' ? 'a name is text, or a formula (ƒ below)'
-        : existing.type === 'view' ? `the ${existing.shape ?? existing.role}: how every ${db.term?.singular ?? 'record'} appears ${existing.role === 'card' ? 'as a tile' : 'inline'} — rename it, configure it, never delete it`
+        : existing.type === 'view' ? `the ${existing.shape ?? existing.role}: how every ${db.term?.singular ?? WeaveTerm.DEFAULT.singular} appears ${existing.role === 'card' ? 'as a tile' : 'inline'} — rename it, configure it, never delete it`
         : `${existing.type} field — the type is fixed`);
     } else if (isEdit) {
       note = el('div', { class: 'modal-note' }, `${existing.type} field — it can also become ${choices.slice(1).map((t) => t.id).join(', ')}`);
@@ -8687,7 +8687,7 @@ function appearsAsPanel(db, entity, refresh) {
   const cardF = shownView('card');
   if (!chipF && !cardF) return null;
   const gear = (f) => el('button', {
-    type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny wv-appears-cfg', title: `Configure the ${f.role} for every ${db.term?.singular ?? 'record'}`,
+    type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny wv-appears-cfg', title: `Configure the ${f.role} for every ${db.term?.singular ?? WeaveTerm.DEFAULT.singular}`,
     onclick: () => fieldDialog(db, f, refresh),
   }, iconEl('lucide:sliders-horizontal', 'wv-icon'));
   const slot = (f, node) => el('div', { class: `wv-appears-slot wv-appears-${f.role}` },

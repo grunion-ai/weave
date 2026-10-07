@@ -75,7 +75,7 @@ test('a table can name what its rows are', () => {
   const w = new Weave();
   w.createSpace({ name: 'Sales' });
   const db = w.createTable({ space: 'Sales', name: 'Invoices' });
-  assert.deepEqual(w.termOf(db), { singular: 'record', plural: 'records', set: false }, 'the default is record');
+  assert.deepEqual(w.termOf(db), { singular: 'row', plural: 'rows', set: false }, 'the default is row');
   w.updateTable('Invoices', { noun: 'invoice' });
   const t = w.describeSchema().find((sp) => sp.space === 'Sales').tables[0];
   assert.equal(t.noun, 'invoice', 'the alias still reads back');

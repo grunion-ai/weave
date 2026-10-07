@@ -12,7 +12,7 @@
   ].map(([name, terms]) => ({ name, terms }));
 
   const IRREGULAR = { person: 'people' };
-  const DEFAULT = Object.freeze({ singular: 'record', plural: 'records' });
+  const DEFAULT = Object.freeze({ singular: 'row', plural: 'rows' });
   const MAX = 32;
 
   function pluralize(s) {

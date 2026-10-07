@@ -8,10 +8,10 @@ await import('../public/term-core.js');
 const T = globalThis.WeaveTerm;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the default term is record, and it is not "set"', () => {
-  assert.deepEqual(T.resolve({}), { singular: 'record', plural: 'records', set: false });
-  assert.deepEqual(T.resolve(undefined), { singular: 'record', plural: 'records', set: false });
-  assert.equal(T.DEFAULT.singular, 'record');
+test('the default term is row, and it is not "set"', () => {
+  assert.deepEqual(T.resolve({}), { singular: 'row', plural: 'rows', set: false });
+  assert.deepEqual(T.resolve(undefined), { singular: 'row', plural: 'rows', set: false });
+  assert.equal(T.DEFAULT.singular, 'row');
 });
 
 test('a set term resolves with its plural, deriving one when the config lacks it', () => {
@@ -43,8 +43,8 @@ test('normalize stores lowercase, trims, derives the plural, and rejects junk', 
 test('count speaks the term, singular at one', () => {
   assert.equal(T.count(1, { singular: 'deal', plural: 'deals' }), '1 deal');
   assert.equal(T.count(3, { singular: 'deal', plural: 'deals' }), '3 deals');
-  assert.equal(T.count(0, null), '0 records', 'no term means the default');
-  assert.equal(T.count(1, undefined), '1 record');
+  assert.equal(T.count(0, null), '0 rows', 'no term means the default');
+  assert.equal(T.count(1, undefined), '1 row');
 });
 
 test('the curated list is grouped, unique, lowercase, and starts at the default', () => {

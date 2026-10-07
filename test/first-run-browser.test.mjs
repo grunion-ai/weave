@@ -117,7 +117,7 @@ if (full) {
     await page.waitForSelector('.space-tables .list-row');
     const names = await page.locator('.space-tables .list-row:not(.list-row-add) > span:first-child').allTextContents();
     assert.deepEqual(names.sort(), ['Project', 'Task']);
-    assert.match(await page.locator('.space-tables').textContent(), /\d+ (records|tasks|projects)/);
+    assert.match(await page.locator('.space-tables').textContent(), /\d+ (rows|tasks|projects)/);
     assert.equal(await page.locator('.wv-grid').count(), 0);
     await page.click('details.wv-schema > summary');
     await page.waitForSelector('details.wv-schema .wv-grid tbody tr.entity-row');

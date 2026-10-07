@@ -1,0 +1,1 @@
+- A table that names no row term of its own now speaks `row` / `rows`, not `record` / `records`, so a fresh table's grid reads "Search rows", "+ New row" and "N rows" in the rail, matching the onboarding welcome and the first-run empty state (Issue #618).
