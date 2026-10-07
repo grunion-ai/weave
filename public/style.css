@@ -901,6 +901,10 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 #cmdk-results .result { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 16px; font-size: 14px; cursor: pointer; }
 #cmdk-results .result.active { background: color-mix(in srgb, var(--tblr-primary) 9%, transparent); box-shadow: inset 2px 0 0 var(--tblr-primary); }
 .cmdk-ic { flex: none; font-size: 16px; color: var(--tblr-secondary); }
+.cmdk-check { flex: none; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--tblr-border-color); border-radius: 4px; color: transparent; font-size: 12px; }
+#cmdk-results .result.checked .cmdk-check { background: var(--tblr-primary); border-color: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); }
+#cmdk-results .cmdk-create { color: var(--tblr-primary); border-top: 1px solid var(--tblr-border-color); margin-top: 4px; }
+#cmdk-results .cmdk-create .cmdk-ic { color: var(--tblr-primary); }
 .cmdk-text { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmdk-ctx { color: var(--tblr-secondary); }
 #cmdk mark { background: rgba(245, 159, 0, .24); color: inherit; border-radius: 2px; padding: 0 1px; }

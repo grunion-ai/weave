@@ -1159,6 +1159,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/search') {
           const q = rx.searchParams.get('q') ?? '';
           const limit = Number(rx.searchParams.get('limit') ?? 25);
+          const tables = rx.searchParams.get('tables');
+          if (tables != null) {
+            return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));
+          }
           if (rx.searchParams.get('all')) {
             const results = [];
             for (const [name, w] of hub.entries()) {

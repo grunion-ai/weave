@@ -6802,7 +6802,8 @@ export class Weave {
     return results;
   }
 
-  universalSearch(text, { limit = 25, prefix = '' } = {}) {
+  universalSearch(text, { limit = 25, prefix = '', tables = null } = {}) {
+    if (tables != null) return this.#scopedSearch(text, { limit, prefix, tables });
     const needle = String(text).toLowerCase().trim();
     if (!needle) return [];
     const results = [];
@@ -6836,6 +6837,21 @@ export class Weave {
       results.push({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
     }
     return Weave.capRows(results, limit);
+  }
+
+  #scopedSearch(text, { limit, prefix, tables }) {
+    const ids = [...new Set((Array.isArray(tables) ? tables : [tables]).map((t) => this.getTable(t).id))];
+    const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
+    if (!String(text ?? '').trim()) {
+      return ids.flatMap((id) => this.listEntities(id))
+        .filter((e) => !e.deletedAt)
+        .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+        .slice(0, limit)
+        .map((e) => hit(e));
+    }
+    return ids.flatMap((id) => this.#searchHits(text, id))
+      .sort((a, b) => b.score - a.score).slice(0, limit)
+      .map(({ e, score, snippet }) => hit(e, score, snippet));
   }
 
   static capRows(hits, limit) {

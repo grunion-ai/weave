@@ -394,7 +394,7 @@ weave link Task#5 Project 'Project#1'
 weave unlink Task#5 Project 'Project#1'
 \`\`\`
 
-Renders as chips carrying the target's name, each with a \`×\`, plus a \`+ link\` control that opens the search-first picker.
+Renders as chips carrying the target's name, each with a \`×\`, plus a \`+ link\` control that opens the ⌘K search scoped to the relation's target tables (Issue #703). It matches a row by name, \`#id\`, any text field or a document, and shows the linked rows checked. A to-one relation replaces its value on a pick and closes; a to-many relation toggles rows and saves on \`Esc\` or \`Return\` in an empty box. The last row, \`+ New <term>\`, creates a row named from what you typed and links it. **+ Link existing** under a related grid and the selection bar's **Link to…** open the same search.
 
 ## Query
 
@@ -964,6 +964,8 @@ The grid holds the rows in view plus a buffer of rows above and below — the bu
 ## Searching everything (⌘K)
 
 ⌘K (Ctrl+K on Windows and Linux) or the sidebar's search control opens the palette. A tag at the right of its \`Search <workspace name>\` box names the current workspace. An empty palette lists Recent: the last eight records and tables opened here, newest first, kept in this browser only. Typing searches every workspace; a match from another carries that workspace's name in an outlined tag. Matches are grouped with counts: Records (name or \`#143\` id), In documents (words in a document or text field, with an excerpt), Tables, then Spaces and views; empty groups are dropped. Each match shows a kind icon, its name with your text highlighted, any workflow state chip, and its location on the right (\`Task #1\`, \`Product · table\`).
+
+Linking a relation opens the same palette scoped to the relation's target tables (Issue #703): an empty box lists the linked rows first, then the table's latest rows, and \`GET /api/search?tables=<id,...>\` is the scoped search behind it.
 
 The footer lists the keys: \`↑\` and \`↓\` select, \`Tab\` and \`Shift+Tab\` jump between groups, \`Return\` opens and \`Esc\` closes. The copy button on the selected or hovered match copies its permalink. ⌘-click or middle-click opens a match in a new tab and leaves the palette open (Issue #382).
 

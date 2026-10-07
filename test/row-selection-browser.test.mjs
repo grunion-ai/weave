@@ -284,10 +284,13 @@ if (s) {
       await act(page, 'Link to…').click();
       await page.waitForSelector('.picker-pop .picker-search:focus');
       await pickRow(page, 'Owner');
-      await page.waitForSelector('.picker-pop .picker-search:focus');
+      await page.waitForSelector('#cmdk-input:focus');
       await page.keyboard.type('an');
-      await holdRepaint(page);
-      await pickRow(page, 'Ann');
+      await page.waitForFunction(() => document.querySelector('#cmdk-results')?.dataset.query === 'an');
+      assert.deepEqual(await page.$$eval('#cmdk-results .result .cmdk-name', (ns) => ns.map((n) => n.textContent)), ['Ann'],
+        'the target search is scoped to Person rows');
+      await page.locator('#cmdk-results .result', { hasText: 'Ann' }).click();
+      await page.waitForSelector('#cmdk-back', { state: 'detached' });
       await page.waitForFunction(() => !document.querySelector('.sel-puck')
         && [...document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Owner"]')]
           .filter((td) => /Ann/.test(td.textContent)).length === 2, null, { timeout: 8000 }).catch(() => {});

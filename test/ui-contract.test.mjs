@@ -1032,8 +1032,9 @@ test('multi pickers edit in place: selections listed with ×, saved on Enter', (
   assert.ok(picker.includes('await commit()'), 'Enter on an empty search saves');
   assert.ok(picker.includes('if (multi && pop.isConnected) { commit('), 'outside click saves, never discards');
   assert.ok(app.includes('function chipPickerMulti('));
-  const links = [...app.matchAll(/multi: \{\s*\n\s*selected:/g)];
-  assert.ok(links.length >= 2, `both link surfaces edit through multi (saw ${links.length})`);
+  const links = [...app.matchAll(/linkSearch\(f, \{/g)];
+  assert.ok(links.length >= 3, `the related section, the relation editor and the bulk bar all link through the scoped search (saw ${links.length})`);
+  assert.match(app.slice(app.indexOf('function linkSearch('), app.indexOf('function linkSearch(') + 2000), /multi: !!f\.many/, 'a to-many relation toggles in place');
   assert.ok(app.includes('unlink'), 'removals commit as unlinks');
 });
 
@@ -1638,7 +1639,7 @@ test('no surface says "entity" to a reader where a table has a row term', () => 
   }
   assert.match(APP, /\+ New \$\{db\.term\.singular\}/, 'the grid\'s add row');
   assert.match(APP, /countLabel\(sel\.size, db\.term\)/, 'the puck count');
-  assert.match(APP, /termOfTable\(f\.targetDbId\)\.plural/, 'relation pickers speak the target\'s plural');
+  assert.match(APP, /Search \$\{term\.plural\} to link as/, 'relation pickers speak the target\'s plural');
   assert.match(APP, /WeaveTerm\.count\(n\.entityCount, n\.term\)/, 'relation-map nodes');
   assert.match(APP, /WeaveTerm\.DEFAULT\.singular : WeaveTerm\.DEFAULT\.plural/, 'the workspace total speaks the default term');
   assert.doesNotMatch(APP, /\?\? 'record'/, 'no surface carries its own copy of the default noun');

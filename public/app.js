@@ -2624,33 +2624,14 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     }
     box.append(el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny',
-      onclick: async (e2) => {
-        const btn = e2?.currentTarget ?? null;
-        const targets = f.targetDbIds
-          ? f.targetDbIds.map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean)
-          : [allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb)];
-        const lists = await Promise.all(targets.map((t) => api('POST', `/tables/${t.id}/query`, { select: ['Name'] })));
-        const options = targets.flatMap((t, i) => lists[i].items.map((o) => ({
-          id: o.id, label: o.name || '(unnamed)',
-          hint: f.targetDbIds ? `${t.qualified} · #${o.publicId}` : `#${o.publicId}`,
-        })));
-        const before = current.map((sm) => sm.id);
-        searchPicker({
-          anchor: btn, title: `${f.name}`, placeholder: `Search ${termOfTable(f.targetDbId).plural}…`,
-          options,
-          multi: {
-            selected: current.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
-            onCommit: async (ids) => {
-              const add = ids.filter((x) => !before.includes(x));
-              const drop = before.filter((x) => !ids.includes(x));
-              if (!add.length && !drop.length) return;
-              if (add.length) await api('POST', `/entities/${id}/link`, { field: f.name, targets: add });
-              if (drop.length) await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: drop });
-              await saved();
-            },
-          },
-        });
-      },
+      onclick: () => linkSearch(f, {
+        linked: all,
+        commit: async (add, drop) => {
+          if (add.length) await api('POST', `/entities/${id}/link`, { field: f.name, targets: add });
+          if (drop.length) await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: drop });
+          await saved();
+        },
+      }),
     }, '+ link'));
     return box;
   }
@@ -4155,19 +4136,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     options: relations().map((f) => ({ id: f.name, label: f.name, hint: f.targetDbs ? f.targetDbs.join(', ') : f.targetDb })),
     onPick: (o) => onPick(relations().find((f) => f.name === o.id)),
   });
-  const targetsOf = (f) => (f.targetDbIds ?? [f.targetDbId]).map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean);
-  const linkTo = (anchor) => relationPicker(anchor, `Link ${nRows()} to…`, async (f) => {
-    const targets = targetsOf(f);
-    const lists = await Promise.all(targets.map((t) => api('POST', `/tables/${t.id}/query`, { select: ['Name'] })));
-    picker(anchor, {
-      title: f.name, placeholder: `Search ${termOfTable(f.targetDbId).plural}…`,
-      options: targets.flatMap((t, i) => lists[i].items.map((o) => ({
-        id: o.id, label: o.name || '(unnamed)',
-        hint: f.targetDbIds ? `${t.qualified} · #${o.publicId}` : `#${o.publicId}`,
-      }))),
-      onPick: (o) => runBulk('Linked', 'link', { field: f.name, targets: [o.id] }),
-    });
-  });
+  const linkTo = (anchor) => relationPicker(anchor, `Link ${nRows()} to…`, (f) => linkSearch(f, {
+    commit: (add) => runBulk('Linked', 'link', { field: f.name, targets: add }),
+  }));
 
   const MORE_CMDS = {
     move: (anchor) => picker(anchor, {
@@ -9756,25 +9727,14 @@ async function relatedGrid(entity, f, onSaved) {
         }, `+ New ${target.term.singular}`),
         el('button', {
           class: 'add-entity-btn', type: 'button',
-          onclick: async (e2) => {
-            const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
-            const before = linked.map((sm) => sm.id);
-            searchPicker({
-              anchor: e2?.currentTarget ?? null, title: `${f.name}`, placeholder: `Search ${target.term.plural}…`,
-              options: list.items.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
-              multi: {
-                selected: linked.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
-                onCommit: async (ids) => {
-                  const add = ids.filter((x) => !before.includes(x));
-                  const drop = before.filter((x) => !ids.includes(x));
-                  if (!add.length && !drop.length) return;
-                  if (add.length) await api('POST', `/entities/${item.id}/link`, { field: f.name, targets: add });
-                  if (drop.length) await api('POST', `/entities/${item.id}/unlink`, { field: f.name, targets: drop });
-                  await onSaved();
-                },
-              },
-            });
-          },
+          onclick: () => linkSearch(f, {
+            linked,
+            commit: async (add, drop) => {
+              if (add.length) await api('POST', `/entities/${entity.id}/link`, { field: f.name, targets: add });
+              if (drop.length) await api('POST', `/entities/${entity.id}/unlink`, { field: f.name, targets: drop });
+              await onSaved();
+            },
+          }),
         }, '+ Link existing'))));
 
   return el('section', { class: 'related-section' },
@@ -10229,15 +10189,26 @@ function paletteIcon(hit, group) {
 
 const marked = (text, needle) => weavePalette.highlight(text, needle).map((s) => (s.hit ? el('mark', {}, s.text) : s.text));
 
-function paletteRow(hit, i, { needle, group, here, onPick, href }) {
+function paletteCreateRow(hit, i, onPick) {
+  return el('div', {
+    class: 'result cmdk-create', id: `cmdk-opt-${i}`, role: 'option', 'aria-selected': 'false', onclick: () => onPick(hit),
+  },
+  iconEl('lucide:plus', 'wv-icon cmdk-ic'),
+  el('span', { class: 'cmdk-text' }, hit.name));
+}
+
+function paletteRow(hit, i, { needle, group, here, onPick, href, checked = null }) {
+  if (hit.kind === 'create') return paletteCreateRow(hit, i, onPick);
   const P = weavePalette;
   const foreign = hit.workspace && (here ? hit.workspace !== here : !hit.url.startsWith(`${WS_PREFIX}/`));
   const state = hit.chip?.state;
   const cat = state && chipCore.categoryOrDefault(state.category);
   return el('div', {
-    class: 'result', id: `cmdk-opt-${i}`, role: 'option', 'aria-selected': 'false',
+    class: checked ? 'result checked' : 'result', id: `cmdk-opt-${i}`, role: 'option', 'aria-selected': 'false',
+    ...(checked == null ? {} : { 'aria-checked': String(checked) }),
     ...(href ? { dataset: { href } } : {}), onclick: () => onPick(hit),
   },
+  checked == null ? null : el('span', { class: 'cmdk-check', 'aria-hidden': 'true' }, iconEl('lucide:check', 'wv-icon')),
   paletteIcon(hit, group),
   el('span', { class: 'cmdk-text' },
     el('span', { class: 'cmdk-name' }, ...marked(P.displayName(hit), needle)),
@@ -10259,12 +10230,25 @@ function wireSearchButton() {
   $('#search-btn')?.addEventListener('click', openCommandK);
 }
 
-function openCommandK({ onPick = null, onDismiss = null, kinds = null, placeholder = null } = {}) {
+function openCommandK({
+  onPick = null, onDismiss = null, kinds = null, placeholder = null,
+  scope = null, selected = null, multi = false, onCommit = null, create = null,
+} = {}) {
   if ($('#cmdk-back')) return;
   const P = weavePalette;
   const here = currentWsName();
+  const linked = (selected ?? []).map((h) => ({ kind: 'entity', ...h }));
+  const chosen = new Set(linked.map((h) => h.id));
+  const checks = !!scope || selected != null || multi;
+  const creators = (create ?? []).map((c) => ({ kind: 'create', name: c.label, run: c.run }));
   let picked = false;
-  const dismiss = () => { back.remove(); if (!picked) onDismiss?.(); };
+  const dismiss = () => {
+    back.remove();
+    if (picked) return;
+    picked = true;
+    if (multi) onCommit?.([...chosen]);
+    else onDismiss?.();
+  };
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
     id: 'cmdk-input', autocomplete: 'off', spellcheck: 'false',
@@ -10272,10 +10256,36 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     placeholder: placeholder ?? (here ? `Search ${here}` : 'Search'),
   });
   input.setAttribute('aria-label', input.placeholder);
-  const list = el('div', { id: 'cmdk-results', role: 'listbox', 'aria-label': 'Results' });
+  const list = el('div', { id: 'cmdk-results', role: 'listbox', 'aria-label': 'Results', ...(multi ? { 'aria-multiselectable': 'true' } : {}) });
+  list.addEventListener('mousedown', (e) => { if (!e.target.closest('button')) e.preventDefault(); });
   let groups = [], flat = [], rowEls = [], sel = 0;
   let timer, inflight = null;
-  const pick = (hit) => {
+  const markRows = () => rowEls.forEach((r, j) => {
+    if (flat[j].kind === 'create' || !checks) return;
+    const on = chosen.has(flat[j].id);
+    r.setAttribute('aria-checked', String(on));
+    r.classList.toggle('checked', on);
+  });
+  const pick = async (hit) => {
+    if (picked) return;
+    if (hit.kind === 'create') {
+      let made;
+      try { made = await hit.run(input.value.trim()); } catch (err) { toast(err.message, true); return; }
+      if (!multi) { picked = true; back.remove(); onPick?.(made); return; }
+      chosen.add(made.id);
+      linked.push(made);
+      input.value = '';
+      input.focus();
+      load('');
+      return;
+    }
+    if (multi) {
+      if (chosen.has(hit.id)) chosen.delete(hit.id);
+      else chosen.add(hit.id);
+      markRows();
+      input.focus();
+      return;
+    }
     picked = true;
     back.remove();
     if (onPick) onPick(hit);
@@ -10297,10 +10307,14 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     rowEls = [];
     const needle = q.toLowerCase();
     const nodes = gs.map((g, gi) => el('div', { class: 'cmdk-group', role: 'group', 'aria-labelledby': `cmdk-g${gi}` },
-      el('div', { class: 'cmdk-hdr', id: `cmdk-g${gi}` }, g.label, g.key === 'recent' ? null : ` · ${g.hits.length}`),
+      g.key === 'create' ? null
+        : el('div', { class: 'cmdk-hdr', id: `cmdk-g${gi}` }, g.label, g.key === 'recent' || g.key === 'linked' ? null : ` · ${g.hits.length}`),
       g.hits.map((h) => {
         const i = rowEls.length;
-        const row = paletteRow(h, i, { needle, group: g.key, here, onPick: pick, href: onPick ? null : h.url });
+        const row = paletteRow(h, i, {
+          needle, group: g.key, here, onPick: pick, href: onPick || scope ? null : h.url,
+          checked: checks && h.kind !== 'create' ? chosen.has(h.id) : null,
+        });
         row.addEventListener('mouseenter', () => setSel(i, false));
         rowEls.push(row);
         return row;
@@ -10310,39 +10324,53 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     input.setAttribute('aria-expanded', String(rowEls.length > 0));
     setSel(0);
   };
+  const withCreate = (gs) => (creators.length ? [...gs, { key: 'create', label: '', hits: creators }] : gs);
+  const scopedGroups = (q, hits) => {
+    if (q) return withCreate(P.groupHits(hits, q));
+    const mine = new Set(linked.map((h) => h.id));
+    return withCreate([
+      { key: 'linked', label: multi ? 'Linked' : 'Current', hits: linked },
+      { key: 'records', label: 'Records', hits: hits.filter((h) => !mine.has(h.id)) },
+    ].filter((g) => g.hits.length));
+  };
   const showRecent = () => {
     const recent = readRecents().filter((h) => !kinds || kinds.includes(h.kind));
     render('', recent.length ? [{ key: 'recent', label: 'Recent', hits: recent }] : [], 'Records and tables you open show up here.');
   };
+  const searchUrl = (q) => (scope
+    ? `/search?q=${encodeURIComponent(q)}&tables=${scope.map(encodeURIComponent).join(',')}&limit=50`
+    : `/search?q=${encodeURIComponent(q)}&all=1`);
+  const load = async (q) => {
+    inflight?.abort();
+    const ctl = inflight = new AbortController();
+    let hits;
+    try {
+      hits = await api('GET', searchUrl(q), undefined, { signal: ctl.signal });
+    } catch (err) {
+      if (ctl.signal.aborted) return;
+      groups = []; flat = []; rowEls = [];
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      list.replaceChildren(el('div', { class: 'cmdk-error', role: 'alert' }, `Couldn't search: ${err.message}`));
+      return;
+    }
+    if (ctl.signal.aborted) return;
+    if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
+    render(q, scope ? scopedGroups(q, hits) : P.groupHits(hits, q), q ? `No matches for “${q}”.` : 'Nothing here yet.');
+  };
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    if (!q) { inflight?.abort(); showRecent(); return; }
-    timer = setTimeout(async () => {
-      inflight?.abort();
-      const ctl = inflight = new AbortController();
-      let hits;
-      try {
-        hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`, undefined, { signal: ctl.signal });
-      } catch (err) {
-        if (ctl.signal.aborted) return;
-        groups = []; flat = []; rowEls = [];
-        input.setAttribute('aria-expanded', 'false');
-        input.removeAttribute('aria-activedescendant');
-        list.replaceChildren(el('div', { class: 'cmdk-error', role: 'alert' }, `Couldn't search: ${err.message}`));
-        return;
-      }
-      if (ctl.signal.aborted) return;
-      if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
-      render(q, P.groupHits(hits, q), `No matches for “${q}”.`);
-    }, 150);
+    if (!q && !scope) { inflight?.abort(); showRecent(); return; }
+    timer = setTimeout(() => load(q), 150);
   });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setSel(sel + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(sel - 1); }
     else if (e.key === 'Tab') { e.preventDefault(); setSel(P.groupJump(groups, sel, e.shiftKey ? -1 : 1)); }
-    else if (e.key === 'Enter' && flat.length) pick(flat[sel] ?? flat[0]);
-    else if (e.key === 'Escape') dismiss();
+    else if (e.key === 'Enter' && multi && !input.value.trim()) { e.preventDefault(); dismiss(); }
+    else if (e.key === 'Enter' && flat.length) { e.preventDefault(); pick(flat[sel] ?? flat[0]); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); }
   });
   const cap = (k) => el('kbd', {}, k);
   back.append(el('div', { id: 'cmdk', role: 'dialog', 'aria-label': 'Search' },
@@ -10353,12 +10381,52 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     list,
     el('div', { class: 'cmdk-foot', 'aria-hidden': 'true' },
       el('span', {}, cap('↑'), ' ', cap('↓'), ' move'),
-      el('span', {}, cap('↵'), ' open'),
+      el('span', {}, cap('↵'), multi ? ' toggle' : scope ? ' pick' : ' open'),
       el('span', {}, cap('tab'), ' next group'),
-      el('span', {}, cap('esc'), ' close'))));
+      multi ? el('span', {}, cap('↵'), ' on empty or ', cap('esc'), ' done') : el('span', {}, cap('esc'), ' close'))));
   document.body.append(back);
-  showRecent();
+  if (scope) {
+    render('', scopedGroups('', []), 'Searching…');
+    load('');
+  } else showRecent();
   input.focus();
+}
+
+function relationTargets(f) {
+  if (f.targetDbIds) return f.targetDbIds.map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean);
+  const one = allTables().find((d) => d.id === f.targetDbId)
+    ?? allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb);
+  return one ? [one] : [];
+}
+
+function linkSearch(f, { linked = [], commit }) {
+  const targets = relationTargets(f);
+  if (!targets.length) return;
+  const before = linked.map((s) => s.id);
+  const term = targets.length === 1 ? targets[0].term ?? termOfTable(targets[0].id) : WeaveTerm.DEFAULT;
+  const run = (add, drop) => commit(add, drop).catch((err) => toast(err.message, true));
+  openCommandK({
+    scope: targets.map((t) => t.id),
+    selected: linked,
+    multi: !!f.many,
+    placeholder: `Search ${term.plural} to link as ${f.name}…`,
+    create: targets.map((t) => {
+      const noun = (t.term ?? termOfTable(t.id)).singular;
+      return {
+        label: targets.length > 1 ? `+ New ${noun} in ${t.qualified}` : `+ New ${noun}`,
+        run: async (q) => {
+          const made = await api('POST', `/tables/${t.id}/entities`, { values: { Name: q || `New ${t.name}` } });
+          return { kind: 'entity', id: made.id, publicId: made.publicId, name: made.name, db: made.db ?? t.qualified, url: `${WS_PREFIX}/e/${made.id}` };
+        },
+      };
+    }),
+    onPick: (hit) => { if (!before.includes(hit.id)) run([hit.id], []); },
+    onCommit: (ids) => {
+      const add = ids.filter((x) => !before.includes(x));
+      const drop = before.filter((x) => !ids.includes(x));
+      if (add.length || drop.length) run(add, drop);
+    },
+  });
 }
 
 document.addEventListener('keydown', (e) => {
