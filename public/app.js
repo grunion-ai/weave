@@ -6055,18 +6055,19 @@ function glyphPopover(anchor, current, onPick) {
   });
 }
 
+function previewChip(cls, { icon, name }, placeholder) {
+  const label = document.createTextNode(name || placeholder);
+  const wrap = el('span', { class: 'opt-preview' },
+    el('span', { class: cls }, icon ? iconEl(icon, 'ico wv-icon') : null, label));
+  wrap.rename = (next) => { label.textContent = next || placeholder; };
+  return wrap;
+}
 function optionPreview(o) {
-  return el('span', { class: 'opt-preview' },
-    el('span', { class: `k k-select hue-${o.hue ?? 'slate'}` },
-      o.icon ? iconEl(o.icon, 'ico wv-icon') : null,
-      o.name || 'Option'));
+  return previewChip(`k k-select hue-${o.hue ?? 'slate'}`, o, 'Option');
 }
 function statePreview(st) {
   const cat = chipCore.categoryOrDefault(st.category ?? 'in-progress');
-  return el('span', { class: 'opt-preview' },
-    el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` },
-      st.icon ? iconEl(st.icon, 'ico wv-icon') : null,
-      st.name || 'State'));
+  return previewChip(`k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`, st, 'State');
 }
 
 function termSection(state, onChange) {
@@ -6112,9 +6113,10 @@ function optionListEditor(state, onChange) {
     wrap.replaceChildren(
       ...state.options.map((o, i) => {
         const hue = o.hue ?? chipCore.hueFromHex(o.color);
+        const preview = optionPreview({ ...o, hue });
         return el('div', { class: 'opt-row' },
           iconButton(o.icon || null, (id) => { o.icon = id ?? ''; draw(); onChange(); }),
-          el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; onChange(); } }),
+          el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; preview.rename(o.name); onChange(); } }),
           (() => {
             const b = el('button', {
               type: 'button', class: `opt-color hue-${hue}${hue === 'slate' ? ' neutral' : ''}`, title: 'Choose a colour',
@@ -6122,7 +6124,7 @@ function optionListEditor(state, onChange) {
             });
             return b;
           })(),
-          optionPreview({ ...o, hue }),
+          preview,
           el('button', { type: 'button', class: 'opt-del', title: 'Remove option', onclick: () => { state.options.splice(i, 1); draw(); onChange(); } }, '✕'));
       }),
       el('button', {
@@ -6185,6 +6187,7 @@ function stateListEditor(state, onChange) {
   const draw = () => {
     wrap.replaceChildren(
       ...state.states.map((s, i) => {
+        const preview = statePreview(s);
         const row = el('div', {
           class: 'opt-row', draggable: 'true',
           ondragstart: (e) => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); },
@@ -6200,7 +6203,7 @@ function stateListEditor(state, onChange) {
         },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         iconButton(s.icon || null, (id) => { s.icon = id ?? ''; draw(); onChange(); }),
-        el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; onChange(); } }),
+        el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; preview.rename(s.name); onChange(); } }),
         (() => {
           const cat = pickerSelect({ name: `wf-cat-${i}`, options: fdc.STATE_CATEGORIES.map((c) => ({ id: c, label: c })), value: chipCore.categoryOrDefault(s.category ?? 'in-progress') });
           cat.classList.add('opt-cat');
@@ -6215,7 +6218,7 @@ function stateListEditor(state, onChange) {
             disabled: true, title: `Colour comes from the ${cat} category`, 'aria-label': `Colour: ${cat}`,
           });
         })(),
-        statePreview(s),
+        preview,
         el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'));
         for (const ctl of row.querySelectorAll('input,button,.picker-wrap')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());
         return row;

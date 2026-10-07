@@ -246,9 +246,12 @@ test('a select option can wear a glyph, not just a workflow state', () => {
 test('every option row previews the chip it produces', () => {
   assert.match(fnBodyOf('optionListEditor'), /optionPreview\(/, 'an option row shows its chip');
   assert.match(fnBodyOf('stateListEditor'), /statePreview\(/, 'a state row shows its chip');
+  assert.match(fnBodyOf('previewChip'), /opt-preview/, 'previewChip builds the preview cell');
+  assert.match(fnBodyOf('previewChip'), /rename/,
+    'and hands back a rename, so a row follows the name as it is typed (Issue #553)');
   for (const fn of ['optionPreview', 'statePreview']) {
-    assert.match(fnBodyOf(fn), /opt-preview/, `${fn} builds the preview cell`);
-    assert.match(fnBodyOf(fn), /class: `k k-/, `${fn} builds a real chip, not a swatch`);
+    assert.match(fnBodyOf(fn), /previewChip\(/, `${fn} goes through the one preview builder`);
+    assert.match(fnBodyOf(fn), /`k k-/, `${fn} builds a real chip, not a swatch`);
   }
   assert.ok(Object.keys(rulesFor('.opt-preview')).length, '.opt-preview has a rule');
 });
