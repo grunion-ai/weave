@@ -340,7 +340,7 @@ export const ONTOLOGY = {
     {
       key: 'space', name: 'Space', isEntity: true, registry: 'Workspace/Spaces', storedIn: 'state.spaces',
       contains: 'tables', identity: 'uuid; name unique in the workspace, and the left half of Space/Table',
-      definition: 'A named container grouping the tables of one area of work. Its row in the Spaces registry is the same object seen as data.',
+      definition: 'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in Workspace/Spaces is the same object seen as data.',
       api: ['createSpace', 'listSpaces', 'updateSpace', 'deleteSpace'],
     },
     {
