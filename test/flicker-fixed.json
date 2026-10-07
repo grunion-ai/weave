@@ -19,5 +19,9 @@
   "scroll-grid|transient|tbody > *": {
     "issue": 632,
     "why": "the probe counted rows the reader had scrolled past before the grid recycled them"
+  },
+  "open-row|transient|div.doc-editor.vditor > div.vditor-content": {
+    "issue": 634,
+    "why": "the document editor booted on a host that was already in the dock, so its body was born and destroyed inside a frame"
   }
 }
