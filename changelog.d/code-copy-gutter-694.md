@@ -1,0 +1,1 @@
+- A code block's copy button now sits in its own gutter at the right of the box, so a long line scrolls under the box edge instead of running beneath the button (Issue #694).

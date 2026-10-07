@@ -1117,6 +1117,7 @@ body.wv-activity-open #main { margin-right: 344px; }
 .doc-code-raw:hover { color: var(--tblr-body-color); background: rgba(127, 127, 127, .18); }
 .doc-code-raw[aria-pressed="true"] { color: var(--tblr-primary); }
 .doc-editor .vditor-copy { display: block; }
+.doc-editor .vditor-ir pre:has(> .vditor-copy) > code { margin-right: 34px; }
 .doc-editor .vditor-copy span { top: 8px; right: 10px; opacity: .45; transition: opacity .12s ease; border-radius: 4px; padding: 3px; }
 .doc-editor .vditor-copy span:hover { opacity: 1; background: rgba(127, 127, 127, .18); }
 .doc-editor .vditor-copy svg { color: currentColor; }
