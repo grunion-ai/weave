@@ -8923,6 +8923,31 @@ async function showEntity(id) {
   await renderEntityView(entity, { mount: main, refresh: () => showEntity(id) });
 }
 
+function nextStateButton(entity, db, refresh) {
+  const f = db?.fields.find((x) => x.type === 'workflow');
+  if (!f) return null;
+  const was = entity.fields?.[f.name] ?? null;
+  const states = f.states ?? [];
+  const next = states[states.findIndex((st) => st.name === was) + 1];
+  if (!next) return null;
+  const move = async (to) => {
+    await api('POST', `/entities/${entity.id}/state`, { field: f.name, state: to });
+    await refresh?.();
+    $('#main > .table-wrap')?.wvRefresh?.();
+  };
+  return el('button', {
+    class: 'btn next-state-fab', type: 'button',
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await move(next.name);
+        toast(`Moved to ${next.name}`, false, { label: 'Undo', run: () => move(was).catch((err) => toast(err.message, true)) });
+      } catch (err) { btn.disabled = false; toast(err.message, true); }
+    },
+  }, `Move to ${next.name}`);
+}
+
 function pageGo(next) {
   const to = weaveBreadcrumbs.navCurrent(next);
   if (!to || next === crumbNav) return;
@@ -9038,6 +9063,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput))),
   );
+  const nextFab = nextStateButton(entity, db, refresh);
+  if (nextFab) mount.append(nextFab);
   if (!inPeek && db) {
     mount.querySelector(`.crumb-path a[href="#/table/${entity.dbId}"]`)?.addEventListener('click', (e) => {
       e.preventDefault();
