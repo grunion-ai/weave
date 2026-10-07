@@ -110,6 +110,7 @@ Backup and restore (Feature #222 phase 3, #209 — --data names the data dir or 
   backup-completed / backup-failed, last result on /api/health as "backup"
 
 Schema
+  ontology [--concept T] [--since E]  The schema as a short outline, one table, or what changed
   schema                              Describe spaces, tables, fields
   schema export [--out file]          The schema as an editable JSON document
   schema apply --file doc.json [--dry-run] [--allow-destructive]
@@ -492,6 +493,8 @@ async function main() {
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
 
   switch (command) {
+    case 'ontology':
+      return out(w.ontology({ depth: flags.depth ?? 'outline', concept: flags.concept ?? null, since: flags.since ?? null }));
     case 'schema': {
       const [sub] = args;
       if (sub === 'apply') {

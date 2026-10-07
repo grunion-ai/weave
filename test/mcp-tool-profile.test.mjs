@@ -10,7 +10,7 @@ import { Weave } from '../src/engine.js';
 import { handleMcpMessage, startMcpServer, TOOLS, CORE_TOOLS, listTools } from '../src/mcp.js';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-const CORE = ['weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
+const CORE = ['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
   'weave_create_space', 'weave_create_table', 'weave_add_field', 'weave_update_field', 'weave_add_relation',
   'weave_import_csv', 'weave_vocabulary', 'weave_workspace', 'weave_search'];
 
@@ -44,7 +44,7 @@ test('the core list costs well under half the full one', () => withEnv(null, () 
   const core = JSON.stringify(rpc(w, 'tools/list').result).length;
   const all = JSON.stringify(rpc(w, 'tools/list', {}, { tools: 'all' }).result).length;
   assert.ok(core * 2.5 < all, `core ${core} bytes vs all ${all}`);
-  assert.ok(core < 14700, `core tools/list is ${core} bytes`);
+  assert.ok(core < 15300, `core tools/list is ${core} bytes`);
 }));
 
 test('--tools all, WEAVE_MCP_TOOLS=all and listTools("all") list every tool', () => {

@@ -16,6 +16,7 @@ const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const SURFACE = [
   ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
   ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
+  ['schema.ontology', ['ontology', 'spaceVersions'], 'weave_ontology', 'ontology', ['GET /api/ontology']],
   ['build', ['build'], 'weave_build', 'build', ['POST /api/build']],
   ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
   ['space.create', ['createSpace'], 'weave_create_space', 'space create', ['POST /api/spaces']],

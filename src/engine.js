@@ -132,6 +132,16 @@ export const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
 const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
 export const ACTIVITY_CAP = 500;
 const FIELD_CONFIG_ACTIONS = { 'field-config-updated': 'field-config-updated', 'field-config-undo': 'undo' };
+const SCHEMA_AUDIT_ACTIONS = ['space-created', 'space-updated', 'space-trashed', 'space-deleted', 'space-restored', 'space-from-template',
+  'table-created', 'table-updated', 'table-moved', 'table-duplicated', 'table-trashed', 'table-deleted', 'table-restored',
+  'field-added', 'field-updated', 'field-config-updated', 'field-config-undo', 'field-migrated', 'field-deleted', 'relation-added'];
+const UNTAGGED_SCHEMA_ACTIONS = new Set(SCHEMA_AUDIT_ACTIONS.filter((a) => a !== 'field-updated' && a !== 'table-updated'));
+const ONTOLOGY_TYPES = { number: 'num', daterange: 'dates', checkbox: 'check', document: 'doc', attachments: 'files', select: 'one', multiselect: 'many', workflow: 'flow' };
+const ONTOLOGY_LEGEND = 'one/many/flow[..] are select/multiselect/workflow; a -> T (b) is a relation to T, T* many, b its inverse; a = .. is a lookup, rollup or formula. Every table also has Name, Description, Chip and Card.';
+function ontologyEtag(counts) {
+  const text = [...counts].filter(([, n]) => n > 0).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([id, n]) => `${id}:${n}`).join(',');
+  return createHash('sha1').update(text).digest('hex').slice(0, 8);
+}
 function fieldDefinition(f) {
   const { width, ...config } = f.config ?? {};
   return structuredClone({ name: f.name, type: f.type, config });
@@ -325,7 +335,7 @@ export const ONTOLOGY = {
       key: 'workspace', name: 'Workspace', isEntity: true, registry: 'Workspace/Workspaces', storedIn: 'state.meta',
       contains: 'spaces', identity: 'the .db file; a name and an optional logo',
       definition: 'One workspace file and everything in it. The top level of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and its spaces, tables and fields relate back to it.',
-      api: ['describeSchema', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
+      api: ['describeSchema', 'ontology', 'spaceVersions', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
     },
     {
       key: 'space', name: 'Space', isEntity: true, registry: 'Workspace/Spaces', storedIn: 'state.spaces',
@@ -415,7 +425,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'audit', name: 'Audit entry', storedIn: 'store.audit_log',
-      definition: 'A workspace-level record of a structural change: spaces, tables, fields, relations, saved views, accounts, keys, applied schemas.',
+      definition: 'A workspace-level record of a structural change: spaces, tables, fields, relations, saved views, accounts, keys, applied schemas. A schema entry names the spaces it touched; their count is each space\'s schema version, and spaceVersions() hashes the versions into the workspace etag (Feature #277).',
       identity: 'rowid in audit_log',
       api: ['listAudit'],
     },
@@ -1288,7 +1298,7 @@ export class Weave {
     this.state.spaces[space.id] = space;
     this.save();
     this.#syncSpaceRow(space);
-    if (!space.system) this.#audit('space-created', { name: space.name });
+    if (!space.system) this.#audit('space-created', { name: space.name }, space.id);
     return space;
   }
 
@@ -1314,7 +1324,7 @@ export class Weave {
     const s = this.getSpace(ref);
     if (patch.name != null) refuseReserved('space', patch.name);
     if (patch.template != null && typeof patch.template !== 'boolean') throw new WeaveError(`A space's template is true or false, got ${JSON.stringify(patch.template)}`, 'invalid');
-    this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) });
+    this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) }, s.id);
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
     if (patch.icon != null) { const v = iconValue(patch.icon); if (v) s.icon = v; else delete s.icon; }
@@ -1331,14 +1341,14 @@ export class Weave {
       if (s.deletedAt) return s;
       s.deletedAt = nowISO();
       this.#trashSysRow('spaces', s.id);
-      this.#audit('space-trashed', { name: s.name });
+      this.#audit('space-trashed', { name: s.name }, s.id);
       this.save();
       return s;
     }
     for (const db of this.listTables(s.id, { includeDeleted: true })) this.deleteTable(db.id, { hard: true });
     delete this.state.spaces[s.id];
     this.#dropSysRow('spaces', s.id);
-    this.#audit('space-deleted', { name: s.name });
+    this.#audit('space-deleted', { name: s.name }, s.id);
     this.save();
   }
 
@@ -1353,7 +1363,7 @@ export class Weave {
     if (clash) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
     s.deletedAt = null;
     this.#restoreSysRow('spaces', s.id);
-    this.#audit('space-restored', { name: s.name });
+    this.#audit('space-restored', { name: s.name }, s.id);
     this.save();
     return s;
   }
@@ -1388,7 +1398,7 @@ export class Weave {
     this.save();
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
-    if (!db.system) this.#audit('table-created', { space: sp.name, name: db.name });
+    if (!db.system) this.#audit('table-created', { space: sp.name, name: db.name }, sp.id);
     return db;
   }
 
@@ -1430,6 +1440,8 @@ export class Weave {
   updateTable(ref, patch) {
     const db = this.getTable(ref);
     if (patch.name != null) refuseReserved('table', patch.name);
+    const shape = (t) => JSON.stringify([t.name, t.description ?? '', t.fieldOrder]);
+    const was = shape(db);
     if (patch.name != null && db.system && patch.name !== db.name) throw new WeaveError(`Table '${db.name}' is part of the system registry and cannot be renamed`, 'invalid');
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
@@ -1481,6 +1493,7 @@ export class Weave {
     }
     this.#syncTableRow(db);
     this.save();
+    if (!db.system && shape(db) !== was) this.#audit('table-updated', { name: db.name, patch: Object.keys(patch) }, this.#spacesTouching(db));
     if (patch.name != null) this.#reg.#settleWorkflows();
     return db;
   }
@@ -1498,10 +1511,11 @@ export class Weave {
     if (clash?.deletedAt) throw new WeaveError(`Table '${sp.name}/${db.name}' is in the trash — restore or purge it first`, 'conflict');
     if (clash) throw new WeaveError(`Table '${sp.name}/${db.name}' already exists`, 'conflict');
     const from = this.state.spaces[db.spaceId]?.name;
+    const left = db.spaceId;
     db.spaceId = sp.id;
     this.save();
     this.#syncTableRow(db);
-    this.#audit('table-moved', { name: db.name, from, to: sp.name });
+    this.#audit('table-moved', { name: db.name, from, to: sp.name }, [left, ...this.#spacesTouching(db)]);
     return db;
   }
 
@@ -1580,7 +1594,7 @@ export class Weave {
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
     for (const [target, inv] of touchedTargets) { this.#syncFieldRow(target, inv); this.#syncTableRow(target); }
-    this.#audit('table-duplicated', { space: sp?.name, source: src.name, name: db.name });
+    this.#audit('table-duplicated', { space: sp?.name, source: src.name, name: db.name }, this.#spacesTouching(db));
     return db;
   }
 
@@ -1592,10 +1606,11 @@ export class Weave {
       db.deletedAt = nowISO();
       this.#trashSysRow('tables', db.id);
       for (const v of db.tableViews ?? []) this.#trashSysRow('views', v.id);
-      this.#audit('table-trashed', { name: db.name });
+      this.#audit('table-trashed', { name: db.name }, this.#spacesTouching(db));
       this.save();
       return db;
     }
+    const touched = this.#spacesTouching(db);
     for (const e of this.listEntities(db.id, { includeDeleted: true })) {
       this.deleteEntity(e.id, { hard: true });
     }
@@ -1636,7 +1651,7 @@ export class Weave {
     }
     delete this.state.tables[db.id];
     this.#dropSysRow('tables', db.id);
-    this.#audit('table-deleted', { name: db.name });
+    this.#audit('table-deleted', { name: db.name }, touched);
     this.save();
   }
 
@@ -1657,7 +1672,7 @@ export class Weave {
     db.deletedAt = null;
     this.#restoreSysRow('tables', db.id);
     for (const v of db.tableViews ?? []) this.#restoreSysRow('views', v.id);
-    this.#audit('table-restored', { name: db.name });
+    this.#audit('table-restored', { name: db.name }, this.#spacesTouching(db));
     this.save();
     return db;
   }
@@ -2377,7 +2392,7 @@ export class Weave {
       throw err;
     }
     const made = target.getSpace(as);
-    target.#audit('space-from-template', { name: made.name, template: sp.name, from: this.state.meta.name ?? null });
+    target.#audit('space-from-template', { name: made.name, template: sp.name, from: this.state.meta.name ?? null }, made.id);
     return { space: made, plan, skipped };
   }
 
@@ -2928,9 +2943,29 @@ export class Weave {
   static OLD_ROLES = { admin: 'architect', writer: 'editor', reader: 'observer' };
   static roleName(role) { return Weave.OLD_ROLES[role] ?? role; }
 
-  #audit(action, detail = {}) {
-    this.store.audit({ at: nowISO(), actor: this.actor, action, detail });
+  #audit(action, detail = {}, spaces = null) {
+    const touched = spaces ? [...new Set([].concat(spaces).filter(Boolean))] : [];
+    this.store.audit({ at: nowISO(), actor: this.actor, action, detail: touched.length ? { ...detail, spaces: touched } : detail });
     this.#reg.#settleWorkflows();
+  }
+
+  #spacesTouching(db, field = null) {
+    const ids = new Set([db.spaceId]);
+    const fields = field ? [field] : Object.values(db.fields);
+    for (const f of fields) {
+      if (f.type !== 'relation') continue;
+      for (const tid of [f.config.targetDb, ...(f.config.targetDbs ?? [])]) {
+        if (this.state.tables[tid]) ids.add(this.state.tables[tid].spaceId);
+      }
+    }
+    const watched = new Set(fields.map((f) => f.id));
+    for (const other of Object.values(this.state.tables)) {
+      for (const f of Object.values(other.fields)) {
+        if (f.config?.targetField && watched.has(f.config.targetField)) ids.add(other.spaceId);
+        if (!field && f.type === 'relation' && (f.config.targetDb === db.id || f.config.targetDbs?.includes(db.id))) ids.add(other.spaceId);
+      }
+    }
+    return [...ids];
   }
 
   listAudit(opts) {
@@ -4175,7 +4210,7 @@ export class Weave {
     this.save();
     this.#syncFieldRow(db, field);
     this.#syncTableRow(db);
-    if (!db.system) this.#audit('field-added', { table: db.name, name: field.name, type: field.type });
+    if (!db.system) this.#audit('field-added', { table: db.name, name: field.name, type: field.type }, this.#spacesTouching(db, field));
     return field;
   }
 
@@ -4207,7 +4242,7 @@ export class Weave {
         this.save();
         this.#syncFieldRow(db, a);
         this.#syncTableRow(db);
-        if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, targets: members.map((m) => this.qualifiedName(m)) });
+        if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, targets: members.map((m) => this.qualifiedName(m)) }, this.#spacesTouching(db, a));
         return { field: a, inverse: null };
       }
       targetDb = members[0].id;
@@ -4230,7 +4265,7 @@ export class Weave {
     this.#syncFieldRow(target, b);
     this.#syncTableRow(db);
     this.#syncTableRow(target);
-    if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, target: target.name });
+    if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, target: target.name }, this.#spacesTouching(db, a));
     return { field: a, inverse: b };
   }
 
@@ -4260,6 +4295,7 @@ export class Weave {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     const before = fieldDefinition(field);
+    const touchedBefore = this.#spacesTouching(db, field);
     let renamed = false;
     if (patch.name != null) refuseReserved('field', patch.name);
     if (patch.name != null && patch.name !== field.name) {
@@ -4387,9 +4423,9 @@ export class Weave {
       : null;
     this.save();
     if (logged) {
-      this.#audit(undo ? 'field-config-undo' : 'field-config-updated', logged);
+      this.#audit(undo ? 'field-config-undo' : 'field-config-updated', logged, [...touchedBefore, ...this.#spacesTouching(db, field)]);
       if (migrated) this.#dropOlderSnapshots(field.id, logged.seq);
-    } else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
+    } else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) }, changed.length ? [...touchedBefore, ...this.#spacesTouching(db, field)] : null);
     return { field, counts: migrated?.counts ?? null };
   }
 
@@ -4655,7 +4691,7 @@ export class Weave {
     if (description) field.config.description = description;
     if (term) field.config.term = term;
     if (toType === 'formula' && field.id === db.nameFieldId) for (const e of rows) this.#mark(e);
-    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length });
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length }, db.spaceId);
     return { rows: snapshot, counts };
   }
 
@@ -4703,7 +4739,7 @@ export class Weave {
     }
     this.#syncFieldRow(target, inverse);
     this.#syncTableRow(target);
-    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'text', to: 'relation', rows: rows.length, target: target.name });
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'text', to: 'relation', rows: rows.length, target: target.name }, [db.spaceId, target.spaceId]);
     return { rows: snapshot, counts: null };
   }
 
@@ -4738,7 +4774,7 @@ export class Weave {
     const { width, description } = field.config;
     field.type = 'text';
     field.config = { ...(width ? { width } : {}), ...(description ? { description } : {}) };
-    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'relation', to: 'text', rows: rows.length });
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'relation', to: 'text', rows: rows.length }, db.spaceId);
     return { rows: snapshot, counts };
   }
 
@@ -4752,6 +4788,7 @@ export class Weave {
     if (readers.length) {
       throw new WeaveError(`Cannot delete '${field.name}': ${readers.join(', ')} read${readers.length === 1 ? 's' : ''} it — delete ${readers.length === 1 ? 'that field' : 'those fields'} first`, 'invalid');
     }
+    const touched = this.#spacesTouching(db, field);
     for (const shape of VIEW_SHAPES) {
       const v = this.viewField(db, shape);
       if (Array.isArray(v?.config.fields) && v.config.fields.includes(field.id)) v.config.fields = v.config.fields.filter((id) => id !== field.id);
@@ -4778,7 +4815,7 @@ export class Weave {
       if (far) this.#syncTableRow(far);
     }
     this.save();
-    if (!db.system) this.#audit('field-deleted', { table: db.name, name: field.name });
+    if (!db.system) this.#audit('field-deleted', { table: db.name, name: field.name }, touched);
     return { id: field.id, name: field.name, db: this.qualifiedName(db), deleted: true };
   }
 
@@ -7065,6 +7102,150 @@ export class Weave {
       }
     }
     return { created, errors };
+  }
+
+  spaceVersions() {
+    const { counts } = this.#schemaHistory();
+    return { etag: ontologyEtag(counts), spaces: this.listSpaces().map((s) => ({ id: s.id, name: s.name, version: counts.get(s.id) ?? 0 })) };
+  }
+
+  ontology({ depth = 'outline', concept = null, since = null } = {}) {
+    if ((depth ?? 'outline') !== 'outline') throw new WeaveError(`depth is "outline"; read one table in full with concept (got ${JSON.stringify(depth)})`, 'invalid');
+    const { counts, seen } = this.#schemaHistory();
+    if (concept != null && concept !== '') return this.#ontologyConcept(this.getTable(concept), counts);
+    const etag = ontologyEtag(counts);
+    const spaces = this.listSpaces();
+    const label = this.#ontologyLabel();
+    const block = (sp) => (sp.system
+      ? [`${sp.name} (system registry, read one with concept): ${this.listTables(sp.id).map((db) => db.name).join(', ')}`]
+      : [`${sp.name} v${counts.get(sp.id) ?? 0}:`, ...this.listTables(sp.id).map((db) => `  ${db.name}: ${this.#ontologyFields(db, label).join('; ') || '-'}`)]);
+    const tables = spaces.reduce((n, sp) => n + this.listTables(sp.id).length, 0);
+    const outline = [`weave ontology: ${tables} tables in ${spaces.length} spaces, one line each. ${ONTOLOGY_LEGEND}`, ...spaces.flatMap(block), `etag ${etag}`].join('\n');
+    if (since == null || since === '') return outline;
+    if (String(since) === etag) return `unchanged; etag ${etag}`;
+    const then = seen.get(String(since));
+    if (!then) return `etag ${since} is not one this workspace issued; the whole outline follows.\n${outline}`;
+    const moved = [...counts.keys()].filter((id) => counts.get(id) > (then.get(id) ?? 0));
+    const live = spaces.filter((sp) => moved.includes(sp.id));
+    const gone = moved.filter((id) => !live.some((sp) => sp.id === id)).map((id) => this.state.spaces[id]?.name ?? id);
+    return [
+      `since ${since}: ${moved.length} space${moved.length === 1 ? '' : 's'} changed. ${ONTOLOGY_LEGEND}`,
+      ...live.flatMap(block),
+      ...(gone.length ? [`gone: ${gone.join(', ')}`] : []),
+      `etag ${etag}`,
+    ].join('\n');
+  }
+
+  #schemaHistory() {
+    const spacesNamed = (n) => Object.values(this.state.spaces).filter((s) => s.name === n).map((s) => s.id);
+    const tablesNamed = (ref) => {
+      if (!ref) return [];
+      const [sp, t] = String(ref).includes('/') ? String(ref).split('/') : [null, String(ref)];
+      return Object.values(this.state.tables).filter((x) => x.name === t && (!sp || this.state.spaces[x.spaceId]?.name === sp)).map((x) => x.spaceId);
+    };
+    const resolve = (action, d) => {
+      if (Array.isArray(d.spaces)) return d.spaces;
+      if (!UNTAGGED_SCHEMA_ACTIONS.has(action)) return [];
+      if (this.state.tables[d.tableId]) return [this.state.tables[d.tableId].spaceId];
+      if (action.startsWith('space-')) return spacesNamed(d.name);
+      if (action === 'table-created' || action === 'table-duplicated') return spacesNamed(d.space);
+      if (action === 'table-moved') return [...spacesNamed(d.from), ...spacesNamed(d.to)];
+      if (action.startsWith('table-')) return tablesNamed(d.name);
+      return [...tablesNamed(d.table), ...tablesNamed(d.target), ...(d.targets ?? []).flatMap(tablesNamed)];
+    };
+    const counts = new Map();
+    const seen = new Map([[ontologyEtag(counts), new Map()]]);
+    for (const r of this.store.listAudit({ limit: -1, actions: SCHEMA_AUDIT_ACTIONS }).reverse()) {
+      const touched = new Set(resolve(r.action, r.detail ?? {}));
+      if (!touched.size) continue;
+      for (const id of touched) counts.set(id, (counts.get(id) ?? 0) + 1);
+      seen.set(ontologyEtag(counts), new Map(counts));
+    }
+    return { counts, seen };
+  }
+
+  #ontologyLabel() {
+    const names = new Map();
+    for (const t of this.listTables()) names.set(t.name.toLowerCase(), (names.get(t.name.toLowerCase()) ?? 0) + 1);
+    return (t) => (!t ? '?' : names.get(t.name.toLowerCase()) > 1 && this.state.tables[t.id] === t ? this.qualifiedName(t) : t.name);
+  }
+
+  #ontologyFields(db, label) {
+    const cap = (names) => (names.length > 8 ? [...names.slice(0, 8), `+${names.length - 8}`] : names).join('|');
+    const parts = [];
+    for (const fid of db.fieldOrder) {
+      const f = db.fields[fid];
+      if (!f || f.type === 'view' || f.id === db.nameFieldId || f.id === db.descriptionFieldId) continue;
+      const c = f.config ?? {};
+      const computed = this.#ontologyComputed(db, f, label);
+      if (f.type === 'relation') {
+        const targets = (c.targetDbs ?? [c.targetDb]).map((id) => label(this.state.tables[id])).join('|');
+        const inverse = c.targetDb ? this.state.tables[c.targetDb]?.fields[c.inverseFieldId]?.name : null;
+        parts.push(`${f.name} -> ${targets}${c.many ? '*' : ''}${inverse ? ` (${inverse})` : ''}`);
+      } else if (computed != null) {
+        parts.push(`${f.name} = ${computed.length > 48 ? `${computed.slice(0, 47)}…` : computed}`);
+      } else {
+        const type = ONTOLOGY_TYPES[f.type] ?? f.type;
+        const names = f.type === 'workflow' ? c.states.map((x) => x.name) : f.type === 'select' || f.type === 'multiselect' ? c.options.map((o) => o.name) : null;
+        parts.push(`${f.name} ${type}${names ? `[${cap(names)}]` : ''}`);
+      }
+    }
+    return parts;
+  }
+
+  #ontologyComputed(db, f, label) {
+    const c = f.config ?? {};
+    if (f.type === 'formula') return String(c.expression ?? '').replace(/\s+/g, ' ').trim();
+    if (f.type !== 'lookup' && f.type !== 'rollup') return null;
+    let base;
+    let tdb;
+    if (f.type === 'rollup' && c.via) {
+      tdb = this.#tableAnywhere(c.via)?.table;
+      base = label(tdb);
+    } else {
+      const rel = db.fields[c.relationField];
+      base = rel?.name ?? '?';
+      tdb = rel ? this.state.tables[rel.config.targetDb] : null;
+    }
+    const target = c.targetField ? tdb?.fields[c.targetField]?.name ?? '?' : null;
+    const path = target ? `${base}.${target}` : base;
+    return f.type === 'lookup' ? path : `${c.aggregate}(${path})`;
+  }
+
+  #ontologyConcept(db, counts) {
+    const rows = this.#liveRowCounts().get(db.id) ?? 0;
+    const sp = this.state.spaces[db.spaceId];
+    const qualified = (t) => (t ? this.qualifiedName(t) : '?');
+    const lines = [`${this.qualifiedName(db)}: ${rows} row${rows === 1 ? '' : 's'}, space ${sp?.name ?? '?'} v${counts.get(db.spaceId) ?? 0}.${db.description ? ` ${db.description}` : ''}`, 'Fields:'];
+    for (const fid of db.fieldOrder) {
+      const f = db.fields[fid];
+      if (!f || f.type === 'view') continue;
+      const c = f.config ?? {};
+      const parts = [f.type];
+      if (f.id === db.nameFieldId) parts.push('the row name');
+      if (f.id === db.descriptionFieldId) parts.push('the row description');
+      if (f.type === 'select' || f.type === 'multiselect') parts.push(`options ${c.options.map((o) => o.name).join(', ')}`);
+      if (f.type === 'workflow') parts.push(`states ${c.states.map((x) => `${x.name} (${x.category}${x.default ? ', default' : ''})`).join(', ')}`);
+      if (f.type === 'relation') {
+        const members = (c.targetDbs ?? [c.targetDb]).map((id) => this.state.tables[id]).filter(Boolean);
+        parts[0] = `relation -> ${members.map(qualified).join(' | ')}, ${c.many ? 'many' : 'one'}`;
+        const inverse = c.targetDb ? this.state.tables[c.targetDb]?.fields[c.inverseFieldId]?.name : null;
+        parts.push(inverse ? `inverse ${inverse}` : 'one-way');
+      }
+      const computed = this.#ontologyComputed(db, f, qualified);
+      if (computed != null) parts[0] = `${f.type} ${computed}`;
+      if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'currency', 'unit']) if (c[k]) parts.push(`${k} ${c[k]}`);
+      if (f.type === 'rating') parts.push(`max ${c.max}`);
+      if (f.type === 'toggle') parts.push(`on ${c.on}, off ${c.off}`);
+      if (f.type === 'document' && c.kind) parts.push(`kind ${c.kind}`);
+      if (f.type === 'field') parts.push(`types ${(c.types ?? []).join(', ')}`);
+      if (c.default !== undefined) {
+        const named = (id) => c.options?.find((o) => o.id === id)?.name ?? id;
+        parts.push(`default ${f.type === 'select' || f.type === 'multiselect' ? [].concat(c.default).map(named).join(', ') : JSON.stringify(c.default)}`);
+      }
+      lines.push(`- ${f.name}: ${parts.join('; ')}${c.description ? `. ${c.description}` : ''}`);
+    }
+    return lines.join('\n');
   }
 
   describeSchema() {

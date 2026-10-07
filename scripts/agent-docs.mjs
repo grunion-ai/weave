@@ -7,7 +7,7 @@ const AGENTS = fileURLToPath(new URL('../AGENTS.md', import.meta.url));
 
 const JOBS = [
   ['Build', ['weave_build']],
-  ['Read and search', ['weave_schema', 'weave_query', 'weave_get_entity', 'weave_search']],
+  ['Read and search', ['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search']],
   ['Write rows', ['weave_create_entity', 'weave_update_entity', 'weave_import_csv']],
   ['Change schema', ['weave_create_space', 'weave_create_table', 'weave_add_field', 'weave_update_field', 'weave_add_relation', 'weave_workspace']],
   ['Look up allowed values', ['weave_vocabulary']],

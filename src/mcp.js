@@ -40,6 +40,14 @@ function pick(args, keys) {
 
 export const TOOLS = [
   {
+    name: 'weave_ontology',
+    description: 'The schema, short; read it before weave_schema (the full JSON). Default outline: one line per table by space, [a|b] options or states, name -> Target (inverse) with * for many, name = lookup, rollup or formula, then the etag. concept: one table in full, field descriptions included. since: an etag; answers only the spaces changed since.',
+    inputSchema: {
+      type: 'object',
+      properties: { depth: { type: 'string', enum: ['outline'] }, concept: { type: 'string', description: 'Table or Space/Table' }, since: { type: 'string' } },
+    },
+  },
+  {
     name: 'weave_schema',
     description: 'Describe the whole workspace: spaces, tables, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
     inputSchema: { type: 'object', properties: {} },
@@ -478,13 +486,14 @@ export const TOOLS = [
 for (const t of TOOLS) if (COMPACT_TOOLS.has(t.name)) t.inputSchema.properties.verbose = VERBOSE;
 
 export const CORE_TOOLS = new Set([
-  'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
+  'weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
   'weave_create_space', 'weave_create_table', 'weave_add_field', 'weave_update_field', 'weave_add_relation',
   'weave_import_csv', 'weave_vocabulary', 'weave_workspace', 'weave_search', 'weave_build', 'weave_call',
 ]);
 export const SUMMARY = {
   weave_build: 'spaces, tables, fields, relations and rows in one call (dryRun checks)',
-  weave_schema: 'every space, table and field, with types and options',
+  weave_ontology: 'short schema: outline, one table, changes',
+  weave_schema: 'the full schema as JSON',
   weave_query: 'rows of one table, filtered (where), sorted, paged',
   weave_get_entity: 'one row in full: values, document, comments, activity',
   weave_search: 'find rows, tables and spaces by text; each hit has a permalink',
@@ -607,6 +616,8 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   }
   weave.maybeRefresh?.();
   switch (name) {
+    case 'weave_ontology':
+      return weave.ontology({ depth: args.depth ?? 'outline', concept: args.concept ?? null, since: args.since ?? null });
     case 'weave_schema':
       return weave.describeSchema();
     case 'weave_query':

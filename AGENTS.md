@@ -21,7 +21,7 @@ client reads it before its first call.
 
 <!-- primer:start (generated from src/mcp-primer.md by scripts/agent-docs.mjs; edit that file, then run the script) -->
 ```text
-weave: build with ONE weave_build call (workspace, spaces, tables, fields, relations and rows; its description shows the spec). Run it with dryRun:true first, fix every error it lists, then run it for real. Its computed block samples every lookup, rollup and formula.
+weave: read the weave_ontology outline first. Build with ONE weave_build call (workspace, spaces, tables, fields, relations and rows; its description shows the spec). Run it with dryRun:true first, fix every error it lists, then run it for real. Its computed block samples every lookup, rollup and formula.
 Rules for building in weave:
 - One workspace per domain of life or work (personal-finance, sales), never one per request. Name it as a slug (letters, digits, dash) with the spec's workspace key. A request becomes a space; its records become tables with singular names.
 - A value that names a row of another table is a relation, never text: a field {name, type:"relation", to:<table>, cardinality:"many-to-one"}. In rows, a relation value is the target row's Name.
@@ -43,8 +43,6 @@ A relation links rows of two tables and works both ways: adding `Deal.Company`
 also adds `Company.Deals`, and a rollup over `Deals` totals them per company.
 
 ### Surfaces
-
-Every surface reaches the same engine and the same workspace file.
 
 | Surface | Start it | Pick it when |
 | --- | --- | --- |
@@ -71,12 +69,13 @@ workspace file; a second workspace is a second file (see
 ### Tool map
 
 <!-- tool-map:start (generated from src/mcp.js by scripts/agent-docs.mjs) -->
-16 listed by default, out of 60. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
+17 listed by default, out of 61. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
 
 | Job | Tool | What it does |
 | --- | --- | --- |
 | Build | `weave_build` | spaces, tables, fields, relations and rows in one call (dryRun checks) |
-| Read and search | `weave_schema` | every space, table and field, with types and options |
+| Read and search | `weave_ontology` | short schema: outline, one table, changes |
+|  | `weave_schema` | the full schema as JSON |
 |  | `weave_query` | rows of one table, filtered (where), sorted, paged |
 |  | `weave_get_entity` | one row in full: values, document, comments, activity |
 |  | `weave_search` | find rows, tables and spaces by text; each hit has a permalink |
@@ -178,7 +177,7 @@ Each error below is the text weave returns, followed by the fix.
 | `Field 'Stage' not found in table 'Deal'` | The field was never made because an earlier step failed. Read the build's `errors` (each has a `path` such as `spaces[0].tables[1].fields[2]`), fix that entry and resend the whole spec. |
 | `Invalid number format 'currencyy' (number, currency, percent, compact)` | Pick a value the message lists. |
 | `Field 'When' not found in table 'Transaction'. Sort reads 'Field asc\|desc, Field2 asc\|desc', e.g. 'Date desc'` (a `Sort` on a `Workspace/Tables` or `Workspace/Views` row) | Name a field the table has; `-Date` and `[{field, dir}]` land too (Issue #626). |
-| `Table 'Deals' not found` | Use the name `weave_schema` shows, as `Table` or `Space/Table`. Table names are singular. |
+| `Table 'Deals' not found` | Use the name `weave_ontology` shows, as `Table` or `Space/Table`. Table names are singular. |
 
 ## Reference
 
@@ -405,7 +404,7 @@ workspace. Every MCP tool has a command:
 
 | Read | Schema | Data |
 | --- | --- | --- |
-| `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
+| `weave ontology [--concept T] [--since E]` / `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
 | `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table view` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
 | `weave map` | `weave field add` / `weave field update` / `weave field rollback` / `weave field delete` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave template list` | `weave template use <space> --into <other.db> [--name N]` | |
@@ -456,8 +455,13 @@ Notes that save round trips:
   (and `error` its message). A formula valid on row 1 and null on a third of
   the table is the bug one preview cannot show — assert `nulls` and `errors`
   before saving.
-- **Read the schema first.** `weave_schema` returns spaces, tables, fields, and
-  types, including each table's own description — the workspace documents itself.
+- **Read the outline first.** `weave_ontology` (`{depth: "outline"}`) is the
+  whole schema in a few thousand characters: one line per table, grouped by
+  space, with short types, option and state names, relations as
+  `name -> Target (inverse)` (`*` for many) and lookups, rollups and formulas as
+  `name = short form`. `{concept: "Issue"}` reads one table in full, every field's
+  description included. `weave_schema` is the full JSON, about twenty times larger,
+  and still the document `weave_apply_schema` takes.
 - **Documents are addressable.** Over HTTP, `/e/Task#12/doc.md`, `.html`, and
   `.pdf` return the rendered document directly; no tool call needed to read one.
 - **Entities can hold several documents.** `weave_get_doc` / `weave_set_doc`
@@ -546,6 +550,13 @@ Notes that save round trips:
   while rows are written. A client that caches the schema compares the stamp
   on a read it was already making and refetches `GET /api/schema` when the two
   disagree; the browser app does exactly that (Issue #274).
+- **Each space carries its own schema version** (Feature #277). It counts the
+  structural audit entries that touched the space: a field, relation or table
+  change bumps the spaces it touches, and a row write bumps nothing. The
+  outline's last line is the workspace etag, a short hash of the space versions;
+  `weave_ontology {since: "<etag>"}` (`GET /api/ontology?since=`,
+  `weave ontology --since`) answers only the spaces that moved, or one line when
+  nothing did. An etag the workspace never issued answers the whole outline.
 
 ### Self-documenting workspace
 
@@ -578,7 +589,7 @@ For agents changing weave itself: where the code lives and the rules every chang
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP server: 60 tools over the engine, 16 listed by default |
+| `src/mcp.js` | MCP server: 61 tools over the engine, 17 listed by default |
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
