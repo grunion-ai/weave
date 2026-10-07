@@ -10976,14 +10976,21 @@ function paintSkeleton(kind, db) {
   }
 }
 
-const skeleton = { timer: 0 };
+const skeleton = { timer: 0, watch: null };
 function scheduleSkeleton(kind, db) {
   cancelSkeleton();
-  skeleton.timer = setTimeout(() => { skeleton.timer = 0; paintSkeleton(kind, db); }, SKELETON_SHOW_AFTER_MS);
+  const main = $('#main');
+  if (main) {
+    skeleton.watch = new MutationObserver(cancelSkeleton);
+    skeleton.watch.observe(main, { childList: true });
+  }
+  skeleton.timer = setTimeout(() => { cancelSkeleton(); paintSkeleton(kind, db); }, SKELETON_SHOW_AFTER_MS);
 }
 function cancelSkeleton() {
   clearTimeout(skeleton.timer);
   skeleton.timer = 0;
+  skeleton.watch?.disconnect();
+  skeleton.watch = null;
 }
 
 function syncDocTitle(pageName) {
