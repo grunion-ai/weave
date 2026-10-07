@@ -11,5 +11,9 @@
   "scroll-grid|shift|tbody > tr.wv-spacer": {
     "issue": 631,
     "why": "the probe counted the journey's own scroll: the grid re-windowed inside the scroll that caused it"
+  },
+  "scroll-grid|transient|tbody > *": {
+    "issue": 632,
+    "why": "the probe counted rows the reader had scrolled past before the grid recycled them"
   }
 }

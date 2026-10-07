@@ -288,6 +288,62 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a row the scroll itself recycled is not a transient (Issue #632)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.className = 'recycler';
+        box.style.cssText = 'height:300px;overflow:auto;width:400px';
+        box.innerHTML = '<div class="inner"></div>';
+        const inner = box.querySelector('.inner');
+        for (let i = 0; i < 40; i++) inner.append(Object.assign(document.createElement('p'), { className: 'keep', textContent: `row ${i}`, style: 'height:80px;margin:0;background:#ddd' }));
+        document.getElementById('stage').append(box);
+        box.addEventListener('scroll', () => {
+          for (const r of box.querySelectorAll('p.recycled')) r.remove();
+        });
+      });
+      await frames(page, 3);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.evaluate(() => new Promise((r) => {
+        const box = document.querySelector('#stage .recycler');
+        box.querySelector('.inner').prepend(Object.assign(document.createElement('p'), { className: 'recycled', textContent: 'windowed row', style: 'height:80px;margin:0;background:#8cf' }));
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          box.scrollTo({ top: 2000, behavior: 'instant' });
+          r();
+        }));
+      }));
+      await frames(page, 2);
+      const t = await events(page, 'transient');
+      assert.deepEqual(t.filter((e) => /p\.recycled/.test(e.sel)), [], 'the scroll took it out, so the reader moved it themselves');
+    } finally { await page.close(); }
+  });
+
+  test('a flash that lands well after the scroll is still a transient (Issue #632)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.className = 'recycler';
+        box.style.cssText = 'height:300px;overflow:auto;width:400px';
+        box.innerHTML = '<div class="inner" style="height:3000px;position:relative"></div>';
+        document.getElementById('stage').append(box);
+      });
+      await frames(page, 3);
+      await page.evaluate(() => { document.querySelector('#stage .recycler').scrollTo({ top: 2000, behavior: 'instant' }); });
+      await wait(300);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.evaluate(() => new Promise((r) => {
+        const row = Object.assign(document.createElement('p'), { className: 'late', textContent: 'late row', style: 'position:absolute;top:2050px;left:0;height:80px;width:300px;margin:0;background:#8cf' });
+        document.querySelector('#stage .recycler .inner').append(row);
+        requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => { row.remove(); r(); })));
+      }));
+      await frames(page, 2);
+      const t = await events(page, 'transient');
+      assert.ok(t.some((e) => /p\.late/.test(e.sel)), JSON.stringify(await events(page)));
+    } finally { await page.close(); }
+  });
+
   test('a shift inside the scroll that caused it is not a shift (Issue #631)', async () => {
     const page = await open();
     try {

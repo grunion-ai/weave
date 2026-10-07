@@ -1,0 +1,1 @@
+- The flicker probe treats a scroll as the reader moving content, so a grid row the scroll itself recycled no longer reports as a flash; a flash that lands well after the scroll still does ([[Issue#632]]).
