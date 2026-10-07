@@ -1,1 +1,0 @@
-- On a phone the formatting bar for selected text is now one row of 44px buttons along the bottom of the screen, riding above the on-screen keyboard and scrolling sideways when it runs long, instead of a two-row bubble of 25x35px buttons over the line above the selection. Desktop keeps the floating bubble (Issue #693).

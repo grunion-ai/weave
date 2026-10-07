@@ -1,1 +1,0 @@
-- On a phone the bug button is now a 44px tap target with the same 26px face, set 3px from the screen edge like the phone applet's, and a row's page leaves 72px at its foot so the last line of a document scrolls clear of it. Desktop keeps the 26px corner button 12px in (Issue #695).

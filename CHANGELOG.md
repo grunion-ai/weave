@@ -2,6 +2,23 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.74 — 2026-10-07
+
+- A document edit by a second person is now its own activity entry, with their name, their delta and their preview. Edits within ten minutes of each other folded into one entry whatever the actor, so a second author's work was credited to the first and the entry's delta described neither edit. The revision log already split by author (Issue #680).
+- An automation that appends to a document now logs a `doc-appended` entry naming the document, with the length it wrote and a preview, the way a person's append does. The text landed but the activity feed never said so, so the rule's append was invisible in history and the record page could not pulse the document the rule wrote (Issue #686).
+- On a phone the bug button is now a 44px tap target with the same 26px face, set 3px from the screen edge like the phone applet's, and a row's page leaves 72px at its foot so the last line of a document scrolls clear of it. Desktop keeps the 26px corner button 12px in (Issue #695).
+- A code block's copy button now sits in its own gutter at the right of the box, so a long line scrolls under the box edge instead of running beneath the button (Issue #694).
+- A table that names no row term of its own now speaks `row` / `rows`, not `record` / `records`, so a fresh table's grid reads "Search rows", "+ New row" and "N rows" in the rail, matching the onboarding welcome and the first-run empty state (Issue #618).
+- In a document, Cmd+Shift+Z (Ctrl+Shift+Z elsewhere) now redoes what Cmd+Z undid. Vditor only knew Cmd+Y for redo, so the macOS shortcut did nothing (Issue #697).
+- On a phone the formatting bar for selected text is now one row of 44px buttons along the bottom of the screen, riding above the on-screen keyboard and scrolling sideways when it runs long, instead of a two-row bubble of 25x35px buttons over the line above the selection. Desktop keeps the floating bubble (Issue #693).
+- On a phone, where the row covers the screen, opening a row is now a history step: Back or swipe-back returns to the table, Forward reopens the row, a relation hop inside the row is its own step, and the row's Close button steps back instead of leaving a duplicate table entry. On wider screens the row docked beside the table still adds no history, as ruled in Issues #198, #226 and #276 (Issue #267).
+- The record page lists files attached to the row itself in a **Files** card, with the same link and `(missing)` treatment an attachments field gives, so a row in a table with no attachments field still reaches its files (Issue #463).
+- Hiding or showing the last column of a table no longer changes the width of the column beside it. Tabler's `card-table` gives the last cell in a row a 20px right inset where every other cell gets 4px, so the column that landed last measured a box 16px wider than its own and grew by that much. The grid now pads its last cell like the rest (Issue #690).
+- On a phone the slash menu's rows are now 44px tall with 15px labels, so a thumb hits the command it aims at. Desktop keeps the compact 28px rows (Issue #696).
+- A line command run on an empty line now leaves its placeholder selected, so the first thing you type replaces it. `/task` then "Ship it" stores `- [ ] Ship it`; it used to leave the caret after the placeholder and store `- [ ]  To doShip it` (Issue #556).
+- Picking Table from the slash menu now puts the caret in the table's first header cell with "Column" selected, so typing names the column. It used to leave the caret on the line above, and the typing landed in a paragraph over an untouched table (Issue #692).
+- A workflow state can take a colour of its own. The swatch in the field dialog opens the same ten-hue picker a select option uses, the category colour stays the default, and **Reset to category colour** puts a state back on it. Chips in the grid, the tray preview, view chips, the command palette and the phone applet all read the state's colour (Issue #427).
+
 ## v0.4.73 — 2026-10-06
 
 - A data directory the process cannot write now fails with a message naming the directory, the uid and the fix, instead of reporting that the database file is not a SQLite database. The Railway deploy guide quotes the message the log really shows. (Issue #474)
