@@ -1,1 +1,0 @@
-- Navigation holds the page you are on until the next one is ready: the route skeleton is now earned at 150 ms, the ceiling the flicker probe calls a flash, so a load that resolves faster paints no loading state at all ([[Issue#630]]).

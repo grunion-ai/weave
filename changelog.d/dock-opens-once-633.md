@@ -1,1 +1,0 @@
-- A click on a row's `#id` link opens it once: the grid's link carried its own opener alongside the one `#/entity/` click handler, so the dock drew twice and the document editor mounted and was destroyed inside a frame (Issue #633).

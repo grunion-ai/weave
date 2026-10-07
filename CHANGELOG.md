@@ -2,6 +2,14 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.75 — 2026-10-07
+
+- A click on a row's `#id` link opens it once: the grid's link carried its own opener alongside the one `#/entity/` click handler, so the dock drew twice and the document editor mounted and was destroyed inside a frame (Issue #633).
+- The flicker probe treats a scroll as the reader moving content, so a grid row the scroll itself recycled no longer reports as a flash; a flash that lands well after the scroll still does ([[Issue#632]]).
+- The flicker probe no longer counts a layout shift that the journey's own scroll caused: a real wheel scroll over the same grid reports none, and Chrome's own input exclusion never fires for a programmatic scroll ([[Issue#631]]).
+- Navigation holds the page you are on until the next one is ready: the route skeleton is now earned at 150 ms, the ceiling the flicker probe calls a flash, so a load that resolves faster paints no loading state at all ([[Issue#630]]).
+- A line break in a mermaid node or edge label now draws as a line break on the whiteboard. `A[run in a frame\n+ toggle for source]` drew in the page as two lines and on the whiteboard as one label with a literal backslash and n between the halves; `<br>`, `<br/>` and `<br />` printed as tags. The whiteboard reads the same four forms mermaid does and wraps the label on them (Issue #471).
+
 ## v0.4.74 — 2026-10-07
 
 - A document edit by a second person is now its own activity entry, with their name, their delta and their preview. Edits within ten minutes of each other folded into one entry whatever the actor, so a second author's work was credited to the first and the entry's delta described neither edit. The revision log already split by author (Issue #680).
