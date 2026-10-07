@@ -8,6 +8,7 @@ import {
   ropePose, ropeStops, strandPose, dashOffset,
 } from '../brand/build-logos.mjs';
 import { APP, HTML, CSS, px } from './lib/source.mjs';
+import { FLASH_MS } from './lib/flicker.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -90,13 +91,25 @@ test('a fast route never pays for the loader', () => {
   assert.match(APP, /if \(loading\.showTimer\) \{[\s\S]*?clearTimeout\(loading\.showTimer\)/);
 });
 
-test('the rope waits 500ms; the skeleton covers everything shorter', () => {
+test('the rope waits 500ms; the skeleton covers the band above the flash ceiling', () => {
   assert.match(APP, /function route\(\) \{\s*return withPageLoader\(renderRouteSafely\);/);
   assert.match(APP, /window\.addEventListener\('hashchange', route\)/);
   assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRoute\)\.catch\(paintRouteError\)\)/);
   const after = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
   assert.equal(after, 500, 'the rope belongs to loads longer than 500ms');
   assert.match(APP, /if \(loading\.depth > 0\) return;/);
+});
+
+test('a load shorter than the flash ceiling paints no skeleton (Issue #630)', () => {
+  const after = Number(APP.match(/const SKELETON_SHOW_AFTER_MS = (\d+);/)[1]);
+  assert.equal(after, FLASH_MS, 'the skeleton is earned at the same ceiling the flicker probe calls a flash');
+  assert.ok(after < Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]),
+    'the skeleton still comes before the rope');
+  assert.match(APP, /function scheduleSkeleton\(kind, db\) \{[\s\S]*?setTimeout\([\s\S]*?paintSkeleton\(kind, db\)[\s\S]*?SKELETON_SHOW_AFTER_MS\)/,
+    'renderRoute schedules the skeleton rather than painting it');
+  assert.match(APP, /function renderRoute\(\) \{\s*return Promise\.resolve\(\)\.then\(dispatchRoute\)\.finally\(cancelSkeleton\);/,
+    'every route path cancels the pending skeleton when it paints, so the old page holds');
+  assert.match(APP, /function cancelSkeleton\(\) \{\s*clearTimeout\(skeleton\.timer\);/);
 });
 
 test('the table skeleton draws the destination table\'s real columns', () => {

@@ -767,7 +767,7 @@ test('the entity activity pane shows ten rows, each linking into the Activity ta
 });
 
 test('the Activity table is routed, read-only and reachable from the workspace page', () => {
-  assert.match(fnBody('renderRoute'), /#\\\/activity|#\/activity/, 'the router knows #/activity');
+  assert.match(fnBody('dispatchRoute'), /#\\\/activity|#\/activity/, 'the router knows #/activity');
   assert.match(APP, /hash\.match\(\/\^#\\\/activity/, 'with an optional entity/event parameter');
   const view = fnBody('showActivity');
   assert.match(view, /api\('GET', `\/activity/, 'the view reads the feed endpoint');
@@ -963,11 +963,12 @@ test('a date cell is type-or-pick: parsed text beside a calendar (Feature #44, p
   assert.ok(fnBody('readTypedDate').includes('dc.partsOf(current)?.t'), 'a typed day keeps the existing time of day');
 });
 
-test('navigation paints a skeleton of the destination first (Feature #49)', () => {
+test('navigation schedules a skeleton of the destination (Feature #49, Issue #630)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   assert.ok(app.includes('function paintSkeleton('));
   const route = app.slice(app.indexOf('function renderRoute()'), app.indexOf('function route()'));
-  assert.ok(route.includes('paintSkeleton('), 'renderRoute paints before it dispatches');
+  assert.ok(route.includes('scheduleSkeleton('), 'renderRoute schedules the destination skeleton before it dispatches');
+  assert.ok(!route.includes('paintSkeleton('), 'and never paints it inline, which flashed on a fast load');
   const sk = rulesFor('.sk');
   assert.equal(sk['border-radius'], '4px');
   assert.ok(readFileSync(join(ROOT, 'public/style.css'), 'utf8').includes('prefers-reduced-motion'), 'shimmer respects reduced motion');
@@ -1536,8 +1537,8 @@ test('dock: the surface core loads before app.js and #dock is a sibling of #main
 });
 
 test('dock: a route change tears the dock down with the doc editors, before the new page paints', () => {
-  const route = fnBody('renderRoute');
-  assert.match(route, /teardownDocEditors\(\);[\s\S]{0,120}dockClose\(\);/, 'renderRoute closes the dock right after the editor teardown');
+  const route = fnBody('dispatchRoute');
+  assert.match(route, /teardownDocEditors\(\);[\s\S]{0,120}dockClose\(\);/, 'the route dispatch closes the dock right after the editor teardown');
   assert.ok(route.indexOf('dockClose()') < route.indexOf('location.hash'), 'and before it reads the destination');
 });
 
@@ -1679,7 +1680,7 @@ test('the relation chip’s × is spaced as the trailing piece it is', () => {
 });
 
 test('navigating away dismisses any floating picker', () => {
-  const body = fnBody('renderRoute');
+  const body = fnBody('dispatchRoute');
   assert.match(body, /chip-pop.*picker-pop|picker-pop.*chip-pop/, 'route() sweeps both popover kinds');
   assert.match(body, /\.remove\(\)/, 'and removes them');
 });

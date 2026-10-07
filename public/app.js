@@ -10473,6 +10473,7 @@ function wireKeySheet() {
 
 const LOADER_CYCLE_MS = 2000;
 const LOADER_SHOW_AFTER_MS = 500;
+const SKELETON_SHOW_AFTER_MS = 150;
 const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, ready: false };
 
 async function initPageLoader() {
@@ -10616,6 +10617,16 @@ function paintSkeleton(kind, db) {
   }
 }
 
+const skeleton = { timer: 0 };
+function scheduleSkeleton(kind, db) {
+  cancelSkeleton();
+  skeleton.timer = setTimeout(() => { skeleton.timer = 0; paintSkeleton(kind, db); }, SKELETON_SHOW_AFTER_MS);
+}
+function cancelSkeleton() {
+  clearTimeout(skeleton.timer);
+  skeleton.timer = 0;
+}
+
 function syncDocTitle(pageName) {
   if (pageName !== undefined) state.pageName = pageName;
   const top = dock?.state.chain[dock.state.chain.length - 1];
@@ -10623,6 +10634,10 @@ function syncDocTitle(pageName) {
 }
 
 function renderRoute() {
+  return Promise.resolve().then(dispatchRoute).finally(cancelSkeleton);
+}
+
+function dispatchRoute() {
   teardownDocEditors();
   dockClose();
   for (const pop of document.querySelectorAll('.chip-pop, .picker-pop')) {
@@ -10634,7 +10649,7 @@ function renderRoute() {
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
   if (!(dbM && tableChromeOn(dbM[1]))) {
     resetGridWait();
-    paintSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
+    scheduleSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
       dbM ? allTables().find((d) => d.id === dbM[1]) : null);
   }
   let m;
