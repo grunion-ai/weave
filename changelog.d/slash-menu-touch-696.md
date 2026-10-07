@@ -1,0 +1,1 @@
+- On a phone the slash menu's rows are now 44px tall with 15px labels, so a thumb hits the command it aims at. Desktop keeps the compact 28px rows (Issue #696).
