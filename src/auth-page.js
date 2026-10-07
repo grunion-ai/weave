@@ -83,6 +83,7 @@ const JS = `
       show('sec-me');
       $('go').href = next;
       $('signout').onclick = async () => { await api('/logout', {}); location.replace(mount + '/auth?signed-out=1'); };
+      $('everywhere').onclick = async () => { await api('/logout?everywhere=1', {}); location.replace(mount + '/auth?signed-out=1'); };
       $('others').onclick = async () => { try { await api('/sessions/others', null, 'DELETE'); load(); } catch (e) { say('bad', explain(e)); } };
       return;
     }
@@ -139,7 +140,10 @@ ${provider ? `      <p class="sub">Your account here is linked to your ${esc(pro
       <ul id="sessions"></ul>
       <div class="row">
         <button id="others" type="button" hidden>Sign out other sessions</button>
-        <button id="signout" type="button">Sign out</button>
+        <button id="signout" type="button">Sign out of ${esc(workspace)}</button>
+      </div>
+      <div class="row">
+        <button id="everywhere" type="button">Sign out of every workspace</button>
       </div>
     </section>
     <div id="msg" class="msg" role="status"></div>

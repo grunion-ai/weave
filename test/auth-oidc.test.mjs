@@ -227,7 +227,7 @@ test('routes: a linked person signs in at the provider and comes back with a ses
     const { res, cookie } = await s.signIn(KYLE, { next: '/#/Dev/Task' });
     assert.equal(res.status, 302);
     assert.equal(res.headers.get('location'), '/#/Dev/Task');
-    assert.match(res.headers.get('set-cookie'), /^wv_session=[\w-]{40,}; HttpOnly; SameSite=Lax; Path=\//);
+    assert.match(res.headers.get('set-cookie'), new RegExp(`^wv_session_${s.w.state.meta.id}=[\\w-]{40,}; HttpOnly; SameSite=Lax; Path=/`));
     assert.equal((await s.call('GET', '/api/spaces', { cookie })).status, 200);
     const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
     assert.deepEqual([me.account.name, me.role], ['kyle', 'editor']);

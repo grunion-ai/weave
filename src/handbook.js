@@ -1658,7 +1658,7 @@ A signed-out visit to any page answers \`302\` to \`/auth?next=<the page>\`, and
 
 ## Sessions and the lost-device day
 
-A session lasts 30 days from its last use and is carried in an \`HttpOnly\` cookie named \`wv_session\`; only its hash is stored. Sign out from \`/auth\`, or end your other sessions from the same page.
+Each workspace keeps its own session in this browser, carried in an \`HttpOnly\` cookie named \`wv_session_<workspace id>\`; only its hash is stored. A session lasts 30 days from its last use, and each use renews the cookie, so a workspace you open every day stays signed in while one you leave for 30 days signs out on its own, without touching the others. **Sign out of <workspace>** on \`/auth\` ends that workspace's session only; **Sign out of every workspace** ends every session this browser holds (\`POST /api/auth/logout?everywhere=1\`). From the same page you can end your other sessions in this workspace. When an architect removes your account, your sessions there end at once and the next visit shows a page saying your access was removed. A plain \`wv_session\` cookie from before per-workspace sessions is still read for one release and moves to the per-workspace name the first time it is used.
 
 When a device is lost, end its sessions from any terminal that holds the data, then deal with the provider account at the provider:
 

@@ -103,6 +103,7 @@ const INTERNAL = {
   bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',
   viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
   verifySession: 'auth path — the wv_session cookie IS this call (Feature #222 part 2)',
+  removedSession: 'auth path (Feature #280) — the access-removed page reads it from a browser cookie; an agent holds no browser session',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
   storageStats: 'read helper — /api/health already ships it for the nav stats strip',
   relationTargetDbIds: 'read helper — the tables a relation may point at; describeSchema already ships them',
