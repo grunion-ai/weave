@@ -8106,9 +8106,11 @@ function placeToolbarBubble(st) {
 document.addEventListener('selectionchange', () => {
   for (const st of docBubbles) queueMicrotask(st.place);
 });
-window.visualViewport?.addEventListener('resize', () => {
-  for (const st of docBubbles) st.place();
-});
+for (const ev of ['resize', 'scroll']) {
+  window.visualViewport?.addEventListener(ev, () => {
+    for (const st of docBubbles) st.place();
+  });
+}
 
 async function uploadDocFiles(files, entityId, getEditor, onInput) {
   if (!entityId) return 'This document has no record to attach to';

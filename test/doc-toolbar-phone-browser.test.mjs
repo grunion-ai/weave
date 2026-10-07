@@ -55,6 +55,31 @@ if (s) {
     });
   }
 
+  test('on a phone the formatting bar follows the keyboard when the page pans under it (Issue #706)', async () => {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    try {
+      await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+      await selectWord(page);
+      const bottoms = await page.evaluate(async () => {
+        const real = window.visualViewport;
+        const fake = { height: 400, offsetTop: 0 };
+        Object.defineProperty(window, 'visualViewport', { configurable: true,
+          get: () => new Proxy(real, { get: (t, k) => (k in fake ? fake[k] : typeof t[k] === 'function' ? t[k].bind(t) : t[k]) }) });
+        const bar = document.querySelector('.doc-editor .vditor-toolbar.wv-show');
+        const tick = () => new Promise((r) => requestAnimationFrame(() => r()));
+        real.dispatchEvent(new Event('resize'));
+        await tick();
+        const keyboardUp = bar.style.bottom;
+        fake.offsetTop = 120;
+        real.dispatchEvent(new Event('scroll'));
+        await tick();
+        return { keyboardUp, panned: bar.style.bottom, want: `${innerHeight - 400 - 120}px` };
+      });
+      assert.equal(bottoms.keyboardUp, '444px');
+      assert.equal(bottoms.panned, bottoms.want, 'the bar sits on the keyboard after the pan');
+    } finally { await page.close(); }
+  });
+
   test('on a desktop the formatting bar still floats over the selection', async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     try {
