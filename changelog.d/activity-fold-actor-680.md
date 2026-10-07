@@ -1,0 +1,1 @@
+- A document edit by a second person is now its own activity entry, with their name, their delta and their preview. Edits within ten minutes of each other folded into one entry whatever the actor, so a second author's work was credited to the first and the entry's delta described neither edit. The revision log already split by author (Issue #680).

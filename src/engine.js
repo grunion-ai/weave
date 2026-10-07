@@ -6253,7 +6253,7 @@ export class Weave {
   #logActivity(e, kind, detail, { ts = null } = {}) {
     const last = e.activity[e.activity.length - 1];
     if (kind === 'doc-updated' && last?.kind === 'doc-updated'
-      && last.detail?.field === detail.field
+      && last.detail?.field === detail.field && last.actor === this.actor
       && detail.restoredFrom == null && last.detail?.restoredFrom == null
       && Date.now() - Date.parse(last.ts) < 10 * 60 * 1000) {
       last.ts = nowISO();
