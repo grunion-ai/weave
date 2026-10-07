@@ -40,7 +40,7 @@ Both lists are exported from the engine — `ONTOLOGY` and `FIELD_TYPES` in
 | --- | --- | --- | --- | --- |
 | **Entity** | — | — | `state.entities` | One addressable thing: id, public id (`Table#n`), fields, and an entity view. Everything below is one. |
 | **Workspace** | contains spaces | `Workspace/Workspaces` | `state.meta` | One workspace file and everything in it. The top of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and the Spaces, Tables, Fields and Workflows rows relate back to it through a `Workspace` relation. |
-| **Space** | contains tables | `Workspace/Spaces` | `state.spaces` | A named container grouping the tables of one area of work; the left half of `Space/Table`. |
+| **Space** | contains tables | `Workspace/Spaces` | `state.spaces` | The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest. |
 | **Table** | contains rows | `Workspace/Tables` | `state.tables` | An entity that is also an **entity type**: the ordered set of fields every row in it follows. |
 | **Field** | describes a slot | `Workspace/Fields` | `table.fields` | One typed, named slot on a table. Not a row of data, but it has a registry row carrying its type and definition, which is how the schema stays editable as data. |
 | **Row** | the data itself | *(it is the data)* | `state.entities` | An entity inside a table, typed by that table, addressed `Task#42`. Call it a record, an item, an entry, a customer — it is a row. |

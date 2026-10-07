@@ -916,6 +916,10 @@ weave workspace link-preview        # or --off
 
 The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for its menu: **Update logo…** picks an image for that workspace, whether or not it has one yet; **Remove logo** clears it; **Delete workspace…** asks you to type its name to confirm, and it moves to the trash: the Trash row in the sidebar lists it under Workspaces, with a Restore; the default and the \`weave\` docs workspaces cannot be deleted. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
 
+## The space
+
+A space is the unit of meaning in a workspace: it groups the tables of one area, such as Contact, Company and Deal in CRM. You address a table by space and table name, so CRM/Deal is the Deal table in CRM. Spaces never nest. Make a new space only when you have a table whose area no existing space covers. The Σ under a grid column is a rollup on the space's row in Workspace/Spaces. A space's schema version rises when its structure changes, so an agent can ask for only what changed. Mark a space as a template and weave_template_use copies its schema into another workspace.
+
 ## Sharing a link
 
 Every row, table, space and workspace has a permalink built from its id, so a rename never breaks it: \`/w/<ws>/e/<id>\` for a row (\`/w/<ws>/e/Issue%23287\` works too), \`/w/<ws>/t/<id>\` for a table, \`/w/<ws>/s/<id>\` for a space and \`/w/<ws>/\` for the workspace. The ⧉ beside a row's \`#id\`, a table's title or a space's title copies it.
