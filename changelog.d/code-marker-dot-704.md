@@ -1,1 +1,0 @@
-- A code block at rest no longer paints a 2px grey square above its top-left corner. The hidden source box keeps no border until the block opens for editing (Issue #704).

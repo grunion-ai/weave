@@ -1,1 +1,0 @@
-- A space is now defined as the unit of meaning in a workspace: the tables of one area, addressed as `Space/Table`, under one schema version. The ONTOLOGY export, the glossary in `docs/ONTOLOGY.md` and a new **The space** section in the Handbook's *Making a workspace your own* guide carry the same definition (Feature #278).

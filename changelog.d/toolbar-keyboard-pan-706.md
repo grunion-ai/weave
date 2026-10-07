@@ -1,1 +1,0 @@
-- On a phone the formatting bar stays on top of the keyboard when Safari pans the page under it. The bar now re-places itself on the visual viewport's scroll as well as its resize (Issue #706).

@@ -1,1 +1,0 @@
-- The document editor booting on a host already in the dock, which painted its body for 72 ms and then took it away, is on the flicker ratchet (Issue #634).
