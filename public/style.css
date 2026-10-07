@@ -2130,3 +2130,15 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
   #main:has(> .next-state-fab) { padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
   body:has(.vditor-toolbar.wv-bar-dock.wv-show) .next-state-fab, body:has(#app.nav-peek) .next-state-fab { display: none; }
 }
+@media (max-width: 600px) {
+  #main > .table-wrap .wv-grid tbody tr.entity-row { position: relative; touch-action: pan-y; }
+  #main > .table-wrap .wv-grid tbody tr.entity-row > td:not(.swipe-cell) { transform: translateX(var(--swipe-x, 0px)); transition: transform .18s ease; }
+  #main > .table-wrap .wv-grid tbody tr.entity-row.swiping > td { transition: none; }
+  #main > .table-wrap .wv-grid tbody tr.entity-row > td.swipe-cell { display: flex; justify-content: flex-end; position: absolute; top: 0; right: 0; bottom: 0; width: calc(-1 * var(--swipe-x, 0px)); max-width: none !important; overflow: hidden; transition: width .18s ease; }
+  #main > .table-wrap .wv-grid tbody tr.entity-row > td.swipe-cell * { pointer-events: auto; }
+  .swipe-act { flex: 0 0 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0 6px; border: 0; font-size: 12.5px; font-weight: 600; line-height: 16px; text-align: center; color: #fff; background: var(--tblr-blue); }
+  .swipe-act svg { width: 20px; height: 20px; }
+  .swipe-act.cat-done { background: color-mix(in srgb, var(--tblr-green) 78%, #000); }
+  .swipe-act.cat-not-started { background: color-mix(in srgb, var(--tblr-secondary) 85%, #000); }
+}
+@media (max-width: 600px) and (prefers-reduced-motion: reduce) { #main > .table-wrap .wv-grid tbody tr.entity-row > td { transition: none !important; } }

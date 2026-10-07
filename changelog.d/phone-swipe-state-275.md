@@ -1,0 +1,1 @@
+- On a phone, swiping a list row left in a table with a workflow field reveals buttons for the states after its current one. A tap moves the row there and the confirmation, with Undo, shows at the top of the screen; a short or vertical drag, or a tap elsewhere, leaves the row as it was (Feature #275).
