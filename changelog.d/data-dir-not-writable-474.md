@@ -1,0 +1,1 @@
+- A data directory the process cannot write now fails with a message naming the directory, the uid and the fix, instead of reporting that the database file is not a SQLite database. The Railway deploy guide quotes the message the log really shows. (Issue #474)

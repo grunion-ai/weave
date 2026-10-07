@@ -1719,7 +1719,13 @@ New Project → **Deploy from GitHub repo** → your fork of \`grunion-ai/weave\
 
 Right-click the service → **Add Volume** → mount path \`/data\`. Everything worth keeping lives there: \`workspace.db\`, the \`weave.db\` docs workspace beside it, \`files/\` for attachments, and the keystore. A volume attaches to one service, and replicas cannot be used with a volume, so the count stays at \`1\`, which is also what a single SQLite writer needs.
 
-Railway mounts the volume owned by root, and the image runs as the unprivileged \`node\` user. If the first deploy log shows \`EACCES\` on \`/data\`, set \`RAILWAY_RUN_UID=0\` on the service and redeploy; the process then runs as root inside its own container, which is the platform's documented answer.
+Railway mounts the volume owned by root, and the image runs as the unprivileged \`node\` user, so the first deploy log reads:
+
+\`\`\`
+weave: error: the data directory '/data' is not writable as uid 1000, so weave cannot open '/data/workspace.db' (unable to open database file). Give it to the user weave runs as, or on Railway set RAILWAY_RUN_UID=0 on the service and redeploy.
+\`\`\`
+
+Set \`RAILWAY_RUN_UID=0\` on the service and redeploy; the process then runs as root inside its own container, which is the platform's documented answer.
 
 ## 3. Variables
 
@@ -1758,7 +1764,7 @@ Railway's cron is a separate service and cannot share the volume, so backup runs
 
 1. \`curl -s https://weave.example.com/api/health\` answers \`{"ok":true,"name":"weave","version":"…","workspace":"workspace",…}\` and the Deployments tab shows the health check passed.
 2. Create a row, then **Redeploy** from the dashboard. The row is still there: the volume, not the container, holds it.
-3. The service shows **1 replica** and one volume at \`/data\`; the log has no \`EACCES\`.
+3. The service shows **1 replica** and one volume at \`/data\`; the log has no \`not writable\` line for the data directory.
 4. With step 7 in place, \`/api/health\` carries a \`supervisor\` object. After the next release it reads \`"release":"v<that version>"\` with \`lastSwap.ok: true\`, \`version\` is the new one, and the Deployments tab shows no new deployment.`,
   },
   {

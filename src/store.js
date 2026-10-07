@@ -1,4 +1,5 @@
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, accessSync, constants } from 'node:fs';
+import { dirname } from 'node:path';
 
 let DatabaseSync = null;
 try {
@@ -85,6 +86,22 @@ export class Store {
     return state;
   }
 
+  #openFailure(err) {
+    const dir = dirname(this.path);
+    try {
+      accessSync(dir, constants.W_OK);
+    } catch {
+      const who = typeof process.getuid === 'function' ? ` as uid ${process.getuid()}` : '';
+      const missing = !existsSync(dir);
+      return `the data directory '${dir}' is ${missing ? 'missing' : 'not writable'}${who}, `
+        + `so weave cannot open '${this.path}' (${err.message}). `
+        + (missing
+          ? 'Create it, or mount the volume there, and give it to the user weave runs as.'
+          : 'Give it to the user weave runs as, or on Railway set RAILWAY_RUN_UID=0 on the service and redeploy.');
+    }
+    return `'${this.path}' is not a SQLite database (${err.message})`;
+  }
+
   #open() {
     if (!DatabaseSync) {
       throw new WeaveError(
@@ -99,7 +116,7 @@ export class Store {
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = FULL');
     } catch (err) {
-      throw new WeaveError(`'${this.path}' is not a SQLite database (${err.message})`, 'invalid');
+      throw new WeaveError(this.#openFailure(err), 'invalid');
     }
     if (existed) {
       const names = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
