@@ -753,6 +753,8 @@ Files are not documents. A document is written and rendered; an attachment is st
 
 A file whose bytes are gone keeps its name and is marked \`(missing)\` in the cell and on the record. Metadata outlives the blob, so weave says which file was lost rather than offering a link that cannot open.
 
+A file attached to the row rather than to this field (\`POST /api/entities/<id>/files\`, or \`weave file attach\` with no \`--field\`) lands in the row's file ledger. The record's **Files** card lists everything in that ledger no attachments field already draws, with the same link and \`(missing)\` treatment, so a row whose table has no attachments field still reaches its files.
+
 A file delete is not undoable.` },
 ];
 

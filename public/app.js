@@ -2354,6 +2354,14 @@ function fileKind(file) {
 const isPictureFile = (file) => fileKind(file) === 'image';
 const fileIconName = (file) => ({ image: 'lucide:image', pdf: 'lucide:file-text', text: 'lucide:file-text', html: 'lucide:code' })[fileKind(file)] ?? 'lucide:file';
 const fileSizeText = (n) => n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+function attachItemEl(file, { remove = null } = {}) {
+  return el('span', { class: 'attach-item' + (file.missing ? ' is-missing' : '') },
+    file.missing
+      ? el('span', { title: 'The stored file is gone — only its name is left' },
+        file.name, el('span', { class: 'attach-gone' }, '(missing)'))
+      : el('a', { href: fileUrl(file), target: '_blank' }, file.name),
+    ...(remove ? [remove(file)] : []));
+}
 function attachSheetEl(files, { size = 'medium', fit = 'trim' } = {}, { remove = null } = {}) {
   const sheet = el('div', { class: `attach-sheet size-${size} fit-${fit}` });
   files.forEach((file, i) => {
@@ -2699,12 +2707,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
-    const chipFor = (file) => el('span', { class: 'attach-item' + (file.missing ? ' is-missing' : '') },
-      file.missing
-        ? el('span', { title: 'The stored file is gone — only its name is left' },
-          file.name, el('span', { class: 'attach-gone' }, '(missing)'))
-        : el('a', { href: fileUrl(file), target: '_blank' }, file.name),
-      remove(file));
+    const chipFor = (file) => attachItemEl(file, { remove });
     const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
     const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
     const present = files.filter((x) => !x.missing);
@@ -9100,6 +9103,17 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   }
   const appears = appearsAsPanel(db, entity, refresh);
   if (appears) left.prepend(appears);
+  const inFields = new Set((db.fields ?? [])
+    .filter((f) => f.type === 'attachments')
+    .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
+  const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
+  if (loose.length) {
+    left.append(el('div', { class: 'card panel entity-files-card' },
+      el('div', { class: 'card-header' },
+        el('h3', { class: 'card-title' }, `Files · ${loose.length}`)),
+      el('div', { class: 'card-body attach-chips' },
+        ...loose.map((file) => attachItemEl(file)))));
+  }
 
   const refCard = (title, extraClass) => (refs) => {
     if (!refs?.length || !mount.isConnected) return;

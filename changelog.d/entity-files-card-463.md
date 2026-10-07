@@ -1,0 +1,1 @@
+- The record page lists files attached to the row itself in a **Files** card, with the same link and `(missing)` treatment an attachments field gives, so a row in a table with no attachments field still reaches its files (Issue #463).
