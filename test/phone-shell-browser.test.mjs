@@ -71,7 +71,7 @@ if (s) {
       const seen = await shell(page);
       assert.ok(seen.open, 'the menu button opens the drawer');
       assert.equal(seen.rail.left, 0, 'the rail rides in the drawer');
-      assert.equal(seen.sidebar.left, seen.rail.right, 'the sidebar sits beside it');
+      assert.equal(seen.sidebar.left, 0, 'the menu covers the screen (Feature #269)');
       assert.ok(seen.sidebar.right <= 390, 'the drawer fits the screen');
       assert.ok(seen.scrollWidth <= 390, `the open drawer does not widen the page (${seen.scrollWidth})`);
       const small = await page.evaluate(() => [...document.querySelectorAll('#sidebar a, #sidebar button, #ws-rail a, #ws-rail button')]
@@ -89,10 +89,6 @@ if (s) {
     await page.click('#main .nav-menu');
     await page.keyboard.press('Escape');
     assert.equal(await isOpen(), false, 'Esc closes it');
-    await page.click('#main .nav-menu');
-    await page.mouse.click(370, 500);
-    assert.equal(await isOpen(), false, 'a tap outside closes it');
-    assert.ok(page.url().endsWith(views['Task table']), 'the scrim swallowed the tap: nothing under it opened');
     await openDrawer(page);
     await page.click('#nav-collapse');
     assert.equal(await isOpen(), false, 'the ‹ closes it');
@@ -113,6 +109,9 @@ if (s) {
     await openDrawer(page);
     seen = await shell(page);
     assert.equal(seen.sidebar.left, 52, 'the drawer opens beside the rail');
+    await page.mouse.click(680, 500);
+    assert.equal((await shell(page)).open, false, 'a tap outside closes it');
+    assert.ok(page.url().endsWith(views['Task record']), 'the scrim swallowed the tap: nothing under it opened');
     await page.close();
   });
 
