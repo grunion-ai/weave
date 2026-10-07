@@ -460,6 +460,15 @@ An aggregate over everything on the far side of a relation — or, on a space's 
   "config": { "relationField": "Peers", "aggregate": "join", "targetField": "Name" } }
 \`\`\`
 
+## Progress over a checkbox
+
+A number aggregate over a checkbox or toggle counts a tick as 1 and an empty box as 0: \`sum\` is how many are ticked, \`avg\` is the share. A rollup takes the number costume of its own (\`format\`, \`decimals\`, \`unit\`, \`display\` \`bar\`/\`ring\`/\`heat\`, \`scale\`, \`color\`), so a progress bar is one field; without one it wears the costume of the number it reads.
+
+\`\`\`json
+{ "name": "% Done", "type": "rollup",
+  "config": { "relationField": "To-dos", "targetField": "Done", "aggregate": "avg", "format": "percent", "display": "bar", "scale": 1 } }
+\`\`\`
+
 ## Over a whole table: the space rollup
 
 The Σ under a grid column is a rollup on the **Workspace/Spaces** row of the space that holds the table (Kyle, 2026-09-06: "all footer values live at the space level"). \`via\` names the table instead of a relation; \`where\` narrows the rows with the same clauses a query takes.

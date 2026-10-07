@@ -210,6 +210,7 @@ export const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
 export const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
 const DEFAULT_PAIR_PARTS = [{ name: 'id', secret: false }, { name: 'secret', secret: true }];
 const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'color'];
+const ROLLUP_COSTUME_KEYS = NUMBER_COSTUME_KEYS.filter((k) => k !== 'separator');
 export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
 const isGraphicDisplay = (d) => d === 'bar' || d === 'ring' || d === 'heat';
 export const CELL_COLORS = ['ink', 'icon', 'accent'];
@@ -450,6 +451,11 @@ export const ONTOLOGY = {
 const { dressNumber } = globalThis.weaveNumberCore;
 
 function dressDate(c, iso) { return DG.formatDate(iso, c); }
+
+function rollupCostume(config) {
+  if (!ROLLUP_COSTUME_KEYS.some((k) => config[k] != null)) return {};
+  return normalizeSelfContainedConfig('number', { ...config, separator: undefined });
+}
 
 function formulaCostume(config) {
   if (config.grain == null) return normalizeSelfContainedConfig('number', config, { formula: true });
@@ -4201,6 +4207,7 @@ export class Weave {
         field.config = { relationField: rel.id, targetField: targetFieldId, aggregate };
       }
       if (config.separator != null) field.config.separator = String(config.separator);
+      Object.assign(field.config, rollupCostume(config));
     } else if (type === 'formula') {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
       const checked = checkExpression(config.expression, Object.values(db.fields).map((f) => f.name));
@@ -4368,6 +4375,12 @@ export class Weave {
             else field.config[k] = costume[k];
           }
         }
+      }
+      if (field.type === 'rollup' && ROLLUP_COSTUME_KEYS.some((k) => k in patch.config)) {
+        const merged = { ...field.config, ...patch.config };
+        for (const k of ROLLUP_COSTUME_KEYS) if (merged[k] === null) delete merged[k];
+        const costume = rollupCostume(merged);
+        for (const k of ROLLUP_COSTUME_KEYS) { if (costume[k] == null) delete field.config[k]; else field.config[k] = costume[k]; }
       }
       if (field.type === 'view') field.config = this.#normalizeViewConfig(db, field, patch.config);
       if (field.type === 'text' && 'literal' in patch.config) {
@@ -5550,7 +5563,8 @@ export class Weave {
         }
         if (field.config.aggregate === 'count') return rows.length;
         if (!targetField) return null;
-        const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
+        const ticks = isBoolType(targetField.type) && NUMERIC_AGGREGATES.includes(field.config.aggregate);
+        const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1)).map((v) => (ticks && !isCycle(v) ? (v ? 1 : 0) : v));
         const looped = vals.find(isCycle);
         if (looped) return looped;
         const display = ['distinct', 'join'].includes(field.config.aggregate)
@@ -5659,6 +5673,11 @@ export class Weave {
       case 'rollup': {
         const { targetField } = this.#rollupTarget(db, field);
         const agg = field.config.aggregate;
+        if (typeof resolved === 'number' && ROLLUP_COSTUME_KEYS.some((k) => field.config[k] != null)) {
+          const c = Object.fromEntries(ROLLUP_COSTUME_KEYS.filter((k) => field.config[k] != null).map((k) => [k, field.config[k]]));
+          const fractional = !Number.isInteger(resolved) && c.decimals == null && c.format !== 'currency' && c.format !== 'percent';
+          return dressNumber(fractional ? { ...c, decimals: 2 } : c, resolved);
+        }
         if (!targetField || !NUMERIC_AGGREGATES.includes(agg)) return resolved;
         if (typeof resolved === 'number' && (targetField.type === 'number' || targetField.type === 'formula')) {
           const c = targetField.config;
@@ -5930,6 +5949,7 @@ export class Weave {
   #numberDisplay(db, f) {
     let c = null;
     if (f.type === 'number' || f.type === 'formula') c = f.config;
+    else if (f.type === 'rollup' && f.config.display) c = f.config;
     else if (f.type === 'rollup' && NUMERIC_AGGREGATES.includes(f.config.aggregate)) {
       const { targetField } = this.#rollupTarget(db, f);
       if (targetField && (targetField.type === 'number' || targetField.type === 'formula')) c = targetField.config;
@@ -7334,6 +7354,7 @@ export class Weave {
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
           }
           if (f.type === 'rollup') {
+            for (const k of ROLLUP_COSTUME_KEYS) if (f.config[k] != null) out[k] = f.config[k];
             const nd = this.#numberDisplay(db, f);
             if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; out.color = nd.color; }
           }

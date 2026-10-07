@@ -1,0 +1,1 @@
+- A rollup takes the number costume of its own (`format`, `decimals`, `unit`, `display` `bar`/`ring`/`heat`, `scale`, `color`), set on create or through `weave_update_field`, and a number aggregate over a checkbox or toggle counts a tick as 1: `avg` of a Done box is the share done, so a progress bar on a Trip's Chip is one rollup field (Feature #276).
