@@ -8105,6 +8105,17 @@ function placeToolbarBubble(st) {
   const on = (range && !range.collapsed && root.contains(range.startContainer)
     && root.contains(range.endContainer)) || (inBar && bar.classList.contains('wv-show'));
   bar.classList.toggle('wv-show', !!on);
+  const docked = dockCoversScreen.matches;
+  bar.classList.toggle('wv-bar-dock', docked);
+  if (docked) {
+    const vv = window.visualViewport;
+    const keyboard = vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
+    bar.style.left = '';
+    bar.style.top = '';
+    bar.style.bottom = `${keyboard}px`;
+    return;
+  }
+  bar.style.bottom = '';
   if (!on || inBar) return;
   const r = range.getBoundingClientRect();
   const base = st.host.getBoundingClientRect();
@@ -8117,6 +8128,9 @@ function placeToolbarBubble(st) {
 
 document.addEventListener('selectionchange', () => {
   for (const st of docBubbles) queueMicrotask(st.place);
+});
+window.visualViewport?.addEventListener('resize', () => {
+  for (const st of docBubbles) st.place();
 });
 
 async function uploadDocFiles(files, entityId, getEditor, onInput) {

@@ -1066,6 +1066,14 @@ body.wv-activity-open #main { margin-right: 344px; }
   max-width: 100%; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color);
   border-radius: 8px; box-shadow: var(--tblr-box-shadow); padding: 2px 5px !important; }
 .doc-editor .vditor-toolbar.wv-show { display: flex; flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .doc-editor .vditor-toolbar.wv-bar-dock.wv-show { position: fixed; left: 0; right: 0; top: auto; z-index: 1160;
+    width: auto; max-width: none; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior: contain;
+    border-radius: 0; border-width: 1px 0 0; padding: 0 4px env(safe-area-inset-bottom, 0px) !important; }
+  .doc-editor .vditor-toolbar.wv-bar-dock .vditor-toolbar__item { flex: none; }
+  .doc-editor .vditor-toolbar.wv-bar-dock button { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .doc-editor .vditor-toolbar.wv-bar-dock svg { width: 20px; height: 20px; }
+}
 .doc-editor .vditor-toolbar__item { padding: 0 1px; float: none; }
 .doc-editor .vditor-toolbar svg { width: 16px; height: 16px; fill: none; }
 .doc-editor .vditor-toolbar .vditor-tooltipped::after { z-index: 8; }
