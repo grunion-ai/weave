@@ -135,6 +135,9 @@ Schema
   table update <ref> [--name] [--description] [--icon lucide:wallet] [--noun invoice]
               [--hidden A,B] [--system 'Created At'] [--order Name,A,B]
               [--rollup-row on|off]
+  table view <table/view> [--fields A,B] [--filters '{json}'] [--sort '[json]'] [--density compact]
+              [--layout table|list] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
+              [--completed-by Done|none] [--nest Parent|none] [--order 3,1,2] [--collapsed '["Completed"]']
   field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
   field list <table> | delete <table> <field>
   field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
@@ -608,6 +611,11 @@ async function main() {
         for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
         if (flags.frozen != null) patch.frozen = Number(flags.frozen);
         if (flags.density != null) patch.density = flags.density;
+        if (flags.layout != null) patch.layout = flags.layout;
+        if (flags.group != null) patch.group = String(flags.group).trim().startsWith('[') ? parseJsonFlag('group') : String(flags.group);
+        for (const [flag, key] of [['completed-by', 'completedBy'], ['nest', 'nest']]) if (flags[flag] != null) patch[key] = flags[flag] === 'none' ? null : flags[flag];
+        if (flags.collapsed != null) patch.collapsed = parseJsonFlag('collapsed');
+        if (flags.order != null) patch.order = splitList(flags.order);
         Object.assign(patch, viewRowFlags(flags));
         if (flags.name != null) patch.name = flags.name;
         if (flags.from != null) patch.from = flags.from;

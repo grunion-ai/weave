@@ -5,6 +5,7 @@ import '../public/term-core.js';
 import '../public/icon-registry.js';
 import '../public/mark-icons.js';
 import '../public/editor-lib.js';
+import '../public/list-core.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -26,6 +27,7 @@ function iconValue(v) {
 }
 
 const Term = globalThis.WeaveTerm;
+const ListCore = globalThis.weaveListCore;
 const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow' };
 
 export function parseCSV(text) {
@@ -1578,7 +1580,10 @@ export class Weave {
       tableViews: (src.tableViews ?? []).map((v) => {
         const copy = { ...structuredClone(v), id: uuid(), fields: v.fields.map(mapId) };
         if (copy.widths) copy.widths = Object.fromEntries(Object.entries(copy.widths).map(([k, px]) => [mapId(k), px]));
+        if (copy.group) copy.group = copy.group.map((l) => ({ ...l, field: mapId(l.field) }));
+        for (const k of ['completedBy', 'nest']) if (copy[k]) copy[k] = mapId(copy[k]);
         delete copy.parked;
+        delete copy.order;
         return copy;
       }),
       id: newId,
@@ -1842,7 +1847,86 @@ export class Weave {
     if (v.density) out.density = v.density;
     if (v.deleted) out.deleted = true;
     if (typeof v.rollups === 'boolean') out.rollups = v.rollups;
+    if (v.layout === 'list') out.layout = 'list';
+    const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ field: db.fields[l.field].name, ...ListCore.compactLevel(db.fields[l.field].type, l) }));
+    if (group.length) out.group = group;
+    if (db.fields[v.completedBy]) out.completedBy = db.fields[v.completedBy].name;
+    if (db.fields[v.nest]) out.nest = db.fields[v.nest].name;
+    if (Array.isArray(v.collapsed)) out.collapsed = [...v.collapsed];
+    const order = (v.order ?? []).map((id) => own(this.state.entities, id)).filter((e) => e && !e.deletedAt && e.dbId === db.id).map((e) => e.publicId);
+    if (order.length) out.order = order;
     return out;
+  }
+
+  #listField(db, ref) {
+    const f = this.findField(db, ref);
+    if (!f) throw new WeaveError(`'${ref}' is not a field of ${this.qualifiedName(db)}`, 'not-found');
+    return f;
+  }
+
+  #checkGroup(db, input) {
+    let levels;
+    try { levels = ListCore.parseGroup(input); } catch (err) { throw new WeaveError(err.message, 'invalid'); }
+    const seen = new Set();
+    return levels.map((raw) => {
+      const f = this.#listField(db, raw.field);
+      if (seen.has(f.id)) throw new WeaveError(`group names each field once: '${f.name}' is there twice`, 'invalid');
+      seen.add(f.id);
+      try { return { field: f.id, ...ListCore.normalizeLevel({ name: f.name, type: f.type }, raw) }; } catch (err) { throw new WeaveError(err.message, 'invalid'); }
+    });
+  }
+
+  #orderRow(db, ref) {
+    const pid = typeof ref === 'number' ? ref : /^#?\d+$/.test(String(ref).trim()) ? Number(String(ref).trim().replace('#', '')) : null;
+    const e = pid != null
+      ? Object.values(this.state.entities).find((x) => x.dbId === db.id && x.publicId === pid)
+      : own(this.state.entities, String(ref));
+    if (!e || e.dbId !== db.id) throw new WeaveError(`'${ref}' is not a row of ${this.qualifiedName(db)} — order lists its rows as #ids`, 'invalid');
+    return e.id;
+  }
+
+  #writeListKeys(db, next, patch) {
+    if (patch.layout !== undefined) {
+      if (patch.layout == null || patch.layout === 'table') delete next.layout;
+      else if (patch.layout === 'list') next.layout = 'list';
+      else throw new WeaveError(`layout is table or list — got ${JSON.stringify(patch.layout)}`, 'invalid');
+    }
+    if (patch.group !== undefined) {
+      const g = patch.group == null ? [] : this.#checkGroup(db, patch.group);
+      if (g.length) next.group = g; else delete next.group;
+    }
+    if (patch.completedBy !== undefined) {
+      if (patch.completedBy == null || patch.completedBy === '') delete next.completedBy;
+      else {
+        const f = this.#listField(db, patch.completedBy);
+        if (!isBoolType(f.type)) throw new WeaveError(`completedBy is a checkbox or toggle field: '${f.name}' is a ${f.type}`, 'invalid');
+        next.completedBy = f.id;
+      }
+    }
+    if (patch.nest !== undefined) {
+      if (patch.nest == null || patch.nest === '') delete next.nest;
+      else {
+        const f = this.#listField(db, patch.nest);
+        if (f.type !== 'relation' || f.config.targetDbs || f.config.targetDb !== db.id) throw new WeaveError(`nest is a link from ${db.name} to itself (a Parent link): '${f.name}' is not one`, 'invalid');
+        if (f.config.many) throw new WeaveError(`nest needs one parent per row: '${f.name}' links many`, 'invalid');
+        next.nest = f.id;
+      }
+    }
+    if (patch.collapsed !== undefined) {
+      if (patch.collapsed == null) delete next.collapsed;
+      else {
+        if (!Array.isArray(patch.collapsed) || patch.collapsed.some((x) => typeof x !== 'string')) throw new WeaveError('collapsed is a list of group paths, e.g. ["Japan › P1", "Completed"]', 'invalid');
+        next.collapsed = [...new Set(patch.collapsed.map((x) => x.trim()).filter(Boolean))].slice(0, 500);
+      }
+    }
+    if (patch.order !== undefined) {
+      if (patch.order == null) delete next.order;
+      else {
+        if (!Array.isArray(patch.order)) throw new WeaveError('order is the list of rows, as #ids, in the order the list shows them', 'invalid');
+        const ids = [...new Set(patch.order.map((ref) => this.#orderRow(db, ref)))];
+        if (ids.length) next.order = ids; else delete next.order;
+      }
+    }
   }
 
   #checkViewName(db, name, self = null) {
@@ -1857,7 +1941,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -1963,6 +2047,7 @@ export class Weave {
       if (patch.rollups !== null && typeof patch.rollups !== 'boolean') throw new WeaveError(`rollups is true, false or null: whether the view draws the Σ row (null follows the table). Got ${JSON.stringify(patch.rollups)}`, 'invalid');
       if (patch.rollups === null) delete next.rollups; else next.rollups = patch.rollups;
     }
+    this.#writeListKeys(db, next, patch);
     if ((next.frozen ?? 0) > next.fields.length) next.frozen = next.fields.length;
     if (!next.frozen) delete next.frozen;
     if (next.parked && !Object.keys(next.parked).length) delete next.parked;
@@ -2710,6 +2795,9 @@ export class Weave {
       if (vDoc.density) out.density = vDoc.density;
       if (vDoc.deleted) out.deleted = true;
       if (typeof vDoc.rollups === 'boolean') out.rollups = vDoc.rollups;
+      if (vDoc.layout) out.layout = vDoc.layout;
+      if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
+      for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
       for (const k of ['filters', 'sort', 'widths']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
       return out;
     };
@@ -2736,6 +2824,9 @@ export class Weave {
       if ((vDoc.density ?? 'comfortable') !== (have?.density ?? 'comfortable')) patch.density = vDoc.density ?? 'comfortable';
       if (!!vDoc.deleted !== !!have?.deleted) patch.deleted = !!vDoc.deleted;
       if ((vDoc.rollups ?? null) !== (have?.rollups ?? null)) patch.rollups = vDoc.rollups ?? null;
+      if ((vDoc.layout ?? 'table') !== (have?.layout ?? 'table')) patch.layout = vDoc.layout ?? 'table';
+      if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
+      for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (!Object.keys(patch).length) continue;
       act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
     }
@@ -3604,7 +3695,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
-    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox']]) {
+    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox'], ['Layout', 'text'], ['Group', 'text']]) {
       if (!this.#sysField(viewsT, n)) this.addField(viewsT.id, { name: n, type, ...(type === 'number' ? { config: { decimals: 0 } } : {}) }).system = true;
     }
     const wfT = this.#sysTable('workflows')
@@ -3827,6 +3918,8 @@ export class Weave {
         Density: v.density ?? '',
         'Show Deleted': !!v.deleted,
         'Rollup Row': typeof v.rollups === 'boolean' ? v.rollups : db.hideRollups === false,
+        Layout: v.layout ?? '',
+        Group: (v.group ?? []).map((l) => db.fields[l.field]?.name).filter(Boolean).join(ListCore.SEP),
       };
       let row = this.#sysRow('views', v.id);
       if (!row) {
@@ -3842,7 +3935,7 @@ export class Weave {
       }
       const patch = {};
       if (reg.entityName(row) !== v.name) patch.Name = v.name;
-      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row']) {
+      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row', 'Layout', 'Group']) {
         const f = this.#sysField(t, k);
         if (!f) continue;
         if ((row.values[f.id] ?? (['Default', 'Show Deleted', 'Rollup Row'].includes(k) ? false : k === 'Frozen' ? 0 : '')) !== want[k]) patch[k] = want[k];
@@ -4107,6 +4200,11 @@ export class Weave {
     if ('Density' in values) vp.density = String(take('Density') ?? '').trim() || 'comfortable';
     if ('Show Deleted' in values) vp.deleted = !!take('Show Deleted');
     if ('Rollup Row' in values) vp.rollups = !!take('Rollup Row');
+    if ('Layout' in values) vp.layout = String(take('Layout') ?? '').trim().toLowerCase() || 'table';
+    if ('Group' in values) {
+      const names = ListCore.parseGroup(String(take('Group') ?? '')).map((l) => l.field);
+      vp.group = names.map((n) => cur?.group?.find((l) => l.field.toLowerCase() === n.toLowerCase()) ?? n);
+    }
     if ('Widths' in values) {
       vp.widths = { ...Object.fromEntries(Object.keys(cur?.widths ?? {}).map((n) => [n, null])), ...parseWidths(take('Widths')) };
     }
