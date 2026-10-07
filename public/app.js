@@ -8581,10 +8581,12 @@ function convertBlockLine(host, editor, onInput) {
   if (next.line >= 0) {
     token = CARET_SENTINEL;
     const lines = next.md.split('\n');
-    lines[next.line] += token;
+    const line = lines[next.line];
+    const at = line.length - next.select.length;
+    lines[next.line] = line.slice(0, at) + token + line.slice(at);
     editor.setValue(lines.join('\n'));
   }
-  if (!caretToToken(host, token)) { editor.setValue(next.md); editor.focus(); }
+  if (!caretToToken(host, token, next.select.length)) { editor.setValue(next.md); editor.focus(); }
   onInput(editor.getValue());
   scheduleDecorFor(host);
 }

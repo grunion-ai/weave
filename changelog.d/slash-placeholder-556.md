@@ -1,0 +1,1 @@
+- A line command run on an empty line now leaves its placeholder selected, so the first thing you type replaces it. `/task` then "Ship it" stores `- [ ] Ship it`; it used to leave the caret after the placeholder and store `- [ ]  To doShip it` (Issue #556).

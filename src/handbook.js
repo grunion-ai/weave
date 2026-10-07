@@ -791,7 +791,7 @@ Each row shows its markdown on the right, so the menu teaches the syntax rather 
 
 A format command wraps the text you selected rather than a placeholder — as long as you selected it in the last fifteen seconds. Select a phrase, type \`/bold\`, and the phrase is what ends up bold.
 
-Text, a heading, a list, a task list and a quote take the line they are typed on. \`Buy milk /task\` becomes \`- [ ] Buy milk\`, \`## Plan /task\` becomes \`- [ ] Plan\`, and \`/text\` on a heading gives a plain paragraph. The words, their inline formatting and a nested item's indent stay; the caret goes to the end of the line. On an empty line the command writes its prefix and a placeholder to type over. Every other block (code, mermaid, table, divider, line break, image, raw HTML) is inserted beside the text.
+Text, a heading, a list, a task list and a quote take the line they are typed on. \`Buy milk /task\` becomes \`- [ ] Buy milk\`, \`## Plan /task\` becomes \`- [ ] Plan\`, and \`/text\` on a heading gives a plain paragraph. The words, their inline formatting and a nested item's indent stay; the caret goes to the end of the line. On an empty line the command writes its prefix and a placeholder, selected, so the first thing you type replaces it. Every other block (code, mermaid, table, divider, line break, image, raw HTML) is inserted beside the text.
 
 ## Blocks
 

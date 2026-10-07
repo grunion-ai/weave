@@ -314,7 +314,10 @@ if (s) {
         before.setEnd(r.startContainer, r.startOffset);
         const own = [...block.childNodes].filter((n) => !(n.nodeType === 1 && /^(UL|OL)$/.test(n.tagName)))
           .map((n) => n.textContent).join('');
-        return { collapsed: r.collapsed, before: before.toString().trim(), line: own.trim(), inEditor: !!el.closest('.vditor-ir') };
+        return {
+          collapsed: r.collapsed, before: before.toString().trim(), line: own.trim(),
+          selected: s.toString(), inEditor: !!el.closest('.vditor-ir'),
+        };
       });
       await page.evaluate(() => window.__weaveFlushDocSaves());
       let saved = null;
@@ -416,9 +419,31 @@ if (s) {
   test('convert: an empty line still gets the marker and its placeholder', async () => {
     const r = await convertLine('', 'task');
     assert.match(r.markdown, /^- \[ \] +To do\n?$/, said(r));
-    assert.equal(r.caret.before, 'To do', 'with the caret after the placeholder, where Vditor used to leave it');
+    assert.equal(r.caret.selected, 'To do', 'the placeholder is the selection, not a collapsed caret after it (Issue #556)');
+    assert.equal(r.caret.collapsed, false);
     assert.equal(r.saved.trim(), '- [ ] To do', 'one space after the box reaches storage (Issue #555)');
   });
+
+  const PLACEHOLDERS = [
+    ['task', 'To do', /^- \[ \] +Ship it$/m],
+    ['bullet', 'List item', /^- Ship it$/m],
+    ['quote', 'Quote', /^> Ship it$/m],
+    ['h2', 'Heading', /^## Ship it$/m],
+  ];
+
+  for (const [query, placeholder, typed] of PLACEHOLDERS) {
+    test(`convert: typing after /${query} on an empty line replaces the placeholder (Issue #556)`, async () => {
+      const r = await convertLine('', query, {
+        then: async (page) => {
+          await page.keyboard.type('Ship it');
+          return page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
+        },
+      });
+      assert.equal(r.caret.selected, placeholder, `/${query} selects its placeholder: ${said(r)}`);
+      assert.match(r.after, typed, `typed over it and got ${JSON.stringify(r.after)}`);
+      assert.doesNotMatch(r.after, new RegExp(placeholder), 'the placeholder never reaches the document');
+    });
+  }
 
   test('convert: a block that is not a line prefix still inserts beside the text', async () => {
     const r = await convertLine('Buy milk', 'divider');
