@@ -1137,8 +1137,109 @@ function renderNav() {
     }).catch(() => { status.textContent = 'offline'; });
     stats.append(status);
   }
+  stats.append(accountSlot());
 }
 
+const ACCOUNT_ROLE_LABELS = { architect: 'Architect', editor: 'Editor', observer: 'Observer', admin: 'Architect', writer: 'Editor', reader: 'Observer' };
+
+function accountSlot() {
+  return state.accountSlot ??= el('div', { class: 'nav-account' });
+}
+
+function accountDisplayName(name) {
+  const s = String(name ?? '').trim();
+  return s.includes('@') ? s.split('@')[0] : s;
+}
+
+function accountWorkspaceName() {
+  return state.wsCurrent || $('#ws-name')?.textContent || 'this workspace';
+}
+
+async function refreshAccountChip() {
+  const slot = accountSlot();
+  let me = null;
+  try { me = await api('GET', '/auth/me'); } catch (err) {
+    if (err.status !== 401) return;
+  }
+  closeAccountMenu();
+  if (me?.account) {
+    slot.dataset.state = 'signed-in';
+    slot.replaceChildren(accountChip(me));
+    return;
+  }
+  const walled = await api('GET', '/workspace').then((w) => !!w.requireAuth, (err) => err.status === 401);
+  slot.dataset.state = walled ? 'signed-out' : 'none';
+  slot.replaceChildren(...(walled ? [el('a', {
+    class: 'nav-account-chip nav-account-signin',
+    href: `${WS_PREFIX}/auth?next=${encodeURIComponent(location.pathname + location.hash)}`,
+    title: `Sign in to ${accountWorkspaceName()}`,
+  }, lucideEl('log-in', 'wv-icon nav-account-ic'), el('span', { class: 'nav-account-name' }, 'Sign in'))] : []));
+}
+
+function accountChip(me) {
+  const name = accountDisplayName(me.account.name) || 'Signed in';
+  const role = ACCOUNT_ROLE_LABELS[me.role] ?? me.role ?? '';
+  const avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
+  const btn = el('button', {
+    type: 'button', class: 'nav-account-chip', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    title: `${name}${role ? `, ${role}` : ''} in ${accountWorkspaceName()}`,
+    onclick: (e) => { e.stopPropagation(); accountMenu(btn); },
+  }, avatar, el('span', { class: 'nav-account-name' }, name), role ? el('span', { class: 'nav-account-role' }, role) : null);
+  return btn;
+}
+
+function closeAccountMenu() {
+  document.querySelector('.nav-account-menu')?.close?.();
+}
+
+function accountMenu(btn) {
+  if (document.querySelector('.nav-account-menu')) { closeAccountMenu(); return; }
+  const r = btn.getBoundingClientRect();
+  const ws = accountWorkspaceName();
+  const row = (label, icon, prefixes) => el('button', {
+    type: 'button', class: 'chip-pop-row wv-menu-row', role: 'menuitem',
+    onclick: () => { close(); signOutOf(prefixes); },
+  }, lucideEl(icon, 'wv-icon'), label);
+  const everywhere = [WS_PREFIX, ...(state.wsList ?? []).filter((w) => w.name !== state.wsCurrent).map((w) => `/w/${encodeURIComponent(w.name)}`)];
+  const menu = el('div', {
+    class: 'chip-pop nav-account-menu', role: 'menu', 'aria-label': 'Account',
+    style: `left:${Math.round(r.left)}px;bottom:${Math.round(innerHeight - r.top + 4)}px;min-width:${Math.round(r.width)}px`,
+  }, row(`Sign out of ${ws}`, 'log-out', [WS_PREFIX]), row('Sign out everywhere', 'log-out', everywhere));
+  const rows = [...menu.querySelectorAll('[role="menuitem"]')];
+  const close = () => {
+    menu.remove();
+    btn.setAttribute('aria-expanded', 'false');
+    removeEventListener('click', away, true);
+    removeEventListener('keydown', keys, true);
+  };
+  const away = (e) => { if (!menu.contains(e.target) && !btn.contains(e.target)) close(); };
+  const keys = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); return; }
+    if (e.key === 'Tab') { close(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const i = rows.indexOf(document.activeElement);
+      rows[(i + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length].focus();
+    }
+  };
+  menu.close = close;
+  document.body.append(menu);
+  btn.setAttribute('aria-expanded', 'true');
+  addEventListener('click', away, true);
+  addEventListener('keydown', keys, true);
+  rows[0].focus();
+}
+
+async function signOutOf(prefixes) {
+  await Promise.allSettled([...new Set(prefixes)].map((p) => fetch(`${p}/api/auth/logout`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin',
+  })));
+  location.assign(`${WS_PREFIX}/auth?signed-out=1`);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.accountSlot) refreshAccountChip();
+});
 
 function fieldValueCell(value) {
   if (value == null || value === '') return '';
@@ -10819,6 +10920,8 @@ async function buildWsRail() {
     const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
     const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
     const current = cur?.name ?? seg;
+    state.wsList = list;
+    state.wsCurrent = current;
     const wordmark = $('#ws-name');
     wordmark.textContent = current ?? '';
     syncDocTitle();
@@ -10855,6 +10958,7 @@ async function buildWsRail() {
       }));
     refreshWsMarks();
   } catch {}
+  refreshAccountChip();
 }
 
 function contextMenu(e, items, extraClass = '') {
