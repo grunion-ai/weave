@@ -1,0 +1,1 @@
+- The flicker probe no longer counts a layout shift that the journey's own scroll caused: a real wheel scroll over the same grid reports none, and Chrome's own input exclusion never fires for a programmatic scroll ([[Issue#631]]).

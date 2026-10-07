@@ -7,5 +7,9 @@
   "open-table|transient|main#main > *": {
     "issue": 630,
     "why": "the route skeleton painted and was replaced inside one frame"
+  },
+  "scroll-grid|shift|tbody > tr.wv-spacer": {
+    "issue": 631,
+    "why": "the probe counted the journey's own scroll: the grid re-windowed inside the scroll that caused it"
   }
 }

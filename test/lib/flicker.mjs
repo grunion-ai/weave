@@ -35,6 +35,9 @@ function probe(MAX) {
     addEventListener(type, () => { input = now(); }, { capture: true, passive: true });
   }
   const answering = (t) => t - input < 50;
+  let scrolled = -Infinity;
+  addEventListener('scroll', () => { scrolled = now(); }, { capture: true, passive: true });
+  const scrolling = (t) => t - scrolled < 50;
   const born = new Map();
   const emptied = new Map();
   const attrs = new Map();
@@ -128,7 +131,7 @@ function probe(MAX) {
   try {
     new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
-        if (e.hadRecentInput || e.value < 0.001) continue;
+        if (e.hadRecentInput || e.value < 0.001 || scrolling(e.startTime)) continue;
         for (const s of e.sources ?? []) {
           const r0 = s.previousRect, r1 = s.currentRect;
           push({ kind: 'shift', sel: s.node ? sel(s.node.nodeType === 1 ? s.node : s.node.parentElement) : '?', ms: 0, value: Number(e.value.toFixed(4)),
