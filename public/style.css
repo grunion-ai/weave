@@ -1602,7 +1602,9 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 .opt-preview { flex: 0 1 auto; min-width: 0; max-width: 128px; display: flex;
   justify-content: flex-end; align-items: center; overflow: hidden; }
 .opt-preview .k { overflow: hidden; text-overflow: ellipsis; display: inline-flex; }
-.opt-color.locked { cursor: not-allowed; opacity: .7; }
+.pick-reset { display: block; width: 100%; margin-top: 7px; padding: 4px 6px; font-size: 12px; text-align: left;
+  background: none; border: 0; border-radius: 4px; color: var(--tblr-body-color); cursor: pointer; }
+.pick-reset:hover { background: var(--tblr-bg-surface-secondary); }
 .swatch-grid { display: grid; grid-template-columns: repeat(5, 26px); gap: 5px; }
 .swatch-grid .sw { width: 26px; height: 26px; padding: 0; cursor: pointer; border-radius: 50%;
   border: 1px solid var(--tblr-border-color); background: var(--dot, transparent); color: var(--tblr-body-color); }

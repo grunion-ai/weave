@@ -1,0 +1,1 @@
+- A workflow state can take a colour of its own. The swatch in the field dialog opens the same ten-hue picker a select option uses, the category colour stays the default, and **Reset to category colour** puts a state back on it. Chips in the grid, the tray preview, view chips, the command palette and the phone applet all read the state's colour (Issue #427).

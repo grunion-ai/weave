@@ -61,8 +61,10 @@
   const categoryHue = (c) =>
     (CATEGORIES.find((x) => x.id === categoryOrDefault(c)) ?? CATEGORIES[1]).hue;
 
+  const stateHue = (s, c) => (s?.hue && hueName(s.hue)) || categoryHue(c ?? s?.category);
+
   root.chipCore = {
     HUES, HUE_HEX, HUE_ALIAS, RAMP_ORDER, CATEGORIES, DEFAULT_CATEGORY,
-    hueForIndex, hueFromHex, hueName, hueForName, initialsFor, categoryOrDefault, categoryHue,
+    hueForIndex, hueFromHex, hueName, hueForName, initialsFor, categoryOrDefault, categoryHue, stateHue,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

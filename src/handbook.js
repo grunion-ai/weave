@@ -340,11 +340,11 @@ Order is the order you wrote, not the order of the options list.` },
 
   { name: 'workflow', kind: 'Choice', doc: `# workflow
 
-A lifecycle. One state at a time, each state belonging to a **category**, and the category is what colors the chip.
+A lifecycle. One state at a time, each state belonging to a **category**. The category sets the chip colour, and a state may carry a colour of its own instead.
 
 ## Config
 
-\`states\` — \`[{ name, category, default, icon }]\`. Categories are exactly four: \`not-started\`, \`in-progress\`, \`done\`, \`canceled\`.
+\`states\` — \`[{ name, category, default, icon, hue }]\`. Categories are exactly four: \`not-started\`, \`in-progress\`, \`done\`, \`canceled\`. \`hue\` is optional and overrides the category colour for that one state: a hue name or its hex, stored as the name. Leave it out, or send \`"hue": ""\`, and the chip reads the category again. The swatch in the field dialog writes it, and **Reset to category colour** clears it.
 
 **Leave \`states\` out and you get one.** A workflow whose config never mentions states arrives as \`Not started\` · \`In progress\` · \`Done\` · \`Canceled\` — one per category — in the tray and on \`weave field add\` alike. Rename, reorder, recolour or delete them like any others. Sending \`"states": []\` is a different thing and still refused: a list emptied on purpose is not a lifecycle.
 
@@ -1148,7 +1148,7 @@ The option palette is the ten-hue ramp and it is closed: \`slate\`, \`blue\`, \`
 
 Slate is the honest default. A colour should carry meaning — red for blocked, green for done — and a table where every option is a different colour has told the reader nothing.
 
-Workflow states are the exception that proves it: a state's **category** colours its chip, so \`not-started\`, \`in-progress\`, \`done\` and \`canceled\` look the same everywhere in the workspace without anyone choosing a colour.
+Workflow states start from their **category**, so \`not-started\`, \`in-progress\`, \`done\` and \`canceled\` look the same everywhere in the workspace without anyone choosing a colour. Pick a \`hue\` on one state and it keeps that colour everywhere instead, which is how two states in one category are told apart.
 
 ## Views
 
@@ -2129,7 +2129,7 @@ The grey box is the link to the row, and everything inside it navigates on click
 | 2 | **Public id** (\`#12\`) | the row's number; shows when the chip's \`link\` setting is on | read it, quote it — \`[[Task#12]]\` written in any document becomes this chip | inside the link |
 | 3 | **Name** | the row's \`Name\` field | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** opens it in a new tab; **right-click → Copy Link** copies its permalink (the chip is a real anchor); **hover** turns the outline brand-blue | inside the link — the label, its padding, and the space between elements all count |
 | 4 | **Home badge** (\`.k-home\`) | names the far table when a relation can point at several (a target set) | none of its own | inside the link |
-| 5 | **Segments** | the state as a state chip (the category owns the colour), then label·value pairs from the view's \`fields\`; three at most in a chip | read them; the state's colour is the same one the grid cell wears | inside the link — a click on a segment opens the row |
+| 5 | **Segments** | the state as a state chip (its own hue, or its category's), then label·value pairs from the view's \`fields\`; three at most in a chip | read them; the state's colour is the same one the grid cell wears | inside the link — a click on a segment opens the row |
 | 6 | **Open mark** (\`↗\`) | promises navigation; always the last pixel inside the link | click it like the name | inside the link |
 | 7 | **Caret** (\`›\` / \`‹\`) | folds the segments in and out; shows only when there is a segment to show | **click to expand**; it turns to face the label (\`‹\`) and a second click **collapses** — the caret sits beside the link, not inside it, so it never navigates | a 24×24px square around the glyph, beside the link; the click stops there |
 | 8 | **Remove** (\`×\`) | in a relation cell only: unlinks this row from the field — never deletes it | **click to unlink**; \`weave undo\` (or the activity row) puts it back | its own box, outside the link |

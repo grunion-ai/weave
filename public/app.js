@@ -1175,7 +1175,8 @@ function stateCategory(fieldSchema, stateName) {
 
 function stateChipClass(fieldSchema, stateName) {
   const cat = stateCategory(fieldSchema, stateName);
-  return `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`;
+  const st = fieldSchema.states?.find((s) => s.name === stateName);
+  return `k k-state cat-${cat} hue-${chipCore.stateHue(st, cat)}`;
 }
 
 const PERSON_TABLE = /^(people|persons?|members?|users?|contacts?|owners?|team|staff|employees?)$/i;
@@ -2280,7 +2281,7 @@ function segmentValueEl(seg) {
 function viewSegmentEl(seg) {
   if (seg.kind === 'state') {
     const cat = chipCore.categoryOrDefault(seg.category);
-    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)} wv-seg-state` }, seg.value);
+    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(seg, cat)} wv-seg-state` }, seg.value);
   }
   return el('span', { class: 'mention-f' }, el('span', { class: 'mention-f-label' }, seg.label), segmentValueEl(seg));
 }
@@ -6052,15 +6053,16 @@ function segCtl(options, value, onPick) {
   return wrap;
 }
 
-function huePopover(anchor, current, onPick) {
+function huePopover(anchor, current, onPick, { reset = null, note = 'Stored as a name. A new option takes the next hue in ramp order.' } = {}) {
   const grid = el('div', { class: 'swatch-grid' },
     ...chipCore.HUES.map((h) => el('button', {
       type: 'button', class: `sw hue-${h}${h === 'slate' ? ' neutral' : ''}${h === current ? ' sel' : ''}`,
       title: h === 'slate' ? 'no colour' : h, 'aria-label': h,
       onclick: () => onPick(h),
     })));
-  showPopover(anchor, [grid, el('p', { class: 'pick-note' },
-    'Stored as a name. A new option takes the next hue in ramp order.')]);
+  showPopover(anchor, [grid,
+    reset ? el('button', { type: 'button', class: 'pick-reset', onclick: () => onPick(null) }, reset) : null,
+    el('p', { class: 'pick-note' }, note)].filter(Boolean));
 }
 function glyphPopover(anchor, current, onPick) {
   searchPicker({
@@ -6082,7 +6084,7 @@ function optionPreview(o) {
 }
 function statePreview(st) {
   const cat = chipCore.categoryOrDefault(st.category ?? 'in-progress');
-  return previewChip(`k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`, st, 'State');
+  return previewChip(`k k-state cat-${cat} hue-${chipCore.stateHue(st, cat)}`, st, 'State');
 }
 
 function termSection(state, onChange) {
@@ -6161,7 +6163,7 @@ function choiceDefaultControl(state, t) {
   const chipCls = (x) => {
     if (t !== 'workflow') return `k k-select hue-${x.hue ?? chipCore.hueFromHex(x.color)}`;
     const cat = chipCore.categoryOrDefault(x.category ?? 'in-progress');
-    return `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`;
+    return `k k-state cat-${cat} hue-${chipCore.stateHue(x, cat)}`;
   };
   const face = el('button', { type: 'button', class: 'form-select picker-face choice-default', 'aria-label': 'Default', 'aria-haspopup': 'listbox' });
   const named = () => fdc.choiceItems(state, t).filter((x) => x.name.trim());
@@ -6227,11 +6229,20 @@ function stateListEditor(state, onChange) {
         })(),
         (() => {
           const cat = chipCore.categoryOrDefault(s.category ?? 'in-progress');
-          const hue = chipCore.categoryHue(cat);
-          return el('button', {
-            type: 'button', class: `opt-color locked hue-${hue}${hue === 'slate' ? ' neutral' : ''}`,
-            disabled: true, title: `Colour comes from the ${cat} category`, 'aria-label': `Colour: ${cat}`,
+          const hue = chipCore.stateHue(s, cat);
+          const b = el('button', {
+            type: 'button', class: `opt-color hue-${hue}${hue === 'slate' ? ' neutral' : ''}`,
+            title: s.hue ? 'Choose a colour' : `Colour comes from the ${cat} category`,
+            'aria-label': `Colour: ${hue}`,
+            onclick: () => huePopover(b, hue, (h) => {
+              if (h) s.hue = h; else delete s.hue;
+              draw(); onChange();
+            }, {
+              reset: s.hue ? 'Reset to category colour' : null,
+              note: `Without one, a state wears the ${cat} category colour.`,
+            }),
           });
+          return b;
         })(),
         preview,
         el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'));
@@ -9912,7 +9923,7 @@ function fieldChangeChip(type, o) {
   if (!o) return el('span', { class: 'field-change-none' }, '—');
   if (type === 'workflow') {
     const cat = chipCore.categoryOrDefault(o.category ?? 'not-started');
-    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` }, o.icon ? iconEl(o.icon, 'ico wv-icon') : null, chipLabel(o.name));
+    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(o, cat)}` }, o.icon ? iconEl(o.icon, 'ico wv-icon') : null, chipLabel(o.name));
   }
   return el('span', { class: `k k-select hue-${o.hue || chipCore.hueFromHex(o.color)}` }, o.icon ? iconEl(o.icon, 'ico wv-icon') : null, chipLabel(o.name));
 }
@@ -10235,7 +10246,7 @@ function paletteRow(hit, i, { needle, group, here, onPick, href }) {
     el('span', { class: 'cmdk-name' }, ...marked(P.displayName(hit), needle)),
     group === 'docs' ? [' ', el('span', { class: 'cmdk-ctx' }, ...marked(P.excerpt(hit.snippet, needle), needle))] : null),
   foreign ? el('span', { class: 'cmdk-ws' }, hit.workspace) : null,
-  state ? el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` }, state.name) : null,
+  state ? el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(state, cat)}` }, state.name) : null,
   el('span', { class: 'cmdk-where' }, P.whereText(hit)),
   el('button', {
     class: 'btn btn-sm btn-ghost-secondary tiny copy-btn', type: 'button', tabindex: '-1',

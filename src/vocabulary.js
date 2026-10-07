@@ -10,7 +10,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'email', renders: 'inline input, opens a mail client', config: ['default'] },
   { type: 'select', renders: 'one soft chip; click picks from the options', config: ['options', 'default'] },
   { type: 'multiselect', renders: 'a row of chips', config: ['options', 'default'] },
-  { type: 'workflow', renders: 'one state chip, colored by its category', config: ['states'] },
+  { type: 'workflow', renders: 'one state chip, colored by its category unless the state carries a hue', config: ['states'] },
   { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
   { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ, wearing the target column\'s costume; on a Workspace/Spaces row a `via` rollup is the figure the grid footer shows under that column', config: ['relationField', 'via', 'where', 'targetField', 'aggregate', 'separator'] },

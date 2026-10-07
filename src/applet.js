@@ -45,7 +45,7 @@ function schemaOf(weave, table) {
     table: weave.qualifiedName(db),
     nameField,
     workflow: wf
-      ? { field: wf.name, states: (wf.config?.states ?? []).map((x) => ({ id: x.id, name: x.name, category: x.category })) }
+      ? { field: wf.name, states: (wf.config?.states ?? []).map((x) => ({ id: x.id, name: x.name, category: x.category, ...(x.hue ? { hue: x.hue } : {}) })) }
       : null,
     fields: all
       .filter((f) => f.name !== nameField)
@@ -587,6 +587,7 @@ const CLIENT = `
   const CC = globalThis.chipCore ?? {};
   const hueForIndex = CC.hueForIndex ?? (() => 'slate');
   const categoryHue = CC.categoryHue ?? (() => 'slate');
+  const stateHue = CC.stateHue ?? ((s, c) => categoryHue(c));
   const hueFromHex = CC.hueFromHex ?? (() => null);
 
   const svg = (d, n) => '<svg viewBox="0 0 24 24" width="' + (n||18) + '" height="' + (n||18) + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
@@ -628,7 +629,8 @@ const CLIENT = `
   const wfField = () => S && S.workflow && S.workflow.field;
   const states = () => (S && S.workflow ? S.workflow.states : []);
   const stateOf = (t) => (t.fields || {})[wfField()] || null;
-  const catOf = (name) => { const x = states().find((y) => y.name === name); return x ? x.category : 'not-started'; };
+  const stOf = (name) => states().find((y) => y.name === name) ?? null;
+  const catOf = (name) => { const x = stOf(name); return x ? x.category : 'not-started'; };
   const byCat = (c) => { const x = states().find((y) => y.category === c); return x ? x.name : null; };
   const cycleNames = () => ['not-started', 'in-progress', 'done'].map(byCat).filter(Boolean);
   const isActive = (t) => { const c = catOf(stateOf(t)); return c !== 'done' && c !== 'canceled'; };
@@ -846,7 +848,7 @@ const CLIENT = `
     const one = (cls, txt) => '<button class="k ' + cls + '"' + tap + '>' + esc(txt) + '</button>';
     if (v == null || v === '' || (Array.isArray(v) && !v.length)) return '';
     switch (f.type) {
-      case 'workflow': return one(categoryHue(catOf(v)), v);
+      case 'workflow': return one(stateHue(stOf(v), catOf(v)), v);
       case 'select': return one(hueForValue(f, v), v);
       case 'multiselect': return [].concat(v).map((x) => one(hueForValue(f, x), x)).join('');
       case 'date': return one('ghost', day(v));
@@ -873,7 +875,7 @@ const CLIENT = `
 
     if (f.type === 'workflow') {
       openSheet('<h4>' + esc(name) + '</h4>' + states().map((x) =>
-        '<button class="wv-opt" data-v="' + esc(x.name) + '"><span class="k ' + categoryHue(x.category) + '">' + esc(x.name) + '</span>'
+        '<button class="wv-opt" data-v="' + esc(x.name) + '"><span class="k ' + stateHue(x, x.category) + '">' + esc(x.name) + '</span>'
         + (cur === x.name ? '<span class="tick">' + I.tick + '</span>' : '') + '</button>').join(''),
         (sh) => sh.querySelectorAll('[data-v]').forEach((b) => b.addEventListener('click', () => {
           closeSheet(); setState(t, b.dataset.v).then(after);

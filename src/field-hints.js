@@ -18,7 +18,7 @@ export const FIELD_PATHS = {
   toggle: { on: { when: 'label when true (default On)' }, off: { when: 'label when false (default Off)' } },
   select: { options: { when: '[{name, hue, icon}], a hue only where it means something' } },
   multiselect: { options: { when: '[{name, hue, icon}], a hue only where it means something' } },
-  workflow: { states: { when: '[{name, category, default, icon}]' } },
+  workflow: { states: { when: '[{name, category, default, icon, hue}]' } },
 };
 const WHEN = {
   currency: 'ISO code: "USD"',

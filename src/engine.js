@@ -257,7 +257,7 @@ const workflowActor = (rowId) => `workflow:${rowId}`;
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 
 const { HUE_HEX, HUES, hueName } = globalThis.chipCore;
-function hueOf(o, { strict = false } = {}) {
+function hueOf(o, { strict = false, fallback = 'slate' } = {}) {
   for (const authored of [o?.hue, o?.color]) {
     if (authored === undefined || authored === null || String(authored).trim() === '') continue;
     const hue = hueName(authored);
@@ -268,7 +268,7 @@ function hueOf(o, { strict = false } = {}) {
         + `or its hex, or '' for slate)`, 'invalid');
     }
   }
-  return 'slate';
+  return fallback;
 }
 function normaliseOption(o, { strict = false } = {}) {
   if (typeof o === 'string') return { id: slug(o), name: o, hue: 'slate', icon: '', color: '' };
@@ -456,7 +456,7 @@ function normalizeSelfContainedConfig(type, config = {}, { formula = false, stri
   if (type === 'workflow') {
     const states = (config.states ?? DEFAULT_WORKFLOW_STATES).map((s) => (typeof s === 'string'
       ? { id: slug(s), name: s, category: 'in-progress', default: false }
-      : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}) }));
+      : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}), ...(hueOf(s, { strict, fallback: null }) ? { hue: hueOf(s, { strict, fallback: null }) } : {}) }));
     if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
     let marked = false;
     for (const s of states) { if (s.default && marked) s.default = false; marked ||= s.default; }
@@ -1129,7 +1129,7 @@ export class Weave {
     if (cfg.state && wf) {
       const st = this.#resolve(e, db, wf, 0);
       const def = wf.config.states.find((s) => s.id === st || s.name === st);
-      if (def) out.state = { name: def.name, category: def.category };
+      if (def) out.state = { name: def.name, category: def.category, ...(def.hue ? { hue: def.hue } : {}) };
     }
     if (cfg.description !== 'none') {
       const docField = this.descriptionField(db);
@@ -7087,7 +7087,7 @@ export class Weave {
               id: o.id, name: o.name, hue: hueOf(o), icon: o.icon ?? '', color: o.color ?? '',
             }));
           }
-          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}) }));
+          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}), ...(s.hue ? { hue: s.hue } : {}) }));
           if (f.type === 'relation' && f.config.targetDbs) {
             const members = f.config.targetDbs.map((tid) => this.state.tables[tid]).filter(Boolean);
             out.targetDbs = members.map((t) => this.qualifiedName(t));

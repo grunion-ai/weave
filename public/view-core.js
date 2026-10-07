@@ -5,7 +5,7 @@
 
   function viewSegments(v) {
     const out = [];
-    if (v?.state) out.push({ kind: 'state', label: 'State', value: v.state.name, category: v.state.category });
+    if (v?.state) out.push({ kind: 'state', label: 'State', value: v.state.name, category: v.state.category, ...(v.state.hue ? { hue: v.state.hue } : {}) });
     for (const f of v?.fields ?? []) {
       if (f.value == null || f.value === '') continue;
       const extra = {};

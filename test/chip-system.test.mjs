@@ -256,10 +256,13 @@ test('every option row previews the chip it produces', () => {
   assert.ok(Object.keys(rulesFor('.opt-preview')).length, '.opt-preview has a rule');
 });
 
-test('a workflow row cannot repaint its category, and says why', () => {
+test('a workflow row seeds its swatch from the category and lets a state override it', () => {
   const ed = fnBodyOf('stateListEditor');
-  assert.match(ed, /locked/, 'the swatch is locked on a state row');
-  assert.match(ed, /categor/i, 'and the reason names the category');
+  assert.match(ed, /chipCore\.stateHue\(s, cat\)/, 'the swatch wears the state colour, seeded by the category');
+  assert.match(ed, /huePopover\(/, 'clicking it opens the picker a select option uses (Issue #427)');
+  assert.match(ed, /Reset to category colour/, 'and there is a way back to the category');
+  assert.ok(!/disabled: true/.test(ed), 'the swatch is never a locked label');
+  assert.match(ed, /categor/i, 'the title still names the category a state inherits from');
 });
 
 test('the chip size is two tokens on :root: 13px label, 22px line — a 24px target with the 1px padding', () => {
