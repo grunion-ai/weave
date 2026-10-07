@@ -1,1 +1,0 @@
-- Opening a document that holds math no longer raises an unhandled rejection in WebKit when a math node leaves the page while KaTeX is still loading; the node is skipped and every other formula still typesets. (Issue #470)

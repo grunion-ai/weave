@@ -1,1 +1,0 @@
-- The preview chip in the field settings tray renames as you type, for a select option and for a workflow state, instead of holding the old name until something else redrew the list. (Issue #553)

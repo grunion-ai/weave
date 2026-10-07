@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.73 — 2026-10-06
+
+- A data directory the process cannot write now fails with a message naming the directory, the uid and the fix, instead of reporting that the database file is not a SQLite database. The Railway deploy guide quotes the message the log really shows. (Issue #474)
+- Opening a document that holds math no longer raises an unhandled rejection in WebKit when a math node leaves the page while KaTeX is still loading; the node is skipped and every other formula still typesets. (Issue #470)
+- The preview chip in the field settings tray renames as you type, for a select option and for a workflow state, instead of holding the old name until something else redrew the list. (Issue #553)
+- Editing a document no longer rewrites its task items: the box reaches storage as `[ ]` or `[x]` with one space after it, so a string edit by an agent still matches and an unrelated edit leaves every task line unchanged in the revision history. (Issue #555)
+
 ## v0.4.72 — 2026-10-06
 
 - The colour swatch beside each option in the field settings tray now shows that option's colour, and a slate option is hatched the way the colour picker draws it. (Issue #552)
