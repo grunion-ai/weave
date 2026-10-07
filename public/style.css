@@ -294,7 +294,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .value-pop { min-width: 260px; }
 .value-form { display: flex; gap: 6px; padding: 8px; }
 .value-form .form-control { flex: 1; }
-.wv-grid { --wv-row-h: 44px; --wv-cell-h: 28px; --wv-row-pad: 8px; --wv-lines: 1; --wv-grid-chip-line: 18px; --wv-av: 20px; }
+.wv-grid { --wv-row-h: 44px; --wv-cell-h: 28px; --wv-row-pad: 8px; --wv-cell-pad-x: .25rem; --wv-head-pad-r: 24px; --wv-lines: 1; --wv-grid-chip-line: 18px; --wv-av: 20px; }
 .wv-grid[data-density="compact"] { --wv-row-h: 32px; --wv-cell-h: 24px; --wv-row-pad: 4px; --wv-grid-chip-line: 16px; --wv-av: 16px; }
 .wv-grid[data-density="spacious"] { --wv-row-h: 72px; --wv-cell-h: 56px; --wv-lines: 2; --wv-av: 24px; }
 .wv-grid[data-density] tbody tr.entity-row > td { height: var(--wv-row-h); box-sizing: border-box; border-bottom-width: 0;
@@ -385,14 +385,16 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .cell-pop .ms-box > .btn, .cell-pop .chip .x, .cell-pop .k .x, .cell-pop .date-pick-btn { display: none; }
 .computed { cursor: default; }
 .computed-mark { margin-right: 5px; color: var(--tblr-secondary); font-size: 11px; }
-.wv-grid th.col-head { position: sticky; padding-right: 24px; }
+.wv-grid th.col-head { position: sticky; padding-right: var(--wv-head-pad-r); }
+.wv-grid tr > td:last-child { padding-right: var(--wv-cell-pad-x); }
+.wv-grid tr > :is(th.col-head, th.pid-head, th.sys-head):last-child { padding-right: var(--wv-head-pad-r); }
 .wv-grid th.col-head .col-label { pointer-events: none; }
 .wv-grid thead th .col-label { display: inline-block; white-space: nowrap; }
 .wv-grid th.col-head:focus-visible { outline-offset: -2px; }
 .field-menu { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; transition: opacity .12s ease; }
 .wv-grid th.col-head:hover { background: var(--tblr-bg-surface-secondary); }
 .wv-grid th.col-head:hover .field-menu, .field-menu:focus-visible { opacity: 1; }
-.wv-grid :is(th.pid-head, th.sys-head) { padding-right: 24px; }
+.wv-grid :is(th.pid-head, th.sys-head) { padding-right: var(--wv-head-pad-r); }
 .wv-grid :is(th.pid-head, th.sys-head):hover { background: var(--tblr-bg-surface-secondary); }
 .wv-grid :is(th.pid-head, th.sys-head):hover .field-menu { opacity: 1; }
 .field-menu:hover, .field-menu:focus-visible { color: var(--tblr-primary); background: var(--tblr-bg-surface); }

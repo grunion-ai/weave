@@ -1,0 +1,1 @@
+- Hiding or showing the last column of a table no longer changes the width of the column beside it. Tabler's `card-table` gives the last cell in a row a 20px right inset where every other cell gets 4px, so the column that landed last measured a box 16px wider than its own and grew by that much. The grid now pads its last cell like the rest (Issue #690).

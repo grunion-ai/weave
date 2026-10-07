@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let wide, narrow, loaded;
+let wide, narrow, loaded, broad;
 const s = await launch('fields popover drag and height', (weave) => {
   weave.createSpace({ name: 'Ops' });
   wide = weave.createTable({ space: 'Ops', name: 'Wide' });
@@ -11,6 +11,16 @@ const s = await launch('fields popover drag and height', (weave) => {
   narrow = weave.createTable({ space: 'Ops', name: 'Narrow' });
   weave.addField(narrow, { name: 'Owner', type: 'text' });
   weave.createEntity(narrow, { name: 'Row' });
+  broad = weave.createTable({ space: 'Ops', name: 'Broad' });
+  for (let i = 1; i <= 10; i++) weave.addField(broad, { name: `Column ${String(i).padStart(2, '0')}`, type: 'text' });
+  weave.addField(broad, { name: 'Opened', type: 'date', time: true });
+  weave.addField(broad, { name: 'Closed', type: 'date', time: true });
+  for (let i = 1; i <= 3; i++) {
+    weave.createEntity(broad, { name: `Row ${i}`, values: {
+      ...Object.fromEntries(Array.from({ length: 10 }, (_, k) => [`Column ${String(k + 1).padStart(2, '0')}`, `value ${k + 1}`])),
+      Opened: '2026-09-30T23:45', Closed: '2026-10-01T08:15',
+    } });
+  }
   loaded = weave.createTable({ space: 'Ops', name: 'Loaded' });
   weave.addField(loaded, { name: 'Owner', type: 'text' });
   weave.addField(loaded, { name: 'Stage', type: 'text' });
@@ -131,6 +141,50 @@ if (s) {
         assert.equal(afterShow[c], before[c], `${c} kept its width through the show`);
       }
       assert.deepEqual(await columns(), ['Name', 'Owner', 'Stage', 'Amount'], 'the column came back where it was');
+    } finally { await page.close(); }
+  });
+
+  test('hiding the last column of an overflowing table leaves the column that becomes last at its own width (Issue #690)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    try {
+      await page.goto(`${base}/#/table/${broad.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main .wv-grid thead th.col-head');
+      await page.waitForTimeout(400);
+      const widths = () => page.evaluate(() => Object.fromEntries(
+        [...document.querySelectorAll('#main .wv-grid thead th.col-head')]
+          .map((th) => [th.dataset.col, Math.round(th.getBoundingClientRect().width)])));
+      const columns = () => page.evaluate(() => [...document.querySelectorAll('#main .wv-grid thead th.col-head')].map((th) => th.dataset.col));
+      assert.equal(await page.evaluate(() => !!document.querySelector('#main .table-wrap')?.classList.contains('wv-overflow-x')), true,
+        'the case needs a table wide enough to overflow');
+      const order = await columns();
+      const last = order[order.length - 1];
+      assert.equal(last, 'Closed', 'the case needs the measured date column last');
+      const before = await widths();
+      const padOf = (col) => page.evaluate((c) => {
+        const td = document.querySelector(`#main .wv-grid > tbody > tr.entity-row > td[data-field="${CSS.escape(c)}"]`);
+        return getComputedStyle(td).paddingRight;
+      }, col);
+
+      await page.click('.eye-btn');
+      await page.locator('.table-fields-popover').evaluate((pop) => Promise.all(pop.getAnimations().map((a) => a.finished)));
+      await page.click(`.table-field-row[data-field="${last}"] input`);
+      await page.waitForFunction((c) => ![...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === c), last, { timeout: 4000 });
+      await page.waitForTimeout(600);
+      const afterHide = await widths();
+      for (const c of order.slice(0, -1)) {
+        assert.equal(afterHide[c], before[c], `${c} kept its width when ${last}, the last column, was hidden`);
+      }
+
+      await page.click(`.table-field-row[data-field="${last}"] input`);
+      await page.waitForFunction((c) => [...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === c), last, { timeout: 4000 });
+      await page.waitForTimeout(600);
+      const afterShow = await widths();
+      for (const c of order) {
+        assert.equal(afterShow[c], before[c], `${c} kept its width when ${last} came back`);
+      }
+      assert.deepEqual(await columns(), order, 'the column came back where it was');
+      assert.equal(await padOf(last), await padOf(order[order.length - 2]),
+        'the last cell is padded differently from the rest, so its measured box depends on its position');
     } finally { await page.close(); }
   });
 
