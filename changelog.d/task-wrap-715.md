@@ -1,0 +1,1 @@
+- Checklist items in a document wrap between words. Before, Vditor's `word-break: break-all` let a line end mid-word ("sen / ds"); a URL longer than the line still wraps inside the column (Issue #715).
