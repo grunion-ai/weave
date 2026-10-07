@@ -1,0 +1,1 @@
+- On a phone a checklist box in a document is a 44px tap target with an 18px box drawn inside it, so a thumb that lands 10px off still ticks the task. The text beside it still takes the caret, and the desktop box is unchanged (Issue #705).
