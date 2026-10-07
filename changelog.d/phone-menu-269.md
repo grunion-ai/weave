@@ -1,1 +1,0 @@
-- On a phone (600px and narrower) the menu button opens a menu that covers the whole screen: the workspace name and a 44px close button on top, every space and table in 44px rows, the record count, size and version at the foot, and the workspaces, theme and help in a bar along the bottom edge. Wider screens keep the side drawer and the desktop sidebar (Feature #269).

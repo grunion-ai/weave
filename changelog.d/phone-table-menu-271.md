@@ -1,1 +1,0 @@
-- On a phone the table toolbar (search, view, row height, fields, filters and the table menu), which wrapped to three rows, folds into one sliders button beside the breadcrumbs. Its badge counts the active filters, and it opens a glass sheet holding the same controls as 44px rows, each opening the popover it opens on a desktop (Feature #271).

@@ -1,1 +1,0 @@
-- On a phone a row in a table with a workflow field shows a wide blue "Move to <next state>" button pinned to the bottom of its row page. It moves the row to the state after its current one, refreshes the page and the table behind it, and offers Undo; a row already in its last state shows none (Feature #273).

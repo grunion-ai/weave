@@ -1,6 +1,6 @@
 {
- "version": "0.4.76",
- "generatedAt": "2026-10-07T21:15:17.869Z",
+ "version": "0.4.77",
+ "generatedAt": "2026-10-07T22:17:10.344Z",
  "issues": [
   {
    "name": "Single-writer: CLI and server must not write one workspace file concurrently",
@@ -5579,11 +5579,11 @@
   {
    "name": "Error: phone-shell-browser \"a docked record at 390x844 is a full-screen sheet\" (webkit) times out on the first gate run, green on the retry",
    "status": "Open",
-   "severity": "Medium",
+   "severity": "High",
    "symptom": [
     "Error"
    ],
-   "description": "## Measured\nThe two WebKit cases of `test/phone-shell-browser.test.mjs` \"a docked record at 390x844 is a full-screen sheet\" (light, dark) failed the first pass and passed the retry in five gate runs on 2026-10-07, across unrelated changes:\n\n| Gate log | First-run failures in this file |\n| --- | --- |\n| 702-1.log (10:58) | 2 |\n| 703-1.log (11:57) | 3 |\n| 705-1.log (12:57) | 3 |\n| 705-2.log (13:13) | 2 |\n| 709-1.log (13:30) | 2 |\n\nIn 709-1.log both fail with `page.waitForSelector: Timeout 30000ms exceeded.` (log lines 22921 and 22940). Logs are under `~/.gerrit/weave/review-logs/`. Every run ends `RETRIED and green`, so the gate still votes +1, but the file costs a second pass on every change and a real regression here would look the same on the first pass.\n\n## What good looks like\nA browser case passes on the first run under gate load, or it carries a budget that matches the WebKit load it runs under (compare #711 for frozen-ground-browser).\n\n## Fix shape\nFind which selector the case waits on, check whether it waits for a paint the dock only does after an animation or a lazy editor mount, and wait on the state the case asserts instead. Run it with `WEAVE_CPU_THROTTLE=4 WEAVE_BROWSER=webkit` to reproduce.\n\n---\nFiled 2026-10-07 by the phone editor session (Claude, weave v0.4.75, while landing Gerrit 706 to 709 on gerrit/main 9bea0b1)."
+   "description": "## Measured\nThe two WebKit cases of `test/phone-shell-browser.test.mjs` \"a docked record at 390x844 is a full-screen sheet\" (light, dark) failed the first pass and passed the retry in five gate runs on 2026-10-07, across unrelated changes:\n\n| Gate log | First-run failures in this file |\n| --- | --- |\n| 702-1.log (10:58) | 2 |\n| 703-1.log (11:57) | 3 |\n| 705-1.log (12:57) | 3 |\n| 705-2.log (13:13) | 2 |\n| 709-1.log (13:30) | 2 |\n\nIn 709-1.log both fail with `page.waitForSelector: Timeout 30000ms exceeded.` (log lines 22921 and 22940). Logs are under `~/.gerrit/weave/review-logs/`. Every run ends `RETRIED and green`, so the gate still votes +1, but the file costs a second pass on every change and a real regression here would look the same on the first pass.\n\n## What good looks like\nA browser case passes on the first run under gate load, or it carries a budget that matches the WebKit load it runs under (compare #711 for frozen-ground-browser).\n\n## Fix shape\nFind which selector the case waits on, check whether it waits for a paint the dock only does after an animation or a lazy editor mount, and wait on the state the case asserts instead. Run it with `WEAVE_CPU_THROTTLE=4 WEAVE_BROWSER=webkit` to reproduce.\n\n---\nFiled 2026-10-07 by the phone editor session (Claude, weave v0.4.75, while landing Gerrit 706 to 709 on gerrit/main 9bea0b1).\n\n## Update 2026-10-07 15:15: red through the retry on main\nSince gerrit/main moved past 717cdaf the WebKit cases no longer pass on the retry:\n- Gate 716-3.log and 725-1.log: `RETRIED and still red: test/phone-shell-browser.test.mjs`. 725-1 failed \"a docked record at 390x844 is a full-screen sheet\" (webkit light, dark) and \"the sheet's close and Esc hand the table back\" (chromium, webkit) on the first pass, then the webkit light case again on the retry.\n- Local run of the file on gerrit/main 6f7d553 with no change applied (Gerrit 725's style.css reverted): first pass 2 red (webkit light full-screen sheet, webkit close and Esc), retry 3 red (adds webkit dark). Same `page.waitForSelector: Timeout 30000ms exceeded.`\n- Gate 709-1.log on 717cdaf: the same cases failed once and passed the retry.\n\nSo every change now gets Verified -1 from this file. Only two commits landed between 717cdaf and 6f7d553: 78b16d7 (the docked document editor joins the flicker ratchet, Issue #634) and f6d8ae9 (ontology, Feature #278). 78b16d7 touches the dock and is the first suspect.\n\nSeverity raised to High: it blocks landing."
   },
   {
    "name": "Wrong data: a sum or avg rollup over a checkbox reads 0 or empty, and a rollup cannot wear a bar",
@@ -5601,7 +5601,7 @@
    "symptom": [
     "Looks broken"
    ],
-   "description": "## Reproduced\nOpen Feature #188 on a 375px screen (WebKit, iPhone 13 profile; :4400 at 717cdaf). Its first checklist item wraps as \"Kyle tries the demo deck and sen / ds back what felt wrong (reach, h / old, grid weight on screen, which l / ines win).\" Every line of a checklist item can end mid-word.\n\nVditor's own stylesheet sets `.vditor-task { word-break: break-all; }` (`public/vendor/vditor/dist/index.css:1130`), so the browser may break between any two letters inside a task item. Plain paragraphs and bullet items wrap at word boundaries. The same rule applies on a desktop, where it shows at the end of long task lines.\n\n## What good looks like\nApple Notes, Notion and GitHub wrap checklist items at word boundaries like any other text, and break only a word longer than the line (a long URL).\n\n## Fix shape\nIn `public/style.css`, set `.doc-editor .vditor-task { word-break: normal; overflow-wrap: anywhere; }` so words stay whole and only an unbreakable run wraps. Browser test: a task item's text wraps at spaces at 375px, and a 200-character URL in a task still fits the column.\n\n---\nFiled 2026-10-07 by the phone editor session (Claude), found during the live check of Issue #705 on :4400 at 717cdaf."
+   "description": "## Reproduced\nOpen Feature #188 on a 375px screen (WebKit, iPhone 13 profile; :4400 at 717cdaf). Its first checklist item wraps as \"Kyle tries the demo deck and sen / ds back what felt wrong (reach, h / old, grid weight on screen, which l / ines win).\" Every line of a checklist item can end mid-word.\n\nVditor's own stylesheet sets `.vditor-task { word-break: break-all; }` (`public/vendor/vditor/dist/index.css:1130`), so the browser may break between any two letters inside a task item. Plain paragraphs and bullet items wrap at word boundaries. The same rule applies on a desktop, where it shows at the end of long task lines.\n\n## What good looks like\nApple Notes, Notion and GitHub wrap checklist items at word boundaries like any other text, and break only a word longer than the line (a long URL).\n\n## Fix shape\nIn `public/style.css`, set `.doc-editor .vditor-task { word-break: normal; overflow-wrap: anywhere; }` so words stay whole and only an unbreakable run wraps. Browser test: a task item's text wraps at spaces at 375px, and a 200-character URL in a task still fits the column.\n\n---\nFiled 2026-10-07 by the phone editor session (Claude), found during the live check of Issue #705 on :4400 at 717cdaf.\n\n## In review, 2026-10-07\nFix pushed as Gerrit 725 (e4cb898 on 6f7d553), Code-Review +2, green locally in WebKit and Chromium. The gate voted Verified -1 on phone-shell-browser, which is red on gerrit/main without this change (Issue #713). Re-gate 725 once #713 is fixed; no edit needed."
   },
   {
    "name": "Looks broken: signing out of a workspace opened only through the hub root also signs you out of the root workspace",
@@ -5620,6 +5620,42 @@
     "Wrong data"
    ],
    "description": "Follow-up to Feature #280 (Gerrit 713, merged c42d253 in 7462db2). The change kept the host-wide wv_session cookie readable for one release so nobody was signed out by the upgrade. The ponytail upgrade path is in the 713 commit message.\n\n## To do after the next release tag\nStop reading wv_session, clear it with Max-Age=0 on the next response, and delete the \"legacy cookie still accepted\" case in test/auth-workspace-sessions.test.mjs, replacing it with a test that the legacy cookie is cleared and ignored.\n\n## Good looks like\nA migration shim with a stated removal date that a row tracks, so nothing runs on in the background unnoticed.\n\nFiled by the harness session of 2026-10-07 (weave user and workspace sign-in work), weave v0.4.75, gerrit/main 7462db2."
+  },
+  {
+   "name": "Wrong data: the sign-in Handbook guide does not mention the account chip or per-workspace sign-out",
+   "status": "Open",
+   "severity": "Low",
+   "symptom": [
+    "Wrong data"
+   ],
+   "description": "Feature #281 (Gerrit 710, ef14ff3) added the account chip at the sidebar foot, with \"Sign out of <workspace>\" and \"Sign out everywhere\". Feature #280 (Gerrit 713, c42d253) made sessions per workspace. The sign-in guide in src/handbook.js describes neither: where to see who you are signed in as, how to sign out of one workspace, or that idle expiry and sign-out now affect one workspace only.\n\nGood looks like: Slack's help page for signing out of one workspace or all of them, linked from the menu.\n\nFix shape: one Handbook section covering the chip, the two sign-out choices and the 30-day idle rule, plus a test that the guide names both menu items.\n\nFiled by the harness session of 2026-10-07 (weave user and workspace sign-in work), weave v0.4.75, main fdcab67."
+  },
+  {
+   "name": "Slow: Sign out everywhere calls logout once per workspace though one call now exists",
+   "status": "Open",
+   "severity": "Low",
+   "symptom": [
+    "Slow"
+   ],
+   "description": "The account chip's \"Sign out everywhere\" (Feature #281, Gerrit 710) sends POST /w/<name>/api/auth/logout once for each workspace in the rail. It was built that way so it would work before Feature #280 landed. Feature #280 (Gerrit 713) added POST /api/auth/logout?everywhere=1, which clears every session the browser holds in one request.\n\nGood looks like: one request, so the action can't half-finish when a rail has many workspaces or one of them is slow.\n\nFix shape: switch the chip to the single call, and keep the per-workspace loop only as a fallback when that call answers 404. Update test/account-chip-browser.test.mjs.\n\nFiled by the harness session of 2026-10-07 (weave user and workspace sign-in work), weave v0.4.75, main fdcab67."
+  },
+  {
+   "name": "Looks broken: on a phone, the tap that closes a swiped row also lands on what lies under it",
+   "status": "Open",
+   "severity": "Low",
+   "symptom": [
+    "Looks broken"
+   ],
+   "description": "Measured on :4400 at 390x844 after Feature #275 landed (9d834b2). Swipe a list row left on the Feature table to reveal Building and Shipped, then tap the table description above the list: the reveal closes, and the same tap also opens the description editor, which shifts the list. A tap on another list row is swallowed correctly (rowSwipe sets quietUntil and the grid click handler checks it), but rowSwipe away() only closes the reveal on pointerdown and lets the click through for anything outside the grid.\n\nGood looks like iOS Mail: a tap anywhere while a row is open only closes it.\n\nFix shape: in rowSwipe away(), also arm a one-shot capture click listener on window that preventDefault()s and stopPropagation()s the click that follows within 600ms, and extend test/phone-swipe-state-browser.test.mjs to tap the description and assert no editor opens.\n\nFiled by the phone redesign session, 2026-10-07, weave 0.4.76 + gerrit/main 9d834b2."
+  },
+  {
+   "name": "Looks broken: a phone list row leaves a gap in its chip line where an empty relation sits",
+   "status": "Open",
+   "severity": "Low",
+   "symptom": [
+    "Looks broken"
+   ],
+   "description": "Measured on :4400 at 390x844 after Feature #272 landed (1fb2b8a). Issue #1 in the weave docs workspace shows its chips as Fixed, Medium, a 47px blank, then Server. The blank is the empty \"Fixed in\" relation cell: its .ms-box holds only the \"+ link\" add button, which rests at opacity 0, so none of the phone hide rules (:has(.is-empty), :has(.k-empty), :has(.k-add), :has(> .wv-cb > .ms-box:empty), an empty inline-edit) match it.\n\nGood looks like the approved Table board: only filled values show as chips, packed left.\n\nFix shape: hide a relation cell whose .ms-box has no .k or .mention-wrap child on the phone list (td[data-ftype=\"relation\"]:not(:has(.ms-box > :is(.k, .mention-wrap)))), and add an empty relation to test/phone-list-rows-browser.test.mjs.\n\nFiled by the phone redesign session, 2026-10-07, weave 0.4.76 + gerrit/main 9d834b2."
   }
  ],
  "features": [
@@ -7083,42 +7119,50 @@
   },
   {
    "name": "Phone: bottom search bar and floating New button",
-   "status": "Planned",
+   "status": "Shipped",
+   "milestone": "v0.4",
    "description": "Board 1. Replace the hamburger-first shell on phones with a floating glass search capsule along the bottom and a separate blue New circle to its right, the Apple Mail pattern. Search opens in place from the bottom. New opens the new-row sheet (board 8) for the current table.\n\nMockup: https://claude.ai/artifact/8UvXC2VeXpDEG6HnrSUZp9 (canvas \"weave mobile flow\"). Approved by Kyle 2026-10-07 (\"I like all this\"). Phone layout applies at 600px and below, the width where the dock already becomes a full-screen page. Follows iOS 26 conventions: controls float on glass at the bottom, within thumb reach.\n\nFiled by the mobile flow session, 2026-10-07, weave 0.4.75."
   },
   {
    "name": "Phone: full-screen menu",
-   "status": "Planned",
+   "status": "Shipped",
+   "milestone": "v0.4",
    "description": "Board 5. The hamburger opens a menu that covers the whole screen: workspace switcher and close button on top, Home and Activity, then each space with its tables in large 44px rows, and the records count, size and version chip at the foot with New space, theme and help. Replaces the side drawer that showed the desktop sidebar unchanged.\n\nMockup: https://claude.ai/artifact/8UvXC2VeXpDEG6HnrSUZp9 (canvas \"weave mobile flow\"). Approved by Kyle 2026-10-07 (\"I like all this\"). Phone layout applies at 600px and below, the width where the dock already becomes a full-screen page. Follows iOS 26 conventions: controls float on glass at the bottom, within thumb reach.\n\nFiled by the mobile flow session, 2026-10-07, weave 0.4.75."
   },
   {
    "name": "Phone: breadcrumbs as button chips",
-   "status": "Planned",
+   "status": "Shipped",
+   "milestone": "v0.4",
    "description": "Boards 2 and 3. Each crumb is a glass chip with its icon (space, table, row), so every crumb reads as a tappable button; the current crumb is bold. Row pages put back and forward glass circles in front of the crumbs. Keeps the 2026-10-05 crumb ruling (icon plus label, current crumb takes the width).\n\nMockup: https://claude.ai/artifact/8UvXC2VeXpDEG6HnrSUZp9 (canvas \"weave mobile flow\"). Approved by Kyle 2026-10-07 (\"I like all this\"). Phone layout applies at 600px and below, the width where the dock already becomes a full-screen page. Follows iOS 26 conventions: controls float on glass at the bottom, within thumb reach.\n\nFiled by the mobile flow session, 2026-10-07, weave 0.4.75."
   },
   {
    "name": "Phone: one table menu for views, filters, sort, row height and fields",
-   "status": "Planned",
+   "status": "Shipped",
+   "milestone": "v0.4",
    "description": "Board 9. On a phone the table toolbar (view, row height, fields, filters, kebab), which wraps to three rows at 375px today, collapses into one sliders button with an active-count badge. It opens a glass pull-down menu: Views (Standard with check, New view), Filter (active filters with remove, Add filter), Sort, Fields, and Row height as three tiles. A one-line summary under the table title (\"Standard · Open · Severity, high first\") also opens it.\n\nMockup: https://claude.ai/artifact/8UvXC2VeXpDEG6HnrSUZp9 (canvas \"weave mobile flow\"). Approved by Kyle 2026-10-07 (\"I like all this\"). Phone layout applies at 600px and below, the width where the dock already becomes a full-screen page. Follows iOS 26 conventions: controls float on glass at the bottom, within thumb reach.\n\nFiled by the mobile flow session, 2026-10-07, weave 0.4.75."
   },
   {
    "name": "Phone: table rows as a two-line list",
-   "status": "Planned",
+   "status": "Shipped",
+   "milestone": "v0.4",
    "description": "Board 2. On a phone the grid renders as a list: muted #id, the name across two lines, then value chips. Tapping a row opens the row page; it never starts editing a cell (today a tap on a name enters cell edit). The row count sits in the footer per the 2026-10-04 pull-to-load ruling.\n\nMockup: https://claude.ai/artifact/8UvXC2VeXpDEG6HnrSUZp9 (canvas \"weave mobile flow\"). Approved by Kyle 2026-10-07 (\"I like all this\"). Phone layout applies at 600px and below, the width where the dock already becomes a full-screen page. Follows iOS 26 conventions: controls float on glass at the bottom, within thumb reach.\n\nFiled by the mobile flow session, 2026-10-07, weave 0.4.75."
   },
   {
    "name": "Phone: row page with a pinned next-state action",
-   "status": "Planned",
+   "status": "Shipped",
+   "milestone": "v0.4",
    "description": "Board 3. The row page shows fields as 50px rows with chips and a chevron, then the document. A floating action at the bottom moves the row to its next workflow state (\"Move to In Progress\").\n\nMockup: https://claude.ai/artifact/8UvXC2VeXpDEG6HnrSUZp9 (canvas \"weave mobile flow\"). Approved by Kyle 2026-10-07 (\"I like all this\"). Phone layout applies at 600px and below, the width where the dock already becomes a full-screen page. Follows iOS 26 conventions: controls float on glass at the bottom, within thumb reach.\n\nFiled by the mobile flow session, 2026-10-07, weave 0.4.75."
   },
   {
    "name": "Phone: field pickers as bottom sheets",
-   "status": "Planned",
+   "status": "Shipped",
+   "milestone": "v0.4",
    "description": "Board 4. Tapping a field opens a bottom sheet with 56px options and a check on the current value. Short option lists show no text box, so the keyboard stays closed (today the Status picker focuses a text box and opens the keyboard for three options). A Clear action sits at the foot.\n\nMockup: https://claude.ai/artifact/8UvXC2VeXpDEG6HnrSUZp9 (canvas \"weave mobile flow\"). Approved by Kyle 2026-10-07 (\"I like all this\"). Phone layout applies at 600px and below, the width where the dock already becomes a full-screen page. Follows iOS 26 conventions: controls float on glass at the bottom, within thumb reach.\n\nFiled by the mobile flow session, 2026-10-07, weave 0.4.75."
   },
   {
    "name": "Phone: swipe a row to change its state",
-   "status": "Planned",
+   "status": "Shipped",
+   "milestone": "v0.4",
    "description": "Board 6. Swiping a list row left reveals its next workflow states (In Progress, Fixed). The confirmation toast with Undo shows at the top of the screen, per the toast ruling for widths below 1000px.\n\nMockup: https://claude.ai/artifact/8UvXC2VeXpDEG6HnrSUZp9 (canvas \"weave mobile flow\"). Approved by Kyle 2026-10-07 (\"I like all this\"). Phone layout applies at 600px and below, the width where the dock already becomes a full-screen page. Follows iOS 26 conventions: controls float on glass at the bottom, within thumb reach.\n\nFiled by the mobile flow session, 2026-10-07, weave 0.4.75."
   },
   {
@@ -7131,7 +7175,7 @@
    "name": "Ontology outline for agents: weave_ontology with outline, concept and since",
    "status": "Building",
    "milestone": "v0.4",
-   "description": "## What was measured\n\nOn the `weave` workspace at v0.4.75 (`cb0b29f`), `weave_schema` returns 113,062 characters (about 28,265 tokens) for 36 tables and 359 fields. A one-line-per-table outline of the same schema measured 5,993 characters (about 1,498 tokens), a 19x cut. Only 95 of 359 fields carry a description.\n\nThe `ONTOLOGY` export (`src/engine.js:312`) is read by `test/ontology.test.mjs` and `src/handbook.js` only. No runtime path, MCP tool or primer line reads it, so agents never see the ontology.\n\n## Scope (the minimal first set)\n\n- `weave_ontology {depth:\"outline\"}`: every table on one line, with its fields, types, option or state names, and relations as `name -> Target*` with the inverse.\n- `weave_ontology {concept:\"Issue\"}`: one table in full, including field descriptions.\n- `weave_ontology {since:<etag>}`: only the spaces whose schema changed since that etag.\n- A schema version per space, counted from the structural audit log; the workspace etag combines the space versions.\n- The MCP primer's first line tells agents to read the outline first, and stays under 2,048 characters.\n- No storage change. Extends, shared properties, predicates, shapes, actions, views and import by reference come later, one change each.\n\n## Done when\n\nThe outline of the `weave` workspace is under 2,000 tokens. The one-shot build score does not drop. Tests are written first, the change lands through Gerrit, and a real `weave mcp` call on :4400 returns the outline.\n\n## Peer reference\n\nschema.org and Palantir Foundry AIP give agents a compact, scoped view of the model rather than a full dump.\n\n## Decisions recorded with Kyle on 2026-10-07\n\nShapes warn by default and never refuse a write for now. Schema history lives on the space. Shared properties live at workspace or space scope, and the nearest scope wins. The Space rename is still open: Library is recommended over Package and Book.\n\nRelated: #119 (ONTOLOGY export), #215 (cross-workspace references), #244 (starter templates).\n\nFiled by the harness session on 2026-10-07 (weave v0.4.75, `cb0b29f`)."
+   "description": "## What was measured\n\nOn the `weave` workspace at v0.4.75 (`cb0b29f`), `weave_schema` returns 113,062 characters (about 28,265 tokens) for 36 tables and 359 fields. A one-line-per-table outline of the same schema measured 5,993 characters (about 1,498 tokens), a 19x cut. Only 95 of 359 fields carry a description.\n\nThe `ONTOLOGY` export (`src/engine.js:312`) is read by `test/ontology.test.mjs` and `src/handbook.js` only. No runtime path, MCP tool or primer line reads it, so agents never see the ontology.\n\n## Scope (the minimal first set)\n\n- `weave_ontology {depth:\"outline\"}`: every table on one line, with its fields, types, option or state names, and relations as `name -> Target*` with the inverse.\n- `weave_ontology {concept:\"Issue\"}`: one table in full, including field descriptions.\n- `weave_ontology {since:<etag>}`: only the spaces whose schema changed since that etag.\n- A schema version per space, counted from the structural audit log; the workspace etag combines the space versions.\n- The MCP primer's first line tells agents to read the outline first, and stays under 2,048 characters.\n- No storage change. Extends, shared properties, predicates, shapes, actions, views and import by reference come later, one change each.\n\n## Done when\n\nThe outline of the `weave` workspace is under 2,000 tokens. The one-shot build score does not drop. Tests are written first, the change lands through Gerrit, and a real `weave mcp` call on :4400 returns the outline.\n\n## Peer reference\n\nschema.org and Palantir Foundry AIP give agents a compact, scoped view of the model rather than a full dump.\n\n## Decisions recorded with Kyle on 2026-10-07\n\nShapes warn by default and never refuse a write for now. Schema history lives on the space. Shared properties live at workspace or space scope, and the nearest scope wins. The Space rename is still open: Library is recommended over Package and Book.\n\nRelated: #119 (ONTOLOGY export), #215 (cross-workspace references), #244 (starter templates).\n\nFiled by the harness session on 2026-10-07 (weave v0.4.75, `cb0b29f`).\n\n\n\n## Landed 2026-10-07\n\nGerrit change 705 merged as `a238969` (patchset 2; patchset 1 went Verified -1 on webkit browser suites outside the change, filed as Issue #711). Released in v0.4.76, Gerrit 714, release commit `e4f1675`.\n\nMeasured on the live `weave` workspace through a real `weave mcp` process started from `~/.weave-serve` at `a238969`:\n\n- `weave_ontology {depth:\"outline\"}`: 5,250 characters, about 1,313 tokens (chars/4), for 36 tables in 7 spaces. `weave_schema` on the same workspace: 103,226 characters through describeSchema.\n- `{concept:\"Issue\"}`: 1,073 characters.\n- `{since:\"4f953866\"}` with nothing changed: 24 characters, `unchanged; etag 4f953866`.\n- The primer is 1,793 characters; its first line reads `weave: read the weave_ontology outline first.` `tools/list` names 17 tools, `weave_ontology` first.\n\nOne-shot build eval (queue/weave-disclosure-eval, realproxy R0, Sonnet, budget and pipeline, two reps each): 31/34 checks on gerrit/main `9bea0b1`, 32/34 with this change. Agents read the outline first and used `concept` to check a table after the build.\n\nTests: `test/ontology-outline.test.mjs` (14), with `test/fixtures/ontology-weave.json` (the live schema, 36 tables); its outline stays under 8,000 characters. Gate on patchset 2: full suite green, browser suites ran.\n\nDoors: MCP `weave_ontology` (default list), `GET /api/ontology?depth=&concept=&since=`, `weave ontology [--concept T] [--since E]`. Space versions come from the audit log: each schema audit entry names the spaces it touched.\n\nOpen upgrade paths (also in the commit message): cache the history keyed on the newest audit seq if a workspace grows tens of thousands of schema entries; backfill `spaces` onto entries written before this change.\n"
   },
   {
    "name": "Space definition: the unit of meaning, not a container",
@@ -8109,6 +8153,7 @@
   {
    "name": "v0.4.76",
    "date": "Oct 7, 2026",
+   "commit": "e4f1675",
    "fixes": [
     "Looks broken: linking a relation opens a name-only list instead of workspace search",
     "Looks broken: a 2px dot sits above the top-left corner of every code block",
@@ -8125,6 +8170,21 @@
     "Account chip at the sidebar foot: name, role in this workspace, sign-out menu"
    ],
    "description": "## v0.4.76 (2026-10-07)\n\nShipped:\n\n- [[Feature#277]] `weave_ontology` reads the schema in one short call, and the MCP primer's first line sends an agent there first. The outline is one line per table, grouped by space, ending with the workspace etag: 5,250 characters on the weave docs workspace against 103,226 for `weave_schema`. `{concept: \"Issue\"}` reads one table in full; `{since: \"<etag>\"}` answers only the spaces whose schema changed. Each space carries a schema version counted from the structural audit log, so a row write moves nothing. Also `GET /api/ontology` and `weave ontology` (a238969).\n- [[Feature#278]] A space is defined as the unit of meaning in a workspace: the tables of one area, addressed as `Space/Table`, under one schema version, in the ONTOLOGY export, `docs/ONTOLOGY.md` and the Handbook (f6d8ae9).\n- [[Feature#280]] Each workspace keeps its own browser session cookie, `wv_session_<workspace id>`; signing out of one leaves the others signed in, and `POST /api/auth/logout?everywhere=1` ends them all (c42d253).\n- [[Feature#281]] The sidebar foot shows the signed-in account with its role and a sign-out menu (ef14ff3).\n\nFixed:\n\n- [[Issue#703]] Linking a relation opens the scoped workspace search instead of a Name-only list (9bea0b1).\n- [[Issue#704]] A code block at rest paints no stray grey dot (74707b1).\n- [[Issue#705]] Phone checklist boxes are 44px tap targets (80b3037).\n- [[Issue#706]] The phone formatting bar stays on the keyboard when Safari pans the page (f706904).\n- [[Issue#707]] iPhone undo and redo gestures step through the document editor's history (69ac3f9).\n- [[Issue#710]] An active browser session reissues its cookie with a fresh 30-day lifetime (a8bdd80).\n- [[Issue#634]] The docked document editor's boot flicker is on the flicker ratchet (78b16d7).\n"
+  },
+  {
+   "name": "v0.4.77",
+   "date": "Oct 7, 2026",
+   "ships": [
+    "Phone: bottom search bar and floating New button",
+    "Phone: full-screen menu",
+    "Phone: breadcrumbs as button chips",
+    "Phone: one table menu for views, filters, sort, row height and fields",
+    "Phone: table rows as a two-line list",
+    "Phone: row page with a pinned next-state action",
+    "Phone: field pickers as bottom sheets",
+    "Phone: swipe a row to change its state"
+   ],
+   "description": "## v0.4.77 (2026-10-07)\n\nA phone layout: each change below applies at 600px and narrower, where a row already opens as a full-screen page. Wider screens are unchanged.\n\nShipped:\n\n- [[Feature#269]] On a phone (600px and narrower) the menu button opens a menu that covers the whole screen: the workspace name and a 44px close button on top, every space and table in 44px rows, the record count, size and version at the foot, and the workspaces, theme and help in a bar along the bottom edge. Wider screens keep the side drawer and the desktop sidebar (Gerrit 717, 9888d68).\n- [[Feature#270]] On a phone each breadcrumb is a 36px chip with its icon and label, and the current one is bold; the menu button and the row page's back and forward buttons are 44px glass circles. The workspace crumb is left off on a phone, where the menu names the workspace (Gerrit 718, 71e7d61).\n- [[Feature#268]] On a phone a glass search capsule floats at the bottom of the screen and opens the ⌘K search; on a table a blue New circle beside it adds a row. The bug button sits just above the bar, and pages and row pages leave room under their last line so nothing ends behind it (Gerrit 719, 8b5c3b0).\n- [[Feature#271]] On a phone the table toolbar (search, view, row height, fields, filters and the table menu), which wrapped to three rows, folds into one sliders button beside the breadcrumbs. Its badge counts the active filters, and it opens a glass sheet holding the same controls as 44px rows, each opening the popover it opens on a desktop (Gerrit 720, 0cec60a).\n- [[Feature#274]] On a phone a field's picker (workflow state, select, multi-select and icon pickers) opens as a bottom sheet titled with the field's name, with 56px options and a check on the current value. A list of eight options or fewer opens without focusing the search box, so the keyboard stays closed, and a single-choice list that short shows no search box at all (Gerrit 721, fce4221).\n- [[Feature#272]] On a phone a table is a list: each row shows its muted #id, its name over up to two lines and its values as chips underneath, at a declared 88px (68px with one-line names at Compact density) that the row window reads, so scrolling and jumping stay exact. A tap anywhere on a row opens the row instead of editing a cell. The column header and the + New row link give way to the bottom bar's New button (Gerrit 722, 1fb2b8a).\n- [[Feature#273]] On a phone a row in a table with a workflow field shows a wide blue \"Move to <next state>\" button pinned to the bottom of its row page. It moves the row to the state after its current one, refreshes the page and the table behind it, and offers Undo; a row already in its last state shows none (Gerrit 723, c43e19a).\n- [[Feature#275]] On a phone, swiping a list row left in a table with a workflow field reveals buttons for the states after its current one. A tap moves the row there and the confirmation, with Undo, shows at the top of the screen. A vertical drag leaves the row as it was, and a tap elsewhere closes the buttons (Gerrit 724, 9d834b2).\n"
   }
  ]
 }

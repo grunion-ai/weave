@@ -2,6 +2,17 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.77 — 2026-10-07
+
+- On a phone a glass search capsule floats at the bottom of the screen and opens the ⌘K search; on a table a blue New circle beside it adds a row. The bug button sits just above the bar, and pages and row pages leave room under their last line so nothing ends behind it (Feature #268).
+- On a phone each breadcrumb is a 36px chip with its icon and label, and the current one is bold; the menu button and the row page's back and forward buttons are 44px glass circles. The workspace crumb is left off on a phone, where the menu names the workspace (Feature #270).
+- On a phone a table is a list: each row shows its muted #id, its name over up to two lines and its values as chips underneath, at a declared 88px (68px with one-line names at Compact density) that the row window reads, so scrolling and jumping stay exact. A tap anywhere on a row opens the row instead of editing a cell. The column header and the + New row link give way to the bottom bar's New button (Feature #272).
+- On a phone (600px and narrower) the menu button opens a menu that covers the whole screen: the workspace name and a 44px close button on top, every space and table in 44px rows, the record count, size and version at the foot, and the workspaces, theme and help in a bar along the bottom edge. Wider screens keep the side drawer and the desktop sidebar (Feature #269).
+- On a phone a row in a table with a workflow field shows a wide blue "Move to <next state>" button pinned to the bottom of its row page. It moves the row to the state after its current one, refreshes the page and the table behind it, and offers Undo; a row already in its last state shows none (Feature #273).
+- On a phone a field's picker (workflow state, select, multi-select and icon pickers) opens as a bottom sheet titled with the field's name, with 56px options and a check on the current value. A list of eight options or fewer opens without focusing the search box, so the keyboard stays closed, and a single-choice list that short shows no search box at all (Feature #274).
+- On a phone, swiping a list row left in a table with a workflow field reveals buttons for the states after its current one. A tap moves the row there and the confirmation, with Undo, shows at the top of the screen. A vertical drag leaves the row as it was, and a tap elsewhere closes the buttons (Feature #275).
+- On a phone the table toolbar (search, view, row height, fields, filters and the table menu), which wrapped to three rows, folds into one sliders button beside the breadcrumbs. Its badge counts the active filters, and it opens a glass sheet holding the same controls as 44px rows, each opening the popover it opens on a desktop (Feature #271).
+
 ## v0.4.76 — 2026-10-07
 
 - The sidebar foot shows who is signed in: an account chip under the stats line with initials, the account name and the role in this workspace (Observer, Editor or Architect). It opens a menu with `Sign out of <workspace>` and `Sign out everywhere`, which posts `/w/<name>/api/auth/logout` for every workspace in the rail and lands on the sign-in page. A signed-out walled workspace shows `Sign in`; an open workspace with nobody signed in shows nothing. No email is shown (Feature #281).
