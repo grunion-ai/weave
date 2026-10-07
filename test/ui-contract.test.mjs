@@ -1576,8 +1576,8 @@ test('dock: a repaint releases what the last pass mounted, and the docked row ta
 test('dock: the #id link docks plain rows only; registry rows and modified clicks keep the href', () => {
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
   const link = grid.match(/class: 'open-link',[\s\S]*?`#\$\{item\.publicId\} ↗`/)[0];
-  assert.match(link, /if \(nativeClick\(e\) \|\| registryHref\(db, item\)\) return;/, 'a modifier or a registry row falls through to the real href');
-  assert.match(link, /e\.preventDefault\(\);\s*dockEntity\(db, item\.id, \{ step: true \}\);/, 'a plain click docks');
+  assert.doesNotMatch(link, /onclick/, 'the link carries its destination and no opener of its own');
+  assert.match(APP, /document\.addEventListener\('click', \(e\) => \{\s*if \(nativeClick\(e\)\) return;\s*const a = e\.target\.closest\?\.\('a\[href\^="#\/entity\/"\]'\)/, 'one capture handler opens every entity link, so one click docks once');
   assert.match(link, /`Open \$\{db\.term\.singular\} beside the table — ⌘-click for a new tab`/, 'the title speaks the row term (row-term work) and names both gestures');
   assert.match(grid, /href: registryHref\(db, item\) \?\? `#\/entity\/\$\{item\.id\}`/, '⌘-click on the row opens a tab, registry rows aside — the row carries the destination and openNativeClick opens it');
   const dockFn = fnBody('dockEntity');

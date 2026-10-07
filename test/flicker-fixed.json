@@ -8,6 +8,10 @@
     "issue": 630,
     "why": "the route skeleton painted and was replaced inside one frame"
   },
+  "open-row|revert|div.doc-section-body > div.doc-editor.vditor": {
+    "issue": 633,
+    "why": "one click on a row's #id link opened it twice, so the document editor mounted and was destroyed inside a frame"
+  },
   "scroll-grid|shift|tbody > tr.wv-spacer": {
     "issue": 631,
     "why": "the probe counted the journey's own scroll: the grid re-windowed inside the scroll that caused it"

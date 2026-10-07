@@ -4256,11 +4256,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           class: 'open-link',
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
           title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
-          onclick: (e) => {
-            if (nativeClick(e) || registryHref(db, item)) return;
-            e.preventDefault();
-            dockEntity(db, item.id, { step: true });
-          },
         }, `#${item.publicId} ↗`))),
       ...cols.map((c) => {
         if (isSysCol(c)) return sysCell(c, item);
