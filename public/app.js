@@ -309,7 +309,7 @@ async function openEntity(id, { drill = false } = {}) {
     history.pushState(null, '', `#/table/${db.id}`);
     await withPageLoader(() => showDatabase(db.id));
   }
-  await dockEntity(db, id, { drill });
+  await dockEntity(db, id, { drill, step: true });
 }
 
 document.addEventListener('click', (e) => {
@@ -472,7 +472,7 @@ function anchorTable(db) {
   return (state.route?.page === 'db' && allTables().find((d) => d.id === state.route.dbId)) || db;
 }
 
-async function dockEntity(db, id, { drill = false } = {}) {
+async function dockEntity(db, id, { drill = false, step = false } = {}) {
   commitActiveEdit();
   const S = weaveEntitySurface;
   const frame = { kind: 'entity', id, tableId: db.id, tableName: db.name };
@@ -486,7 +486,7 @@ async function dockEntity(db, id, { drill = false } = {}) {
   crumbNav = drill ? weaveBreadcrumbs.navHop(crumbNav, hop) : weaveBreadcrumbs.navOpen(crumbNav, hop);
   dock = { db, state: st, editors: dock?.editors ?? [] };
   syncDockChain();
-  dockSyncUrl();
+  dockSyncUrl({ step });
   await drawDock();
 }
 
@@ -502,15 +502,27 @@ function tableHop(db) {
   return { tableId: db.id, table: db.name, tableIcon: db.icon ?? null, space: db.space ?? '', spaceId: db.spaceId ?? '', spaceIcon: db.spaceIcon ?? null };
 }
 
-function dockSyncUrl() {
+const dockCoversScreen = matchMedia('(max-width: 600px)');
+
+function dockSyncUrl({ step = false } = {}) {
   const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+(?:\/view\/[^/?]+)?/);
   if (!m) return;
   const top = dock?.state.chain[dock.state.chain.length - 1];
-  history.replaceState(null, '', top ? `${m[0]}?e=${top.id}` : m[0]);
+  const url = top ? `${m[0]}?e=${top.id}` : m[0];
+  if (step && top && dockCoversScreen.matches && url !== location.hash) {
+    history.pushState({ wvDock: true }, '', url);
+    return;
+  }
+  history.replaceState(top && history.state?.wvDock ? history.state : null, '', url);
 }
 
 function dockDismiss() {
   crumbNav = null;
+  if (history.state?.wvDock) {
+    dockClose();
+    history.back();
+    return;
+  }
   dockClose();
   dockSyncUrl();
 }
@@ -2642,8 +2654,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     return box;
   }
   if (f.type === 'document') {
-    if (f.role === 'description') return docPreviewCell(item.docs?.[f.name], f.name, () => dockEntity(db, id));
-    return docChipCell(f, item, () => dockEntity(db, id));
+    if (f.role === 'description') return docPreviewCell(item.docs?.[f.name], f.name, () => dockEntity(db, id, { step: true }));
+    return docChipCell(f, item, () => dockEntity(db, id, { step: true }));
   }
   if (f.type === 'field') {
     const def = item.raw?.[f.name] ?? null;
@@ -4246,7 +4258,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           onclick: (e) => {
             if (nativeClick(e) || registryHref(db, item)) return;
             e.preventDefault();
-            dockEntity(db, item.id);
+            dockEntity(db, item.id, { step: true });
           },
         }, `#${item.publicId} ↗`))),
       ...cols.map((c) => {
@@ -5021,7 +5033,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         td.focus();
         return true;
       }
-      case 'open': dockEntity(db, eid); return true;
+      case 'open': dockEntity(db, eid, { step: true }); return true;
       case 'newRow': {
         if (at !== td) at.blur();
         onAdd?.();

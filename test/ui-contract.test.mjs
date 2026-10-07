@@ -67,7 +67,7 @@ test('related rows still route a click before opening the entity', () => {
     'no row surface may open the entity without routing first');
   assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 0,
     'the grid no longer peeks — the #id link docks and ⌘-click opens a tab (one entity surface)');
-  assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id\)\)/,
+  assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id, \{ step: true \}\)\)/,
     'and a doc chip docks its entity from the cell (Issue #74; peek excised 2026-09-02)');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
@@ -1576,7 +1576,7 @@ test('dock: the #id link docks plain rows only; registry rows and modified click
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
   const link = grid.match(/class: 'open-link',[\s\S]*?`#\$\{item\.publicId\} ↗`/)[0];
   assert.match(link, /if \(nativeClick\(e\) \|\| registryHref\(db, item\)\) return;/, 'a modifier or a registry row falls through to the real href');
-  assert.match(link, /e\.preventDefault\(\);\s*dockEntity\(db, item\.id\);/, 'a plain click docks');
+  assert.match(link, /e\.preventDefault\(\);\s*dockEntity\(db, item\.id, \{ step: true \}\);/, 'a plain click docks');
   assert.match(link, /`Open \$\{db\.term\.singular\} beside the table — ⌘-click for a new tab`/, 'the title speaks the row term (row-term work) and names both gestures');
   assert.match(grid, /href: registryHref\(db, item\) \?\? `#\/entity\/\$\{item\.id\}`/, '⌘-click on the row opens a tab, registry rows aside — the row carries the destination and openNativeClick opens it');
   const dockFn = fnBody('dockEntity');
@@ -1609,7 +1609,7 @@ test('dock: the Handbook ledger page teaches the new contract', () => {
   assert.match(section, /⌘-click a row .* own browser tab/);
   assert.match(section, /document chip in a cell opens its entity in the dock/, 'a doc chip docks, and the page says so');
   assert.doesNotMatch(section, /side peek/, 'the retired peek is gone from the page');
-  assert.match(APP, /return docChipCell\(f, item, \(\) => dockEntity\(db, id\)\);/, 'and from the code');
+  assert.match(APP, /return docChipCell\(f, item, \(\) => dockEntity\(db, id, \{ step: true \}\)\);/, 'and from the code');
   assert.match(section, /\*\*Docked is the default pose\*\*/, 'the page states the default');
   assert.match(section, /outward diagonal arrows .* expand/, 'and how to reach the full page');
 });

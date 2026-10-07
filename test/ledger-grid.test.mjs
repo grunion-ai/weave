@@ -75,7 +75,7 @@ test('the id link docks the entity, ⌘-click opens a tab, and the row itself do
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
   assert.match(grid, /dataset: \{ eid: item\.id, href: registryHref\(db, item\) \?\? `#\/entity\/\$\{item\.id\}` \}/,
     'the row declares where it goes, and openNativeClick turns a ⌘-click into that tab (Issue #134)');
-  assert.match(grid, /dockEntity\(db, item\.id\)/,
+  assert.match(grid, /dockEntity\(db, item\.id, \{ step: true \}\)/,
     'the #id link docks the entity beside the table');
   assert.ok(!/if \(openRegistryRow\(db, item\)\) return;\s*\n\s*openEntity\(item\.id\);/.test(grid),
     'a bare row click no longer navigates — it edits the cell it landed on');
