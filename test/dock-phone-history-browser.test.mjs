@@ -31,7 +31,7 @@ if (s) {
     test(`on a phone, opening a row is a step Back undoes and Forward redoes, in ${colorScheme}`, async () => {
       const page = await phoneTable(colorScheme);
       const before = await depth(page);
-      await page.click(`tr[data-eid="${a.id}"] .open-link`);
+      await page.click(`tr[data-eid="${a.id}"]`);
       await docked(page);
       assert.equal(await hash(page), `#/table/${deals.id}?e=${a.id}`);
       assert.equal(await depth(page), before + 1, 'the full-screen row is one history entry');
@@ -48,7 +48,7 @@ if (s) {
 
   test('on a phone, a relation hop inside the row is its own step', async () => {
     const page = await phoneTable();
-    await page.click(`tr[data-eid="${a.id}"] .open-link`);
+    await page.click(`tr[data-eid="${a.id}"]`);
     await docked(page);
     const before = await depth(page);
     await page.click(`#dock a[href="#/entity/${jane.id}"]`);
@@ -63,7 +63,7 @@ if (s) {
   test('on a phone, closing the row with its button takes the step back off the history', async () => {
     const page = await phoneTable();
     const before = await depth(page);
-    await page.click(`tr[data-eid="${a.id}"] .open-link`);
+    await page.click(`tr[data-eid="${a.id}"]`);
     await docked(page);
     await page.click('#dock button[aria-label="Close"]');
     await undocked(page);
@@ -78,7 +78,7 @@ if (s) {
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${a.id}"] .open-link`);
     const before = await depth(page);
-    await page.click(`tr[data-eid="${a.id}"] .open-link`);
+    await page.click(`tr[data-eid="${a.id}"]`);
     await docked(page);
     assert.equal(await depth(page), before, 'the dock beside the table is presentation (Issues #198, #226, #276)');
     await page.close();

@@ -1716,6 +1716,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   return pop;
 }
 const PHONE_SHORT_LIST = 8;
+const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 88 };
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
@@ -4378,7 +4379,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           class: 'open-link',
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
           title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
-        }, `#${item.publicId} ↗`))),
+        }, `#${item.publicId} ↗`),
+        el('span', { class: 'list-name' }, item.name ?? ''))),
       ...cols.map((c) => {
         if (isSysCol(c)) return sysCell(c, item);
         const f = db.fields.find((x) => x.name === c);
@@ -4816,12 +4818,14 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     nudgeTimers.set(c, setTimeout(() => { nudgeTimers.delete(c); commitWidth(c, w); }, 350));
   };
   const tokenH = {};
+  const listRows = () => dockCoversScreen.matches && wrap.parentElement === main && main.id === 'main';
   const rowH = () => {
     const d = gridDensity(db);
-    if (!tokenH[d] && table?.isConnected && table.dataset.density === d) {
-      tokenH[d] = parseFloat(getComputedStyle(table).getPropertyValue('--wv-row-h')) || 0;
+    const key = listRows() ? `${d}:list` : d;
+    if (!tokenH[key] && table?.isConnected && table.dataset.density === d) {
+      tokenH[key] = parseFloat(getComputedStyle(table).getPropertyValue('--wv-row-h')) || 0;
     }
-    return tokenH[d] || GW().ROW_H[d];
+    return tokenH[key] || (listRows() ? PHONE_ROW_H[d] : GW().ROW_H[d]);
   };
   const spacer = () => el('tr', { class: 'wv-spacer', 'aria-hidden': 'true' },
     el('td', { colspan: String(colCount) }));
@@ -4922,6 +4926,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
     for (const td of tr.querySelectorAll(':scope > td.sys-cell')) td.replaceChildren(cellBox(sysValue(td.dataset.sys, item)));
+    const listName = tr.querySelector(':scope > td.pid-cell .list-name');
+    if (listName && listName.textContent !== (item.name ?? '')) listName.textContent = item.name ?? '';
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
   const patchRows = async (fresh) => {
@@ -5413,6 +5419,20 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('mouseleave', dropCellPop);
   wrap.addEventListener('mousedown', dropCellPop, true);
   wrap.addEventListener('focusin', dropCellPop);
+  const listRow = (e) => (listRows() && !nativeClick(e) ? e.target?.closest?.('tbody tr.entity-row') : null);
+  wrap.addEventListener('mousedown', (e) => {
+    if (!listRow(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  wrap.addEventListener('click', (e) => {
+    const tr = listRow(e);
+    if (!tr) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
+    else openEntity(tr.dataset.eid);
+  }, true);
   main.append(wrap);
   settle();
   document.fonts?.ready?.then(() => { if (wrap.isConnected) settle(); });

@@ -108,7 +108,7 @@ if (s) {
   test('a cell that starts overflowing gets its marker without a redraw', async () => {
     const page = await grid();
     try {
-      await page.setViewportSize({ width: 420, height: 900 });
+      await page.setViewportSize({ width: 640, height: 900 });
       await page.waitForFunction(() => {
         const tds = [...document.querySelectorAll('.wv-grid tbody td[data-field]')];
         const wide = (n) => n.scrollWidth > n.clientWidth + 1;

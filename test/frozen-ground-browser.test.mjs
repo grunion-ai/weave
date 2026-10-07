@@ -88,7 +88,7 @@ if (s) {
     return { ground: ground.join(','), foreign };
   };
 
-  const VIEWPORTS = [{ width: 1024, height: 600 }, { width: 390, height: 844 }];
+  const VIEWPORTS = [{ width: 1024, height: 600 }, { width: 640, height: 844 }];
   for (const [name, b] of engines) {
     for (const theme of ['light', 'dark']) {
       for (const viewport of VIEWPORTS) {
@@ -106,7 +106,7 @@ if (s) {
           } finally { await page.close(); }
         });
 
-        if (viewport.width > 600) test(`${at}: the row open in the dock keeps its frozen pair opaque`, async () => {
+        if (viewport.width >= 1024) test(`${at}: the row open in the dock keeps its frozen pair opaque`, async () => {
           const page = await open(b, { theme, viewport, docked: true });
           try {
             await page.mouse.move(1, viewport.height - 1);
