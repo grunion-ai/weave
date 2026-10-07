@@ -55,6 +55,38 @@ test('a comment an automation adds is signed workflow:<row id>, and its Script s
   assert.equal(w.describeAutomations()[0].actions[2].type, 'add-comment');
 });
 
+test('an automation\'s append-doc logs a doc-appended entry, as a person\'s append does (Issue #686)', () => {
+  const { w, t, auto } = demo();
+  const req = w.createEntity(t.id, { Name: 'R' });
+  w.setState(req.id, 'Status', 'Done');
+  const e = w.getEntity(req.id);
+  const appended = e.activity.filter((a) => a.kind === 'doc-appended');
+  assert.equal(appended.length, 1, 'the document the rule wrote is in the feed');
+  assert.equal(appended[0].actor, `workflow:${auto.id}`);
+  assert.equal(appended[0].detail.field, 'Description',
+    'and names the document, which is what the page pulses the cell by');
+  assert.equal(appended[0].detail.prevLength, 0);
+  assert.equal(appended[0].detail.length, 7);
+  assert.equal(appended[0].detail.delta, 7);
+  assert.equal(appended[0].detail.preview, 'Closed.');
+  assert.equal(w.getDoc(req.id), 'Closed.');
+  assert.ok(appended[0].seq < e.activity.filter((a) => a.kind === 'automation-ran')[0].seq,
+    'the append is logged inside the run, before the run is');
+});
+
+test('the delta of an automation\'s append spans its own text, not the document (Issue #686)', () => {
+  const { w, t } = demo();
+  const req = w.createEntity(t.id, { Name: 'R' });
+  w.setDoc(req.id, 'Opened by the customer.');
+  w.setState(req.id, 'Status', 'Done');
+  const appended = w.getEntity(req.id).activity.filter((a) => a.kind === 'doc-appended');
+  assert.equal(appended.length, 1);
+  assert.equal(appended[0].detail.prevLength, 23);
+  assert.equal(appended[0].detail.length, 32);
+  assert.equal(appended[0].detail.delta, 9, 'the blank line and the text the rule added');
+  assert.equal(w.getDoc(req.id), 'Opened by the customer.\n\nClosed.');
+});
+
 test('an add-comment action that names its own author keeps it', () => {
   const { w, t } = demo();
   w.createAutomation(t.id, { name: 'Bot note', trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'hi', author: 'release-bot' }] });

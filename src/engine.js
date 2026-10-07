@@ -6694,11 +6694,13 @@ export class Weave {
       const docField = db.fields[action.fieldId] ?? this.documentFields(db)[0];
       if (docField) {
         e.docs = e.docs ?? {};
-        const cur = e.docs[docField.id] ?? '';
-        this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: cur } } });
-        e.docs[docField.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
+        const before = e.docs[docField.id] ?? '';
+        const after = (before ? before.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
+        this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: before } } });
+        e.docs[docField.id] = after;
         e.updatedAt = nowISO();
         e.modifiedBy = this.actor;
+        this.#logActivity(e, 'doc-appended', docChange(docField.name, before, after));
       }
     } else if (action.type === 'add-comment') {
       const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db), createdAt: nowISO() };

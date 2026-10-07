@@ -1,0 +1,1 @@
+- An automation that appends to a document now logs a `doc-appended` entry naming the document, with the length it wrote and a preview, the way a person's append does. The text landed but the activity feed never said so, so the rule's append was invisible in history and the record page could not pulse the document the rule wrote (Issue #686).
