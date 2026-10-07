@@ -1,0 +1,1 @@
+- Picking Table from the slash menu now puts the caret in the table's first header cell with "Column" selected, so typing names the column. It used to leave the caret on the line above, and the typing landed in a paragraph over an untouched table (Issue #692).

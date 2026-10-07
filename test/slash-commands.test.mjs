@@ -121,6 +121,31 @@ if (s) {
     assert.equal(fences.length, 2, `a code block needs exactly two fences, got ${fences.length}`);
   });
 
+  test('slash: a new table puts the caret in its first header cell, so typing names the column (Issue #692)', async () => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${base}/#/entity/${freshEntity('Table caret')}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+      await page.evaluate(() => {
+        const ed = window.__weaveEditors?.values().next().value;
+        ed.setValue('Above the table');
+        ed.focus();
+      });
+      await page.click('.vditor-ir [contenteditable="true"]');
+      await page.keyboard.press('End');
+      await page.keyboard.press('Enter');
+      await page.keyboard.type('/table');
+      await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
+      await hintFiltered(page);
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('.vditor-ir table th') && !/⁣/.test(window.__weaveEditors.values().next().value.getValue()));
+      await page.keyboard.type('Name');
+      const md = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
+      assert.match(md, /^\| ?Name ?\| ?Column ?\|/m, `typing replaced the first header, got:\n${JSON.stringify(md)}`);
+      assert.match(md, /^Above the table$/m, 'the line above keeps its words and gains none');
+    } finally { await page.close(); }
+  });
+
   test('slash: the entity link command searches entities and inserts a reference', async () => {
     const linkEntity = freshEntity('Link case');
     const page = await browser.newPage();
