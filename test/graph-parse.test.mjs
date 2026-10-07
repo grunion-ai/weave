@@ -32,3 +32,27 @@ test('garbage and non-graphs come back empty, never throw', () => {
   assert.deepEqual(parse('').nodes, []);
   assert.deepEqual(parse(null).nodes, []);
 });
+
+test('a mermaid line break in a label becomes a real newline (Issue #471)', () => {
+  const g = parse(`flowchart TD
+  A[run in a frame\\n+ toggle for source] --> B["one<br>two"]
+  B --> C[three<br/>four]
+  C --> D[five<br />six]
+  D --> E[seven<BR>eight]
+  E --> F[nine<br >ten]
+  F -->|wait<br>then go| A`);
+  const label = (id) => g.nodes.find((n) => n.id === id).label;
+  assert.equal(label('A'), 'run in a frame\n+ toggle for source');
+  assert.equal(label('B'), 'one\ntwo');
+  assert.equal(label('C'), 'three\nfour');
+  assert.equal(label('D'), 'five\nsix');
+  assert.equal(label('E'), 'seven\neight');
+  assert.equal(label('F'), 'nine\nten');
+  assert.equal(g.edges.find((e) => e.to === 'A').label, 'wait\nthen go');
+});
+
+test('a tag that is not a break is left alone (Issue #471)', () => {
+  const g = parse('flowchart TD\n  A[a <brief> note] --> B[plain]');
+  assert.equal(g.nodes.find((n) => n.id === 'A').label, 'a <brief> note');
+  assert.equal(g.nodes.find((n) => n.id === 'B').label, 'plain');
+});

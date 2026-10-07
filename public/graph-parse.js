@@ -9,6 +9,9 @@
     [/^>(.*)\]$/, 'flag'],
   ];
 
+  const BREAK = /<br\s*\/?>|\\n/gi;
+  const withBreaks = (text) => String(text).replace(BREAK, '\n');
+
   function parseNodeRef(token) {
     const m = token.trim().match(/^([A-Za-z0-9_.:-]+)\s*(.*)$/s);
     if (!m) return null;
@@ -19,7 +22,7 @@
     if (rest) {
       for (const [re, sh] of SHAPES) {
         const sm = rest.match(re);
-        if (sm) { label = sm[1].replace(/^"|"$/g, ''); shape = sh; break; }
+        if (sm) { label = withBreaks(sm[1].replace(/^"|"$/g, '')); shape = sh; break; }
       }
     }
     return { id, label, shape };
@@ -47,12 +50,12 @@
       if ((m = line.match(/^(.+?)\s*[-=.]{2,}\s+"?([^"|]+?)"?\s+[-=.]{2,}>\s*(.+)$/))) {
         const from = seen(parseNodeRef(m[1]));
         const to = seen(parseNodeRef(m[3]));
-        if (from && to) { edges.push({ from, to, label: m[2].trim() }); continue; }
+        if (from && to) { edges.push({ from, to, label: withBreaks(m[2].trim()) }); continue; }
       }
       if ((m = line.match(/^(.+?)\s*(?:[-=.]{2,}>|[=]{3,})\s*(?:\|([^|]*)\|\s*)?(.+)$/))) {
         const from = seen(parseNodeRef(m[1]));
         const to = seen(parseNodeRef(m[3]));
-        if (from && to) { edges.push({ from, to, label: (m[2] ?? '').trim() }); continue; }
+        if (from && to) { edges.push({ from, to, label: withBreaks((m[2] ?? '').trim()) }); continue; }
       }
       const ref = parseNodeRef(line);
       if (ref && /[[({>]/.test(line)) seen(ref);

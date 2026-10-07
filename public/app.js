@@ -1293,10 +1293,10 @@ function openWhiteboard(mmdSource, title = 'Whiteboard') {
         ],
         layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.2 },
         style: [
-          { selector: 'node', style: { label: 'data(label)', shape: 'round-rectangle', 'background-color': box, 'border-color': line, 'border-width': 1, color: fg, 'font-size': 13, 'text-valign': 'center', 'text-halign': 'center', width: 'label', height: 'label', padding: '10px' } },
+          { selector: 'node', style: { label: 'data(label)', shape: 'round-rectangle', 'background-color': box, 'border-color': line, 'border-width': 1, color: fg, 'font-size': 13, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap', width: 'label', height: 'label', padding: '10px' } },
           { selector: 'node.diamond', style: { shape: 'diamond', padding: '18px' } },
           { selector: 'node.circle', style: { shape: 'ellipse', padding: '14px' } },
-          { selector: 'edge', style: { label: 'data(label)', 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'line-color': line, 'target-arrow-color': line, color: fg, 'font-size': 11, width: 1.5 } },
+          { selector: 'edge', style: { label: 'data(label)', 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'line-color': line, 'target-arrow-color': line, color: fg, 'font-size': 11, 'text-wrap': 'wrap', width: 1.5 } },
         ],
         wheelSensitivity: 0.2,
       });
