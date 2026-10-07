@@ -192,8 +192,9 @@ the hub stands on, and member workspaces project their structure into it
 (Feature #219) instead of minting a `Workspace` space of their own.
 
 ### Space
-A named container that groups tables and qualifies their names, so `Dev/Task`
-and `Sales/Task` are different tables. A row in `Workspace/Spaces`.
+The unit of meaning in a workspace: the tables of one area, under one schema
+version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces
+never nest. A row in `Workspace/Spaces`.
 
 ### Table
 An entity that is also an entity type: the ordered set of fields every row in
