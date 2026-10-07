@@ -1,0 +1,1 @@
+- On a phone a field's picker (workflow state, select, multi-select and icon pickers) opens as a bottom sheet titled with the field's name, with 56px options and a check on the current value. A list of eight options or fewer opens without focusing the search box, so the keyboard stays closed, and a single-choice list that short shows no search box at all (Feature #274).

@@ -1573,14 +1573,17 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
   const box = el('div', { class: 'picker-box' }, chips, input, readout);
   const list = el('div', { class: 'picker-list' });
-  const pop = el('div', { class: 'chip-pop picker-pop' },
-    title ? el('div', { class: 'picker-title' }, title) : null,
+  const sheet = dockCoversScreen.matches;
+  const quiet = sheet && !grid && !groups && options.length <= PHONE_SHORT_LIST;
+  const heading = title || (sheet ? anchor?.dataset?.fieldTitle || anchor?.getAttribute?.('title') || '' : '');
+  const pop = el('div', { class: 'chip-pop picker-pop' + (quiet ? ' picker-quiet' : '') + (quiet && !multi ? ' picker-short' : '') },
+    heading ? el('div', { class: 'picker-title' }, heading) : null,
     box, list);
   const commit = async () => { pop.remove(); await multi.onCommit(core.ids(st)); };
   const dismiss = () => { if (multi) commit(); else pop.remove(); anchor?.focus?.(); };
   if (multi) pop.commit = commit;
   const pick = async (o) => { pop.remove(); await onPick(o); };
-  const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); input.focus(); };
+  const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); if (!quiet) input.focus(); };
 
   const drawChips = () => {
     if (grid || groups) {
@@ -1705,12 +1708,14 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     pop.remove();
   };
   addEventListener('click', close, true);
-  input.focus();
+  if (!quiet) input.focus();
   drawChips();
   draw();
   anchorPop(pop, anchor);
+  if (quiet) (list.querySelector('.chip-pop-check')?.closest('button') ?? list.querySelector('button'))?.focus({ preventScroll: true });
   return pop;
 }
+const PHONE_SHORT_LIST = 8;
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
