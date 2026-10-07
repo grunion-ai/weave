@@ -3751,7 +3751,7 @@ function tableChrome(db, trashCount) {
   const search = tableSearchBox(db);
   chrome.set = (next, count) => {
     ref.db = next; ref.trashCount = count;
-    viewBtn.label(); densityBtn.label(); filterBtn.label();
+    viewBtn.label(); densityBtn.label(); filterBtn.label(); tools.label();
     const input = search.querySelector('.table-search-input');
     const want = tableSearchText(next) ? tableSearch.text : '';
     if (input.value.trim() !== want.trim()) input.value = want;
@@ -3831,7 +3831,51 @@ function tableChrome(db, trashCount) {
       ], { title: 'Table actions', align: 'right' }),
     ],
   });
+  const tools = tableToolsButton(chrome.header, ref);
+  chrome.header.querySelector('.crumb-row').append(tools);
   return chrome;
+}
+
+function tableToolsButton(header, ref) {
+  const count = el('span', { class: 'table-tools-count', hidden: '' });
+  const btn = el('button', {
+    class: 'btn table-tools-btn', type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
+    'aria-label': 'View, filters, fields and row height', title: 'View, filters, fields and row height',
+  }, lucideEl('sliders-horizontal'), count);
+  const row = () => header.querySelector('.crumb-row');
+  const sheet = () => header.querySelector('.crumb-row > .crumb-actions');
+  btn.label = () => {
+    const n = Object.values(tableFilters(ref.db)).filter((v) => v?.length).length;
+    count.textContent = n ? String(n) : '';
+    count.hidden = !n;
+  };
+  btn.label();
+  const shut = () => {
+    row()?.classList.remove('tools-open');
+    btn.setAttribute('aria-expanded', 'false');
+    removeEventListener('click', away, true);
+    removeEventListener('keydown', esc, true);
+  };
+  const away = (e) => {
+    if (!btn.isConnected) return shut();
+    if (btn.contains(e.target) || sheet()?.contains(e.target) || e.target.closest?.('.chip-pop, .picker-pop, #modal-back, #cmdk-back')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    shut();
+  };
+  const esc = (e) => {
+    if (e.key !== 'Escape' || document.querySelector('.chip-pop, .picker-pop, #modal-back, #cmdk-back') || sheet()?.querySelector('.dl-menu:not(.hidden)')) return;
+    shut();
+    btn.focus({ preventScroll: true });
+  };
+  btn.addEventListener('click', () => {
+    if (row().classList.contains('tools-open')) return shut();
+    row().classList.add('tools-open');
+    btn.setAttribute('aria-expanded', 'true');
+    addEventListener('click', away, true);
+    addEventListener('keydown', esc, true);
+  });
+  return btn;
 }
 
 function drawDatabase(db, items, trashCount = 0, pager = null) {
