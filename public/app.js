@@ -3924,6 +3924,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
 
   renderTable(main, db, items, onSaved, state.inlineAdd, pager);
   main.wvDraw = { db, items, trashCount, pager };
+  syncPhoneBar();
   paintGridWait();
   main.querySelector('.table-wrap')?.addEventListener('keydown', (e) => {
     if (e.isComposing || e.altKey) return;
@@ -10864,9 +10865,32 @@ const renderRouteSafely = () => {
     .then(() => schemaFetch)
     .then(renderRoute)
     .catch(paintRouteError)
-    .then(ensureNavMenu);
+    .then(ensureNavMenu)
+    .then(syncPhoneBar);
   return renderChain;
 };
+function installPhoneBar() {
+  const label = el('span', { class: 'phone-search-label' }, 'Search');
+  const search = el('button', { class: 'phone-search', type: 'button', onclick: () => openCommandK() }, lucideEl('search'), label);
+  const add = el('button', {
+    class: 'phone-new', type: 'button', hidden: '',
+    onclick: () => { if (state.route?.page === 'db') state.inlineAdd?.(); },
+  }, lucideEl('plus'));
+  document.body.append(el('div', { class: 'phone-bar' }, search, add));
+  syncPhoneBar.parts = { label, search, add };
+}
+function syncPhoneBar() {
+  const parts = syncPhoneBar.parts;
+  if (!parts) return;
+  const db = state.route?.page === 'db' ? allTables().find((d) => d.id === state.route.dbId) : null;
+  const text = `Search ${db?.name ?? (currentWsName() || 'weave')}`;
+  parts.label.textContent = text;
+  parts.search.setAttribute('aria-label', text);
+  parts.add.hidden = !db;
+  const noun = db?.term?.singular ?? 'row';
+  parts.add.title = `New ${noun}`;
+  parts.add.setAttribute('aria-label', `New ${noun}`);
+}
 function ensureNavMenu() {
   const main = $('#main');
   if (!main || main.querySelector('.nav-menu')) return;
@@ -10927,6 +10951,7 @@ async function buildWsRail() {
     syncDocTitle();
     wordmark.href = wsHomeHref();
     wordmark.title = current ? `Open the ${current} workspace page` : 'Open the workspace page';
+    syncPhoneBar();
     const weaveWs = list.find((w) => w.name === 'weave');
     const pinned = $('#rail-weave');
     if (pinned) {
@@ -11364,6 +11389,7 @@ function openBugPanel(fab) {
 
 initPageLoader();
 installBugReporter();
+installPhoneBar();
 toastLayer();
 wireThemeToggle();
 wireSkipLink();

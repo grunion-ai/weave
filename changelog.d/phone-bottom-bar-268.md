@@ -1,0 +1,1 @@
+- On a phone a glass search capsule floats at the bottom of the screen and opens the ⌘K search; on a table a blue New circle beside it adds a row. The bug button sits just above the bar, and pages and row pages leave room under their last line so nothing ends behind it (Feature #268).
