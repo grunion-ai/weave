@@ -1217,6 +1217,17 @@ body.wv-activity-open #main { margin-right: 344px; }
 .nav-health { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; line-height: 16px; color: var(--tblr-secondary); font-family: var(--tblr-font-sans-serif); font-variant-numeric: tabular-nums; background: var(--wv-pill-hover); border: 1px solid transparent; border-radius: 4px; padding: 2px 6px; }
 .nav-health.is-behind { color: var(--wv-warn-text); border-color: var(--tblr-warning); }
 .nav-health.is-stale { color: var(--tblr-danger); border-color: var(--tblr-danger); opacity: 1; }
+.nav-account { align-self: stretch; margin: 2px -6px 0; }
+.nav-account:empty { display: none; }
+.nav-account-chip { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 4px 6px; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-body-color); font-family: var(--tblr-font-sans-serif); font-size: 13px; line-height: 18px; text-align: left; text-decoration: none; cursor: pointer; }
+.nav-account-chip:hover, .nav-account-chip[aria-expanded="true"] { background: var(--wv-pill-hover); color: var(--tblr-body-color); text-decoration: none; }
+.nav-account-chip:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
+.nav-account-av { width: 22px; height: 22px; border-radius: 5px; font-size: 9.5px; }
+.nav-account-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.nav-account-role { flex: none; font-size: 11px; color: var(--tblr-secondary); }
+.nav-account-signin, .nav-account-signin:hover { color: var(--tblr-primary); }
+.nav-account-ic { width: 16px; height: 16px; margin: 0 3px; }
+.chip-pop.nav-account-menu { transform-origin: bottom left; }
 .wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: var(--wv-grid-font); white-space: nowrap; }
 .view-strip { display: flex; align-items: center; gap: 2px; margin: 0 0 10px; border-bottom: 1px solid var(--tblr-border-color);
   overflow-x: auto; scrollbar-width: none; }
