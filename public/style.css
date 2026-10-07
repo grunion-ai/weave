@@ -1469,6 +1469,12 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .tray-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .tray-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
 .tray-body input, .tray-body select { margin-bottom: 0; }
+.wv-prefill { display: flex; flex-direction: column; gap: 12px; }
+.wv-prefill-field { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.wv-prefill-field .form-label { margin: 0; }
+.wv-prefill-field .form-check-input { align-self: flex-start; }
+.wv-prefill-notice { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.wv-prefill-copy { align-self: flex-start; }
 .tray-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .type-grid.editing .type-tile { opacity: 1; }
 .type-tile.current:not(.sel) { border-style: dashed; }

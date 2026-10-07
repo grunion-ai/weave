@@ -77,7 +77,7 @@ const OPEN = (method, path) => path === '/api/health' || path === '/auth'
   || (method === 'GET' && (path === '/privacy' || path === '/terms'))
   || /^\/api\/auth\/oidc\/(start|callback)$/.test(path)
   || path === '/api/auth/logout'
-  || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || path.startsWith('/t/')
+  || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || (path.startsWith('/t/') && !/^\/t\/[0-9a-f-]{36}\/new$/.test(path))
     || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)));
 
 test('with requireAuth on, every route the dispatcher serves refuses an anonymous caller — except the doors', async () => {

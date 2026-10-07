@@ -3044,6 +3044,89 @@ function filterSeed(db) {
   return values;
 }
 
+const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'field']);
+const prefillBase = (db) => `${location.origin}${WS_PREFIX}/t/${db.id}/new`;
+const manyRelation = (f) => f.type === 'relation' && !!f.many;
+
+function prefillControl(f, value) {
+  const name = f.name;
+  if (f.type === 'select' || f.type === 'multiselect' || f.type === 'workflow') {
+    const multi = f.type === 'multiselect';
+    const names = f.type === 'workflow' ? (f.states ?? []).map((st) => st.name) : (f.options ?? []);
+    const sel = el('select', { name, class: 'form-select', ...(multi ? { multiple: '' } : {}) },
+      multi ? null : el('option', { value: '' }, ''),
+      names.map((n) => el('option', { value: n }, n)));
+    const want = value ?? (f.type === 'workflow' ? f.states?.find((st) => st.default)?.name : null);
+    const picked = new Set((Array.isArray(want) ? want : [want]).filter((v) => v != null));
+    for (const o of sel.options) o.selected = picked.has(o.value);
+    if (!multi && !names.some((n) => picked.has(n))) sel.value = '';
+    return sel;
+  }
+  if (f.type === 'checkbox' || f.type === 'toggle') {
+    const v = String(value ?? '').trim().toLowerCase();
+    const on = /^(true|1|yes)$/.test(v) || (!!f.on && v === String(f.on).toLowerCase());
+    return el('input', { type: 'checkbox', name, class: 'form-check-input', ...(on ? { checked: '' } : {}) });
+  }
+  if (f.type === 'document' || manyRelation(f)) {
+    const text = Array.isArray(value) ? value.join('\n') : value ?? '';
+    return el('textarea', { name, class: 'form-control', rows: 3 }, text);
+  }
+  return el('input', { name, class: 'form-control', autocomplete: 'off', value: value ?? null });
+}
+
+function prefillValues(form, fields) {
+  const values = {};
+  for (const f of fields) {
+    const node = form?.elements.namedItem(f.name);
+    if (!node) continue;
+    if (node.type === 'checkbox') { if (node.checked) values[f.name] = true; continue; }
+    if (node.multiple) {
+      const picked = [...node.selectedOptions].map((o) => o.value);
+      if (picked.length) values[f.name] = picked;
+      continue;
+    }
+    if (manyRelation(f)) {
+      const lines = node.value.split('\n').map((x) => x.trim()).filter(Boolean);
+      if (lines.length) values[f.name] = lines;
+      continue;
+    }
+    if (node.value.trim() !== '') values[f.name] = node.value;
+  }
+  return values;
+}
+
+async function openPrefill(dbId, query) {
+  const db = allTables().find((d) => d.id === dbId);
+  if (!db) return;
+  history.replaceState(history.state, '', `#/table/${db.id}`);
+  let draft;
+  try { draft = await api('GET', `/tables/${db.id}/prefill${query ? `?${query}` : ''}`); } catch (err) { return toast(err.message, true); }
+  const given = new Map(draft.fields.map((d) => [d.field, d]));
+  const hidden = new Set(db.hiddenFields ?? []);
+  const fields = db.fields.filter((f) => !PREFILL_SKIP.has(f.type) && (given.has(f.name) || !hidden.has(f.name)));
+  const notes = [
+    draft.unknown.length ? `Not fields of ${db.name}, left out: ${draft.unknown.join(', ')}` : null,
+    draft.cut.length ? `Cut to fit a link: ${draft.cut.join(', ')}` : null,
+    ...draft.fields.flatMap((d) => d.errors),
+  ].filter(Boolean);
+  const linked = (f) => {
+    const found = given.get(f.name)?.rows ?? [];
+    return found.length ? el('div', { class: 'wv-prefill-rows form-hint', dataset: { field: f.name } }, `Links to ${found.map((r) => r.name).join(', ')}`) : null;
+  };
+  const body = el('div', { class: 'wv-prefill' },
+    notes.length ? el('div', { class: 'wv-prefill-notice alert alert-warning', role: 'status' }, notes.map((n) => el('div', {}, n))) : null,
+    fields.map((f) => el('label', { class: 'wv-prefill-field' },
+      el('span', { class: 'form-label' }, f.name), prefillControl(f, given.get(f.name)?.value), linked(f))),
+    el('button', {
+      class: 'btn btn-sm wv-prefill-copy', type: 'button',
+      onclick: (ev) => copyText(weavePrefill.link(prefillBase(db), prefillValues(ev.currentTarget.form, fields)), 'Create link copied'),
+    }, 'Copy create link'));
+  tray(`New ${db.term?.singular ?? 'row'}`, [body], async () => {
+    const made = await api('POST', `/tables/${db.id}/entities`, { values: prefillValues(body.closest('form'), fields) });
+    await loadSchema();
+    location.hash = `#/table/${db.id}?e=${made.id}`;
+  }, 'Save');
+}
 
 function tableFilters(db) {
   return db.filters ?? {};
@@ -3705,6 +3788,7 @@ function tableChrome(db, trashCount) {
       dotsMenu([
         { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
         { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
+        db.system ? null : { label: 'Copy create link', run: () => copyText(weavePrefill.link(prefillBase(ref.db), filterSeed(ref.db)), 'Create link copied') },
         'divider',
         {
           label: 'New share page…',
@@ -10583,6 +10667,10 @@ function renderRoute() {
   let m;
   if (hash === '#/trash') return showTrash(null);
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
+  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)\/new(?:\?(.*))?$/))) {
+    const [, id, query] = m;
+    return showDatabase(id, null).then(() => openPrefill(id, query ?? ''));
+  }
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)(?:\/view\/([^/?]+))?(?:\?e=([^&]+))?/))) return showDatabase(m[1], m[2] ? decodeURIComponent(m[2]) : null).then(() => redock(m[1], m[3]));
   if ((m = hash.match(/^#\/space\/([^/?]+)/))) return showSpace(m[1]);
   if ((m = hash.match(/^#\/activity(?:\/([^/?]+))?/))) return showActivity(m[1] ?? null);
