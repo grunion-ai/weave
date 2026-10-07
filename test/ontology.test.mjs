@@ -178,3 +178,12 @@ test('a space is defined as the unit of meaning, in the engine and the glossary 
   assert.equal(row.split(' | ').at(-1).replace(/ \|$/, ''),
     'The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest.');
 });
+
+test('the glossary Space section carries the approved definition and no container framing (Feature #278)', () => {
+  const start = DOC.indexOf('### Space\n');
+  assert.ok(start > 0, 'the glossary has a Space section');
+  const section = DOC.slice(start, DOC.indexOf('\n### ', start + 1)).replace(/\s+/g, ' ');
+  assert.ok(section.includes('The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest.'),
+    'the Space section opens on the glossary wording');
+  assert.ok(!/container/i.test(section), 'the Space section no longer calls a space a container');
+});
