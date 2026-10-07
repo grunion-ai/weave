@@ -8062,6 +8062,12 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
         if (e.key !== 'Enter' || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
         keepPlaceThroughEnter(host);
       }, { capture: true });
+      host.addEventListener('keydown', (e) => {
+        if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+        e.preventDefault();
+        e.stopPropagation();
+        editor.vditor?.undo?.redo(editor.vditor);
+      }, { capture: true });
       attachToolbarBubble(host);
       attachFileTools(host, editor, onInput);
       watchCommandMarkers(host, editor, onInput);

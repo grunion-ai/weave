@@ -1,0 +1,1 @@
+- In a document, Cmd+Shift+Z (Ctrl+Shift+Z elsewhere) now redoes what Cmd+Z undid. Vditor only knew Cmd+Y for redo, so the macOS shortcut did nothing (Issue #697).
