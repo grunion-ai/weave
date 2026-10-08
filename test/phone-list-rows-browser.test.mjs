@@ -11,9 +11,12 @@ const s = await launch('phone list rows', (weave) => {
     { name: 'Fixed', category: 'done' }] } });
   weave.addField(issues, { name: 'Severity', type: 'select', config: { options: ['Low', 'Medium', 'High'] } });
   weave.addField(issues, { name: 'Notes', type: 'text' });
+  const releases = weave.createTable({ space: 'Development', name: 'Release' });
+  const release = weave.createEntity(releases, { name: 'v0.4.84' });
+  weave.addRelation(issues.id, { name: 'Fixed in', targetDb: releases.id, cardinality: 'many-to-one', inverseName: 'Fixes' });
   for (let i = 0; i < 120; i++) {
     const name = i % 3 ? `Issue ${i}` : `Issue ${i}: the weave review watcher has not finished a cycle in 150 minutes, so nothing lands`;
-    weave.createEntity(issues, { name, values: { Status: 'Open', Severity: ['Low', 'Medium', 'High'][i % 3], Notes: i % 2 ? 'a note' : '' } });
+    weave.createEntity(issues, { name, values: { Status: 'Open', Severity: ['Low', 'Medium', 'High'][i % 3], Notes: i % 2 ? 'a note' : '', 'Fixed in': i % 2 ? release.id : null } });
   }
   const tasks = weave.createTable({ space: 'Development', name: 'Task' });
   weave.addField(tasks, { name: 'Severity', type: 'select', config: { options: ['Low', 'High'] } });
@@ -125,6 +128,39 @@ if (s) {
       await page.mouse.click(cb.x + 4, cb.y + 4);
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       assert.equal(await page.locator('.picker-pop').count(), 0, 'a tap on a chip opens the row, not the picker');
+    } finally { await page.close(); }
+  });
+
+  test('on a phone an empty relation takes no room in the chip line (Issue #721)', async () => {
+    const page = await open();
+    try {
+      const seen = await page.evaluate(() => [...document.querySelectorAll('#main tbody tr.entity-row')].slice(0, 6).map((tr) => {
+        const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
+        const boxes = cells.filter((td) => td.getClientRects().length).map((td) => td.getBoundingClientRect());
+        return {
+          i: Number(tr.dataset.i),
+          cells: cells.map((td) => ({
+            field: td.dataset.field,
+            ftype: td.dataset.ftype,
+            display: getComputedStyle(td).display,
+            overflowed: td.classList.contains('list-hide'),
+            width: Math.round(td.getBoundingClientRect().width),
+            values: td.querySelectorAll('.ms-box > .mention-wrap, .ms-box > .k:not(.k-more)').length,
+          })),
+          gaps: boxes.slice(1).map((r, n) => Math.round(r.left - boxes[n].right)),
+        };
+      }));
+      const GAP = 6;
+      assert.ok(seen.length >= 6);
+      for (const r of seen) {
+        const rel = r.cells.find((c) => c.ftype === 'relation');
+        assert.ok(rel, `row ${r.i} carries its Fixed in cell`);
+        if (rel.values === 0) assert.equal(rel.display, 'none', `row ${r.i} leaves a ${rel.width}px blank where its empty Fixed in sits`);
+        else assert.ok(rel.display !== 'none' || rel.overflowed, `row ${r.i} hides a Fixed in value that is not overflowing`);
+        for (const g of r.gaps) assert.ok(g <= GAP + 1, `row ${r.i} packs its chips left, found a ${g}px gap`);
+      }
+      assert.ok(seen.some((r) => r.cells.some((c) => c.ftype === 'relation' && c.values === 0)), 'a row with an empty relation is in the sample');
+      assert.ok(seen.some((r) => r.cells.some((c) => c.ftype === 'relation' && c.values > 0)), 'and a row with a filled one');
     } finally { await page.close(); }
   });
 

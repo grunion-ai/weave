@@ -2198,6 +2198,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field]:has(.k-add) { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field]:has(> .wv-cb > input.inline-edit[value=""]) { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field]:has(> .wv-cb > .ms-box:empty) { display: none; }
+  #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-ftype="relation"]:not(:has(> .wv-cb > .ms-box > .k)):not(:has(> .wv-cb > .ms-box > .mention-wrap)) { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] > .wv-cb { height: 24px; overflow: hidden; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field].list-hide { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field][data-more] { display: flex; align-items: center; gap: 6px; }
