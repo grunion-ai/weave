@@ -3171,9 +3171,9 @@ function viewStrip(db) {
         act('view-dup-btn', 'copy', 'Duplicate', () => edit({ mode: 'dup', after: v.id, from: v.id, position: i + 1, name: nextViewName(db, v.name) })),
         del),
       el('span', { class: 'view-check', 'aria-hidden': 'true' }, active ? '✓' : ''));
+    RO().guard(grip);
     grip.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      e.preventDefault();
       startRowDrag(strip, row, e, (target, after) => {
         const rest = views.filter((x) => x.id !== v.id);
         const to = target === v.id ? i : rest.findIndex((x) => x.id === target) + (after ? 1 : 0);
@@ -3714,55 +3714,22 @@ function tableSheetGroup(title, items) {
   }
   return el('div', { class: 'tools-group', role: 'group', 'aria-label': title }, el('div', { class: 'tools-group-head' }, title), ...rows);
 }
+const RO = () => globalThis.WeaveReorder;
 function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
-  const html = document.documentElement;
-  let started = false, line = null, at = null, raf = 0, lastY = down.clientY;
-  html.classList.add('wv-grabbing');
-  const place = (y) => {
-    const all = [...list.querySelectorAll(rows)];
-    if (!all.length) return;
-    let target = all[all.length - 1], after = true;
-    for (const r of all) { const b = r.getBoundingClientRect(); if (y < b.top + b.height / 2) { target = r; after = false; break; } }
-    if (!line) { line = el('div', { class: 'drop-line', 'aria-hidden': 'true' }); list.append(line); }
-    line.style.top = `${(after ? target.offsetTop + target.offsetHeight : target.offsetTop) - 1}px`;
-    at = { target: key(target), after };
-  };
-  const scroll = () => {
-    cancelAnimationFrame(raf);
-    const b = list.getBoundingClientRect();
-    const v = lastY < b.top + 24 ? -6 : lastY > b.bottom - 24 ? 6 : 0;
-    if (!v || list.scrollHeight <= list.clientHeight) return;
-    list.style.scrollSnapType = 'none';
-    list.scrollTop += v; place(lastY);
-    raf = requestAnimationFrame(scroll);
-  };
-  const onMove = (e) => {
-    if (e.pointerId !== down.pointerId) return;
-    lastY = e.clientY;
-    if (!started) {
-      if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < 4) return;
-      started = true; row.dragged = true; row.classList.add('dragging');
-    }
-    place(e.clientY); scroll();
-  };
-  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); } };
-  function end(ok) {
-    document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointerup', onUp);
-    document.removeEventListener('pointercancel', onCancel);
-    document.removeEventListener('keydown', onKey, true);
-    cancelAnimationFrame(raf);
-    html.classList.remove('wv-grabbing');
-    line?.remove(); row.classList.remove('dragging'); list.style.scrollSnapType = '';
-    if (started) setTimeout(() => { row.dragged = false; });
-    if (ok && started && at) drop(at.target, at.after);
-  }
-  const onUp = (e) => { if (e.pointerId === down.pointerId) end(true); };
-  const onCancel = (e) => { if (e.pointerId === down.pointerId) end(false); };
-  document.addEventListener('pointermove', onMove);
-  document.addEventListener('pointerup', onUp);
-  document.addEventListener('pointercancel', onCancel);
-  document.addEventListener('keydown', onKey, true);
+  return RO().sortable(down, {
+    source: row,
+    items: () => [...list.querySelectorAll(rows)],
+    zone: () => list.closest('.chip-pop') ?? list,
+    lock: true,
+    onDrop: () => {
+      row.dragged = true;
+      setTimeout(() => { row.dragged = false; });
+      const all = [...list.querySelectorAll(rows)].filter((n) => !RO().lifting(n));
+      const i = all.indexOf(row);
+      if (all[i + 1]) drop(key(all[i + 1]), false);
+      else if (all[i - 1]) drop(key(all[i - 1]), true);
+    },
+  });
 }
 function tableFieldsPopover(anchor, db, trashCount) {
   let pop;
@@ -3820,9 +3787,9 @@ function tableFieldsPopover(anchor, db, trashCount) {
     const toggle = el('label', { class: 'chip-pop-row eye-row' }, box, el('span', { class: 'eye-label' }, name));
     const handle = el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
     const row = el('div', { class: 'table-field-row', dataset: { field: name } }, toggle, handle);
+    RO().guard(row);
     row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target === box || db.view?.blank) return;
-      e.preventDefault();
       startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
     });
     row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
@@ -4444,56 +4411,40 @@ function renderList(main, db, items, ctx) {
 
   function listDrag(down, line) {
     if (down.button !== 0) return;
-    down.preventDefault();
-    const html = document.documentElement;
-    const marker = el('div', { class: 'drop-line list-drop', 'aria-hidden': 'true' });
-    let started = false;
-    let drop = null;
-    const place = (e) => {
-      const hit = document.elementFromPoint(e.clientX, e.clientY);
-      const row = hit?.closest?.('.list-row');
-      const target = row && row !== line && !line.wvItem.children.some(function inside(c) { return c.row.id === row.dataset.eid || c.children.some(inside); }) ? row : null;
-      const sec = (target ?? hit?.closest?.('.list-add, .list-group-head'))?.closest('.list-group:not(.list-completed)');
-      const dx = e.clientX - down.clientX;
-      const mode = s.nest && dx > 40 ? 'nest' : s.nest && dx < -40 ? 'unnest' : 'move';
-      if (!target && !sec) { drop = null; marker.remove(); return; }
-      const box = (target ?? sec).getBoundingClientRect();
-      const after = target ? e.clientY > box.top + box.height / 2 : true;
-      drop = { target, sec, after, mode };
-      const host = list.getBoundingClientRect();
-      if (!marker.isConnected) list.append(marker);
-      const depth = Number(target?.dataset.depth ?? 0) + (mode === 'nest' ? 1 : 0);
-      marker.style.top = `${(after ? box.bottom : box.top) - host.top - 1}px`;
-      marker.style.left = `${8 + depth * 20}px`;
+    const inside = (row) => line.wvItem.children.some(function walk(c) { return c.row.id === row.dataset.eid || c.children.some(walk); });
+    const depth0 = line.style.getPropertyValue('--depth');
+    const modeOf = (p, start) => {
+      const dx = p.x - start.x;
+      return s.nest && dx > 40 ? 'nest' : s.nest && dx < -40 ? 'unnest' : 'move';
     };
-    const move = (e) => {
-      if (e.pointerId !== down.pointerId) return;
-      if (!started) {
-        if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < 4) return;
-        started = true;
-        line.classList.add('dragging');
-        html.classList.add('wv-grabbing');
-      }
-      place(e);
+    const resolve = ({ node, before, point, start }) => {
+      const mode = modeOf(point, start);
+      const target = node.classList.contains('list-row') ? node : null;
+      const sec = node.closest('.list-group:not(.list-completed)');
+      if (!target && !sec) return null;
+      let above = target?.previousElementSibling;
+      while (above && (above === line || inside(above) || !above.classList.contains('list-row'))) above = above.previousElementSibling;
+      return { target, sec, after: target ? !before : true, mode, above };
     };
-    const end = (ok) => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', up);
-      document.removeEventListener('pointercancel', cancel);
-      document.removeEventListener('keydown', esc, true);
-      html.classList.remove('wv-grabbing');
-      line.classList.remove('dragging');
-      marker.remove();
-      if (ok && started && drop) commit(drop);
-    };
-    const up = (e) => { if (e.pointerId === down.pointerId) end(true); };
-    const cancel = (e) => { if (e.pointerId === down.pointerId) end(false); };
-    const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); } };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', up);
-    document.addEventListener('pointercancel', cancel);
-    document.addEventListener('keydown', esc, true);
-    const commit = ({ target, sec, after, mode }) => {
+    RO().guard(down.currentTarget);
+    RO().sortable(down, {
+      source: line,
+      items: () => [...list.querySelectorAll('.list-row, .list-add')],
+      members: () => [line, ...[...list.querySelectorAll('.list-row')].filter((r) => r !== line && inside(r))],
+      tail: (n) => n.classList.contains('list-add'),
+      zone: () => list,
+      onPlace: (placed) => {
+        const mode = modeOf(placed.point, placed.start);
+        const base = Number(placed.node.dataset.depth ?? 0);
+        line.style.setProperty('--depth', String(Math.max(0, base + (mode === 'nest' ? 1 : mode === 'unnest' ? -1 : 0))));
+      },
+      onCancel: () => line.style.setProperty('--depth', depth0),
+      onDrop: (placed) => {
+        const drop = resolve(placed);
+        if (drop) commit(drop);
+      },
+    });
+    const commit = ({ target, sec, after, mode, above }) => {
       const item = line.wvItem.row.item;
       const from = line.wvPath;
       const to = target?.wvPath ?? sec?.wvPath ?? [];
@@ -4504,7 +4455,7 @@ function renderList(main, db, items, ctx) {
         const own = line.wvItem.row.parent;
         let parent = own;
         if (mode === 'nest' && target) {
-          const anchor = after ? target : target.previousElementSibling?.closest?.('.list-row');
+          const anchor = after ? target : above;
           parent = anchor && anchor !== line ? anchor.dataset.eid : own;
         } else if (mode === 'unnest') {
           parent = own && known.has(own) ? parentOf(known.get(own)) : null;
@@ -4559,9 +4510,9 @@ function groupPopoverRows(db, close, save) {
       grip, el('span', { class: 'group-level-n' }, String(i + 1)), fieldSel, heading, orderSel, grainSel,
       el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary group-remove', type: 'button', 'aria-label': `Remove ${l.field}`, title: 'Remove level',
         onclick: () => writeLevels(levels.filter((_, k) => k !== i)) }, lucideEl('x')));
+    RO().guard(grip);
     grip.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      e.preventDefault();
       startRowDrag(box, row, e, (target, after) => {
         const rest = levels.filter((x) => x.field !== l.field);
         const at = rest.findIndex((x) => x.field === target);
@@ -5060,6 +5011,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let lead = 0;
   let pidWidth = 0;
   let grabbed = null;
+  let colShift = null;
   const nudgeTimers = new Map();
   const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 160, 'Modified By': 160, Activity: 88 };
   const canFreezeHere = () => !!db.view && !db.view.blank;
@@ -5120,7 +5072,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       out.push(`${cell(k)}{border-right:1px solid transparent}`,
         `.table-wrap.wv-scrolled-x ${cell(k)}{border-right-color:var(--tblr-border-color)}`);
     }
-    if (grabbed && cols.includes(grabbed)) out.push(`${cell(at + cols.indexOf(grabbed) + 1)}{opacity:.4}`);
+    if (grabbed && cols.includes(grabbed)) out.push(`${cell(at + cols.indexOf(grabbed) + 1)}{opacity:var(--wv-source-opacity)}`);
+    if (colShift) cols.forEach((c, i) => { if (colShift.get(c)) out.push(`${cell(at + i + 1)}{translate:${colShift.get(c)}px 0}`); });
     return out.join('\n');
   };
   const paintLayout = () => {
@@ -5290,10 +5243,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     setTimeout(() => { for (const [cell] of moving) cell.style.transition = ''; }, 240);
   };
 
-  const applyOrder = async (next, shownFrozen, moved) => {
+  const applyOrder = async (next, shownFrozen, moved, seen = null) => {
     const at = leadCount();
     const nextFrozen = Math.min(next.length, Math.max(0, storedFrozen() + shownFrozen - frozenShown));
-    const before = new Map(cols.map((c) => [c, headOf(c)?.getBoundingClientRect().left ?? 0]));
+    const before = seen ?? new Map(cols.map((c) => [c, headOf(c)?.getBoundingClientRect().left ?? 0]));
     const prev = cols;
     const prevFrozen = storedFrozen();
     const reordered = next.some((c, i) => c !== prev[i]);
@@ -5343,106 +5296,115 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
   };
 
-  const columnDrag = (c) => {
-    const head = table.tHead.rows[0];
-    const pidHead = head.querySelector('th.pid-head');
+  const columnDrag = (c, th, grip) => {
+    const R = RO();
+    const pidHead = table.tHead.rows[0].querySelector('th.pid-head');
     const order = [...cols];
     const fz = frozenShown;
-    const ghost = el('div', { class: 'wv-col-ghost', 'aria-hidden': 'true' }, c);
+    const from = order.indexOf(c);
+    const lift = R.liftOf(th, { host: wrap, make: (h) => el('div', { class: 'wv-col-lift' }, h.querySelector('.col-label')?.cloneNode(true) ?? c) });
     const tag = el('span', { class: 'wv-col-insert-tag', hidden: '' });
-    const line = el('div', { class: 'wv-col-insert', hidden: '' }, tag);
-    document.body.append(ghost);
-    wrap.append(line);
+    const slot = el('div', { class: 'wv-reorder-slot wv-col-slot', 'aria-hidden': 'true' }, tag);
+    wrap.append(slot);
     document.body.classList.add('wv-col-dragging');
+    table.classList.add('wv-col-sliding', 'wv-reorder-host');
     grabbed = c;
+    colShift = new Map();
     paintLayout();
-    let plan = null, px = 0, raf = 0;
-    const boxes = () => order.map((n) => {
-      const r = headOf(n).getBoundingClientRect();
-      return { name: n, left: r.left, right: r.right };
-    });
+    const sl0 = wrap.scrollLeft;
+    const start = order.map((n) => { const r = headOf(n).getBoundingClientRect(); return { name: n, left: r.left, right: r.right, width: r.width }; });
+    const widths = start.map((b) => b.width);
+    const boxes = () => {
+      const dx = wrap.scrollLeft - sl0;
+      return start.map((b, i) => (i < fz ? { ...b } : { ...b, left: b.left - dx, right: b.right - dx }));
+    };
     const leadRight = () => pidHead?.getBoundingClientRect().right ?? wrap.getBoundingClientRect().left;
+    const seam = () => (fz ? start[fz - 1].right : leadRight());
+    let plan = null, px = 0, py = 0, gapX = start[from].left;
     const aim = () => {
       const b = boxes();
-      const seam = fz ? b[fz - 1].right : leadRight();
-      const mine = order.indexOf(c) < fz;
+      const mine = from < fz;
       const capOk = canFreezeHere() && (mine || CR.canFreeze({ lead, widths: order.slice(0, fz).map(widthOf), add: widthOf(c), viewport: wrap.clientWidth }));
-      const t = CR.target({ cols: b, frozen: fz, lead: leadRight(), seam, x: px, dragged: c, capOk });
+      const t = CR.target({ cols: b, frozen: fz, lead: leadRight(), seam: seam(), x: px, dragged: c, capOk });
       plan = CR.plan({ order, frozen: fz, dragged: c, gap: t.gap, side: t.side });
-      line.hidden = plan.noop;
-      if (plan.noop) return;
+      const to = plan.order.indexOf(c);
+      const shift = R.columnShift({ widths, from, to });
+      gapX = R.gapStart({ lefts: b.map((x) => x.left), widths, from, to });
+      colShift = new Map(order.map((n, i) => [n, i === from ? gapX - b[from].left : shift[i]]));
+      paintLayout();
       const wr = wrap.getBoundingClientRect();
-      line.style.left = `${t.x - wr.left - wrap.clientLeft + wrap.scrollLeft}px`;
-      line.style.top = `${table.offsetTop}px`;
-      line.style.height = `${table.offsetHeight}px`;
+      slot.style.left = `${gapX - wr.left - wrap.clientLeft + wrap.scrollLeft}px`;
+      slot.style.top = `${table.offsetTop}px`;
+      slot.style.width = `${widths[from]}px`;
+      slot.style.height = `${table.offsetHeight}px`;
       tag.hidden = !plan.tag;
       tag.textContent = plan.tag ?? '';
     };
-    const EDGE = 48;
-    const tick = () => {
-      raf = 0;
-      if (wrap.scrollWidth <= wrap.clientWidth + 1) return;
-      const wr = wrap.getBoundingClientRect();
-      const lo = fz ? boxes()[fz - 1].right : leadRight();
-      let dx = 0;
-      if (px > wr.right - EDGE) dx = Math.ceil((px - (wr.right - EDGE)) / 3);
-      else if (px >= lo && px < lo + EDGE) dx = -Math.ceil((lo + EDGE - px) / 3);
-      if (!dx) return;
-      const was = wrap.scrollLeft;
-      wrap.scrollLeft += dx;
-      if (wrap.scrollLeft === was) return;
-      aim();
-      raf = requestAnimationFrame(tick);
+    const auto = R.autoScroll({ scroller: wrap, axis: 'x', point: () => ({ x: px, y: py }), onScroll: aim, bounds: (r) => [Math.max(r.left, seam()), r.right] });
+    const outside = (p) => {
+      const r = wrap.getBoundingClientRect();
+      return p.y < r.top - 48 || p.y > r.bottom + 48;
+    };
+    const unslide = () => {
+      colShift = null;
+      paintLayout();
+      setTimeout(() => table.classList.remove('wv-col-sliding'), 240);
     };
     return {
       update(x, y) {
-        px = x;
-        ghost.style.transform = `translate(${Math.round(x + 12)}px, ${Math.round(y + 14)}px)`;
+        px = x; py = y;
+        lift.follow(x - grip.x, 0);
         aim();
-        if (!raf) raf = requestAnimationFrame(tick);
+        auto.kick();
       },
-      finish(drop) {
-        cancelAnimationFrame(raf);
-        ghost.remove(); line.remove();
+      finish(drop, p) {
+        auto.stop();
         document.body.classList.remove('wv-col-dragging');
-        grabbed = null;
-        paintLayout();
-        if (drop && plan && !plan.noop) applyOrder(plan.order, plan.frozen, c);
+        table.classList.remove('wv-reorder-host');
+        const home = !drop || !plan || plan.noop || (p && outside(p));
+        const done = () => { slot.remove(); grabbed = null; paintLayout(); };
+        if (home) {
+          unslide();
+          lift.settle({ left: start[from].left - (wrap.scrollLeft - sl0) * (from < fz ? 0 : 1), top: th.getBoundingClientRect().top }).then(done);
+          if (R.reduced()) done();
+          return;
+        }
+        const seen = new Map(cols.map((n) => [n, headOf(n)?.getBoundingClientRect().left ?? 0]));
+        table.classList.remove('wv-col-sliding');
+        colShift = null;
+        applyOrder(plan.order, plan.frozen, c, seen);
+        const landed = headOf(c)?.getBoundingClientRect();
+        lift.settle(landed ? { left: landed.left, top: landed.top } : null).then(done);
+        if (R.reduced()) done();
       },
     };
   };
   const headPointerDown = (e, c) => {
     if (e.button !== 0 || e.target.closest('.field-menu, .col-resize')) return;
     const th = e.currentTarget;
-    const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+    RO().guard(th);
     let drag = null;
-    const move = (ev) => {
-      if (ev.pointerId !== id) return;
-      if (!drag) {
-        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
-        if (blocked()) return end(false);
-        try { th.setPointerCapture(id); } catch {}
-        drag = columnDrag(c);
-      }
-      clearSelection();
-      drag.update(ev.clientX, ev.clientY);
-    };
-    const end = (drop) => {
-      document.removeEventListener('pointermove', move, true);
-      document.removeEventListener('pointerup', up, true);
-      document.removeEventListener('pointercancel', cancel, true);
+    const end = (drop, p) => {
       if (!drag) return;
       th.dataset.gesture = '1';
       document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true });
       const d = drag;
       drag = null;
-      d.finish(drop);
+      d.finish(drop, p);
     };
-    const up = (ev) => { if (ev.pointerId === id) end(true); };
-    const cancel = (ev) => { if (ev.pointerId === id) end(false); };
-    document.addEventListener('pointermove', move, true);
-    document.addEventListener('pointerup', up, true);
-    document.addEventListener('pointercancel', cancel, true);
+    RO().press(e, {
+      keepDefault: true,
+      canLift: () => !blocked(),
+      lift: (p, at) => {
+        try { th.setPointerCapture(e.pointerId); } catch {}
+        clearSelection();
+        drag = columnDrag(c, th, at);
+        drag.update(p.x, p.y);
+      },
+      move: (p) => { clearSelection(); drag?.update(p.x, p.y); },
+      drop: (p) => end(true, p),
+      cancel: () => end(false),
+    });
   };
   const headKey = (e, c) => {
     const th = e.currentTarget;
@@ -7033,6 +6995,22 @@ function termSection(state, onChange) {
     preview);
 }
 
+function optRowGrip(wrap, list, i, commit) {
+  const grip = RO().guard(el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')));
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const row = grip.closest('.opt-row');
+    RO().sortable(e, {
+      source: row,
+      items: () => [...wrap.querySelectorAll(':scope > .opt-row')],
+      zone: () => wrap,
+      lock: true,
+      onDrop: () => commit(fieldDialogCore.moveItem(list(), i, [...wrap.querySelectorAll(':scope > .opt-row')].filter((n) => !RO().lifting(n)).indexOf(row))),
+    });
+  });
+  return grip;
+}
+
 function optionListEditor(state, onChange) {
   const wrap = el('div', { class: 'opt-list' });
   const draw = () => {
@@ -7041,6 +7019,7 @@ function optionListEditor(state, onChange) {
         const hue = o.hue ?? chipCore.hueFromHex(o.color);
         const preview = optionPreview({ ...o, hue });
         return el('div', { class: 'opt-row' },
+          optRowGrip(wrap, () => state.options, i, (next) => { state.options = next; draw(); onChange(); }),
           iconButton(o.icon || null, (id) => { o.icon = id ?? ''; draw(); onChange(); }),
           el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; preview.rename(o.name); onChange(); } }),
           (() => {
@@ -7109,25 +7088,12 @@ function choiceDefaultControl(state, t) {
 function stateListEditor(state, onChange) {
   const fdc = fieldDialogCore;
   const wrap = el('div', { class: 'opt-list' });
-  let dragFrom = null;
   const draw = () => {
     wrap.replaceChildren(
       ...state.states.map((s, i) => {
         const preview = statePreview(s);
-        const row = el('div', {
-          class: 'opt-row', draggable: 'true',
-          ondragstart: (e) => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); },
-          ondragend: () => row.classList.remove('dragging'),
-          ondragover: (e) => { e.preventDefault(); row.classList.add('drop-target'); },
-          ondragleave: () => row.classList.remove('drop-target'),
-          ondrop: (e) => {
-            e.preventDefault(); row.classList.remove('drop-target');
-            if (dragFrom == null || dragFrom === i) return;
-            state.states = fdc.moveItem(state.states, dragFrom, i);
-            dragFrom = null; draw(); onChange();
-          },
-        },
-        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+        const row = el('div', { class: 'opt-row' },
+        optRowGrip(wrap, () => state.states, i, (next) => { state.states = next; draw(); onChange(); }),
         iconButton(s.icon || null, (id) => { s.icon = id ?? ''; draw(); onChange(); }),
         el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; preview.rename(s.name); onChange(); } }),
         (() => {
@@ -8012,40 +7978,6 @@ async function keepScroll(redraw) {
 
 function editFieldDialog(db, f) {
   fieldDialog(db, f, () => keepScroll(() => showDatabase(db.id)));
-}
-
-function slotDrag(list, { itemSel, held, label, onDrop }) {
-  let slot = null;
-  const clear = () => { slot?.remove(); slot = null; };
-  list.addEventListener('dragover', (e) => {
-    const me = held();
-    if (!me) return;
-    e.preventDefault(); e.stopPropagation();
-    if (!slot) slot = el('div', { class: 'drop-slot' }, label(me));
-    const items = [...list.children].filter((n) => n !== me && n !== slot && n.matches(itemSel));
-    const left = (n) => n.getBoundingClientRect().left;
-    let nearest = null, best = Infinity;
-    for (const n of items) { const d = Math.abs(left(n) + 20 - e.clientX); if (d < best) { best = d; nearest = n; } }
-    const inCol = nearest ? items.filter((n) => Math.abs(left(n) - left(nearest)) < 40) : [];
-    let anchor = null;
-    for (const n of inCol) {
-      const r = n.getBoundingClientRect();
-      if (e.clientY < r.top + r.height / 2) { anchor = n; break; }
-    }
-    if (!anchor && inCol.length) anchor = inCol[inCol.length - 1].nextElementSibling;
-    if (anchor === me) anchor = me.nextElementSibling;
-    if (anchor === slot || (anchor === null && list.lastElementChild === slot)) return;
-    if (anchor) list.insertBefore(slot, anchor); else list.append(slot);
-  });
-  list.addEventListener('drop', (e) => {
-    const me = held();
-    if (!me || !slot) return;
-    e.preventDefault(); e.stopPropagation();
-    const at = slot; slot = null;
-    at.replaceWith(me);
-    onDrop(me);
-  });
-  return { clear };
 }
 
 async function reorderBlocks(db, body, onFail) {
@@ -9914,7 +9846,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       },
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
-      el('div', { class: 'doc-section-head', draggable: 'true' },
+      el('div', { class: 'doc-section-head' },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
@@ -9983,8 +9915,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   left.classList.add('entity-body');
   const fields = el('div', { class: 'entity-fields' });
   const values = el('div', { class: 'entity-values' });
-  let dragFrom = null;
-  let blockFrom = null;
   const hidden = new Set(db.hiddenFields ?? []);
   const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
   const coverF = shown.find((x) => x.type === 'attachments' && x.preview === 'cover');
@@ -9993,45 +9923,41 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   if (coverFile) left.prepend(entityCoverEl(coverFile, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' }));
   const blocks = new Map();
 
-  const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .picker-wrap, .permalink-copy, .dl-menu, .attach-box';
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
     for (const h of handles.filter(Boolean)) {
-      h.setAttribute('draggable', 'true');
-      h.addEventListener('dragstart', (e) => {
-        blockFrom = key; e.dataTransfer.effectAllowed = 'move'; e.stopPropagation();
-        node.classList.add('dragging');
+      RO().guard(h);
+      h.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
+        e.stopPropagation();
+        RO().sortable(e, {
+          source: node,
+          items: () => [...left.children].filter((n) => n.matches('[data-block]')),
+          onDrop: () => reorderBlocks(db, left, refresh),
+        });
       });
-      h.addEventListener('dragend', () => { blockFrom = null; node.classList.remove('dragging'); blockSlot.clear(); });
     }
     blocks.set(key, node);
     return node;
   };
-  const blockSlot = slotDrag(left, {
-    itemSel: '[data-block]',
-    held: () => blockFrom ? blocks.get(blockFrom) : null,
-    label: (n) => n.dataset.block === VALUES_BLOCK ? 'Fields' : n.dataset.block,
-    onDrop: () => reorderBlocks(db, left, refresh),
-  });
-
-  const rowSlot = slotDrag(values, {
-    itemSel: '.fieldrow',
-    held: () => dragFrom ? values.querySelector(`[data-field="${CSS.escape(dragFrom)}"]`) : null,
-    label: (n) => n.dataset.field,
-    onDrop: (me) => {
-      const from = me.dataset.field;
-      const next = me.nextElementSibling, prev = me.previousElementSibling;
-      if (next?.dataset.field) reorderField(db, from, next.dataset.field, { after: false, onFail: refresh });
-      else if (prev?.dataset.field) reorderField(db, from, prev.dataset.field, { after: true, onFail: refresh });
-    },
-  });
-  const dragRow = (node, handle, f) => {
+  const dragRow = (node, f) => {
     node.dataset.field = f.name;
-    handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
-    handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); rowSlot.clear(); });
-    for (const stop of node.querySelectorAll('input, select, textarea, .picker-wrap')) {
-      stop.addEventListener('mousedown', (ev) => ev.stopPropagation());
-    }
+    RO().guard(node);
+    node.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
+      RO().sortable(e, {
+        source: node,
+        items: () => [...values.querySelectorAll(':scope > .fieldrow:not(.fieldrow-system)')],
+        zone: () => values,
+        onDrop: () => {
+          const next = node.nextElementSibling, prev = node.previousElementSibling;
+          if (next?.dataset.field && !next.classList.contains('fieldrow-system')) reorderField(db, f.name, next.dataset.field, { after: false, onFail: refresh });
+          else if (prev?.dataset.field) reorderField(db, f.name, prev.dataset.field, { after: true, onFail: refresh });
+        },
+      });
+    });
     return node;
   };
   for (const f of shown) {
@@ -10051,8 +9977,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       wireBlock(f.name, node, [node.querySelector('.opt-grip')]);
       continue;
     }
-    node.setAttribute('draggable', 'true');
-    values.append(dragRow(node, node, f));
+    values.append(dragRow(node, f));
   }
   for (const n of (db.systemFields ?? [])) {
     if (n === 'Activity' || !SYSTEM_COLS[n]) continue;

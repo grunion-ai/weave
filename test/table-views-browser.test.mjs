@@ -247,8 +247,9 @@ if (s) {
       await page.mouse.down();
       await page.mouse.move(from.x + from.width / 2, to.y + 2, { steps: 12 });
       assert.equal(await page.evaluate(() => getComputedStyle(document.elementFromPoint(10, 10)).cursor), 'grabbing', 'the drag holds the grabbing cursor');
-      const line = await page.$eval('.view-strip .drop-line', (l) => getComputedStyle(l).borderTopLeftRadius);
-      assert.equal(line, '0px', 'a straight, square-ended insertion line');
+      const slot = await page.evaluate(() => [...document.querySelectorAll('.view-strip .view-row')].filter((n) => !n.closest('.wv-reorder-lift')).findIndex((n) => n.classList.contains('wv-reorder-slot')));
+      assert.equal(slot, 0, 'the placeholder opens in the top slot (Feature #282)');
+      assert.equal(await page.locator('.view-strip .drop-line').count(), 0, 'no bare insertion line');
       await page.mouse.up();
       await waitOrder(page, ['B', 'Standard', 'A']);
       await page.waitForLoadState('networkidle');
@@ -283,7 +284,7 @@ if (s) {
   });
 
   const cdpTouch = !process.env.WEAVE_BROWSER || process.env.WEAVE_BROWSER === 'chromium';
-  test('drag with a finger by the handle', { skip: cdpTouch ? false : 'CDP touch input is Chromium-only' }, async () => {
+  test('drag with a finger by the handle: a long press lifts it (Feature #282)', { skip: cdpTouch ? false : 'CDP touch input is Chromium-only' }, async () => {
     reset();
     weave.tableView(`${jobs.id}/A`, { from: 'blank' });
     weave.tableView(`${jobs.id}/B`, { from: 'blank' });
@@ -296,6 +297,7 @@ if (s) {
       const x0 = from.x + from.width / 2;
       const y = from.y + from.height / 2;
       await touch('touchStart', x0, y);
+      await page.waitForSelector('.wv-reorder-lift', { timeout: 3000 });
       for (let k = 1; k <= 10; k++) await touch('touchMove', x0, y + ((to.y + 2) - y) * (k / 10));
       await touch('touchEnd');
       await waitOrder(page, ['A', 'Standard', 'B']);

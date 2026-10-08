@@ -29,20 +29,26 @@ if (s) {
     await page.waitForSelector('[data-block="Peers"]');
     return page;
   };
-  const blocks = (page) => page.$$eval('[data-block]', (ns) => ns.map((x) => x.dataset.block));
-  const dragBlock = (page, from, onto) => page.evaluate(([f, t]) => {
-    const dt = new DataTransfer();
-    const a = document.querySelector(`[data-block="${f}"]`);
-    const b = document.querySelector(`[data-block="${t}"]`);
-    const handle = a.querySelector('[draggable="true"]') ?? a;
-    const forward = !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    const r = b.getBoundingClientRect();
-    const at = { clientX: r.left + 30, clientY: forward ? r.bottom - 2 : r.top + 2 };
-    handle.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, ...at }));
-    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, ...at }));
-    handle.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
-  }, [from, onto]);
+  const blocks = (page) => page.$$eval('.entity-body > [data-block]', (ns) => ns.map((x) => x.dataset.block));
+  const press = async (page, handle) => {
+    await handle.evaluate((n) => n.scrollIntoView({ block: 'center' }));
+    await handle.hover();
+    const b = await handle.boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2 + 2, b.y + b.height / 2 + 6, { steps: 2 });
+  };
+  const aim = async (page, target, forward) => {
+    const r = await target.boundingBox();
+    await page.mouse.move(r.x + 30, forward ? r.y + r.height - 2 : r.y + 2, { steps: 6 });
+  };
+  const dragBlock = async (page, from, onto) => {
+    const order = await blocks(page);
+    await press(page, page.locator(`[data-block="${from}"] .opt-grip`).first());
+    await aim(page, page.locator(`[data-block="${onto}"]`), order.indexOf(onto) > order.indexOf(from));
+    await page.mouse.up();
+    await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
+  };
 
   test('every block on the page carries a reposition anchor', async () => {
     const { id } = build();
@@ -50,7 +56,7 @@ if (s) {
     assert.deepEqual(await blocks(page), ['@values', 'Description', 'Brief', 'Files', 'Peers'],
       'the field block comes first by default, then the documents');
     const anchored = await page.$$eval('[data-block]', (ns) =>
-      ns.filter((x) => x.querySelector('.opt-grip[draggable="true"]')).map((x) => x.dataset.block));
+      ns.filter((x) => x.querySelector('.opt-grip.wv-reorder-handle')).map((x) => x.dataset.block));
     assert.deepEqual(anchored, ['@values', 'Description', 'Brief', 'Files', 'Peers'],
       'a document and a related table are as movable as the field block');
     await page.close();
@@ -83,34 +89,32 @@ if (s) {
     await page.close();
   });
 
-  test('holding a block opens the same slot the rows use, between the blocks', async () => {
+  test('holding a block opens a placeholder between the blocks, the same one the rows use (Feature #282)', async () => {
     const page = await open(build().id);
+    const before = await page.$eval('[data-block="Brief"]', (n) => getComputedStyle(n).backgroundColor);
+    await press(page, page.locator('[data-block="@values"] .opt-grip').first());
+    await aim(page, page.locator('[data-block="Brief"]'), true);
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
     const cue = await page.evaluate(() => {
-      const dt = new DataTransfer();
-      const from = document.querySelector('[data-block="@values"]');
-      const onto = document.querySelector('[data-block="Brief"]');
       const body = document.querySelector('.entity-body');
-      const fill = getComputedStyle(onto).backgroundColor;
-      const r = onto.getBoundingClientRect();
-      from.querySelector('.opt-grip').dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-      onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 30, clientY: r.bottom - 2 }));
-      const slot = body.querySelector(':scope > .drop-slot');
-      const out = {
-        slots: body.querySelectorAll(':scope > .drop-slot').length,
-        label: slot?.textContent.trim() ?? null,
+      const onto = body.querySelector(':scope > [data-block="Brief"]');
+      const slot = body.querySelector(':scope > .wv-reorder-slot');
+      return {
+        slots: body.querySelectorAll(':scope > .wv-reorder-slot').length,
+        which: slot?.dataset.block ?? null,
         afterBrief: !!slot && !!(onto.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING),
         fill: getComputedStyle(onto).backgroundColor, shadow: getComputedStyle(onto).boxShadow,
       };
-      from.querySelector('.opt-grip').dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
-      out.left = body.querySelectorAll(':scope > .drop-slot').length;
-      return { ...out, before: fill };
     });
-    assert.equal(cue.slots, 1, 'one slot among the blocks');
-    assert.equal(cue.label, 'Fields', 'named for the block that will land in it');
-    assert.ok(cue.afterBrief, 'below the midpoint the slot opens beneath the block');
-    assert.equal(cue.fill, cue.before, 'the block under the pointer is not tinted');
-    assert.equal(cue.shadow, 'none', 'and wears no line — the slot is the whole cue');
-    assert.equal(cue.left, 0, 'dragend takes it away');
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
+    assert.equal(cue.slots, 1, 'one placeholder among the blocks');
+    assert.equal(cue.which, '@values', 'the Fields block waits in it, dimmed');
+    assert.ok(cue.afterBrief, 'below the midpoint the placeholder opens beneath the block');
+    assert.equal(cue.fill, before, 'the block under the pointer is not tinted');
+    assert.equal(cue.shadow, 'none', 'and wears no line: the placeholder is the whole cue');
+    assert.deepEqual(await blocks(page), ['@values', 'Description', 'Brief', 'Files', 'Peers'], 'Escape puts the block back');
     await page.close();
   });
 
@@ -140,16 +144,11 @@ if (s) {
     const { db, id } = build();
     const page = await open(id);
     const before = await blocks(page);
-    await page.evaluate(() => {
-      const dt = new DataTransfer();
-      const field = document.querySelector('[data-field="Vendor"]');
-      const doc = document.querySelector('[data-block="Brief"]');
-      field.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-      doc.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
-      doc.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
-      field.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
-    });
-    await page.waitForTimeout(300);
+    await press(page, page.locator('.entity-values [data-field="Vendor"] .opt-grip'));
+    await aim(page, page.locator('[data-block="Brief"]'), true);
+    await page.mouse.up();
+    await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
+    await page.waitForLoadState('networkidle');
     assert.deepEqual(await blocks(page), before, 'a field cannot become a block');
     assert.equal(weave.getTable(db).bodyOrder, undefined, 'and it writes nothing');
     const order = await page.$$eval('.entity-values [data-field]', (ns) => ns.map((x) => x.dataset.field));

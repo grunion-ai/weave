@@ -47,12 +47,11 @@ if (s) {
       await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
       await page.mouse.down();
       await page.mouse.move(grip.x + grip.width / 2, target.y + 2, { steps: 4 });
-      assert.equal(await page.locator('.table-fields-popover .drop-line').count(), 1, 'one reorder target');
-      const radius = await page.$eval('.table-fields-popover .drop-line', (l) => getComputedStyle(l).borderTopLeftRadius);
-      assert.equal(radius, '0px', 'the insertion marker is straight');
+      assert.equal(await page.locator('.table-fields-popover .wv-reorder-slot').count(), 1, 'one placeholder (Feature #282)');
       await page.keyboard.press('Escape');
       await page.mouse.up();
-      assert.equal(await page.locator('.table-fields-popover .drop-line').count(), 0, 'Escape drops the drag');
+      await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
+      assert.equal(await page.locator('.table-fields-popover .wv-reorder-slot').count(), 0, 'Escape drops the drag');
       await owner.locator('.eye-row').click();
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some(h => h.textContent.trim() === 'Owner'));
       await page.locator('.table-fields-popover').getByRole('button', { name: 'New field', exact: true }).click();

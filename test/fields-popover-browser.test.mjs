@@ -34,7 +34,7 @@ if (s) {
   const { base, browser, weave } = s;
   const cursorAt = (page, x, y) => page.evaluate(([x, y]) => { const n = document.elementFromPoint(x, y); return getComputedStyle(n).cursor + (n.closest('.field-reorder-handle, .eye-row, .table-field-row') ? '' : ` (on ${n.tagName}.${n.className?.baseVal ?? n.className})`); }, [x, y]);
 
-  test('a field row reads grab at rest, grabbing for the whole drag, and the drop line is square (Issue #445)', async () => {
+  test('a field row reads grab at rest, grabbing for the whole drag, and a placeholder opens at the landing slot (Issue #445, Feature #282)', async () => {
     weave.tableView(`${narrow.id}/${weave.tableView(narrow).views[0].id}`, { fields: ['Name', 'Description', 'Owner'] });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
@@ -50,16 +50,16 @@ if (s) {
       await page.mouse.down();
       await page.mouse.move(owner.x + 4, owner.y - 8, { steps: 3 });
       await page.mouse.move(name.x + 20, name.y + 3, { steps: 4 });
-      assert.equal(await cursorAt(page, name.x + 20, name.y + name.height / 2), 'grabbing', 'over another row, mid-drag');
+      assert.match(await cursorAt(page, name.x + 20, name.y + name.height / 2), /^grabbing/, 'over another row, mid-drag');
       assert.match(await cursorAt(page, 40, 600), /^grabbing/, 'outside the list, mid-drag');
       assert.equal(await page.evaluate(() => getSelection().toString()), '', 'the drag selects no text');
-      const line = await page.$eval('.table-fields-popover .drop-line', (l) => ({ radius: getComputedStyle(l).borderTopLeftRadius, h: l.getBoundingClientRect().height }));
-      assert.equal(line.radius, '0px', 'the insertion line has square ends');
+      const slot = await page.evaluate(() => [...document.querySelectorAll('.table-field-list .table-field-row')].filter((n) => !n.classList.contains('wv-reorder-lift')).map((n) => (n.classList.contains('wv-reorder-slot') ? `[${n.dataset.field}]` : n.dataset.field)));
+      assert.deepEqual(slot.slice(0, 2), ['[Owner]', 'Name'], 'the placeholder opens above Name');
       await page.mouse.up();
       await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].map((h) => h.textContent.trim()).join(',') === 'Owner,Name,Description');
       assert.deepEqual(weave.tableView(narrow).views[0].fields, ['Owner', 'Name', 'Description']);
       assert.equal(await page.evaluate(() => document.documentElement.classList.contains('wv-grabbing')), false, 'the drop lets the cursor go');
-      assert.equal(await page.locator('.table-fields-popover .drop-line').count(), 0);
+      await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
       assert.equal(await page.locator('.table-field-row[data-field="Owner"] input').isChecked(), true, 'a drag is not a click: the field still shows');
       const desc = await page.locator('.table-field-row[data-field="Description"] .eye-label').boundingBox();
       await page.mouse.move(desc.x + 4, desc.y + desc.height / 2);

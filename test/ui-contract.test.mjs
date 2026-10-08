@@ -516,7 +516,7 @@ test('column reorder is persisted as fieldOrder, not page state', () => {
   assert.doesNotMatch(menu, /reorderField\(/, 'and no wiring left behind for one');
 });
 
-test('a column header is a drag handle for reorder (Feature #233: pointer events, one insertion line)', () => {
+test('a column header is a drag handle for reorder (Feature #233, Feature #282: pointer events, a placeholder at the landing slot)', () => {
   const head = fnBody('renderTable');
   assert.doesNotMatch(head, /draggable: 'true'/, 'the th is not a native drag source');
   assert.match(head, /onpointerdown: \(e\) => headPointerDown\(e, c\)/, 'the header starts the drag');
@@ -524,8 +524,10 @@ test('a column header is a drag handle for reorder (Feature #233: pointer events
   assert.match(head, /CR\.target\(/, 'the drop point comes from the pure core');
   assert.match(head, /CR\.plan\(/, 'and so does what the drop does');
   assert.match(head, /gridConfigWrite\(db, null, patch\)/, 'a view grid saves the move into its view');
-  const line = rulesFor('.wv-col-insert');
-  assert.ok(line.background, 'the drop point is a visible line');
+  assert.match(head, /RO\(\)\.press\(e, \{/, 'the header drag rides the shared reorder module');
+  assert.match(head, /R\.columnShift\(/, 'the neighbours slide aside by the dragged width');
+  assert.match(head, /class: 'wv-reorder-slot wv-col-slot'/, 'and the landing slot is the shared placeholder');
+  assert.deepEqual(rulesFor('.wv-col-insert'), {}, 'no bare insertion line is left');
   assert.equal(rulesFor('.wv-grid th.drop-target').background, undefined, 'and never a tint on the displaced header');
 });
 
@@ -854,20 +856,17 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   assert.match(body, /left\.classList\.add\('entity-body'\)/, 'the main column IS the body');
   assert.doesNotMatch(body, /card-title' \}, 'Fields'/, 'and no longer a side card (Feature #82 superseded)');
 
-  assert.match(body, /let dragFrom = null;/, 'a field drag');
-  assert.match(body, /let blockFrom = null;/, 'and a block drag, tracked apart');
-  assert.match(body, /held: \(\) => dragFrom \? values\.querySelector/, 'the rows\' list holds a row');
-  assert.match(body, /held: \(\) => blockFrom \? blocks\.get\(blockFrom\) : null/, 'the body holds a block');
-  assert.match(body, /reorderField\(db, from, next\.dataset\.field, \{ after: false, onFail: refresh \}\)/,
-    'a field drop is a fieldOrder write through the one reorder function, against the slot\'s neighbour');
+  assert.match(body, /items: \(\) => \[\.\.\.values\.querySelectorAll\(':scope > \.fieldrow:not\(\.fieldrow-system\)'\)\]/, 'a field drag sorts the value rows (Feature #282)');
+  assert.match(body, /items: \(\) => \[\.\.\.left\.children\]\.filter\(\(n\) => n\.matches\('\[data-block\]'\)\)/, 'and a block drag sorts the blocks, tracked apart');
+  assert.equal((body.match(/RO\(\)\.sortable\(e, \{/g) ?? []).length, 2, 'both go through the one shared reorder module');
+  assert.match(body, /reorderField\(db, f\.name, next\.dataset\.field, \{ after: false, onFail: refresh \}\)/,
+    'a field drop is a fieldOrder write through the one reorder function, against the placeholder\'s neighbour');
   assert.match(body, /reorderBlocks\(db, left, refresh\)/, 'a block drop is a bodyOrder write');
-  const slot = fnBody('slotDrag');
-  assert.match(slot, /e\.clientY < r\.top \+ r\.height \/ 2/, 'the pointer\'s height against an item\'s midpoint places the slot');
-  assert.match(slot, /Math\.abs\(left\(n\) - left\(nearest\)\) < 40/, 'only the pointer\'s column is a candidate — the multicol grid is a list');
-  assert.match(slot, /at\.replaceWith\(me\)/, 'the drop swaps the held node into the slot; the DOM is the order');
+  assert.doesNotMatch(APP, /function slotDrag\(/, 'the native drag-and-drop slot is gone');
+  assert.doesNotMatch(body, /draggable/, 'nothing on the page is a native drag source');
   assert.doesNotMatch(body, /compareDocumentPosition\(node\)/, 'no direction arithmetic is left on the page');
-  assert.match(body, /const anchor = \(what\) => el\('span', \{ class: 'opt-grip', draggable: 'true'/,
-    'the anchor is a ⠿ that is itself draggable — the thing you grab is the thing that moves');
+  assert.match(body, /const anchor = \(what\) => el\('span', \{ class: 'opt-grip', title: `Drag to move \$\{what\}` \}/,
+    'the anchor is the grip a row wears: the thing you grab is the thing that moves');
   assert.match(body, /wireBlock\(VALUES_BLOCK, fields,/, 'the field block is anchored');
   assert.match(body, /wireBlock\(f\.name, section, \[section\.querySelector\('\.opt-grip'\), section\.querySelector\('\.doc-section-head'\)\]\)/,
     'a document is anchored, and still draggable by its whole head');
@@ -884,12 +883,11 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   assert.match(rf, /onFail\(\)/, 'and calls whatever the caller gave it');
 
   assert.match(body, /f\.type === 'document'/, 'a document field renders as its section');
-  assert.match(body, /class: 'doc-section-head', draggable: 'true'/, 'and is dragged by its head');
-  assert.match(body, /const dragRow = \(node, handle, f\)/, 'one drag wiring serves the value rows');
-  assert.match(CSS, /\.entity-fields \.fieldrow\.dragging/, 'a dragged row is ghosted');
-  assert.match(CSS, /\.drop-slot \{[^}]*border: 2px dashed var\(--tblr-primary\)/, 'the cue is a dashed slot');
-  assert.match(CSS, /\.drop-slot \{[^}]*break-inside: avoid/, 'that never splits across a column break');
-  assert.match(CSS, /\.entity-body > \.drop-slot/, 'and blocks wear the same one, taller');
+  assert.match(body, /class: 'doc-section-head' \}/, 'and is dragged by its head');
+  assert.match(body, /const dragRow = \(node, f\)/, 'one drag wiring serves the value rows');
+  assert.match(CSS, /\.wv-reorder-slot \{[^}]*outline: 1\.5px dashed var\(--wv-slot-line\)/, 'the cue is a dashed placeholder (Feature #282)');
+  assert.match(CSS, /\.wv-reorder-slot \{[^}]*break-inside: avoid/, 'that never splits across a column break');
+  assert.doesNotMatch(CSS, /\.drop-slot/, 'the old slot is gone');
   assert.doesNotMatch(CSS, /\.fieldrow\.drop-(before|after)/, 'no line on a neighbour\'s edge remains');
   assert.doesNotMatch(CSS, /\[data-block\]\.drop-target/, 'for rows or for blocks');
 
@@ -1277,8 +1275,10 @@ test('relation is a tile in the add tray and posts to /relations; files and docu
 test('workflow states: rows drag to reorder, icon instead of a default radio, and no fifth category', () => {
   assert.deepEqual(rulesFor('.chip.state-other'), {}, "'other' leaves no tint behind");
   const ed = fnBody('stateListEditor');
-  assert.match(ed, /draggable: 'true'/);
-  assert.match(ed, /fdc\.moveItem\(state\.states, dragFrom, i\)/, 'a drop reorders the states');
+  assert.doesNotMatch(ed, /draggable/, 'no native drag source (Feature #282)');
+  assert.match(ed, /optRowGrip\(wrap, \(\) => state\.states, i,/, 'the grip drags through the shared reorder module');
+  assert.match(fnBody('optRowGrip'), /fieldDialogCore\.moveItem\(list\(\), i,/, 'a drop reorders the states');
+  assert.match(fnBody('optionListEditor'), /optRowGrip\(wrap, \(\) => state\.options, i,/, 'and select options drag the same way');
   assert.match(ed, /iconButton\(/, 'an icon picker per state');
   assert.match(fnBody('iconButton'), /iconCatalogue\(\)/, 'over the shared vocabulary');
   assert.match(fnBody('iconCatalogue'), /fieldDialogCore\.iconChoices/, 'which is the one catalogue');

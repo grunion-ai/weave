@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 
 let parts;
 
@@ -46,18 +46,26 @@ if (s) {
     return page;
   };
   const order = (page) => page.$$eval('.entity-values [data-field]', (ns) => ns.map((n) => n.dataset.field));
-  const drag = (page, from, onto, side = 'above') => page.evaluate(([f, t, s]) => {
-    const dt = new DataTransfer();
-    const a = document.querySelector(`[data-field="${f}"]`);
-    const b = document.querySelector(`[data-field="${t}"]`);
-    const r = b.getBoundingClientRect();
-    const clientY = s === 'below' ? r.bottom - 2 : r.top + 2;
-    a.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-    const clientX = r.left + 30;
-    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX, clientY }));
-    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX, clientY }));
-    a.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
-  }, [from, onto, side]);
+  const row = (page, name) => page.locator(`.entity-values .fieldrow[data-field="${name}"]`);
+  const pick = async (page, from) => {
+    await row(page, from).evaluate((n) => n.scrollIntoView({ block: 'center' }));
+    await row(page, from).hover();
+    const g = await row(page, from).locator('.opt-grip').boundingBox();
+    await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(g.x + g.width / 2 + 2, g.y + g.height / 2 + 6, { steps: 2 });
+  };
+  const over = async (page, onto, side) => {
+    const r = await row(page, onto).boundingBox();
+    await page.mouse.move(r.x + 30, side === 'below' ? r.y + r.height - 2 : r.y + 2, { steps: 6 });
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+  };
+  const drag = async (page, from, onto, side = 'above') => {
+    await pick(page, from);
+    await over(page, onto, side);
+    await page.mouse.up();
+    await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
+  };
 
   test('value fields flow into columns; documents keep the full width', async () => {
     const page = await openEntity(fresh());
@@ -180,68 +188,53 @@ if (s) {
     await page.close();
   });
 
-  test('holding a row opens a slot where it will land, and the rows make room', async () => {
+  test('holding a row opens a placeholder where it will land, and the rows make room (Feature #282)', async () => {
     const page = await openEntity(ownTable().id, 1800);
-    const cue = await page.evaluate(() => {
-      const dt = new DataTransfer();
-      const from = document.querySelector('[data-field="Vendor"]');
-      const onto = document.querySelector('[data-field="Stage"]');
+    const look = () => page.evaluate(() => {
       const list = document.querySelector('.entity-values');
-      const fill = getComputedStyle(onto).backgroundColor;
-      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-      const r = onto.getBoundingClientRect();
-      const at = (clientY) => {
-        onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 30, clientY }));
-        const slot = list.querySelector('.drop-slot');
-        return {
-          slots: list.querySelectorAll('.drop-slot').length,
-          label: slot?.textContent.trim() ?? null,
-          height: slot ? Math.round(slot.getBoundingClientRect().height) : 0,
-          slotBeforeStage: !!slot && !!(slot.compareDocumentPosition(onto) & Node.DOCUMENT_POSITION_FOLLOWING),
-          slotReadsBeforeStage: !!slot && (slot.getBoundingClientRect().bottom <= onto.getBoundingClientRect().top + 1
-            || slot.getBoundingClientRect().right <= onto.getBoundingClientRect().left + 1),
-          fill: getComputedStyle(onto).backgroundColor,
-          lines: [getComputedStyle(onto).borderTopColor, getComputedStyle(onto).borderBottomColor],
-        };
+      const onto = list.querySelector('[data-field="Stage"]');
+      const slot = list.querySelector('.wv-reorder-slot');
+      return {
+        slots: list.querySelectorAll('.wv-reorder-slot').length,
+        which: slot?.dataset.field ?? null,
+        height: slot ? Math.round(slot.getBoundingClientRect().height) : 0,
+        slotBeforeStage: !!slot && !!(slot.compareDocumentPosition(onto) & Node.DOCUMENT_POSITION_FOLLOWING),
+        slotReadsBeforeStage: !!slot && (slot.getBoundingClientRect().bottom <= onto.getBoundingClientRect().top + 1
+          || slot.getBoundingClientRect().right <= onto.getBoundingClientRect().left + 1),
+        fill: getComputedStyle(onto).backgroundColor,
+        lines: [getComputedStyle(onto).borderTopColor, getComputedStyle(onto).borderBottomColor],
       };
-      const idle = getComputedStyle(onto).borderTopColor;
-      const above = at(r.top + 2);
-      const below = at(r.bottom - 2);
-      from.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
-      return { idle, fill, above, below, left: list.querySelectorAll('.drop-slot').length, rowTop: Math.round(r.top) };
     });
-    assert.equal(cue.above.slots, 1, 'one slot, never two');
-    assert.equal(cue.above.label, 'Vendor', 'the slot says which field will land in it');
-    assert.ok(cue.above.height >= 24, 'the slot is a row-sized hole, not a line');
-    assert.ok(cue.above.slotBeforeStage, 'above the midpoint the slot opens above the row');
-    assert.ok(cue.above.slotReadsBeforeStage, 'and comes before it on the page — the rows made room');
-    assert.ok(!cue.below.slotBeforeStage, 'below the midpoint it opens beneath');
-    assert.equal(cue.below.slots, 1, 'moving the pointer moves the slot, it does not add one');
-    assert.equal(cue.above.fill, cue.fill, 'the row under the pointer is not tinted');
-    assert.deepEqual(cue.above.lines, [cue.idle, cue.idle], 'and wears no line — the slot is the whole cue');
-    assert.equal(cue.left, 0, 'dragend takes the slot away');
+    const idle = await row(page, 'Stage').evaluate((n) => ({ fill: getComputedStyle(n).backgroundColor, line: getComputedStyle(n).borderTopColor }));
+    await pick(page, 'Vendor');
+    await over(page, 'Stage', 'above');
+    const above = await look();
+    await over(page, 'Stage', 'below');
+    const below = await look();
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
+    assert.equal(above.slots, 1, 'one placeholder, never two');
+    assert.equal(above.which, 'Vendor', 'the placeholder is the field that will land in it, dimmed');
+    assert.ok(above.height >= 24, 'the placeholder is a row-sized hole, not a line');
+    assert.ok(above.slotBeforeStage, 'above the midpoint the placeholder opens above the row');
+    assert.ok(above.slotReadsBeforeStage, 'and comes before it on the page: the rows made room');
+    assert.ok(!below.slotBeforeStage, 'below the midpoint it opens beneath');
+    assert.equal(below.slots, 1, 'moving the pointer moves the placeholder, it does not add one');
+    assert.equal(above.fill, idle.fill, 'the row under the pointer is not tinted');
+    assert.deepEqual(above.lines, [idle.line, idle.line], 'and wears no line: the placeholder is the whole cue');
+    assert.equal(await page.locator('.entity-values .wv-reorder-slot').count(), 0, 'Escape takes the placeholder away');
     await page.close();
   });
 
-  test('a drop lands the field where the slot was', async () => {
+  test('a drop lands the field where the placeholder was', async () => {
     const { db, id } = ownTable();
     const page = await openEntity(id, 1800);
-    await page.evaluate(() => {
-      const dt = new DataTransfer();
-      const from = document.querySelector('[data-field="Notes"]');
-      const onto = document.querySelector('[data-field="Batch"]');
-      const r = onto.getBoundingClientRect();
-      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-      onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 30, clientY: r.top + 2 }));
-      const slot = document.querySelector('.entity-values .drop-slot');
-      slot.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 30, clientY: r.top + 2 }));
-      from.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
-    });
-    await page.waitForFunction(() => document.querySelector('.entity-values [data-field]').dataset.field === 'Vendor'
-      && !document.querySelector('.entity-values .drop-slot'), null, { timeout: 4000 });
+    await drag(page, 'Notes', 'Batch', 'above');
+    await page.waitForFunction(() => document.querySelector('.entity-values [data-field]').dataset.field === 'Vendor', null, { timeout: 4000 });
     assert.deepEqual(await order(page), ['Vendor', 'Notes', 'Batch', 'Price', 'Weight', 'Stage'],
       'Notes went into the slot above Batch');
-    assert.deepEqual(orderOf(db), ['Vendor', 'Notes', 'Batch', 'Price', 'Weight', 'Stage'], 'and the schema followed');
+    assert.deepEqual(await eventually(() => orderOf(db), ['Vendor', 'Notes', 'Batch', 'Price', 'Weight', 'Stage']), ['Vendor', 'Notes', 'Batch', 'Price', 'Weight', 'Stage'], 'and the schema followed');
     await page.close();
   });
 
