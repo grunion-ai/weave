@@ -1079,6 +1079,15 @@ body.wv-activity-open #main { margin-right: 344px; }
   body.wv-activity-open #main { margin-right: 0; }
   .wv-activity { left: 8px; width: auto; }
 }
+@media (max-width: 600px) {
+  .wv-activity { inset: 0; width: auto; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); border-radius: 0; box-shadow: none; font-size: 15px; }
+  .wv-act-head { min-height: 56px; padding: 6px 6px 6px 16px; }
+  .wv-act-head h3 { font-size: 17px; }
+  .wv-act-icon { width: 44px; height: 44px; }
+  .wv-act-filters { flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding: 0 12px 8px; }
+  .wv-act-filters button { min-height: 44px; padding: 0 14px; font-size: 14px; }
+  .wv-act-row { min-height: 44px; grid-template-columns: 16px minmax(0, 1fr) 44px; }
+}
 .doc-status { margin-left: auto; font-size: 11px; color: var(--tblr-secondary); min-width: 10px; text-align: right; }
 .doc-editor { border: 0; }
 .doc-editor .vditor { border: 0; background: transparent; }

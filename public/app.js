@@ -10171,6 +10171,7 @@ const activityPanel = (() => {
   const H = () => window.weaveHistoryCore;
   let st = null;
   let panel = null;
+  let sheetBack = null;
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
@@ -10326,7 +10327,7 @@ const activityPanel = (() => {
     if (panel) panel.replaceWith(next); else document.body.append(next);
     panel = next;
     const dock = st.mount?.closest?.('#dock');
-    if (dock) panel.style.right = `${innerWidth - dock.getBoundingClientRect().left + 8}px`;
+    if (dock && !dockCoversScreen.matches) panel.style.right = `${innerWidth - dock.getBoundingClientRect().left + 8}px`;
     list.scrollTop = keep;
     const s = list.querySelector('.wv-act-row.sel');
     if (s) {
@@ -10384,9 +10385,19 @@ const activityPanel = (() => {
     const first = H().filterFeed(st.items, st.filter)[0];
     st.sel = first?.id ?? null;
     document.body.classList.toggle('wv-activity-open', !!st.mount?.closest?.('#main'));
+    if (dockCoversScreen.matches && !sheetBack) {
+      sheetBack = () => close({ back: true });
+      history.pushState({ ...(history.state ?? {}), wvSheet: 'activity' }, '', location.href);
+      addEventListener('popstate', sheetBack);
+    }
     render();
   }
-  function close() {
+  function close({ back = false } = {}) {
+    if (sheetBack) {
+      removeEventListener('popstate', sheetBack);
+      sheetBack = null;
+      if (!back && history.state?.wvSheet === 'activity') history.back();
+    }
     panel?.remove(); panel = null;
     clearViews();
     document.body.classList.remove('wv-activity-open');
