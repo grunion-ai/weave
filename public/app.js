@@ -3626,6 +3626,53 @@ function tableFilterButton(ref) {
   });
   return btn;
 }
+function tableSortButton(ref) {
+  const btn = tableControlButton('table-sort-btn', 'Sort', 'arrow-down', true);
+  const value = el('span', { class: 'table-sort-value' });
+  btn.querySelector('.table-control-label').after(value);
+  const fieldOf = (name) => ref.db.fields.find((f) => f.name === name) ?? fieldDialogCore.SYSTEM_SORT[name] ?? { name, type: 'text' };
+  const words = (name, dir) => sortLabelsFor(ref.db, fieldOf(name))[dir === 'desc' ? 'desc' : 'asc'];
+  btn.label = () => {
+    const s = ref.db.sort?.[0];
+    value.textContent = s ? `${s.field}, ${words(s.field, s.dir)}` : 'None';
+    btn.setAttribute('aria-label', s ? `Sort: ${s.field}, ${words(s.field, s.dir)}` : 'Sort: none');
+  };
+  btn.label();
+  btn.addEventListener('click', () => {
+    const db = ref.db;
+    let pop;
+    const write = async (sort) => {
+      pop?.remove();
+      const release = gridHold();
+      try {
+        if (await gridConfigWrite(db, { sort })) await keepScroll(() => showDatabase(db.id, db.view?.id));
+      } catch (err) { toast(err.message, true); } finally { release(); }
+    };
+    const now = db.sort?.[0] ?? null;
+    const fields = db.fields.filter((f) => f.type !== 'view' && f.type !== 'document');
+    const rows = fields.map((f) => el('button', {
+      class: 'chip-pop-row table-sort-field', type: 'button', 'aria-pressed': String(now?.field === f.name),
+      onclick: () => write([{ field: f.name, dir: now?.field === f.name ? now.dir : 'asc' }]),
+    }, el('span', { class: 'table-sort-name' }, f.name), now?.field === f.name ? lucideEl('check', 'wv-icon chip-pop-check') : null));
+    const dir = now ? segCtl([
+      { id: 'asc', label: words(now.field, 'asc') },
+      { id: 'desc', label: words(now.field, 'desc') },
+    ], now.dir === 'desc' ? 'desc' : 'asc', (d) => write([{ field: now.field, dir: d }])) : null;
+    const clear = now ? el('button', { class: 'chip-pop-row table-sort-clear', type: 'button', onclick: () => write([]) }, lucideEl('x'), 'Clear sort') : null;
+    pop = tableControlPopover(btn, db, 'table-sort-popover', [tableControlHeader('Sort', () => pop?.remove()), dir, el('div', { class: 'table-sort-list' }, ...rows), clear]);
+  });
+  return btn;
+}
+function tableSheetGroup(title, items) {
+  const rows = [];
+  for (const it of items.filter(Boolean)) {
+    if (it === 'divider') continue;
+    if (it.href) rows.push(el('a', { class: 'tools-row', href: it.href, download: it.download }, it.label));
+    else if (it.hold) rows.push(holdToConfirm(it.hold, () => it.run(), { holdingLabel: it.holdingLabel ?? 'Hold to confirm…', rowClass: 'tools-row tools-row-danger' }));
+    else rows.push(el('button', { class: 'tools-row', type: 'button', onclick: () => it.run() }, it.label));
+  }
+  return el('div', { class: 'tools-group', role: 'group', 'aria-label': title }, el('div', { class: 'tools-group-head' }, title), ...rows);
+}
 function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
   const html = document.documentElement;
   let started = false, line = null, at = null, raf = 0, lastY = down.clientY;
@@ -3792,14 +3839,47 @@ function tableChrome(db, trashCount) {
   const densityBtn = tableDensityButton(ref);
   const filterBtn = tableFilterButton(ref);
   const groupBtn = tableGroupButton(ref);
+  const sortBtn = tableSortButton(ref);
   const search = tableSearchBox(db);
   chrome.set = (next, count) => {
     ref.db = next; ref.trashCount = count;
-    viewBtn.label(); densityBtn.label(); filterBtn.label(); groupBtn.label(); tools.label();
+    viewBtn.label(); densityBtn.label(); filterBtn.label(); groupBtn.label(); sortBtn.label(); tools.label();
     const input = search.querySelector('.table-search-input');
     const want = tableSearchText(next) ? tableSearch.text : '';
     if (input.value.trim() !== want.trim()) input.value = want;
   };
+  const tableActions = [
+    { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
+    { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
+    'divider',
+    {
+      label: 'New share page…',
+      run: () => modal('New share page', [
+        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control full' }),
+      ], async (fd) => {
+        const where = filterWhere(ref.db);
+        await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
+        toast('Share page saved — find it on the workspace page');
+      }, 'Save'),
+    },
+    'divider',
+    {
+      label: `Row term (${db.term.singular})…`,
+      run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
+    },
+    'divider',
+    {
+      hold: 'Delete table', holdingLabel: 'Hold to delete table…',
+      run: async () => {
+        try {
+          await api('DELETE', `/tables/${db.id}`);
+          await loadSchema();
+          location.hash = `#/space/${db.spaceId}`;
+          toast(`Deleted ${db.name}`);
+        } catch (err) { toast(err.message, true); }
+      },
+    },
+  ];
   chrome.header = viewHeader({
     crumbs: [
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
@@ -3842,38 +3922,9 @@ function tableChrome(db, trashCount) {
       })(),
       filterBtn,
       groupBtn,
-      dotsMenu([
-        { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
-        { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
-        'divider',
-        {
-          label: 'New share page…',
-          run: () => modal('New share page', [
-            el('input', { name: 'name', placeholder: 'Page name', class: 'form-control full' }),
-          ], async (fd) => {
-            const where = filterWhere(ref.db);
-            await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
-            toast('Share page saved — find it on the workspace page');
-          }, 'Save'),
-        },
-        'divider',
-        {
-          label: `Row term (${db.term.singular})…`,
-          run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
-        },
-        'divider',
-        {
-          hold: 'Delete table', holdingLabel: 'Hold to delete table…',
-          run: async () => {
-            try {
-              await api('DELETE', `/tables/${db.id}`);
-              await loadSchema();
-              location.hash = `#/space/${db.spaceId}`;
-              toast(`Deleted ${db.name}`);
-            } catch (err) { toast(err.message, true); }
-          },
-        },
-      ], { title: 'Table actions', align: 'right' }),
+      sortBtn,
+      dotsMenu(tableActions, { title: 'Table actions', align: 'right' }),
+      tableSheetGroup('Table', tableActions),
     ],
   });
   const tools = tableToolsButton(chrome.header, ref);
@@ -3907,6 +3958,7 @@ function tableToolsButton(header, ref) {
     shut();
     btn.focus({ preventScroll: true });
   };
+  header.addEventListener('click', (e) => { if (e.target.closest('.tools-group .tools-row:not(.hold-btn)')) shut(); });
   btn.addEventListener('click', () => {
     if (row().classList.contains('tools-open')) return shut();
     row().classList.add('tools-open');
