@@ -6020,6 +6020,15 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('focusin', dropCellPop);
   const listRow = (e) => (listRows() && !nativeClick(e) && !e.target?.closest?.('.swipe-cell') ? e.target?.closest?.('tbody tr.entity-row') : null);
   const swipe = rowSwipe(wrap, db, () => listRows(), itemOf, onSaved);
+  let press = null;
+  wrap.addEventListener('pointerdown', (e) => {
+    press = listRows() && e.pointerType !== 'mouse' ? { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId, tap: false } : null;
+  }, true);
+  wrap.addEventListener('pointerup', (e) => {
+    if (!press || e.pointerId !== press.id) return;
+    press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= TAP_SLOP && e.timeStamp - press.t <= TAP_MS;
+  }, true);
+  wrap.addEventListener('pointercancel', () => { press = null; }, true);
   wrap.addEventListener('mousedown', (e) => {
     if (!listRow(e)) return;
     e.preventDefault();
@@ -6030,7 +6039,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!tr) return;
     e.preventDefault();
     e.stopPropagation();
-    if (swipe.swallows()) return;
+    const touched = press;
+    press = null;
+    if (swipe.swallows() || (touched && !touched.tap)) return;
     if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
     else openEntity(tr.dataset.eid);
   }, true);
@@ -6128,6 +6139,8 @@ function rowSwipe(wrap, db, active, itemOf, onSaved) {
   return { swallows };
 }
 const SWIPE_SLOP = 10;
+const TAP_SLOP = 10;
+const TAP_MS = 300;
 const SWIPE_OPEN = 60;
 
 const SYSTEM_COLS = {
