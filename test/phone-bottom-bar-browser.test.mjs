@@ -73,12 +73,14 @@ if (s) {
     });
   }
 
-  test('on a phone New runs the table\'s add-row action (Feature #268)', async () => {
+  test('on a phone New opens the new-row sheet and adds nothing until Create (Feature #268, Issue #739)', async () => {
     const page = await open(table);
     try {
       const before = await rowCount(page);
       await page.click('.phone-bar .phone-new');
-      assert.equal(await eventually(() => rowCount(page), before + 1), before + 1, 'one row is added');
+      await page.waitForSelector('.new-row-sheet');
+      await page.waitForTimeout(300);
+      assert.equal(await rowCount(page), before, 'the tap writes no row');
     } finally { await page.close(); }
   });
 

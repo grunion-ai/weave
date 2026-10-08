@@ -11766,10 +11766,107 @@ function installPhoneBar() {
   const search = el('button', { class: 'phone-search', type: 'button', onclick: () => openCommandK() }, lucideEl('search'), label);
   const add = el('button', {
     class: 'phone-new', type: 'button', hidden: '',
-    onclick: () => { if (state.route?.page === 'db') state.inlineAdd?.(); },
+    onclick: () => {
+      const db = state.route?.page === 'db' ? allTables().find((d) => d.id === state.route.dbId) : null;
+      if (db?.system) state.inlineAdd?.();
+      else if (db) newRowSheet(db);
+    },
   }, lucideEl('plus'));
   document.body.append(el('div', { class: 'phone-bar' }, search, add));
   syncPhoneBar.parts = { label, search, add };
+}
+const NEW_ROW_CHOICES = 3;
+const NEW_ROW_OPTIONS = 6;
+function newRowSheet(start) {
+  document.querySelector('.new-row-sheet')?.closeSheet?.();
+  const back = el('div', { class: 'new-row-back', 'aria-hidden': 'true' });
+  const sheet = el('div', { class: 'new-row-sheet', role: 'dialog', 'aria-modal': 'true' });
+  let db = start;
+  let picked = {};
+  let off = () => {};
+  const close = () => { off(); removeEventListener('keydown', esc, true); sheet.remove(); back.remove(); };
+  const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+  sheet.closeSheet = close;
+  const name = el('textarea', { class: 'new-row-name', rows: '2', 'aria-label': 'Name' });
+  const create = el('button', { class: 'new-row-create', type: 'button', disabled: '' }, 'Create');
+  const more = el('button', { class: 'new-row-more', type: 'button', disabled: '' }, 'All fields');
+  name.addEventListener('input', () => { create.disabled = more.disabled = !name.value.trim(); });
+  const choiceFields = () => {
+    const hidden = new Set(db.hiddenFields ?? []);
+    return db.fields.filter((f) => (f.type === 'select' || f.type === 'multiselect') && !hidden.has(f.name) && (f.options ?? []).length && f.options.length <= NEW_ROW_OPTIONS).slice(0, NEW_ROW_CHOICES);
+  };
+  const choiceEl = (f) => {
+    const many = f.type === 'multiselect';
+    const seg = !many && f.options.length <= 3;
+    const box = el('div', { class: seg ? 'new-row-seg' : 'new-row-chips', role: 'group', 'aria-label': f.name });
+    const paint = () => {
+      for (const b of box.children) {
+        const on = many ? (picked[f.name] ?? []).includes(b.dataset.opt) : picked[f.name] === b.dataset.opt;
+        b.setAttribute('aria-pressed', String(on));
+      }
+    };
+    for (const opt of f.options) {
+      box.append(el('button', {
+        class: `new-row-opt ${optionHue(f, opt)}`, type: 'button', dataset: { opt },
+        onclick: () => {
+          if (many) {
+            const now = new Set(picked[f.name] ?? []);
+            if (now.has(opt)) now.delete(opt); else now.add(opt);
+            picked[f.name] = [...now];
+          } else picked[f.name] = picked[f.name] === opt ? undefined : opt;
+          paint();
+        },
+      }, opt));
+    }
+    paint();
+    return el('div', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, f.name), box);
+  };
+  const tableChip = el('button', { class: 'new-row-table', type: 'button', 'aria-haspopup': 'dialog' });
+  const title = el('h2', { class: 'new-row-title' });
+  const fieldsBox = el('div', { class: 'new-row-fields' });
+  const draw = () => {
+    const term = db.term?.singular ?? 'row';
+    title.textContent = `New ${term}`;
+    sheet.setAttribute('aria-label', `New ${term}`);
+    name.placeholder = `Name this ${term}`;
+    tableChip.replaceChildren(iconEl(db.icon, 'wv-icon') ?? '', el('span', {}, db.name), lucideEl('chevron-down'));
+    tableChip.setAttribute('aria-label', `Table: ${db.name}`);
+    fieldsBox.replaceChildren(...choiceFields().map(choiceEl));
+  };
+  tableChip.addEventListener('click', () => searchPicker({
+    anchor: tableChip, title: 'New row in', placeholder: 'Search tables…',
+    options: allTables().filter((t) => !t.system).map((t) => ({ id: t.id, label: t.name, sub: t.space })),
+    currentId: db.id,
+    onPick: (o) => { db = allTables().find((t) => t.id === o.id) ?? db; picked = {}; draw(); },
+  }));
+  const write = async (then) => {
+    const text = name.value.trim();
+    if (!text) return;
+    create.disabled = more.disabled = true;
+    const values = { ...filterSeed(db) };
+    for (const [k, v] of Object.entries(picked)) if (v !== undefined && !(Array.isArray(v) && !v.length)) values[k] = v;
+    try {
+      const made = await api('POST', `/tables/${db.id}/entities`, { name: text, ...(Object.keys(values).length ? { values } : {}) });
+      close();
+      await loadSchema();
+      if (state.route?.page === 'db' && state.route.dbId === db.id) await showDatabase(db.id, state.route.view);
+      await then(made);
+    } catch (err) { create.disabled = more.disabled = false; toast(err.message, true); }
+  };
+  create.addEventListener('click', () => write((made) => openEntity(made.id)));
+  more.addEventListener('click', () => write((made) => { location.hash = `#/entity/${made.id}`; }));
+  sheet.append(
+    el('div', { class: 'new-row-grip', 'aria-hidden': 'true' }),
+    el('div', { class: 'new-row-head' }, title, tableChip),
+    el('label', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, 'Name'), name),
+    fieldsBox,
+    el('div', { class: 'new-row-actions' }, more, create));
+  draw();
+  document.body.append(back, sheet);
+  off = dismissOutside({ inside: (t) => sheet.contains(t) || !!t.closest?.('.picker-pop, .chip-pop'), close, swallow: () => true, open: () => sheet.isConnected });
+  addEventListener('keydown', esc, true);
+  name.focus({ preventScroll: true });
+  return sheet;
 }
 function syncPhoneBar() {
   const parts = syncPhoneBar.parts;
