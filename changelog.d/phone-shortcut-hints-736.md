@@ -1,1 +1,0 @@
-- On a touch phone, weave no longer offers keyboard shortcuts it cannot use: the ⌘K pill in menu search and the bug panel's ⌘↵ hint are hidden, and titles drop their shortcut clause ("Open bug beside the table", "Expand", "Send") through one helper. Desktops keep them (Issue #736).

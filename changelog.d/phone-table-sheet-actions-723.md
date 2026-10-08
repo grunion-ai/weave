@@ -1,1 +1,0 @@
-- On a phone, the table sheet lists the table actions (Column stats, Export CSV, New share page, Row term, Delete table) as its own rows under a Table heading, with Delete table last in red. The lone three-dot row whose menu dropped below the sheet is gone, so is the second Search box, and a Sort row picks the field and direction (Issue #723).

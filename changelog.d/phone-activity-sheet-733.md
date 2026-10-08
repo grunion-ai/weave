@@ -1,1 +1,0 @@
-- On a phone, Activity from a row's menu opens as a full-screen sheet above the row, with 44px close and filter controls, and the phone's Back gesture closes it. It used to open as a zero-width strip over the row (Issue #733).

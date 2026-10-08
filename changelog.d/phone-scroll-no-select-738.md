@@ -1,1 +1,0 @@
-- On a phone, scrolling the table list no longer selects rows or text under the finger. A list row opens only on a tap (down and up within 10px and 300ms); any longer or wider touch is a scroll, and list rows start no text selection (Issue #738).

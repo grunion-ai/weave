@@ -1,1 +1,0 @@
-- Vendored files the document editor loads on its own (its icons, Lute and content themes) are now served with a one-hour cache, so opening a second row on a phone no longer refetches them. First-party files asked for without their version still revalidate every time (Issue #735).
