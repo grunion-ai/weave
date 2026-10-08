@@ -168,7 +168,8 @@ export async function walk(browser, journey, ctx, { probe, record = null, viewpo
     await page.waitForTimeout(600);
     await frames(page, 2);
     const events = await probe.read(page);
-    return { events, frames: rec ? await rec.stop() : [] };
+    const inputs = probe.inputs ? await probe.inputs(page) : [];
+    return { events, inputs, frames: rec ? await rec.stop() : [] };
   } finally {
     await page.close();
   }

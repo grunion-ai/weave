@@ -8,7 +8,7 @@ import { loadavg } from 'node:os';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { JOURNEYS, seed, walk } from '../test/lib/journeys.mjs';
-import { installProbe, readProbe, resetProbe, recordFrames, frameFlashes, diffBox, evidenceFrames, confirm, fingerprint } from '../test/lib/flicker.mjs';
+import { installProbe, readProbe, readInputs, resetProbe, recordFrames, frameFlashes, diffBox, evidenceFrames, confirm, fingerprint } from '../test/lib/flicker.mjs';
 
 const { values: a } = parseArgs({ options: {
   runs: { type: 'string', default: '3' },
@@ -24,7 +24,7 @@ const out = resolve(a.out);
 mkdirSync(out, { recursive: true });
 const only = a.journey ? new Set(a.journey.split(',')) : null;
 const journeys = JOURNEYS.filter((j) => !only || only.has(j.name));
-const probe = { install: installProbe, read: readProbe, reset: resetProbe };
+const probe = { install: installProbe, read: readProbe, reset: resetProbe, inputs: readInputs };
 const record = a['no-frames'] ? null : (page) => recordFrames(page);
 const GRID = 40;
 const snap = (v) => Math.round(v / GRID) * GRID;
@@ -47,7 +47,7 @@ try {
       try { got = await walk(browser, j, ctx, { probe, record }); }
       catch (err) { failed.push({ journey: j.name, run: r, error: String(err.message).split('\n')[0] }); continue; }
       const events = [...got.events];
-      for (const f of frameFlashes(got.frames)) {
+      for (const f of frameFlashes(got.frames, { inputs: got.inputs })) {
         const box = diffBox(got.frames[f.i - 1].px, got.frames[f.i].px);
         events.push({ kind: 'frame', sel: box ? `box ${snap(box.x)},${snap(box.y)} ${snap(box.w)}x${snap(box.h)}` : 'box ?', ms: f.ms, value: f.ratio, at: f.at, i: f.i });
       }

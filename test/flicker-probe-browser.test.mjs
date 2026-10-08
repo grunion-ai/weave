@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { installProbe, readProbe, recordFrames, frameFlashes } from './lib/flicker.mjs';
+import { installProbe, readProbe, readInputs, recordFrames, frameFlashes } from './lib/flicker.mjs';
 
 const s = await launch('flicker probe', (weave) => {
   weave.createSpace({ name: 'S' });
@@ -429,6 +429,32 @@ if (s) {
       await frames(page, 3);
       await wait(250);
       assert.deepEqual(await events(page), []);
+    } finally { await page.close(); }
+  });
+
+  test('a screencast flash that answers the reader\'s click is not a flash (Issue #638)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const b = Object.assign(document.createElement('button'), { className: 'popper', textContent: 'open' });
+        b.style.cssText = 'position:absolute;top:10px;left:10px;width:80px;height:30px';
+        document.getElementById('stage').append(b);
+        b.addEventListener('pointerdown', () => {
+          const st = document.getElementById('stage');
+          st.style.background = '#000';
+          requestAnimationFrame(() => requestAnimationFrame(() => { st.style.background = '#fff'; }));
+        });
+      });
+      await frames(page, 3);
+      const rec = await recordFrames(page);
+      await wait(300);
+      await page.click('#stage .popper');
+      await wait(400);
+      const shots = await rec.stop();
+      const inputs = await readInputs(page);
+      assert.equal(inputs.length, 1, 'the probe logged the click on the wall clock');
+      assert.equal(frameFlashes(shots, { maxMs: 2000 }).length, 1, 'the screencast did see the flash');
+      assert.deepEqual(frameFlashes(shots, { maxMs: 2000, inputs }), [], 'the reader opened it themselves');
     } finally { await page.close(); }
   });
 

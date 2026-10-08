@@ -31,8 +31,9 @@ function probe(MAX) {
     return n.checkVisibility ? n.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : true;
   };
   let input = -Infinity;
+  const inputs = window.__flickerInputs = [];
   for (const type of ['keydown', 'pointerdown', 'input', 'beforeinput', 'scroll']) {
-    addEventListener(type, () => { input = now(); }, { capture: true, passive: true });
+    addEventListener(type, () => { input = now(); inputs.push(Date.now()); }, { capture: true, passive: true });
   }
   const answering = (t) => t - input < 50;
   const born = new Map();
@@ -151,6 +152,7 @@ function probe(MAX) {
 
 export const installProbe = (page, { maxMs = FLASH_MS } = {}) => page.addInitScript(probe, maxMs);
 export const readProbe = (page) => page.evaluate(() => window.__flicker?.slice() ?? []);
+export const readInputs = (page) => page.evaluate(() => window.__flickerInputs?.slice() ?? []);
 export const resetProbe = (page) => page.evaluate(() => { if (window.__flicker) window.__flicker.length = 0; });
 
 export async function recordFrames(page, { maxWidth = 640, maxHeight = 480 } = {}) {
@@ -196,12 +198,17 @@ export function diffBox(a, b) {
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + step, h: y1 - y0 + step };
 }
 
-export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005 } = {}) {
+export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005, inputs = [], answerMs = 50 } = {}) {
+  const answering = (t) => {
+    const k = inputs.findLastIndex((x) => x <= t);
+    return k >= 0 && t - inputs[k] < answerMs;
+  };
   const out = [];
   for (let i = 1; i + 1 < frames.length; i++) {
     const [a, b, c] = [frames[i - 1], frames[i], frames[i + 1]];
     const ms = c.t - b.t;
     if (ms >= maxMs) continue;
+    if (answering(b.t)) continue;
     if (diffRatio(a.px, c.px) > eps) continue;
     const ratio = diffRatio(a.px, b.px);
     if (ratio < min) continue;

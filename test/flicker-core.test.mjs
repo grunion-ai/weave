@@ -86,3 +86,13 @@ test('evidence: a DOM flicker gets the frames around its window; a frame flash g
   assert.deepEqual(evidenceFrames(fr, { kind: 'frame', i: 2, at: 140, ms: 60 }).map((f) => f.t), [100, 140, 200]);
   assert.deepEqual(evidenceFrames([], { kind: 'blank', at: 5, ms: 1 }), []);
 });
+
+test('a frame flash inside the window of the reader\'s own input is not a flash (Issue #638)', () => {
+  const f = (t, px) => ({ t, px });
+  const aba = [f(1000, solid(W)), f(1100, solid(K)), f(1140, solid(W))];
+  assert.equal(frameFlashes(aba).length, 1, 'with no input log the frame rule is unchanged');
+  assert.deepEqual(frameFlashes(aba, { inputs: [1085] }), [], 'the reader pressed a key 15 ms before the frame');
+  assert.equal(frameFlashes(aba, { inputs: [900] }).length, 1, 'an input 200 ms earlier is not what the frame answers');
+  assert.equal(frameFlashes(aba, { inputs: [900, 1200] }).length, 1, 'an input after the frame cannot have caused it');
+  assert.deepEqual(frameFlashes(aba, { inputs: [900, 1060, 1200] }), [], 'the newest input at or before the frame is the one that counts');
+});
