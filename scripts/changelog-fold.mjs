@@ -36,7 +36,7 @@ export function fold(md, fragments, { version, date }) {
     lines.splice(end, 0, ...(end === at.start + 1 ? [''] : []), ...body);
   } else {
     const first = lines.findIndex((l) => l.startsWith('## '));
-    lines.splice(first < 0 ? lines.length : first, 0, `## v${version} — ${date}`, '', ...body, '');
+    lines.splice(first < 0 ? lines.length : first, 0, `## v${version} (${date})`, '', ...body, '');
   }
   return lines.join('\n');
 }
@@ -54,7 +54,10 @@ export function foldRepo(root, { date = new Date().toLocaleDateString('en-CA') }
   return { version, folded: names.length, changed: after !== before };
 }
 
-export function changelogGuard({ added, versionBefore, versionAfter }) {
+export const VERSION_HEADING = /^## v\d+\.\d+\.\d+ \(\d{4}-\d{2}-\d{2}\)$/;
+
+export function changelogGuard({ addedLines = [], versionBefore, versionAfter }) {
+  const added = addedLines.filter((l) => !VERSION_HEADING.test(l)).length;
   if (!added || versionBefore !== versionAfter) return null;
   return `CHANGELOG.md gains ${added} line(s) but package.json stays at ${versionAfter}. `
     + 'Write changelog.d/<short-slug>-<Issue or Feature number>.md instead; only a release commit edits CHANGELOG.md, through scripts/changelog-fold.mjs.';

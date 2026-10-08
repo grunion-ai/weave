@@ -19,7 +19,7 @@ Preamble.
 
 - **Old unreleased two** (Issue #2): body.
 
-## v0.4.43 — 2026-09-26
+## v0.4.43 (2026-09-26)
 
 - **Released** (Feature #3): body.
 `;
@@ -35,7 +35,7 @@ test('fold puts the Unreleased bullets and every fragment under the new heading,
 
 Preamble.
 
-## v0.4.44 — 2026-09-27
+## v0.4.44 (2026-09-27)
 
 - **Old unreleased one** (Issue #1): body.
 
@@ -44,7 +44,7 @@ Preamble.
   second line.
 - **Zeta** (Issue #9): body.
 
-## v0.4.43 — 2026-09-26
+## v0.4.43 (2026-09-26)
 
 - **Released** (Feature #3): body.
 `);
@@ -53,9 +53,9 @@ Preamble.
 
 test('fold appends to a heading the release author already wrote', () => {
   const md = MD.replace('## Unreleased\n\n- **Old unreleased one** (Issue #1): body.\n\n- **Old unreleased two** (Issue #2): body.\n\n',
-    '## v0.4.44 — 2026-09-27\n\n- **Digest line**.\n\n');
+    '## v0.4.44 (2026-09-27)\n\n- **Digest line**.\n\n');
   const out = fold(md, [FRAGS[1]], { version: '0.4.44', date: 'ignored' });
-  assert.match(out, /## v0\.4\.44 — 2026-09-27\n\n- \*\*Digest line\*\*\.\n- \*\*Alpha\*\*/);
+  assert.match(out, /## v0\.4\.44 \(2026-09-27\)\n\n- \*\*Digest line\*\*\.\n- \*\*Alpha\*\*/);
   assert.equal(out.match(/## v0\.4\.44/g).length, 1);
 });
 
@@ -126,9 +126,12 @@ test('the release export runs the security-citation check before it writes', () 
 });
 
 test('the guard refuses CHANGELOG.md lines added without a version bump', () => {
-  assert.match(changelogGuard({ added: 3, versionBefore: '0.4.43', versionAfter: '0.4.43' }), /changelog\.d\//);
-  assert.equal(changelogGuard({ added: 3, versionBefore: '0.4.43', versionAfter: '0.4.44' }), null, 'a release commit');
-  assert.equal(changelogGuard({ added: 0, versionBefore: '0.4.43', versionAfter: '0.4.43' }), null, 'removals only');
+  const bullets = ['- **One**.', '- **Two**.', '- **Three**.'];
+  assert.match(changelogGuard({ addedLines: bullets, versionBefore: '0.4.43', versionAfter: '0.4.43' }), /changelog\.d\//);
+  assert.equal(changelogGuard({ addedLines: bullets, versionBefore: '0.4.43', versionAfter: '0.4.44' }), null, 'a release commit');
+  assert.equal(changelogGuard({ addedLines: [], versionBefore: '0.4.43', versionAfter: '0.4.43' }), null, 'removals only');
+  assert.equal(changelogGuard({ addedLines: ['## v0.4.43 (2026-09-26)'], versionBefore: '0.4.43', versionAfter: '0.4.43' }), null,
+    'rewriting a version heading is not release notes written by hand (Issue #566)');
 });
 
 const FIX = {
@@ -193,9 +196,9 @@ const underTest = () => {
 
 test('this commit edits CHANGELOG.md only if it bumps the version', () => {
   for (const sha of underTest()) {
-    const stat = git('diff', '--numstat', `${sha}^`, sha, '--', 'CHANGELOG.md');
-    const added = stat ? Number(stat.split('\t')[0]) : 0;
-    const why = changelogGuard({ added, versionBefore: versionAt(`${sha}^`), versionAfter: versionAt(sha) });
+    const addedLines = git('diff', '--unified=0', `${sha}^`, sha, '--', 'CHANGELOG.md')
+      .split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1));
+    const why = changelogGuard({ addedLines, versionBefore: versionAt(`${sha}^`), versionAfter: versionAt(sha) });
     assert.equal(why, null, `${sha.slice(0, 8)}: ${why}`);
   }
 });
@@ -212,4 +215,26 @@ test('this commit ships the changelog.d fragment the code it changes owes', () =
     });
     assert.equal(why, null, `${sha.slice(0, 8)}: ${why}`);
   }
+});
+
+test('the version heading carries no em dash: the date sits in parentheses (Issue #566)', () => {
+  const out = fold(MD, FRAGS, { version: '0.4.44', date: '2026-09-27' });
+  const heading = out.split('\n').find((l) => l.startsWith('## v0.4.44'));
+  assert.equal(heading, '## v0.4.44 (2026-09-27)');
+  assert.ok(!out.includes('\u2014'), 'nothing the fold writes carries U+2014');
+});
+
+test('no version heading in CHANGELOG.md carries an em dash (Issue #566)', () => {
+  const headings = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8').split('\n').filter((l) => l.startsWith('## v'));
+  assert.ok(headings.length > 1, 'the file holds released sections');
+  const dashed = headings.filter((l) => l.includes('\u2014'));
+  assert.deepEqual(dashed, [], 'a heading written before Issue #566 was swept in the same change');
+  for (const l of headings) assert.match(l, /^## v\d+\.\d+\.\d+ \(\d{4}-\d{2}-\d{2}\)$/);
+});
+
+test('fold finds a heading it wrote itself, so a second fold of one version appends to it (Issue #566)', () => {
+  const once = fold(MD, FRAGS, { version: '0.4.44', date: '2026-09-27' });
+  const twice = fold(once, [{ name: 'later-11.md', text: '- **Later** (Issue #11): body.\n' }], { version: '0.4.44', date: '2026-09-27' });
+  assert.equal(twice.split('## v0.4.44').length - 1, 1, 'one heading, not two');
+  assert.match(twice, /## v0\.4\.44 \(2026-09-27\)[\s\S]*- \*\*Alpha\*\*[\s\S]*- \*\*Later\*\*/);
 });
