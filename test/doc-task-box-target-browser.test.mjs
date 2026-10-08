@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let table;
 const s = await launch('doc task box tap target', (weave) => {
@@ -13,7 +13,7 @@ if (s) {
   let n = 0;
   const open = async (viewport, colorScheme = 'light') => {
     const id = weave.createEntity(table, { name: `Tasks ${++n}`, doc: '- [ ] first task\n- [ ] second task\n- [ ] third task\n' }).id;
-    const page = await browser.newPage({ viewport, colorScheme, hasTouch: true });
+    const page = viewport ? await browser.newPage({ viewport, colorScheme, hasTouch: true }) : await phonePage(await phoneBrowser(), { colorScheme });
     await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.vditor-ir .vditor-task input[type="checkbox"]');
     return { id, page };
@@ -25,7 +25,7 @@ if (s) {
 
   for (const colorScheme of ['light', 'dark']) {
     test(`on a phone a task box is a 44px target with a visible box, in ${colorScheme} (Issue #705)`, async () => {
-      const { page } = await open({ width: 390, height: 844 }, colorScheme);
+      const { page } = await open(null, colorScheme);
       try {
         const m = await page.evaluate(() => {
           const box = document.querySelector('.vditor-ir .vditor-task input[type="checkbox"]');
@@ -43,7 +43,7 @@ if (s) {
   }
 
   test('on a phone a tap 10px off the box ticks the task, and a tap on its text does not (Issue #705)', async () => {
-    const { id, page } = await open({ width: 390, height: 844 });
+    const { id, page } = await open(null);
     try {
       const [box, text] = await page.evaluate(() => {
         const input = document.querySelector('.vditor-ir .vditor-task input[type="checkbox"]');

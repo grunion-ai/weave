@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch } from './lib/browser.mjs';
+import { launch, PHONE, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let acme;
 const s = await launch('use template', (root) => {
@@ -102,9 +102,9 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`the dialog fits a 375px screen and says a refusal legibly (${theme})`, async () => {
+    test(`the dialog fits the ${PHONE} screen and says a refusal legibly (${theme})`, async () => {
       root.updateSpace('CRM', { template: true });
-      const page = await browser.newPage({ viewport: { width: 375, height: 760 }, colorScheme: theme });
+      const page = await phonePage(await phoneBrowser(), { colorScheme: theme });
       try {
         await page.goto(`${base}/#/space/${root.getSpace('CRM').id}`, { waitUntil: 'load' });
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);

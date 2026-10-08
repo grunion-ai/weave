@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phoneProfile } from './lib/browser.mjs';
 
 let table;
 const s = await launch('document autosave on a phone', (weave) => {
@@ -11,16 +11,8 @@ const s = await launch('document autosave on a phone', (weave) => {
 
 const WRITE_CEILING_MS = 15000;
 
-const PHONE = {
-  viewport: { width: 390, height: 844 },
-  deviceScaleFactor: 3,
-  isMobile: true,
-  hasTouch: true,
-  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
-};
-
 if (s) {
-  const { browser, base, weave } = s;
+  const { base, weave } = s;
   let n = 0;
 
   const noDebounce = (ctx) => ctx.addInitScript(() => {
@@ -45,7 +37,7 @@ if (s) {
 
   const open = async (field, { hash } = {}) => {
     const id = weave.createEntity(table, { name: `Row ${++n}` }).id;
-    const ctx = await browser.newContext(PHONE);
+    const ctx = await (await phoneBrowser()).newContext(phoneProfile().page);
     await noDebounce(ctx);
     const page = await ctx.newPage();
     await page.goto(`${base}/`, { waitUntil: 'networkidle' });

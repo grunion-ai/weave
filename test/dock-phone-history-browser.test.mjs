@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let deals, contacts, a, jane;
 const s = await launch('dock phone history', (weave) => {
@@ -20,7 +20,7 @@ if (s) {
   const depth = (page) => page.evaluate(() => history.length);
 
   async function phoneTable(colorScheme = 'light') {
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, colorScheme });
+    const page = await phonePage(await phoneBrowser(), { colorScheme });
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.evaluate((id) => { location.hash = `#/table/${id}`; }, deals.id);
     await page.waitForSelector(`tr[data-eid="${a.id}"] .open-link`);

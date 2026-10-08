@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let notes;
 const s = await launch('doc undo gesture', (weave) => {
@@ -8,7 +8,7 @@ const s = await launch('doc undo gesture', (weave) => {
   notes = weave.createTable({ space: 'Scratch', name: 'Note' });
 });
 if (s) {
-  const { base, browser, weave } = s;
+  const { base, weave } = s;
   const settles = (page, want) => page.waitForFunction((w) =>
     window.__weaveEditors.values().next().value.getValue().trim() === w, want, { timeout: 10000 });
   const gesture = (page, inputType) => page.evaluate((t) => {
@@ -19,7 +19,7 @@ if (s) {
 
   test('the phone undo and redo gestures step through the document history (Issue #707)', async () => {
     const id = weave.createEntity(notes, { name: 'Undo case' }).id;
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+    const page = await phonePage(await phoneBrowser());
     try {
       await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.vditor-ir [contenteditable="true"]');

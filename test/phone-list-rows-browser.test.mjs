@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, settled } from './lib/browser.mjs';
+import { launch, settled, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const s = await launch('phone list rows', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -23,8 +23,8 @@ const s = await launch('phone list rows', (weave) => {
 
 if (s) {
   const { base, browser, table, compact, compactId } = s;
-  const open = async ({ width = 390, theme = 'light', density = null } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+  const open = async ({ width, theme = 'light', density = null } = {}) => {
+    const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(await phoneBrowser());
     await page.addInitScript(([t, id, d]) => { localStorage.setItem('weave-theme', t); if (d) localStorage.setItem(`weave-grid-density:${id}`, d); }, [theme, compactId, density]);
     await page.goto(`${base}/${density ? compact : table}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main tbody tr.entity-row');
@@ -52,7 +52,7 @@ if (s) {
       token: getComputedStyle(table).getPropertyValue('--wv-row-h').trim(),
       head: table.tHead ? getComputedStyle(table.tHead).display : 'none',
       secondary: getComputedStyle(document.body).getPropertyValue('--tblr-secondary').trim(),
-      rows, scrollWidth: document.documentElement.scrollWidth,
+      rows, scrollWidth: document.documentElement.scrollWidth, vw: innerWidth,
     };
   });
 
@@ -64,7 +64,7 @@ if (s) {
         assert.equal(seen.theme, theme);
         assert.equal(seen.head, 'none', 'the column header is gone');
         assert.equal(seen.token, '88px', 'the phone row height is declared on the grid token');
-        assert.ok(seen.scrollWidth <= 390, `no sideways scroll (${seen.scrollWidth})`);
+        assert.ok(seen.scrollWidth <= seen.vw, `no sideways scroll (${seen.scrollWidth})`);
         assert.ok(seen.rows.length >= 6);
         for (const r of seen.rows) {
           assert.equal(r.height, 88, `row ${r.i} is ${r.height}px`);

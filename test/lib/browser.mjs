@@ -70,6 +70,12 @@ export function phoneProfile() {
   return { engine: defaultBrowserType, page };
 }
 export const phonePage = (browser, options = {}) => browser.newPage({ ...phoneProfile().page, ...options });
+export const phoneBrowser = () => engineOf(phoneProfile().engine);
+export const touchScroll = (page, { x, y }, dy) => page.evaluate(([px, py, d]) => {
+  let n = document.elementFromPoint(px, py);
+  while (n && n !== document.documentElement && !(n.scrollHeight > n.clientHeight && /auto|scroll/.test(getComputedStyle(n).overflowY))) n = n.parentElement;
+  (n && n !== document.documentElement ? n : document.scrollingElement).scrollBy({ top: d, behavior: 'instant' });
+}, [x, y, dy]);
 
 export async function launch(name, seed = () => {}, options = {}) {
   if (!chromium) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { engineOf, launch, painted, settled } from './lib/browser.mjs';
+import { engineOf, launch, painted, settled, PHONE, phoneBrowser, phonePage, phoneProfile } from './lib/browser.mjs';
 
 const s = await launch('phone shell', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -25,8 +25,8 @@ const s = await launch('phone shell', (weave) => {
 
 if (s) {
   const { base, browser, views, dockHash } = s;
-  const open = async (hash, { width = 390, theme = 'light', engine = browser } = {}) => {
-    const page = await engine.newPage({ viewport: { width, height: 844 } });
+  const open = async (hash, { width, theme = 'light', engine } = {}) => {
+    const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(engine ?? await phoneBrowser());
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await painted(page, '#main .nav-menu', { state: 'attached' });
@@ -45,16 +45,17 @@ if (s) {
       main: rect('#main'), sidebar: rect('#sidebar'), rail: rect('#ws-rail'),
       menu: rect('#main .nav-menu'),
       open: document.querySelector('#app').classList.contains('nav-peek'),
+      vw: innerWidth,
     };
   });
 
   for (const theme of ['light', 'dark']) {
     for (const [name, hash] of Object.entries(views)) {
-      test(`${name} at 390×844 does not scroll sideways (${theme})`, async () => {
+      test(`${name} on the ${PHONE} profile does not scroll sideways (${theme})`, async () => {
         const page = await open(hash, { theme });
         const seen = await shell(page);
         assert.equal(seen.theme, theme, 'the page must be in the theme under test');
-        assert.ok(seen.scrollWidth <= 390, `document scrollWidth is ${seen.scrollWidth}`);
+        assert.ok(seen.scrollWidth <= seen.vw, `document scrollWidth is ${seen.scrollWidth}`);
         assert.ok(seen.main.width >= 350, `#main is ${seen.main.width}px wide`);
         assert.equal(seen.sidebar.width, 0, 'the sidebar is out of the flow until the drawer opens');
         assert.equal(seen.rail.width, 0, 'below 600px the rail folds into the drawer');
@@ -72,8 +73,8 @@ if (s) {
       assert.ok(seen.open, 'the menu button opens the drawer');
       assert.equal(seen.rail.left, 0, 'the rail rides in the drawer');
       assert.equal(seen.sidebar.left, 0, 'the menu covers the screen (Feature #269)');
-      assert.ok(seen.sidebar.right <= 390, 'the drawer fits the screen');
-      assert.ok(seen.scrollWidth <= 390, `the open drawer does not widen the page (${seen.scrollWidth})`);
+      assert.ok(seen.sidebar.right <= seen.vw, 'the drawer fits the screen');
+      assert.ok(seen.scrollWidth <= seen.vw, `the open drawer does not widen the page (${seen.scrollWidth})`);
       const small = await page.evaluate(() => [...document.querySelectorAll('#sidebar a, #sidebar button, #ws-rail a, #ws-rail button')]
         .map((e) => [e, e.getBoundingClientRect()])
         .filter(([e, r]) => r.width && r.height && getComputedStyle(e).visibility !== 'hidden' && (r.width < 32 || r.height < 32))
@@ -120,7 +121,7 @@ if (s) {
     const seen = await shell(page);
     assert.equal(seen.sidebar.width, 264, 'the sidebar keeps its 264px');
     assert.equal(seen.menu.width, 0, 'no menu button');
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize(phoneProfile().page.viewport);
     await page.click('#main .nav-menu');
     await page.setViewportSize({ width: 1280, height: 844 });
     await page.waitForFunction(() => !document.querySelector('#app').classList.contains('nav-peek'), null, { timeout: 3000 }).catch(() => {});
@@ -142,6 +143,7 @@ if (s) {
       gutter: rect(document.querySelector('#dock-gutter')),
       main: rect(document.querySelector('#main')),
       hit: !!document.elementFromPoint(195, 420)?.closest('#dock'),
+      vw: innerWidth, vh: innerHeight,
     };
   });
   const openDock = async (opts) => {
@@ -153,16 +155,16 @@ if (s) {
 
   for (const name of extra) {
     for (const theme of ['light', 'dark']) {
-      test(`a docked record at 390×844 is a full-screen sheet (${name}, ${theme})`, async () => {
+      test(`a docked record on the ${PHONE} profile is a full-screen sheet (${name}, ${theme})`, async () => {
         const page = await openDock({ theme, engine: await engineOf(name) });
         const seen = await sheet(page);
         assert.equal(seen.theme, theme, 'the page must be in the theme under test');
         assert.equal(seen.position, 'fixed', 'the dock leaves the flex row');
-        assert.deepEqual([seen.dock.left, seen.dock.top, seen.dock.width, seen.dock.height], [0, 0, 390, 844], 'and covers the viewport');
+        assert.deepEqual([seen.dock.left, seen.dock.top, seen.dock.width, seen.dock.height], [0, 0, seen.vw, seen.vh], 'and covers the viewport');
         assert.ok(seen.name.width >= 200, `the name field is ${seen.name.width}px wide`);
         assert.ok(seen.name.height < 120, `the name "Wire Stripe webhooks" takes a line or two, not ${seen.name.height}px`);
         assert.equal(seen.gutter.width, 0, 'there is no divider to drag');
-        assert.equal(seen.scrollWidth, 390, 'the page does not scroll sideways');
+        assert.equal(seen.scrollWidth, seen.vw, 'the page does not scroll sideways');
         assert.ok(seen.hit, 'the sheet is on top: a tap mid-screen lands in it');
         await page.close();
       });
@@ -181,7 +183,7 @@ if (s) {
       await again.waitForFunction(() => document.querySelector('#dock').hidden);
       seen = await sheet(again);
       assert.ok(seen.main.width >= 350, `Esc gives the table back at ${seen.main.width}px`);
-      assert.equal(seen.scrollWidth, 390);
+      assert.equal(seen.scrollWidth, seen.vw);
       await again.close();
     });
   }

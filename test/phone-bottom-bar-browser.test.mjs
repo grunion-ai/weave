@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const s = await launch('phone bottom bar', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -12,8 +12,8 @@ const s = await launch('phone bottom bar', (weave) => {
 
 if (s) {
   const { base, browser, tableId, table, docked } = s;
-  const open = async (hash, { width = 390, theme = 'light' } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+  const open = async (hash, { width, theme = 'light' } = {}) => {
+    const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(await phoneBrowser());
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.bug-fab', { state: 'attached' });

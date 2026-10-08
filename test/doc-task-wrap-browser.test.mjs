@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const LONG = 'Kyle tries the demo deck and sends back what felt wrong about reach, hold, grid weight on screen and which lines win';
 const URL = `https://example.com/${'a'.repeat(200)}`;
@@ -12,9 +12,9 @@ const s = await launch('doc task wrap', (weave) => {
 });
 
 if (s) {
-  const { base, browser } = s;
+  const { base } = s;
   test('a checklist item wraps between words, and a long URL still fits the column (Issue #715)', async () => {
-    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+    const page = await phonePage(await phoneBrowser());
     try {
       await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.vditor-ir .vditor-task input');

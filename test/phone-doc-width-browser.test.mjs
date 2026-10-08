@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const BODY = Array.from({ length: 12 }, (_, i) => `Paragraph ${i + 1}. The quick brown fox jumps over the lazy dog.`).join('\n\n');
-const PHONE = { width: 375, height: 812 };
-const COLUMN = 335;
 const GUTTER = 20;
 const RIGHT_GUTTER = 24;
 
@@ -22,15 +20,20 @@ if (s) {
   const column = (page) => page.evaluate(() => {
     const para = [...document.querySelectorAll('.doc-section .vditor-reset > p')][0].getBoundingClientRect();
     const sec = document.querySelector('.doc-section');
+    let bar = 0;
+    for (let n = sec; n; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      bar += n.offsetWidth - n.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
+    }
     return {
       left: Math.round(para.left), width: Math.round(para.width),
-      right: Math.round(innerWidth - para.right),
+      right: Math.round(innerWidth - para.right), vw: innerWidth, bar,
       sectionPad: getComputedStyle(sec).paddingLeft,
     };
   });
 
   const open = async (url, viewport, wait) => {
-    const page = await browser.newPage({ viewport });
+    const page = viewport ? await browser.newPage({ viewport }) : await phonePage(await phoneBrowser());
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForSelector('.doc-section .vditor-ir [contenteditable="true"]');
     if (wait) await page.waitForSelector(wait);
@@ -39,20 +42,20 @@ if (s) {
   };
 
   test('on a phone a row opened by permalink gives the text a full column (Issue #709)', async () => {
-    const page = await open(`${base}/#/entity/${row.id}`, PHONE);
+    const page = await open(`${base}/#/entity/${row.id}`, null);
     try {
       const c = await column(page);
-      assert.ok(c.width >= COLUMN, `the text column is ${c.width}px of a 375px screen, wanted at least ${COLUMN}px (${JSON.stringify(c)})`);
+      assert.ok(c.width >= c.vw - 2 * GUTTER - c.bar, `the text column is ${c.width}px of a ${c.vw}px screen with a ${c.bar}px scrollbar, wanted at least ${c.vw - 2 * GUTTER - c.bar}px (${JSON.stringify(c)})`);
       assert.ok(c.left <= GUTTER, `the text starts ${c.left}px in, wanted at most ${GUTTER}px`);
-      assert.ok(c.right <= RIGHT_GUTTER, `and ends ${c.right}px from the right edge, the gutter plus the pane card's own 8px margin`);
+      assert.ok(c.right <= RIGHT_GUTTER + c.bar, `and ends ${c.right}px from the right edge, the gutter plus the pane card's own 8px margin and a ${c.bar}px scrollbar`);
     } finally { await page.close(); }
   });
 
   test('on a phone a row opened from a table gives the text a full column (Issue #709)', async () => {
-    const page = await open(`${base}/#/table/${notes.id}?e=${row.id}`, PHONE, '#dock .dock-entity');
+    const page = await open(`${base}/#/table/${notes.id}?e=${row.id}`, null, '#dock .dock-entity');
     try {
       const c = await column(page);
-      assert.ok(c.width >= COLUMN, `the docked text column is ${c.width}px of a 375px screen, wanted at least ${COLUMN}px (${JSON.stringify(c)})`);
+      assert.ok(c.width >= c.vw - 2 * GUTTER - c.bar, `the docked text column is ${c.width}px of a ${c.vw}px screen with a ${c.bar}px scrollbar, wanted at least ${c.vw - 2 * GUTTER - c.bar}px (${JSON.stringify(c)})`);
       assert.ok(c.left <= GUTTER, `the text starts ${c.left}px in, wanted at most ${GUTTER}px`);
     } finally { await page.close(); }
   });

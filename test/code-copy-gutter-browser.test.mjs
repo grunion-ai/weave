@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const LONG = 'const aVeryLongVariableNameThatShouldScrollInsideItsOwnBox = someFunction(argumentOne, argumentTwo);';
 let id;
@@ -12,9 +12,9 @@ const s = await launch('code copy gutter', (weave) => {
 });
 if (s) {
   const { base, browser } = s;
-  for (const [width, colorScheme] of [[375, 'light'], [375, 'dark'], [1280, 'light']]) {
-    test(`the code block copy button sits in its own gutter, not on the code, at ${width}px in ${colorScheme} (Issue #694)`, async () => {
-      const page = await browser.newPage({ viewport: { width, height: 800 }, colorScheme });
+  for (const [width, colorScheme] of [['iPhone profile', 'light'], ['iPhone profile', 'dark'], [1280, 'light']]) {
+    test(`the code block copy button sits in its own gutter, not on the code, at ${typeof width === 'number' ? `${width}px` : `the ${width}`} in ${colorScheme} (Issue #694)`, async () => {
+      const page = typeof width === 'number' ? await browser.newPage({ viewport: { width, height: 800 }, colorScheme }) : await phonePage(await phoneBrowser(), { colorScheme });
       try {
         await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('.doc-editor .vditor-copy span');

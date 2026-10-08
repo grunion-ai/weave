@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let id;
 const s = await launch('doc code block marker', (weave) => {
@@ -12,9 +12,9 @@ const s = await launch('doc code block marker', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  for (const [label, viewport] of [['phone', { width: 375, height: 812 }], ['desktop', { width: 1280, height: 800 }]]) {
+  for (const [label, viewport] of [['phone', null], ['desktop', { width: 1280, height: 800 }]]) {
     test(`a code block at rest paints nothing outside its box on a ${label} (Issue #704)`, async () => {
-      const page = await browser.newPage({ viewport });
+      const page = viewport ? await browser.newPage({ viewport }) : await phonePage(await phoneBrowser());
       try {
         await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('.vditor-ir [data-type="code-block"] pre.vditor-ir__preview');

@@ -1,0 +1,1 @@
+- The phone browser tests now open their pages as an iPhone 15 in WebKit (393x659 viewport, touch, iOS Safari agent) through the shared profile in `test/lib/browser.mjs`, in place of a 390 or 375 px Chromium window. Desktop cases stay on Chromium. `touchScroll` scrolls the pane under a point the way a finger does (Issue #732).

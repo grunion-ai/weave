@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const BODY = Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1}. The quick brown fox jumps over the lazy dog and keeps going.`).join('\n\n');
-const PHONE = { width: 375, height: 812 };
 const PINNED = { loose: false, position: 'sticky' };
 const LOOSE = { loose: true, position: 'static', viewH: '0px' };
 
@@ -62,7 +61,7 @@ if (s) {
   };
 
   const unpins = async (pane, header, url) => {
-    const page = await browser.newPage({ viewport: PHONE });
+    const page = await phonePage(await phoneBrowser());
     try {
       await openRow(page, url);
       if (pane === '#dock') await page.waitForSelector('#dock .dock-entity > .view-header');
@@ -74,7 +73,7 @@ if (s) {
       const before = await chromeDepth(page, pane);
       assert.ok(before.scrolled > 200, `the document really scrolled: ${before.scrolled}`);
 
-      const inset = await openKeyboard(page, 400);
+      const inset = await openKeyboard(page, await page.evaluate(() => innerHeight - 412));
       assert.ok(inset > 350, `the fake keyboard hides ${inset}px of the layout viewport`);
       const loose = await eventually(() => readHeader(page, pane, header), LOOSE);
       assert.deepEqual(loose, LOOSE,

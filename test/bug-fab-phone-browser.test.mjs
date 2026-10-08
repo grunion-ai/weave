@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let notes, id;
 const s = await launch('bug fab phone', (weave) => {
@@ -20,7 +20,7 @@ if (s) {
 
   for (const colorScheme of ['light', 'dark']) {
     test(`on a phone the bug button is a 44px target on the screen edge, and the end of a document clears it, in ${colorScheme} (Issue #695)`, async () => {
-      const page = await browser.newPage({ viewport: { width: 390, height: 844 }, colorScheme });
+      const page = await phonePage(await phoneBrowser(), { colorScheme });
       try {
         await page.goto(`${base}/#/table/${notes.id}?e=${id}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('#dock:not([hidden]) .vditor-ir [contenteditable="true"]');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let tableRef;
 
@@ -145,7 +145,7 @@ if (s) {
   });
 
   async function openDocked(id) {
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const page = await phonePage(await phoneBrowser());
     await page.addInitScript(() => localStorage.setItem('weave-theme', 'light'));
     await page.goto(`${base}/#/table/${tableRef.id}?e=${id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#dock .vditor-ir [contenteditable="true"]');
@@ -157,7 +157,7 @@ if (s) {
     try {
       await page.click('#dock .vditor-ir__preview code');
       await page.waitForSelector('button.doc-code-raw', { state: 'visible' });
-      await page.keyboard.press('End');
+      await page.keyboard.press(page.context().browser().browserType().name() === 'webkit' && process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
       await page.keyboard.type(' // hi');
       const saved = await settle(id, /\/\/ hi/);
       assert.match(saved, /```js\nconst x = 1; \/\/ hi\n```/, `End moved the caret to the end of the line before the text was typed: ${JSON.stringify(saved)}`);
