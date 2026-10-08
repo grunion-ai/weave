@@ -462,6 +462,7 @@ function dockClose() {
   const panel = $('#dock');
   panel.hidden = true;
   panel.replaceChildren();
+  delete panel.dataset.eid;
   $('#dock-gutter').hidden = true;
   dock = null;
   syncDocTitle();
@@ -549,10 +550,13 @@ async function drawDock() {
   releaseDockPanel();
   const panel = $('#dock');
   panel.hidden = false;
+  const swapped = panel.dataset.eid !== top.id;
+  panel.dataset.eid = top.id;
   wireDockGutter(panel);
   applyDockWidth(panel);
   const host = el('div', { class: 'dock-entity' });
   panel.replaceChildren(host);
+  if (swapped) panel.scrollTop = 0;
   const dockControls = {
     nav: navArrows(dockGo),
     pose: [
