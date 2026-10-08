@@ -6086,21 +6086,46 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
 function rowSwipe(wrap, db, active, itemOf, onSaved) {
   const flow = db.system ? null : db.fields.find((f) => f.type === 'workflow');
-  let drag = null, open = null, quietUntil = 0;
+  let drag = null, open = null, quietUntil = 0, offAway = () => {};
   const swallows = () => Date.now() < quietUntil;
-  const place = (tr, x) => tr.style.setProperty('--swipe-x', `${Math.min(0, x)}px`);
+  const cellOf = (tr) => tr?.querySelector(':scope > .swipe-cell') ?? null;
+  const fullOf = (cell) => [...(cell?.children ?? [])].reduce((w, b) => w + b.offsetWidth, 0);
+  const place = (tr, x) => {
+    tr.style.setProperty('--swipe-x', `${x}px`);
+    const cell = cellOf(tr);
+    if (cell) cell.style.width = `${Math.max(0, -x)}px`;
+  };
+  const band = (x, full) => (x > 0 ? x / 3 : x < -full ? -full + (x + full) / 3 : x);
   const close = (tr = open) => {
     if (!tr) return;
+    if (open === tr) { open = null; offAway(); }
     tr.classList.remove('swipe-open', 'swiping');
-    tr.style.removeProperty('--swipe-x');
-    tr.querySelector(':scope > td.swipe-cell')?.remove();
-    if (open === tr) open = null;
-    removeEventListener('pointerdown', away, true);
+    const cell = cellOf(tr);
+    place(tr, 0);
+    if (!cell) { tr.style.removeProperty('--swipe-x'); return; }
+    let timer = 0;
+    const done = () => {
+      clearTimeout(timer);
+      cell.removeEventListener('transitionend', onEnd);
+      if (open === tr || drag?.tr === tr) return;
+      cell.remove();
+      tr.style.removeProperty('--swipe-x');
+    };
+    const onEnd = (e) => { if (e.target === cell && e.propertyName === 'width') done(); };
+    cell.addEventListener('transitionend', onEnd);
+    timer = setTimeout(done, SWIPE_SETTLE_MS + 120);
   };
-  const away = (e) => {
-    if (open?.querySelector('.swipe-cell')?.contains(e.target)) return;
-    quietUntil = Date.now() + 600;
-    close();
+  const settleOpen = (tr) => {
+    tr.classList.add('swipe-open');
+    place(tr, -fullOf(cellOf(tr)));
+    if (open === tr) return;
+    open = tr;
+    offAway = dismissOutside({
+      open: () => open === tr && tr.isConnected,
+      inside: (t) => tr.contains(t),
+      swallow: () => true,
+      close: () => { quietUntil = Date.now() + 600; close(tr); },
+    });
   };
   const move = async (item, to, from) => {
     await api('POST', `/entities/${item.id}/state`, { field: flow.name, state: to });
@@ -6112,7 +6137,7 @@ function rowSwipe(wrap, db, active, itemOf, onSaved) {
     const states = flow.states ?? [];
     const after = states.slice(states.findIndex((st) => st.name === was) + 1).slice(0, 3);
     if (!after.length) return null;
-    return el('td', { class: 'swipe-cell' }, ...after.map((st) => el('button', {
+    return el('div', { class: 'swipe-cell' }, ...after.map((st) => el('button', {
       class: `swipe-act cat-${stateCategory(flow, st.name)}`, type: 'button',
       onclick: async () => {
         close(tr);
@@ -6130,7 +6155,7 @@ function rowSwipe(wrap, db, active, itemOf, onSaved) {
     const tr = e.target.closest('tbody tr.entity-row');
     const item = tr && itemOf(tr.dataset.eid);
     if (!item || item.deleted) return;
-    drag = { tr, item, x: e.clientX, y: e.clientY, id: e.pointerId, base: open === tr ? -tr.querySelector('.swipe-cell').offsetWidth : 0, on: false };
+    drag = { tr, item, x: e.clientX, y: e.clientY, id: e.pointerId, base: open === tr ? -fullOf(cellOf(tr)) : 0, on: false };
   }, true);
   wrap.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -6139,31 +6164,30 @@ function rowSwipe(wrap, db, active, itemOf, onSaved) {
       if (Math.abs(dy) > SWIPE_SLOP && Math.abs(dy) > Math.abs(dx)) { drag = null; quietUntil = Date.now() + 600; return; }
       if (Math.abs(dx) <= SWIPE_SLOP) return;
       if (open && open !== drag.tr) close();
-      if (!drag.tr.querySelector(':scope > td.swipe-cell')) {
+      if (!cellOf(drag.tr)) {
         const cell = cellFor(drag.tr, drag.item);
         if (!cell) { drag = null; quietUntil = Date.now() + 600; return; }
         drag.tr.append(cell);
       }
       drag.on = true;
+      drag.full = fullOf(cellOf(drag.tr));
       drag.tr.classList.add('swiping');
       drag.tr.setPointerCapture?.(e.pointerId);
     }
-    place(drag.tr, drag.base + dx);
+    place(drag.tr, band(drag.base + dx, drag.full));
   }, true);
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    const { tr, on, base, x } = drag;
+    const { tr, on, base, x, full } = drag;
     drag = null;
-    if (!on) return;
+    if (!on) {
+      if (open === tr && e.type === 'pointerup') { quietUntil = Date.now() + 600; close(tr); }
+      return;
+    }
     quietUntil = Date.now() + 600;
     tr.classList.remove('swiping');
-    const width = tr.querySelector(':scope > td.swipe-cell')?.scrollWidth ?? 0;
-    if (base + e.clientX - x < -SWIPE_OPEN && width) {
-      tr.classList.add('swipe-open');
-      place(tr, -width);
-      open = tr;
-      addEventListener('pointerdown', away, true);
-    } else close(tr);
+    if (full && base + e.clientX - x < -Math.min(SWIPE_OPEN, full / 2)) settleOpen(tr);
+    else close(tr);
   };
   wrap.addEventListener('pointerup', end, true);
   wrap.addEventListener('pointercancel', end, true);
@@ -6173,6 +6197,7 @@ const SWIPE_SLOP = 10;
 const TAP_SLOP = 10;
 const TAP_MS = 300;
 const SWIPE_OPEN = 60;
+const SWIPE_SETTLE_MS = 240;
 
 const SYSTEM_COLS = {
   'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),

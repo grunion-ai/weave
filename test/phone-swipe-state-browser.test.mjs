@@ -36,7 +36,7 @@ if (s) {
   const status = (page, id) => page.evaluate(async (id) => (await (await fetch(`/api/entities/${id}`)).json()).fields.Status, id);
 
   for (const theme of ['light', 'dark']) {
-    test(`on a phone swiping a row left reveals its next states, and a pick moves it with Undo at the top (${theme}, Feature #275)`, { todo: 'Issue #743: the revealed swipe cell lays out 125px wide, not the 176px its two actions need, so In Progress is clipped and a tap on it lands on the row' }, async () => {
+    test(`on a phone swiping a row left reveals its next states, and a pick moves it with Undo at the top (${theme}, Feature #275)`, async () => {
       const page = await open({ theme });
       try {
         assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
