@@ -14,7 +14,7 @@
   },
   "scroll-grid|shift|tbody > tr.wv-spacer": {
     "issue": 631,
-    "why": "the probe counted the journey's own scroll: the grid re-windowed inside the scroll that caused it"
+    "why": "the probe counted the journey's own scroll: the grid re-windowed inside the scroll that caused it, in the one frame a busy host stretches past 50 ms (Issue #712)"
   },
   "scroll-grid|transient|tbody > *": {
     "issue": 632,

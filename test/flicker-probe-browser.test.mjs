@@ -368,6 +368,32 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a shift inside the scroll that caused it is not a shift though the frame ran 120 ms (Issue #712)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.className = 'content';
+        box.style.cssText = 'position:relative;width:400px';
+        box.innerHTML = '<p class="para" style="height:80px;margin:0;background:#ddd">text</p>';
+        document.getElementById('stage').append(box);
+      });
+      await frames(page, 3);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.evaluate(() => {
+        document.getElementById('stage').dispatchEvent(new Event('scroll', { bubbles: false }));
+        const until = performance.now() + 120;
+        while (performance.now() < until);
+        const ban = document.createElement('div');
+        ban.style.cssText = 'height:120px';
+        document.querySelector('#stage .content').prepend(ban);
+      });
+      await frames(page, 3);
+      await wait(150);
+      assert.deepEqual(await events(page, 'shift'), [], 'the re-window and the scroll shared one long frame, so the reader moved the content');
+    } finally { await page.close(); }
+  });
+
   test('a shift that lands after the scroll settles is still a shift (Issue #631)', async () => {
     const page = await open();
     try {

@@ -1,0 +1,1 @@
+- The flicker probe measures the reader's input window in painted frames rather than 50 milliseconds, so the scroll-grid ratchet entry no longer comes back on a busy host and the flicker gate stops flaking there (Issue #712).

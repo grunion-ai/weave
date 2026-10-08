@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fingerprint, confirm, frameFlashes, diffRatio, regressed, evidenceFrames, GATED } from './lib/flicker.mjs';
+import { fingerprint, confirm, frameFlashes, diffRatio, regressed, evidenceFrames, GATED, answering, ANSWER_FRAMES } from './lib/flicker.mjs';
 
 const ev = (kind, sel, extra = {}) => ({ kind, sel, ms: 40, ...extra });
 
@@ -89,10 +89,23 @@ test('evidence: a DOM flicker gets the frames around its window; a frame flash g
 
 test('a frame flash inside the window of the reader\'s own input is not a flash (Issue #638)', () => {
   const f = (t, px) => ({ t, px });
-  const aba = [f(1000, solid(W)), f(1100, solid(K)), f(1140, solid(W))];
+  const aba = [f(1000, solid(W)), f(1016, solid(W)), f(1032, solid(W)), f(1048, solid(W)), f(1064, solid(K)), f(1080, solid(W))];
   assert.equal(frameFlashes(aba).length, 1, 'with no input log the frame rule is unchanged');
-  assert.deepEqual(frameFlashes(aba, { inputs: [1085] }), [], 'the reader pressed a key 15 ms before the frame');
-  assert.equal(frameFlashes(aba, { inputs: [900] }).length, 1, 'an input 200 ms earlier is not what the frame answers');
-  assert.equal(frameFlashes(aba, { inputs: [900, 1200] }).length, 1, 'an input after the frame cannot have caused it');
-  assert.deepEqual(frameFlashes(aba, { inputs: [900, 1060, 1200] }), [], 'the newest input at or before the frame is the one that counts');
+  assert.deepEqual(frameFlashes(aba, { inputs: [1050] }), [], 'the reader pressed a key in the frame before the flash');
+  assert.equal(frameFlashes(aba, { inputs: [990] }).length, 1, 'four frames were painted before the flash, so it is not what they answered');
+  assert.equal(frameFlashes(aba, { inputs: [990, 1200] }).length, 1, 'an input after the frame cannot have caused it');
+  assert.deepEqual(frameFlashes(aba, { inputs: [990, 1040, 1200] }), [], 'the newest input at or before the frame is the one that counts');
+});
+
+test('a re-window 80 ms after the scroll is still the reader\'s own scroll while the scroll is settling (Issue #712)', () => {
+  assert.equal(answering(1080, { input: 1000, frames: [1000, 1101] }), true, 'one 100 ms frame carried both the scroll and the re-window');
+  assert.equal(answering(1080, { input: 1000, frames: [1000, 1017, 1034, 1051, 1068] }), false, 'three frames were painted first, so the reader saw the jump');
+});
+
+test('the input window is three painted frames, so a busy host widens it in milliseconds and nothing else (Issue #712)', () => {
+  assert.equal(ANSWER_FRAMES, 3);
+  assert.equal(answering(1070, { input: 1000, frames: [1000, 1017, 1034, 1051, 1068] }), false, 'at 60 Hz the window closes inside 70 ms');
+  assert.equal(answering(1270, { input: 1000, frames: [1000, 1100, 1200, 1300] }), true, 'at 10 Hz the same three frames are still open 270 ms later');
+  assert.equal(answering(1270, { input: 1000, frames: [] }), true, 'a page that painted nothing in between has not answered yet');
+  assert.equal(answering(1270, { input: 1000, frames: [1000, 1050, 1100, 1150, 1200] }), false, 'the budget is a number of frames, and three painted at 20 Hz spend it');
 });

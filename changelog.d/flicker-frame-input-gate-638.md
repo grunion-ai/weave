@@ -1,1 +1,1 @@
-- The flicker sweep no longer reports a screencast frame that answers the reader's own click, keypress or scroll. The frame rule now shares the 50 ms input window the DOM rules have had since Issue #631 (Issue #638).
+- The flicker sweep no longer reports a screencast frame that answers the reader's own click, keypress or scroll. The frame rule now shares the input window the DOM rules have had since Issue #631 (Issue #638).

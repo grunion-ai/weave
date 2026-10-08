@@ -2,11 +2,18 @@ import { decodePng } from './png.mjs';
 
 export const FLASH_MS = 150;
 
+export const ANSWER_FRAMES = 3;
+
+export const answering = (at, { input = -Infinity, frames = [], budget = ANSWER_FRAMES } = {}) => {
+  const landed = frames.filter((t) => t <= at).at(-1) ?? at;
+  return frames.filter((t) => t > input && t < landed).length < budget;
+};
+
 export const GATED = ['transient', 'blank', 'revert', 'shift'];
 
 export const fingerprint = (journey, e) => `${journey}|${e.kind}|${String(e.sel).split(' > ').slice(-2).join(' > ')}`;
 
-function probe(MAX) {
+function probe({ maxMs: MAX, answerFrames: FRAMES }) {
   const out = window.__flicker = [];
   const now = () => performance.now();
   const push = (e) => out.push({ ...e, at: Date.now() });
@@ -32,10 +39,14 @@ function probe(MAX) {
   };
   let input = -Infinity;
   const inputs = window.__flickerInputs = [];
+  const painted = window.__flickerFrames = [];
   for (const type of ['keydown', 'pointerdown', 'input', 'beforeinput', 'scroll']) {
     addEventListener(type, () => { input = now(); inputs.push(Date.now()); }, { capture: true, passive: true });
   }
-  const answering = (t) => t - input < 50;
+  const answering = (t) => {
+    const landed = painted.filter((f) => f <= t).at(-1) ?? t;
+    return painted.filter((f) => f > input && f < landed).length < FRAMES;
+  };
   const born = new Map();
   const emptied = new Map();
   const attrs = new Map();
@@ -123,7 +134,12 @@ function probe(MAX) {
       if (!m.size) attrs.delete(n);
     }
   };
-  const tick = () => { chan.port2.postMessage(0); requestAnimationFrame(tick); };
+  const tick = (t) => {
+    painted.push(t);
+    if (painted.length > 300) painted.shift();
+    chan.port2.postMessage(0);
+    requestAnimationFrame(tick);
+  };
   requestAnimationFrame(tick);
 
   try {
@@ -150,7 +166,7 @@ function probe(MAX) {
   } catch {}
 }
 
-export const installProbe = (page, { maxMs = FLASH_MS } = {}) => page.addInitScript(probe, maxMs);
+export const installProbe = (page, { maxMs = FLASH_MS, answerFrames = ANSWER_FRAMES } = {}) => page.addInitScript(probe, { maxMs, answerFrames });
 export const readProbe = (page) => page.evaluate(() => window.__flicker?.slice() ?? []);
 export const readInputs = (page) => page.evaluate(() => window.__flickerInputs?.slice() ?? []);
 export const resetProbe = (page) => page.evaluate(() => { if (window.__flicker) window.__flicker.length = 0; });
@@ -198,17 +214,18 @@ export function diffBox(a, b) {
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + step, h: y1 - y0 + step };
 }
 
-export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005, inputs = [], answerMs = 50 } = {}) {
-  const answering = (t) => {
+export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005, inputs = [], answerFrames = ANSWER_FRAMES } = {}) {
+  const painted = frames.map((f) => f.t);
+  const answered = (t) => {
     const k = inputs.findLastIndex((x) => x <= t);
-    return k >= 0 && t - inputs[k] < answerMs;
+    return k >= 0 && answering(t, { input: inputs[k], frames: painted, budget: answerFrames });
   };
   const out = [];
   for (let i = 1; i + 1 < frames.length; i++) {
     const [a, b, c] = [frames[i - 1], frames[i], frames[i + 1]];
     const ms = c.t - b.t;
     if (ms >= maxMs) continue;
-    if (answering(b.t)) continue;
+    if (answered(b.t)) continue;
     if (diffRatio(a.px, c.px) > eps) continue;
     const ratio = diffRatio(a.px, b.px);
     if (ratio < min) continue;
