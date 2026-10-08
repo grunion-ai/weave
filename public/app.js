@@ -759,7 +759,9 @@ function lucideEl(name, cls = 'wv-icon') {
   span.innerHTML = window.LUCIDE_MOVING[name];
   return span;
 }
+const canHover = matchMedia('(hover: hover)');
 document.addEventListener('mouseover', (e) => {
+  if (!canHover.matches) return;
   const host = e.target.closest?.('.mi');
   if (host && !(e.relatedTarget && host.contains(e.relatedTarget))) playIcon(host);
 });

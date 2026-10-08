@@ -1,0 +1,1 @@
+- On an iPhone, a table in the menu opens on the first tap. Every hover rule that shows, hides or moves content now applies only where the pointer can hover, and on touch screens the table row menu, the add-table button and the unlink button stay visible instead of waiting for a hover (Issue #728).
