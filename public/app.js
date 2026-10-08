@@ -6085,7 +6085,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
 
 function rowSwipe(wrap, db, active, itemOf, onSaved) {
-  const flow = db.system ? null : db.fields.find((f) => f.type === 'workflow');
+  const flows = db.system ? [] : db.fields.filter((f) => f.type === 'workflow');
+  const flow = flows.length === 1 ? flows[0] : null;
   let drag = null, open = null, quietUntil = 0, offAway = () => {};
   const swallows = () => Date.now() < quietUntil;
   const cellOf = (tr) => tr?.querySelector(':scope > .swipe-cell') ?? null;
@@ -9676,8 +9677,12 @@ async function showEntity(id) {
 }
 
 function nextStateButton(entity, db, refresh) {
-  const f = db?.fields.find((x) => x.type === 'workflow');
-  if (!f) return null;
+  const flows = (db?.fields ?? []).filter((x) => x.type === 'workflow');
+  const buttons = flows.map((f) => nextStateFor(entity, f, flows.length > 1, refresh)).filter(Boolean);
+  if (!buttons.length) return null;
+  return flows.length === 1 ? buttons[0] : el('div', { class: 'next-state-stack' }, ...buttons);
+}
+function nextStateFor(entity, f, named, refresh) {
   const was = entity.fields?.[f.name] ?? null;
   const states = f.states ?? [];
   const next = states[states.findIndex((st) => st.name === was) + 1];
@@ -9687,17 +9692,18 @@ function nextStateButton(entity, db, refresh) {
     await refresh?.();
     $('#main > .table-wrap')?.wvRefresh?.();
   };
+  const label = named ? `Move ${f.name} to ${next.name}` : `Move to ${next.name}`;
   return el('button', {
-    class: 'btn next-state-fab', type: 'button',
+    class: 'btn next-state-fab', type: 'button', dataset: { field: f.name },
     onclick: async (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
       try {
         await move(next.name);
-        toast(`Moved to ${next.name}`, false, { label: 'Undo', run: () => move(was).catch((err) => toast(err.message, true)) });
+        toast(named ? `Moved ${f.name} to ${next.name}` : `Moved to ${next.name}`, false, { label: 'Undo', run: () => move(was).catch((err) => toast(err.message, true)) });
       } catch (err) { btn.disabled = false; toast(err.message, true); }
     },
-  }, `Move to ${next.name}`);
+  }, label);
 }
 
 function pageGo(next) {

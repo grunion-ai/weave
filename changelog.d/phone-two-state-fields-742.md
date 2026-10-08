@@ -1,0 +1,1 @@
+- On a phone, a row in a table with more than one state field shows one next-step button per field, stacked and named ("Move Status to In Progress", "Move Review to Approved"), and each moves and undoes only its own field. Swipe offers no state actions on such a table, since a swipe cannot say which field it moves; a table with one state field is unchanged (Issue #742).
