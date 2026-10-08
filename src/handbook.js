@@ -1091,7 +1091,7 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 
 | Control | Where | What it does |
 | --- | --- | --- |
-| Drag a header | table view | moves the column: a line marks where it lands, and the view keeps the order. Drop it across the seam beside **#** to freeze it; drop a frozen one back across to unfreeze it |
+| Drag a header | table view | moves the column: the header lifts, the columns it passes slide aside, and a dashed placeholder opens where it will land; the view keeps the order. Drop it across the seam beside **#** to freeze it; drop a frozen one back across to unfreeze it. Escape puts it back |
 | Alt+Shift+\u2190 / \u2192 on a focused header | table view | moves the field one place. Crossing the seam freezes or unfreezes it where it stands |
 | Drag a header's right edge | table view | sets the width. Only that column changes; the columns to its right slide over, and a readout shows the width and the change. It stops at its own label |
 | Alt+\u2190 / \u2192 on a focused header | table view | narrows or widens the column by 8px, down to its label |
@@ -1099,7 +1099,7 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | Click a header, or Return on a focused one | table view | opens the field tray to rename, retype or reconfigure. The click that ends a drag or a resize opens nothing |
 | ⋮ on a header | table view | sorts by that column, stored on the table for everyone. The two rows read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The **#** column and the system columns carry a sort-only ⋮ of their own |
 | 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
-| Drag the grip | entity page | reorders fields; the table's columns follow |
+| Drag the grip | entity page | reorders fields; the table's columns follow. On a phone, press and hold a field to pick it up |
 | Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per row in this browser |
 
 The **#** column takes none of this. It is frozen to the grid's left edge, so a wide table scrolls sideways underneath it and the row keeps its id and its \`\u2197\` permalink whatever column you have read your way out to; the selection checkbox travels with it. No drag moves it, and no field can be ordered ahead of it.
@@ -2095,7 +2095,7 @@ Search is temporary: it is not saved into a view or shared with other people, an
 | You do in the view menu | What happens |
 | --- | --- |
 | Select a view | Opens its saved layout, filters and sorting. |
-| Drag a view by its handle | Reorders the list; a straight line marks where it lands. Drop it first to make it open with the table. The handle works with a mouse or a finger. |
+| Drag a view by its handle | Reorders the list; a dashed placeholder opens where it lands. Drop it first to make it open with the table. With a finger, press and hold the handle to pick it up. |
 | **Alt+↑** / **Alt+↓** on a focused view | Moves it one place. |
 | Hover or focus a view | Shows its **Rename**, **Duplicate** and **Delete** buttons. There is no right-click menu. |
 | **Rename** | Edits the name in place. **Enter** or clicking away saves; **Escape** cancels. |
@@ -2110,7 +2110,7 @@ A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` l
 
 ## Fields
 
-Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; the straight insertion line marks where it will land. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
+Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; a dashed placeholder opens where it will land and the other fields slide aside. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
 
 These changes save into the current view. Hiding a column does not delete its data. **New field** opens the same field tray as the **+** at the end of the grid's field headers. The **Rows** section shows deleted records and the Σ rollup row; each box saves into the current view, so another view keeps its own.
 
@@ -2130,7 +2130,7 @@ A list holds things to finish, in an order you set; a table holds records to com
 | **Group** levels | Up to three, in order: a select, workflow, toggle, checkbox, link or date field (dates by day, week, month or year). A link level can head its groups with the linked row's **Chip**, so a rollup with a bar on that Chip shows the group's progress. Groups follow the option order, the linked table's order, or A to Z. Every group folds, and the folds save into the view. |
 | **Completed by** | Draws that checkbox field on every row with the standard checkbox. Ticked rows leave their group for **Completed · N** at the bottom, folded until you open it. |
 | **Nest by** | A to-one link from the table to itself (a Parent link). Children indent under their parent. **Tab** on a row nests it under the row above; **Shift+Tab** takes it out a level. |
-| Drag by the handle | Moves the row: into another group sets every level that differs, sideways right nests it under the row above the line, left takes it out. With no sort the drop saves the view's manual order. |
+| Drag by the handle | Moves the row: into another group sets every level that differs, sideways right nests it under the row above the placeholder, left takes it out. With no sort the drop saves the view's manual order. |
 | A sort | Orders rows inside each group. The handle still moves rows between groups and nests them; clearing the sort brings the saved order back. |
 | The add row | Ends each innermost group. A row added there takes every group value and every filter that names one value; type the date in its own box (\`today\`, \`fri\`, \`oct 12\`). |
 | A filter | Runs first. Matching ticked rows still go to Completed. A sub-row that matches keeps its parent on screen, dimmed and not counted. Empty groups show only with no filter on. |
