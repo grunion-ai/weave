@@ -426,6 +426,8 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .add-field-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; }
 .add-field-btn:hover { color: var(--tblr-primary); border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .wv-grid tr.add-entity-row td { padding: 0; border-bottom: 0; position: sticky; bottom: 0; z-index: 1; background: var(--tblr-bg-surface); }
+.wv-grid[data-density] tbody tr.add-entity-row > td { height: var(--wv-row-h); box-sizing: border-box; }
+.wv-grid[data-density] tbody tr.add-entity-row .add-entity-btn { height: 100%; padding: 0 12px; display: flex; align-items: center; }
 .wv-grid tr.add-entity-row:hover td { background: var(--tblr-bg-surface); }
 #main > .table-wrap.wv-fit .wv-grid tr.add-entity-row td { overflow: visible; }
 #main > .table-wrap.wv-fit .wv-grid tr.add-entity-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: var(--wv-pane-pad, 24px); background: var(--tblr-bg-surface); pointer-events: none; }
@@ -2201,7 +2203,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] > .wv-cb > :is(input.inline-edit, .text-dressed, .num-dressed, .url-dressed, .doc-preview) { field-sizing: content; max-width: 100%; height: 22px; padding: 0 8px; border: 0; border-radius: 4px; font-size: 12.5px; font-weight: 400; line-height: 22px; color: var(--tblr-secondary); background: var(--wv-pill-hover); }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] .doc-preview-line ~ .doc-preview-line { display: none; }
   #main > .table-wrap .wv-grid tbody tr.add-entity-row .add-entity-btn { display: none; }
-  #main > .table-wrap .wv-grid tbody tr.add-entity-row > td { min-height: 0; padding: 12px 0 0; background: none; text-align: center; }
+  #main > .table-wrap .wv-grid tbody tr.add-entity-row > td { min-height: 0; height: auto; padding: 12px 0 0; background: none; text-align: center; }
   #main > .table-wrap .wv-grid tbody tr.add-entity-row .wv-loaded { position: static; transform: none; }
 }
 .next-state-fab, .next-state-stack { display: none; }
