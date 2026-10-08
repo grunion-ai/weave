@@ -1,5 +1,5 @@
 {
-  "_": "Flickers that were fixed and must stay fixed. Key: journey|kind|selector, as scripts/flicker-sweep.mjs prints it. Value: { \"issue\": <weave Issue number>, \"why\": \"<what flashed>\" }. The fixer adds the row's fingerprint here in the change that fixes it; test/flicker-gate-browser.test.mjs fails when one comes back.",
+  "_": "Flickers that were fixed and must stay fixed. Key: journey|kind|selector, as scripts/flicker-sweep.mjs prints it; a phone-cell flicker ends in |phone, and a key with no cell is the desktop cell. Value: { \"issue\": <weave Issue number>, \"why\": \"<what flashed>\" }. The fixer adds the row's fingerprint here in the change that fixes it; test/flicker-gate-browser.test.mjs fails when one comes back.",
   "load-home|transient|main#main > *": {
     "issue": 630,
     "why": "the route skeleton painted and was replaced inside one frame"

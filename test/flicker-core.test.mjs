@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fingerprint, confirm, frameFlashes, diffRatio, regressed, evidenceFrames, GATED, answering, ANSWER_FRAMES } from './lib/flicker.mjs';
+import { CELLS, JOURNEYS, cellsOf } from './lib/journeys.mjs';
+import { PHONE } from './lib/browser.mjs';
 
 const ev = (kind, sel, extra = {}) => ({ kind, sel, ms: 40, ...extra });
 
@@ -12,6 +14,38 @@ test('a fingerprint names the journey, the kind and the element', () => {
 test('a fingerprint keeps the last two steps of the selector, so a state class up the tree does not split one defect', () => {
   assert.equal(fingerprint('j', ev('revert', 'td.clipped > div.wv-cb > span.ms-box')), 'j|revert|div.wv-cb > span.ms-box');
   assert.equal(fingerprint('j', ev('revert', 'td > div.wv-cb > span.ms-box')), 'j|revert|div.wv-cb > span.ms-box');
+});
+
+test('a fingerprint names the matrix cell it was seen in, and a desktop one keeps its three-part form (Issue #732)', () => {
+  assert.equal(fingerprint('phone-swipe', ev('cut', 'tr.entity-row > td.swipe-cell', { cell: 'phone' })), 'phone-swipe|cut|tr.entity-row > td.swipe-cell|phone');
+  assert.equal(fingerprint('open-table', ev('transient', 'main > div.wv-skel', { cell: 'desktop' })), 'open-table|transient|main > div.wv-skel');
+  assert.equal(fingerprint('open-table', ev('transient', 'main > div.wv-skel')), 'open-table|transient|main > div.wv-skel', 'an event with no cell is the desktop cell');
+});
+
+test('the same flicker seen in two cells is two findings, each naming its cell (Issue #732)', () => {
+  const both = [ev('transient', 'div.a'), ev('transient', 'div.a', { cell: 'phone' })];
+  const got = confirm([{ j: both }, { j: both }, { j: [] }]);
+  assert.deepEqual(got.map((f) => [f.fp, f.cell]), [['j|transient|div.a', 'desktop'], ['j|transient|div.a|phone', 'phone']]);
+});
+
+test('regressed holds a fixed fingerprint to the cell it was fixed in (Issue #732)', () => {
+  const fixed = { 'open-table|transient|div.a': { issue: 1 }, 'phone-swipe|cut|td.swipe-cell|phone': { issue: 2 } };
+  assert.deepEqual(regressed({ 'open-table': [ev('transient', 'div.a')] }, fixed), ['open-table|transient|div.a'], 'an old desktop entry still matches the desktop cell');
+  assert.deepEqual(regressed({ 'open-table': [ev('transient', 'div.a', { cell: 'phone' })] }, fixed), [], 'a desktop fix says nothing about the phone');
+  assert.deepEqual(regressed({ 'phone-swipe': [ev('cut', 'td.swipe-cell', { cell: 'phone' })] }, fixed), ['phone-swipe|cut|td.swipe-cell|phone']);
+});
+
+test('the matrix is desktop Chromium at 1400x900 and the iPhone profile in WebKit (Issue #732)', () => {
+  assert.deepEqual(CELLS.desktop, { engine: 'chromium', viewport: { width: 1400, height: 900 }, hasTouch: false, isMobile: false });
+  assert.deepEqual(CELLS.phone, { engine: 'webkit', device: PHONE });
+});
+
+test('every journey walks in cells the matrix has, and the phone gets its own journeys (Issue #732)', () => {
+  for (const j of JOURNEYS) for (const c of cellsOf(j)) assert.ok(Object.hasOwn(CELLS, c), `${j.name} names cell ${c}`);
+  assert.deepEqual(cellsOf({ name: 'x' }), ['desktop'], 'a journey that names no cells walks the desktop only');
+  const phone = JOURNEYS.filter((j) => cellsOf(j).includes('phone')).map((j) => j.name);
+  for (const name of ['phone-search', 'phone-menu', 'phone-table-sheet', 'phone-picker', 'phone-open-row', 'phone-swipe']) assert.ok(phone.includes(name), `${name} walks the phone`);
+  assert.ok(phone.includes('load-home') && phone.includes('open-table'), 'desktop journeys that make sense on a phone walk it too');
 });
 
 test('confirm keeps what two runs of three saw, and drops what one run saw', () => {
@@ -61,7 +95,7 @@ test('A, B, A with B up for a beat is a flash; B that stays is a change', () => 
 test('the gate only reads the kinds a loaded machine cannot invent', () => {
   assert.ok(!GATED.includes('jank'), 'a long frame under load average 80 says nothing about the change');
   assert.ok(!GATED.includes('frame'), 'the screencast is the sweep\'s, not the gate\'s');
-  for (const k of ['transient', 'blank', 'revert', 'shift']) assert.ok(GATED.includes(k), k);
+  for (const k of ['transient', 'blank', 'revert', 'shift', 'cut']) assert.ok(GATED.includes(k), k);
 });
 
 test('regressed names a fixed fingerprint that came back, and nothing else', () => {
@@ -75,7 +109,7 @@ test('every fixed fingerprint names the Issue that fixed it', () => {
   const fixed = JSON.parse(readFileSync(new URL('./flicker-fixed.json', import.meta.url), 'utf8'));
   for (const [fp, row] of Object.entries(fixed)) {
     if (fp.startsWith('_')) continue;
-    assert.match(fp, /^[a-z-]+\|(transient|blank|revert|shift)\|.+/, `${fp} is a gated fingerprint`);
+    assert.match(fp, /^[a-z-]+\|(transient|blank|revert|shift|cut)\|[^|]+(\|(phone))?$/, `${fp} is a gated fingerprint`);
     assert.ok(Number.isInteger(row.issue) && row.issue > 0, `${fp} names its Issue`);
   }
 });

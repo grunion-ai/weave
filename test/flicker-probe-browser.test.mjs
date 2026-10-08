@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, engineOf } from './lib/browser.mjs';
 import { installProbe, readProbe, readInputs, recordFrames, frameFlashes } from './lib/flicker.mjs';
 
 const s = await launch('flicker probe', (weave) => {
@@ -10,8 +10,8 @@ const s = await launch('flicker probe', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  const open = async ({ maxMs = 5000 } = {}) => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+  const open = async ({ maxMs = 5000, engine = browser } = {}) => {
+    const page = await engine.newPage({ viewport: { width: 900, height: 700 } });
     await installProbe(page, { maxMs });
     await page.goto(base, { waitUntil: 'networkidle' });
     await page.evaluate(() => {
@@ -27,6 +27,63 @@ if (s) {
   const frames = (page, n) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const events = async (page, kind) => (await readProbe(page)).filter((e) => (kind ? e.kind === kind : e.kind !== 'jank'));
+
+  const slidingRow = (page) => page.evaluate(() => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.cssText = 'position:relative;width:390px;height:88px;overflow:hidden';
+    row.innerHTML = '<div class="body" style="height:88px;background:#ddd;transform:translateX(-176px);transition:transform .3s ease">row</div>'
+      + '<div class="acts" style="position:absolute;top:0;right:0;width:176px;height:88px;background:#36c">act</div>';
+    const shut = Object.assign(document.createElement('button'), { className: 'shut', textContent: 'shut', style: 'width:80px;height:40px' });
+    shut.addEventListener('click', () => { row.querySelector('.body').style.transform = 'translateX(0)'; row.querySelector('.acts').remove(); });
+    document.getElementById('stage').append(row, shut);
+  });
+
+  for (const engine of ['chromium', 'webkit']) {
+    test(`a painted part cut out while the rest of its row is still sliding is a cut (${engine}, Issue #732)`, async (t) => {
+      const other = engine === 'chromium' ? browser : await engineOf(engine);
+      if (!other) return t.skip(`${engine} cannot launch here`);
+      const page = await open({ engine: other });
+      try {
+        await slidingRow(page);
+        await frames(page, 3);
+        await page.evaluate(() => { window.__flicker.length = 0; });
+        await page.evaluate(() => { document.querySelector('#stage .row .body').style.transform = 'translateX(0)'; document.querySelector('#stage .row .acts').remove(); });
+        await frames(page, 3);
+        const c = await events(page, 'cut');
+        assert.equal(c.length, 1, JSON.stringify(await events(page)));
+        assert.match(c[0].sel, /div\.row > div\.acts$/);
+        assert.ok(c[0].ms > 0 && c[0].ms <= 300, `the gap shows for the rest of the slide (${c[0].ms} ms)`);
+      } finally { await page.close(); }
+    });
+  }
+
+  test('a part removed once its row has come to rest is not a cut (Issue #732)', async () => {
+    const page = await open();
+    try {
+      await slidingRow(page);
+      await frames(page, 3);
+      await page.evaluate(() => new Promise((r) => {
+        const body = document.querySelector('#stage .row .body');
+        body.addEventListener('transitionend', () => { document.querySelector('#stage .row .acts').remove(); r(); }, { once: true });
+        body.style.transform = 'translateX(0)';
+      }));
+      await frames(page, 3);
+      assert.deepEqual(await events(page, 'cut'), []);
+    } finally { await page.close(); }
+  });
+
+  test('a cut in answer to a tap is still a cut: the gap shows for the whole slide (Issue #732)', async () => {
+    const page = await open();
+    try {
+      await slidingRow(page);
+      await frames(page, 3);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.click('#stage .shut');
+      await frames(page, 3);
+      assert.equal((await events(page, 'cut')).length, 1, JSON.stringify(await events(page)));
+    } finally { await page.close(); }
+  });
 
   test('a node painted for a beat and removed is a transient, named by its selector', async () => {
     const page = await open();
@@ -122,6 +179,44 @@ if (s) {
       await frames(page, 2);
       const t = await events(page, 'transient');
       assert.equal(t.length, 1, JSON.stringify(await events(page)));
+    } finally { await page.close(); }
+  });
+
+  test('an empty see-through overlay painted and replaced is not a transient: the reader saw nothing (Issue #732)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => new Promise((r) => {
+        const host = Object.assign(document.createElement('div'), { className: 'editor', style: 'position:relative;width:300px;height:200px' });
+        host.append(Object.assign(document.createElement('p'), { textContent: 'the text under it' }));
+        document.getElementById('stage').append(host);
+        const layer = () => Object.assign(document.createElement('div'), { className: 'ref-layer', style: 'position:absolute;inset:0;pointer-events:none' });
+        const first = layer();
+        host.append(first);
+        requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+          const next = layer();
+          next.append(Object.assign(document.createElement('a'), { className: 'chip', textContent: '#12 Spec' }));
+          first.replaceWith(next);
+          r();
+        })));
+      }));
+      await frames(page, 2);
+      assert.deepEqual(await events(page, 'transient'), []);
+    } finally { await page.close(); }
+  });
+
+  test('an overlay that shows something when painted and replaced is still a transient (Issue #732)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => new Promise((r) => {
+        const host = Object.assign(document.createElement('div'), { className: 'editor', style: 'position:relative;width:300px;height:200px' });
+        document.getElementById('stage').append(host);
+        const first = Object.assign(document.createElement('div'), { className: 'ref-layer', style: 'position:absolute;inset:0' });
+        first.append(Object.assign(document.createElement('a'), { className: 'chip', textContent: '#12 Spec' }));
+        host.append(first);
+        requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => { first.replaceWith(Object.assign(document.createElement('div'), { className: 'ref-layer', style: 'position:absolute;inset:0' })); r(); })));
+      }));
+      await frames(page, 2);
+      assert.equal((await events(page, 'transient')).length, 1, JSON.stringify(await events(page)));
     } finally { await page.close(); }
   });
 

@@ -63,12 +63,20 @@ export const chromium = browserType && new Proxy(browserType, {
 
 const engineFor = (engine) => (!engine || pw[engine] === browserType ? chromium : pw[engine]);
 
+export const PHONE = 'iPhone 15';
+export function phoneProfile() {
+  if (!pw) return null;
+  const { defaultBrowserType, ...page } = pw.devices[PHONE];
+  return { engine: defaultBrowserType, page };
+}
+export const phonePage = (browser, options = {}) => browser.newPage({ ...phoneProfile().page, ...options });
+
 export async function launch(name, seed = () => {}, options = {}) {
   if (!chromium) {
     test(`${name} (browser)`, { skip: 'playwright not installed' }, () => {});
     return null;
   }
-  const browser = await engineFor(options.engine).launch();
+  const browser = await engineFor(options.phone ? phoneProfile().engine : options.engine).launch();
   if (THROTTLE) throttle(browser);
   const weave = new Weave();
   let server;
