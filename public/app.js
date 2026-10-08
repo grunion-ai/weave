@@ -5101,7 +5101,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
     for (const c of cols) {
       const f = colField(db, c);
-      if (f?.type !== 'rating') continue;
+      if (!f || !CR.ratingIcons(f)) continue;
       const td = table.querySelector(`:scope > tbody > tr.entity-row > td[data-field="${CSS.escape(c)}"]`);
       if (!td) continue;
       const cs = getComputedStyle(td);

@@ -1,0 +1,1 @@
+- A rollup or a lookup that draws rating icons now opens wide enough for all of them, and holds that width as its resize floor, the way a rating column has since Issue #404. A max-7 rollup drew 104px of icons in an 80px cell before. (Issue #564)

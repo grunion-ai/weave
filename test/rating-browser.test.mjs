@@ -290,6 +290,63 @@ if (s) {
     }));
   });
 
+  let computed;
+  const computedTable = () => {
+    if (computed) return computed;
+    const g = gaugeTable();
+    const g1 = weave.query(g, {}).items[0];
+    const panel = weave.createTable({ space: 'Buy', name: 'Panel' });
+    weave.addRelation(g, { name: 'Panel', targetDb: panel, cardinality: 'many-to-one', inverseName: 'Gauges' });
+    weave.addField(panel, { name: 'Zap', type: 'rollup', config: { relationField: 'Gauges', targetField: 'Effort', aggregate: 'max' } });
+    weave.addField(panel, { name: 'Star', type: 'rollup', config: { relationField: 'Gauges', targetField: 'Fit', aggregate: 'avg' } });
+    weave.addField(panel, { name: 'Love', type: 'rollup', config: { relationField: 'Gauges', targetField: 'Love', aggregate: 'avg' } });
+    weave.addField(panel, { name: 'Glow', type: 'rollup', config: { relationField: 'Gauges', targetField: 'Brightness', aggregate: 'avg' } });
+    const p1 = weave.createEntity(panel, { name: 'p1' });
+    weave.updateEntity(g1.id, { Panel: p1.id });
+    const reading = weave.createTable({ space: 'Buy', name: 'Reading' });
+    weave.addRelation(reading, { name: 'Gauge', targetDb: g, cardinality: 'many-to-one', inverseName: 'Readings' });
+    weave.addField(reading, { name: 'Lit', type: 'lookup', config: { relationField: 'Gauge', targetField: 'Brightness' } });
+    weave.createEntity(reading, { name: 'r1', values: { Gauge: g1.id } });
+    computed = { panel, reading };
+    return computed;
+  };
+  const openOn = async (tableId, field, colorScheme) => {
+    const page = await browser.newPage({ viewport: { width: 1500, height: 900 }, colorScheme });
+    await page.goto(`${base}/#/table/${tableId}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector(`.wv-grid tbody tr.entity-row td[data-field="${field}"] .wv-rating`);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return page;
+  };
+
+  for (const colorScheme of ['light', 'dark']) {
+    test(`a rollup that draws rating icons opens wide enough for them (${colorScheme}, Issue #564)`, async () => {
+      const page = await openOn(computedTable().panel.id, 'Glow', colorScheme);
+      try {
+        const cols = await columns(page);
+        for (const [field, max] of [['Zap', 3], ['Star', 5], ['Love', 7], ['Glow', 12]]) {
+          const c = cols[field];
+          assert.ok(c, `${field} drew a rating`);
+          assert.ok(c.icons <= c.room, `${field} (max ${max}): ${c.icons}px of icons in a ${c.room}px content box`);
+          assert.ok(c.overhang <= 1, `${field} (max ${max}): the last icon hangs ${c.overhang}px past the cell's content edge`);
+        }
+        assert.equal(cols.Zap.width, cols.Star.width, 'three and five icons both sit inside the rollup default');
+        assert.ok(cols.Love.width > cols.Star.width, 'seven icons open the rollup wider');
+        assert.ok(cols.Glow.width > cols.Love.width, 'twelve wider still');
+      } finally { await page.close(); }
+    });
+  }
+
+  test('a lookup that draws rating icons opens wide enough for them (Issue #564)', async () => {
+    const page = await openOn(computedTable().reading.id, 'Lit', 'light');
+    try {
+      const c = (await columns(page)).Lit;
+      assert.ok(c, 'the lookup drew a rating');
+      assert.ok(c.icons <= c.room, `Lit (max 12): ${c.icons}px of icons in a ${c.room}px content box`);
+      assert.ok(c.overhang <= 1, `Lit (max 12): the last icon hangs ${c.overhang}px past the cell's content edge`);
+      assert.ok(c.width > CR.DEFAULT_WIDTHS.lookup, 'twelve icons open the lookup past its 136px default');
+    } finally { await page.close(); }
+  });
+
   test('the cell icon geometry is the geometry the width is computed from', async () => {
     const page = await open(gaugeTable().id, 'light');
     try {
