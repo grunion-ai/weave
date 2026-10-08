@@ -812,10 +812,16 @@ function publishViewHeaderHeight() {
   const dock = document.querySelector('#dock');
   publishHeaderOn(dock, dock?.querySelector('.dock-entity > .view-header'), dock?.clientHeight ?? 0);
 }
-function publishHeaderOn(holder, box, room) {
+function keyboardInset() {
+  const vv = window.visualViewport;
+  return vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
+}
+function publishHeaderOn(holder, box, pane) {
   if (!holder || !box) return;
   const h = box.getBoundingClientRect().height;
-  const holds = h <= room / 2;
+  const keyboard = keyboardInset();
+  const writing = keyboard > 0 && dockCoversScreen.matches;
+  const holds = h <= (pane - keyboard) / (writing ? 4 : 2);
   holder.classList.toggle('view-header-loose', !holds);
   const v = holds ? `${h}px` : '0px';
   if (holder.style.getPropertyValue('--wv-view-h') !== v) holder.style.setProperty('--wv-view-h', v);
@@ -825,6 +831,7 @@ function stickViewHeader(box) {
   return box;
 }
 addEventListener('resize', publishViewHeaderHeight);
+window.visualViewport?.addEventListener('resize', publishViewHeaderHeight);
 
 const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: 'lucide:table' };
 function crumbIconEl(c) {
@@ -8890,8 +8897,7 @@ function placeToolbarBubble(st) {
   const docked = dockCoversScreen.matches;
   bar.classList.toggle('wv-bar-dock', docked);
   if (docked) {
-    const vv = window.visualViewport;
-    const keyboard = vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
+    const keyboard = keyboardInset();
     bar.style.left = '';
     bar.style.top = '';
     bar.style.bottom = `${keyboard}px`;

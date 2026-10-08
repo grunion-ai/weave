@@ -1,0 +1,1 @@
+- On a phone the row header no longer holds the top of the screen while you write: the sticky/loose ratio now subtracts the keyboard inset from the room it measures, and below 600px a header may take a quarter of that room rather than half. Desktop sticky headers are unchanged. (Issue #708)
