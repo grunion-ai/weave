@@ -20,7 +20,7 @@ if (s) {
 
     await page.goto(`${base}/#/map`, { waitUntil: 'networkidle' });
     await page.waitForSelector('svg.relmap g.auto');
-    const pills = await page.$$eval('svg.relmap g.auto', (gs) => gs
+    const pills = await page.locator('svg.relmap g.auto').evaluateAll((gs) => gs
       .map((g) => ({ y: Number(g.querySelector('rect').getAttribute('y')), text: g.querySelector('title').textContent }))
       .sort((a, b) => a.y - b.y).map((p) => p.text));
     assert.deepEqual(pills, ['⚡ created ⇒ comment', '⚡ created ⇒ append Description'],

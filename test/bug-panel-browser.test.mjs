@@ -16,7 +16,7 @@ if (s) {
     return page;
   }
 
-  const note = (page) => page.$eval('#bug-panel .bug-note', (n) => n.value);
+  const note = (page) => page.locator('#bug-panel .bug-note').first().evaluate((n) => n.value);
   const picked = (page) => page.$$eval('#bug-panel .bug-cat.picked', (ns) => ns.map((n) => n.dataset.cat));
   const clickBehind = (page) => page.click('main#main', { position: { x: 8, y: 8 }, force: true });
 

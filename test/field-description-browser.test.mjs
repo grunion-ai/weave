@@ -24,7 +24,7 @@ if (s) {
     assert.equal(await page.$('.fieldrow[data-field="Qty"] .fieldrow-desc'), null, 'a field without one wears no empty line');
     await page.goto(`${base}/#/table/${orders.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid th.col-head');
-    const titles = await page.$$eval('.wv-grid th.col-head', (ths) => ths.map((t) => [t.textContent.trim().replace(/\s.*$/, ''), t.getAttribute('title')]));
+    const titles = await page.locator('.wv-grid th.col-head').evaluateAll((ths) => ths.map((t) => [t.textContent.trim().replace(/\s.*$/, ''), t.getAttribute('title')]));
     assert.equal(titles.find(([n]) => n === 'Vendor')?.[1], NOTE);
     assert.equal(titles.find(([n]) => n === 'Qty')?.[1], null, 'no tooltip where there is no description');
     await page.close();
@@ -36,14 +36,14 @@ if (s) {
     await page.waitForSelector('.wv-grid th.col-head');
     await page.evaluate(() => [...document.querySelectorAll('.wv-grid th.col-head')].find((t) => t.textContent.includes('Qty')).click());
     await page.waitForSelector('textarea.field-desc');
-    assert.equal(await page.$eval('textarea.field-desc', (n) => n.value), '', 'Qty has none yet');
+    assert.equal(await page.locator('textarea.field-desc').first().evaluate((n) => n.value), '', 'Qty has none yet');
     await page.fill('textarea.field-desc', 'How many units — whole numbers');
     await page.click('.tray-actions .btn-primary, .tray .btn-primary');
     await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid th.col-head')].find((t) => t.textContent.includes('Qty'))?.getAttribute('title') === 'How many units — whole numbers', null, { timeout: 5000 });
     assert.equal(weave.describeSchema().find((sp) => !sp.system).tables[0].fields.find((f) => f.name === 'Qty').description, 'How many units — whole numbers', 'the engine has it');
     await page.evaluate(() => [...document.querySelectorAll('.wv-grid th.col-head')].find((t) => t.textContent.includes('Qty')).click());
     await page.waitForSelector('textarea.field-desc');
-    assert.equal(await page.$eval('textarea.field-desc', (n) => n.value), 'How many units — whole numbers', 'reopening shows what was written');
+    assert.equal(await page.locator('textarea.field-desc').first().evaluate((n) => n.value), 'How many units — whole numbers', 'reopening shows what was written');
     await page.fill('textarea.field-desc', '');
     await page.click('.tray-actions .btn-primary, .tray .btn-primary');
     await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid th.col-head')].find((t) => t.textContent.includes('Qty'))?.getAttribute('title') === null, null, { timeout: 5000 });

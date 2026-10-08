@@ -18,7 +18,7 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
   }
-  const rowIds = (page) => page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => r.dataset.eid));
+  const rowIds = (page) => page.locator('.wv-grid tbody tr.entity-row').evaluateAll((rs) => rs.map((r) => r.dataset.eid));
   const live = (id) => !weave.state.entities[id].deletedAt;
   const waitRows = (page, n) => page.waitForFunction(
     (k) => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === k, n, { timeout: 5000 });

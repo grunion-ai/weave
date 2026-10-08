@@ -94,7 +94,7 @@ if (s) {
     await page.waitForSelector('#modal input[name="name"]');
     await page.click('#modal .picker-face');
     await page.waitForSelector('.chip-pop .picker-row');
-    const spaces = await page.$$eval('.chip-pop .picker-row', (rs) => rs.map((r) => r.textContent.trim()));
+    const spaces = await page.locator('.chip-pop .picker-row').evaluateAll((rs) => rs.map((r) => r.textContent.trim()));
     assert.ok(!spaces.some((v) => v.includes('Workspace')), 'the system space is not on offer');
     assert.ok(spaces.some((v) => v.includes('Work')));
     await page.fill('.chip-pop .picker-search', 'Work');

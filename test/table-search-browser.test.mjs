@@ -29,7 +29,7 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
   };
-  const shown = (page) => page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => r.dataset.eid).sort());
+  const shown = (page) => page.locator('.wv-grid tbody tr.entity-row').evaluateAll((rs) => rs.map((r) => r.dataset.eid).sort());
   const rowsAre = (page, ids) => page.waitForFunction((want) => {
     const got = [...document.querySelectorAll('.wv-grid tbody tr.entity-row')].map((r) => r.dataset.eid).sort();
     return JSON.stringify(got) === JSON.stringify(want);

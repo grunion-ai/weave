@@ -36,7 +36,7 @@ if (s) {
     await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('input.date-text');
     await page.waitForTimeout(300);
-    const cut = await page.$$eval('input.date-text', (is) => is.map((i) => ({ v: i.value, cut: i.scrollWidth - i.clientWidth })));
+    const cut = await page.locator('input.date-text').evaluateAll((is) => is.map((i) => ({ v: i.value, cut: i.scrollWidth - i.clientWidth })));
     const lock = cut.find((c) => /30th/.test(c.v));
     assert.ok(lock, 'the ordinal date is on the page');
     assert.ok(lock.cut <= 1, `nothing is cut off (${lock.cut}px hidden)`);

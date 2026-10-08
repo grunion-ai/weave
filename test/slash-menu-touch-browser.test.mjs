@@ -18,8 +18,7 @@ if (s) {
       await page.click('.vditor-ir [contenteditable="true"]');
       await page.keyboard.type('/');
       await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) .slash-item', { state: 'visible' });
-      return await page.$$eval('.vditor-hint:not(.vditor-panel--arrow) .slash-item',
-        (ns) => ns.slice(0, 6).map((n) => n.getBoundingClientRect().height));
+      return await page.locator('.vditor-hint:not(.vditor-panel--arrow) .slash-item').evaluateAll((ns) => ns.slice(0, 6).map((n) => n.getBoundingClientRect().height));
     } finally { await page.close(); }
   }
 

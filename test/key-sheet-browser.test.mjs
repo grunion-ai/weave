@@ -113,7 +113,7 @@ if (s) {
         await page.click('.bug-fab');
         await page.waitForSelector('#bug-panel .bug-note');
         await page.keyboard.press('?');
-        assert.equal(await page.$eval('#bug-panel .bug-note', (n) => n.value), '?', 'the note took the ?');
+        assert.equal(await page.locator('#bug-panel .bug-note').first().evaluate((n) => n.value), '?', 'the note took the ?');
         assert.equal(await sheetOpen(page), 0, 'and no sheet opened');
       } finally { await page.close(); }
     });

@@ -54,17 +54,17 @@ if (s) {
       try {
         await page.goto(`${base}/#/activity`, { waitUntil: 'networkidle' });
         await page.waitForSelector(`.activity-row[data-href="#/activity/${entry.id}"]`);
-        const summary = await page.$eval(`.activity-row[data-href="#/activity/${entry.id}"]`, (r) => r.textContent);
+        const summary = await page.locator(`.activity-row[data-href="#/activity/${entry.id}"]`).first().evaluate((r) => r.textContent);
         assert.match(summary, /options changed/, 'the table row says what changed');
         await page.click(`.activity-row[data-href="#/activity/${entry.id}"]`);
         await page.waitForSelector('.activity-rollback');
-        const btn = await page.$eval('.activity-rollback', (b) => ({ text: b.textContent, fg: getComputedStyle(b).color, bg: getComputedStyle(document.body).backgroundColor }));
+        const btn = await page.locator('.activity-rollback').first().evaluate((b) => ({ text: b.textContent, fg: getComputedStyle(b).color, bg: getComputedStyle(document.body).backgroundColor }));
         assert.equal(btn.text, `Roll back ${f.name}`);
         assert.notEqual(btn.fg, btn.bg, 'legible in this theme');
         await page.click('.activity-rollback');
         await page.waitForSelector('.activity-rollback-reason');
         assert.equal(weave.getField(t.id, f.id).config.options.length, 2, 'the removed option is back');
-        assert.match(await page.$eval('.activity-rollback-reason', (n) => n.textContent), /changed again/, 'the entry it reversed offers nothing now');
+        assert.match(await page.locator('.activity-rollback-reason').first().evaluate((n) => n.textContent), /changed again/, 'the entry it reversed offers nothing now');
       } finally { await page.close(); }
     });
 
@@ -158,9 +158,9 @@ if (s) {
       try {
         await page.goto(`${base}/#/activity/${first.id}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('.activity-rollback-reason');
-        assert.match(await page.$eval('.activity-rollback-reason', (n) => n.textContent), /no longer kept/);
+        assert.match(await page.locator('.activity-rollback-reason').first().evaluate((n) => n.textContent), /no longer kept/);
         assert.match(await page.locator('.fieldrow', { hasText: 'Values' }).first().innerText(), /No longer kept/);
-        const legible = await page.$eval('.activity-rollback-reason', (n) => getComputedStyle(n).color !== getComputedStyle(document.body).backgroundColor);
+        const legible = await page.locator('.activity-rollback-reason').first().evaluate((n) => getComputedStyle(n).color !== getComputedStyle(document.body).backgroundColor);
         assert.ok(legible, 'legible in this theme');
       } finally { await page.close(); }
     });

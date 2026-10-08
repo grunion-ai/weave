@@ -129,7 +129,7 @@ if (s) {
       'folding did not move the block');
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForSelector('.entity-values', { state: 'attached' });
-    assert.ok(await page.$eval('.entity-values', (n) => n.classList.contains('hidden')), 'a reload opens the page folded, as it was left');
+    assert.ok(await page.locator('.entity-values').first().evaluate((n) => n.classList.contains('hidden')), 'a reload opens the page folded, as it was left');
     await page.click(`${head} .doc-caret`);
     await page.waitForFunction(() => !document.querySelector('.entity-values').classList.contains('hidden'), null, { timeout: 4000 });
     assert.ok(await page.$eval(`${head} .doc-caret`, (n) => !n.classList.contains('closed')), 'and a second click opens it again');
