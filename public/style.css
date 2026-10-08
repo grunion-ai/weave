@@ -2324,10 +2324,10 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 @media (hover: none) and (pointer: coarse) { .search-like kbd, .bug-kbd { display: none; } }
 
 @media (max-width: 600px), (pointer: coarse) {
-  .crumb-copy, .crumb-item, .crumb-more, .dots-btn, .date-pick-btn, .entity-fields .fieldrow button.k { position: relative; }
+  .crumb-copy, .crumb-item, .crumb-more, .dots-btn, .date-pick-btn, .view-desc-more, .entity-fields .fieldrow button.k { position: relative; }
   .doc-caret::after, .mention-caret::after, .add-field-btn::after, #nav-collapse::after,
   .nav-db-menu .dots-btn::after, td.pid-cell a.open-link::after { width: max(100%, 44px); height: max(100%, 44px); }
-  .crumb-copy::after, .crumb-more::after, .dots-btn::after, .date-pick-btn::after, .entity-fields .fieldrow button.k::after {
+  .crumb-copy::after, .crumb-more::after, .dots-btn::after, .date-pick-btn::after, .view-desc-more::after, .entity-fields .fieldrow button.k::after {
     content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
   .crumb-item::after { content: ''; position: absolute; left: 0; top: 50%; width: 100%; height: max(100%, 44px); transform: translateY(-50%); }
   .crumb-slot:not(.crumb-slot-cur), .crumb-slot > a.crumb-item { overflow: visible; }

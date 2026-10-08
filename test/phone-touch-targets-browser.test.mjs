@@ -69,7 +69,7 @@ const SWEEP = (roots) => {
 
 const s = await launch('phone touch targets', (weave) => {
   weave.createSpace({ name: 'Development' });
-  const issues = weave.createTable({ space: 'Development', name: 'Issue' });
+  const issues = weave.createTable({ space: 'Development', name: 'Issue', description: Array.from({ length: 9 }, (_, i) => `Line ${i + 1} of a table description long enough that the phone header clamps it and offers Show more.`).join('\n\n') });
   weave.addField(issues, { name: 'Status', type: 'workflow', config: { states: [
     { name: 'Open', category: 'not-started', default: true },
     { name: 'In Progress', category: 'in-progress' },
