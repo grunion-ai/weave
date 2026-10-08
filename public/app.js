@@ -60,7 +60,20 @@ function fileBase64(file) {
   });
 }
 
+const warmGets = new Map();
+const WARM_MS = 5000;
+function warmGet(path, ready = null) {
+  const p = ready ?? api('GET', path);
+  p.catch(() => {});
+  warmGets.set(path, { at: Date.now(), p });
+  return p;
+}
 async function api(method, path, body, { signal } = {}) {
+  if (method === 'GET' && warmGets.has(path)) {
+    const hit = warmGets.get(path);
+    warmGets.delete(path);
+    if (Date.now() - hit.at < WARM_MS) return hit.p;
+  }
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
@@ -300,7 +313,11 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
 
 async function openEntity(id, { drill = false } = {}) {
   let entity;
+  const here = allTables().find((d) => d.id === state.route?.dbId);
+  const docs = (here?.fields ?? []).filter((f) => f.type === 'document').map((f) => `/doc/revisions?field=${encodeURIComponent(f.name)}&limit=2`);
+  for (const tail of ['/references', '/references-from', ...docs]) warmGet(`/entities/${id}${tail}`);
   try { entity = await api('GET', `/entities/${id}`); } catch (err) { return toast(err.message, true); }
+  warmGet(`/entities/${id}`, Promise.resolve(entity));
   const db = allTables().find((d) => d.id === entity.dbId);
   if (!db) { location.hash = `#/entity/${id}`; return; }
   if (state.route?.page !== 'db') {

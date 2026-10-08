@@ -1,0 +1,1 @@
+- Opening a row asks for the row once and for its references and document history checks at the same moment, instead of fetching the row twice and the rest after it, so a row on a phone opens one round trip sooner (Issue #735).
