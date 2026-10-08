@@ -2299,3 +2299,21 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
 @keyframes wv-fade-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .new-row-back, .new-row-sheet { animation: none; } }
 @media (hover: none) and (pointer: coarse) { .search-like kbd, .bug-kbd { display: none; } }
+
+@media (max-width: 600px), (pointer: coarse) {
+  .crumb-copy, .crumb-item, .crumb-more, .dots-btn, .date-pick-btn, .entity-fields .fieldrow button.k { position: relative; }
+  .doc-caret::after, .mention-caret::after, .add-field-btn::after, #nav-collapse::after,
+  .nav-db-menu .dots-btn::after, td.pid-cell a.open-link::after { width: max(100%, 44px); height: max(100%, 44px); }
+  .crumb-copy::after, .crumb-more::after, .dots-btn::after, .date-pick-btn::after, .entity-fields .fieldrow button.k::after {
+    content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+  .crumb-item::after { content: ''; position: absolute; left: 0; top: 50%; width: 100%; height: max(100%, 44px); transform: translateY(-50%); }
+  .crumb-slot:not(.crumb-slot-cur), .crumb-slot > a.crumb-item { overflow: visible; }
+  .icon-btn { min-width: 44px; min-height: 44px; }
+  .view-title { min-height: 44px; }
+  #sidebar .ws-wordmark { min-height: 44px; }
+  .wv-schema > summary, .wv-members-box > summary { min-height: 44px; }
+  .entity-body :is(.block-head, .doc-section-head) { min-height: 44px; align-items: center; }
+  .entity-fields .fieldrow { min-height: 44px; align-items: center; }
+  .entity-fields .fieldrow :is(.form-control, .form-select, .picker-face, input.inline-edit, select.inline-edit) { min-height: 44px; }
+  .bug-cat, .bug-mail, .bug-send { min-height: 44px; }
+}
