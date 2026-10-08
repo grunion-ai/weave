@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.82 (2026-10-08)
+
+- On a phone the document text runs the width of the screen: the pane's `@media (max-width: 600px)` padding rule had been overridden by the unconditional `#main` rule that follows it, and the document section's 18px drag-handle gutter now folds into the section head below 600px. The text column goes from 293px to 339px by permalink and from 329px to 347px in the dock, on a 375px screen. (Issue #709)
+- On a phone the row header no longer holds the top of the screen while you write: the sticky/loose ratio now subtracts the keyboard inset from the room it measures, and below 600px a header may take a quarter of that room rather than half. Desktop sticky headers are unchanged. (Issue #708)
+
 ## v0.4.81 (2026-10-08)
 
 - The CHANGELOG version heading reads `## v0.4.81 (2026-10-08)`. `scripts/changelog-fold.mjs` wrote the version and the date either side of a unicode em dash, which the house prose rule bans in anything published, and every heading in the file came from that one template. The 73 released headings were rewritten in the same change, so the file does not split at the version where the template changed (Issue #566).
