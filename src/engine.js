@@ -1165,8 +1165,13 @@ export class Weave {
       const seg = { label: f.name, value: shown == null ? '' : Array.isArray(shown) ? shown.map((x) => x?.name ?? x).join(', ') : String(shown?.name ?? shown) };
       const nd = typeof resolved === 'number' ? this.#numberDisplay(db, f) : null;
       if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f), color: nd.color };
-      const rt = typeof resolved === 'number' ? this.#ratingOf(db, f) : null;
-      if (rt) seg.rating = { value: resolved, ...rt };
+      const rated = Array.isArray(resolved) ? resolved.some((v) => typeof v === 'number') : typeof resolved === 'number';
+      const rt = rated ? this.#ratingOf(db, f) : null;
+      if (rt) {
+        seg.rating = Array.isArray(resolved)
+          ? { values: resolved.map((v) => (typeof v === 'number' ? v : null)), ...rt }
+          : { value: resolved, ...rt };
+      }
       if (f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) seg.spark = { style: f.config.style ?? 'line', values: resolved, color: f.config.color ?? 'ink' };
       out.fields.push(seg);
     }

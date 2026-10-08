@@ -2375,6 +2375,11 @@ function ratingEl(max, icon, value, { onSet = null, title = null, color = 'ink' 
   if (onSet) box.addEventListener('rate', (e) => onSet(e.detail));
   return box;
 }
+function ratingListEl(rating, values, { label = null } = {}) {
+  const box = el('span', { class: 'ms-box wv-rating-list', role: 'group', ...(label ? { 'aria-label': label } : {}) });
+  for (const v of values) box.append(ratingEl(rating.max, rating.icon, typeof v === 'number' ? v : null, { color: rating.color }));
+  return box;
+}
 function sparkEl(style, values, color = 'ink') {
   const svg = cellGraphics.sparkSvg(style || 'line', values);
   if (!svg) return null;
@@ -2384,7 +2389,11 @@ function sparkEl(style, values, color = 'ink') {
 }
 function segmentValueEl(seg) {
   if (seg.spark) return sparkEl(seg.spark.style, seg.spark.values, seg.spark.color) ?? seg.value;
-  if (seg.rating) return ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}`, color: seg.rating.color });
+  if (seg.rating) {
+    return seg.rating.values
+      ? ratingListEl(seg.rating, seg.rating.values, { label: seg.label })
+      : ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}`, color: seg.rating.color });
+  }
   return seg.meter && cellGraphics.isGraphic(seg.meter.display)
     ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value, null, seg.meter.color)
     : seg.value;
@@ -2628,9 +2637,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   }
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
     const text = fieldValueCell(val);
-    const graphic = (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(item?.raw?.[f.name]) ? sparkEl(f.style, item.raw[f.name], f.color) : null)
-      ?? (f.rating && typeof item?.raw?.[f.name] === 'number'
-        ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${text}`, color: f.rating.color }) : null)
+    const rawVal = item?.raw?.[f.name];
+    const graphic = (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(rawVal) ? sparkEl(f.style, rawVal, f.color) : null)
+      ?? (f.rating && typeof rawVal === 'number'
+        ? ratingEl(f.rating.max, f.rating.icon, rawVal, { title: `${f.name}: ${text}`, color: f.rating.color }) : null)
+      ?? (f.rating && Array.isArray(rawVal) && rawVal.length
+        ? ratingListEl(f.rating, rawVal, { label: f.name }) : null)
       ?? numberGraphicFor(f, item, text);
     const rich = f.display === 'sparkline' || !!f.rating || cellGraphics.isGraphic(f.display);
     const box = el('span', { class: 'computed k k-computed' + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
@@ -7379,6 +7391,7 @@ function computedShowsAs(db, f, after) {
     const raw = row.raw[f.name];
     const text = row.fields?.[f.name];
     const drawn = f.rating && typeof raw === 'number' ? ratingEl(f.rating.max, f.rating.icon, raw, { color: f.rating.color })
+      : f.rating && Array.isArray(raw) && raw.length ? ratingListEl(f.rating, raw, { label: f.name })
       : numberGraphicFor(f, row, text) ?? (Array.isArray(text) ? text.join(', ') : String(text ?? raw));
     result.replaceChildren(el('span', { class: 'hintnote' }, `${row.name || 'Untitled'}: `), drawn);
   }).catch(() => result.replaceChildren(el('span', { class: 'hintnote' }, 'The rows could not be read.')));

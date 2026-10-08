@@ -179,3 +179,25 @@ test('a lookup and a rollup over a rating carry its max and icon; the chip and t
   const chip = w.renderView(v1.id, 'chip', { config: { fields: ['Fit'] } });
   assert.deepEqual(chip.fields, [{ label: 'Fit', value: '4', rating: { value: 4, max: 5, icon: 'lucide:heart', color: 'ink' } }]);
 });
+
+test('a lookup of a rating over a to-many relation keeps the scale and one value per related row (Issue #377)', () => {
+  const { w, t } = ws({ max: 5, icon: 'lucide:star' });
+  w.addField(t, { name: 'Love', type: 'rating', config: { max: 3, icon: 'lucide:heart' } });
+  const acct = w.createTable({ space: 'Ops', name: 'Account' });
+  w.addRelation(t, { name: 'Account', targetDb: acct, cardinality: 'many-to-one', inverseName: 'Vendors' });
+  w.addField(acct, { name: 'Fits', type: 'lookup', config: { relationField: 'Vendors', targetField: 'Fit' } });
+  w.addField(acct, { name: 'Loves', type: 'lookup', config: { relationField: 'Vendors', targetField: 'Love' } });
+  const acme = w.createEntity(acct, { name: 'Acme' });
+  w.createEntity(t, { name: 'v1', values: { Fit: 3, Love: 1, Account: acme.id } });
+  w.createEntity(t, { name: 'v2', values: { Fit: 4, Account: acme.id } });
+  assert.deepEqual(described(w, 'Account', 'Fits').rating, { max: 5, icon: 'lucide:star', color: 'ink' },
+    'cardinality does not cost the lookup its scale');
+  assert.deepEqual(w.readEntity(acme.id).raw.Fits, [3, 4]);
+  assert.deepEqual(w.readEntity(acme.id).raw.Loves, [1, null], 'a related row with no rating keeps its slot');
+  const card = w.renderView(acme.id, 'card', { config: { fields: ['Fits', 'Loves'] } });
+  assert.deepEqual(card.fields.find((s) => s.label === 'Fits').rating,
+    { values: [3, 4], max: 5, icon: 'lucide:star', color: 'ink' },
+    'the card carries one rating value per related row, not a joined string');
+  assert.deepEqual(card.fields.find((s) => s.label === 'Loves').rating,
+    { values: [1, null], max: 3, icon: 'lucide:heart', color: 'ink' });
+});

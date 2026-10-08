@@ -13,6 +13,8 @@ const s = await launch('rating field type', (weave) => {
   weave.addField(vendors, { name: 'Love', type: 'rating', config: { max: 3, icon: 'lucide:heart' } });
   weave.addRelation(vendors, { name: 'Account', targetDb: accounts, cardinality: 'many-to-one', inverseName: 'Vendors' });
   weave.addField(accounts, { name: 'Avg fit', type: 'rollup', config: { relationField: 'Vendors', targetField: 'Fit', aggregate: 'avg' } });
+  weave.addField(accounts, { name: 'Fits', type: 'lookup', config: { relationField: 'Vendors', targetField: 'Fit' } });
+  weave.addField(accounts, { name: 'Loves', type: 'lookup', config: { relationField: 'Vendors', targetField: 'Love' } });
   acme = weave.createEntity(accounts, { name: 'Acme' });
   a = weave.createEntity(vendors, { name: 'A', values: { Fit: 3, Love: 1, Account: acme.id } });
   b = weave.createEntity(vendors, { name: 'B', values: { Fit: 4, Account: acme.id } });
@@ -99,6 +101,26 @@ if (s) {
       weave.updateEntity(b.id, { Fit: 4 });
     }
   });
+
+  for (const colorScheme of ['light', 'dark']) {
+    test(`a lookup of a rating over a to-many relation draws one icon group per related row (${colorScheme}, Issue #377)`, async () => {
+      const page = await grid(accounts.id, colorScheme);
+      try {
+        await page.waitForSelector(`${cell(acme.id, 'Fits')} .wv-rating`);
+        const fits = page.locator(`${cell(acme.id, 'Fits')} .wv-rating`);
+        assert.equal(await fits.count(), 2, 'one icon group per related row, not a joined string');
+        assert.equal(await page.locator(`${cell(acme.id, 'Fits')} .wv-rating:first-child .wv-rate-ico`).count(), 5, 'each group draws the full scale');
+        assert.deepEqual(await fits.evaluateAll((ns) => ns.map((n) => n.getAttribute('aria-label'))), ['3 of 5', '4 of 5'],
+          'each group carries its own "n of max" label');
+        assert.equal(await page.locator(`${cell(acme.id, 'Fits')} .wv-rating button`).count(), 0, 'no buttons: read-only');
+        assert.equal(await page.locator(`${cell(acme.id, 'Fits')}`).innerText(), '', 'the numbers are drawn, not printed');
+        const loves = page.locator(`${cell(acme.id, 'Loves')} .wv-rating`);
+        assert.deepEqual(await loves.evaluateAll((ns) => ns.map((n) => n.getAttribute('aria-label'))), ['1 of 3', 'unrated, of 3'],
+          'a related row with no rating keeps its slot as an unrated group');
+        if (shots) await page.locator('.wv-grid').screenshot({ path: `${shots}/rating-lookup-many-${colorScheme}.png` });
+      } finally { await page.close(); }
+    });
+  }
 
   test('a rollup over a rating draws the same icons, read-only, rounded', async () => {
     const page = await grid(accounts.id);

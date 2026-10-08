@@ -1,0 +1,1 @@
+- A lookup of a rating over a to-many relation now draws one group of icons per related row instead of printing the numbers, and a related row with no rating keeps its slot as an unrated group. The chip, the card and the field dialog's sample draw it the same way. (Issue #377)

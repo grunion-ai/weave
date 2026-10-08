@@ -1846,6 +1846,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .wv-rating.editable .wv-rate-ico { cursor: pointer; }
 .wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--cg-rate, var(--wv-cg-ink)); }
 .wv-rating > .wv-rating-compact { display: none; align-items: center; gap: 3px; font-size: var(--wv-grid-font); color: var(--tblr-body-color); font-variant-numeric: tabular-nums; }
+.wv-rating-list { gap: 10px; }
 .wv-rating-max { display: flex; gap: 8px; align-items: center; }
 .wv-rating-icon { display: inline-flex; gap: 6px; align-items: center; }
 .wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; gap: 2px; }
