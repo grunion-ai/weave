@@ -342,6 +342,7 @@ export function createAssetVersions(dir) {
   return { version, rewrite };
 }
 const IMMUTABLE = 'public, max-age=31536000, immutable';
+const VENDOR_CACHE = 'public, max-age=3600';
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
@@ -372,7 +373,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     const { mtime, size } = statSync(full);
     const headers = {
       'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
-      'Cache-Control': v && v === assets.version(file) ? IMMUTABLE : 'no-cache',
+      'Cache-Control': v ? (v === assets.version(file) ? IMMUTABLE : 'no-cache') : file.startsWith('/vendor/') ? VENDOR_CACHE : 'no-cache',
       'Last-Modified': mtime.toUTCString(),
       ETag: `W/"${size.toString(16)}-${Math.floor(mtime.getTime()).toString(16)}"`,
     };
