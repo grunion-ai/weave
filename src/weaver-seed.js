@@ -14,6 +14,8 @@ export function seedFieldShowcase(w) {
   return w;
 }
 
+const showcaseDay = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+
 function seedShowcaseBase(w) {
   w.createSpace({ name: 'Showcase', icon: 'lucide:compass', description: 'Every field type, in several configurations — the range of what a field can be, visible in one grid' });
 
@@ -60,7 +62,7 @@ function seedShowcaseBase(w) {
   w.addField(ft, { name: 'Peer age', type: 'rollup', config: { relationField: 'Peers', aggregate: 'avg', targetField: 'Age' } });
   w.addField(ft, { name: 'Peer names', type: 'rollup', config: { relationField: 'Peers', aggregate: 'join', targetField: 'Name' } });
   w.addField(ft, { name: 'Total', type: 'formula', config: { expression: 'Price * Count' } });
-  w.addField(ft, { name: 'Label', type: 'formula', config: { expression: 'concat(upper(Category), " · ", Priority)' } });
+  w.addField(ft, { name: 'Label', type: 'formula', config: { expression: 'if(empty(Category) or empty(Priority), "", concat(upper(Category), " · ", Priority))' } });
   w.addField(ft, { name: 'Days left', type: 'formula', config: { expression: 'if(empty(Due), "", days(today(), Due))' } });
 
   const ada = w.createEntity(people, { name: 'Ada Chen', values: { Email: 'ada@example.com', Age: 34 } });
@@ -70,7 +72,7 @@ function seedShowcaseBase(w) {
     { name: 'Sensor board', values: {
       Notes: 'Rev C, lead-free', Site: 'https://example.com/sensor', Contact: 'sales@example.com',
       Count: 12, Price: 149.5, Share: 0.325, Weight: 2,
-      Due: '2026-09-15', Start: '2026-08-01', Published: '2026-08-20T14:30:00Z', Window: { start: '2026-08-01', end: '2026-09-15' },
+      Due: showcaseDay(31), Start: showcaseDay(-14), Published: `${showcaseDay(-7)}T14:30:00Z`, Window: { start: showcaseDay(-14), end: showcaseDay(31) },
       Done: false, Feed: true, Priority: 'High', Category: 'Hardware', Tags: ['alpha', 'stable'],
       Definition: { type: 'number', config: { format: 'currency', unit: 'EUR', decimals: 2 } },
       'Nested definition': { type: 'field', config: { depth: 1 } },
@@ -79,14 +81,14 @@ function seedShowcaseBase(w) {
     { name: 'Sync service', values: {
       Notes: 'Runs hourly', Site: 'https://example.com/sync', Contact: 'ops@example.com',
       Count: 3, Price: 1200, Share: 0.5, Weight: 0,
-      Due: '2026-08-10', Start: '2026-07-12', Published: '2026-07-30T09:00:00Z', Window: { start: '2026-07-12', end: '2026-08-10' },
+      Due: showcaseDay(9), Start: showcaseDay(-30), Published: `${showcaseDay(-21)}T09:00:00Z`, Window: { start: showcaseDay(-30), end: showcaseDay(9) },
       Done: true, Priority: 'Medium', Category: 'Software', Tags: ['beta'],
       Definition: { type: 'select', config: { options: ['on', 'off'] } },
       Owner: leo.id, Peers: [ada.id],
     }, stage: 'Shipped', review: 'Approved' },
     { name: 'Onboarding call', values: {
       Count: 1, Price: 0, Share: 0, Weight: 0,
-      Due: '2026-10-01', Priority: 'Low', Category: 'Service', Tags: ['legacy'],
+      Due: showcaseDay(61), Priority: 'Low', Category: 'Service', Tags: ['legacy'],
       Definition: { type: 'checkbox', config: {} },
       Owner: mia.id, Peers: [ada.id, leo.id, mia.id],
     }, stage: 'Backlog', review: 'Pending' },
