@@ -1,1 +1,0 @@
-- On a phone, the Show more toggle under a clamped table or workspace description taps as a 44x44 target. It was drawn at 64x17 and kept that hit area; the drawn link is unchanged (Issue #737).
