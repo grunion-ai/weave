@@ -899,19 +899,20 @@ function crumbFoldMenu(btn, hidden) {
     ...hidden.map((c) => el('a', {
       class: 'chip-pop-row crumb-fold-row', role: 'menuitem', href: c.kind === 'ws' ? wsHomeHref() : c.href, title: c.title ?? c.label,
     }, ...crumbInner(c))));
+  let off = () => {};
   const close = () => {
     menu.remove();
     btn.setAttribute('aria-expanded', 'false');
-    removeEventListener('click', away, true);
+    off();
     removeEventListener('keydown', esc, true);
   };
-  const away = (e) => { if (!menu.contains(e.target) || e.target.closest('a')) setTimeout(close); };
   const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
+  menu.addEventListener('click', (e) => { if (e.target.closest('a')) setTimeout(close); });
   row.append(menu);
   const over = menu.getBoundingClientRect().right - (innerWidth - 8);
   if (over > 0) menu.style.left = `${Math.max(8, r.left - over)}px`;
   btn.setAttribute('aria-expanded', 'true');
-  addEventListener('click', away, true);
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t), swallow: (t) => btn.contains(t), close });
   addEventListener('keydown', esc, true);
   menu.querySelector('a')?.focus();
 }
@@ -1217,13 +1218,13 @@ function accountMenu(btn) {
     style: `left:${Math.round(r.left)}px;bottom:${Math.round(innerHeight - r.top + 4)}px;min-width:${Math.round(r.width)}px`,
   }, row(`Sign out of ${ws}`, 'log-out', [WS_PREFIX]), row('Sign out everywhere', 'log-out', everywhere));
   const rows = [...menu.querySelectorAll('[role="menuitem"]')];
+  let off = () => {};
   const close = () => {
     menu.remove();
     btn.setAttribute('aria-expanded', 'false');
-    removeEventListener('click', away, true);
+    off();
     removeEventListener('keydown', keys, true);
   };
-  const away = (e) => { if (!menu.contains(e.target) && !btn.contains(e.target)) close(); };
   const keys = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); return; }
     if (e.key === 'Tab') { close(); return; }
@@ -1236,7 +1237,7 @@ function accountMenu(btn) {
   menu.close = close;
   document.body.append(menu);
   btn.setAttribute('aria-expanded', 'true');
-  addEventListener('click', away, true);
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t) || btn.contains(t), close });
   addEventListener('keydown', keys, true);
   rows[0].focus();
 }
@@ -1446,6 +1447,25 @@ function renderMermaidIn(container) {
   mermaidLoading.then(() => window.mermaid?.run({ nodes }));
 }
 
+function dismissOutside({ inside, close, open = () => true, swallow = () => false }) {
+  const away = (e) => {
+    if (!open()) return off();
+    if (inside(e.target)) return;
+    off();
+    if (swallow(e.target)) swallowClick();
+    close(e);
+  };
+  const off = () => removeEventListener('pointerdown', away, true);
+  addEventListener('pointerdown', away, true);
+  return off;
+}
+function swallowClick(ms = 600) {
+  const eat = (e) => { e.preventDefault(); e.stopImmediatePropagation(); off(); };
+  const off = () => { clearTimeout(timer); removeEventListener('click', eat, true); };
+  const timer = setTimeout(off, ms);
+  addEventListener('click', eat, true);
+}
+
 function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) {
   document.querySelector('.chip-pop')?.remove();
   const pop = el('div', { class: 'chip-pop' }, ...rows);
@@ -1453,14 +1473,7 @@ function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) 
   const r = trigger.getBoundingClientRect();
   pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
   pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (!pop.isConnected) return;
-    pop.remove();
-    if (owns(ev.target)) ev.stopPropagation();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: owns, close: () => pop.remove() });
 
   const opts = [...pop.querySelectorAll('.chip-pop-row')];
   const focusAt = (i) => opts[((i % opts.length) + opts.length) % opts.length].focus();
@@ -1711,14 +1724,10 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   });
   document.body.append(pop);
   pop.cellFrom = anchor?.closest?.('tr[data-eid] > td') ?? null;
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (pop.isConnected && anchor?.contains?.(ev.target)) ev.stopPropagation();
-    if (multi && pop.isConnected) { commit(); return; }
-    pop.remove();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({
+    open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!anchor?.contains?.(t),
+    close: () => (multi ? commit() : pop.remove()),
+  });
   if (!quiet) input.focus();
   drawChips();
   draw();
@@ -1751,12 +1760,7 @@ function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', 
   input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); pop.remove(); anchor?.focus?.(); } });
   document.body.append(pop);
   anchorPop(pop, anchor);
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    pop.remove();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), close: () => pop.remove() });
   input.focus();
   return pop;
 }
@@ -2253,11 +2257,8 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
         if (!opening) return;
         menu.classList.remove('hidden');
         place();
-        addEventListener('click', function away(ev) {
-          if (wrap.contains(ev.target)) return;
-          close();
-          removeEventListener('click', away);
-        });
+        menu.off?.();
+        menu.off = dismissOutside({ open: () => !menu.classList.contains('hidden'), inside: (t) => wrap.contains(t), close });
       },
     }, iconEl('lucide:ellipsis-vertical', 'wv-icon')),
     menu);
@@ -3472,13 +3473,13 @@ function tableControlPopover(anchor, db, className, rows) {
     pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
     pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
   };
-  const outside = (e) => { if (!pop.contains(e.target) && !e.target.closest(selector)) pop.remove(); };
+  let off = () => {};
   const remove = pop.remove.bind(pop);
   pop.remove = () => {
     if (!pop.isConnected) return;
     pop.beforeClose?.();
     trigger().setAttribute('aria-expanded', 'false');
-    document.removeEventListener('click', outside, true);
+    off();
     window.removeEventListener('resize', position);
     remove();
   };
@@ -3503,7 +3504,7 @@ function tableControlPopover(anchor, db, className, rows) {
   document.body.append(pop);
   trigger().setAttribute('aria-expanded', 'true');
   position();
-  document.addEventListener('click', outside, true);
+  off = dismissOutside({ inside: (t) => pop.contains(t) || !!t.closest?.(selector), close: () => pop.remove() });
   window.addEventListener('resize', position);
   pop.querySelector('.view-tab.active .view-name,.seg-opt.on,.eye-row:not(label),.eye-row > input,.filter-chip:not(label),.filter-chip > input,.chip-pop-row:not(label)')?.focus({ preventScroll: true });
   return pop;
@@ -3892,18 +3893,12 @@ function tableToolsButton(header, ref) {
     count.hidden = !n;
   };
   btn.label();
+  let off = () => {};
   const shut = () => {
     row()?.classList.remove('tools-open');
     btn.setAttribute('aria-expanded', 'false');
-    removeEventListener('click', away, true);
+    off();
     removeEventListener('keydown', esc, true);
-  };
-  const away = (e) => {
-    if (!btn.isConnected) return shut();
-    if (btn.contains(e.target) || sheet()?.contains(e.target) || e.target.closest?.('.chip-pop, .picker-pop, #modal-back, #cmdk-back')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    shut();
   };
   const esc = (e) => {
     if (e.key !== 'Escape' || document.querySelector('.chip-pop, .picker-pop, #modal-back, #cmdk-back') || sheet()?.querySelector('.dl-menu:not(.hidden)')) return;
@@ -3914,7 +3909,11 @@ function tableToolsButton(header, ref) {
     if (row().classList.contains('tools-open')) return shut();
     row().classList.add('tools-open');
     btn.setAttribute('aria-expanded', 'true');
-    addEventListener('click', away, true);
+    off = dismissOutside({
+      open: () => btn.isConnected || (shut(), false),
+      inside: (t) => btn.contains(t) || !!sheet()?.contains(t) || !!t.closest?.('.chip-pop, .picker-pop, #modal-back, #cmdk-back'),
+      swallow: () => true, close: shut,
+    });
     addEventListener('keydown', esc, true);
   });
   return btn;
@@ -6742,14 +6741,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
   pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (!pop.isConnected) return;
-    pop.remove();
-    if (anchor.contains(ev.target)) ev.stopPropagation();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => anchor.contains(t), close: () => pop.remove() });
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
   smarts[0].querySelector('.date-smart').focus();
   return pop;
@@ -11727,8 +11719,8 @@ async function buildWsRail() {
 function contextMenu(e, items, extraClass = '') {
   contextMenu.close?.();
   const menu = el('div', { class: `dl-menu wv-ctx ${extraClass}`, style: `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:120` });
-  const close = () => { menu.remove(); removeEventListener('click', away); removeEventListener('keydown', esc); contextMenu.close = null; };
-  const away = (ev) => { if (!menu.contains(ev.target)) close(); };
+  let off = () => {};
+  const close = () => { menu.remove(); off(); removeEventListener('keydown', esc); contextMenu.close = null; };
   const esc = (ev) => { if (ev.key === 'Escape') close(); };
   for (const it of items) {
     if (it === 'divider') { menu.append(el('div', { class: 'dropdown-divider' })); continue; }
@@ -11742,7 +11734,7 @@ function contextMenu(e, items, extraClass = '') {
     }, it.label));
   }
   document.body.append(menu);
-  addEventListener('click', away);
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t), close });
   addEventListener('keydown', esc);
   contextMenu.close = close;
   return menu;
@@ -12106,14 +12098,11 @@ function openBugPanel(fab) {
   panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
   panel.style.bottom = (innerHeight - r.top + 6) + 'px';
 
-  const away = (ev) => {
-    if (!panel.isConnected) return removeEventListener('click', away, true);
-    if (panel.contains(ev.target) || fab.contains(ev.target)) return;
-    if (bugCore.canSubmit(picked, note.value)) return;
-    closeBugPanel();
-    removeEventListener('click', away, true);
-  };
-  addEventListener('click', away, true);
+  dismissOutside({
+    open: () => panel.isConnected,
+    inside: (t) => panel.contains(t) || fab.contains(t) || bugCore.canSubmit(picked, note.value),
+    close: closeBugPanel,
+  });
   addEventListener('keydown', function esc(ev) {
     if (!panel.isConnected) return removeEventListener('keydown', esc);
     if (ev.key === 'Escape') { closeBugPanel(); fab.focus(); removeEventListener('keydown', esc); }

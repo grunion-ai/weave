@@ -1,0 +1,1 @@
+- On an iPhone, a tap anywhere outside an open menu, popover, picker, table sheet or the bug panel closes it. Every overlay now closes through one shared dismiss that listens for the touch itself instead of a click, which iOS never sends for a tap on empty space (Issue #726).

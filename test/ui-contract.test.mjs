@@ -348,7 +348,7 @@ test('only one overflow menu is open at a time', () => {
   const fn = APP.slice(APP.indexOf('function dotsMenu'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.match(body, /querySelectorAll\('\.dl-menu'\)/, 'opening one must close the others');
-  assert.match(body, /addEventListener\('click', function away/, 'clicking away must close it');
+  assert.match(body, /dismissOutside\(\{ open: \(\) => !menu\.classList\.contains\('hidden'\), inside: \(t\) => wrap\.contains\(t\), close \}\)/, 'a tap or click away must close it (Issue #726)');
 });
 
 test('comments and activity make up the side column; fields lead the body', () => {
@@ -1030,7 +1030,7 @@ test('multi pickers edit in place: selections listed with ×, saved on Enter', (
   assert.ok(picker.includes('drawChips'), 'current selections render inside the picker');
   assert.ok(picker.includes("'Remove'"), 'each selection carries its ×');
   assert.ok(picker.includes('await commit()'), 'Enter on an empty search saves');
-  assert.ok(picker.includes('if (multi && pop.isConnected) { commit('), 'outside click saves, never discards');
+  assert.ok(picker.includes('close: () => (multi ? commit() : pop.remove())'), 'outside click saves, never discards');
   assert.ok(app.includes('function chipPickerMulti('));
   const links = [...app.matchAll(/linkSearch\(f, \{/g)];
   assert.ok(links.length >= 3, `the related section, the relation editor and the bulk bar all link through the scoped search (saw ${links.length})`);
