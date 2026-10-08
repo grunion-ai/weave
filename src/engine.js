@@ -808,7 +808,7 @@ export function templateDoc(spaceDoc, { name, rollups = [] } = {}) {
     space: to,
     tables: src.tables.map((t) => {
       const out = gone.get(t.name);
-      const table = without(t, ['id', 'url', 'entityCount']);
+      const table = without(t, ['id', 'url', 'entityCount', 'maxPublicId']);
       if (table.qualified != null) table.qualified = move(table.qualified);
       table.fields = (t.fields ?? []).filter((f) => !out.has(f.name)).map((f) => {
         const field = without(f, ['id', 'targetDbId', 'targetDbIds', 'inverseFieldId', 'viaTableId']);
@@ -7417,6 +7417,7 @@ export class Weave {
         ...(this.termOf(db).set ? { noun: this.termOf(db).singular } : {}),
         qualified: this.qualifiedName(db),
         entityCount: counts.get(db.id) ?? 0,
+        maxPublicId: db.publicIdCounter ?? 0,
         fields: db.fieldOrder.map((fid) => {
           const f = db.fields[fid];
           const out = { id: f.id, name: f.name, type: f.type };

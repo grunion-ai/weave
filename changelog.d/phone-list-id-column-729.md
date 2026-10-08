@@ -1,0 +1,1 @@
+- On a phone, the list's #id column is as wide as the table's largest id, set in tabular figures, so "#149 ↗" no longer runs into the row name and every name and chip line starts on one edge 8px after it. The schema now carries each table's `maxPublicId` (Issue #729).

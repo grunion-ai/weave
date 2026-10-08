@@ -5089,8 +5089,18 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const css = layoutCss();
     if (layoutSheet.textContent !== css) layoutSheet.textContent = css;
   };
+  const sizePidColumn = () => {
+    const cell = listRows() ? table.querySelector('tbody tr.entity-row > td.pid-cell > .wv-cb') : null;
+    if (!cell) return table.style.removeProperty('--wv-pid-w');
+    const top = ordered().reduce((n, x) => Math.max(n, x?.publicId ?? 0), db.maxPublicId ?? 0);
+    const probe = el('a', { class: 'open-link pid-probe', 'aria-hidden': 'true' }, `#${'0'.repeat(String(top).length)} ↗`);
+    cell.append(probe);
+    table.style.setProperty('--wv-pid-w', `${Math.ceil(probe.getBoundingClientRect().width)}px`);
+    probe.remove();
+  };
   const settle = () => {
     if (!table?.isConnected) return;
+    sizePidColumn();
     const head = table.tHead.rows[0];
     for (const th of head.querySelectorAll('th.col-head, th.sys-head')) {
       const label = th.querySelector('.col-label');

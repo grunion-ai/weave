@@ -2125,12 +2125,13 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
   #main > .table-wrap .wv-grid[data-density="compact"] { --wv-row-h: 68px; }
   #main > .table-wrap .wv-grid > thead { display: none; }
   #main > .table-wrap .wv-grid > tbody, #main > .table-wrap .wv-grid > tbody > tr, #main > .table-wrap .wv-grid > tbody > tr > td { display: block; }
-  #main > .table-wrap .wv-grid tbody tr.entity-row { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px; height: var(--wv-row-h); overflow: hidden; padding: 12px 14px 0 58px; border-bottom: 1px solid var(--tblr-border-color); cursor: pointer; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #main > .table-wrap .wv-grid tbody tr.entity-row { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px; height: var(--wv-row-h); overflow: hidden; padding: 12px 14px 0 calc(22px + var(--wv-pid-w, 44px)); border-bottom: 1px solid var(--tblr-border-color); cursor: pointer; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td { display: none; position: static; flex: 0 1 auto; width: auto !important; min-width: 0 !important; max-width: 70% !important; height: auto !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td * { pointer-events: none; }
-  #main > .table-wrap .wv-grid tbody tr.entity-row > td.pid-cell { display: block; flex: 0 0 calc(100% + 44px); max-width: none !important; margin-left: -44px; }
-  #main > .table-wrap .wv-grid tbody tr.entity-row > td.pid-cell > .wv-cb { display: flex; align-items: flex-start; height: auto; overflow: visible; }
-  #main > .table-wrap .wv-grid tbody .pid-cell .open-link { flex: 0 0 44px; overflow: hidden; white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--tblr-secondary); text-decoration: none; }
+  #main > .table-wrap .wv-grid tbody tr.entity-row > td.pid-cell { display: block; flex: 0 0 calc(100% + 8px + var(--wv-pid-w, 44px)); max-width: none !important; margin-left: calc(-8px - var(--wv-pid-w, 44px)); }
+  #main > .table-wrap .wv-grid tbody tr.entity-row > td.pid-cell > .wv-cb { display: flex; align-items: flex-start; gap: 8px; height: auto; overflow: visible; }
+  #main > .table-wrap .wv-grid tbody .pid-cell .open-link { flex: 0 0 var(--wv-pid-w, 44px); overflow: hidden; white-space: nowrap; font-size: 13px; font-variant-numeric: tabular-nums; line-height: 20px; color: var(--tblr-secondary); text-decoration: none; }
+  #main > .table-wrap .wv-grid tbody .pid-cell .open-link.pid-probe { position: absolute; flex: none; overflow: visible; visibility: hidden; }
   #main > .table-wrap .wv-grid tbody .pid-cell .list-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: normal; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; line-height: 20px; color: var(--tblr-body-color); }
   #main > .table-wrap .wv-grid[data-density="compact"] tbody .pid-cell .list-name { -webkit-line-clamp: 1; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field]:not(.name-cell) { display: block; }
