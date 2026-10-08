@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.81 (2026-10-08)
+
+- The CHANGELOG version heading reads `## v0.4.81 (2026-10-08)`. `scripts/changelog-fold.mjs` wrote the version and the date either side of a unicode em dash, which the house prose rule bans in anything published, and every heading in the file came from that one template. The 73 released headings were rewritten in the same change, so the file does not split at the version where the template changed (Issue #566).
+- Skip setup and Esc on the last onboarding step keep the workspace name confirmed with Continue one step earlier. Both posted an empty body, so the server fell back to the default and the name was gone; the primary button on the same step kept it. Skip and Esc on the name step itself, before Continue, still drop what was typed (Issue #615).
+- A rule that appends to a document now leaves a revision, so the document's history holds what the rule wrote and a reader can compare with it or restore to it. The revision is signed `workflow:<Workflows row id>`, the same name the activity entry carries. Two fires of one rule inside the revision window still coalesce into one revision, as two edits by one person do (Issue #700).
+
 ## v0.4.80 (2026-10-07)
 
 - A rollup or a lookup that draws rating icons now opens wide enough for all of them, and holds that width as its resize floor, the way a rating column has since Issue #404. A max-7 rollup drew 104px of icons in an 80px cell before. (Issue #564)

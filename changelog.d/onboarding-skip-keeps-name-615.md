@@ -1,1 +1,0 @@
-- Skip setup and Esc on the last onboarding step keep the workspace name confirmed with Continue one step earlier. Both posted an empty body, so the server fell back to the default and the name was gone; the primary button on the same step kept it. Skip and Esc on the name step itself, before Continue, still drop what was typed (Issue #615).
