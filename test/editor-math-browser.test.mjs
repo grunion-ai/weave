@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { engineOf, launch } from './lib/browser.mjs';
 import { FORMATTING_SAMPLES } from '../src/handbook.js';
 
 let id;
@@ -13,14 +13,10 @@ const s = await launch('math renders without a rejection', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  const pw = await import('playwright');
   const engines = [['default', browser]];
   if (process.env.WEAVE_BROWSER !== 'webkit') {
-    const webkit = await pw.webkit.launch().catch(() => null);
-    if (webkit) {
-      engines.push(['webkit', webkit]);
-      test.after(() => webkit.close());
-    }
+    const webkit = await engineOf('webkit');
+    if (webkit) engines.push(['webkit', webkit]);
   }
 
   const load = async (b) => {

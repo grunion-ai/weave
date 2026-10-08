@@ -99,6 +99,42 @@ function throttle(browser) {
   };
 }
 
+const extraEngines = new Map();
+test.after(async () => {
+  for (const browser of extraEngines.values()) await browser?.close().catch(() => {});
+  extraEngines.clear();
+});
+export async function engineOf(name) {
+  if (!pw) return null;
+  if (!extraEngines.has(name)) {
+    const browser = pw[name] ? await pw[name].launch().catch(() => null) : null;
+    if (browser && THROTTLE) throttle(browser);
+    extraEngines.set(name, browser);
+  }
+  return extraEngines.get(name);
+}
+
+export async function painted(page, selector, { timeout = 30000, state } = {}) {
+  try {
+    await page.waitForSelector(selector, state ? { timeout, state } : { timeout });
+  } catch (err) {
+    const read = page.evaluate(() => {
+      const main = document.querySelector('#main');
+      return {
+        hash: location.hash,
+        skeleton: !!document.querySelector('#main .sk-row, #main .sk-card, #main .sk-toolbar'),
+        main: main ? [...main.children].map((n) => n.className || n.tagName) : null,
+        rows: document.querySelectorAll('.wv-grid tbody tr.entity-row').length,
+        toast: document.querySelector('#wv-toasts')?.textContent?.trim() || '',
+      };
+    }).catch((unreadable) => ({ unreadable: String(unreadable) }));
+    const gaveUp = new Promise((say) => setTimeout(() => say({ unreadable: 'the page did not answer in 2000 ms' }), 2000).unref());
+    const why = await Promise.race([read, gaveUp]);
+    err.message += `\n${selector} never painted within ${timeout} ms; the page says ${JSON.stringify(why)}`;
+    throw err;
+  }
+}
+
 export async function styleOf(locator, prop, want, { timeout = 10000 } = {}) {
   const handle = await locator.elementHandle();
   await locator.page().waitForFunction(([n, p, w]) => getComputedStyle(n)[p] === w, [handle, prop, want], { timeout }).catch(() => {});

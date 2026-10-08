@@ -9,11 +9,11 @@ const suites = readdirSync(DIR).filter((f) => f.endsWith('.test.mjs'))
   .map((f) => [f, readFileSync(join(DIR, f), 'utf8')]);
 
 test('every suite that needs a browser gets it from the shared harness', () => {
-  const drivers = suites.filter(([, src]) => /\bbrowser\.newPage\(|chromium\.launch\(/.test(src));
+  const drivers = suites.filter(([f, src]) => f.endsWith('-browser.test.mjs') || /\bbrowser\.newPage\(|chromium\.launch\(/.test(src));
   assert.ok(drivers.length >= 20, `the browser suites are found (${drivers.length})`);
   for (const [f, src] of drivers) {
     assert.ok(src.includes("from './lib/browser.mjs'"), `${f} must import the harness`);
-    assert.ok(!src.includes("import('playwright')"), `${f} must not import playwright itself`);
+    assert.ok(!src.includes("import('playwright')"), `${f} must not import playwright itself; engineOf() launches an extra engine through the harness, so WEAVE_CPU_THROTTLE reaches it and the suite closes it (Issue #711)`);
     assert.ok(!/startServer\(/.test(src), `${f} must not start its own server; launch() does`);
   }
 });

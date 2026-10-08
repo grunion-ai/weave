@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, settled } from './lib/browser.mjs';
+import { engineOf, launch, painted, settled } from './lib/browser.mjs';
 
 const s = await launch('phone shell', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -29,7 +29,7 @@ if (s) {
     const page = await engine.newPage({ viewport: { width, height: 844 } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .nav-menu', { state: 'attached' });
+    await painted(page, '#main .nav-menu', { state: 'attached' });
     await page.waitForTimeout(300);
     return page;
   };
@@ -128,10 +128,7 @@ if (s) {
     await page.close();
   });
 
-  const pw = await import('playwright');
-  const engines = { chromium: null, webkit: null };
-  test.after(() => Promise.all(Object.values(engines).map((b) => b?.close())));
-  const engineOf = async (name) => (engines[name] ??= await pw[name].launch());
+  const extra = ['chromium', 'webkit'];
   const sheet = (page) => page.evaluate(() => {
     const rect = (n) => { const r = n.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
     const dock = document.querySelector('#dock');
@@ -149,12 +146,12 @@ if (s) {
   });
   const openDock = async (opts) => {
     const page = await open(dockHash, opts);
-    await page.waitForSelector('#dock textarea.name-edit');
+    await painted(page, '#dock textarea.name-edit');
     await settled(page.locator('#dock'));
     return page;
   };
 
-  for (const name of Object.keys(engines)) {
+  for (const name of extra) {
     for (const theme of ['light', 'dark']) {
       test(`a docked record at 390×844 is a full-screen sheet (${name}, ${theme})`, async () => {
         const page = await openDock({ theme, engine: await engineOf(name) });

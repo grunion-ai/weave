@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { engineOf, launch, painted } from './lib/browser.mjs';
 import { decodePng } from './lib/png.mjs';
 
 let shop, rows;
@@ -29,22 +29,18 @@ const s = await launch('the frozen pair paints a solid ground', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  const pw = await import('playwright');
   const engines = [['default', browser]];
   if (process.env.WEAVE_BROWSER !== 'webkit') {
-    const webkit = await pw.webkit.launch().catch(() => null);
-    if (webkit) {
-      engines.push(['webkit', webkit]);
-      test.after(() => webkit.close());
-    }
+    const webkit = await engineOf('webkit');
+    if (webkit) engines.push(['webkit', webkit]);
   }
 
   const open = async (b, { theme, viewport, docked }) => {
     const page = await b.newPage({ viewport, deviceScaleFactor: 1 });
     const q = docked ? `?e=${rows[0].id}` : '';
     await page.goto(`${base}/#/table/${shop.id}${q}`, { waitUntil: 'load' });
-    await page.waitForSelector('.wv-grid tbody tr.entity-row');
-    if (docked) await page.waitForSelector(`tr[data-eid="${rows[0].id}"].row-docked`);
+    await painted(page, '.wv-grid tbody tr.entity-row');
+    if (docked) await painted(page, `tr[data-eid="${rows[0].id}"].row-docked`);
     await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     const scrolled = await page.evaluate(() => {
       const wrap = document.querySelector('.table-wrap');
@@ -152,7 +148,7 @@ if (s) {
       const page = await open(b, { theme: 'light', viewport: VIEWPORTS[0] });
       try {
         await page.click('.wv-grid tbody tr.entity-row td.sel-cell .sel-box');
-        await page.waitForSelector('.wv-grid tbody tr.row-selected');
+        await painted(page, '.wv-grid tbody tr.row-selected');
         await page.evaluate(() => document.activeElement?.blur());
         await page.mouse.move(1, VIEWPORTS[0].height - 1);
         await page.waitForTimeout(250);
@@ -161,4 +157,20 @@ if (s) {
       } finally { await page.close(); }
     });
   }
+
+  test('a first-paint wait that misses says what the page had instead', async () => {
+    const page = await browser.newPage({ viewport: VIEWPORTS[0], deviceScaleFactor: 1 });
+    try {
+      await page.goto(`${base}/#/table/${shop.id}`, { waitUntil: 'load' });
+      await painted(page, '.wv-grid tbody tr.entity-row');
+      await assert.rejects(() => painted(page, '.wv-grid tbody tr.nothing-paints-this', { timeout: 500 }), (err) => {
+        assert.match(err.message, /never painted within 500 ms/);
+        const said = JSON.parse(err.message.slice(err.message.indexOf('{')));
+        assert.equal(said.skeleton, false, 'the route skeleton stood down once the grid drew (Issue #713)');
+        assert.ok(said.rows > 0, `the page accounts for its rows, and says it has ${said.rows}`);
+        assert.ok(said.main.length > 0, 'and for what stands in #main');
+        return true;
+      });
+    } finally { await page.close(); }
+  });
 }
