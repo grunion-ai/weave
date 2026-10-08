@@ -675,11 +675,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-body > .doc-section > .doc-section-head { margin-left: -18px; }
 .entity-body > .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }
 @media (hover: hover) { .entity-body > .doc-section:hover .opt-grip { opacity: 1; } }
+@media (hover: none) { .entity-body > .doc-section .opt-grip { opacity: .7; } }
 .entity-body .doc-section-head { cursor: grab; }
 .entity-fields .fieldrow { grid-template-columns: 16px 150px minmax(0, 1fr); gap: 0 10px; padding: 3px 6px 3px 0; margin-left: -6px; border-radius: var(--tblr-border-radius); border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
 .entity-fields .fieldrow:hover { background: var(--wv-pill-hover); }
 .entity-fields .fieldrow .opt-grip { opacity: 0; text-align: center; transition: opacity .12s; }
 @media (hover: hover) { .entity-fields .fieldrow:hover .opt-grip { opacity: 1; } }
+@media (hover: none) { .entity-fields .fieldrow .opt-grip { opacity: .7; } }
 .entity-fields .fieldrow label { font-size: 13px; }
 .entity-fields .fieldrow-label { cursor: pointer; border-radius: 4px; padding: 2px 6px; margin-left: -6px; width: fit-content; }
 .entity-fields .fieldrow-label:hover { background: var(--wv-pill-active); color: var(--tblr-body-color); }
@@ -696,6 +698,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .block-head .opt-grip, .related-head .opt-grip, .attach-block .opt-grip { opacity: 0; cursor: grab; transition: opacity .12s; }
 .entity-body > [data-block]:has(:focus-visible) .opt-grip { opacity: 1; }
 @media (hover: hover) { .entity-body > [data-block]:hover .opt-grip { opacity: 1; } }
+@media (hover: none) { .entity-body > [data-block] .opt-grip { opacity: .7; } }
 .related-block { margin: 0 0 18px; }
 .entity-body > .attach-block { grid-template-columns: 16px 150px minmax(0, 1fr); gap: 0 10px; align-items: center;
   min-height: 32px; padding: 3px 6px 3px 0; margin: 4px 0 14px -6px; border-radius: var(--tblr-border-radius); }
@@ -2262,6 +2265,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .list-grip { border: 0; background: none; color: var(--tblr-secondary); padding: 2px; display: grid; place-items: center; opacity: 0; touch-action: none; cursor: grab; flex: none; }
 .list-row:focus-within .list-grip { opacity: .7; }
 @media (hover: hover) { .list-row:hover .list-grip { opacity: .7; } }
+@media (hover: none) { .list-grip { opacity: .7; } }
 .list-grip svg { width: 14px; height: 14px; }
 .list-check { margin: 0; flex: none; cursor: pointer; }
 .list-check-gap { width: 1em; flex: none; }
