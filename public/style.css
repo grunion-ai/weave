@@ -2223,3 +2223,6 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
   .list-group .list-group { padding-left: 10px; }
   .table-group-popover .group-level { flex-wrap: wrap; }
 }
+@media (max-width: 600px), (pointer: coarse) {
+  :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea, select, [contenteditable]:not([contenteditable="false"])):not(.name-edit, .view-title) { font-size: 16px !important; }
+}

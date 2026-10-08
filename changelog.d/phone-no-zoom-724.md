@@ -1,0 +1,1 @@
+- On an iPhone, focusing a text field no longer zooms the page. At 600px and below and on touch screens every input, text area, select and editable block is at least 16px, and the app pages carry `maximum-scale=1` (Issue #724).
