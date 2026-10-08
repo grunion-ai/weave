@@ -521,6 +521,9 @@ function tableHop(db) {
 }
 
 const dockCoversScreen = matchMedia('(max-width: 600px)');
+const touchOnly = matchMedia('(hover: none) and (pointer: coarse)');
+const SHORTCUT_CLAUSE = /\s*(?:\([^()]*(?:⌘|Ctrl)[^()]*\)|— ⌘-click for a new tab|<[^<>]*(?:⌘|Ctrl)[^<>]*>)/g;
+const keyHint = (text) => (touchOnly.matches ? text.replace(SHORTCUT_CLAUSE, '') : text);
 
 function dockSyncUrl({ step = false } = {}) {
   const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+(?:\/view\/[^/?]+)?/);
@@ -579,7 +582,7 @@ async function drawDock() {
     pose: [
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
-        title: 'Expand (⌘⇧E)', 'aria-label': 'Expand to the full page',
+        title: keyHint('Expand (⌘⇧E)'), 'aria-label': 'Expand to the full page',
         onclick: () => dockExpand(),
       }, poseGlyph(false)),
       el('button', {
@@ -5015,7 +5018,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         el('a', {
           class: 'open-link',
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
-          title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
+          title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : keyHint(`Open ${db.term.singular} beside the table — ⌘-click for a new tab`),
         }, `#${item.publicId} ↗`),
         el('span', { class: 'list-name' }, item.name ?? ''))),
       ...cols.map((c) => {
@@ -9818,7 +9821,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const poseControls = inPeek ? (dockControls?.pose ?? []) : db ? [
     el('button', {
       class: 'btn btn-sm pose-btn', type: 'button',
-      title: 'Collapse (⌘⇧E)', 'aria-label': 'Collapse — dock beside the table',
+      title: keyHint('Collapse (⌘⇧E)'), 'aria-label': 'Collapse — dock beside the table',
       onclick: () => collapseToSplit(entity),
     }, poseGlyph(true)),
     el('button', {
@@ -12271,7 +12274,7 @@ function openBugPanel(fab) {
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
-  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: 'Send (⌘Return)' }, 'Send');
+  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: keyHint('Send (⌘Return)') }, 'Send');
   const note = el('textarea', {
     class: 'form-control bug-note', rows: '2', maxlength: '600',
     placeholder: 'What went wrong?',

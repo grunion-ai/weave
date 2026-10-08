@@ -2298,3 +2298,4 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
 .new-row-create:disabled, .new-row-more:disabled { opacity: .45; }
 @keyframes wv-fade-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .new-row-back, .new-row-sheet { animation: none; } }
+@media (hover: none) and (pointer: coarse) { .search-like kbd, .bug-kbd { display: none; } }
