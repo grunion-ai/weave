@@ -1,0 +1,1 @@
+- On a phone, a list row keeps its chips on one line under the name at every row height. Chips that do not fit fold into a +N counter instead of wrapping onto a second line that the row clipped at Comfortable and Spacious (Issue #730).

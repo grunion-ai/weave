@@ -2130,7 +2130,28 @@ function checkRowPitch(grid) {
   console.warn(`weave: a ${grid.dataset.density} row painted ${got}px, not its ${want}px token; tallest cell: ${tallest?.type} (${tallest?.h}px${tallest?.boxed ? '' : ', no clip box'})`);
 }
 
+const PHONE_MORE_W = 44;
+function fitPhoneChipLines(grid) {
+  const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
+  for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
+    const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
+    for (const td of cells) { td.classList.remove('list-hide'); delete td.dataset.more; }
+    if (!phone) continue;
+    const shown = cells.filter((td) => td.getClientRects().length);
+    if (!shown.length) continue;
+    const top = shown[0].getBoundingClientRect().top;
+    const edge = tr.getBoundingClientRect().right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
+    let n = shown.length;
+    const fits = () => {
+      const r = shown[n - 1].getBoundingClientRect();
+      return r.top - top < 1 && (n === shown.length || r.right + PHONE_MORE_W <= edge);
+    };
+    while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
+    if (n < shown.length) shown[n - 1].dataset.more = `+${shown.length - n}`;
+  }
+}
 function markClippedCells(grid) {
+  fitPhoneChipLines(grid);
   fitChips(grid);
   const cutOff = new Set();
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
