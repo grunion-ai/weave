@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.80 — 2026-10-07
+
+- A rollup or a lookup that draws rating icons now opens wide enough for all of them, and holds that width as its resize floor, the way a rating column has since Issue #404. A max-7 rollup drew 104px of icons in an 80px cell before. (Issue #564)
+- Opening another record in the dock starts it at the top. The dock reuses one scroller across records, so the previous record's offset carried over and the new record's title sat off screen above the reader; an edit or a refresh of the record on screen still holds its place (Issue #623).
+- A lookup of a rating over a to-many relation now draws one group of icons per related row instead of printing the numbers, and a related row with no rating keeps its slot as an unrated group. The chip, the card and the field dialog's sample draw it the same way. (Issue #377)
+- Checklist items in a document wrap between words. Before, Vditor's `word-break: break-all` let a line end mid-word ("sen / ds"); a URL longer than the line still wraps inside the column (Issue #715).
+
 ## v0.4.79 — 2026-10-07
 
 - Three browser suites launched their own WebKit or Chromium through `import('playwright')`, outside the shared harness. Those pages never saw `WEAVE_CPU_THROTTLE`, so the recipe DEVELOPMENT.md gives for a gate-only red could not reproduce one in `frozen-ground-browser`, `phone-shell-browser` or `editor-math-browser`. All three now ask the harness for the extra engine through `engineOf(name)`, which throttles it and closes it with the suite: the same file runs 13 s unthrottled, 16 s at throttle 4 and 36 s at throttle 20, where before the WebKit half ran at full speed whatever the setting. `test/browser-harness.test.mjs` now holds every `*-browser.test.mjs` to the harness, not only the ones its old pattern matched.

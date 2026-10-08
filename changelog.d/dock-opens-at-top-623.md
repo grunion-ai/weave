@@ -1,1 +1,0 @@
-- Opening another record in the dock starts it at the top. The dock reuses one scroller across records, so the previous record's offset carried over and the new record's title sat off screen above the reader; an edit or a refresh of the record on screen still holds its place (Issue #623).
