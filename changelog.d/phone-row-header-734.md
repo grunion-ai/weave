@@ -1,0 +1,1 @@
+- On a phone, the row page header keeps one line: the crumb chip, the row menu and Close, each a 44px circle. Expand is gone (the row already fills the screen), and Copy link and Show or hide fields moved into the row menu (Issue #734).

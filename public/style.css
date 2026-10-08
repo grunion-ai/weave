@@ -2066,6 +2066,17 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
   .crumb-sep { padding: 0 1px; }
   .crumb-more { width: 36px; height: 36px; border-radius: 18px; background: var(--tblr-bg-surface); box-shadow: var(--wv-panel-shadow); }
 }
+@media (min-width: 601px) { .dl-menu .phone-only { display: none; } }
+@media (max-width: 600px) {
+  #dock .crumb-row :is(.pose-btn, .eye-btn, .crumb-copy) { display: none; }
+  #dock .crumb-row :is(.dl-wrap > .dots-btn, .dock-close) { width: 44px; height: 44px; min-width: 44px; margin: 0; padding: 0; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 22px; color: var(--tblr-body-color);
+    background: var(--wv-glass); border: 1px solid var(--wv-glass-line); box-shadow: var(--wv-glass-shadow); -webkit-backdrop-filter: blur(18px) saturate(180%); backdrop-filter: blur(18px) saturate(180%); }
+  #dock .crumb-row :is(.dl-wrap > .dots-btn, .dock-close) :is(svg, .wv-icon) { margin: 0; }
+  #dock .crumb-row { flex-wrap: nowrap; }
+  #dock .crumb-row > .crumb-path { flex: 1 1 0; min-width: 0; }
+  #dock .crumb-row .crumb-actions { flex: none; gap: 6px; margin-left: auto; }
+  #dock .dl-menu .dropdown-item { min-height: 44px; display: flex; align-items: center; }
+}
 .phone-bar { display: none; }
 @media (max-width: 600px) {
   .phone-bar { display: flex; align-items: center; gap: 10px; position: fixed; left: 16px; right: 16px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 60; pointer-events: none; }

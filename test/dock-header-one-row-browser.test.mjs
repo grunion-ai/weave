@@ -125,12 +125,13 @@ if (s) {
     await page.close();
   });
 
-  test('phone: the full-screen dock keeps expand and close in its one header row', async () => {
+  test('phone: the full-screen dock keeps close in its one header row and drops expand (Issue #734)', async () => {
     const page = await openDocked({ phone: true });
     await toBottom(page);
     const r = await read(page);
     assert.equal(r.dockHeads, 0);
-    for (const [name, ctl] of [['expand', r.expand], ['close', r.close]]) {
+    assert.equal(await page.locator('#dock .pose-btn').isVisible(), false, 'a full-screen dock has nothing to expand to');
+    for (const [name, ctl] of [['close', r.close]]) {
       assert.ok(ctl?.inRow, `${name} sits in the crumb row`);
       assert.ok(ctl.top >= r.pane.top - 1 && ctl.bottom <= r.pane.bottom + 1, `${name} is on screen: ${JSON.stringify(ctl)}`);
       assert.ok(ctl.reachable, `${name} answers a tap`);

@@ -566,7 +566,7 @@ async function drawDock() {
         onclick: () => dockExpand(),
       }, poseGlyph(false)),
       el('button', {
-        class: 'btn btn-sm btn-ghost-secondary', type: 'button',
+        class: 'btn btn-sm btn-ghost-secondary dock-close', type: 'button',
         title: 'Close (Esc)', 'aria-label': 'Close',
         onclick: () => dockDismiss(),
       }, iconEl('✕')),
@@ -2257,7 +2257,7 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
       continue;
     }
     menu.append(el('button', {
-      class: 'dropdown-item' + (it.danger ? ' text-danger' : ''), type: 'button',
+      class: 'dropdown-item' + (it.danger ? ' text-danger' : '') + (it.phone ? ' phone-only' : ''), type: 'button',
       onclick: async () => { close(); await it.run(); },
     }, it.label));
   }
@@ -9763,6 +9763,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const entBase = `${WS_PREFIX}/e/${id}/entity`;
   const dlBtn = dotsMenu([
     inPeek ? { label: 'Activity', run: () => activityPanel.toggle(id, null, mount) } : null,
+    inPeek ? { phone: true, label: 'Copy link', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') } : null,
+    inPeek ? { phone: true, label: 'Show or hide fields', run: () => fieldVisibilityPopover(dlBtn.firstElementChild, db, 0, { redraw: refresh, rowsSection: false }) } : null,
     inPeek ? 'divider' : null,
     ...['md', 'html', 'pdf'].map((ext) => ({
       label: `Download .${ext}`, href: `${entBase}.${ext}`,
