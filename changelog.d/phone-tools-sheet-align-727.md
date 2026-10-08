@@ -1,0 +1,1 @@
+- On a phone, the table sliders button draws its icon centred, and its sheet opens 8px below the button with the two right edges lined up (Issue #727).

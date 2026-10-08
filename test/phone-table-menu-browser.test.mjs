@@ -132,6 +132,29 @@ if (s) {
     }
   }
 
+  for (const [engine, b, profile] of engines) {
+    for (const theme of ['light', 'dark']) {
+      test(`on a phone the sliders icon sits centred and the sheet opens 8px below the button with matching right edges (${engine}, ${theme}, Issue #727)`, async () => {
+        const page = await open(b, { profile, theme });
+        try {
+          await page.click('#main .table-tools-btn');
+          await settled(page.locator('#main .crumb-actions'));
+          const m = await page.evaluate(() => {
+            const btn = document.querySelector('#main .table-tools-btn');
+            const b = btn.getBoundingClientRect();
+            const i = btn.querySelector('svg').getBoundingClientRect();
+            const s = document.querySelector('#main .crumb-row.tools-open > .crumb-actions').getBoundingClientRect();
+            return { dx: (i.left + i.right) / 2 - (b.left + b.right) / 2, dy: (i.top + i.bottom) / 2 - (b.top + b.bottom) / 2, gap: s.top - b.bottom, right: s.right - b.right, theme: document.documentElement.dataset.bsTheme };
+          });
+          assert.equal(m.theme, theme);
+          assert.ok(Math.abs(m.dx) <= 0.5 && Math.abs(m.dy) <= 0.5, `the icon centre sits on the button centre (${m.dx}, ${m.dy})`);
+          assert.ok(Math.abs(m.gap - 8) <= 0.5, `the sheet opens 8px below the button (${m.gap})`);
+          assert.ok(Math.abs(m.right) <= 0.5, `the sheet and the button share a right edge (${m.right})`);
+        } finally { await page.close(); }
+      });
+    }
+  }
+
   test('on a desktop the toolbar stays inline, keeps its search and kebab, and has no sliders button or Sort row (Feature #271, Issue #723)', async () => {
     const page = await open(browser);
     try {

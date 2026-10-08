@@ -3961,6 +3961,9 @@ function tableToolsButton(header, ref) {
   header.addEventListener('click', (e) => { if (e.target.closest('.tools-group .tools-row:not(.hold-btn)')) shut(); });
   btn.addEventListener('click', () => {
     if (row().classList.contains('tools-open')) return shut();
+    const r = btn.getBoundingClientRect();
+    row().style.setProperty('--tools-top', `${r.bottom + 8}px`);
+    row().style.setProperty('--tools-right', `${document.documentElement.clientWidth - r.right}px`);
     row().classList.add('tools-open');
     btn.setAttribute('aria-expanded', 'true');
     off = dismissOutside({
