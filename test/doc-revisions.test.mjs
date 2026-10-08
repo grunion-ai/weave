@@ -384,3 +384,45 @@ test('CLI: weave doc-revisions and weave doc-restore', () => {
   const limited = JSON.parse(cli('doc-revisions', 'Article#1', '--limit', '1'));
   assert.equal(limited.revisions.length, 1);
 });
+
+function ruleDemo({ trigger, actions }) {
+  const w = new Weave({ actor: 'kyle' });
+  w.createSpace({ name: 'Workflow Demo' });
+  const t = w.createTable({ space: 'Workflow Demo', name: 'Request' });
+  w.addField(t.id, { name: 'Status', type: 'workflow', config: { states: [{ name: 'New', default: true }, { name: 'Done' }] } });
+  w.addField(t.id, { name: 'Ping', type: 'text' });
+  const auto = w.createAutomation(t.id, { name: 'Close out on Done', trigger, actions });
+  return { w, t, auto };
+}
+
+test('a rule\'s append to a document leaves a revision signed workflow:<row id> (Issue #700)', () => {
+  const { w, t, auto } = ruleDemo({
+    trigger: { type: 'state-changed', field: 'Status', toState: 'Done' },
+    actions: [{ type: 'append-doc', text: 'Closed.' }],
+  });
+  const req = w.createEntity(t.id, { Name: 'R' });
+  w.setDoc(req.id, 'Opened by the customer.');
+  w.setState(req.id, 'Status', 'Done');
+  assert.equal(w.getDoc(req.id), 'Opened by the customer.\n\nClosed.');
+  const { revisions } = w.listDocRevisions(req.id);
+  assert.equal(revisions.length, 2, 'the rule\'s append is a revision of its own');
+  assert.equal(revisions[0].actor, `workflow:${auto.id}`, 'the newest revision names the rule that wrote it');
+  assert.equal(w.getDocRevision(req.id, null, revisions[0].seq).text, 'Opened by the customer.\n\nClosed.');
+  assert.equal(revisions[1].actor, 'kyle', 'the person\'s text is the revision below it');
+  assert.equal(w.getDocRevision(req.id, null, revisions[1].seq).text, 'Opened by the customer.');
+});
+
+test('two fires of one rule inside the revision window leave one revision holding the later text (Issue #700)', () => {
+  const { w, t, auto } = ruleDemo({
+    trigger: { type: 'field-updated', field: 'Ping' },
+    actions: [{ type: 'append-doc', text: 'ping' }],
+  });
+  const req = w.createEntity(t.id, { Name: 'R' });
+  w.updateEntity(req.id, { Ping: 'one' });
+  w.updateEntity(req.id, { Ping: 'two' });
+  assert.equal(w.getDoc(req.id), 'ping\n\nping');
+  const { revisions } = w.listDocRevisions(req.id);
+  assert.equal(revisions.length, 1, 'one actor inside the window keeps one revision, as it does for a person');
+  assert.equal(revisions[0].actor, `workflow:${auto.id}`);
+  assert.equal(w.getDocRevision(req.id, null, revisions[0].seq).text, 'ping\n\nping', 'and it holds the later text');
+});
