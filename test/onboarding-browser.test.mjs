@@ -162,12 +162,13 @@ if (s) {
 
   for (const at of [1, 2, 3]) {
     for (const how of ['Skip setup', 'Esc']) {
-      test(`leave with ${how} on step ${at}: the defaults, nothing built, done`, async () => {
+      test(`leave with ${how} on step ${at}: nothing built, done`, async () => {
         const page = await open();
-        if (at >= 2) { await page.keyboard.press('Enter'); await step(page, 2); await page.keyboard.type('not-this-one'); }
+        if (at >= 2) { await page.keyboard.press('Enter'); await step(page, 2); await page.keyboard.type('Acme Team'); }
         if (at === 3) { await page.keyboard.press('Enter'); await step(page, 3); }
         await landsHome(page, () => (how === 'Esc' ? page.keyboard.press('Escape') : page.click('.wv-onboard-skip')));
-        assert.equal(s.weave.state.meta.name, 'workspace', 'the default name');
+        assert.equal(s.weave.state.meta.name, at === 3 ? 'acme-team' : 'workspace',
+          at === 3 ? 'a name confirmed with Continue survives leaving (Issue #615)' : 'a name typed but never confirmed is dropped');
         assert.equal(s.weave.userTables().length, 0, 'nothing half made');
         assert.ok(s.weave.onboardedAt(), 'leaving counts as done');
         await page.close();

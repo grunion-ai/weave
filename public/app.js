@@ -10391,13 +10391,14 @@ function onboard(defaultName) {
   const heading = el('h2', {});
   const line = el('p', { class: 'wv-onboard-line' });
   const body = el('div', { class: 'wv-onboard-body' });
-  const skip = el('button', { class: 'btn wv-onboard-skip', type: 'button', onclick: () => finish() }, 'Skip setup');
+  const skip = el('button', { class: 'btn wv-onboard-skip', type: 'button', onclick: () => leave() }, 'Skip setup');
   const actions = el('div', { class: 'actions' }, skip);
   const box = el('div', { id: 'modal', class: 'wv-onboard' }, dots, marker, iconSlot, heading, line, body, actions);
   back.append(box);
   holdPage(back, box);
   let name = defaultName;
   let busy = false;
+  const leave = () => finish(box.dataset.step === '3' ? { name } : {});
 
   const primary = (label, run) => el('button', { class: 'btn btn-primary wv-onboard-next', type: 'button', onclick: run }, label);
   function show(i) {
@@ -10459,7 +10460,7 @@ function onboard(defaultName) {
 
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); finish(); }
+    if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); leave(); }
   });
   show(0);
 }
