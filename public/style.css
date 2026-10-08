@@ -158,7 +158,6 @@ a.nav-space:hover { color: var(--tblr-primary); }
 @media (max-width: 600px) {
   #ws-rail { display: none; }
   #app.nav-peek #ws-rail { display: flex; position: fixed; left: 0; top: 0; height: 100dvh; z-index: 71; background: var(--wv-canvas); }
-  #main { --wv-pane-pad: 16px; --wv-pane-pad-x: 14px; margin-left: 8px; padding: var(--wv-pane-pad) var(--wv-pane-pad-x); }
 }
 .nav-caret { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-left: -2px; padding: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; line-height: 0; transition: transform .12s ease, color .12s ease, background-color .12s ease; }
 .nav-caret svg { width: 15px; height: 15px; stroke: currentColor; }
@@ -211,6 +210,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-menu-row.wv-menu-danger:hover, .wv-menu-row.wv-menu-danger:focus { background: color-mix(in srgb, var(--tblr-danger) 11%, transparent); }
 
 #main { --wv-pane-pad: 24px; --wv-pane-pad-x: 28px; flex: 1; padding: var(--wv-pane-pad) var(--wv-pane-pad-x); min-width: 0; margin: 8px 8px 8px 0; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); }
+@media (max-width: 600px) { #main { --wv-pane-pad: 16px; --wv-pane-pad-x: 14px; } }
 .wv-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .wv-toolbar h1 { font-size: 19px; margin: 0 auto 0 0; }
 
@@ -961,6 +961,10 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 
 .doc-section { margin: 0 0 26px; position: relative; padding-left: 18px; }
 .doc-section.deck-section { padding-left: 0; }
+@media (max-width: 600px) {
+  .doc-section { padding-left: 0; }
+  .entity-body > .doc-section > .doc-section-head { margin-left: 0; }
+}
 
 .doc-rail { position: absolute; left: -26px; top: 0; bottom: 0; width: 22px; cursor: pointer; }
 .doc-rail-track { position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px) + 8px); width: max-content; display: flex; flex-direction: column;
