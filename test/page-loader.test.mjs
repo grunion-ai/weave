@@ -19,9 +19,71 @@ test('the app cycle constant tracks the one the generator publishes', () => {
     'app.js and brand/build-logos.mjs must agree, or the hide lands mid-weave');
 });
 
-test('a shown loader always finishes at least one whole cycle', () => {
-  assert.match(APP, /LOADER_CYCLE_MS - \(elapsed % LOADER_CYCLE_MS\)/);
-  assert.match(APP, /const elapsed = Date\.now\(\) - loading\.shownAt/);
+test('a finished page leaves on the woven pose, not at the cycle end (Issue #392)', () => {
+  assert.doesNotMatch(APP, /LOADER_CYCLE_MS - \(elapsed % LOADER_CYCLE_MS\)/,
+    'rounding the hide up to the cycle end shows the empty wash and taxes the page up to 2 s');
+  const woven = [];
+  for (let k = 0; k <= 2000; k++) {
+    const u = k / 2000;
+    if (Math.abs(dashOffset(u)) < 1e-9) woven.push(u);
+  }
+  assert.equal(Number(APP.match(/const LOADER_POSE_FROM = ([\d.]+);/)[1]), woven[0],
+    'the exit pose starts where the generator finishes weaving the mark');
+  assert.equal(Number(APP.match(/const LOADER_POSE_TO = ([\d.]+);/)[1]), woven[woven.length - 1],
+    'the exit pose ends before the generator starts unweaving');
+  assert.ok(Number(APP.match(/const LOADER_EXIT_RATE = ([\d.]+);/)[1]) > 1,
+    'the exit fast-forwards to the pose instead of waiting for it');
+  const settle = fnBody('settleLoader');
+  assert.match(settle, /playbackRate = LOADER_EXIT_RATE/);
+  assert.match(settle, /updateTiming\(\{ iterations:/,
+    'fractional iterations end the rope on the pose even when the main thread is busy');
+  assert.match(settle, /\.finished\.then\(fade/,
+    'the fade follows the animation clock, never a timer that jank can overshoot');
+  assert.match(settle, /classList\.add\('loader-out'\)/);
+  assert.match(settle, /setTimeout\(hide, LOADER_HOLD_MS \+ LOADER_FADE_MS\)/);
+});
+
+test('the grid loader leaves the same way as the page loader (Issue #392)', () => {
+  const grid = fnBody('paintGridWait');
+  assert.doesNotMatch(grid, /LOADER_CYCLE_MS/,
+    'two loaders on one screen must agree on when they go');
+  assert.match(grid, /settleLoader\(gridLoaderNode\(\), gridWait, hideGridLoader\)/);
+  assert.match(fnBody('withPageLoader'), /settleLoader\(\$\('#page-loader'\), loading, hidePageLoader\)/);
+  for (const [fn, state] of [['withPageLoader', 'loading'], ['paintGridWait', 'gridWait']]) {
+    assert.match(fnBody(fn), new RegExp(`if \\(${state}\\.exit\\) keepLoader\\(`),
+      `a fresh wait during the exit puts ${state} back on the rope instead of leaving it faded out`);
+  }
+  assert.match(fnBody('showPageLoader'), /keepLoader\(host, loading\)/,
+    'the show takes the faded-out class and the fast-forwarded timing back off');
+  assert.match(fnBody('showGridLoader'), /keepLoader\(node, gridWait\)/);
+  assert.match(fnBody('hidePageLoader'), /loading\.exit = null/);
+  assert.match(fnBody('hideGridLoader'), /gridWait\.exit = null/);
+  for (const fn of ['hidePageLoader', 'hideGridLoader']) {
+    assert.doesNotMatch(fnBody(fn), /loader-out/,
+      `${fn} leaves the class on: dropping it as the host goes dark is a class that flips and flips back`);
+  }
+});
+
+test('the exit holds the pose, then fades, in both motion settings (Issue #392)', () => {
+  const timing = {};
+  for (const name of ['LOADER_HOLD_MS', 'LOADER_FADE_MS']) {
+    const found = APP.match(new RegExp(`const ${name} = (\\d+);`));
+    assert.ok(found, `app.js must declare ${name}, so the CSS and the hide timer read one number`);
+    timing[name] = Number(found[1]);
+  }
+  const [hold, fade] = [timing.LOADER_HOLD_MS, timing.LOADER_FADE_MS];
+  for (const host of ['#page-loader', '#main > \\.grid-loader']) {
+    const rule = new RegExp(`${host}\\.loader-out \\{ animation: loader-out (\\d+)ms linear (\\d+)ms both; \\}`);
+    const found = CSS.match(rule);
+    assert.ok(found, `${host}.loader-out must hold the pose and then fade, filled both ways`);
+    assert.deepEqual([Number(found[1]), Number(found[2])], [fade, hold],
+      `${host}.loader-out: the CSS fade and delay must match LOADER_FADE_MS and LOADER_HOLD_MS`);
+  }
+  assert.ok(CSS.indexOf('#page-loader.loader-out') > CSS.indexOf('#page-loader.boot'),
+    'the exit rule must outrank the boot gate, which is still on the host while it fades');
+  assert.match(CSS, /@keyframes loader-out \{ from \{ opacity: 1; \} to \{ opacity: 0; \} \}/);
+  assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*#page-loader \{ animation: none; \}\s*#page-loader\.boot \{[^}]*\}\s*#page-loader\.loader-out \{ animation: loader-out 0s[^}]*\}/,
+    'reduced motion keeps the hold and drops the fade');
 });
 
 test('showing the loader restarts the rope so the cycle starts at the start', () => {

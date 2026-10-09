@@ -149,4 +149,60 @@ if (s) {
       `the show waited ${lag} ms: the one-shot boot delay replayed, so every wait reads late`);
     await page.close();
   });
+  const WAITS = [700, 1100, 1500, 1900, 2300];
+
+  test('a page that finishes mid-cycle leaves on the woven pose within a half second (Issue #392)', async (t) => {
+    const seen = [];
+    for (const wait of WAITS) {
+      const page = await browser.newPage({ viewport: { width: 1200, height: 760 } });
+      await page.addInitScript(() => {
+        window.__exit = { out: 0, hidden: 0, phase: null, state: null };
+        const arm = () => {
+          const host = document.querySelector('#page-loader');
+          if (!host) { requestAnimationFrame(arm); return; }
+          const rope = () => host.getAnimations({ subtree: true })
+            .filter((a) => String(a.animationName || '').startsWith('rope-'));
+          new MutationObserver(() => {
+            if (!window.__exit.out && host.classList.contains('loader-out')) {
+              const [a] = rope();
+              window.__exit.out = performance.now();
+              window.__exit.phase = a ? (Number(a.currentTime) % 2000) / 2000 : null;
+              window.__exit.state = a ? a.playState : null;
+            }
+            if (!window.__exit.hidden && host.hidden) window.__exit.hidden = performance.now();
+          }).observe(host, { attributes: true, attributeFilter: ['class', 'hidden'] });
+        };
+        arm();
+      });
+      await page.route('**/api/schema', async (route) => {
+        await new Promise((r) => setTimeout(r, wait));
+        await route.continue();
+      });
+      await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+      await eventually(() => page.evaluate(() => window.__exit.hidden > 0), true, { timeout: 25000, every: 25 });
+      seen.push({ wait, ...await page.evaluate(() => {
+        const last = performance.getEntriesByType('resource')
+          .filter((e) => e.name.includes('/api/') && e.responseEnd <= window.__exit.hidden)
+          .reduce((m, e) => Math.max(m, e.responseEnd), 0);
+        return {
+          tax: Math.round(window.__exit.hidden - last),
+          phase: window.__exit.phase,
+          state: window.__exit.state,
+        };
+      }) });
+      await page.close();
+    }
+    for (const r of seen) {
+      t.diagnostic(`${r.wait} ms wait: tax ${r.tax} ms, exit phase ${r.phase}, rope ${r.state}`);
+    }
+    for (const r of seen) {
+      assert.ok(r.tax < 950,
+        `a ${r.wait} ms wait held the loader ${r.tax} ms past its last response`);
+      assert.notEqual(r.phase, null, `the ${r.wait} ms wait left with no rope animation to read`);
+      assert.ok(r.phase >= 0.44 && r.phase <= 0.63,
+        `the ${r.wait} ms wait left at phase ${r.phase}: the mark must be woven, never the empty wash`);
+      assert.equal(r.state, 'finished',
+        `the ${r.wait} ms wait left the rope running: the pose has to be held, not passed through`);
+    }
+  });
 }
