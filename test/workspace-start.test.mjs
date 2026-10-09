@@ -152,6 +152,25 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
   } finally { s.stop(); }
 });
 
+test('apex: a browser at the apex root gets the start page signed in or not, Net moves to its host, /api and /mcp stay', async () => {
+  const s = await serve();
+  try {
+    const t = s.rootToken;
+    const kyle = await s.signInAtStart('user_kyle');
+    assert.deepEqual([(await s.apex('GET', '/', { cookie: kyle.cookie })).status, (await s.apex('GET', '/', { cookie: kyle.cookie })).headers.location], [302, '/start']);
+    assert.equal((await s.apex('GET', '/', { token: t })).headers.location, '/start');
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    const moved = await s.apex('GET', `/e/${id}`);
+    assert.deepEqual([moved.status, moved.headers.location], [301, `http://net.weave.test/e/${id}`]);
+    assert.equal((await s.apex('GET', '/api/workspace', { token: t })).json().name, 'Net', 'the apex API still answers for Net');
+    assert.equal((await s.apex('POST', '/mcp', { body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } })).status, 401, 'and so does its MCP door');
+    assert.equal((await s.apex('POST', '/mcp', { token: t, body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } })).status, 200);
+    assert.equal((await s.at('net.weave.test')('GET', '/api/workspace', { token: t })).json().name, 'Net');
+    assert.notEqual((await s.at('net.weave.test')('GET', '/')).headers.location, '/start', 'the Net host serves Net, not the start page');
+    assert.equal((await s.apex('GET', '/w/weave/api/workspace')).json().name, 'weave', '/w/weave keeps working on the apex');
+  } finally { s.stop(); }
+});
+
 test('start: an architect creates a workspace from a name and a slug, and becomes its architect', async () => {
   const s = await serve();
   try {

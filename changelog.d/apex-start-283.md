@@ -1,0 +1,1 @@
+- A browser at the apex root now gets the start page whether or not it is signed in, and a permalink to the default workspace at the apex answers 301 to that workspace's own host. The apex `/api` and `/mcp` keep answering for the default workspace, so scripts and connected MCP clients need no change. The start page's type now steps 24, 18, 15 and 13 px (Feature #283).

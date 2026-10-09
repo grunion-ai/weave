@@ -164,6 +164,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     weave.maybeRefresh();
     versionOf = weave;
+    if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+      if (path === '/') return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
+      if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
+        return { status: 301, headers: { Location: `${scheme}//${String(hub.defaultName).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+      }
+    }
     const updateWorkspace = (patch) => {
       const slug = patch.name != null ? workspaceSlug(patch.name) : null;
       const state = slug != null && patch.name !== weave.state.meta.name ? hub.slugState(slug, weave) : 'available';
@@ -420,7 +426,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         ? deny(401, 'Session expired or revoked')
         : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(cookieName(weave), rx), 'Cache-Control': 'no-store' }, body: '' };
     } else if (weave.state.meta.requireAuth && !openDoor) {
-      if (baseDomain && oidc && !hostOrigin && !wsPrefix && path === '/' && ['GET', 'HEAD'].includes(rx.method)) return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
       if (path.startsWith('/api/')) return deny(401, 'This workspace requires authentication');
       const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
