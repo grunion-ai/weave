@@ -8730,6 +8730,16 @@ const WV_TB_ICONS = {
   outdent: tbIcon('list-indent-decrease'), indent: tbIcon('list-indent-increase'),
   quote: tbIcon('quote'), code: tbIcon('braces'), table: tbIcon('table'), line: tbIcon('minus'),
   undo: tbIcon('undo'), redo: tbIcon('redo'), upload: tbIcon('upload'),
+  'wv-insert': tbIcon('plus'), 'wv-done': tbIcon('chevron-down'),
+};
+const WV_TB_WRITING = {
+  'wv-insert': { tip: 'Insert', click: (e, vd) => {
+    const r = getSelection()?.rangeCount ? getSelection().getRangeAt(0) : null;
+    const before = r ? r.startContainer.textContent.slice(0, r.startOffset) : '';
+    document.execCommand('insertText', false, before && !/\s$/.test(before) ? ' /' : '/');
+    vd.hint.render(vd);
+  } },
+  'wv-done': { tip: 'Hide keyboard', click: () => { document.activeElement?.blur(); getSelection()?.removeAllRanges(); } },
 };
 
 function guardMathRender() {
@@ -8770,8 +8780,8 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       'headings', 'bold', 'italic', 'strike', 'inline-code', 'link', '|',
       'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'code', 'table', 'line', '|',
-      'undo', 'redo', 'upload',
-    ].map((n) => (n === '|' ? n : { name: n, icon: WV_TB_ICONS[n] })),
+      'undo', 'redo', 'upload', 'wv-insert', 'wv-done',
+    ].map((n) => (n === '|' ? n : { name: n, icon: WV_TB_ICONS[n], ...WV_TB_WRITING[n] })),
     toolbarConfig: { hide: false, pin: false },
     upload: {
       multiple: true,
@@ -8790,6 +8800,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       const md = editor.getValue();
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
       handed = stored(editor.getValue());
+      editor.clearStack();
       scheduleDecorFor(host);
       host.addEventListener('keyup', rememberSelection);
       host.addEventListener('mouseup', rememberSelection);
@@ -8836,6 +8847,7 @@ const docBubbles = new Set();
 function attachToolbarBubble(host) {
   const st = { host };
   st.place = () => placeToolbarBubble(st);
+  for (const ev of ['focusin', 'focusout']) host.addEventListener(ev, () => queueMicrotask(st.place));
   docBubbles.add(st);
   st.place();
 }
@@ -8848,10 +8860,13 @@ function placeToolbarBubble(st) {
   const sel = getSelection();
   const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
   const inBar = bar.contains(document.activeElement) || bar.matches(':hover');
-  const on = (range && !range.collapsed && root.contains(range.startContainer)
-    && root.contains(range.endContainer)) || (inBar && bar.classList.contains('wv-show'));
-  bar.classList.toggle('wv-show', !!on);
   const docked = dockCoversScreen.matches;
+  const inRoot = range && root.contains(range.startContainer) && root.contains(range.endContainer);
+  const picked = inRoot && !range.collapsed;
+  const caret = docked && !picked && root.contains(document.activeElement);
+  const on = picked || caret || (inBar && bar.classList.contains('wv-show'));
+  bar.classList.toggle('wv-show', !!on);
+  bar.classList.toggle('wv-bar-caret', !!caret);
   bar.classList.toggle('wv-bar-dock', docked);
   if (docked) {
     const keyboard = keyboardInset();
