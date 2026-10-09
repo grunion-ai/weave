@@ -119,6 +119,17 @@ test('docTitle: <row or table> · <workspace>, the workspace alone, Weave with n
   assert.equal(docTitle(undefined, undefined), 'Weave');
 });
 
+test('rowTitle: <table> #<id> · <name>, the ref alone for an unnamed row, the name alone without a ref', () => {
+  const { rowTitle } = globalThis.weaveBreadcrumbs;
+  assert.equal(rowTitle({ table: 'Issue', publicId: 287, name: 'Slow: page load' }), 'Issue #287 · Slow: page load');
+  assert.equal(rowTitle({ tableName: 'Deals', publicId: 1, name: 'Acme' }), 'Deals #1 · Acme');
+  assert.equal(rowTitle({ table: 'Issue', publicId: 287, name: '  ' }), 'Issue #287');
+  assert.equal(rowTitle({ table: 'Issue', publicId: 0, name: 'Zero' }), 'Issue #0 · Zero');
+  assert.equal(rowTitle({ name: 'Loose row' }), 'Loose row');
+  assert.equal(rowTitle({ table: 'Issue', name: 'No id' }), 'No id');
+  assert.equal(rowTitle(null), '');
+});
+
 const N = () => globalThis.weaveBreadcrumbs;
 const h = (id) => ({ id, name: id.toUpperCase(), tableId: 't1', table: 'People' });
 const ids = (hops) => hops.map((x) => x.id);

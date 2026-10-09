@@ -40,7 +40,7 @@ if (s) {
     const ws = await wsName(page);
     await page.click(`tr[data-eid="${acme.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
-    await titleIs(page, `Acme Working Capital · ${ws}`);
+    await titleIs(page, `Deals #1 · Acme Working Capital · ${ws}`);
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
     await page.waitForSelector('#dock', { state: 'hidden' });
@@ -52,7 +52,7 @@ if (s) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
     const ws = await wsName(page);
-    await titleIs(page, `Acme Working Capital · ${ws}`);
+    await titleIs(page, `Deals #1 · Acme Working Capital · ${ws}`);
     await page.evaluate((id) => { location.hash = `#/space/${id}`; }, space.id);
     await titleIs(page, `Sales · ${ws}`);
     await page.evaluate(() => { location.hash = '#/'; });

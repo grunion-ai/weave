@@ -241,7 +241,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         } catch {}
       }
       const live = (tables) => tables.reduce((n, d) => n + weave.listEntities(d.id).length, 0);
-      let title, trail, detail, url, route = null, fields = [];
+      let title, heading, trail, detail, url, route = null, fields = [];
       try {
         if (!m) {
           const tables = weave.userTables();
@@ -253,8 +253,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (e.deletedAt) return null;
           const db = weave.state.tables[e.dbId];
           const name = weave.entityName(e).trim();
-          title = clip(`${db.name} #${e.publicId}${name ? ` · ${name}` : ''}`, 80);
-          trail = [site, weave.state.spaces[db.spaceId]?.name, db.name];
+          const ref = `${db.name} #${e.publicId}`;
+          title = clip(`${ref}${name ? ` · ${name}` : ''}`, 80);
+          heading = clip(name || ref, 80);
+          trail = [site, weave.state.spaces[db.spaceId]?.name, ref];
           fields = weave.previewFields(e.id);
           detail = fields.map((f) => `${f.label} ${f.value}`).join(' · ');
           url = `${home}/e/${e.id}`;
@@ -287,7 +289,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const head = [
         `<title>${escapeHtml(title === site ? site : `${title} · ${site}`)}</title>`,
         tag('name', 'description', description),
-        tag('property', 'og:title', title),
+        tag('property', 'og:title', heading ?? title),
         tag('property', 'og:description', description),
         tag('property', 'og:site_name', site),
         tag('property', 'og:url', base + url),

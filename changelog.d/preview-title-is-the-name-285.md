@@ -1,0 +1,1 @@
+- A pasted link now unfurls with the row's name alone as its title; the table and `#id` move to the first description line (`weave › Development › Issue #287`). The browser tab reads `Issue #287 · <name> · <workspace>` before and after the app loads, on the row page and in the dock (Feature #285).

@@ -70,6 +70,13 @@
     return { stack: nav.stack.map((x) => (x.id === hop.id ? { ...x, ...hop } : x)), idx: nav.idx };
   }
 
+  function rowTitle(hop) {
+    const name = String(hop?.name ?? '').trim();
+    const table = String(hop?.table ?? hop?.tableName ?? '').trim();
+    if (!table || hop?.publicId == null) return name;
+    const ref = `${table} #${hop.publicId}`;
+    return name ? `${ref} · ${name}` : ref;
+  }
   function docTitle(name, wsName) {
     const n = String(name ?? '').trim();
     const w = String(wsName ?? '').trim();
@@ -78,7 +85,7 @@
   }
 
   root.weaveBreadcrumbs = {
-    pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, docTitle,
+    pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, docTitle, rowTitle,
     navOpen, navHop, navBack, navForward, navCanBack, navCanForward, navCurrent, navPath, navUpdate,
   };
 })(globalThis);

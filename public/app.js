@@ -11529,7 +11529,9 @@ function cancelSkeleton() {
 function syncDocTitle(pageName) {
   if (pageName !== undefined) state.pageName = pageName;
   const top = dock?.state.chain[dock.state.chain.length - 1];
-  document.title = weaveBreadcrumbs.docTitle(top?.name || state.pageName, $('#ws-name')?.textContent);
+  const row = top ?? (state.route?.page === 'entity' && state.route.entity ? { ...state.route.entity, name: state.pageName } : null);
+  const name = row ? weaveBreadcrumbs.rowTitle(row) : state.pageName;
+  document.title = weaveBreadcrumbs.docTitle(name || state.pageName, $('#ws-name')?.textContent);
 }
 
 function renderRoute() {
