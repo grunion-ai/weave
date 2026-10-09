@@ -14,6 +14,8 @@ import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from 
 import '../public/starter-core.js';
 const { WeaveStarters, WeaveSlugs } = globalThis;
 
+export const decodePath = (pathname) => decodeURIComponent(pathname.replace(/%2f/gi, '%252F'));
+
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
   return { 'not-found': 404, conflict: 409, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415 }[err.code] ?? 400;
@@ -186,6 +188,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
 
     weave.actor = String(rx.header('x-weave-actor') || 'web').slice(0, 120);
+    path = path.replace(/^(\/api\/tables\/)([^/]+)/, (whole, head, key) => {
+      if (!/%2f/i.test(key)) return whole;
+      try { return head + (weave.findTable(key.replace(/%2f/gi, '/'))?.id ?? key); } catch { return whole; }
+    });
 
     let mcpChallenge = null;
     const deny = (code, error) => out(code, { error, code: code === 401 ? 'unauthorized' : 'forbidden' },

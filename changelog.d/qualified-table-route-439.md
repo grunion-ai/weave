@@ -1,0 +1,1 @@
+- A table query by qualified name works: `POST /api/tables/Product%2FTask/query` now resolves like the bare name, and an unknown table key answers `not-found` instead of `No route` (Issue #439)
