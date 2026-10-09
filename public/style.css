@@ -1016,9 +1016,10 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .doc-caret { border: 0; background: none; padding: 0 2px; cursor: pointer; color: var(--tblr-secondary); line-height: 1; }
 .doc-caret::before { content: "▾"; display: inline-block; transition: transform .12s ease; }
 .doc-caret.closed::before { transform: rotate(-90deg); }
-.doc-anchor, .doc-section .doc-dl { opacity: 0; transition: opacity .12s ease; }
-.doc-section:has(:focus-visible) .doc-anchor, .doc-section:has(:focus-visible) .doc-dl { opacity: .7; }
-@media (hover: hover) { .doc-section:hover .doc-anchor, .doc-section:hover .doc-dl { opacity: .7; } }
+.doc-anchor, .doc-section .doc-dl > .dots-btn { opacity: 0; transition: opacity .12s ease; }
+.doc-section:has(:focus-visible) .doc-anchor, .doc-section:has(:focus-visible) .doc-dl > .dots-btn { opacity: .7; }
+@media (hover: hover) { .doc-section:hover .doc-anchor, .doc-section:hover .doc-dl > .dots-btn { opacity: .7; } }
+.doc-section .doc-dl:has(.dl-menu:not(.hidden)) > .dots-btn { opacity: 1; }
 .doc-anchor { cursor: pointer; font-size: 11px; }
 @media (hover: hover) { .doc-anchor:hover { opacity: 1; } }
 body.wv-activity-open #main { margin-right: 344px; }

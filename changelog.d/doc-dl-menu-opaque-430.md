@@ -1,0 +1,1 @@
+- The document download menu is fully opaque: the fade now sits on the three-dot button alone, which stays lit while its menu is open (Issue #430).
