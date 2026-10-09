@@ -267,9 +267,11 @@ test('a workflow row seeds its swatch from the category and lets a state overrid
 
 test('the chip size is two tokens on :root: 13px label, 22px line — a 24px target with the 1px padding', () => {
   const root = rulesFor(':root');
-  assert.equal(root['--wv-chip-font'], '13px', 'one step below the 14px body, never smaller');
+  assert.equal(root['--wv-chip-font'], 'var(--fs-grid)', 'the grid step, one below the body, never smaller');
+  assert.equal(root['--fs-grid'], '13px', 'and the grid step is 13px');
   assert.equal(root['--wv-chip-line'], '22px', '22 + 1 + 1 = 24px, the hit target');
-  assert.equal(rulesFor('body')['font-size'], '14px', 'the body the chip is one step below');
+  assert.equal(rulesFor('body')['font-size'], 'var(--fs-body)', 'the body the chip is one step below');
+  assert.equal(root['--fs-body'], '14px');
   for (const sel of ['.k', '.chip', '.filter-chip']) {
     const r = rulesFor(sel);
     assert.equal(r['font-size'], 'var(--wv-chip-font)', `${sel} reads the font token`);

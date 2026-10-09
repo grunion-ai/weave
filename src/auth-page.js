@@ -4,7 +4,7 @@ const CSS = `
 :root{
   --ground:#f3f1ec; --surface:#fafaf8; --line:#e6e3dc; --ink:#24292e; --body:#374151; --muted:#6b7280;
   --accent:#3a5bc7; --accent-ink:#fff; --bad:#ce2c31; --bad-soft:rgba(229,72,77,.12); --ok:#218358; --ok-soft:rgba(46,160,67,.14);
-  --app:"Inter Var","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --app:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root{

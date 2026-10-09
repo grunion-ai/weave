@@ -305,7 +305,8 @@ test('docs/chip-card-anatomy.html is the exported page, self-contained, and curr
   assert.equal(html, fresh, 'the checked-in export drifted from the guide — run scripts/export-chip-card-anatomy.mjs');
   assert.doesNotMatch(html, /(src|href)=["'](https?:)?\/\//, 'no network requests: no external src or href');
   assert.doesNotMatch(html, /<link[^>]+rel="stylesheet"/, 'no linked stylesheet — the chip CSS is inlined');
-  assert.match(html, /--wv-chip-font:\s*13px/, 'the chip tokens ride along, so the specimen is the real size');
+  assert.match(html, /--wv-chip-font:\s*var\(--fs-grid\)/, 'the chip tokens ride along');
+  assert.match(html, /--fs-grid:\s*13px/, 'with the scale step they read, so the specimen is the real size');
   assert.match(html, /data-bs-theme="dark"\]|prefers-color-scheme:\s*dark/, 'both themes');
   assert.match(html, /class="k k-rel has-segs"/, 'the chip figure is in the export');
   assert.match(html, /class="wv-card"/, 'and the card figure');

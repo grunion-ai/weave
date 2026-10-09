@@ -40,7 +40,7 @@ export function chipCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8
     const keep = parts.filter((p) => CHIP_SELECTORS.test(p));
     if (!keep.length) continue;
     const decls = keep.some((p) => p.startsWith(':root'))
-      ? body.split(';').filter((d) => /--wv-chip-/.test(d)).join(';')
+      ? body.split(';').filter((d) => /--wv-chip-|--fs-/.test(d)).join(';')
       : body.trim();
     if (!decls.trim()) continue;
     out.push(`${keep.join(', ')} { ${decls.replace(/\s+/g, ' ').trim()}${decls.trim().endsWith(';') ? '' : ';'} }`);

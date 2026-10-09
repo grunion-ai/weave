@@ -22,7 +22,8 @@ export function rulesFor(selector, css = CSS) {
   return out;
 }
 
-export const px = (v) => Number.parseFloat(String(v));
+const STEP = Object.fromEntries([...CSS.matchAll(/--fs-([a-z0-9]+):\s*([\d.]+px)/g)].map((m) => [m[1], m[2]]));
+export const px = (v) => Number.parseFloat(String(v).trim().replace(/^var\(--fs-([a-z0-9]+)\)/, (m, k) => STEP[k] ?? m));
 
 export function fnBody(name, src = APP) {
   const at = src.indexOf(`function ${name}(`);
