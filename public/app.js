@@ -5135,7 +5135,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const input = td?.querySelector('input.date-text');
       if (!input) continue;
       const was = input.value;
-      input.value = weaveDateCore.formatDate(f.time ? '2026-09-30T23:45' : '2026-09-30', { ...f, viewerZone: LOCAL_ZONE });
+      const view = { ...f, viewerZone: LOCAL_ZONE };
+      const samples = [...Array.from({ length: 12 }, (_, m) => `2026-${String(m + 1).padStart(2, '0')}-28`), '2026-09-30']
+        .flatMap((d) => (f.time ? ['10:48', '22:48', '23:45'].map((t) => `${d}T${t}`) : [d]))
+        .map((d) => weaveDateCore.formatDate(d, view));
+      input.value = samples.reduce((a, b) => (textWidth(b, input) > textWidth(a, input) ? b : a));
       const probe = cellFitProbe(td);
       input.value = was;
       const measure = el('div', { class: 'wv-measure' }, probe);
