@@ -9,10 +9,34 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'chip-card-anatomy.html');
 const CHIP_SELECTORS = /^(:root|\.k\b|\.k-|\.k\.|\.av\b|\.hue-|\.mention-|\.wv-card|\.wv-seg-state|\[data-bs-theme="dark"\] \.(k|hue|av))/;
 
+function selectorList(sels) {
+  const parts = [];
+  let depth = 0;
+  let quote = '';
+  let start = 0;
+  for (let i = 0; i < sels.length; i += 1) {
+    const c = sels[i];
+    if (quote) {
+      if (c === quote && sels[i - 1] !== '\\') quote = '';
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === '(' || c === '[') {
+      depth += 1;
+    } else if (c === ')' || c === ']') {
+      depth -= 1;
+    } else if (c === ',' && depth === 0) {
+      parts.push(sels.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(sels.slice(start));
+  return parts.map((p) => p.trim()).filter((p) => p && !p.startsWith('@'));
+}
+
 export function chipCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8')) {
   const out = [];
   for (const [, sels, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const parts = sels.split(',').map((s) => s.trim()).filter(Boolean);
+    const parts = selectorList(sels);
     const keep = parts.filter((p) => CHIP_SELECTORS.test(p));
     if (!keep.length) continue;
     const decls = keep.some((p) => p.startsWith(':root'))

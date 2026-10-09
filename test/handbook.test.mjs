@@ -258,6 +258,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { ROOT } from './lib/source.mjs';
+import { chipCss } from '../scripts/export-chip-card-anatomy.mjs';
 const ANATOMY = GUIDES.find((g) => g.name === 'Chip and card anatomy');
 
 test('the anatomy guide exists, is for both audiences, and follows the view page', () => {
@@ -308,6 +309,37 @@ test('docs/chip-card-anatomy.html is the exported page, self-contained, and curr
   assert.match(html, /data-bs-theme="dark"\]|prefers-color-scheme:\s*dark/, 'both themes');
   assert.match(html, /class="k k-rel has-segs"/, 'the chip figure is in the export');
   assert.match(html, /class="wv-card"/, 'and the card figure');
+});
+
+test('a comma inside a functional pseudo-class is not a selector-list comma', () => {
+  const inner = '#main .wv-grid td:not(:has(> .wv-cb > :is(.k, .mention-wrap))) { display: none; }';
+  assert.equal(chipCss(inner), '', 'a rule that only mentions a chip class inside :is() is not chip CSS');
+  assert.equal(
+    chipCss('.wv-grid .wv-card :is(.wv-card-fields, .wv-card-head > :not(.wv-card-title)) { display: none; }'),
+    '',
+    'nor is a rule whose :is() list ends in a nested :not()',
+  );
+  assert.equal(
+    chipCss('.k-attr[title="a,b"], #main .x { color: red; }'),
+    '.k-attr[title="a,b"] { color: red; }',
+    'a comma inside an attribute string stays inside its part',
+  );
+  assert.equal(
+    chipCss('.k, #main .x { color: red; }'),
+    '.k { color: red; }',
+    'a top-level comma still splits the list and the chip part is kept',
+  );
+  assert.equal(chipCss('@font-face { font-family: .k; }'), '', 'an at-rule prelude is never a selector');
+});
+
+test('the chip CSS carries no selector fragment', () => {
+  for (const line of chipCss().split('\n')) {
+    const sels = line.slice(0, line.indexOf('{'));
+    const open = (sels.match(/[([]/g) ?? []).length;
+    const close = (sels.match(/[)\]]/g) ?? []).length;
+    assert.equal(open, close, `unbalanced selector in the chip CSS: ${sels.trim()}`);
+    assert.doesNotMatch(sels, /^\s*@/, `an at-rule prelude reached the chip CSS: ${sels.trim()}`);
+  }
 });
 
 test('the grid guide names the cell clipboard rule and select-on-open', () => {
