@@ -85,7 +85,7 @@ async function api(method, path, body, { signal } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
-  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code });
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
@@ -11895,12 +11895,24 @@ function wireWsNew() {
   const btn = $('#ws-new');
   if (!btn) return;
   btn.replaceChildren(iconEl('+', 'wv-icon'));
-  btn.addEventListener('click', () => {
-    modal('New workspace', [el('input', { name: 'name', class: 'form-control', placeholder: 'Workspace name (e.g. dos)' })],
-      async (fd) => {
-        const created = await api('POST', '/workspaces', { name: fd.get('name') });
+  btn.addEventListener('click', async () => {
+    const me = await api('GET', '/auth/me').catch((err) => {
+      if (err.status !== 401) toast(err.message, true);
+      return null;
+    });
+    const accountName = me?.account?.name ?? null;
+    const slugs = WeaveSlugForm.mount({ accountName, check: (slug) => api('GET', `/workspaces/slug?slug=${encodeURIComponent(slug)}`) });
+    modal('New workspace', [slugs.node], async () => {
+      try {
+        const created = await api('POST', '/workspaces', slugs.value());
         location.href = created.url;
-      });
+      } catch (err) {
+        if (slugs.refused(err.code)) err.shown = true;
+        throw err;
+      }
+    }, WeaveSlugs.COPY.submit);
+    const done = document.querySelector('#modal button[type="submit"]');
+    if (done) slugs.bindSubmit(done);
   });
 }
 

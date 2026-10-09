@@ -104,9 +104,11 @@ test('a deleted name cannot be re-created while it sits in the trash', async () 
 });
 
 test('the hub list says which workspaces are deletable: never the default, never weave', async () => {
-  await withHub(async ({ api }) => {
+  await withHub(async ({ api, dir }) => {
     await api('POST', '/api/workspaces', { name: 'scratch' });
-    await api('POST', '/api/workspaces', { name: 'weave' });
+    const docs = new Weave({ path: join(dir, 'weave.db') });
+    docs.save();
+    docs.store.close?.();
     const byName = Object.fromEntries((await api('GET', '/api/workspaces')).data.map((w) => [w.name, w]));
     assert.equal(byName.main.deletable, false, 'the default workspace is not deletable');
     assert.equal(byName.weave.deletable, false, 'the weave docs workspace is not deletable');

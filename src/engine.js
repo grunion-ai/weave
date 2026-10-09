@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
-import { workspaceName, workspaceSlug, nameFromFile } from './workspace-name.js';
+import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
@@ -2860,7 +2860,12 @@ export class Weave {
     }
     if (name != null && name !== this.state.meta.name) {
       const slug = workspaceSlug(name);
-      if (!slug) throw new WeaveError('A workspace name needs a letter or a digit: its slug keeps letters, digits, - and _', 'invalid');
+      const refused = hostSlugRefusal(slug);
+      if (refused) throw new WeaveError(refused.message, refused.code);
+      const was = String(this.state.meta.name ?? '').toLowerCase();
+      const aliases = [...(this.state.meta.aliases ?? []), ...(was ? [was] : [])].filter((a, i, all) => a !== slug && all.indexOf(a) === i);
+      if (aliases.length) this.state.meta.aliases = aliases;
+      else delete this.state.meta.aliases;
       this.state.meta.name = slug;
       this.state.meta.title = String(name).trim();
       if (this.state.meta.title === slug) delete this.state.meta.title;

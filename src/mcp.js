@@ -427,7 +427,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_workspace',
-    description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits, - and _, is the /w/<slug>/ address, description, linkPreview) | logo (contentBase64 + name + mime) | clear-logo.',
+    description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits and -, is the /w/<slug>/ address and the <slug>.<base domain> host, description, linkPreview) | logo (contentBase64 + name + mime) | clear-logo.',
     inputSchema: {
       type: 'object',
       properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, mime: { type: 'string' }, contentBase64: { type: 'string' } },

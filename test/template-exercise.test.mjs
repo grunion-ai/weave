@@ -19,8 +19,7 @@ const entryOf = (w, name) => w.describeSchema().find((s) => s.space === name);
 const userRows = (w) => Object.values(w.state.entities).filter((e) => !w.state.tables[e.dbId]?.system);
 
 function fromFixture(doc, workspace = 'weave') {
-  const w = new Weave();
-  w.updateWorkspace({ name: workspace });
+  const w = new Weave({ name: workspace });
   w.applySchema([doc], { partial: true });
   w.updateSpace(doc.space, { template: true });
   return w;
