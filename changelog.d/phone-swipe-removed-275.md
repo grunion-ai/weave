@@ -1,0 +1,1 @@
+- Swiping a phone list row no longer reveals state actions; swipe is removed for now at Kyle's call. Rows still open on a tap, and the row page's next-step button still moves a row to its next state (Feature #275).

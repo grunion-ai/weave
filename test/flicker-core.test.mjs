@@ -44,7 +44,7 @@ test('every journey walks in cells the matrix has, and the phone gets its own jo
   for (const j of JOURNEYS) for (const c of cellsOf(j)) assert.ok(Object.hasOwn(CELLS, c), `${j.name} names cell ${c}`);
   assert.deepEqual(cellsOf({ name: 'x' }), ['desktop'], 'a journey that names no cells walks the desktop only');
   const phone = JOURNEYS.filter((j) => cellsOf(j).includes('phone')).map((j) => j.name);
-  for (const name of ['phone-search', 'phone-menu', 'phone-table-sheet', 'phone-picker', 'phone-open-row', 'phone-swipe']) assert.ok(phone.includes(name), `${name} walks the phone`);
+  for (const name of ['phone-search', 'phone-menu', 'phone-table-sheet', 'phone-picker', 'phone-open-row']) assert.ok(phone.includes(name), `${name} walks the phone`);
   assert.ok(phone.includes('load-home') && phone.includes('open-table'), 'desktop journeys that make sense on a phone walk it too');
 });
 

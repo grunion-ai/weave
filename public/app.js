@@ -6031,8 +6031,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('mouseleave', dropCellPop);
   wrap.addEventListener('mousedown', dropCellPop, true);
   wrap.addEventListener('focusin', dropCellPop);
-  const listRow = (e) => (listRows() && !nativeClick(e) && !e.target?.closest?.('.swipe-cell') ? e.target?.closest?.('tbody tr.entity-row') : null);
-  const swipe = rowSwipe(wrap, db, () => listRows(), itemOf, onSaved);
+  const listRow = (e) => (listRows() && !nativeClick(e) ? e.target?.closest?.('tbody tr.entity-row') : null);
   let press = null;
   wrap.addEventListener('pointerdown', (e) => {
     press = listRows() && e.pointerType !== 'mouse' ? { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId, tap: false } : null;
@@ -6054,7 +6053,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     e.stopPropagation();
     const touched = press;
     press = null;
-    if (swipe.swallows() || (touched && !touched.tap)) return;
+    if (touched && !touched.tap) return;
     if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
     else openEntity(tr.dataset.eid);
   }, true);
@@ -6066,121 +6065,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 }
 
 
-function rowSwipe(wrap, db, active, itemOf, onSaved) {
-  const flows = db.system ? [] : db.fields.filter((f) => f.type === 'workflow');
-  const flow = flows.length === 1 ? flows[0] : null;
-  let drag = null, open = null, quietUntil = 0, offAway = () => {};
-  const swallows = () => Date.now() < quietUntil;
-  const cellOf = (tr) => tr?.querySelector(':scope > .swipe-cell') ?? null;
-  const fullOf = (cell) => [...(cell?.children ?? [])].reduce((w, b) => w + b.offsetWidth, 0);
-  const place = (tr, x) => {
-    tr.style.setProperty('--swipe-x', `${x}px`);
-    const cell = cellOf(tr);
-    if (cell) cell.style.width = `${Math.max(0, -x)}px`;
-  };
-  const band = (x, full) => (x > 0 ? x / 3 : x < -full ? -full + (x + full) / 3 : x);
-  const close = (tr = open) => {
-    if (!tr) return;
-    if (open === tr) { open = null; offAway(); }
-    tr.classList.remove('swipe-open', 'swiping');
-    const cell = cellOf(tr);
-    place(tr, 0);
-    if (!cell) { tr.style.removeProperty('--swipe-x'); return; }
-    let timer = 0;
-    const done = () => {
-      clearTimeout(timer);
-      cell.removeEventListener('transitionend', onEnd);
-      if (open === tr || drag?.tr === tr) return;
-      cell.remove();
-      tr.style.removeProperty('--swipe-x');
-    };
-    const onEnd = (e) => { if (e.target === cell && e.propertyName === 'width') done(); };
-    cell.addEventListener('transitionend', onEnd);
-    timer = setTimeout(done, SWIPE_SETTLE_MS + 120);
-  };
-  const settleOpen = (tr) => {
-    tr.classList.add('swipe-open');
-    place(tr, -fullOf(cellOf(tr)));
-    if (open === tr) return;
-    open = tr;
-    offAway = dismissOutside({
-      open: () => open === tr && tr.isConnected,
-      inside: (t) => tr.contains(t),
-      swallow: () => true,
-      close: () => { quietUntil = Date.now() + 600; close(tr); },
-    });
-  };
-  const move = async (item, to, from) => {
-    await api('POST', `/entities/${item.id}/state`, { field: flow.name, state: to });
-    await onSaved?.();
-    return from;
-  };
-  const cellFor = (tr, item) => {
-    const was = item.fields?.[flow.name] ?? null;
-    const states = flow.states ?? [];
-    const after = states.slice(states.findIndex((st) => st.name === was) + 1).slice(0, 3);
-    if (!after.length) return null;
-    return el('div', { class: 'swipe-cell' }, ...after.map((st) => el('button', {
-      class: `swipe-act cat-${stateCategory(flow, st.name)}`, type: 'button',
-      onclick: async () => {
-        close(tr);
-        try {
-          await move(item, st.name, was);
-          toast(`#${item.publicId} moved to ${st.name}`, false, {
-            label: 'Undo', run: () => move(item, was, st.name).catch((err) => toast(err.message, true)),
-          });
-        } catch (err) { toast(err.message, true); }
-      },
-    }, lucideEl(stateCategory(flow, st.name) === 'done' ? 'check' : 'clock'), el('span', {}, st.name))));
-  };
-  wrap.addEventListener('pointerdown', (e) => {
-    if (!flow || !active() || e.button !== 0 || e.target.closest('.swipe-cell')) return;
-    const tr = e.target.closest('tbody tr.entity-row');
-    const item = tr && itemOf(tr.dataset.eid);
-    if (!item || item.deleted) return;
-    drag = { tr, item, x: e.clientX, y: e.clientY, id: e.pointerId, base: open === tr ? -fullOf(cellOf(tr)) : 0, on: false };
-  }, true);
-  wrap.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!drag.on) {
-      if (Math.abs(dy) > SWIPE_SLOP && Math.abs(dy) > Math.abs(dx)) { drag = null; quietUntil = Date.now() + 600; return; }
-      if (Math.abs(dx) <= SWIPE_SLOP) return;
-      if (open && open !== drag.tr) close();
-      if (!cellOf(drag.tr)) {
-        const cell = cellFor(drag.tr, drag.item);
-        if (!cell) { drag = null; quietUntil = Date.now() + 600; return; }
-        drag.tr.append(cell);
-      }
-      drag.on = true;
-      drag.full = fullOf(cellOf(drag.tr));
-      drag.tr.classList.add('swiping');
-      drag.tr.setPointerCapture?.(e.pointerId);
-    }
-    place(drag.tr, band(drag.base + dx, drag.full));
-  }, true);
-  const end = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const { tr, on, base, x, full } = drag;
-    drag = null;
-    if (!on) {
-      if (open === tr && e.type === 'pointerup') { quietUntil = Date.now() + 600; close(tr); }
-      return;
-    }
-    quietUntil = Date.now() + 600;
-    tr.classList.remove('swiping');
-    if (full && base + e.clientX - x < -Math.min(SWIPE_OPEN, full / 2)) settleOpen(tr);
-    else close(tr);
-  };
-  wrap.addEventListener('pointerup', end, true);
-  wrap.addEventListener('pointercancel', end, true);
-  return { swallows };
-}
-const SWIPE_SLOP = 10;
 const TAP_SLOP = 10;
 const TAP_MS = 300;
-const SWIPE_OPEN = 60;
-const SWIPE_SETTLE_MS = 240;
 
 const SYSTEM_COLS = {
   'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),

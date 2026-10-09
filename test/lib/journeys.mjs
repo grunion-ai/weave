@@ -56,21 +56,6 @@ async function scrollTo(page, f) {
 
 const beat = (page) => page.waitForTimeout(400);
 
-async function swipe(page, row, dx) {
-  const box = await row.boundingBox();
-  await page.evaluate(async ([x, y, dx]) => {
-    const target = document.elementFromPoint(x, y);
-    const fire = (type, cx) => target.dispatchEvent(new PointerEvent(type, {
-      pointerId: 1, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true,
-      button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, clientX: cx, clientY: y,
-    }));
-    const frame = () => new Promise((r) => requestAnimationFrame(r));
-    fire('pointerdown', x);
-    for (let k = 1; k <= 8; k++) { await frame(); fire('pointermove', x + (dx * k) / 8); }
-    await frame();
-    fire('pointerup', x + dx);
-  }, [dx < 0 ? box.x + box.width - 40 : box.x + 40, box.y + box.height / 2, dx]);
-}
 
 export const JOURNEYS = [
   {
@@ -254,29 +239,6 @@ export const JOURNEYS = [
       await page.goBack();
       await page.waitForFunction(() => document.querySelector('#dock')?.hidden !== false);
       await page.waitForSelector(ROW);
-    },
-  },
-  {
-    name: 'phone-swipe',
-    cells: PHONE,
-    setup: table,
-    async run(page, ctx) {
-      const id = ctx.ids[3];
-      const row = page.locator(`tr[data-eid="${id}"]`);
-      const opened = () => page.waitForSelector(`tr[data-eid="${id}"].swipe-open .swipe-cell`);
-      const shut = () => page.waitForFunction((k) => !document.querySelector(`tr[data-eid="${k}"] .swipe-cell`), id);
-      await swipe(page, row, -220);
-      await opened();
-      await beat(page);
-      await swipe(page, row, 220);
-      await shut();
-      await beat(page);
-      await swipe(page, row, -220);
-      await opened();
-      await beat(page);
-      const box = await row.boundingBox();
-      await page.touchscreen.tap(box.x + 40, box.y + box.height / 2);
-      await shut();
     },
   },
 ];

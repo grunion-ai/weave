@@ -75,24 +75,6 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`on a phone a table with two state fields offers no swipe actions (${engine}, Issue #742)`, async () => {
-      const page = await open(make, table);
-      try {
-        await page.waitForSelector('#main tbody tr.entity-row .list-name');
-        await page.evaluate(async () => {
-          const row = document.querySelectorAll('#main tbody tr.entity-row')[1];
-          const box = row.getBoundingClientRect();
-          const x = box.right - 40, y = box.top + box.height / 2;
-          const target = document.elementFromPoint(x, y);
-          const fire = (type, cx) => target.dispatchEvent(new PointerEvent(type, { pointerId: 9, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, clientX: cx, clientY: y }));
-          fire('pointerdown', x);
-          for (let k = 1; k <= 8; k++) { await new Promise((r) => requestAnimationFrame(r)); fire('pointermove', x - (220 * k) / 8); }
-          fire('pointerup', x - 220);
-        });
-        await page.waitForTimeout(300);
-        assert.equal(await page.locator('.swipe-cell').count(), 0, 'a swipe cannot say which field it moves, so it offers none');
-      } finally { await page.close(); }
-    });
   }
 
   test('on a desktop the row pane shows no next-step buttons (Issue #742)', async () => {
