@@ -379,3 +379,9 @@ test('the handbook defines a space as the unit of meaning where it walks workspa
   const row = w.findEntity(w.findTable('Handbook/Guide'), 'Making a workspace your own');
   assert.ok(w.readEntity(row.id).doc.includes(definition), 'applyHandbook writes the definition into the Guide row');
 });
+
+test('the grid guide says a header mark names the route its value travels (Issue #66)', () => {
+  const doc = GUIDES.find((g) => g.name === 'Making a workspace your own').doc;
+  assert.match(doc, /`→` relation\), and hovering the mark names the route its value travels/);
+  assert.ok(doc.includes('`Σ sum of Estimate via Tasks → Product/Task`'));
+});

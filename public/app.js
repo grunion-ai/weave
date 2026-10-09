@@ -1900,12 +1900,35 @@ function fieldDescription(f) {
   return f && f.type !== 'view' && typeof f.description === 'string' ? f.description : '';
 }
 
-function fieldNameLabel(f, text = f?.name) {
+function qualifiedTableName(id) {
+  const t = id ? allTables().find((d) => d.id === id) : null;
+  return t ? `${t.space}/${t.name}` : null;
+}
+
+function fieldRoute(f, db) {
+  if (f?.type === 'relation') {
+    const to = f.targetDb ?? f.targetDbs?.join(' or ');
+    return to ? `→ ${to}${f.many ? ', many' : ''}` : null;
+  }
+  if (f?.type !== 'lookup' && f?.type !== 'rollup') return null;
+  const rel = f.via ? db?.fields?.find((x) => x.type === 'relation' && x.name === f.via) : null;
+  const table = rel?.targetDb ?? qualifiedTableName(f.viaTableId ?? rel?.targetDbId);
+  const what = f.type === 'lookup'
+    ? `↗ ${f.targetField ?? 'Name'}`
+    : `Σ ${f.aggregate ?? 'count'}${f.targetField ? ` of ${f.targetField}` : ''}`;
+  return `${what}${f.via ? ` via ${f.via}` : ''}${table ? ` → ${table}` : ''}`;
+}
+
+function fieldNameLabel(f, text = f?.name, db = null) {
+  if (f?.type === 'relation') {
+    const route = fieldRoute(f, db);
+    return route ? [text, el('sup', { class: 'field-mark', title: route }, iconEl('lucide:arrow-right', 'ico wv-icon') ?? '→')] : [text];
+  }
   const kind = COMPUTED_NAME_MARKS[f?.type];
   if (!kind) return [text];
   return [text, el('sup', {
     class: 'field-mark',
-    title: `${kind} — computed from other values, not editable`,
+    title: fieldRoute(f, db) ?? `${kind} — computed from other values, not editable`,
   }, computedMarkNode(f.type))];
 }
 
@@ -5694,7 +5717,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           onkeydown: (e) => headKey(e, c),
         },
           el('span', { class: 'col-label' },
-            fieldNameLabel(colField(db, c), c),
+            fieldNameLabel(colField(db, c), c, db),
             sortMark(c)),
           fieldMenuButton(db, colField(db, c), {
             sorted: sortKey === c ? sortDir : 0,
@@ -9871,7 +9894,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const node = el('div', { class: 'fieldrow' },
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       el('label', { class: 'fieldrow-label', title: fieldDescription(f) ? `${fieldDescription(f)}\n\nEdit field` : 'Edit field', onclick: () => editFieldDialog(db, f) },
-        fieldNameLabel(f), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
+        fieldNameLabel(f, f.name, db), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
       labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }));
     if (f.type === 'attachments') {
       node.classList.add('attach-block');

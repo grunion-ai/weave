@@ -1,0 +1,1 @@
+- A column header now says where its value comes from. Hovering the mark on a lookup or rollup header reads the route in words (`↗ Name via Project → Product/Project`, `Σ sum of Estimate via Tasks → Product/Task`), and a relation header gains its own `→` mark naming the table it points at (`→ Product/Task, many` on the many side). The header line itself is unchanged (Issue #66).
