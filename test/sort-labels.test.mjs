@@ -44,7 +44,7 @@ test('a computed field reads the way its result sorts', () => {
   }
   assert.deepEqual(sortLabels({ type: 'rollup', aggregate: 'join' }), TEXT, 'join is the names, joined');
   assert.deepEqual(sortLabels({ type: 'rollup', aggregate: 'max' }, { targetType: 'number' }), NUMBER);
-  assert.deepEqual(sortLabels({ type: 'rollup', aggregate: 'max' }, { targetType: 'date' }), PLAIN);
+  assert.deepEqual(sortLabels({ type: 'rollup', aggregate: 'max' }, { targetType: 'checkbox' }), PLAIN);
   assert.deepEqual(sortLabels({ type: 'lookup' }, { targetType: 'number' }), NUMBER);
   assert.deepEqual(sortLabels({ type: 'lookup' }, { targetType: 'text' }), TEXT);
   assert.deepEqual(sortLabels({ type: 'lookup' }, { targetType: 'select' }), TEXT, 'a looked-up option sorts by its name');
@@ -52,6 +52,17 @@ test('a computed field reads the way its result sorts', () => {
   assert.deepEqual(sortLabels({ type: 'formula', unit: 'kg' }), NUMBER);
   assert.deepEqual(sortLabels({ type: 'formula', expression: 'concat(Name)' }), PLAIN);
   assert.deepEqual(sortLabels({ type: 'number', format: 'percent' }), NUMBER);
+});
+
+test('a rollup or lookup of dates reads oldest to newest (Issue #751)', () => {
+  for (const aggregate of ['min', 'max']) {
+    for (const targetType of ['date', 'daterange']) {
+      assert.deepEqual(sortLabels({ type: 'rollup', aggregate }, { targetType }), DATE, `${aggregate} of ${targetType}`);
+    }
+  }
+  assert.deepEqual(sortLabels({ type: 'rollup', aggregate: 'count' }, { targetType: 'date' }), NUMBER, 'a count of dates is a number');
+  assert.deepEqual(sortLabels({ type: 'lookup' }, { targetType: 'date' }), DATE);
+  assert.deepEqual(sortLabels({ type: 'lookup' }, { targetType: 'daterange' }), DATE);
 });
 
 test('the system columns sort as what they hold, under the names the engine sorts by', () => {
