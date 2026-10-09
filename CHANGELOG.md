@@ -2,6 +2,21 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.87 (2026-10-09)
+
+- The blank icon slot browser case parks the pointer and reads each slot through `settled()`, so it no longer fails its first run on a stray `:hover` (Issue #753).
+- The chip-card-anatomy export splits a selector list on top-level commas only, so a comma inside `:is()`, `:where()` or `:not()` no longer copies that rule into the Handbook export (Issue #745).
+- A rollup that takes the min or max of a date, and a lookup of a date, now sort as **Oldest to newest** and **Newest to oldest** in a column's ⋮ menu, the same as a plain date column, instead of Ascending and Descending (Issue #751).
+- The first edit after opening a document can be undone. Vditor started its undo history empty, so Undo stayed greyed until a second edit; the editor now records the opening text as the first step (Issue #752).
+- **A Money template sits beside the CRM** (Feature #286): the weave docs workspace holds a Money space marked as a template, with Accounts, Months, Bills, Categories, Transactions and Income. Bills turns a weekly, quarterly or yearly charge into a Monthly cost; Months totals Spent, Earned, Net and Over budget; Categories add up their Bills per month. `test/fixtures/templates/money.json` is its exported shape, and the template exercise runs it like the CRM: every table adds, links, unlinks, removes and restores, in the template and in its Use template copy.
+- A pasted link now unfurls with the row's name alone as its title; the table and `#id` move to the first description line (`weave › Development › Issue #287`). The browser tab reads `Issue #287 · <name> · <workspace>` before and after the app loads, on the row page and in the dock (Feature #285).
+- Each workspace can answer at its own host. With `WEAVE_BASE_DOMAIN=weave.example.com` set, `acme.weave.example.com` serves the workspace that `/w/acme/` serves, the apex keeps the default workspace, `/w/<slug>/` keeps working on every host, and a slug nobody holds answers a plain 404. Sign-in stays on the apex's one callback and hands a single-use 60-second code back to the workspace host, which sets its own host-only session cookie. The MCP door and its protected-resource metadata answer per host (Feature #283).
+- A workspace slug is now a DNS label: an underscore folds to a hyphen and the limit is 63 characters. Create and rename refuse 16 reserved names, `weave` and `grunion` among them, with the stable codes `slug_taken`, `slug_reserved` and `slug_invalid`, and a renamed workspace keeps its old slug as a 301 alias that no other workspace can claim (Feature #283).
+- The New workspace dialog derives the address from the name, checks it as the person types, holds Create until the address is available, and offers four suggestion chips when it is taken or reserved. Signed-in accounts check an address at `GET /api/workspaces/slug` (Feature #283).
+- `/start` at the apex shows nothing about any workspace until the person signs in at the provider, then lists every workspace that identity opens, each at its own host, and lets an architect on the hub root create one. A signed-out visit to the apex root goes there (Feature #283).
+- `test/workspace-hosts.test.mjs`, `test/workspace-start.test.mjs` and `test/ws-new-slug-browser.test.mjs` cover host routing, the allowed-host rule, aliases, the handoff code's single use, host binding and 60-second expiry, per-host MCP metadata, each availability state, the race on create, and the dialog in both themes (Feature #283).
+- On a phone, a caret in a document brings up a writing bar on top of the keyboard: Undo, Redo, checklist, bulleted list, heading, insert (opens the slash menu at the caret) and hide keyboard, each a 44px button. Selecting text still swaps in the formatting row, and the floating search and New step aside while either bar is up (Feature #289, Issue #707).
+
 ## v0.4.86 (2026-10-08)
 
 - Swiping a phone list row no longer reveals state actions; swipe is removed for now at Kyle's call. Rows still open on a tap, and the row page's next-step button still moves a row to its next state (Feature #275).

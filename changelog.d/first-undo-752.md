@@ -1,1 +1,0 @@
-- The first edit after opening a document can be undone. Vditor started its undo history empty, so Undo stayed greyed until a second edit; the editor now records the opening text as the first step (Issue #752).

@@ -1,1 +1,0 @@
-- The chip-card-anatomy export splits a selector list on top-level commas only, so a comma inside `:is()`, `:where()` or `:not()` no longer copies that rule into the Handbook export (Issue #745).

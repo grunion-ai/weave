@@ -1,1 +1,0 @@
-- On a phone, a caret in a document brings up a writing bar on top of the keyboard: Undo, Redo, checklist, bulleted list, heading, insert (opens the slash menu at the caret) and hide keyboard, each a 44px button. Selecting text still swaps in the formatting row, and the floating search and New step aside while either bar is up (Feature #289, Issue #707).
