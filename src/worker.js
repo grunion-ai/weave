@@ -1,6 +1,6 @@
 import { Weave, WeaveError } from './engine.js';
 import { CFStore } from './store-cf.js';
-import { createRequestHandler, statusFor } from './routes.js';
+import { createRequestHandler, decodePath, statusFor } from './routes.js';
 
 export class WeaveWorkspace {
   #handle = null;
@@ -50,7 +50,7 @@ export class WeaveWorkspace {
     try {
       const outcome = await this.#handle({
         method: request.method,
-        path: decodeURIComponent(url.pathname),
+        path: decodePath(url.pathname),
         searchParams: url.searchParams,
         header: (name) => request.headers.get(name) ?? undefined,
         readBody: async () => {

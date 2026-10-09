@@ -64,6 +64,17 @@ test('worker DO: health, CRUD, and undo over the same dispatcher node uses', asy
   assert.equal(read.data.fields.N, 1);
 });
 
+test('worker DO: an encoded qualified table name queries like the bare name', async () => {
+  const dobj = makeDO(shimStorage());
+  await call(dobj, 'POST', '/api/spaces', { name: 'S' });
+  await call(dobj, 'POST', '/api/tables', { space: 'S', name: 'T' });
+  await call(dobj, 'POST', '/api/tables/T/entities', { name: 'row' });
+  const res = await call(dobj, 'POST', '/api/tables/S%2FT/query', {});
+  assert.equal(res.status, 200);
+  assert.equal(res.data.total, 1);
+  assert.equal((await call(dobj, 'POST', '/api/tables/S%2FNope/query', {})).data.code, 'not-found');
+});
+
 test('worker DO: state persists across DO restarts (same storage, fresh instance)', async () => {
   const storage = shimStorage();
   const first = makeDO(storage);

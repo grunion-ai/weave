@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
-import { createRequestHandler } from './routes.js';
+import { createRequestHandler, decodePath } from './routes.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
 
@@ -438,7 +438,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     try {
       const url = new URL(req.url, 'http://localhost');
       let path;
-      try { path = decodeURIComponent(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
+      try { path = decodePath(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
       if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts: answers, baseDomain })) {
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
       }
