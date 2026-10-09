@@ -48,7 +48,7 @@ function parseJsonFlag(name) {
 
 function pickFlags(names) {
   const patch = {};
-  for (const n of names) if (flags[n] != null && flags[n] !== true) patch[n] = flags[n];
+  for (const n of names) if (flags[n] != null && flags[n] !== true) patch[n] = n === 'position' ? Number(flags[n]) : flags[n];
   return patch;
 }
 
@@ -125,6 +125,7 @@ Schema
                                       "vocabulary icons,optionColors" answers several sections)
   space create <name> [--description] [--icon lucide:briefcase] [--template true]
   space list | update <ref> [--name] [--description] [--icon lucide:briefcase] [--template true|false]
+              [--position N]          its place in the sidebar, 0 first
   space delete <ref>
   template list                       The template spaces (Feature #261)
   template use <space> --into <other.db> [--name <name>]
@@ -134,7 +135,9 @@ Schema
   table list | delete <ref>
   table update <ref> [--name] [--description] [--icon lucide:wallet] [--noun invoice]
               [--hidden A,B] [--system 'Created At'] [--order Name,A,B]
-              [--rollup-row on|off]
+              [--rollup-row on|off] [--position N]
+  table move <ref> <space> [--position N]
+                                      Another space, last there unless --position says
   table view <table/view> [--fields A,B] [--filters '{json}'] [--sort '[json]'] [--density compact]
               [--layout table|list] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
               [--completed-by Done|none] [--nest Parent|none] [--order 3,1,2] [--collapsed '["Completed"]']
@@ -209,6 +212,8 @@ The workspace itself
   workspace [get]                     Name, description, logo, auth
   workspace set [--name] [--description]
   workspace logo (--path file | --out file | --clear)
+  workspace order | move <name> --position N
+                                      The hub's workspaces in rail order (run on the hub root)
   workspace require-auth [--off]
   workspace link-preview [--off]      Link preview before sign-in: a walled permalink unfurls
   activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n]
@@ -577,7 +582,7 @@ async function main() {
       const [sub, name] = args;
       if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '', template: ['true', 'on', 'yes', '1', true].includes(flags.template) })));
       if (sub === 'update') {
-        const patch = pickFlags(['name', 'description', 'icon']);
+        const patch = pickFlags(['name', 'description', 'icon', 'position']);
         if (flags.template != null) patch.template = ['true', 'on', 'yes', '1', true].includes(flags.template);
         return out(w.updateSpace(name, patch));
       }
@@ -625,14 +630,14 @@ async function main() {
         return out(w.tableView(space, Object.keys(patch).length ? patch : null));
       }
       if (sub === 'update') {
-        const patch = pickFlags(['name', 'description', 'icon', 'noun']);
+        const patch = pickFlags(['name', 'description', 'icon', 'noun', 'position']);
         if (flags.hidden != null) patch.hiddenFields = splitList(flags.hidden);
         if (flags.system != null) patch.systemFields = splitList(flags.system);
         if (flags.order != null) patch.fieldOrder = splitList(flags.order);
         if (flags['rollup-row'] != null) patch.hideRollups = !['on', 'true', 'yes', '1', true].includes(flags['rollup-row']);
         return out(w.updateTable(space, patch));
       }
-      if (sub === 'move') return out(w.moveTable(space, name));
+      if (sub === 'move') return out(w.moveTable(space, name, pickFlags(['position'])));
       if (sub === 'duplicate') return out(w.duplicateTable(space));
       if (sub === 'delete') { w.deleteTable(space, { hard: Boolean(flags.hard) }); return out({ table: space, deleted: true }); }
       if (sub === 'restore') return out(w.restoreTable(space));
@@ -871,8 +876,10 @@ async function main() {
       if (sub === 'set' || sub === 'update') return out(w.updateWorkspace(pickFlags(['name', 'description'])));
       if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
       if (sub === 'link-preview') return out({ linkPreview: w.updateWorkspace({ linkPreview: !flags.off }).linkPreview });
+      if (sub === 'order') return out(w.workspaceOrder());
+      if (sub === 'move') return out(w.moveWorkspace(args[1], Number(flags.position)));
       if (sub === 'get' || !sub) return out(w.getWorkspace());
-      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview`);
+      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview, order, move`);
     }
     case 'file': {
       const [sub, ref, fileId] = args;

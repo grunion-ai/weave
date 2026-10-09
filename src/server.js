@@ -192,6 +192,16 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
     }
   };
   scan();
+  if (!Array.isArray(defaultWeave.state.meta.workspaceOrder)) {
+    defaultWeave.state.meta.workspaceOrder = [...instances.values()].map((w) => w.state.meta.id);
+    defaultWeave.save();
+  }
+  const ordered = (entries) => {
+    const rank = new Map((defaultWeave.state.meta.workspaceOrder ?? []).map((id, i) => [id, i]));
+    return entries.map((e, i) => [e, i])
+      .sort(([[, a], i], [[, b], j]) => (rank.get(a.state.meta.id) ?? Infinity) - (rank.get(b.state.meta.id) ?? Infinity) || i - j)
+      .map(([e]) => e);
+  };
 
   return {
     get defaultName() { return defaultName; },
@@ -214,7 +224,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
     list({ includeDeleted = false } = {}) {
       scan();
       for (const w of instances.values()) w.maybeRefresh();
-      return [...instances.entries()]
+      return ordered([...instances.entries()])
         .filter(([, w]) => includeDeleted || !w.state.meta.deletedAt)
         .map(([name, w]) => ({
           name,
@@ -286,6 +296,8 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       w.save();
       instances.set(name, enroll(w));
       adoptedPaths.add(w.store.path);
+      const order = defaultWeave.state.meta.workspaceOrder;
+      if (Array.isArray(order) && !order.includes(w.state.meta.id)) { order.push(w.state.meta.id); defaultWeave.save(); }
       return w;
     },
     entries() {

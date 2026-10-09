@@ -412,8 +412,24 @@ workspace. Every MCP tool has a command:
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
 | `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
 | `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
-| `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
+| `weave workspace` / `weave workspace order` | `weave workspace logo` / `weave workspace move <name> --position N` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
 | `weave audit` | `weave account sessions` / `weave account revoke-session` / `weave account link` / `weave account unlink` | `weave invite <email>` / `weave invite list` / `weave invite revoke` |
+
+The sidebar's order is stored, and every door reads and writes it through the
+same engine calls (Feature #284). `weave_schema`, `GET /api/schema`,
+`GET /api/spaces`, `GET /api/tables?space=S`, `weave space` and `weave table`
+answer in the sidebar's order. `position` (a whole number; 0 is the first
+place) moves a space (`weave_update_space`, `PATCH /api/spaces/:space`,
+`weave space update S --position N`) or a table inside its space
+(`weave_update_table`, `PATCH /api/tables/:table`, `weave table update T
+--position N`); `weave_move_table` (`POST /api/tables/:table/move`,
+`weave table move T S --position N`) takes it too and lands a table last in
+its new space without one. The workspaces in the rail keep their order on the
+hub root: `weave_workspace {action: "order"}` (every workspace of the hub, in the
+rail's order) and `{action: "move", name, position}` (an architect on the hub
+root), `GET /api/workspaces` and `PATCH /api/workspaces/:name
+{position}`, `weave workspace order` and `weave workspace move <name>
+--position N` on the hub root's file.
 
 Two operator verbs work on the whole data directory rather than one workspace
 and have no MCP tool on purpose — an agent holding a token must not be able to

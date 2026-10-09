@@ -74,6 +74,13 @@ const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
+const byPosition = (list) => list.map((x, i) => [x, i])
+  .sort(([a, i], [b, j]) => (Number.isInteger(a.position) ? a.position : Infinity) - (Number.isInteger(b.position) ? b.position : Infinity) || i - j)
+  .map(([x]) => x);
+const checkPosition = (position) => {
+  if (!(Number.isInteger(position) && position >= 0)) throw new WeaveError('position is a whole number: 0 is the first place', 'invalid');
+  return position;
+};
 function refuseReserved(kind, name) {
   if (RESERVED_NAMES.has(String(name).trim())) throw new WeaveError(`'${String(name).trim()}' is reserved and cannot name a ${kind}`, 'invalid');
 }
@@ -895,7 +902,7 @@ export class Weave {
     };
     this.#migrate();
     if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
-    if (this.#landBlobs()) this.save();
+    if (this.#settlePositions() | this.#landBlobs()) this.save();
     HELD?.add(this);
   }
 
@@ -990,8 +997,42 @@ export class Weave {
       if (role !== a.role) { a.role = role; changed = true; }
     }
     if (this.#scrubIdentityEmails()) changed = true;
+    if (this.#settlePositions()) changed = true;
     if (changed) this.save();
   }
+
+  #settlePositions() {
+    let changed = false;
+    const settle = (list) => {
+      let top = Math.max(-1, ...list.map((x) => (Number.isInteger(x.position) ? x.position : -1)));
+      for (const x of list) {
+        if (Number.isInteger(x.position)) continue;
+        x.position = ++top;
+        changed = true;
+      }
+    };
+    settle(Object.values(this.state.spaces ?? {}));
+    const bySpace = new Map();
+    for (const t of Object.values(this.state.tables ?? {})) {
+      if (!bySpace.has(t.spaceId)) bySpace.set(t.spaceId, []);
+      bySpace.get(t.spaceId).push(t);
+    }
+    for (const list of bySpace.values()) settle(list);
+    return changed;
+  }
+
+  #place(all, item, position) {
+    checkPosition(position);
+    const rest = all.filter((x) => x !== item);
+    const live = rest.filter((x) => !x.deletedAt);
+    const anchor = live[position];
+    const at = anchor ? rest.indexOf(anchor) : live.length ? rest.indexOf(live[live.length - 1]) + 1 : rest.length;
+    rest.splice(at, 0, item);
+    rest.forEach((x, i) => { x.position = i; });
+  }
+
+  #spacesInOrder() { return byPosition(Object.values(this.state.spaces)); }
+  #tablesOfSpace(spaceId) { return byPosition(Object.values(this.state.tables).filter((d) => d.spaceId === spaceId)); }
 
   #reconcileFieldOrder(db) {
     const fields = db.fields ?? {};
@@ -1309,6 +1350,7 @@ export class Weave {
     if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
     const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), ...(template === true ? { template: true } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
+    this.#settlePositions();
     this.save();
     this.#syncSpaceRow(space);
     if (!space.system) this.#audit('space-created', { name: space.name }, space.id);
@@ -1316,7 +1358,7 @@ export class Weave {
   }
 
   listSpaces({ includeDeleted = false } = {}) {
-    const all = Object.values(this.state.spaces);
+    const all = this.#spacesInOrder();
     return includeDeleted ? all : all.filter((s) => !s.deletedAt);
   }
 
@@ -1336,12 +1378,14 @@ export class Weave {
   updateSpace(ref, patch) {
     const s = this.getSpace(ref);
     if (patch.name != null) refuseReserved('space', patch.name);
+    if (patch.position != null) checkPosition(patch.position);
     if (patch.template != null && typeof patch.template !== 'boolean') throw new WeaveError(`A space's template is true or false, got ${JSON.stringify(patch.template)}`, 'invalid');
     this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) }, s.id);
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
     if (patch.icon != null) { const v = iconValue(patch.icon); if (v) s.icon = v; else delete s.icon; }
     if (patch.template != null) { if (patch.template) s.template = true; else delete s.template; }
+    if (patch.position != null) this.#place(this.#spacesInOrder(), s, patch.position);
     this.#syncSpaceRow(s);
     this.save();
     return s;
@@ -1408,6 +1452,7 @@ export class Weave {
     this.#ensureTableViews(db);
     this.#ensureSystemColumnsInViews(db);
     this.state.tables[db.id] = db;
+    this.#settlePositions();
     this.save();
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
@@ -1416,9 +1461,11 @@ export class Weave {
   }
 
   listTables(spaceId = null, { includeDeleted = false } = {}) {
-    let all = Object.values(this.state.tables);
+    let all = byPosition(Object.values(this.state.tables));
     if (!includeDeleted) all = all.filter((d) => !d.deletedAt && !this.state.spaces[d.spaceId]?.deletedAt);
-    return spaceId ? all.filter((d) => d.spaceId === spaceId) : all;
+    if (spaceId) return all.filter((d) => d.spaceId === spaceId);
+    const rank = new Map(this.#spacesInOrder().map((sp, i) => [sp.id, i]));
+    return all.map((d, i) => [d, i]).sort(([a, i], [b, j]) => (rank.get(a.spaceId) ?? Infinity) - (rank.get(b.spaceId) ?? Infinity) || i - j).map(([d]) => d);
   }
 
   userTables() {
@@ -1453,7 +1500,8 @@ export class Weave {
   updateTable(ref, patch) {
     const db = this.getTable(ref);
     if (patch.name != null) refuseReserved('table', patch.name);
-    const shape = (t) => JSON.stringify([t.name, t.description ?? '', t.fieldOrder]);
+    const shape = (t) => JSON.stringify([t.name, t.description ?? '', t.fieldOrder, t.position]);
+    if (patch.position != null) checkPosition(patch.position);
     const was = shape(db);
     if (patch.name != null && db.system && patch.name !== db.name) throw new WeaveError(`Table '${db.name}' is part of the system registry and cannot be renamed`, 'invalid');
     if (patch.name != null) db.name = patch.name;
@@ -1504,6 +1552,7 @@ export class Weave {
       }
       db.fieldOrder = ids;
     }
+    if (patch.position != null) this.#place(this.#tablesOfSpace(db.spaceId), db, patch.position);
     this.#syncTableRow(db);
     this.save();
     if (!db.system && shape(db) !== was) this.#audit('table-updated', { name: db.name, patch: Object.keys(patch) }, this.#spacesTouching(db));
@@ -1511,14 +1560,18 @@ export class Weave {
     return db;
   }
 
-  moveTable(ref, spaceRef) {
+  moveTable(ref, spaceRef, { position = null } = {}) {
+    if (position != null) checkPosition(position);
     const db = this.getTable(ref);
     if (db.system) throw new WeaveError(`Table '${db.name}' is part of the system registry`, 'invalid');
     if (db.deletedAt) throw new WeaveError(`Table '${db.name}' is in the trash — restore it first`, 'conflict');
     const sp = this.getSpace(spaceRef);
     if (sp.system) throw new WeaveError(`Space '${sp.name}' is the workspace's own system space and cannot hold your tables`, 'invalid');
     if (sp.deletedAt) throw new WeaveError(`Space '${sp.name}' is in the trash — restore it first`, 'conflict');
-    if (sp.id === db.spaceId) return db;
+    if (sp.id === db.spaceId) {
+      if (position == null) return db;
+      return this.updateTable(db.id, { position });
+    }
     const clash = Object.values(this.state.tables).find((d) => d.id !== db.id
       && d.spaceId === sp.id && d.name.toLowerCase() === db.name.toLowerCase());
     if (clash?.deletedAt) throw new WeaveError(`Table '${sp.name}/${db.name}' is in the trash — restore or purge it first`, 'conflict');
@@ -1526,6 +1579,9 @@ export class Weave {
     const from = this.state.spaces[db.spaceId]?.name;
     const left = db.spaceId;
     db.spaceId = sp.id;
+    delete db.position;
+    if (position != null) this.#place(this.#tablesOfSpace(sp.id), db, position);
+    else this.#settlePositions();
     this.save();
     this.#syncTableRow(db);
     this.#audit('table-moved', { name: db.name, from, to: sp.name }, [left, ...this.#spacesTouching(db)]);
@@ -1606,6 +1662,7 @@ export class Weave {
     if (src.bodyOrder) db.bodyOrder = src.bodyOrder.map((k) => (k === VALUES_BLOCK ? k : mapId(k)));
     for (const k of Object.keys(db)) if (db[k] === undefined) delete db[k];
     this.state.tables[db.id] = db;
+    this.#settlePositions();
     this.save();
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
@@ -2847,6 +2904,32 @@ export class Weave {
     });
   }
 
+  workspaceOrder() {
+    const reg = this.#reg;
+    const t = reg.#sysTable('workspaces');
+    if (!t) throw new WeaveError('This file holds no workspace registry: order workspaces on the hub root', 'invalid');
+    const rank = new Map((reg.state.meta.workspaceOrder ?? []).map((id, i) => [id, i]));
+    return reg.listEntities(t.id).filter((r) => r.sysId)
+      .map((r, i) => ({ id: r.sysId, name: reg.entityName(r), i }))
+      .sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.i - b.i)
+      .map(({ id, name }, position) => ({ id, name, position }));
+  }
+
+  moveWorkspace(ref, position) {
+    checkPosition(position);
+    const order = this.workspaceOrder();
+    const key = String(ref ?? '').toLowerCase();
+    const hit = order.find((w) => w.id === ref) ?? order.find((w) => w.name.toLowerCase() === key);
+    if (!hit) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
+    const ids = order.map((w) => w.id).filter((id) => id !== hit.id);
+    ids.splice(Math.min(position, ids.length), 0, hit.id);
+    const reg = this.#reg;
+    reg.state.meta.workspaceOrder = ids;
+    reg.save();
+    reg.#audit('workspace-moved', { name: hit.name, position: ids.indexOf(hit.id) });
+    return reg.workspaceOrder();
+  }
+
   getWorkspace() {
     const m = this.state.meta;
     return { id: m.id, name: m.name, title: m.title ?? m.name, description: m.description ?? '', logo: !!m.logo, requireAuth: !!m.requireAuth, linkPreview: !!m.linkPreview };
@@ -3454,6 +3537,7 @@ export class Weave {
       for (const t of Object.values(this.state.tables)) if (t.spaceId === sp.id) t.deletedAt = null;
     }
     this.#ensureMetaTables();
+    this.#settlePositions();
     this.save();
     return this;
   }

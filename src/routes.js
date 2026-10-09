@@ -681,6 +681,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const w = hub.restore(m[1]);
           return out(200, { name: w.state.meta.name, deletedAt: null });
         }
+        if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'PATCH') {
+          if (body?.position == null) throw new WeaveError('position is required: 0 is the first place in the rail', 'invalid');
+          hub.get(hub.defaultName).moveWorkspace(decodeURIComponent(m[1]), body.position);
+          return out(200, hub.list().filter((x) => canOpen(hub.get(x.name))));
+        }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
           if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
           const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
@@ -978,7 +983,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/tables') {
           const space = rx.searchParams.get('space');
           const dbs = weave.listTables(space ? weave.getSpace(space).id : null);
-          return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId })));
+          return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId, position: db.position })));
         }
         if (route === 'POST /api/tables') return out(201, guided(weave, 'table', weave.createTable(body)));
         if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
@@ -1005,7 +1010,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/move$/)) && rx.method === 'POST') {
           if (typeof body.space !== 'string' || !body.space.trim()) throw new WeaveError('space is required: the destination space', 'invalid');
-          return out(200, weave.moveTable(m[1], body.space));
+          return out(200, weave.moveTable(m[1], body.space, { position: body.position ?? null }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/duplicate$/)) && rx.method === 'POST') {
           return out(201, weave.duplicateTable(m[1]));

@@ -263,10 +263,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_space',
-    description: 'Rename a space or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused.',
+    description: 'Rename a space, move it (position: 0 is the first space in the sidebar and in weave_schema) or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused.',
     inputSchema: {
       type: 'object',
-      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' } },
+      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' }, position: { type: 'number', description: 'Its place in the sidebar: 0 is the first space' } },
       required: ['space'],
     },
   },
@@ -296,7 +296,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_table',
-    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the schema order — every field exactly once; the grid\'s columns are per view, see weave_table_view), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again).',
+    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the schema order — every field exactly once; the grid\'s columns are per view, see weave_table_view), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again), position (its place inside its space, 0 first; weave_move_table changes the space).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -305,6 +305,7 @@ export const TOOLS = [
         systemFields: { type: 'array', items: { type: 'string' } },
         fieldOrder: { type: 'array', items: { type: 'string' } },
         hideRollups: { type: 'boolean' },
+        position: { type: 'number', description: 'Its place inside its space: 0 is the first table' },
       },
       required: ['db'],
     },
@@ -326,8 +327,8 @@ export const TOOLS = [
   },
   {
     name: 'weave_move_table',
-    description: 'Move a table into another space. Only its home changes — every row, field and relation stays exactly as it was. Refuses when the destination already holds (or holds in its trash) a table of the same name.',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' }, space: { type: 'string' } }, required: ['db', 'space'] },
+    description: 'Move a table into another space. Only its home changes — every row, field and relation stays exactly as it was. It lands last there unless position says where (0 is the first table). Refuses when the destination already holds (or holds in its trash) a table of the same name.',
+    inputSchema: { type: 'object', properties: { db: { type: 'string' }, space: { type: 'string' }, position: { type: 'number' } }, required: ['db', 'space'] },
   },
   {
     name: 'weave_duplicate_table',
@@ -427,10 +428,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_workspace',
-    description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits, - and _, is the /w/<slug>/ address, description, linkPreview) | logo (contentBase64 + name + mime) | clear-logo.',
+    description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits, - and _, is the /w/<slug>/ address, description, linkPreview) | logo (contentBase64 + name + mime) | clear-logo | order | move (name, position: 0 first).',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, mime: { type: 'string' }, contentBase64: { type: 'string' } },
+      properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, mime: { type: 'string' }, contentBase64: { type: 'string' }, position: { type: 'number' } },
     },
   },
   {
@@ -701,7 +702,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_vocabulary':
       return vocabularyView(args.sections ?? args.section, args.query);
     case 'weave_update_space':
-      return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon', 'template']));
+      return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon', 'template', 'position']));
     case 'weave_template_list':
       return { templates: weave.listTemplates() };
     case 'weave_template_use':
@@ -715,13 +716,13 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_restore_space':
       return weave.restoreSpace(args.space);
     case 'weave_update_table':
-      return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder', 'hideRollups']));
+      return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder', 'hideRollups', 'position']));
     case 'weave_table_view': {
       const { view, ...patch } = args;
       return weave.tableView(view, Object.keys(patch).length ? patch : null);
     }
     case 'weave_move_table':
-      return weave.moveTable(args.db, args.space);
+      return weave.moveTable(args.db, args.space, { position: args.position ?? null });
     case 'weave_duplicate_table':
       return weave.duplicateTable(args.db);
     case 'weave_delete_table':
@@ -774,7 +775,11 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'update': return (caller?.updateWorkspace ?? ((p) => weave.updateWorkspace(p)))(pick(args, ['name', 'description', 'linkPreview']));
         case 'logo': return weave.setWorkspaceLogo({ name: args.name ?? 'logo.png', mime: args.mime ?? 'image/png', bytes: args.contentBase64 });
         case 'clear-logo': weave.deleteWorkspaceLogo(); return { logo: false };
-        default: throw new Error(`Unknown workspace action '${args.action}' (get, update, logo, clear-logo)`);
+        case 'order': return { workspaces: weave.workspaceOrder() };
+        case 'move':
+          if (caller && !mayAdminister(caller.root ?? weave, caller.rootRole ?? caller.role)) throw new Error('weave_workspace move needs an architect token on the hub root');
+          return { workspaces: weave.moveWorkspace(args.name, args.position) };
+        default: throw new Error(`Unknown workspace action '${args.action}' (get, update, logo, clear-logo, order, move)`);
       }
     case 'weave_accounts':
       switch (args.action) {
