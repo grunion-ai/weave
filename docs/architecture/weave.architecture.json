@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "9401e4e06370760678c0b55aabab6dfa8549576f"
+      "revision": "3509829048f3b141693d70d94120f5b1223f67ab"
     },
     "views": [
       {
@@ -43,7 +43,7 @@
           "routes",
           "engine"
         ],
-        "note": "Agents reach the engine over stdio MCP through the CLI or over POST /api/mcp."
+        "note": "Agents reach the engine over stdio MCP through the CLI, or over HTTP at /mcp and POST /api/mcp."
       }
     ]
   },
@@ -75,7 +75,7 @@
       "sublabel": "MCP clients",
       "pos": [
         40,
-        560
+        540
       ],
       "size": [
         140,
@@ -98,13 +98,18 @@
       "sources": [
         {
           "path": "src/server.js",
-          "line": 348,
+          "line": 376,
           "label": "createServer"
         },
         {
           "path": "src/server.js",
           "line": 164,
           "label": "workspace hub"
+        },
+        {
+          "path": "Dockerfile",
+          "line": 45,
+          "label": "container (Railway, Fly)"
         }
       ]
     },
@@ -133,7 +138,7 @@
       "id": "auth",
       "type": "security",
       "label": "Sign-in",
-      "sublabel": "provider + session",
+      "sublabel": "OIDC + session",
       "pos": [
         470,
         60
@@ -145,8 +150,13 @@
       "sources": [
         {
           "path": "src/auth-page.js",
-          "line": 116,
+          "line": 117,
           "label": "sign-in page"
+        },
+        {
+          "path": "src/oidc.js",
+          "line": 32,
+          "label": "OIDC provider"
         }
       ]
     },
@@ -166,12 +176,17 @@
       "sources": [
         {
           "path": "src/routes.js",
-          "line": 39,
+          "line": 42,
           "label": "createRequestHandler"
         },
         {
+          "path": "src/routes.js",
+          "line": 349,
+          "label": "/mcp door"
+        },
+        {
           "path": "src/mcp.js",
-          "line": 829,
+          "line": 841,
           "label": "MCP JSON-RPC"
         }
       ]
@@ -192,7 +207,7 @@
       "sources": [
         {
           "path": "src/markdown.js",
-          "line": 280,
+          "line": 282,
           "label": "renderMarkdown"
         },
         {
@@ -223,12 +238,12 @@
       "sources": [
         {
           "path": "src/engine.js",
-          "line": 850,
+          "line": 868,
           "label": "class Weave"
         },
         {
           "path": "src/formula.js",
-          "line": 119,
+          "line": 130,
           "label": "formula evaluator"
         },
         {
@@ -245,7 +260,7 @@
       "sublabel": "bin/weave.js",
       "pos": [
         470,
-        560
+        540
       ],
       "size": [
         140,
@@ -254,12 +269,12 @@
       "sources": [
         {
           "path": "bin/weave.js",
-          "line": 238,
+          "line": 243,
           "label": "main"
         },
         {
           "path": "src/mcp.js",
-          "line": 865,
+          "line": 877,
           "label": "stdio MCP"
         }
       ]
@@ -280,7 +295,7 @@
       "sources": [
         {
           "path": "src/store.js",
-          "line": 47,
+          "line": 53,
           "label": "Store"
         }
       ]
@@ -407,7 +422,7 @@
       "id": "agents-node",
       "from": "agents",
       "to": "node",
-      "label": "POST /api/mcp",
+      "label": "/mcp, /api/mcp",
       "variant": "dashed",
       "labelDy": -70
     },
@@ -438,17 +453,17 @@
       "items": [
         "src/routes.js imports no node:http or node:fs",
         "src/server.js wraps it for node, src/worker.js for workerd",
-        "src/store.js and src/store-cf.js share one Store interface"
+        "src/store.js and src/store-cf.js share one Store interface",
+        "src/server.js answers each workspace at <slug>.WEAVE_BASE_DOMAIN"
       ]
     },
     {
       "dot": "emerald",
       "title": "Shared by every runtime",
       "items": [
-        "src/vocabulary.js: one field vocabulary for UI, CLI and MCP",
-        "src/field-hints.js: the next settings and hints a schema write answers with on MCP, REST and the CLI",
-        "src/ids.js, src/mark.js and src/workspace-name.js: ids, the rope mark, a new workspace's name",
-        "src/applet.js, src/bugreport.js, src/oidc.js, src/legal.js, src/mail.js and src/mail-send.js: routes, provider sign-in, the public privacy and terms pages, and the invite emails and their sender behind the request core"
+        "src/vocabulary.js and src/field-hints.js: one field vocabulary, schema-write hints",
+        "src/ids.js, src/mark.js, src/workspace-name.js: ids, mark, names",
+        "src/applet.js, src/bugreport.js, src/legal.js, src/mail.js, src/mail-send.js: routes, legal pages, invite mail"
       ]
     },
     {
