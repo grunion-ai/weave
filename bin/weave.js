@@ -14,6 +14,7 @@ import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
 import { vocabularyView } from '../src/vocabulary.js';
+import { listForms, getForm, submitForm, leaveWorkspace } from '../src/forms.js';
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -211,6 +212,9 @@ The workspace itself
   workspace logo (--path file | --out file | --clear)
   workspace require-auth [--off]
   workspace link-preview [--off]      Link preview before sign-in: a walled permalink unfurls
+  workspace leave [--account name]    Remove your own account (never the docs workspace, never its last architect)
+  form [list] | get <form>            The forms whose table lives here (Workspace/Forms rows)
+  form submit <form> --values '{json}' [--note text --categories a,b]   One row through a form
   activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n]
 
 Collaboration & data
@@ -872,8 +876,20 @@ async function main() {
       if (sub === 'set' || sub === 'update') return out(w.updateWorkspace(pickFlags(['name', 'description'])));
       if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
       if (sub === 'link-preview') return out({ linkPreview: w.updateWorkspace({ linkPreview: !flags.off }).linkPreview });
+      if (sub === 'leave') return out(leaveWorkspace(w, flags.account ?? CLI_ACTOR));
       if (sub === 'get' || !sub) return out(w.getWorkspace());
-      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview`);
+      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview, leave`);
+    }
+    case 'form': {
+      const [sub, ref] = args;
+      if (sub === 'list' || !sub) return out(listForms(w));
+      if (sub === 'get') return out(getForm(w, ref));
+      if (sub === 'submit') {
+        if (!ref) throw new WeaveError('Usage: form submit <form> --values \'{"Field":"value"}\' [--note text --categories a,b]');
+        const input = { values: parseJsonFlag('values') ?? undefined, note: flags.note, categories: flags.categories ? splitList(flags.categories) : undefined, events: [] };
+        return out(submitForm(w, ref, input, { actor: CLI_ACTOR, server: { version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, workspace: w.state.meta.name } }));
+      }
+      throw new WeaveError(`Unknown form subcommand '${sub}'. Try: list, get, submit`);
     }
     case 'file': {
       const [sub, ref, fileId] = args;

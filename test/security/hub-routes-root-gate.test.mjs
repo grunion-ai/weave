@@ -104,7 +104,7 @@ test('the root admin manages workspaces, from the root or through a member with 
   assert.ok(names(await call('GET', '/w/open/api/workspaces', { cookie: session })).includes('secret'));
 });
 
-test('bug report: a writer still files into weave; an anonymous caller cannot reach a walled weave', async () => {
+test('bug report: a writer and a reader file into weave through the form; an anonymous caller cannot reach a walled weave', async () => {
   const { call, writer, reader, docs, root, open } = build();
   const n = issues(docs);
   const rootRows = Object.keys(root.state.entities).length;
@@ -112,11 +112,11 @@ test('bug report: a writer still files into weave; an anonymous caller cannot re
   assert.equal((await call('POST', '/w/open/api/bug-report', { body: REPORT })).status, 201, 'weave unwalled: the intake is open');
   docs.setRequireAuth(true);
   assert.equal((await call('POST', '/w/open/api/bug-report', { body: REPORT })).status, 401);
-  assert.equal((await call('POST', '/api/bug-report', { token: reader, body: REPORT })).status, 403);
+  assert.equal((await call('POST', '/api/bug-report', { token: reader, body: REPORT })).status, 201, 'everyone may submit a bug (Feature #257)');
   const r = await call('POST', '/api/bug-report', { token: writer, body: REPORT });
   assert.equal(r.status, 201);
   assert.equal(r.json.workspace, 'weave');
-  assert.equal(issues(docs), n + 2);
+  assert.equal(issues(docs), n + 3);
   assert.equal(Object.keys(open.state.entities).length, openRows, 'nothing lands in the URL workspace');
   assert.equal(Object.keys(root.state.entities).length, rootRows);
 });

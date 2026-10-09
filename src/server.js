@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
 import { createRequestHandler, decodePath } from './routes.js';
+import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
 
@@ -192,6 +193,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
     }
   };
   scan();
+  try { if (instances.has('weave')) ensureBugForm(instances.get('weave')); } catch {}
 
   return {
     get defaultName() { return defaultName; },
@@ -240,8 +242,8 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       const name = [...instances.entries()].find(([, x]) => x === w)?.[0];
+      refuseOnDocs(w, 'deleted');
       if (w === defaultWeave || name === defaultName) throw new WeaveError('The default workspace cannot be deleted', 'invalid');
-      if (name === 'weave') throw new WeaveError('The weave docs workspace cannot be deleted', 'invalid');
       if (!hard) {
         if (w.state.meta.deletedAt) return w;
         w.state.meta.deletedAt = new Date().toISOString();

@@ -15,7 +15,7 @@ const JOBS = [
 ];
 
 const AREAS = [
-  ['Rows', ['weave_delete_entity', 'weave_restore_entity', 'weave_trash', 'weave_undo', 'weave_bulk', 'weave_set_state', 'weave_link', 'weave_unlink']],
+  ['Rows', ['weave_delete_entity', 'weave_restore_entity', 'weave_trash', 'weave_undo', 'weave_bulk', 'weave_set_state', 'weave_link', 'weave_unlink', 'weave_form_submit']],
   ['Documents and comments', ['weave_get_doc', 'weave_set_doc', 'weave_doc_revisions', 'weave_doc_restore', 'weave_add_comment', 'weave_delete_comment']],
   ['Spaces and tables', ['weave_update_space', 'weave_delete_space', 'weave_restore_space', 'weave_update_table', 'weave_move_table', 'weave_duplicate_table', 'weave_delete_table', 'weave_restore_table', 'weave_table_view']],
   ['Fields and formulas', ['weave_rollback_field', 'weave_delete_field', 'weave_check_formula']],

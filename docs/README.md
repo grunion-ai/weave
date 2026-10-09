@@ -22,7 +22,7 @@ weave is, the quickstart, self-hosting, and the FAQ.
 
 | Document | What it covers |
 | --- | --- |
-| [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md) | Agent-facing map: repo layout, the 61 MCP tools, entity-ref forms, rules for changing the repo |
+| [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md) | Agent-facing map: repo layout, the 62 MCP tools, entity-ref forms, rules for changing the repo |
 | [CONTRIBUTING.md](https://github.com/grunion-ai/weave/blob/main/CONTRIBUTING.md) | Setup, the zero-dependency and no-build-step rules, PR expectations |
 | [SECURITY.md](https://github.com/grunion-ai/weave/blob/main/SECURITY.md) | Threat model, what is in scope, private reporting |
 | [llms.txt](https://github.com/grunion-ai/weave/blob/main/llms.txt) | Machine-readable index of this documentation |

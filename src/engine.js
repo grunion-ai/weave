@@ -16,6 +16,7 @@ import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
+import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms } from './forms.js';
 
 function iconValue(v) {
   const s = String(v ?? '').trim();
@@ -28,7 +29,7 @@ function iconValue(v) {
 
 const Term = globalThis.WeaveTerm;
 const ListCore = globalThis.weaveListCore;
-const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow' };
+const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow', forms: 'form' };
 
 export function parseCSV(text) {
   const rows = [];
@@ -2853,6 +2854,7 @@ export class Weave {
   }
 
   updateWorkspace({ name = null, description = null, linkPreview = null } = {}) {
+    if (name != null && name !== this.state.meta.name) refuseOnDocs(this, 'renamed');
     if (description != null) this.state.meta.description = String(description);
     if (linkPreview != null) {
       if ([true, 'true', 'on'].includes(linkPreview)) this.state.meta.linkPreview = true;
@@ -3435,6 +3437,7 @@ export class Weave {
     }
     if (dirty) this.save();
     this.#syncAll();
+    adoptForms(this, root);
     const spacesT = root.#sysTable('spaces');
     for (const f of rollups) {
       const via = this.state.tables[f.config.via];
@@ -3765,6 +3768,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
+    ensureFormColumns(this, this.#sysTable('forms') ?? mkTable('Forms', 'forms', FORMS_DESCRIPTION), tablesT);
     this.#syncAll();
     this.#migrateAutomations();
     this.#settleWorkflows();

@@ -50,7 +50,7 @@ AI-generated field types.
 - **Documents are first class.** Every entity carries as many markdown documents
   as you want, each addressable as a URL: `/e/Task#12/doc.md`, `.html`, `.pdf`.
   Mermaid diagrams render in place. Airtable's long-text field is not this.
-- **Agents are first-class users.** A built-in MCP server exposes 61 tools,
+- **Agents are first-class users.** A built-in MCP server exposes 62 tools,
   including schema design, not just record CRUD — alongside the REST API and a
   scriptable CLI, all over the same engine. An agent can create the space, the
   tables, the relations, and the automations, then fill them.

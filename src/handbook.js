@@ -2081,6 +2081,52 @@ The address is printed under the panel's foot, so a device with no mail app stil
 The mail app opens with the To, Subject and body already there. If nothing opens, the browser has no mail handler: copy the address from under the panel and send the report from any client.`,
   },
   {
+    name: 'Forms',
+    audience: 'Both',
+    order: 12.5,
+    doc: `# Forms
+
+A form lets someone add one row to one table without write access to that table. An Observer, who can read and comment and nothing else, can still file a bug or send feedback through a form.
+
+## A form is a row
+
+Every form is a row in \`Workspace/Forms\`, beside Spaces, Tables and Fields. The row names:
+
+| Column | What it holds |
+| --- | --- |
+| Table | the table a submission files into |
+| Fields | the fields the form shows, in order, as JSON: \`[{"field": "Mood", "label": "How do you feel", "default": "Happy"}]\` |
+| Hidden | the fields the server fills, as JSON: \`{"Reporter": "$actor", "Filed At": "$now", "Build": "$version"}\` |
+| Enabled | a form that is off refuses every submission |
+| Floor | **Observer** (anyone with a role in the workspace) or **Anonymous** (signed-out visitors too) |
+| Kind | **Row**, or **Bug report** for the bug reporter |
+
+A form row is schema, like a Tables row: an Architect makes and edits it, and an Editor or Observer cannot.
+
+## Submitting
+
+A submission creates exactly one row in the form's table and nothing else. It reads no other row, edits nothing, and changes no schema. The submitter is the row's author and the actor in its history. A submission that names a hidden field is refused, and so is one that names a field the form does not show.
+
+- **Page:** \`/f/<form id>\`, styled for both themes, opens to anyone the form admits.
+- **HTTP:** \`POST /api/forms/<id>/submit\` with \`{"values": {...}}\`; \`GET /api/forms\` lists the forms whose table lives in the workspace.
+- **MCP:** \`weave_form_submit {form, values}\`.
+- **CLI:** \`weave form submit <form> --values '{"Mood": "Sad"}'\`.
+
+An **Anonymous** floor also needs the operator to allow it: start the server with \`WEAVE_ANONYMOUS_FORMS=1\`. Without that switch a signed-out visitor is asked to sign in.
+
+## The bug reporter is the first form
+
+The bug glyph files through the **Report a bug** form on the \`weave\` docs workspace. It keeps its four symptoms, its note, its action trace and the server's own version stamp. \`POST /api/bug-report\` still answers, as an alias that submits through the form, so turning the form off turns the reporter off too.
+
+## The weave docs workspace
+
+The \`weave\` docs workspace is built in. Nobody can delete it, rename it or leave it; each attempt answers 403. Every login any workspace on this instance knows opens it as an Observer, with no invite and no account row there, and may submit a bug through its form.
+
+## How you know it worked
+
+Open \`/f/<id>\`, fill it in and press **Send**. The button reads **Sent** and the line under it names the new row, such as \`Development/Issue #412\`. The row shows you as its author.`,
+  },
+  {
     name: 'Table views',
     audience: 'Both',
     order: 20,

@@ -7,7 +7,7 @@ import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
-import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
+import { getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
@@ -41,7 +41,7 @@ const START_TTL_MS = 30 * 60 * 1000;
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const challenges = new Map();
   const handoffs = new Map();
   const scheme = origin ? new URL(origin).protocol : 'http:';
@@ -313,7 +313,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms');
     const previewLogo = path === '/api/workspace/logo' && ['GET', 'HEAD'].includes(rx.method) && !!weave.state.meta.linkPreview;
     const startDoor = path === '/start' || path === '/api/start' || path.startsWith('/api/start/');
-    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || previewLogo || startDoor
+    const formDoor = (['GET', 'HEAD'].includes(rx.method) && /^\/(?:f|api\/forms)\/[^/]+$/.test(path)) || (rx.method === 'POST' && /^\/api\/forms\/[^/]+\/submit$/.test(path));
+    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || previewLogo || startDoor || formDoor
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
     let session = null;
@@ -332,9 +333,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       resolved.set(w, hit);
       return hit;
     };
+    const docsVisitor = (w) => {
+      if (!isDocsWorkspace(w) || !w.state.meta.requireAuth) return null;
+      for (const name of Object.keys(cookies)) {
+        const from = name.startsWith(`${LEGACY_COOKIE}_`) ? hub.get(name.slice(LEGACY_COOKIE.length + 1)) : null;
+        const hit = from && from !== w ? ownSession(from) : null;
+        if (hit) return { ...hit, role: 'observer', visitor: true };
+      }
+      return null;
+    };
+    const docsToken = (w, token) => {
+      if (!isDocsWorkspace(w) || !w.state.meta.requireAuth) return null;
+      const from = hub.entries().find(([, x]) => x !== w && !x.state.meta.deletedAt && x.verifyToken(token))?.[1];
+      return from ? { ...from.verifyToken(token), role: 'observer' } : null;
+    };
     const sessionOn = (w) => {
       const root = hub.get(hub.defaultName);
-      return ownSession(w) ?? (w !== root ? ownSession(root) : null);
+      return ownSession(w) ?? (w !== root ? ownSession(root) : null) ?? docsVisitor(w);
     };
     const authz = rx.header('authorization');
     let oauth = null;
@@ -374,7 +389,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       mcpDoor = true;
     }
     if (authz && /^Bearer /i.test(authz)) {
-      const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim());
+      const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = oauth ? `${account.name} via MCP` : account.name;
       role = Weave.roleName(account.role);
@@ -435,13 +450,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const ownComment = cm && (cm[2] == null ? m2 === 'POST' : m2 === 'DELETE' && (() => {
         try { return weave.getEntity(cm[1]).comments.find((c) => c.id === cm[2])?.author === weave.actor; } catch { return false; }
       })());
-      if (observer && !read && !ownComment) return deny(403, 'An observer may read and comment, nothing else');
+      const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
+      if (observer && !read && !ownComment && !submits) return deny(403, 'An observer may read and comment, nothing else');
       if (role === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
     }
     const roleOn = (w) => {
       if (w === weave) return role;
       if (oauth) return w === oauth.engine ? Weave.roleName(oauth.account.role) : null;
-      if (authz && /^Bearer /i.test(authz)) return Weave.roleName(w.verifyToken(authz.slice(7).trim())?.role) ?? null;
+      if (authz && /^Bearer /i.test(authz)) return Weave.roleName((w.verifyToken(authz.slice(7).trim()) ?? docsToken(w, authz.slice(7).trim()))?.role) ?? null;
       return Weave.roleName(sessionOn(w)?.role) ?? null;
     };
 
@@ -557,6 +573,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (hit) return hit;
       }
 
+      const formFor = (ref) => {
+        let form;
+        try { form = getForm(weave, decodeURIComponent(ref)); } catch (err) {
+          if (err instanceof WeaveError && err.code === 'not-found' && weave.state.meta.requireAuth && role == null) return { form: null, admitted: false };
+          throw err;
+        }
+        return { form, admitted: formAdmits(form, { role: roleOn(form.owner), anonymous: anonymousForms }) };
+      };
+      if ((m = path.match(/^\/f\/([^/]+)$/)) && ['GET', 'HEAD'].includes(rx.method)) {
+        const { form, admitted } = formFor(m[1]);
+        if (!admitted) return wall();
+        return out(200, renderFormPage(form, { mount: wsPrefix }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
+
       if (path === '/auth') {
         if (oidc && !session && !role && !rx.searchParams?.has('signed-out')) {
           const q = rx.searchParams?.toString() ?? '';
@@ -653,6 +683,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                   return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
                 }
               } else engine = [c.holder, root].find((e) => (account = e.accountForIdentity(who)));
+              if (!engine && isDocsWorkspace(c.holder)) engine = hub.entries().map(([, w]) => w).find((e) => e !== c.holder && !e.state.meta.deletedAt && (account = e.accountForIdentity(who)));
               if (!engine) {
                 noteFailure(ip);
                 const ws = c.holder.state.meta.name;
@@ -1001,11 +1032,30 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });
         }
 
+        if (route === 'GET /api/forms') {
+          if (isDocsWorkspace(weave)) { try { ensureBugForm(weave); } catch {} }
+          return out(200, listForms(weave));
+        }
+        if ((m = path.match(/^\/api\/forms\/([^/]+)$/)) && rx.method === 'GET') {
+          const { form, admitted } = formFor(m[1]);
+          if (!admitted) return deny(401, 'Sign in to open this form');
+          return out(200, form);
+        }
+        const stamp = () => ({ version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name });
+        if ((m = path.match(/^\/api\/forms\/([^/]+)\/submit$/)) && rx.method === 'POST') {
+          const { form, admitted } = formFor(m[1]);
+          if (!admitted) return deny(401, 'Sign in to submit this form');
+          const signedIn = roleOn(form.owner) != null || !form.owner.state.meta.requireAuth;
+          return out(201, submitForm(weave, form.id, body ?? {}, { actor: signedIn ? weave.actor : 'anonymous', server: stamp() }));
+        }
+        if (route === 'POST /api/workspace/leave') {
+          refuseOnDocs(weave, 'left');
+          const me = session && session.engine === weave && !session.visitor ? session : role ? weave.verifyToken(authz?.slice(7).trim() ?? '') : null;
+          if (!me) return deny(401, 'Sign in to leave a workspace');
+          return out(200, leaveWorkspace(weave, me.id));
+        }
+
         if (route === 'POST /api/bug-report') {
-          const events = body?.events ?? [];
-          if (!Array.isArray(events) || events.length > MAX_BUG_EVENTS) {
-            return out(400, { error: `events must be an array of at most ${MAX_BUG_EVENTS} entries`, code: 'invalid' });
-          }
           const docs = hub.get('weave') ?? hub.get('weaver');
           const issues = docs && (() => { try { return docs.getTable('Development/Issue'); } catch { return null; } })();
           if (!issues) {
@@ -1013,49 +1063,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
           docs.maybeRefresh();
-          let report;
-          try {
-            report = renderBugReport({
-              categories: body?.categories ?? [],
-              note: body?.note,
-              events,
-              client: body?.client ?? {},
-              server: {
-                version,
-                startedAt: STARTED_AT,
-                uptime: Math.round(uptime()),
-                workspace: weave.state.meta.name,
-              },
-            });
-          } catch (err) {
-            return out(400, { error: err.message, code: 'invalid' });
-          }
-          const was = docs.actor;
-          docs.actor = 'bug-report';
-          try {
-            const values = { Severity: report.severity };
-            const field = docs.findField(issues, SYMPTOM_FIELD);
-            const declared = new Set((field?.config?.options ?? []).map((o) => o?.name ?? o));
-            const settable = report.symptoms.filter((s) => declared.has(s));
-            if (settable.length) values[SYMPTOM_FIELD] = settable;
-            const described = docs.descriptionField(issues);
-            const issue = docs.createEntity(issues.id, {
-              name: report.title,
-              values,
-              ...(described ? { docs: { [described.name]: report.markdown } } : {}),
-            });
-            return out(201, {
-              id: issue.id,
-              publicId: issue.publicId,
-              workspace: docs.state.meta.name,
-              table: 'Development/Issue',
-              severity: report.severity,
-              symptoms: settable,
-              url: `/w/${docs.state.meta.name}/#/entity/${issue.id}`,
-            });
-          } finally {
-            docs.actor = was;
-          }
+          const form = ensureBugForm(docs);
+          return out(201, submitForm(docs, form.id, body ?? {}, { actor: role == null ? 'bug-report' : weave.actor, server: stamp() }));
         }
 
         if (path === '/api/workspace/logo') {

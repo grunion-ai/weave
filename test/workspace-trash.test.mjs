@@ -113,7 +113,7 @@ test('the hub list says which workspaces are deletable: never the default, never
     assert.equal(byName.main.deletable, false, 'the default workspace is not deletable');
     assert.equal(byName.weave.deletable, false, 'the weave docs workspace is not deletable');
     assert.equal(byName.scratch.deletable, true, 'a sibling workspace is deletable');
-    assert.equal((await api('DELETE', '/api/workspaces/weave')).status, 400);
+    assert.equal((await api('DELETE', '/api/workspaces/weave')).status, 403);
   });
 });
 

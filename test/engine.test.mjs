@@ -33,7 +33,7 @@ function buildWorkspace() {
 test('spaces and tables', () => {
   const { w } = buildWorkspace();
   assert.equal(w.listSpaces().length, 2);
-  assert.equal(w.listTables().length, 8);
+  assert.equal(w.listTables().length, 9);
   assert.equal(w.getTable('Product/Task').name, 'Task');
   assert.equal(w.getTable('task').name, 'Task');
   assert.throws(() => w.getTable('Nope'), /not found/);

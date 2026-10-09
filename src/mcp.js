@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
+import { submitForm } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
 let VERSION = 'dev';
 try {
@@ -479,6 +480,20 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { blobs: { type: 'boolean' } } },
   },
   {
+    name: 'weave_form_submit',
+    description: 'Submit one row through a form, a Workspace/Forms row: exactly one new row in the form\'s table, written by you, with no write access to that table needed. form is the form\'s id or name; values maps the fields the form shows (by name or label) to values. A field the server fills (reporter, time, version) is refused, and so is a field the form does not show. The bug reporter is a form too: give it note and categories (slow, broken-ui, wrong-data, error) instead of values.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        form: { type: 'string', description: 'The form id or name, as GET /api/forms lists them.' },
+        values: { type: 'object', description: 'Field name or label to value, for the fields the form shows.' },
+        note: { type: 'string', description: 'Bug report forms: what happened.' },
+        categories: { type: 'array', items: { type: 'string' }, description: 'Bug report forms: the symptoms.' },
+      },
+      required: ['form'],
+    },
+  },
+  {
     name: 'weave_import_json',
     description: 'Replace the workspace with a JSON export. Destructive: everything not in the document is gone. The result names every file that arrived without its bytes (missing).',
     inputSchema: { type: 'object', properties: { state: { type: 'object' } }, required: ['state'] },
@@ -553,6 +568,7 @@ export const SUMMARY = {
   weave_relation_map: 'the relation map as mermaid',
   weave_export_json: 'the whole workspace as JSON',
   weave_import_json: 'replace the workspace from a JSON export',
+  weave_form_submit: 'one row through a form',
 };
 TOOLS.push({
   name: 'weave_call',
@@ -768,6 +784,8 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       });
     case 'weave_audit':
       return { events: weave.listAudit({ limit: args.limit ?? null, since: args.since ?? null }) };
+    case 'weave_form_submit':
+      return submitForm(weave, args.form, { values: args.values, note: args.note, categories: args.categories, events: [] }, { actor: weave.actor, server: { version: VERSION, workspace: weave.state.meta.name } });
     case 'weave_workspace':
       switch (args.action ?? 'get') {
         case 'get': return weave.getWorkspace();
