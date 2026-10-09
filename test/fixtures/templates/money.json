@@ -1,0 +1,1076 @@
+{
+  "space": "Money",
+  "description": "Household money in six tables. Accounts holds where money sits (checking, savings, cards, cash). Every purchase or payment is a Transaction on an Account, filed under a Category and a Month; every paycheck or refund is an Income row. Bills lists what recurs, with its Monthly cost normalised from any billing period. Months totals what was spent and earned against that month's Budget. Start by adding your Accounts and Categories, then log Transactions as they happen.",
+  "icon": "lucide:wallet",
+  "tables": [
+    {
+      "name": "Accounts",
+      "description": "One row per place money sits: a checking account, a savings account, a credit card or cash. Spent and Received total the Transactions and Income linked to the account since it was added.",
+      "icon": "lucide:landmark",
+      "hiddenFields": [
+        "Description",
+        "Transactions",
+        "Income",
+        "Chip",
+        "Card"
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Kind",
+            "Institution",
+            "Spent",
+            "Received",
+            "Bills"
+          ],
+          "widths": {
+            "Name": 220
+          },
+          "frozen": 1
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Description",
+        "Bills",
+        "Transactions",
+        "Income"
+      ],
+      "term": {
+        "singular": "account",
+        "plural": "accounts",
+        "set": true
+      },
+      "noun": "account",
+      "qualified": "Money/Accounts",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "account",
+            "plural": "accounts"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Kind",
+          "type": "select",
+          "description": "Checking, Savings, Credit card or Cash.",
+          "options": [
+            "Checking",
+            "Savings",
+            "Credit card",
+            "Cash"
+          ],
+          "optionsFull": [
+            {
+              "name": "Checking",
+              "hue": "blue",
+              "icon": "lucide:landmark",
+              "color": "#4769eb"
+            },
+            {
+              "name": "Savings",
+              "hue": "green",
+              "icon": "lucide:coins",
+              "color": "#2ea043"
+            },
+            {
+              "name": "Credit card",
+              "hue": "purple",
+              "icon": "lucide:credit-card",
+              "color": "#8e4ec6"
+            },
+            {
+              "name": "Cash",
+              "hue": "slate",
+              "icon": "lucide:wallet",
+              "color": ""
+            }
+          ]
+        },
+        {
+          "name": "Institution",
+          "type": "text",
+          "description": "The bank or card issuer, as you would say it."
+        },
+        {
+          "name": "Bills",
+          "type": "relation",
+          "description": "The Bills charged to this account.",
+          "targetDb": "Money/Bills",
+          "many": true,
+          "inverseField": "Account"
+        },
+        {
+          "name": "Transactions",
+          "type": "relation",
+          "description": "Spending that left this account, newest first.",
+          "targetDb": "Money/Transactions",
+          "many": true,
+          "inverseField": "Account"
+        },
+        {
+          "name": "Income",
+          "type": "relation",
+          "description": "Money that landed in this account.",
+          "targetDb": "Money/Income",
+          "many": true,
+          "inverseField": "Account"
+        },
+        {
+          "name": "Spent",
+          "type": "rollup",
+          "description": "Total of the Transactions that left this account. Computed; do not set.",
+          "via": "Transactions",
+          "targetField": "Amount",
+          "aggregate": "sum",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Received",
+          "type": "rollup",
+          "description": "Total of the Income that landed in this account. Computed; do not set.",
+          "via": "Income",
+          "targetField": "Amount",
+          "aggregate": "sum",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    },
+    {
+      "name": "Months",
+      "description": "One row per calendar month. Spent and Earned total the Transactions and Income filed under the month; Net is Earned minus Spent. Budget is the total you plan to spend that month, and Over budget shows by how much Spent passed it (zero or below means under budget).",
+      "icon": "lucide:calendar",
+      "hiddenFields": [
+        "Description",
+        "Transactions",
+        "Income",
+        "Chip",
+        "Card"
+      ],
+      "sort": [
+        {
+          "field": "Month",
+          "dir": "desc"
+        }
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Month",
+            "Budget",
+            "Spent",
+            "Earned",
+            "Net",
+            "Over budget"
+          ],
+          "sort": [
+            {
+              "field": "Month",
+              "dir": "desc"
+            }
+          ],
+          "widths": {
+            "Name": 200
+          },
+          "frozen": 1
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Description",
+        "Transactions",
+        "Income"
+      ],
+      "term": {
+        "singular": "month",
+        "plural": "months",
+        "set": true
+      },
+      "noun": "month",
+      "qualified": "Money/Months",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "month",
+            "plural": "months"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Month",
+          "type": "date",
+          "description": "The calendar month this row covers.",
+          "grain": [
+            "year",
+            "month"
+          ]
+        },
+        {
+          "name": "Budget",
+          "type": "number",
+          "description": "The total planned spending for the month, in USD. Usually the sum of the Categories' monthly budgets.",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Transactions",
+          "type": "relation",
+          "description": "Spending filed under this month.",
+          "targetDb": "Money/Transactions",
+          "many": true,
+          "inverseField": "Month"
+        },
+        {
+          "name": "Income",
+          "type": "relation",
+          "description": "Income filed under this month.",
+          "targetDb": "Money/Income",
+          "many": true,
+          "inverseField": "Month"
+        },
+        {
+          "name": "Spent",
+          "type": "rollup",
+          "description": "Total of the Transactions filed under this month. Computed; do not set.",
+          "via": "Transactions",
+          "targetField": "Amount",
+          "aggregate": "sum",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Earned",
+          "type": "rollup",
+          "description": "Total of the Income filed under this month. Computed; do not set.",
+          "via": "Income",
+          "targetField": "Amount",
+          "aggregate": "sum",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Net",
+          "type": "formula",
+          "description": "Earned minus Spent; negative means the month cost more than it brought in. Computed; do not set.",
+          "format": "currency",
+          "currency": "USD",
+          "expression": "[Earned] - [Spent]"
+        },
+        {
+          "name": "Over budget",
+          "type": "formula",
+          "description": "Spent minus Budget; above zero means over budget by that much. Computed; do not set.",
+          "format": "currency",
+          "currency": "USD",
+          "expression": "[Spent] - [Budget]"
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    },
+    {
+      "name": "Bills",
+      "description": "Everything that charges you on a schedule: rent, utilities, subscriptions, insurance. Amount is what each charge costs and Period how often it comes; Monthly cost turns any period into a monthly figure so bills compare. Keep Next due current after each payment, and set Cancel by for anything on a trial or a renewal you may not want.",
+      "icon": "lucide:refresh-cw",
+      "hiddenFields": [
+        "Description",
+        "Transactions",
+        "Chip",
+        "Card"
+      ],
+      "sort": [
+        {
+          "field": "Next due",
+          "dir": "asc"
+        }
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Status",
+            "Amount",
+            "Period",
+            "Monthly cost",
+            "Next due",
+            "Days until due",
+            "Cancel by",
+            "Account",
+            "Category"
+          ],
+          "sort": [
+            {
+              "field": "Next due",
+              "dir": "asc"
+            }
+          ],
+          "widths": {
+            "Name": 220
+          },
+          "frozen": 1,
+          "rollups": true
+        },
+        {
+          "name": "Due soon",
+          "fields": [
+            "Name",
+            "Amount",
+            "Next due",
+            "Days until due",
+            "Account",
+            "Category"
+          ],
+          "filters": {
+            "Status": [
+              "Active"
+            ]
+          },
+          "sort": [
+            {
+              "field": "Next due",
+              "dir": "asc"
+            }
+          ],
+          "widths": {
+            "Name": 220
+          },
+          "frozen": 1
+        },
+        {
+          "name": "Cancelled",
+          "fields": [
+            "Name",
+            "Amount",
+            "Period",
+            "Cancel by",
+            "Category"
+          ],
+          "filters": {
+            "Status": [
+              "Cancelled"
+            ]
+          },
+          "sort": [
+            {
+              "field": "Name",
+              "dir": "asc"
+            }
+          ],
+          "frozen": 1
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Description",
+        "Transactions"
+      ],
+      "term": {
+        "singular": "bill",
+        "plural": "bills",
+        "set": true
+      },
+      "noun": "bill",
+      "qualified": "Money/Bills",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "bill",
+            "plural": "bills"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Status",
+          "type": "workflow",
+          "description": "Active: charging as normal. Paused: on hold, not charging. Cancelled: ended; keep the row for history.",
+          "states": [
+            {
+              "name": "Active",
+              "category": "in-progress",
+              "default": true,
+              "icon": "lucide:play"
+            },
+            {
+              "name": "Paused",
+              "category": "not-started",
+              "default": false,
+              "icon": "lucide:clock"
+            },
+            {
+              "name": "Cancelled",
+              "category": "canceled",
+              "default": false,
+              "icon": "lucide:square-x"
+            }
+          ]
+        },
+        {
+          "name": "Amount",
+          "type": "number",
+          "description": "What one charge costs, in USD, for the Period below.",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Period",
+          "type": "select",
+          "description": "How often the charge comes: Weekly, Monthly, Quarterly or Yearly.",
+          "options": [
+            "Weekly",
+            "Monthly",
+            "Quarterly",
+            "Yearly"
+          ],
+          "optionsFull": [
+            {
+              "name": "Weekly",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Monthly",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Quarterly",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Yearly",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            }
+          ]
+        },
+        {
+          "name": "Next due",
+          "type": "date",
+          "description": "The date of the next charge. Move it forward after each payment."
+        },
+        {
+          "name": "Cancel by",
+          "type": "date",
+          "description": "The last day to cancel before a trial converts or a plan renews. Leave blank when you mean to keep it."
+        },
+        {
+          "name": "Account",
+          "type": "relation",
+          "description": "The account the charge comes out of.",
+          "targetDb": "Money/Accounts",
+          "many": false,
+          "inverseField": "Bills"
+        },
+        {
+          "name": "Category",
+          "type": "relation",
+          "description": "The category the charge counts against.",
+          "targetDb": "Money/Categories",
+          "many": false,
+          "inverseField": "Bills"
+        },
+        {
+          "name": "Transactions",
+          "type": "relation",
+          "description": "The payments made against this bill, one per charge.",
+          "targetDb": "Money/Transactions",
+          "many": true,
+          "inverseField": "Bill"
+        },
+        {
+          "name": "Monthly cost",
+          "type": "formula",
+          "description": "Amount as a monthly figure: weekly times 52 over 12, quarterly over 3, yearly over 12. Computed; do not set.",
+          "format": "currency",
+          "currency": "USD",
+          "expression": "round(if([Period] = \"Weekly\", [Amount] * 52 / 12, if([Period] = \"Quarterly\", [Amount] / 3, if([Period] = \"Yearly\", [Amount] / 12, [Amount]))), 2)"
+        },
+        {
+          "name": "Days until due",
+          "type": "formula",
+          "description": "Days from today to Next due; negative means overdue. Computed; do not set.",
+          "expression": "if(empty([Next due]), \"\", days(today(), [Next due]))"
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "description": "What money goes to. Monthly budget is the amount you plan to spend in this category each month. Spent to date totals every linked Transaction since the category was added; compare months in the Months table.",
+      "icon": "lucide:bookmark",
+      "hiddenFields": [
+        "Description",
+        "Bills",
+        "Transactions",
+        "Chip",
+        "Card"
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Kind",
+            "Monthly budget",
+            "Bills per month",
+            "Spent to date"
+          ],
+          "widths": {
+            "Name": 200
+          },
+          "frozen": 1,
+          "rollups": true
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Description",
+        "Bills",
+        "Transactions"
+      ],
+      "term": {
+        "singular": "category",
+        "plural": "categories",
+        "set": true
+      },
+      "noun": "category",
+      "qualified": "Money/Categories",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "category",
+            "plural": "categories"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Kind",
+          "type": "select",
+          "description": "Spending for money going out, Saving for money set aside.",
+          "options": [
+            "Spending",
+            "Saving"
+          ],
+          "optionsFull": [
+            {
+              "name": "Spending",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Saving",
+              "hue": "green",
+              "icon": "lucide:coins",
+              "color": "#2ea043"
+            }
+          ]
+        },
+        {
+          "name": "Monthly budget",
+          "type": "number",
+          "description": "The amount planned for this category each month, in USD.",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Bills",
+          "type": "relation",
+          "description": "The Bills filed under this category.",
+          "targetDb": "Money/Bills",
+          "many": true,
+          "inverseField": "Category"
+        },
+        {
+          "name": "Transactions",
+          "type": "relation",
+          "description": "Spending filed under this category.",
+          "targetDb": "Money/Transactions",
+          "many": true,
+          "inverseField": "Category"
+        },
+        {
+          "name": "Spent to date",
+          "type": "rollup",
+          "description": "Total of every Transaction filed under this category since it was added. Computed; do not set.",
+          "via": "Transactions",
+          "targetField": "Amount",
+          "aggregate": "sum",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Bills per month",
+          "type": "rollup",
+          "description": "The Monthly cost of the Bills filed under this category, added up. Computed; do not set.",
+          "via": "Bills",
+          "targetField": "Monthly cost",
+          "aggregate": "sum",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "description": "One row per purchase or payment going out. Amount is positive, in USD. File each under an Account, a Category and the Month it happened in; link the Bill when the charge is a recurring one. Income going in belongs in the Income table.",
+      "icon": "lucide:receipt",
+      "hiddenFields": [
+        "Description",
+        "Chip",
+        "Card"
+      ],
+      "sort": [
+        {
+          "field": "Date",
+          "dir": "desc"
+        }
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Date",
+            "Amount",
+            "Category",
+            "Account",
+            "Month",
+            "Bill",
+            "Notes"
+          ],
+          "sort": [
+            {
+              "field": "Date",
+              "dir": "desc"
+            }
+          ],
+          "widths": {
+            "Name": 220,
+            "Notes": 240
+          },
+          "frozen": 1,
+          "rollups": true
+        },
+        {
+          "name": "By category",
+          "fields": [
+            "Name",
+            "Date",
+            "Amount",
+            "Account",
+            "Month"
+          ],
+          "sort": [
+            {
+              "field": "Date",
+              "dir": "desc"
+            }
+          ],
+          "widths": {
+            "Name": 220
+          },
+          "frozen": 1,
+          "rollups": true,
+          "group": [
+            {
+              "field": "Category"
+            }
+          ]
+        },
+        {
+          "name": "By month",
+          "fields": [
+            "Name",
+            "Date",
+            "Amount",
+            "Category",
+            "Account"
+          ],
+          "sort": [
+            {
+              "field": "Date",
+              "dir": "desc"
+            }
+          ],
+          "widths": {
+            "Name": 220
+          },
+          "frozen": 1,
+          "rollups": true,
+          "group": [
+            {
+              "field": "Month"
+            }
+          ]
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Description"
+      ],
+      "term": {
+        "singular": "transaction",
+        "plural": "transactions",
+        "set": true
+      },
+      "noun": "transaction",
+      "qualified": "Money/Transactions",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "transaction",
+            "plural": "transactions"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Date",
+          "type": "date",
+          "description": "The day the charge posted."
+        },
+        {
+          "name": "Amount",
+          "type": "number",
+          "description": "What left the account, in USD, as a positive number.",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Notes",
+          "type": "text",
+          "description": "Anything worth remembering: who it was for, a split, a return to chase."
+        },
+        {
+          "name": "Account",
+          "type": "relation",
+          "description": "The account the money left.",
+          "targetDb": "Money/Accounts",
+          "many": false,
+          "inverseField": "Transactions"
+        },
+        {
+          "name": "Category",
+          "type": "relation",
+          "description": "What the money went to.",
+          "targetDb": "Money/Categories",
+          "many": false,
+          "inverseField": "Transactions"
+        },
+        {
+          "name": "Month",
+          "type": "relation",
+          "description": "The calendar month the charge counts in.",
+          "targetDb": "Money/Months",
+          "many": false,
+          "inverseField": "Transactions"
+        },
+        {
+          "name": "Bill",
+          "type": "relation",
+          "description": "The recurring Bill this charge pays, when it is one. Blank for one-off spending.",
+          "targetDb": "Money/Bills",
+          "many": false,
+          "inverseField": "Transactions"
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    },
+    {
+      "name": "Income",
+      "description": "One row per amount coming in: a paycheck, freelance payment, refund or gift. Amount is positive, in USD. File it under the Account it landed in and the Month it counts in.",
+      "icon": "lucide:trending-up",
+      "hiddenFields": [
+        "Description",
+        "Chip",
+        "Card"
+      ],
+      "sort": [
+        {
+          "field": "Date",
+          "dir": "desc"
+        }
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Date",
+            "Amount",
+            "Source",
+            "Account",
+            "Month"
+          ],
+          "sort": [
+            {
+              "field": "Date",
+              "dir": "desc"
+            }
+          ],
+          "widths": {
+            "Name": 200
+          },
+          "frozen": 1,
+          "rollups": true
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Description"
+      ],
+      "term": {
+        "singular": "income",
+        "plural": "income",
+        "set": true
+      },
+      "noun": "income",
+      "qualified": "Money/Income",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "income",
+            "plural": "income"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Date",
+          "type": "date",
+          "description": "The day the money arrived."
+        },
+        {
+          "name": "Amount",
+          "type": "number",
+          "description": "What arrived, in USD, as a positive number.",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Source",
+          "type": "select",
+          "description": "Salary, Freelance, Refund or Other.",
+          "options": [
+            "Salary",
+            "Freelance",
+            "Refund",
+            "Other"
+          ],
+          "optionsFull": [
+            {
+              "name": "Salary",
+              "hue": "green",
+              "icon": "lucide:briefcase",
+              "color": "#2ea043"
+            },
+            {
+              "name": "Freelance",
+              "hue": "teal",
+              "icon": "lucide:sparkles",
+              "color": "#12a594"
+            },
+            {
+              "name": "Refund",
+              "hue": "slate",
+              "icon": "lucide:arrow-down",
+              "color": ""
+            },
+            {
+              "name": "Other",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            }
+          ]
+        },
+        {
+          "name": "Account",
+          "type": "relation",
+          "description": "The account the money landed in.",
+          "targetDb": "Money/Accounts",
+          "many": false,
+          "inverseField": "Income"
+        },
+        {
+          "name": "Month",
+          "type": "relation",
+          "description": "The calendar month the money counts in.",
+          "targetDb": "Money/Months",
+          "many": false,
+          "inverseField": "Income"
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    }
+  ]
+}

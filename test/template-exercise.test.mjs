@@ -47,8 +47,13 @@ async function exerciseEvery(t, w, space, label) {
   assert.equal(userRows(w).length, before, `${label}: the exercise leaves no rows behind`);
 }
 
-test('the fixture folder holds the CRM template', () => {
+test('the fixture folder holds the CRM and Money templates', () => {
   assert.ok(fixtures.some((f) => f.file === 'crm.json'), 'crm.json is there');
+  const money = fixtures.find((f) => f.file === 'money.json')?.doc;
+  assert.ok(money, 'money.json is there');
+  assert.deepEqual(money.tables.map((t) => t.name), ['Accounts', 'Months', 'Bills', 'Categories', 'Transactions', 'Income']);
+  const bills = money.tables.find((t) => t.name === 'Bills');
+  assert.match(bills.fields.find((f) => f.name === 'Monthly cost').expression, /Weekly[\s\S]*Quarterly[\s\S]*Yearly/, 'Monthly cost normalises every period');
   for (const { file, doc } of fixtures) {
     assert.equal(typeof doc.space, 'string', `${file} is one space`);
     assert.ok(doc.tables.length, `${file} has tables`);
