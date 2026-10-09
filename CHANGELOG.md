@@ -2,6 +2,10 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.86 (2026-10-08)
+
+- Swiping a phone list row no longer reveals state actions; swipe is removed for now at Kyle's call. Rows still open on a tap, and the row page's next-step button still moves a row to its next state (Feature #275).
+
 ## v0.4.85 (2026-10-08)
 
 - The loading mark now ships inside `index.html` and appears on first paint once the 500 ms threshold passes, so a fresh load no longer sits on a bare shell while the app fetches the animated rope (Issue #391).
