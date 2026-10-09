@@ -368,7 +368,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         let account = null;
         const engine = [weave, root].find((e) => (account = accountOn(who, e)));
         if (!engine) return deny(403, `This ${oidc.name} sign-in opens no account on this workspace. Ask an operator for an invite (weave account link <name>) and open it in a browser once; then sign in here again.`);
-        oauth = { account, engine, client: who.client ?? 'oauth' };
+        oauth = { account, engine };
       }
       path = '/api/mcp';
       mcpDoor = true;
@@ -376,7 +376,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (authz && /^Bearer /i.test(authz)) {
       const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
-      weave.actor = oauth ? `${account.name} via ${oauth.client}`.slice(0, 120) : account.name;
+      weave.actor = oauth ? `${account.name} via MCP` : account.name;
       role = Weave.roleName(account.role);
     } else if ((session = sessionOn(weave))) {
       weave.actor = session.name;

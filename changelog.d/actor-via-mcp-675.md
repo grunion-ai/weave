@@ -1,0 +1,1 @@
+- Created By, Modified By, comment authors and version labels never print an MCP client's id: a write through the OAuth door stores `<account> via MCP`, and rows written before read as the person chip with "via MCP" (Issue #675).

@@ -6124,13 +6124,14 @@ function actorChipEl(actor, { link = true } = {}) {
 function commentAuthorEl(author) {
   if (/^workflow:/.test(author ?? '')) return actorChipEl(author);
   if (author === 'automation') return el('span', { class: 'k k-actor-wf is-inline' }, iconEl('lucide:workflow', 'wv-icon wv-icon-xs'), el('span', { class: 'k-label' }, 'Automation'));
+  if (weaveActor.parseActor(author).via) return actorChipEl(author, { link: false });
   return author;
 }
 function commentAuthorText(author) {
   const a = weaveActor.parseActor(author);
   if (a.kind === 'workflow') return workflowRow(a.workflowId).name ?? 'an automation';
   if (author === 'automation') return 'an automation';
-  return author ?? 'someone';
+  return author ? weaveActor.actorText(author) : 'someone';
 }
 
 const workflowRows = new Map();
@@ -10125,7 +10126,7 @@ const activityPanel = (() => {
     if (!others.length) return null;
     const p = pickerSelect({
       name: 'compare', title: 'Compare with', value: st.from ?? prev?.id ?? others[0].id,
-      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${x.actor ?? ''}` })),
+      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${weaveActor.actorText(x.actor)}` })),
     });
     p.classList.add('wv-act-cmp');
     p.input.addEventListener('change', () => { st.from = prev && p.input.value === prev.id ? null : p.input.value; render(); });
@@ -10150,7 +10151,7 @@ const activityPanel = (() => {
       what = [el('span', { class: 'name' }, it.field),
         it.restoredFrom != null ? el('span', {
           class: 'wv-act-src',
-          title: it.source ? `Restored the version from ${new Date(it.source.at).toLocaleString()}${it.source.actor ? ` by ${it.source.actor}` : ''}` : 'Restored a version no longer kept',
+          title: it.source ? `Restored the version from ${new Date(it.source.at).toLocaleString()}${it.source.actor ? ` by ${weaveActor.actorText(it.source.actor)}` : ''}` : 'Restored a version no longer kept',
         }, it.source ? `restored from ${stamp(it.source.at)}` : 'restored from an earlier version') : null,
         it.delta ? el('span', { class: `wv-act-delta ${it.delta > 0 ? 'pos' : 'neg'}` }, it.delta > 0 ? `+${it.delta}` : `−${-it.delta}`) : null];
       if (it.current) who += ' · current'; else if (it.undo) who += ' · undo';
