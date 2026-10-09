@@ -8790,6 +8790,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       const md = editor.getValue();
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
       handed = stored(editor.getValue());
+      editor.clearStack();
       scheduleDecorFor(host);
       host.addEventListener('keyup', rememberSelection);
       host.addEventListener('mouseup', rememberSelection);
