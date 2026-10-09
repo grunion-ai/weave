@@ -8722,6 +8722,84 @@ function attachTableKeys(host) {
   }, { capture: true });
 }
 
+const LIST_MARKER = /^(?:([-*+])(?: \[([ xX])\])?|(\d{1,9})([.)]))$/;
+const TASK_BOX = /^\[([ xX])\]$/;
+
+function attachListMarkers(host) {
+  let undo = null;
+  const rootOf = () => host.querySelector('.vditor-ir .vditor-reset');
+  const textOf = (node) => (node.textContent ?? '').replace(/\u200b/g, '');
+  const caretAtEnd = (block, range) => {
+    const before = document.createRange();
+    before.setStart(block, 0);
+    before.setEnd(range.endContainer, range.endOffset);
+    return before.toString().replace(/\u200b/g, '') === textOf(block);
+  };
+  const putCaret = (node, offset) => {
+    const r = document.createRange();
+    r.setStart(node, offset);
+    r.collapse(true);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  };
+  const fireInput = (root) => root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ' ' }));
+  const itemHtml = (marker, box) => box === undefined
+    ? `<li data-marker="${marker}"></li>`
+    : `<li data-marker="${marker}" class="vditor-task"><input${box.trim() ? ' checked=""' : ''} type="checkbox"> </li>`;
+  host.addEventListener('beforeinput', (e) => {
+    if (e.inputType !== 'insertText' || e.data !== ' ' || e.isComposing) return;
+    const root = rootOf();
+    const range = getSelection()?.rangeCount ? getSelection().getRangeAt(0) : null;
+    if (!root || !range || range.toString() !== '' || !root.contains(range.endContainer)) return;
+    const at = range.endContainer.nodeType === 3 ? range.endContainer.parentElement : range.endContainer;
+    const block = at.closest('p, li');
+    if (!block || !caretAtEnd(block, range)) return;
+    const text = textOf(block);
+    let li, typed = text;
+    if (block.tagName === 'P' && block.parentElement === root && LIST_MARKER.test(text)) {
+      const [, bullet, box, num, delim] = text.match(LIST_MARKER);
+      const marker = bullet ?? `${num}${delim}`;
+      const tag = bullet ? 'ul' : 'ol';
+      const start = num && Number(num) !== 1 ? ` start="${Number(num)}"` : '';
+      block.insertAdjacentHTML('afterend', `<${tag} data-tight="true"${start} data-marker="${marker}" data-block="0">${itemHtml(marker, box)}</${tag}>`);
+      li = block.nextElementSibling.firstElementChild;
+      block.remove();
+    } else if (block.tagName === 'LI' && block.parentElement?.tagName === 'UL' && !block.classList.contains('vditor-task')
+      && !block.querySelector('ul, ol') && TASK_BOX.test(text)) {
+      const marker = block.getAttribute('data-marker') ?? '-';
+      typed = `${marker} ${text}`;
+      block.insertAdjacentHTML('afterend', itemHtml(marker, text.match(TASK_BOX)[1]));
+      li = block.nextElementSibling;
+      block.remove();
+    } else return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    undo = `${typed} `;
+    putCaret(li, li.childNodes.length);
+    fireInput(root);
+  }, { capture: true });
+  host.addEventListener('keydown', (e) => {
+    const armed = undo;
+    undo = null;
+    if (!armed || e.key !== 'Backspace' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing) return;
+    const root = rootOf();
+    const range = getSelection()?.rangeCount ? getSelection().getRangeAt(0) : null;
+    const li = range?.endContainer && (range.endContainer.nodeType === 3 ? range.endContainer.parentElement : range.endContainer).closest('li');
+    const list = li?.parentElement;
+    if (!root || !li || range.toString() !== '' || list.parentElement !== root || textOf(li).trim() !== '' || list.children.length !== 1) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const p = document.createElement('p');
+    p.setAttribute('data-block', '0');
+    p.textContent = armed;
+    list.replaceWith(p);
+    putCaret(p.firstChild, armed.length);
+    fireInput(root);
+  }, { capture: true });
+  host.addEventListener('mousedown', () => { undo = null; }, { capture: true });
+}
+
 const tbIcon = (name) => (window.LUCIDE_MOVING?.[name] ?? '').replace(/ data-mi="[^"]*"/g, '');
 const WV_TB_ICONS = {
   headings: tbIcon('heading'), bold: tbIcon('bold'), italic: tbIcon('italic'), strike: tbIcon('strikethrough'),
@@ -8754,6 +8832,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachCodeAuto(host);
   attachCodeRawToggle(host);
   attachTableKeys(host);
+  attachListMarkers(host);
   attachHintClamp(host);
   const editor = new Vditor(host, {
     mode: 'ir',
