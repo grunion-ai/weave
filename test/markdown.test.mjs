@@ -50,8 +50,8 @@ test('entity mentions resolve via callback', () => {
   const resolve = (kind, ref) =>
     kind === 'entity' && ref === 'Task#12' ? { href: '/e/abc', label: 'Task #12 — Fix login' } : null;
   const html = renderMarkdown('Blocked by [[Task#12]] and [[Task#12|the login fix]] and [[Nope#9]].', { resolveMention: resolve });
-  assert.match(html, /<a class="mention mention-entity" href="\/e\/abc">Task #12 — Fix login<\/a>/);
-  assert.match(html, /<a class="mention mention-entity" href="\/e\/abc">the login fix<\/a>/);
+  assert.match(html, /<span class="k k-rel kind-entity"><a class="mention mention-entity" href="\/e\/abc" [^>]*><span class="k-label">Task #12 — Fix login<\/span><\/a><\/span>/);
+  assert.match(html, /<span class="k-label">the login fix<\/span>/);
   assert.match(html, /<span class="mention broken">Nope#9<\/span>/);
 });
 

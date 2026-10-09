@@ -9,6 +9,13 @@
 @media (prefers-color-scheme: dark) {
   :root { --fg: #e5e7eb; --muted: #9ca3af; --line: #30343c; --accent: #818cf8; --bg: #111318; --soft: #1a1d23; --code-bg: #0d1117; }
 }
+:root {
+  --tblr-body-color: var(--fg); --tblr-secondary: var(--muted); --tblr-border-color: var(--line);
+  --tblr-primary: var(--accent); --tblr-danger: #e5484d; --tblr-bg-surface: var(--bg);
+  --tblr-bg-surface-secondary: var(--soft);
+  --tblr-font-monospace: ui-monospace, "SF Mono", Menlo, monospace;
+  --fs-meta: 11px; --fs-secondary: 12px; --fs-grid: 13px; --fs-body: 14px; --fs-doc: 16px; --fs-h2: 18px; --fs-h1: 20px; --fs-title: 24px;
+}
 * { box-sizing: border-box; }
 body { margin: 0 auto; max-width: 760px; padding: 48px 24px; background: var(--bg); color: var(--fg);
   font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -16,28 +23,8 @@ h1, h2, h3, h4 { line-height: 1.25; margin: 1.4em 0 0.5em; }
 h1:first-child { margin-top: 0; }
 .doc-meta { color: var(--muted); font-size: 13px; margin-bottom: 2em; border-bottom: 1px solid var(--line); padding-bottom: 1em; }
 a { color: var(--accent); }
-.k-rel { border: 1px solid var(--line); border-radius: 4px; color: var(--fg); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.k-rel > a { color: inherit; text-decoration: none; padding: 0 5px 0 4px; }
-.k-rel > a::after { content: "↗"; opacity: .42; font-size: .7em; margin-left: 3px; }
-.k-rel:hover { border-color: var(--accent); color: var(--accent); }
 .md-icon { display: inline-flex; width: 1em; height: 1em; vertical-align: -.15em; margin-right: .15em; }
 .md-icon svg { width: 1em; height: 1em; }
-.mention.broken { color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 0 4px; }
-/* A leading glyph says what kind of thing a reference points at, so a chip is
-   readable without following it. Generated content, so it never lands in a
-   copy-paste of the text. */
-.mention::before { color: var(--muted); margin-right: 4px; font-size: .9em; }
-.mention-entity::before { content: "#"; }
-.mention-table::before { content: "▦"; }
-.mention-space::before { content: "◇"; }
-.mention-workspace::before { content: "⬡"; }
-.mention-wrap { display: inline; }
-.mention-fields { display: none; }
-.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--line); color: var(--muted); font-size: .85em; }
-.mention-f-label { opacity: .65; margin-right: 3px; }
-.mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; vertical-align: middle; }
-.mention-caret svg { width: 12px; height: 12px; display: block; }
-.mention-wrap.open .mention-caret { transform: rotate(180deg); }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 /* A code block sits on the ground its palette was drawn for — white for
    github, #0d1117 for github-dark — because a token colour answers to the
@@ -67,8 +54,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 @media print { .pagebreak { page-break-after: always; break-after: page; } .code-copy { display: none; } }
 </style>
 <style>
-/* weave chip system, lifted from public/style.css */
-:root { --fs-meta: 11px; --fs-secondary: 12px; --fs-grid: 13px; --fs-body: 14px; --fs-doc: 16px; --fs-h2: 18px; --fs-h1: 20px; --fs-title: 24px; --wv-chip-font: var(--fs-grid); --wv-chip-line: 22px; --wv-grid-font: var(--wv-chip-font); }
+:root { --wv-chip-font: var(--fs-grid); --wv-chip-line: 22px; }
 .k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: var(--wv-chip-font); line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
 .k .ico { font-size: var(--fs-meta); line-height: 1; opacity: .85; flex: none; }
 .k-state, .k-select, .k-multi, .k-key { background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); border: 0; }
@@ -80,36 +66,44 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 [data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18); --text: #bccaff; }
 [data-bs-theme="dark"] .k-state.cat-done { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
 [data-bs-theme="dark"] .k-state.cat-canceled { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
-.k-key { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); letter-spacing: .02em; }
-.k-key .store { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--tblr-border-color); font-size: var(--fs-meta); letter-spacing: .04em; text-transform: uppercase; opacity: .75; }
 .k-rel, .k-doc, .k-attach, .k-more { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-body-color); cursor: pointer; }
 .k-rel:hover, .k-doc:hover, .k-attach:hover, .k-more:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); }
-.k-rel > a::after, .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: var(--fs-meta); margin-left: 1px; }
+.k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: var(--fs-meta); margin-left: 1px; }
 .k-rel { padding: 0; }
-.k-rel > a { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px; color: inherit; text-decoration: none; }
-.k-rel > .x { margin: 0 6px 0 -3px; padding: 0 2px; }
-.mention-wrap, .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
+.k-rel > a.mention { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px; color: inherit; text-decoration: none; box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; }
+.k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
+.k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: var(--fs-secondary); }
+.k-rel:not(.has-id) > .mention-entity::before { content: "#"; }
+.k-rel > .mention-table::before { content: "▦"; }
+.k-rel > .mention-space::before { content: "◇"; }
+.k-rel > .mention-workspace::before { content: "⬡"; }
+.k-rel .wv-chip-id { font-family: var(--tblr-font-monospace); font-size: var(--fs-secondary); color: var(--tblr-secondary); flex: none; }
+.k-rel .k { padding: 0 6px; }
+.k-rel > .wv-chip-mark { margin: 0 1px 0 2px; cursor: pointer; flex: none; }
+.k-rel > .k-home { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); opacity: .55; margin-right: 4px; }
+.k-rel > .x { border: 0; background: none; margin: 0 5px 0 0; padding: 0 1px; }
+.k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); color: var(--tblr-secondary); }
-.k-rel .k-home { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); opacity: .55; }
 .k-more { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); }
-.k-add, .k-doc.is-empty, .k-attach.is-empty { background: none; border: 1px dashed var(--tblr-border-color); color: var(--tblr-secondary); cursor: pointer; }
-.k-doc.is-empty, .k-attach.is-empty { border-style: dashed; }
-.k-doc.is-empty::after, .k-attach.is-empty::after { content: "+"; opacity: .55; }
-.k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
-.k-sys { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); line-height: 18px; letter-spacing: .06em; text-transform: uppercase; padding: 0 7px; }
+.mention-fields { display: none; }
+.k-rel.open > .mention-fields { display: inline-flex; align-items: center; gap: 8px; margin-left: 2px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: var(--fs-secondary); }
+.mention-f { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: inherit; font-family: inherit; font-size: inherit; line-height: inherit; padding: 0; }
+.mention-f-label { opacity: .65; margin-right: 3px; }
+.mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; flex: none; color: var(--tblr-secondary); cursor: pointer; font-size: var(--fs-meta); line-height: 1.4; padding: 0 3px; margin: 0 6px 0 1px; transition: transform .1s; }
+.k-rel.open > .mention-caret { transform: rotate(180deg); }
 .k .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); font-size: var(--fs-meta); }
 .k .x:hover { color: var(--tblr-danger); }
 .k.deleted { opacity: .55; text-decoration: line-through; }
-.av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); font-weight: 600; letter-spacing: -.06em; background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
-.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
-.k-actor, .k-actor-wf.is-inline { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
-.k-actor { max-width: 100%; min-width: 0; }
-.k-actor > .k-label { flex: none; }
-.k-actor-via { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tblr-secondary); }
-.k-actor-wf .wv-icon { flex: none; }
+.mention.broken { color: var(--tblr-secondary); border: 1px dashed var(--tblr-border-color); border-radius: 4px; padding: 0 4px; }
+.wv-prose .k-rel { display: inline; font-size: inherit; line-height: inherit; white-space: normal; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.wv-prose .k-rel > a.mention { display: inline; padding: 0 5px 0 4px; }
+.wv-prose .k-rel > :is(.k, .mention-caret, .x, .k-home, .mention-fields) { vertical-align: middle; }
+.wv-prose .k-rel :is(.k, .mention-caret, .x) { line-height: 1; padding-top: 0; padding-bottom: 0; }
+.wv-prose .k-rel :is(.wv-chip-id, .k-home, .mention-f, .mention-f-label) { line-height: 1; }
+.wv-prose .k-rel .k { font-size: inherit; }
+.wv-prose .k-rel.open > .mention-fields { display: inline; }
 .hue-slate { --fill: rgba(0, 5, 20, .05); --text: #60646c; --dot: transparent; }
 .hue-blue { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; --dot: #4769eb; }
 .hue-green { --fill: rgba(46, 160, 67, .14); --text: #218358; --dot: #2ea043; }
@@ -130,41 +124,87 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 [data-bs-theme="dark"] .hue-pink { --fill: rgba(240, 120, 170, .18); --text: #f79ec0; }
 [data-bs-theme="dark"] .hue-teal { --fill: rgba(70, 200, 180, .16); --text: #6fdcc8; }
 [data-bs-theme="dark"] .hue-orange { --fill: rgba(250, 150, 80, .18); --text: #ffb183; }
-.k-inline { display: inline; font-size: inherit; line-height: inherit; padding: 0; white-space: normal; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.k-inline > a { display: inline; padding: 0 5px 0 4px; }
-.k-inline > a::after { margin-left: 3px; font-size: var(--fs-meta); }
-.mention-wrap:has(> .k-inline) { display: inline; white-space: normal; }
-.k-inline .mention-caret { vertical-align: middle; }
-.k-rel > a.mention { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
-.k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
-.k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: var(--fs-secondary); }
-.k-rel > .mention-entity::before { content: "#"; }
-.k-rel > .mention-table::before { content: "▦"; }
-.k-rel > .mention-space::before { content: "◇"; }
-.k-rel > .mention-workspace::before { content: "⬡"; }
-.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
-.mention-fields { display: none; }
-.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: var(--fs-secondary); }
-.mention-f-label { opacity: .65; margin-right: 3px; }
-.mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: var(--fs-meta); line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
-.mention-wrap.open .mention-caret { transform: rotate(180deg); }
+.cg-c-ink { --cg-main: var(--wv-cg-ink); --cg-spark: var(--wv-cg-ink-2); --cg-win: var(--wv-cg-ink); --cg-loss: var(--wv-cg-empty); --cg-heat: color-mix(in srgb, var(--wv-cg-ink) 55%, transparent); --cg-rate: var(--wv-cg-ink); }
+.cg-c-icon { --cg-main: var(--wv-cg-teal); --cg-spark: var(--wv-cg-blue); --cg-win: var(--wv-cg-green); --cg-loss: var(--wv-cg-red); --cg-heat: var(--wv-cg-orange); --cg-rate: var(--wv-cg-accent); }
+.cg-c-accent { --cg-main: var(--wv-cg-accent); --cg-spark: var(--wv-cg-accent); --cg-win: var(--wv-cg-accent); --cg-loss: var(--wv-cg-accent-soft); --cg-heat: var(--wv-cg-accent); --cg-rate: var(--wv-cg-accent); }
+.wv-rating.cg-c-icon[data-hue="amber"] { --cg-rate: var(--wv-cg-amber); }
+.wv-rating.cg-c-icon[data-hue="rose"] { --cg-rate: var(--wv-cg-rose); }
+.wv-rating.cg-c-icon[data-hue="violet"] { --cg-rate: var(--wv-cg-violet); }
+.wv-rating.cg-c-icon[data-hue="orange"] { --cg-rate: var(--wv-cg-orange); }
+.cg-wrap { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; position: relative; vertical-align: middle; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+.cg-wrap .cg { flex: none; display: block; }
+.cg-wrap .cg-text { flex: none; overflow: hidden; text-overflow: ellipsis; }
+.cg-wrap.cg-bar { display: flex; width: 100%; }
+.cg-wrap.cg-bar .cg-text { flex: 1 1 auto; text-align: right; }
+.cg-wrap.cg-bar .cg { width: 80px; height: 6px; }
+.cg-bar .cg-track { fill: var(--wv-cg-hair); }
+.cg-bar .cg-fill { fill: var(--cg-main); }
+.cg-wrap.cg-ring .cg { width: 16px; height: 16px; }
+.cg-ring .cg-track { stroke: var(--wv-cg-hair); }
+.cg-ring .cg-fill { stroke: var(--cg-main); }
+.cg-wrap.cg-heat { padding: 0 8px; min-width: 32px; justify-content: center; border-radius: 4px; isolation: isolate; }
+.cg-wrap.cg-heat .cg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
+.cg-heat .cg-fill { fill: var(--cg-heat); }
+.cg-c-icon .cg-heat .cg-fill { fill: color-mix(in oklab, var(--wv-cg-orange) var(--cg-f, 50%), var(--wv-cg-teal)); }
+.wv-card-fields dd .cg-wrap.cg-bar, .mention-f .cg-wrap.cg-bar { width: auto; }
+.wv-card-fields dd .cg-wrap.cg-bar .cg-text, .mention-f .cg-wrap.cg-bar .cg-text { flex: none; }
+.cg-wrap.num-dressed { cursor: text; }
+.cg-preview { display: grid; gap: 6px; max-width: 240px; }
+.cg-preview-row { display: flex; justify-content: flex-end; }
+.cg-preview-row .cg-wrap.cg-bar { width: 100%; }
+.wv-rating { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; white-space: nowrap; line-height: 1; }
+.wv-rate-ico, .wv-rate-mini { display: inline-flex; flex: none; padding: 0; border: 0; background: none; color: var(--wv-cg-empty); font-size: var(--fs-body); line-height: 1; }
+.wv-rating.editable .wv-rate-ico { cursor: pointer; }
+.wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--cg-rate, var(--wv-cg-ink)); }
+.wv-rating > .wv-rating-compact { display: none; align-items: center; gap: 3px; font-size: var(--wv-grid-font); color: var(--tblr-body-color); font-variant-numeric: tabular-nums; }
+.wv-rating-list { gap: 10px; }
+.wv-rating-max { display: flex; gap: 8px; align-items: center; }
+.wv-rating-icon { display: inline-flex; gap: 6px; align-items: center; }
+.wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; gap: 2px; }
+.wv-rating-default .wv-rate-ico { font-size: var(--fs-h1); }
+.wv-rating-default .wv-rate-ico .wv-icon, .wv-rating-default .wv-rate-ico .wv-icon svg { width: 19px; height: 19px; }
+.cg-wrap.cg-sparkwrap { display: inline-flex; width: 80px; height: 18px; }
+.cg-wrap.cg-sparkwrap .cg { width: 80px; height: 18px; }
+.cg-spark-line .cg-fill { stroke: var(--cg-spark); fill: none; }
+.cg-spark .cg-dot { fill: var(--cg-spark); }
+.cg-spark-column .cg-fill { fill: var(--cg-spark); }
+.cg-spark-column .cg-fill.cg-neg { fill: var(--cg-loss); }
+.cg-spark-winloss .cg-fill.cg-win { fill: var(--cg-win); }
+.cg-spark-winloss .cg-fill.cg-loss { fill: var(--cg-loss); }
+.cg-spark-winloss .cg-track { stroke: var(--wv-cg-hair); stroke-width: 1; }
+.cg-spark-preview .cg-sparkwrap, .cg-spark-preview .cg-sparkwrap .cg { width: 160px; height: 36px; }
+:root { --fs-meta: 11px; --fs-secondary: 12px; --fs-grid: 13px; --fs-body: 14px; --fs-doc: 16px; --fs-h2: 18px; --fs-h1: 20px; --fs-title: 24px; --wv-grid-font: var(--wv-chip-font); }
+.k-key { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); letter-spacing: .02em; }
+.k-key .store { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--tblr-border-color); font-size: var(--fs-meta); letter-spacing: .04em; text-transform: uppercase; opacity: .75; }
+.k-add, .k-doc.is-empty, .k-attach.is-empty { background: none; border: 1px dashed var(--tblr-border-color); color: var(--tblr-secondary); cursor: pointer; }
+.k-doc.is-empty, .k-attach.is-empty { border-style: dashed; }
+.k-doc.is-empty::after, .k-attach.is-empty::after { content: "+"; opacity: .55; }
+.k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+.k-sys { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); line-height: 18px; letter-spacing: .06em; text-transform: uppercase; padding: 0 7px; }
+.av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); font-weight: 600; letter-spacing: -.06em; background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
+.k-actor, .k-actor-wf.is-inline { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+.k-actor { max-width: 100%; min-width: 0; }
+.k-actor > .k-label { flex: none; }
+.k-actor-via { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tblr-secondary); }
+.k-actor-wf .wv-icon { flex: none; }
 .mention-caret svg { width: 12px; height: 12px; display: block; }
-.k-rel > .mention-caret { margin-left: 2px; margin-right: 6px; }
-.k-rel > a > .mention-fields { align-items: center; }
-.k-rel .mention-fields .k-state, .wv-seg-state { font-size: var(--fs-meta); padding: 0 6px; line-height: 1.5; }
 .wv-card { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: var(--fs-grid); line-height: 1.35; white-space: normal; }
 .wv-card.compact { gap: 3px; padding: 5px 8px; font-size: var(--fs-secondary); max-width: 280px; }
 .wv-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wv-card-cover { display: block; overflow: hidden; border-radius: 4px; margin: -2px -2px 2px; }
+.wv-card-cover img { display: block; width: 100%; height: auto; object-fit: cover; }
+.wv-card-state { display: flex; align-items: center; gap: 6px; }
 .wv-card-title { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: inherit; text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .wv-card-title:hover { color: var(--tblr-primary); }
 .wv-card-id { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); font-weight: 500; opacity: .55; }
 .wv-card-desc { color: var(--tblr-secondary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .wv-card.compact .wv-card-desc { -webkit-line-clamp: 1; }
-.wv-card-fields { display: grid; grid-template-columns: max-content 1fr; column-gap: 10px; row-gap: 2px; margin: 0; }
+.wv-card-fields { display: grid; grid-template-columns: repeat(2, max-content minmax(0, 1fr)); column-gap: 10px; row-gap: 2px; margin: 0; }
+.wv-card.compact .wv-card-fields { grid-template-columns: max-content minmax(0, 1fr); }
 .wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
 .wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wv-card-fields dd .cg-wrap.cg-bar, .mention-f .cg-wrap.cg-bar { width: auto; }
-.wv-card-fields dd .cg-wrap.cg-bar .cg-text, .mention-f .cg-wrap.cg-bar .cg-text { flex: none; }
 .mention-caret { position: relative; }
 .mention-caret::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%); }
 .mention-caret::after { width: max(100%, 44px); height: max(100%, 44px); }
@@ -196,25 +236,28 @@ th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vert
 </head>
 <body>
 <div class="doc-meta">Handbook · Guide</div>
+<div class="wv-prose">
 <h1>Chip and card anatomy</h1>
-<p>A row appears in two shapes outside its own page: the <strong>chip</strong>, inline — a relation cell, a <code>[[…]]</code> mention in a document, a reference card, a picker — and the <strong>card</strong>, a tile. Both are drawn from the table's two <code>view</code> fields (the <strong>view</strong> page in <span class="k k-rel k-inline"><a class="mention mention-table" href="#fields">Fields</a></span> says what they can contain; the entity page's <strong>Appears as</strong> strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its <strong>hitbox</strong> — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.</p>
+<p>A row appears in two shapes outside its own page: the <strong>chip</strong>, inline — a relation cell, a <code>[[…]]</code> mention in a document, a reference card, a picker — and the <strong>card</strong>, a tile. Both are drawn from the table's two <code>view</code> fields (the <strong>view</strong> page in <span class="k k-rel kind-table"><a class="mention mention-table" href="#fields" title="Fields" data-name="Fields"><span class="k-label">Fields</span></a></span> says what they can contain; the entity page's <strong>Appears as</strong> strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its <strong>hitbox</strong> — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.</p>
 <h2>The chip</h2>
 <div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-flex;align-items:center;gap:18px;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
-<span class="mention-wrap open"><span class="k k-rel has-segs"><a href="#" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px" onclick="return false"><span class="av hue-blue" style="overflow:visible;position:relative;outline:1.5px dashed #d6409f;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d6409f">1</i>AL</span><span style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">2</i>#12</span> <span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">3</i>Ship the editor</span> <span class="k-home" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a">4</i>Task</span><span class="mention-fields" style="position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">5</i><span class="k k-state cat-in-progress hue-blue wv-seg-state">Doing</span><span class="mention-f"><span class="mention-f-label">Due</span>2026-09-12</span><span class="mention-f"><span class="mention-f-label">Severity</span>High</span></span><span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px;display:inline-block;width:9px;height:14px;margin-right:-11px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">6</i></span></a><button type="button" class="mention-caret" aria-expanded="true" title="Hide fields" style="position:relative;outline:1.5px dashed #e5484d;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;bottom:-15px;transform:rotate(180deg);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#e5484d">7</i>›</button><span class="x" style="position:relative;outline:1.5px dashed #ce2c31;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#ce2c31">8</i>×</span></span></span>
+<span class="k k-rel kind-entity has-id has-segs open"><button type="button" class="k k-state cat-in-progress hue-blue wv-chip-mark" data-seg="state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">1</i>Doing</button><a href="#" onclick="return false" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px"><span class="wv-chip-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">2</i>#12</span><span class="k-label" style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">3</i>Ship the editor</span></a><span class="mention-fields" style="position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">4</i><button type="button" class="k k-select hue-red" data-seg="select">P1</button><span class="mention-f"><span class="mention-f-label">Due</span>2026-09-12</span></span><span class="k-home" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a">5</i>Task</span><button type="button" class="mention-caret" aria-expanded="true" title="Hide fields" style="position:relative;outline:1.5px dashed #e5484d;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;bottom:-15px;transform:rotate(180deg);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#e5484d">6</i>›</button><button type="button" class="x" data-seg="remove" style="position:relative;outline:1.5px dashed #ce2c31;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#ce2c31">7</i>×</button></span>
 </div>
-<p>The grey box is the link to the row, and everything inside it navigates on click. The caret and the × are their own targets beside it.</p>
-<table><thead><tr><th>№</th><th>Element</th><th>What it does</th><th>How you use it</th><th>Hitbox</th></tr></thead><tbody><tr><td>1</td><td><strong>Avatar</strong> (<code>.av</code>)</td><td>initials, or the picture, of a person-table row; hue from the name</td><td>none of its own — part of the link</td><td>inside the link</td></tr><tr><td>2</td><td><strong>Public id</strong> (<code>#12</code>)</td><td>the row's number; shows when the chip's <code>link</code> setting is on</td><td>read it, quote it — <code>[[Task#12]]</code> written in any document becomes this chip</td><td>inside the link</td></tr><tr><td>3</td><td><strong>Name</strong></td><td>the row's <code>Name</code> field</td><td><strong>click</strong> opens the row; <strong>⌘/Ctrl/Shift-click or middle-click</strong> opens it in a new tab; <strong>right-click → Copy Link</strong> copies its permalink (the chip is a real anchor); <strong>hover</strong> turns the outline brand-blue</td><td>inside the link — the label, its padding, and the space between elements all count</td></tr><tr><td>4</td><td><strong>Home badge</strong> (<code>.k-home</code>)</td><td>names the far table when a relation can point at several (a target set)</td><td>none of its own</td><td>inside the link</td></tr><tr><td>5</td><td><strong>Segments</strong></td><td>the state as a state chip (its own hue, or its category's), then label·value pairs from the view's <code>fields</code>; three at most in a chip</td><td>read them; the state's colour is the same one the grid cell wears</td><td>inside the link — a click on a segment opens the row</td></tr><tr><td>6</td><td><strong>Open mark</strong> (<code>↗</code>)</td><td>promises navigation; always the last pixel inside the link</td><td>click it like the name</td><td>inside the link</td></tr><tr><td>7</td><td><strong>Caret</strong> (<code>›</code> / <code>‹</code>)</td><td>folds the segments in and out; shows only when there is a segment to show</td><td><strong>click to expand</strong>; it turns to face the label (<code>‹</code>) and a second click <strong>collapses</strong> — the caret sits beside the link, not inside it, so it never navigates</td><td>a 24×24px square around the glyph, beside the link; the click stops there</td></tr><tr><td>8</td><td><strong>Remove</strong> (<code>×</code>)</td><td>in a relation cell only: unlinks this row from the field — never deletes it</td><td><strong>click to unlink</strong>; <code>weave undo</code> (or the activity row) puts it back</td><td>its own box, outside the link</td></tr></tbody></table>
-<p>The mark (6) and the caret (7) are why the chip never fills behind a pointer: colour is spent on values, and a pointer is a place to go. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in <code>--wv-chip-font</code> and <code>--wv-chip-line</code>.</p>
+<p>The grey box is the link to the row. The state mark, the segments, the caret and the × sit beside it, each its own target: the chip is the link, and the controls are the pixels that do not navigate.</p>
+<table><thead><tr><th>№</th><th>Element</th><th>What it does</th><th>How you use it</th><th>Hitbox</th></tr></thead><tbody><tr><td>1</td><td><strong>State mark</strong> (<code>.wv-chip-mark</code>)</td><td>the workflow state as the same state chip the grid cell wears, leading the line because the category reads before the words do</td><td><strong>click</strong> opens the state picker, grouped by category — Not started, In progress, Done, Canceled — and the state you pick is written to the row</td><td>its own box, outside the link</td></tr><tr><td>2</td><td><strong>Public id</strong> (<code>.wv-chip-id</code>)</td><td>the row's number in mono; shows when the chip's <code>link</code> setting is on</td><td>read it, quote it — <code>[[Task#12]]</code> written in any document becomes this chip</td><td>inside the link</td></tr><tr><td>3</td><td><strong>Name</strong> (<code>.k-label</code>)</td><td>the row's <code>Name</code> field</td><td><strong>click</strong> opens the row; <strong>⌘/Ctrl/Shift-click or middle-click</strong> opens it in a new tab; <strong>right-click → Copy Link</strong> copies its permalink (the chip is a real anchor); <strong>hover</strong> turns the outline brand-blue</td><td>inside the link — the label, its padding, and the id beside it all count</td></tr><tr><td>4</td><td><strong>Segments</strong> (<code>.mention-fields</code>)</td><td>the configured <code>fields</code>, three at most: a select or multiselect as its own chip, anything else as a label·value pair</td><td>a <strong>select</strong> or <strong>multiselect</strong> segment opens its picker and writes the row; a label·value pair is read-only</td><td>each segment is its own box; none of them navigate</td></tr><tr><td>5</td><td><strong>Home badge</strong> (<code>.k-home</code>)</td><td>names the far table when a relation can point at several (a target set), and on a document reference it always names the row's table</td><td>read it</td><td>display only</td></tr><tr><td>6</td><td><strong>Caret</strong> (<code>›</code> / <code>‹</code>)</td><td>folds the segments in and out; shows only when there is a segment to show</td><td><strong>click to expand</strong>; it turns to face the label (<code>‹</code>) and a second click <strong>collapses</strong></td><td>a 24×24px square around the glyph; the click stops there</td></tr><tr><td>7</td><td><strong>Remove</strong> (<code>×</code>)</td><td>in a relation cell only: unlinks this row from the field — never deletes it</td><td><strong>click to unlink</strong>; <code>weave undo</code> (or the activity row) puts it back</td><td>its own box, outside the link</td></tr></tbody></table>
+<p>There is no open mark and no avatar. The chip is the link, so a separate <code>↗</code> promises nothing, and a person table asks for its avatar through its own Chip config. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in <code>--wv-chip-font</code> and <code>--wv-chip-line</code>, and a segment is drawn at that same size rather than shrunk.</p>
+<p>One renderer draws this markup: <code>public/chip-view.js</code>, loaded by the browser and by <code>src/markdown.js</code>, with one stylesheet, <code>public/chip.css</code>, behind both. A relation cell, a document page and an HTML export of the same row therefore print the same chip, down to the class names.</p>
 <h2>The card</h2>
 <div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-block;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
-<div class="wv-card" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px;gap:16px;padding-top:12px"><div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false" style="overflow:visible;position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">10</i><span class="wv-card-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">9</i>#12</span>Ship the editor</a><span class="k k-state cat-in-progress hue-blue wv-seg-state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">11</i>Doing</span></div><div class="wv-card-desc" style="overflow:visible;position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">12</i>The editor is the renderer: no edit mode, no preview pane, no save button.</div><dl class="wv-card-fields" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a;grid-column:1/-1">13</i><dt>Severity</dt><dd>High</dd><dt>Symptom</dt><dd>Looks broken</dd><dt>Due</dt><dd>2026-09-12</dd></dl></div>
+<div class="wv-card" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px;gap:16px;padding-top:12px"><div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false" style="overflow:visible"><span class="wv-card-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">8</i>#12</span><span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">9</i>Ship the editor</span></a></div><div class="wv-card-desc" style="overflow:visible;position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">10</i>The editor is the renderer: no edit mode, no preview pane, no save button.</div><div class="wv-card-state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">11</i><button type="button" class="k k-state cat-in-progress hue-blue wv-chip-mark" data-seg="state">Doing</button></div><dl class="wv-card-fields" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a;grid-column:1/-1">12</i><dt>Severity</dt><dd>High</dd><dt>Symptom</dt><dd>Looks broken</dd><dt>Release</dt><dd>v0.5</dd><dt>Due</dt><dd>2026-09-12</dd></dl></div>
 </div>
-<p>Only the title is a link. The rest of the tile is inert — in a grid cell the cell's own click applies.</p>
-<table><thead><tr><th>№</th><th>Element</th><th>What it does</th><th>How you use it</th><th>Hitbox</th></tr></thead><tbody><tr><td>9</td><td><strong>Public id</strong> (<code>.wv-card-id</code>)</td><td>the row's number, when the card's <code>link</code> setting is on (it is, by default)</td><td>read it, quote it</td><td>inside the title link</td></tr><tr><td>10</td><td><strong>Title</strong> (<code>.wv-card-title</code>)</td><td>the row's <code>Name</code>, bold</td><td><strong>click</strong> opens the row; <strong>⌘/Ctrl/Shift-click or middle-click</strong> for a new tab; <strong>right-click → Copy Link</strong> for the permalink; <strong>hover</strong> turns it brand-blue</td><td>the title text, the id, and the gap between them</td></tr><tr><td>11</td><td><strong>State</strong></td><td>the workflow state as the same state chip the grid cell wears, right of the title</td><td>read it — a card's state changes on the row, not on the card</td><td>none — display only</td></tr><tr><td>12</td><td><strong>Description</strong></td><td>the first lines of the description document at the view's <code>description</code> size — small (one line), medium (~120 chars), large (~320); prose only, three lines at most, one on a compact card</td><td>read it; the row's page has the rest</td><td>none</td></tr><tr><td>13</td><td><strong>Fields</strong> (<code>.wv-card-fields</code>)</td><td>label · value pairs from the view's <code>fields</code> — the first few glanceable values in column order by default, four at most counting the state</td><td>read them; arranging the table's columns IS the curation</td><td>none</td></tr></tbody></table>
+<p>The card is the <strong>Tile</strong>: the <code>#id</code> and the title, the description preview, a state row that is also the control, and the configured properties two-up with their labels. Nothing on it needs a tooltip. The title is the link; the state row is the one other target.</p>
+<table><thead><tr><th>№</th><th>Element</th><th>What it does</th><th>How you use it</th><th>Hitbox</th></tr></thead><tbody><tr><td>8</td><td><strong>Public id</strong> (<code>.wv-card-id</code>)</td><td>the row's number, when the card's <code>link</code> setting is on (it is, by default)</td><td>read it, quote it</td><td>inside the title link</td></tr><tr><td>9</td><td><strong>Title</strong> (<code>.wv-card-title</code>)</td><td>the row's <code>Name</code>, bold</td><td><strong>click</strong> opens the row; <strong>⌘/Ctrl/Shift-click or middle-click</strong> for a new tab; <strong>right-click → Copy Link</strong> for the permalink; <strong>hover</strong> turns it brand-blue</td><td>the title text, the id, and the gap between them</td></tr><tr><td>10</td><td><strong>Description</strong></td><td>the first lines of the description document at the view's <code>description</code> size — small (one line), medium (~120 chars), large (~320); prose only, three lines at most, one on a compact card</td><td>read it; the row's page has the rest</td><td>none</td></tr><tr><td>11</td><td><strong>State row</strong> (<code>.wv-card-state</code>)</td><td>the workflow state on a line of its own, spelled out, as the same mark the chip leads with</td><td><strong>click</strong> opens the state picker grouped by category and writes the row</td><td>the mark's own box</td></tr><tr><td>12</td><td><strong>Fields</strong> (<code>.wv-card-fields</code>)</td><td>label · value pairs from the view's <code>fields</code>, two columns across — the first few glanceable values in column order by default</td><td>read them; arranging the table's columns IS the curation</td><td>none</td></tr></tbody></table>
 <h2>Where the same chip shows up</h2>
-<table><thead><tr><th>Surface</th><th>Which chip</th><th>What differs</th></tr></thead><tbody><tr><td>a relation cell in the grid</td><td>the far row's chip</td><td>carries the × (8); the avatar (1) on a person relation; the home badge (4) on a target set</td></tr><tr><td>a <code>[[…]]</code> mention in a document</td><td>the same chip, from the same config</td><td>no ×, no avatar — a reference is text, there is nothing to unlink</td></tr><tr><td>a reference panel on the entity page</td><td>the same chip</td><td>home badge on, no ×</td></tr><tr><td>the relation picker</td><td>the same chip</td><td>the × means &quot;take it out of the selection&quot;</td></tr><tr><td>the entity page's Appears as strip</td><td>this table's own chip and card, for the views the eye shows — both are minted hidden, so unhide one to see it</td><td>a gear beside each opens the table's config; the strip shows what every other surface will draw</td></tr></tbody></table>
+<table><thead><tr><th>Surface</th><th>Which chip</th><th>What differs</th></tr></thead><tbody><tr><td>a relation cell in the grid</td><td>the far row's chip</td><td>carries the × (7); the home badge (5) on a target set</td></tr><tr><td>a <code>[[…]]</code> mention in a document</td><td>the same chip, from the same config</td><td>no × — a reference is text, there is nothing to unlink; Backspace in the editor removes it</td></tr><tr><td>an HTML export of that document</td><td>the same chip, byte for byte</td><td>nothing</td></tr><tr><td>a reference panel on the entity page</td><td>the same chip</td><td>home badge on, no ×</td></tr><tr><td>the relation picker</td><td>the same chip</td><td>the × means &quot;take it out of the selection&quot;</td></tr><tr><td>the entity page's Appears as strip</td><td>this table's own chip and card, for the views the eye shows — both are minted hidden, so unhide one to see it</td><td>a gear beside each opens the table's config; the strip shows what every other surface will draw</td></tr></tbody></table>
 <p>To change what a chip or card contains — the id, the state, the description size, which fields ride along — open the gear on the Appears as strip or <code>weave field update Task Chip --config '{&quot;fields&quot;:[&quot;Due&quot;]}'</code>. It changes every row of the table at once.</p>
 
+</div>
 <script>
 for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
   const btn = document.createElement('button');
@@ -233,7 +276,7 @@ document.addEventListener('click', (ev) => {
   const caret = ev.target.closest('.mention-caret');
   if (!caret) return;
   ev.preventDefault();
-  const open = caret.closest('.mention-wrap').classList.toggle('open');
+  const open = caret.closest('.k-rel').classList.toggle('open');
   caret.setAttribute('aria-expanded', String(open));
 });
 </script>

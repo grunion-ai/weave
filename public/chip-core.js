@@ -16,10 +16,10 @@
   const RAMP_ORDER = ['blue', 'green', 'amber', 'purple', 'red', 'cyan', 'orange', 'teal', 'pink'];
 
   const CATEGORIES = [
-    { id: 'not-started', hue: 'slate', icon: '○' },
-    { id: 'in-progress', hue: 'blue', icon: '◑' },
-    { id: 'done', hue: 'green', icon: '✓' },
-    { id: 'canceled', hue: 'red', icon: '✕' },
+    { id: 'not-started', label: 'Not started', hue: 'slate', icon: '○' },
+    { id: 'in-progress', label: 'In progress', hue: 'blue', icon: '◑' },
+    { id: 'done', label: 'Done', hue: 'green', icon: '✓' },
+    { id: 'canceled', label: 'Canceled', hue: 'red', icon: '✕' },
   ];
   const DEFAULT_CATEGORY = 'in-progress';
 

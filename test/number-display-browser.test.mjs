@@ -105,7 +105,7 @@ if (s) {
     try {
       await page.waitForSelector(`${cell(acme.id, 'Avg progress')} .cg-wrap.cg-bar`);
       assert.equal((await fill(page, cell(acme.id, 'Avg progress'))).width, '40', 'the average of 60% and 20%');
-      const chip = page.locator(`${cell(acme.id, 'Deals')} .mention-wrap`).first();
+      const chip = page.locator(`${cell(acme.id, 'Deals')} .k-rel`).first();
       await chip.locator('.mention-caret').click();
       await page.waitForSelector(`${cell(acme.id, 'Deals')} .mention-f .cg-wrap.cg-bar`);
       if (shots) await page.locator('.wv-grid').screenshot({ path: `${shots}/number-display-rollup-chip.png` });

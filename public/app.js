@@ -1007,7 +1007,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         descBox.replaceChildren(el('span', { class: 'view-desc-empty' }, 'Add description…'));
         return;
       }
-      const body = el('div', { class: 'view-desc-body clamped' });
+      const body = el('div', { class: 'view-desc-body wv-prose clamped' });
       try {
         const { html } = await api('POST', '/markdown', { md });
         body.innerHTML = html;
@@ -1315,16 +1315,6 @@ function stateChipClass(fieldSchema, stateName) {
 }
 
 const PERSON_TABLE = /^(people|persons?|members?|users?|contacts?|owners?|team|staff|employees?)$/i;
-function relationIsPerson(f) {
-  const table = String(f?.targetDb ?? '').split('/').pop() ?? '';
-  return PERSON_TABLE.test(table.trim());
-}
-function personAvatar(f, target) {
-  if (!relationIsPerson(f)) return null;
-  const name = target?.name ?? '';
-  if (!name) return el('span', { class: 'av unknown' }, '?');
-  return el('span', { class: `av hue-${chipCore.hueForName(name)}` }, chipCore.initialsFor(name));
-}
 
 function deckRoleOf(db) {
   if (!db?.fields) return null;
@@ -1685,7 +1675,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       el('div', { class: 'picker-cells picker-terms' }, ...items.map((o) => el('button', {
         class: 'picker-cell picker-term' + (o.id === currentId ? ' on' : ''), type: 'button', title: o.label,
         onclick: async () => { await pick(o); },
-      }, o.label))),
+      }, o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label) : o.label))),
     ]));
     const q = st.query.trim();
     const exact = q && options.some((o) => o.label.toLowerCase() === q.toLowerCase() || o.id === q.toLowerCase());
@@ -2461,76 +2451,101 @@ function sparkEl(style, values, color = 'ink') {
   box.innerHTML = svg;
   return box;
 }
-function segmentValueEl(seg) {
-  if (seg.spark) return sparkEl(seg.spark.style, seg.spark.values, seg.spark.color) ?? seg.value;
-  if (seg.rating) {
-    return seg.rating.values
-      ? ratingListEl(seg.rating, seg.rating.values, { label: seg.label })
-      : ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}`, color: seg.rating.color });
-  }
-  return seg.meter && cellGraphics.isGraphic(seg.meter.display)
-    ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value, null, seg.meter.color)
-    : seg.value;
+const chipView = globalThis.weaveChipView;
+function chipElFrom(html) {
+  const box = el('span');
+  box.innerHTML = html;
+  return box.firstElementChild;
 }
 function viewSegmentEl(seg) {
-  if (seg.kind === 'state') {
-    const cat = chipCore.categoryOrDefault(seg.category);
-    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(seg, cat)} wv-seg-state` }, seg.value);
-  }
-  return el('span', { class: 'mention-f' }, el('span', { class: 'mention-f-label' }, seg.label), segmentValueEl(seg));
+  return chipElFrom(chipView.segHtml(seg));
 }
-function viewChipEl(v, { lead = null, tail = null, extra = null, href = null } = {}) {
-  const segs = viewCore.viewSegments(v);
-  const a = el('a', { href: href ?? `#/entity/${v.id}`, title: String(v?.name ?? ''), onclick: (e) => e.stopPropagation() },
-    lead, el('span', { class: 'k-label' }, viewCore.viewTitle(v)), tail,
-    segs.length ? el('span', { class: 'mention-fields' }, ...segs.map(viewSegmentEl)) : '');
-  const chip = el('span', { class: 'k k-rel' + (segs.length ? ' has-segs' : '') }, a,
-    segs.length ? el('button', {
-      type: 'button', class: 'mention-caret', 'aria-expanded': 'false', title: 'Show fields',
-      onclick: (e) => { e.preventDefault(); e.stopPropagation(); toggleMentionCaret(e.currentTarget); },
-    }, '›') : '');
-  if (extra) chip.append(extra);
-  return el('span', { class: 'mention-wrap' }, chip);
+function viewChipEl(v, { home = null, href = null, removable = false, broken = false, kind = 'entity', onRemove = null } = {}) {
+  const chip = chipElFrom(chipView.chipHtml(v, {
+    kind, href: href ?? `#/entity/${v.id}`, home, broken, removable: removable || !!onRemove,
+  }));
+  chip.querySelector(':scope > a')?.addEventListener('click', (e) => e.stopPropagation());
+  const x = chip.querySelector(':scope > .x');
+  if (x && onRemove) x.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onRemove(); });
+  return chip;
 }
 function viewCardEl(v, { compact = false } = {}) {
-  const segs = viewCore.viewSegments(v);
-  const state = segs.find((x) => x.kind === 'state');
-  const head = el('div', { class: 'wv-card-head' },
-    el('a', { class: 'wv-card-title', href: `#/entity/${v.id}`, onclick: (e) => e.stopPropagation() },
-      v.link ? el('span', { class: 'wv-card-id' }, `#${v.publicId}`) : '',
-      v.name || (v.link ? '' : `#${v.publicId}`)),
-    state ? viewSegmentEl(state) : '');
-  const card = el('div', { class: 'wv-card' + (compact ? ' compact' : ''), dataset: { eid: v.id } }, head);
-  if (v.description) card.append(el('div', { class: 'wv-card-desc' }, v.description));
-  const fields = segs.filter((x) => x.kind === 'field');
-  if (fields.length) {
-    card.append(el('dl', { class: 'wv-card-fields' },
-      ...fields.flatMap((f) => [el('dt', {}, f.label), el('dd', { dataset: { field: f.label } }, segmentValueEl(f))])));
-  }
+  const card = chipElFrom(chipView.cardHtml(v, { compact }));
+  card.querySelector('.wv-card-title')?.addEventListener('click', (e) => e.stopPropagation());
   return card;
 }
 function viewCell(v, f, { compact = false } = {}) {
   if (!v || typeof v !== 'object') return el('span', { class: 'k k-empty' }, '—');
   return f.shape === 'card' || v.shape === 'card' ? viewCardEl(v, { compact }) : viewChipEl(v);
 }
-function relationChipEl(f, s, { extra = null } = {}) {
+function relationChipEl(f, s, { onRemove = null } = {}) {
   const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [] };
   return viewChipEl(v, {
-    lead: personAvatar(f, s),
-    tail: f.targetDbIds && s.db ? el('span', { class: 'k-home' }, s.db.split('/').pop()) : null,
-    extra,
+    home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
+    onRemove,
   });
 }
 function toggleMentionCaret(caret) {
-  const open = caret.closest('.mention-wrap').classList.toggle('open');
-  caret.setAttribute('aria-expanded', String(open));
+  const open = caret.closest('.k-rel')?.classList.toggle('open');
+  caret.setAttribute('aria-expanded', String(!!open));
 }
 document.addEventListener('click', (ev) => {
-  const caret = ev.target.closest('.mention-caret');
-  if (!caret || !caret.closest('#app, .modal, .cell-pop')) return;
+  const seg = ev.target.closest('[data-seg="state"], [data-seg="multiselect"]');
+  const chip = seg?.closest('.k-rel[data-eid], .wv-card[data-eid]');
+  if (!chip) return;
   ev.preventDefault();
-  toggleMentionCaret(caret);
+  ev.stopPropagation();
+  editChipSegment(seg, chip.dataset.eid, seg.dataset.seg, seg.dataset.field);
 });
+function statePicker(anchor, f, current, onPick) {
+  const options = [{ id: '—', label: 'No state', group: 'None', cls: 'k k-select hue-slate', chip: true }];
+  for (const c of chipCore.CATEGORIES) {
+    for (const s of f.states ?? []) {
+      if (chipCore.categoryOrDefault(s.category) !== c.id) continue;
+      options.push({ id: s.name, label: s.name, group: c.label, cls: stateChipClass(f, s.name), chip: true });
+    }
+  }
+  searchPicker({
+    anchor, title: f.name, placeholder: 'Search states…', groups: true, options, currentId: current,
+    onPick: (o) => onPick(o.id === '—' ? null : o.id),
+  });
+}
+async function editChipSegment(trigger, eid, seg, fieldName) {
+  try {
+    const e = await api('GET', `/entities/${eid}`);
+    const db = allTables().find((d) => d.qualified === e.db) ?? allTables().find((d) => d.name === e.db);
+    const want = seg === 'state' ? 'workflow' : 'multiselect';
+    const f = db?.fields.find((x) => x.name === fieldName && x.type === want)
+      ?? db?.fields.find((x) => x.type === want);
+    if (!f) return toast(`${fieldName} is no longer a ${want} field of ${e.db}`, true);
+    const repaint = (next) => {
+      const drawn = chipElFrom(chipView.segHtml(next));
+      trigger.className = drawn.className;
+      trigger.replaceChildren(...drawn.childNodes);
+    };
+    if (seg === 'state') {
+      return statePicker(trigger, f, e.fields?.[f.name] ?? null, async (name) => {
+        await api('POST', `/entities/${eid}/state`, { field: f.name, state: name });
+        const st = (f.states ?? []).find((s) => s.name === name);
+        repaint({ kind: 'state', label: f.name, value: st?.name ?? '—', category: st?.category, ...(st?.hue ? { hue: st.hue } : {}) });
+      });
+    }
+    const chosen = (names) => names.map((name) => ({ id: name, label: name, cls: `k k-multi ${optionHue(f, name)}`, chip: true }));
+    searchPicker({
+      anchor: trigger, title: f.name, options: chosen(f.options ?? []),
+      multi: {
+        selected: chosen(Array.isArray(e.fields?.[f.name]) ? e.fields[f.name] : []),
+        onCommit: async (names) => {
+          await api('PATCH', `/entities/${eid}`, { values: { [f.name]: names } });
+          repaint({
+            kind: 'field', type: 'multiselect', label: f.name, value: names.join(', '),
+            options: names.map((name) => ({ name, hue: (f.optionsFull ?? []).find((o) => o.name === name)?.hue })),
+          });
+        },
+      },
+    });
+  } catch (err) { toast(err.message, true); }
+}
 
 function toggleSwitch(f, val, patch) {
   const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': f.name });
@@ -2803,16 +2818,13 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
     const hidden = all.length - current.length;
     for (const s of current) {
-      const x = compact ? null : el('span', {
-        class: 'x',
-        onclick: async () => {
-          try {
-            await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
-            await saved();
-          } catch (err) { toast(err.message, true); }
-        },
-      }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
-      box.append(relationChipEl(f, s, { extra: x }), ' ');
+      const onRemove = compact ? null : async () => {
+        try {
+          await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
+          await saved();
+        } catch (err) { toast(err.message, true); }
+      };
+      box.append(relationChipEl(f, s, { onRemove }), ' ');
     }
     if (hidden > 0) {
       box.append(el('span', {
@@ -8831,6 +8843,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
       handed = stored(editor.getValue());
       editor.clearStack();
+      aliasBareRefs(editor, onInput);
       scheduleDecorFor(host);
       host.addEventListener('keyup', rememberSelection);
       host.addEventListener('mouseup', rememberSelection);
@@ -9160,12 +9173,16 @@ async function refreshRefChips(st) {
     const rects = range.getClientRects();
     if (rects.length !== 1) continue;
     const r = rects[0];
-    st.layer.append(el('a', {
-      class: `mention mention-${hit.kind} doc-ref-chip`,
-      href: hit.href,
-      title: hit.title,
-      style: `left:${r.left - base.left}px; top:${r.top - base.top - 2}px; width:${r.width}px; height:${r.height + 4}px;`,
-    }, el('span', { class: 'k k-rel doc-ref-label' }, el('span', { class: 'k-label' }, s.label ?? hit.label))));
+    const slot = el('span', {
+      class: 'doc-ref-slot wv-prose',
+      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; max-width:${Math.max(0, base.width - (r.left - base.left))}px;`,
+    });
+    slot.innerHTML = hit.html;
+    if (s.label) {
+      const label = slot.querySelector('.k-label');
+      if (label) label.textContent = s.label;
+    }
+    st.layer.append(slot);
   }
 }
 
@@ -9307,6 +9324,19 @@ function refreshHeadingFolds(st) {
   st.layer.replaceChildren(...carets);
 }
 
+async function aliasBareRefs(editor, onInput) {
+  const lib = globalThis.WeaveEditorLib;
+  const md = editor.getValue();
+  const bare = lib.findRefSpans(md).filter((s) => s.label == null).map((s) => s.ref);
+  if (!bare.length) return;
+  await resolveRefs(bare);
+  const next = lib.aliasRefSpans(md, (ref) => refResolveCache.get(ref)?.label ?? null);
+  if (next === md) return;
+  editor.setValue(next);
+  editor.clearStack();
+  onInput(next);
+}
+
 async function resolveRefs(refs) {
   const missing = [...new Set(refs)].filter((r) => !refResolveCache.has(r));
   if (!missing.length) return;
@@ -9316,14 +9346,16 @@ async function resolveRefs(refs) {
     box.innerHTML = html;
     const paras = [...box.children];
     missing.forEach((ref, i) => {
-      const a = paras[i]?.querySelector('a.mention');
+      const chip = paras[i]?.querySelector('.k-rel');
+      const a = chip?.querySelector('a.mention');
       if (!a) return refResolveCache.set(ref, null);
-      let href = a.getAttribute('href');
-      const ent = href.match(/\/e\/([^/]+)\/doc\.html$/);
-      if (ent) href = `#/entity/${ent[1]}`;
+      const ent = a.getAttribute('href').match(/\/e\/([^/]+)\/doc\.html$/);
+      if (ent) a.setAttribute('href', `#/entity/${ent[1]}`);
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
-      a.querySelector('.mention-fields')?.remove();
-      refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });
+      refResolveCache.set(ref, {
+        href: a.getAttribute('href'), html: chip.outerHTML, kind,
+        label: a.dataset.name ?? a.textContent, title: a.title || a.textContent,
+      });
     });
   } catch {}
 }
@@ -9749,8 +9781,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     let showingSource = false;
     let mounted = false;
     const fieldQ = `field=${encodeURIComponent(f.name)}`;
-    const histBtn = el('span', {
-      class: 'doc-anchor doc-history-btn', title: 'History', 'aria-label': `${f.name} history`, hidden: '',
+    const histBtn = el('button', {
+      type: 'button', class: 'doc-anchor doc-history-btn', title: 'History', 'aria-label': `${f.name} history`, hidden: '',
       onclick: () => activityPanel.toggle(id, f.name, mount),
     }, iconEl('lucide:history', 'wv-icon'));
     const checkHistory = () => api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=2`)
@@ -11812,8 +11844,7 @@ document.addEventListener('click', (ev) => {
   if (!caret) return;
   ev.preventDefault();
   ev.stopPropagation();
-  const open = caret.closest('.mention-wrap')?.classList.toggle('open');
-  caret.setAttribute('aria-expanded', String(!!open));
+  toggleMentionCaret(caret);
 });
 
 document.addEventListener('keydown', (e) => {

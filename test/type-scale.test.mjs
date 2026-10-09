@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const CSS = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+const CSS = [
+  readFileSync(new URL('../public/chip.css', import.meta.url), 'utf8'),
+  readFileSync(new URL('../public/style.css', import.meta.url), 'utf8'),
+].join('\n');
 const VDITOR = readFileSync(new URL('../public/vendor/vditor/dist/index.css', import.meta.url), 'utf8');
 const SCALE = { meta: 11, secondary: 12, grid: 13, body: 14, doc: 16, h2: 18, h1: 20, title: 24 };
 const FLOOR = 11;
@@ -18,7 +21,7 @@ test('the type scale is eight steps, each defined once (Kyle, 2026-09-26; Issue 
   assert.equal(new Set(Object.values(SCALE)).size, 8, 'eight distinct sizes');
 });
 
-test('every font-size in style.css reads a scale token (Issue #383)', () => {
+test('every font-size in the stylesheets reads a scale token (Issue #383)', () => {
   const ok = (v) => {
     const t = v.match(/^var\(--fs-([a-z0-9]+)\)$/);
     if (t) return t[1] in SCALE;
@@ -36,7 +39,7 @@ test('the grid and chip aliases resolve to the grid step', () => {
   assert.ok(alias('grid').every((v) => v === 'var(--wv-chip-font)' || v === 'var(--fs-grid)'), alias('grid').join(', '));
 });
 
-test('no px font size under the 11px floor in style.css or the vendored editor sheet', () => {
+test('no px font size under the 11px floor in the stylesheets or the vendored editor sheet', () => {
   assert.deepEqual(pxSizes(CSS).filter((n) => n < FLOOR), [], 'style.css');
   assert.deepEqual(pxSizes(VDITOR).filter((n) => n < FLOOR), [], 'vditor index.css');
 });
@@ -53,7 +56,7 @@ test('the vendored editor headings sit on the scale', () => {
 });
 
 test('the UI font is a deliberate system stack, with no Inter asked for and nothing to load', () => {
-  assert.doesNotMatch(CSS, /Inter\b/, 'style.css names no Inter');
+  assert.doesNotMatch(CSS, /Inter\b/, 'neither stylesheet names Inter');
   assert.doesNotMatch(CSS, /@font-face/, 'and declares no face');
   const stack = CSS.match(/:root\s*\{[^}]*--tblr-font-sans-serif\s*:\s*([^;}]+)/);
   assert.ok(stack, ':root sets the sans stack Tabler reads');

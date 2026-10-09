@@ -34,7 +34,7 @@ if (s) {
     const r = c.getBoundingClientRect();
     return {
       transform: getComputedStyle(c).transform,
-      open: c.closest('.mention-wrap').classList.contains('open'),
+      open: c.closest('.k-rel').classList.contains('open'),
       expanded: c.getAttribute('aria-expanded'),
       width: Math.round(r.width), height: Math.round(r.height),
     };

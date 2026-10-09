@@ -145,7 +145,7 @@ if (s) {
             display: getComputedStyle(td).display,
             overflowed: td.classList.contains('list-hide'),
             width: Math.round(td.getBoundingClientRect().width),
-            values: td.querySelectorAll('.ms-box > .mention-wrap, .ms-box > .k:not(.k-more)').length,
+            values: td.querySelectorAll('.ms-box > .k:not(.k-more)').length,
           })),
           gaps: boxes.slice(1).map((r, n) => Math.round(r.left - boxes[n].right)),
         };

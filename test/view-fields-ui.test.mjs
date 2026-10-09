@@ -12,7 +12,7 @@ const viewCore = globalThis.weaveViewCore;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
+const CSS = [readFileSync(join(ROOT, 'public/chip.css'), 'utf8'), readFileSync(join(ROOT, 'public/style.css'), 'utf8')].join('\n');
 
 test('view is a type the dialog knows but never offers as a tile', () => {
   assert.ok(core.FIELD_TYPES.some((t) => t.id === 'view' && t.computed && t.minted), 'view is listed, computed, minted');
@@ -73,16 +73,15 @@ test('a relation chip carries the far row’s segments behind a caret', () => {
   assert.match(APP, /\.mention-caret/, 'and the same delegated toggle');
 });
 
-test('the open caret turns a half circle to face the label, in both stylesheets', () => {
+test('the open caret turns a half circle to face the label, in the one stylesheet', () => {
+  const rule = CSS.match(/\.k-rel\.open > \.mention-caret\s*\{([^}]*)\}/);
+  assert.ok(rule, 'chip.css styles the open caret');
+  assert.match(rule[1], /rotate\(180deg\)/, 'open = 180°, facing the text — not 90° (down)');
+  assert.doesNotMatch(rule[1], /rotate\(90deg\)/, 'no down-pointing retract caret');
+  const rest = CSS.match(/\.mention-caret\s*\{([^}]*)\}/);
+  assert.ok(rest && !/rotate/.test(rest[1]), 'at rest the caret is unrotated — › points at the segments');
   const MD = readFileSync(join(ROOT, 'src/markdown.js'), 'utf8');
-  for (const [name, css] of [['style.css', CSS], ['markdown.js', MD]]) {
-    const rule = css.match(/\.mention-wrap\.open \.mention-caret\s*\{([^}]*)\}/);
-    assert.ok(rule, `${name} styles the open caret`);
-    assert.match(rule[1], /rotate\(180deg\)/, `${name}: open = 180°, facing the text — not 90° (down)`);
-    assert.doesNotMatch(rule[1], /rotate\(90deg\)/, `${name}: no down-pointing retract caret`);
-    const rest = css.match(/\.mention-caret\s*\{([^}]*)\}/);
-    assert.ok(rest && !/rotate/.test(rest[1]), `${name}: at rest the caret is unrotated — › points at the segments`);
-  }
+  assert.ok(!/mention-caret\s*\{/.test(MD), 'and markdown.js keeps no second copy of the rule');
 });
 
 test('the entity page shows each view the eye leaves on, with a way to configure each (Issues #212, #208)', () => {

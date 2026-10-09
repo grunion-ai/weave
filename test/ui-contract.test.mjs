@@ -303,7 +303,7 @@ test('the description clamp is five description line-heights, toggled by a contr
   assert.equal(Number(m[1]), 5, 'five lines');
   assert.equal(m[2], desc['line-height'], 'in the description\'s own line-height');
   const vh = fnBody('viewHeader');
-  assert.match(vh, /class: 'view-desc-body clamped'/, 'the rendered markdown has its own body element, born clamped');
+  assert.match(vh, /class: 'view-desc-body wv-prose clamped'/, 'the rendered markdown has its own body element, born clamped');
   assert.match(vh, /class: 'view-desc-more'/, 'the Show more control exists');
   assert.match(vh, /closest\('a,textarea,button'\)/, 'a click on the control does not start an edit');
   assert.ok(rulesFor('.view-desc-more').cursor, 'the control reads as clickable');
@@ -1412,7 +1412,7 @@ test('the chrome carries flat icons rather than emoji', () => {
 });
 
 test('a reference chip has an opaque ground', () => {
-  assert.equal(rulesFor('.doc-ref-layer a.doc-ref-chip').background, 'var(--tblr-bg-surface)',
+  assert.equal(rulesFor('.doc-ref-layer .doc-ref-slot').background, 'var(--tblr-bg-surface)',
     'the chip covers its literal with the editor’s own surface');
 });
 
@@ -1677,7 +1677,7 @@ test('an empty chip invites writing, never promises navigation', () => {
 
 test('the relation chip’s × is spaced as the trailing piece it is', () => {
   const x = rulesFor('.k-rel > .x');
-  assert.ok(x.margin?.startsWith('0 6px 0'), `the × follows the link — got margin ${x.margin}`);
+  assert.ok(x.margin?.startsWith('0 5px 0'), `the × follows the caret — got margin ${x.margin}`);
 });
 
 test('navigating away dismisses any floating picker', () => {

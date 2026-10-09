@@ -98,19 +98,20 @@ test('mention chip with preview fields collapses behind a caret and stays a link
     ],
   });
   const html = renderMarkdown('[[Task#1]]', { resolveMention: resolver });
-  assert.match(html, /<span class="mention-wrap"><span class="k k-rel k-inline has-segs"><a class="mention mention-entity" href="\/w\/weave\/e\/abc\/doc.html">Ship the editor<span class="mention-fields">/);
-  assert.match(html, /<\/span><\/a><button type="button" class="mention-caret" aria-expanded="false"/, 'the caret is the link\'s sibling, so it is a target of its own (Issue #397)');
+  assert.match(html, /<span class="k k-rel kind-entity has-segs">/);
+  assert.match(html, /<a class="mention mention-entity" href="\/w\/weave\/e\/abc\/doc.html"[^>]*><span class="k-label">Ship the editor<\/span><\/a><span class="mention-fields">/);
+  assert.match(html, /<\/span><button type="button" class="mention-caret" aria-expanded="false"/, 'the caret is the link\'s sibling, so it is a target of its own (Issue #397)');
   assert.match(html, /mention-f-label">State<\/span>In Progress/);
-  assert.match(html, /Due<\/span>Sep 12, 2026/);
+  assert.match(html, /mention-f-label">Due<\/span>Sep 12, 2026/);
   assert.ok(!html.includes('never shown'), 'preview caps at three fields');
 });
 
-test('mention chip without fields renders exactly as before', () => {
+test('mention chip without fields is the same chip, minus the strip and the caret', () => {
   const resolver = () => ({ href: '/e/abc/doc.html', label: 'Plain' });
   const html = renderMarkdown('[[Task#1]]', { resolveMention: resolver });
-  assert.equal(html.includes('mention-wrap'), false);
+  assert.equal(html.includes('mention-fields'), false);
   assert.equal(html.includes('mention-caret'), false);
-  assert.match(html, /<span class="k k-rel k-inline"><a class="mention mention-entity" href="\/e\/abc\/doc.html">Plain<\/a><\/span>/);
+  assert.match(html, /<span class="k k-rel kind-entity"><a class="mention mention-entity" href="\/e\/abc\/doc.html" title="Plain" data-name="Plain"><span class="k-label">Plain<\/span><\/a><\/span>/);
 });
 
 test('referencesFrom finds every accepted spelling and dedupes to one entry', () => {

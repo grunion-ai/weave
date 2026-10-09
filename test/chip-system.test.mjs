@@ -89,11 +89,13 @@ test('initials are at most two letters, upper case', () => {
   assert.equal(chips.initialsFor('Ana Maria de Souza'), 'AM', 'never more than two');
 });
 
-test('every person relation wears an avatar — that is what makes it a person', () => {
-  assert.match(APP, /class: 'av[ ']/, 'app.js builds an .av element');
+test('the avatar is a real element, but no longer a default on the chip', () => {
+  assert.match(APP, /class: `av /, 'app.js still builds an .av element for actors and the account');
   const r = rulesFor('.av');
   assert.ok(r.width && r.height, '.av is a fixed square');
   assert.ok(r['border-radius'], '.av declares its own radius');
+  assert.ok(!/personAvatar/.test(APP),
+    'Feature #185 dropped the avatar lead; a person table opts in through its Chip config (Feature #193)');
 });
 
 test("the fifth state category is gone — nothing seeded 'other'", () => {
@@ -148,12 +150,14 @@ test('a pointer chip is an outline with no fill — Kyle chose none over faint',
     'a pointer must never borrow the value tier’s fill');
 });
 
-test('a pointer says it goes somewhere', () => {
-  for (const sel of ['.k-rel > a::after', '.k-doc::after', '.k-attach::after']) {
-    const r = rulesFor(['.k-rel > a::after', '.k-doc::after', '.k-attach::after'].join(', '));
+test('a document or attachment chip says it opens something', () => {
+  for (const sel of ['.k-doc::after', '.k-attach::after']) {
+    const r = rulesFor(['.k-doc::after', '.k-attach::after'].join(', '));
     const merged = Object.keys(r).length ? r : rulesFor(sel);
     assert.match(merged.content ?? '', /↗/, `${sel} wears the open mark`);
   }
+  assert.ok(!/\.k-rel > a::after/.test(CSS),
+    'Feature #185 dropped the ↗ from the reference chip: the chip is the link');
 });
 
 test('a computed value is never a chip', () => {

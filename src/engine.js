@@ -1166,6 +1166,15 @@ export class Weave {
       const v = this.#displayValue(db, f, resolved, e);
       const shown = f.type === 'toggle' ? (v ? f.config.on : f.config.off) : v;
       const seg = { label: f.name, value: shown == null ? '' : Array.isArray(shown) ? shown.map((x) => x?.name ?? x).join(', ') : String(shown?.name ?? shown) };
+      if ((f.type === 'select' || f.type === 'multiselect') && seg.value) {
+        const named = (name) => {
+          const o = f.config.options?.find((x) => x.name === name);
+          return { name, ...(o?.hue ? { hue: o.hue } : {}), ...(o?.icon ? { icon: o.icon } : {}) };
+        };
+        seg.type = f.type;
+        if (f.type === 'select') seg.option = named(seg.value);
+        else seg.options = (Array.isArray(shown) ? shown : []).map((x) => named(x?.name ?? x));
+      }
       const nd = typeof resolved === 'number' ? this.#numberDisplay(db, f) : null;
       if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f), color: nd.color };
       const rated = Array.isArray(resolved) ? resolved.some((v) => typeof v === 'number') : typeof resolved === 'number';
@@ -7075,7 +7084,10 @@ export class Weave {
 
   previewFields(entityRef, limit = 3) {
     const v = this.renderView(entityRef, 'chip', { limit });
-    return [...(v.state ? [{ label: this.#stateLabel(v), value: v.state.name }] : []), ...v.fields].slice(0, limit);
+    return [
+      ...(v.state ? [{ label: this.#stateLabel(v), value: v.state.name }] : []),
+      ...v.fields.map((f) => ({ label: f.label, value: f.value })),
+    ].slice(0, limit);
   }
 
   #stateLabel(v) {

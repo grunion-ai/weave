@@ -519,9 +519,9 @@ if (s) {
 
     await page.waitForTimeout(600);
     const chips = await page.evaluate(() =>
-      [...document.querySelectorAll('.doc-ref-chip')].map((c) => getComputedStyle(c).backgroundColor));
+      [...document.querySelectorAll('.doc-ref-slot')].map((c) => getComputedStyle(c).backgroundColor));
     assert.equal(chips.length, 1, 'the reference renders as one chip');
-    assert.doesNotMatch(chips[0], /rgba\(.*0\.0?\d+\)$/, 'an see-through chip shows the literal underneath');
+    assert.doesNotMatch(chips[0], /rgba\(.*0\.0?\d+\)$/, 'a see-through slot shows the literal underneath');
     await page.close();
   });
 

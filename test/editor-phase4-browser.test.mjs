@@ -111,15 +111,17 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a [[…]] reference paints a resolved chip over the literal text', async () => {
+  test('a [[…]] reference paints a resolved chip at its literal, sized to its label', async () => {
     const target = weave.createEntity(tableRef, { name: 'Chip target' });
     const id = entityWithDoc('Chips', `points at [[Note#${target.publicId}]] here\n`);
     const page = await openEntity(id);
     try {
-      await page.waitForSelector('.doc-ref-layer a.mention', { timeout: 20000 });
+      await page.waitForSelector('.doc-ref-layer .doc-ref-slot a.mention', { timeout: 20000 });
       const r = await page.evaluate(() => {
-        const chip = document.querySelector('.doc-ref-layer a.mention');
-        const chipRect = chip.getBoundingClientRect();
+        const slot = document.querySelector('.doc-ref-layer .doc-ref-slot');
+        const chip = slot.querySelector('a.mention');
+        const label = slot.querySelector('.k-label');
+        const slotRect = slot.getBoundingClientRect();
         const walker = document.createTreeWalker(
           document.querySelector('.vditor-ir .vditor-reset'), NodeFilter.SHOW_TEXT);
         let textRect = null;
@@ -130,18 +132,24 @@ if (s) {
           range.setStart(n, at); range.setEnd(n, n.nodeValue.indexOf(']]') + 2);
           textRect = range.getBoundingClientRect();
         }
+        const text = document.createRange();
+        text.selectNodeContents(label);
         return {
-          label: chip.textContent,
+          label: slot.textContent,
           href: chip.getAttribute('href'),
-          covered: textRect && Math.abs(chipRect.left - textRect.left) < 2
-            && chipRect.width >= textRect.width - 2,
+          startsAtLiteral: textRect && Math.abs(slotRect.left - textRect.left) < 2,
+          fitsInLiteral: textRect && slotRect.width <= textRect.width + 2,
+          labelWhole: text.getBoundingClientRect().width <= label.getBoundingClientRect().width + 1,
           value: window.__weaveEditors.values().next().value.getValue(),
         };
       });
       assert.ok(r.label.includes('Chip target'), `chip must carry the resolved name, got "${r.label}"`);
       assert.match(r.href, /#\/entity\//, 'an entity chip opens the entity page in-app');
-      assert.ok(r.covered, 'the chip must sit over the literal reference');
-      assert.match(r.value, /\[\[Note#\d+\]\]/, 'the stored markdown keeps the literal reference');
+      assert.ok(r.startsAtLiteral, 'the chip starts where its reference starts');
+      assert.ok(r.fitsInLiteral, 'and ends inside it, so it never covers the words after it');
+      assert.ok(r.labelWhole, 'the name reads whole: the chip is sized to its label, not to the literal (Issue #679)');
+      assert.match(r.value, /\[\[Note#\d+\|Chip target\]\]/,
+        'a bare reference is stored aliased once the editor resolves it, which is what reserves the room');
     } finally { await page.close(); }
   });
 

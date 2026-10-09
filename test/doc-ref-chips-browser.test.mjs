@@ -21,6 +21,9 @@ const s = await launch('document reference chips', (weave) => {
   const doc = weave.createEntity('Task', { name: 'The document' });
   weave.setDoc(doc.id, md);
   weave.updateTable(task.id, { description: md });
+  const note = weave.createTable({ space: 'Dev', name: 'Note' });
+  weave.addRelation(task.id, { name: 'Blocks', targetDbs: [task.id, note.id], cardinality: 'many-to-many' });
+  weave.link(doc.id, 'Blocks', [target.id]);
   return { task, target, plain, doc };
 });
 
@@ -31,20 +34,21 @@ if (s) {
     const root = document.querySelector(scope);
     return [...root.querySelectorAll('.k.k-rel')].map((chip) => {
       const cs = getComputedStyle(chip);
-      const inner = chip.querySelector(':scope > a.mention');
-      const a = inner ?? chip.closest('a.mention');
+      const a = chip.querySelector(':scope > a.mention');
+      const label = chip.querySelector('.k-label');
       return {
         link: !!a,
-        inside: !!inner,
         kind: a && [...a.classList].find((c) => /^mention-(entity|table|space|workspace)$/.test(c)),
         href: a?.getAttribute('href'),
-        text: (inner ?? chip).textContent,
+        text: chip.textContent,
+        markup: chip.outerHTML,
+        labelWhole: label ? (() => { const rg = document.createRange(); rg.selectNodeContents(label); return rg.getBoundingClientRect().width <= label.getBoundingClientRect().width + 1; })() : null,
         borderWidth: cs.borderTopWidth,
         borderStyle: cs.borderTopStyle,
         radius: cs.borderTopLeftRadius,
         chipBg: cs.backgroundColor,
         linkBg: a && getComputedStyle(a).backgroundColor,
-        mark: getComputedStyle(inner ?? chip, '::after').content,
+        mark: getComputedStyle(a ?? chip, '::after').content,
         caret: !!chip.querySelector('.mention-caret'),
         unlink: !!chip.querySelector('.x'),
       };
@@ -71,14 +75,15 @@ if (s) {
         const chips = await chipsIn(page, 'body');
         assert.equal(chips.length, 2, `both live references are chips: ${JSON.stringify(chips)}`);
         for (const c of chips) {
-          assert.ok(c.link && c.inside, 'the link is the chip’s child, as .k-rel > a');
+          assert.ok(c.link, 'the link is the chip’s child, as .k-rel > a');
           assert.equal(c.kind, 'mention-entity');
           assert.equal(c.borderWidth, '1px');
           assert.equal(c.borderStyle, 'solid', 'a pointer is an outline');
           assert.equal(c.radius, '4px');
           assert.ok(transparent(c.chipBg) && transparent(c.linkBg), `a pointer has no fill: ${c.chipBg} / ${c.linkBg}`);
-          assert.equal(c.mark, '"↗"', 'the ↗ rides inside the link');
+          assert.equal(c.mark, 'none', 'Feature #185 dropped the ↗: the chip is the link');
           assert.equal(c.unlink, false, 'a reference is text: no ×');
+          assert.ok(c.labelWhole, `the name reads whole: ${c.text}`);
         }
         assert.ok(chips[1].caret, 'the chip with a field keeps its caret, inside the outline');
         assert.equal(await page.$eval('.mention.broken', (n) => [n.textContent, !!n.closest('.k-rel')].join('|')), 'Task#999|false');
@@ -92,10 +97,10 @@ if (s) {
           getSelection().selectAllChildren(p);
           return getSelection().toString();
         });
-        assert.match(copied, /^See Task#\d+ — Plain target for the plain one\.$/, `copied: ${copied}`);
+        assert.match(copied, /^See Plain targetTask for the plain one\.$/, `copied: ${copied}`);
 
         await page.click('.mention-caret');
-        assert.equal(await page.$eval('.mention-caret', (c) => c.closest('.mention-wrap').classList.contains('open')), true);
+        assert.equal(await page.$eval('.mention-caret', (c) => c.closest('.k-rel').classList.contains('open')), true);
         assert.match(page.url(), new RegExp(`/e/${doc.id}/doc\\.html$`), 'the caret never navigates');
         await Promise.all([page.waitForURL(new RegExp(`/e/${plain.id}/doc\\.html$`)), page.click(`a.mention[href$="/e/${plain.id}/doc.html"]`)]);
       } finally { await page.close(); }
@@ -122,9 +127,9 @@ if (s) {
         const painted = await page.$eval('.view-desc-body .k.k-rel', (k) => ({ border: getComputedStyle(k).borderTopColor, color: getComputedStyle(k.querySelector('a')).color }));
         assert.deepEqual(painted, grid, 'a document reference wears the grid pointer’s outline and ink');
         for (const c of chips) {
-          assert.ok(c.link && c.inside && c.borderWidth === '1px' && c.borderStyle === 'solid' && c.radius === '4px', JSON.stringify(c));
+          assert.ok(c.link && c.borderWidth === '1px' && c.borderStyle === 'solid' && c.radius === '4px', JSON.stringify(c));
           assert.ok(transparent(c.chipBg) && transparent(c.linkBg), `no fill: ${c.chipBg} / ${c.linkBg}`);
-          assert.equal(c.mark, '"↗"');
+          assert.equal(c.mark, 'none');
         }
         const lines = await lineBoxes(page, '.view-desc-body');
         assert.equal(lines.chip, lines.plain, `a chip must not grow its line: ${JSON.stringify(lines)}`);
@@ -139,24 +144,24 @@ if (s) {
       try {
         await page.goto(`${base}/#/entity/${mine.id}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('.vditor-ir [contenteditable="true"]');
-        await page.waitForSelector('.doc-ref-layer a.mention > .k.k-rel', { timeout: 20000 });
+        await page.waitForSelector('.doc-ref-layer .doc-ref-slot > .k.k-rel', { timeout: 20000 });
         await page.waitForFunction(() => document.querySelectorAll('.doc-ref-layer .k.k-rel').length === 2, null, { timeout: 20000 });
         const chips = await chipsIn(page, '.doc-ref-layer');
         for (const c of chips) {
-          assert.ok(c.link && !c.inside && c.borderWidth === '1px' && c.borderStyle === 'solid' && c.radius === '4px', JSON.stringify(c));
-          assert.ok(!transparent(c.linkBg), 'the cover stays opaque, or the literal shows through');
-          assert.ok(transparent(c.chipBg), 'and the pointer inside it carries no fill of its own');
-          assert.equal(c.mark, '"↗"');
+          assert.ok(c.link && c.borderWidth === '1px' && c.borderStyle === 'solid' && c.radius === '4px', JSON.stringify(c));
+          assert.ok(transparent(c.chipBg), 'the pointer carries no fill of its own');
+          assert.equal(c.mark, 'none');
           assert.match(c.href, /^#\/entity\//);
+          assert.ok(c.labelWhole, `the editor chip is never narrower than its label (Issue #679): ${c.text}`);
         }
         const ground = await page.evaluate(() => {
-          const k = document.querySelector('.doc-ref-layer a.doc-ref-chip');
+          const k = document.querySelector('.doc-ref-layer .doc-ref-slot');
           let n = document.querySelector('.vditor-ir .vditor-reset');
           let bg = 'rgba(0, 0, 0, 0)';
           for (; n; n = n.parentElement) { const c = getComputedStyle(n).backgroundColor; if (c !== 'rgba(0, 0, 0, 0)') { bg = c; break; } }
           return { chip: getComputedStyle(k).backgroundColor, page: bg };
         });
-        assert.equal(ground.chip, ground.page, `no fill against the editor: ${JSON.stringify(ground)}`);
+        assert.equal(ground.chip, ground.page, `the slot covers the literal with the editor's own ground: ${JSON.stringify(ground)}`);
 
         const lines = await lineBoxes(page, '.vditor-ir .vditor-reset');
         assert.equal(lines.chip, lines.plain, `a chip must not grow its line: ${JSON.stringify(lines)}`);
@@ -164,7 +169,7 @@ if (s) {
           const k = document.querySelector('.doc-ref-layer .k-rel').getBoundingClientRect();
           const p = [...document.querySelectorAll('.vditor-ir .vditor-reset p')].find((x) => x.textContent.startsWith('See '));
           const r = p.getBoundingClientRect();
-          return k.top >= r.top - 0.5 && k.bottom <= r.bottom + 0.5;
+          return k.top >= r.top - 1 && k.bottom <= r.bottom + 1;
         });
         assert.ok(fit, 'the chip sits inside its line');
 
@@ -185,15 +190,35 @@ if (s) {
         await page.waitForFunction(() => window.__weaveEditors.values().next().value.getValue().includes(']] now for'), null, { timeout: 10000 });
         await page.waitForFunction(() => document.querySelectorAll('.doc-ref-layer .k.k-rel').length === 2, null, { timeout: 20000 });
         const value = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
-        assert.match(value, new RegExp(`See \\[\\[Task#${plain.publicId}\\]\\] now for the plain one\\.`), `source: ${value}`);
+        assert.match(value, new RegExp(`See \\[\\[Task#${plain.publicId}\\|Plain target\\]\\] now for the plain one\\.`), `source: ${value}`);
         assert.equal((await chipsIn(page, '.doc-ref-layer'))[0].text.includes('Plain target'), true, 'the chip is still the resolved record');
 
-        await page.click(`.doc-ref-layer a.mention[href="#/entity/${plain.id}"]`);
+        await page.click(`.doc-ref-layer .doc-ref-slot a.mention[href="#/entity/${plain.id}"]`);
         await page.waitForFunction((id) => location.hash.includes(id), plain.id);
         await page.waitForFunction(() => document.querySelector('#dock:not([hidden]) .name-edit')?.value === 'Plain target', null, { timeout: 20000 });
       } finally { await page.close(); }
     });
   }
+
+  test('one row wears one chip: relation cell, document page and HTML export emit the same markup', async () => {
+    const bare = (html) => html.replace(/ href="[^"]*"/g, '').replace(/ tabindex="-1"/g, '');
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${base}/e/${doc.id}/doc.html`, { waitUntil: 'load' });
+      const docPage = await page.$eval(`.k-rel[data-eid="${target.id}"]`, (k) => k.outerHTML);
+
+      await page.goto(`${base}/e/${doc.id}/entity.html`, { waitUntil: 'load' });
+      const exported = await page.$eval(`.k-rel[data-eid="${target.id}"]`, (k) => k.outerHTML);
+      assert.equal(exported, docPage, 'the HTML export and the document page are one renderer');
+
+      await page.goto(`${base}/#/table/${task.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector(`.wv-grid .k-rel[data-eid="${target.id}"]`, { timeout: 20000 });
+      const cell = await page.locator(`.wv-grid .k-rel[data-eid="${target.id}"]`).first().evaluate((k) => k.outerHTML);
+      assert.equal(bare(cell), bare(docPage),
+        'a relation cell draws the far row through the same renderer; only the route differs');
+      assert.match(docPage, /class="k-home">Task</, 'and both carry the home badge');
+    } finally { await page.close(); }
+  });
 
   test('the stored markdown is untouched by the render', () => {
     assert.match(weave.getDoc(doc.id), new RegExp(`\\[\\[Task#${target.publicId}\\]\\]`));

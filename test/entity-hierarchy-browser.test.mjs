@@ -95,33 +95,33 @@ if (s) {
   test('a mention reads as its record name, and its tint ends at the label', async () => {
     const apollo = await open(h.apollo.id);
     try {
-      await apollo.waitForSelector('.doc-ref-layer a.mention .doc-ref-label', { timeout: 20000 });
+      await apollo.waitForSelector('.doc-ref-layer .doc-ref-slot .k-label', { timeout: 20000 });
       const bare = await apollo.evaluate(() => {
-        const chip = document.querySelector('.doc-ref-layer a.mention');
-        return { label: chip.textContent, title: chip.title };
+        const a = document.querySelector('.doc-ref-layer a.mention');
+        return { label: a.querySelector('.k-label').textContent, title: a.title };
       });
       assert.equal(bare.label, 'Design onboarding wizard', '[[Task#1]] shows the name, not the ref');
-      assert.equal(bare.title, 'Task#1 — Design onboarding wizard', 'the ref stays on as the tooltip');
+      assert.equal(bare.title, 'Design onboarding wizard', 'the tooltip is the row name, as in a relation cell');
     } finally { await apollo.close(); }
 
     const task = await open(h.t1.id);
     try {
-      await task.waitForSelector('.doc-ref-layer a.mention .doc-ref-label', { timeout: 20000 });
+      await task.waitForSelector('.doc-ref-layer .doc-ref-slot .k-label', { timeout: 20000 });
       const r = await task.evaluate(() => {
         const chip = document.querySelector('.doc-ref-layer a.mention');
-        const label = chip.querySelector('.doc-ref-label');
+        const label = chip.querySelector('.k-label');
         return {
           text: label.textContent,
           chip: chip.getBoundingClientRect().width,
           label: label.getBoundingClientRect().width,
-          natural: label.scrollWidth + parseFloat(getComputedStyle(label).borderLeftWidth) + parseFloat(getComputedStyle(label).borderRightWidth),
+          natural: (() => { const rg = document.createRange(); rg.selectNodeContents(label); return rg.getBoundingClientRect().width; })(),
           chipTint: getComputedStyle(chip).backgroundImage + getComputedStyle(chip).boxShadow,
         };
       });
       assert.equal(r.text, 'Hermes Docs');
-      assert.ok(r.label < r.chip - 20, `the tint (${r.label}px) hugs the label inside the ${r.chip}px cover`);
-      assert.ok(Math.abs(r.label - r.natural) <= 1, 'the label is its own width, not the literal\'s');
-      assert.equal(r.chipTint, 'nonenone', 'the cover itself carries no tint or ring');
+      assert.ok(r.label <= r.chip, `the label (${r.label}px) sits inside the ${r.chip}px link`);
+      assert.ok(Math.abs(r.label - r.natural) <= 1, `the label is its own width, not the literal's (Issue #679): ${JSON.stringify(r)}`);
+      assert.equal(r.chipTint, 'nonenone', 'the link itself carries no tint or ring');
     } finally { await task.close(); }
   });
 }

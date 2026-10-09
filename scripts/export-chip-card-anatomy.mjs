@@ -7,7 +7,7 @@ import { renderDocumentPage } from '../src/markdown.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'chip-card-anatomy.html');
-const CHIP_SELECTORS = /^(:root|\.k\b|\.k-|\.k\.|\.av\b|\.hue-|\.mention-|\.wv-card|\.wv-seg-state|\[data-bs-theme="dark"\] \.(k|hue|av))/;
+const CHIP_SELECTORS = /^(:root|\.k\b|\.k-|\.k\.|\.av\b|\.hue-|\.mention|\.wv-card|\.wv-prose|\.cg-|\.wv-rat|\[data-bs-theme="dark"\] \.(k|hue|av))/;
 
 function selectorList(sels) {
   const parts = [];
@@ -33,7 +33,7 @@ function selectorList(sels) {
   return parts.map((p) => p.trim()).filter((p) => p && !p.startsWith('@'));
 }
 
-export function chipCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8')) {
+export function chipCss(css = [readFileSync(join(ROOT, 'public/chip.css'), 'utf8'), readFileSync(join(ROOT, 'public/style.css'), 'utf8')].join('\n')) {
   const out = [];
   for (const [, sels, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const parts = selectorList(sels);
@@ -80,8 +80,8 @@ export function exportAnatomy() {
   const resolveMention = (kind, ref) => (kind === 'table' ? { href: '#fields', label: ref.split('/').pop() } : null);
   const page = renderDocumentPage({ title: guide.name, subtitle: 'Handbook · Guide', markdown: guide.doc, resolveMention });
   return page
-    .replace(/<link rel="icon"[^>]*>\n?/, '')
-    .replace('</style>', `</style>\n<style>\n/* weave chip system, lifted from public/style.css */\n${chipCss()}\n${TOKENS}</style>`);
+    .replace(/<link rel="(icon|stylesheet)"[^>]*>\n?/g, '')
+    .replace('</style>', `</style>\n<style>\n${chipCss()}\n${TOKENS}</style>`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

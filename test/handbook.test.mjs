@@ -281,7 +281,7 @@ test('the anatomy names every element of the chip and the card, what it does, an
 
 test('the figures are the real chip and the real card, with each hitbox drawn as an outline', () => {
   const doc = ANATOMY.doc;
-  for (const cls of ['mention-wrap open', 'k k-rel', 'mention-caret', 'mention-fields', 'k-state', 'k-home', 'mention-f-label']) {
+  for (const cls of ['k k-rel kind-entity has-id has-segs open', 'wv-chip-mark', 'wv-chip-id', 'mention-caret', 'mention-fields', 'k-state', 'k-home', 'mention-f-label']) {
     assert.ok(doc.includes(cls), `the chip figure carries .${cls.split(' ').pop()}`);
   }
   for (const cls of ['wv-card', 'wv-card-head', 'wv-card-title', 'wv-card-id', 'wv-card-desc', 'wv-card-fields']) {
@@ -308,7 +308,7 @@ test('docs/chip-card-anatomy.html is the exported page, self-contained, and curr
   assert.match(html, /--wv-chip-font:\s*var\(--fs-grid\)/, 'the chip tokens ride along');
   assert.match(html, /--fs-grid:\s*13px/, 'with the scale step they read, so the specimen is the real size');
   assert.match(html, /data-bs-theme="dark"\]|prefers-color-scheme:\s*dark/, 'both themes');
-  assert.match(html, /class="k k-rel has-segs"/, 'the chip figure is in the export');
+  assert.match(html, /class="k k-rel kind-entity has-id has-segs open"/, 'the chip figure is in the export');
   assert.match(html, /class="wv-card"/, 'and the card figure');
 });
 

@@ -216,7 +216,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('clicking the ↗ of a relation chip opens that entity', async () => {
+  test('clicking the right edge of a relation chip opens that entity', async () => {
     const page = await grid();
     try {
       const link = page.locator('.wv-grid tbody .k-rel > a').first();

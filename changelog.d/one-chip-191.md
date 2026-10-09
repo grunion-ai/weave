@@ -1,0 +1,6 @@
+- One chip renderer, `public/chip-view.js`, behind every surface a row appears on: relation cells and the References panel in the browser, document pages and HTML exports through `src/markdown.js`, and the document editor's overlay. One stylesheet, `public/chip.css`, behind all of them; the second copy that lived inside `src/markdown.js` is gone (Feature #191, Feature #288).
+- The chip is the Ledger: the state mark, the `#id` in mono, the title, the configured chips, the home badge and the caret. No open mark and no avatar by default, per Feature #185. A relation cell keeps its ✕.
+- The state mark is a button: it opens a picker grouped by category (Not started, In progress, Done, Canceled) and writes the state to the row. A select or multiselect segment opens its own picker. The name and the `#id` still navigate.
+- The card is the Tile: the `#id` and the title, the description preview, a state row that is also the control, and the configured properties two columns across.
+- The editor's reference chip is sized to its own label instead of to the width of its `[[…]]` source, and a bare reference is stored as `[[Table#n|Name]]` once the editor resolves it, so the name is never cut (Issue #679).
+- A segment is drawn at the shared chip size; the `.wv-seg-state` rule that shrank it to `.82em` is deleted.

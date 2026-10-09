@@ -37,7 +37,7 @@ if (s) {
         title: a.getAttribute('title'),
         labelOverflow: label ? getComputedStyle(label).textOverflow : null,
         labelClipped: label ? label.scrollWidth > label.clientWidth + 1 : null,
-        home: a.querySelector('.k-home')?.getBoundingClientRect() ?? null,
+        home: k.querySelector('.k-home')?.getBoundingClientRect() ?? null,
         mark: mark.content,
       };
     });
@@ -49,14 +49,13 @@ if (s) {
   });
 
   for (const colorScheme of ['light', 'dark']) {
-    test(`a long reference chip truncates inside the card, keeping its badge and ↗ (${colorScheme})`, async () => {
+    test(`a long reference chip truncates inside the card, keeping its badge (${colorScheme})`, async () => {
       const page = await open(colorScheme);
       assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme, 'the page resolved the theme under test');
       const m = await measure(page);
       assert.equal(m.chips.length, 2, 'both references are drawn');
       for (const c of m.chips) {
         assert.ok(c.right <= m.inner + 0.5, `chip right edge ${c.right} stays inside the card content box ${m.inner}: ${c.text.slice(0, 30)}…`);
-        assert.match(c.mark, /↗/, 'the open mark is drawn');
         assert.ok(c.home && c.home.right <= m.inner + 0.5 && c.home.width > 0, 'the home badge is visible at the right end');
       }
       const long = m.chips.find((c) => c.title === LONG);

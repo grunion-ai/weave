@@ -17,6 +17,20 @@ globalThis.WeaveEditorLib = {
     return out;
   },
 
+  aliasRefSpans(text, nameOf) {
+    const src = String(text ?? '');
+    let out = '';
+    let at = 0;
+    for (const s of globalThis.WeaveEditorLib.findRefSpans(src)) {
+      if (s.label != null) continue;
+      const name = nameOf(s.ref);
+      if (!name || name === s.ref || /[[\]|\n]/.test(name)) continue;
+      out += src.slice(at, s.start) + `[[${s.ref}|${name}]]`;
+      at = s.end;
+    }
+    return out + src.slice(at);
+  },
+
   cellActivation(type) {
     return {
       text: 'focus-input', number: 'focus-input', url: 'focus-input',

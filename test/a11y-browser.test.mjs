@@ -184,7 +184,11 @@ if (s) {
     const [cx, cy] = [r.left + r.width / 2, r.top + r.height / 2];
     const misses = (sq ? [[-11.5, -11.5], [11.5, -11.5], [-11.5, 11.5], [11.5, 11.5]] : [[0, -11.5], [0, 11.5]])
       .filter(([dx, dy]) => !n.contains(document.elementFromPoint(cx + dx, cy + dy)));
-    return { sel, box: `${Math.round(r.width * 10) / 10}x${Math.round(r.height * 10) / 10}`, misses: misses.length };
+    const why = misses.map(([dx, dy]) => {
+      const hit = document.elementFromPoint(cx + dx, cy + dy);
+      return `${dx},${dy} -> ${hit ? hit.tagName + '.' + (hit.className || '') : 'null'}`;
+    });
+    return { sel, box: `${Math.round(r.width * 10) / 10}x${Math.round(r.height * 10) / 10}`, misses: misses.length, why };
   }), [sels, square]);
 
   test('small controls offer a 24px hit area', async () => {
@@ -193,7 +197,7 @@ if (s) {
       await page.hover('#nav .nav-db');
       for (const h of await hitArea(page, ['#nav-collapse', 'button.add-field-btn', '.nav-db-menu .dots-btn', 'td.pid-cell a.open-link', 'button.mention-caret'])) {
         assert.ok(!h.missing, `${h.sel} is on the page`);
-        assert.equal(h.misses, 0, `${h.sel} (${h.box}) takes a click across 24px`);
+        assert.equal(h.misses, 0, `${h.sel} (${h.box}) takes a click across 24px; missed: ${JSON.stringify(h.why)}`);
       }
       assert.equal(await page.$eval('button.mention-caret', (c) => c.closest('a') ? 'inside the link' : 'beside the link'), 'beside the link',
         'the caret is its own target, so the 24px box can claim the pixels around it');
@@ -202,7 +206,7 @@ if (s) {
     try {
       for (const h of await hitArea(ent, ['button.doc-caret'])) {
         assert.ok(!h.missing, `${h.sel} is on the page`);
-        assert.equal(h.misses, 0, `${h.sel} (${h.box}) takes a click across 24px`);
+        assert.equal(h.misses, 0, `${h.sel} (${h.box}) takes a click across 24px; missed: ${JSON.stringify(h.why)}`);
       }
     } finally { await ent.close(); }
   });

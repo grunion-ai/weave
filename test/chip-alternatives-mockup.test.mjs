@@ -38,7 +38,7 @@ test('every option is drawn in three surfaces, light and dark, at the live chip 
         assert.ok(/class="k k-rel/.test(p[0]), `${key}/${surface}/${theme}: the specimen is the real k-rel chip`);
       }
     }
-    assert.ok(/class="mention-wrap/.test(s), `${key}: a mention wrapper, as app.js emits`);
+    assert.ok(/class="mention-wrap/.test(s), `${key}: the wrapper the renderer emitted when this mockup was drawn`);
     assert.ok(/class="k-home"/.test(s), `${key}: keeps the home badge (ruling: keep 4)`);
   }
   assert.ok(/<p class="doc-mock">[^<]+<span class="mention-wrap/.test(HTML), 'the mention sits inside running text');

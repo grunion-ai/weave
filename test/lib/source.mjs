@@ -8,7 +8,8 @@ export const read = (file) => readFileSync(join(ROOT, file), 'utf8');
 
 export const APP = read('public/app.js');
 export const HTML = read('public/index.html');
-export const CSS = read('public/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+export const CHIP_CSS = read('public/chip.css');
+export const CSS = [CHIP_CSS, read('public/style.css')].join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
 
 export function rulesFor(selector, css = CSS) {
   const out = {};

@@ -486,7 +486,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
           const e = weave.state.entities[ref];
           if (!e || e.deletedAt) return null;
-          return { href: `${wsPrefix}/e/${e.id}/doc.html`, label: weave.entityName(e), fields: weave.previewFields(e.id) };
+          return {
+            href: `${wsPrefix}/e/${e.id}/doc.html`,
+            label: weave.entityName(e),
+            name: weave.entityName(e),
+            home: weave.state.tables[e.dbId]?.name,
+            view: weave.renderView(e.id, 'chip'),
+            fields: weave.previewFields(e.id),
+          };
         }
         const m = /^(.+)#(\d+)$/.exec(ref);
         if (!m) return null;
@@ -498,6 +505,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           href: `${wsPrefix}/e/${entity.id}/doc.html`,
           label: `${db.name}#${m[2]} — ${weave.entityName(entity)}`,
           name: weave.entityName(entity),
+          home: db.name,
+          view: weave.renderView(entity.id, 'chip'),
           fields: weave.previewFields(entity.id),
         };
       } catch {

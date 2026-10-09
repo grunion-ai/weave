@@ -22,12 +22,12 @@ if (s) {
       sans: !/mono|Menlo|Consolas/i.test(getComputedStyle(document.querySelector('.wv-anat .k-rel > a')).fontFamily),
     }));
     assert.equal(seen.figures, 2, 'the chip figure and the card figure');
-    assert.deepEqual(seen.badges, ['1', '2', '3', '4', '5', '6', '7', '8', '10', '9', '11', '12', '13'], 'every element is numbered');
-    assert.equal(seen.outlined, 13, 'every numbered element draws its hitbox as a dashed outline');
+    assert.deepEqual(seen.badges, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], 'every element is numbered');
+    assert.equal(seen.outlined, 12, 'every numbered element draws its hitbox as a dashed outline');
     assert.equal(seen.chipFont, '13px', 'the specimen is the real chip at the token size, not a picture of one');
     assert.ok(seen.card, 'the card figure carries its field pairs');
     assert.ok(seen.sans, 'the figure escapes the raw-HTML preview\'s monospace — it reads as the app draws it');
-    assert.equal(await page.$eval('.wv-anat .mention-caret', (c) => c.closest('.mention-wrap').classList.contains('open')), true,
+    assert.equal(await page.$eval('.wv-anat .mention-caret', (c) => c.closest('.k-rel').classList.contains('open')), true,
       'the specimen is drawn open, so the segments and the retract caret (‹) are on show');
     await page.close();
   });
