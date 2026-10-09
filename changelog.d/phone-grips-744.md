@@ -1,2 +1,0 @@
-- On a touch screen the reorder grips now rest at .7 opacity instead of 0, so an entity page field row, an entity page block, a document section and a list view row each show the handle that says they can be dragged. A mouse still reveals them on hover and nothing is drawn differently on a desktop (Issue #744).
-- `test/phone-grips-browser.test.mjs` reads the resting opacity of all four grips in both themes, in Chromium at 390x844 and in WebKit on the iPhone 15 profile, and holds the desktop hover reveal in place (Issue #744).

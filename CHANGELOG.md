@@ -2,6 +2,14 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.85 (2026-10-08)
+
+- The loading mark now ships inside `index.html` and appears on first paint once the 500 ms threshold passes, so a fresh load no longer sits on a bare shell while the app fetches the animated rope (Issue #391).
+- A phone list row no longer leaves a blank where an empty relation sits. The cell held only its hidden "+ link" button, so it still took 47px between the chips either side of it; now a relation cell with no linked row is left out of the line, the chips that remain pack left, and the "+N" count reads from what is left (Issue #721).
+- `test/phone-list-rows-browser.test.mjs` seeds an empty relation alongside a filled one and asserts the empty cell is not displayed, the filled one still is unless the line overflows, and no two chips in a row sit more than the 6px flex gap apart (Issue #721).
+- On a touch screen the reorder grips now rest at .7 opacity instead of 0, so an entity page field row, an entity page block, a document section and a list view row each show the handle that says they can be dragged. A mouse still reveals them on hover and nothing is drawn differently on a desktop (Issue #744).
+- `test/phone-grips-browser.test.mjs` reads the resting opacity of all four grips in both themes, in Chromium at 390x844 and in WebKit on the iPhone 15 profile, and holds the desktop hover reveal in place (Issue #744).
+
 ## v0.4.84 (2026-10-08)
 
 - The grid's + New row is now a row. Its cell takes the density's row height and the button fills it, so the foot measures 32px Compact, 44px Comfortable and 72px Spacious instead of 34px at all three, and the add row no longer reads as a short strip under the last data row. It stays the sticky foot of the grid (Feature #196), and the phone list's add cell keeps its own height (Issue #246).
