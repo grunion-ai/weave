@@ -976,11 +976,11 @@ test('the Share dialog shows the link and no QR code (Feature #263)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-  const start = app.indexOf("modal('Share link'");
+  const start = app.indexOf('function shareDialog(');
   assert.ok(start > 0, 'the Share dialog exists');
-  const share = app.slice(start, app.indexOf("'Done')", start));
+  const share = app.slice(start, app.indexOf("'Create link')", start));
   assert.match(share, /el\('code', \{ class: 'share-url' \}, full\)/, 'the dialog shows the full link');
-  assert.ok(app.slice(app.indexOf("api('POST', `/views/${id}/share`)"), start).includes('clipboard?.writeText(full)'), 'opening it copies the link');
+  assert.ok(share.includes("copyText(location.origin + WS_PREFIX + g.url, 'Link copied')"), 'minting a link copies it (Feature #194)');
   assert.doesNotMatch(share, /canvas|qr|scan/i, 'no QR code and no talk of scanning one');
   for (const gone of ['qrCanvas', 'leanQR', 'share-qr']) assert.ok(!app.includes(gone), `app.js still names ${gone}`);
   assert.ok(!html.includes('lean-qr'), 'the shell no longer loads lean-qr');

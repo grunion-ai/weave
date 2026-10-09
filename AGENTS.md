@@ -69,7 +69,7 @@ workspace file; a second workspace is a second file (see
 ### Tool map
 
 <!-- tool-map:start (generated from src/mcp.js by scripts/agent-docs.mjs) -->
-17 listed by default, out of 62. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
+17 listed by default, out of 63. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
 
 | Job | Tool | What it does |
 | --- | --- | --- |
@@ -91,7 +91,7 @@ workspace file; a second workspace is a second file (see
 | Look up allowed values | `weave_vocabulary` | allowed values; several sections and icon queries in one call |
 | Everything else | `weave_call` | run any other tool by name; help describes one |
 
-The other 45, through `weave_call {name, args}`:
+The other 46, through `weave_call {name, args}`:
 
 | Area | Tools |
 | --- | --- |
@@ -105,7 +105,7 @@ The other 45, through `weave_call {name, args}`:
 | Import and export | `weave_export_csv`, `weave_export_json`, `weave_import_json` |
 | Files | `weave_attach_file`, `weave_files` |
 | Automations | `weave_create_automation`, `weave_automations` |
-| Share pages | `weave_views` |
+| Share pages | `weave_views`, `weave_shares` |
 | History | `weave_activity`, `weave_audit` |
 | Accounts and secrets | `weave_accounts`, `weave_keys` |
 <!-- tool-map:end -->
@@ -411,7 +411,7 @@ workspace. Every MCP tool has a command:
 | `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
 | `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
-| `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
+| `weave audit` | `weave view` / `weave share` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
 | `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
 | `weave form` / `weave form get` | `weave workspace leave` | `weave form submit <form> --values '{json}'` |
 | `weave audit` | `weave account sessions` / `weave account revoke-session` / `weave account link` / `weave account unlink` | `weave invite <email>` / `weave invite list` / `weave invite revoke` |
@@ -589,7 +589,7 @@ For agents changing weave itself: where the code lives and the rules every chang
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP server: 62 tools over the engine, 17 listed by default |
+| `src/mcp.js` | MCP server: 63 tools over the engine, 17 listed by default |
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |

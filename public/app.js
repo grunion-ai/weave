@@ -3883,6 +3883,7 @@ function tableChrome(db, trashCount) {
     { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
     { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
     'divider',
+    { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
     {
       label: 'New share page…',
       run: () => modal('New share page', [
@@ -8245,6 +8246,7 @@ async function showSpace(spaceId) {
         await loadSchema();
       },
       actions: space.system ? [] : [
+        el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('space', spaceId, space.space) }, 'Share…'),
         ...(space.template ? [useTemplateButton(space)] : []),
         dotsMenu([
           {
@@ -9651,6 +9653,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       label: `Download .${ext}`, href: `${entBase}.${ext}`,
       download: `${(entity.name || 'entity')}.${ext}`,
     })),
+    { label: 'Share…', run: () => shareDialog('entity', id, entity.name || `#${entity.publicId}`) },
     'divider',
     {
       label: 'Move to trash', danger: true,
@@ -10810,6 +10813,58 @@ async function showActivityDetail(id) {
       fieldsBody));
 }
 
+const SHARE_MODES = [['read', 'Read'], ['comment', 'Comment (soon)'], ['edit', 'Edit rows'], ['manage', 'Add and delete rows']];
+const SHARE_MODE_LABEL = Object.fromEntries(SHARE_MODES);
+
+function shareDialog(kind, id, name) {
+  const rows = el('div', { class: 'share-list', 'aria-live': 'polite' });
+  const fill = async () => {
+    let grants;
+    try { grants = await api('GET', `/shares?kind=${kind}&id=${encodeURIComponent(id)}`); } catch (err) {
+      rows.replaceChildren(el('span', { class: 'share-hint' }, err.message));
+      return;
+    }
+    if (!grants.length) { rows.replaceChildren(el('span', { class: 'share-hint' }, 'No links yet.')); return; }
+    rows.replaceChildren(...grants.map((g) => {
+      const full = location.origin + WS_PREFIX + g.url;
+      return el('div', { class: 'share-row' },
+        el('div', { class: 'share-row-head' },
+          el('span', { class: 'share-chip' }, SHARE_MODE_LABEL[g.mode] ?? g.mode),
+          el('span', { class: 'share-chip' }, g.visibility === 'private' ? 'Signed-in only' : 'Anyone with the link'),
+          g.label ? el('span', { class: 'share-label' }, g.label) : null),
+        el('code', { class: 'share-url' }, full),
+        el('div', { class: 'share-row-actions' },
+          el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(full, 'Link copied') }, 'Copy'),
+          el('button', {
+            class: 'btn btn-sm share-revoke', type: 'button',
+            onclick: async () => {
+              try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
+            },
+          }, 'Revoke')));
+    }));
+  };
+  modal(`Share ${name}`, [
+    el('span', { class: 'form-label', id: 'share-mode' }, 'Access'),
+    el('div', { class: 'share-modes', role: 'radiogroup', 'aria-labelledby': 'share-mode' },
+      ...SHARE_MODES.map(([value, label]) => el('label', { class: `share-mode${value === 'comment' ? ' is-off' : ''}` },
+        el('input', { type: 'radio', name: 'mode', value, checked: value === 'read' ? '' : null, disabled: value === 'comment' ? '' : null }),
+        el('span', {}, label)))),
+    el('label', { class: 'form-check share-private' },
+      el('input', { type: 'checkbox', name: 'private', class: 'form-check-input' }),
+      el('span', { class: 'form-check-label' }, 'Signed-in members only')),
+    el('label', { class: 'form-label', for: 'share-label' }, 'Label'),
+    el('input', { id: 'share-label', name: 'label', class: 'form-control', placeholder: 'Who the link is for' }),
+    el('span', { class: 'share-hint' }, 'Pages open read-only. Edit and add-delete reach the API and MCP through the link\'s token.'),
+    el('h3', { class: 'share-list-title' }, 'Links'),
+    rows,
+  ], async (fd) => {
+    const g = await api('POST', '/shares', { scope: { kind, id }, mode: fd.get('mode'), visibility: fd.get('private') ? 'private' : 'public', label: fd.get('label') || '' });
+    await copyText(location.origin + WS_PREFIX + g.url, 'Link copied');
+    setTimeout(() => shareDialog(kind, id, name));
+  }, 'Create link');
+  fill();
+}
+
 async function showView(id) {
   state.route = { page: 'view', id };
   syncDocTitle(null);
@@ -10818,24 +10873,10 @@ async function showView(id) {
   let v;
   try { v = await api('GET', `/views/${id}`); } catch (err) { toast(`Couldn't open that view: ${err.message}`, true); return showHome(); }
   syncDocTitle(v.name);
-  const meta = (await api('GET', '/views')).find((x) => x.id === id);
   main.replaceChildren(el('div', { class: 'wv-toolbar' },
     el('h1', {}, v.name),
     el('span', { style: 'flex:1' }),
-    el('button', {
-      class: 'btn btn-sm', onclick: async () => {
-        if (meta?.shared) { await api('DELETE', `/views/${id}/share`); toast('Share link revoked'); return showView(id); }
-        const { url } = await api('POST', `/views/${id}/share`);
-        const full = location.origin + WS_PREFIX + url;
-        await navigator.clipboard?.writeText(full).catch(() => {});
-        modal('Share link', [
-          el('div', { class: 'share-box' },
-            el('code', { class: 'share-url' }, full),
-            el('span', { class: 'share-hint' }, 'Copied to the clipboard. Anyone with this link sees this view, read-only, until you revoke it.')),
-        ], async () => {}, 'Done');
-        showView(id);
-      },
-    }, meta?.shared ? 'Revoke share' : 'Share…'),
+    el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('view', id, v.name) }, 'Share…'),
     dotsMenu([{ hold: 'Delete view', holdingLabel: 'Hold to delete…', run: async () => { await api('DELETE', `/views/${id}`); toast('View deleted'); showHome(); } }], { align: 'right' })));
   for (const b of v.blocks) {
     const cols = Object.keys(b.items[0]?.fields ?? {});

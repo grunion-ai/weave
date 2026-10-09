@@ -1344,9 +1344,21 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .sk-entity .sk-side { width: 300px; display: flex; flex-direction: column; gap: 10px; }
 .sk-block { height: 120px; width: 100%; }
 .sk-block.short { height: 60px; width: 80%; }
-.share-box { display: flex; flex-direction: column; gap: 10px; }
 .share-url { font-size: var(--fs-secondary); word-break: break-all; color: var(--tblr-secondary); }
 .share-hint { font-size: var(--fs-grid); color: var(--tblr-secondary); }
+.share-list { display: flex; flex-direction: column; gap: 8px; }
+.share-list-title { font-size: var(--fs-grid); margin: 14px 0 6px; }
+.share-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); }
+.share-row-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.share-chip { font-size: var(--wv-chip-font); line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); }
+.share-label { font-size: var(--fs-grid); color: var(--tblr-secondary); }
+.share-row-actions { display: flex; justify-content: flex-end; gap: 6px; }
+#modal .share-private { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+#modal .share-private input, #modal .share-mode input { margin: 0; }
+.share-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; }
+.share-mode { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); cursor: pointer; }
+.share-mode:has(input:checked) { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); }
+.share-mode.is-off { color: var(--tblr-secondary); cursor: not-allowed; }
 .attach-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .attach-box.attach-box-wide { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; }
 .entity-body > .attach-block:has(.attach-box-wide) { align-items: start; }

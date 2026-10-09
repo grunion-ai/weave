@@ -937,6 +937,30 @@ Paste one into Slack, Messages or an email and it unfurls: the workspace logo (t
 
 On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by default it gets the sign-in redirect and the paste shows a bare URL. **Link preview before sign-in**, in the **Workspace actions** menu at the right of the workspace page's title (\`weave workspace link-preview\`, or \`PATCH /api/workspace\` with \`{"linkPreview": true}\` and an architect token), lets a signed-out request for a uuid permalink read the preview head: title, path, \`#id\`, name, logo, state and the first fields. Nothing else leaves: no document, no other field, no API. An unknown id and a \`Table#n\` address, which anyone could count through, are walled like any other page. The person who opens the link still signs in first. It is off on every workspace until an architect turns it on.
 
+## Share links
+
+A share link opens one row, table, space, saved view or the whole workspace to whoever holds it, and nothing beside it. **Share…** sits in a row's **⋮** menu, the **Table actions** menu, the **Space actions** menu and on a saved view's page. The dialog picks the access, whether the link needs a signed-in account, and a label, then copies the new link. Under the form it lists the links already made there, each with **Copy** and **Revoke**.
+
+| Access | What the link can do |
+| --- | --- |
+| Read | open the pages under the link, and read the rows in scope through the API |
+| Comment | reserved: shown but not offered until comments by share link are built |
+| Edit rows | read, and change the values and documents of rows in scope |
+| Add and delete rows | edit, add rows to a table in scope, and move rows in scope to the trash |
+
+No link changes a field, a table, a space or a registry row, and none purges a row. Pages under \`/s/<token>\` open read-only whatever the access: a row opens as its fields and documents, a table as its rows under the columns its schema names, a space as its tables. Edit and add-delete work through the API and MCP, with the link's token as the bearer:
+
+\`\`\`bash
+weave share mint table Dev/Task --mode edit --label "vendor sync"
+weave share list --kind table
+weave share revoke <share id>
+curl -H "Authorization: Bearer wvs_…" https://<host>/api/share
+\`\`\`
+
+\`GET /api/share\` answers what the token reaches. A row or table outside the scope answers 404, and a route no link reaches answers 403. **Signed-in members only** makes the link private: it opens only in a browser signed in to the workspace. Editors and architects make links; an editor revokes its own, an architect revokes any, and an observer does neither. Every mint and revoke lands in the audit log with its actor (\`weave_shares\` over MCP, \`POST\`/\`GET\`/\`DELETE /api/shares\` over HTTP).
+
+The token is stored with the grant so the dialog can show the link again, and \`weave export\` leaves it out: an imported grant opens nothing until someone mints a new link. Revoking is how a link ends. A saved view shared before share links existed keeps its old address: \`/view/<token>\` redirects to \`/s/<token>\`.
+
 ## The home page and a space page
 
 The first time you open an empty instance, a short welcome asks you to name the workspace (a default is filled in), then offers a starter or an empty workspace. **Skip setup** or Esc keeps the defaults. It runs once per person, and an existing workspace with tables never shows it; rename the workspace later from its chip in the rail or its page title.
@@ -1175,11 +1199,11 @@ A **saved view** is a named set of table blocks, and it can be shared:
 
 \`\`\`bash
 weave view create "Ops Monday" --blocks '[{"table":"Task","where":[["Status","=","Open"]]},{"table":"Incident"}]'
-weave view share <id>     # returns a wvv_ capability URL
-weave view unshare <id>
+weave view share <id>     # returns a /s/wvs_… link: a read-only share grant on the view
+weave view unshare <id>   # revokes it
 \`\`\`
 
-The share URL carries its own capability. Anyone holding it reads that view and nothing else — no account, no login, and the link stays open when the workspace requires authentication. The token never leaves through \`weave export\`: an imported view arrives unshared, and \`weave view share\` mints it a fresh link.
+A view's link is a share grant (**Share links** above). Anyone holding it reads that view and nothing else, with no account and no sign-in, and the link stays open when the workspace requires authentication. The token never leaves through \`weave export\`: an imported view arrives unshared, and \`weave view share\` mints it a fresh link.
 
 ## The relation map
 
@@ -1210,7 +1234,7 @@ weave audit --limit 50
 
 Three roles. An **Observer** (free) reads every page and comments: it may post a comment, under its own name, and delete a comment it made. An **Editor** (paid seat) also creates, edits and deletes rows and any comment, and never touches structure: no workspace, space, table or field definition. An **Architect** (paid) does everything, structure, accounts and the keystore included. "Free" and "paid seat" are labels: weave bills nobody. Before 2026-10-02 the three were \`reader\`, \`writer\` and \`admin\`; every open rewrites a stored old name to the new one, so every token keeps working, and \`--role admin|writer|reader\` is still accepted, with a deprecation note, for one more release. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
 
-\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\`, a view's share link, the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. An observer may read any page and write nothing but its own comments; an editor writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an architect token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
+\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\`, a share link (\`/s/<token>\`, and the old \`/view/<token>\` that redirects there), the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. An observer may read any page and write nothing but its own comments; an editor writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an architect token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
 
 Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard deletes and file deletions are not. In the app, \`⌘Z\` (Ctrl+Z) steps back the last change: a selection-bar trash comes back whole when nothing was written after it. A text box, an open cell and a document keep \`⌘Z\` as their own text undo. There is no redo.
 

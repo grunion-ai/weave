@@ -12,6 +12,7 @@ import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
+import * as Shares from './shares.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
@@ -991,6 +992,7 @@ export class Weave {
       if (role !== a.role) { a.role = role; changed = true; }
     }
     if (this.#scrubIdentityEmails()) changed = true;
+    if (Shares.liftViewShares(s)) changed = true;
     if (changed) this.save();
   }
 
@@ -1740,7 +1742,7 @@ export class Weave {
   }
 
   listViews() {
-    return Object.values(this.state.meta.views ?? {}).map(({ shareToken, ...pub }) => ({ ...pub, shared: !!shareToken }));
+    return Object.values(this.state.meta.views ?? {}).map((v) => ({ ...v, shared: this.listShares({ kind: 'view', id: v.id }).length > 0 }));
   }
 
   getView(id) {
@@ -1773,23 +1775,44 @@ export class Weave {
 
   shareView(id) {
     const v = this.getView(id);
-    v.shareToken ??= 'wvv_' + randomBytes(18).toString('base64url');
-    this.save();
-    this.#audit('view-shared', { name: v.name });
-    return { url: `/view/${v.shareToken}`, token: v.shareToken };
+    const held = this.listShares({ kind: 'view', id: v.id }).find((g) => g.mode === 'read' && g.visibility === 'public');
+    const g = held ?? this.mintShare({ scope: { kind: 'view', id: v.id }, label: v.name });
+    return { url: g.url, token: g.token };
   }
 
   unshareView(id) {
     const v = this.getView(id);
-    delete v.shareToken;
-    this.save();
-    this.#audit('view-unshared', { name: v.name });
+    for (const g of this.listShares({ kind: 'view', id: v.id })) this.revokeShare(g.id);
     return { id: v.id, shared: false };
   }
 
   viewByShareToken(token) {
-    if (!token) return null;
-    return Object.values(this.state.meta.views ?? {}).find((v) => v.shareToken === token) ?? null;
+    const g = this.shareByToken(token);
+    return g?.scope.kind === 'view' ? own(this.state.meta.views, g.scope.id) : null;
+  }
+
+  mintShare(opts = {}) {
+    const g = Shares.mint(this, opts);
+    this.save();
+    this.#audit('share-minted', Shares.auditDetail(g));
+    return g;
+  }
+
+  listShares(opts = {}) {
+    return Shares.list(this, opts ?? {});
+  }
+
+  revokeShare(id, { any = true } = {}) {
+    const { grant, changed } = Shares.revoke(this, id, { any });
+    if (changed) {
+      this.save();
+      this.#audit('share-revoked', Shares.auditDetail(grant));
+    }
+    return grant;
+  }
+
+  shareByToken(token) {
+    return Shares.byToken(this, token);
   }
 
   tableView(ref, patch = null) {
@@ -7519,6 +7542,7 @@ export class Weave {
     delete out.fileBlobs;
     for (const a of Object.values(out.meta.accounts ?? {})) delete a.tokenHash;
     for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
+    Shares.redactTokens(out);
     delete out.meta.sessions;
     delete out.meta.invites;
     delete out.meta.identityInvites;
@@ -7548,10 +7572,7 @@ export class Weave {
       const was = prior.accounts?.[a.id];
       if (was?.tokenHash && a.tokenHash === undefined) a.tokenHash = was.tokenHash;
     }
-    for (const v of Object.values(meta.views ?? {})) {
-      const was = prior.views?.[v.id];
-      if (was?.shareToken && v.shareToken === undefined) v.shareToken = was.shareToken;
-    }
+    Shares.keepTokens(meta, prior);
     for (const kind of ['sessions', 'identityInvites']) {
       if (meta[kind] !== undefined || !prior[kind]) continue;
       const kept = Object.entries(prior[kind]).filter(([, s]) => (kind === 'identityInvites' && !s.accountId) || meta.accounts?.[s.accountId]);

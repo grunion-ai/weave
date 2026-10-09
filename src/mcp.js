@@ -390,12 +390,24 @@ export const TOOLS = [
   },
   {
     name: 'weave_views',
-    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | share | unshare. Sharing mints a capability token; the /view/<token> URL renders that view read-only, even when the workspace requires auth.',
+    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | share | unshare. Sharing mints a read-only public share grant on the view (weave_shares lists it); the /s/<token> URL renders that view read-only, even when the workspace requires auth.',
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string' }, view: { type: 'string' }, name: { type: 'string' },
         blocks: { type: 'array', description: '[{table, where?, view?}]' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'weave_shares',
+    description: 'Share links: one grant opens one entity, table, space, saved view or the whole workspace to whoever holds its wvs_ token. action: list (kind?, id? narrow it) | mint (kind: entity|table|space|view|workspace, id, mode: read|edit|manage, default read: edit changes rows in scope, manage also adds and trashes them, neither touches schema; comment is reserved and refused; visibility: public|private, private opens only for a signed-in account; label; expiresAt ISO) | revoke (share: the grant id). The answer carries token and url (/s/<token>); a holder reads pages there or calls the scoped JSON API with Authorization: Bearer <token>. An observer may do neither; an editor revokes only its own links.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, mode: { type: 'string' },
+        visibility: { type: 'string' }, label: { type: 'string' }, expiresAt: { type: 'string' }, share: { type: 'string' },
       },
       required: ['action'],
     },
@@ -535,7 +547,7 @@ export const SUMMARY = {
   weave_unlink: 'unlink rows from a relation field',
   weave_get_doc: 'read a row\'s document as markdown',
   weave_set_doc: 'replace or append a row\'s document',
-  weave_doc_revisions: 'a document\'s version history',
+  weave_doc_revisions: 'a document\'s revisions',
   weave_doc_restore: 'write a past revision back',
   weave_add_comment: 'comment on a row',
   weave_delete_comment: 'delete a comment',
@@ -547,7 +559,7 @@ export const SUMMARY = {
   weave_files: 'read or delete an attached file',
   weave_update_space: 'rename a space; its description, icon, template mark',
   weave_template_list: 'the template spaces here',
-  weave_template_use: 'copy a template space into another workspace',
+  weave_template_use: 'copy a template space to a workspace',
   weave_delete_space: 'trash a space (hard: true purges)',
   weave_restore_space: 'restore a trashed space',
   weave_update_table: 'rename, icon, noun, field order, system fields, Σ row',
@@ -559,7 +571,8 @@ export const SUMMARY = {
   weave_rollback_field: 'put a field back to an earlier config',
   weave_delete_field: 'delete a field and its values',
   weave_apply_schema: 'apply a whole schema document (dryRun plans)',
-  weave_views: 'saved multi-table pages and share links',
+  weave_views: 'saved multi-table pages',
+  weave_shares: 'share links',
   weave_activity: 'the change feed',
   weave_audit: 'the schema and account audit log',
   weave_accounts: 'accounts, tokens, sessions, require-auth',
@@ -767,6 +780,16 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'unshare': return weave.unshareView(args.view);
         default: throw new Error(`Unknown views action '${args.action}' (list, get, create, delete, share, unshare)`);
       }
+    case 'weave_shares': {
+      const asRole = caller?.role ? Weave.roleName(caller.role) : null;
+      if (asRole === 'observer') throw new Error('weave_shares needs an editor or architect token');
+      switch (args.action) {
+        case 'list': return { shares: weave.listShares({ kind: args.kind ?? null, id: args.id ?? null }) };
+        case 'mint': return weave.mintShare({ scope: { kind: args.kind, id: args.id }, mode: args.mode, visibility: args.visibility, label: args.label, expiresAt: args.expiresAt });
+        case 'revoke': return weave.revokeShare(args.share, { any: asRole !== 'editor' });
+        default: throw new Error(`Unknown shares action '${args.action}' (list, mint, revoke)`);
+      }
+    }
     case 'weave_automations':
       switch (args.action) {
         case 'list': return { automations: weave.listAutomations(args.db ?? null) };

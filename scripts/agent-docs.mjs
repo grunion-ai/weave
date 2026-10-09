@@ -25,7 +25,7 @@ const AREAS = [
   ['Import and export', ['weave_export_csv', 'weave_export_json', 'weave_import_json']],
   ['Files', ['weave_attach_file', 'weave_files']],
   ['Automations', ['weave_create_automation', 'weave_automations']],
-  ['Share pages', ['weave_views']],
+  ['Share pages', ['weave_views', 'weave_shares']],
   ['History', ['weave_activity', 'weave_audit']],
   ['Accounts and secrets', ['weave_accounts', 'weave_keys']],
 ];

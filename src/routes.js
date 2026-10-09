@@ -1,5 +1,6 @@
 import { Weave, WeaveError, fileHeaders, logoType, inviteUrl } from './engine.js';
 import { handleApplet } from './applet.js';
+import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
@@ -200,16 +201,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     {
       const shareM = path.match(/^\/view\/([A-Za-z0-9_-]+)$/);
       if (shareM && rx.method === 'GET') {
-        const v = weave.viewByShareToken(shareM[1]);
-        if (!v) return out(404, 'This share link is not (or no longer) valid.');
-        const resolved = weave.resolveView(v.id);
-        const block = (b) => `<h2>${escapeHtml(b.table)}</h2><table><thead><tr>${
-          Object.keys(b.items[0]?.fields ?? { '—': 1 }).map((k) => `<th>${escapeHtml(k)}</th>`).join('')
-        }</tr></thead><tbody>${
-          b.items.map((e) => `<tr>${Object.values(e.fields).map((val) => `<td>${escapeHtml(Array.isArray(val) ? val.map((x) => x?.name ?? x).join(', ') : (val && typeof val === 'object' ? val.name ?? '' : val ?? ''))}</td>`).join('')}</tr>`).join('')
-        }</tbody></table>`;
-        return out(200, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(resolved.name)}</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:960px;margin:2rem auto;padding:0 16px;color:#1a1d21}table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0 0 24px}th,td{border:1px solid #d9dde3;padding:5px 9px;text-align:left}th{background:#f4f6f8}h1{font-size:22px}h2{font-size:15px;margin:20px 0 6px}footer{color:#6b7280;font-size:12px;margin-top:32px}</style><h1>${escapeHtml(resolved.name)}</h1>${resolved.blocks.map(block).join('')}<footer>Shared read-only from a weave workspace.</footer>`,
-          { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        if (!weave.shareByToken(shareM[1])) return out(404, 'This share link is not (or no longer) valid.');
+        return { status: 302, headers: { Location: `${wsPrefix}/s/${shareM[1]}`, 'Cache-Control': 'no-store' }, body: '' };
       }
     }
 
@@ -388,7 +381,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       path = '/api/mcp';
       mcpDoor = true;
     }
-    if (authz && /^Bearer /i.test(authz)) {
+    const door = shareDoor(path, authz);
+    const share = door ? weave.shareByToken(door.token) : null;
+    if (door) {
+      if (!share) return door.page ? notFound({ error: 'This share link is not (or no longer) valid', code: 'not-found' }) : deny(401, 'Invalid token');
+      if (share.visibility === 'private' && !sessionOn(weave)) return door.page ? wallPage() : deny(401, 'This share link is private: sign in to open it');
+      weave.actor = `share:${share.label || share.id.slice(0, 8)}`.slice(0, 120);
+      if (door.page) {
+        const hit = sharePage(weave, share, door.rest, { method: rx.method, prefix: wsPrefix });
+        if (hit.redirect) return { status: 302, headers: { Location: hit.redirect, 'Cache-Control': 'no-store' }, body: '' };
+        if (hit.html) return out(200, hit.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        if (hit.status === 405) return out(405, { error: 'A share page is read-only', code: 'method-not-allowed' }, { Allow: 'GET, HEAD' });
+        if (!hit.path) return notFound({ error: 'Not found', code: 'not-found' });
+        path = hit.path;
+      }
+    }
+    if (share) role = null;
+    else if (authz && /^Bearer /i.test(authz)) {
       const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = oauth ? `${account.name} via MCP` : account.name;
@@ -461,7 +470,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return Weave.roleName(sessionOn(w)?.role) ?? null;
     };
 
-    const resolveMention = (kind, ref) => {
+    const plainMention = (kind, ref) => {
       try {
         if (kind === 'workspace') {
           return { href: `${wsPrefix}/`, label: weave.state.meta.name || 'workspace' };
@@ -495,6 +504,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return null;
       }
     };
+    const resolveMention = share ? scopedMention(weave, share, plainMention, `${wsPrefix}/s/${share.token}`) : plainMention;
 
     if (rx.method === 'OPTIONS') {
       return { status: 204, headers: { Allow: 'GET,POST,PUT,PATCH,DELETE,OPTIONS' }, body: '' };
@@ -614,6 +624,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (path.startsWith('/api/')) {
         const body = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody() : {};
         const route = `${rx.method} ${path}`;
+        if (share) {
+          const gated = shareGate(weave, share, { method: rx.method, path, body, searchParams: rx.searchParams, viewerZone });
+          if (gated) return out(gated.status, gated.data);
+        }
 
         if (path.startsWith('/api/auth/')) {
           const ip = clientIp(rx);
@@ -971,6 +985,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/registry') return out(200, weave.registryReport());
         if (route === 'POST /api/registry/rebuild') return out(200, weave.rebuildRegistry());
+        if (route === 'GET /api/share') {
+          if (!share) return out(404, { error: 'No share token on this request: send Authorization: Bearer wvs_…', code: 'not-found' });
+          const { token, url, ...grant } = share;
+          return out(200, grant);
+        }
+        if (path.startsWith('/api/shares') && role === 'observer') return deny(403, 'An observer cannot mint, list or revoke share links');
+        if (route === 'GET /api/shares') return out(200, weave.listShares({ kind: rx.searchParams.get('kind'), id: rx.searchParams.get('id') }));
+        if (route === 'POST /api/shares') return out(201, weave.mintShare(body ?? {}));
+        if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'DELETE') {
+          return out(200, weave.revokeShare(decodeURIComponent(m[1]), { any: role !== 'editor' }));
+        }
         if (route === 'GET /api/views') return out(200, weave.listViews());
         if (route === 'POST /api/views') return out(201, weave.createView(body ?? {}));
         if ((m = path.match(/^\/api\/views\/([^/]+)$/))) {

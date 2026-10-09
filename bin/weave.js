@@ -201,6 +201,9 @@ Undo (entity mutations only — schema work is not undoable)
   undo --list [--limit 20]           Show what undo would revert, newest first
 Views & automations
   view list | get <id> | delete <id> | share <id> | unshare <id>
+  share list [--kind entity|table|space|view|workspace] [--id <id>]
+  share mint <kind> <id> [--mode read|edit|manage] [--private] [--label L] [--expires ISO]
+  share revoke <share id>             An architect's CLI revokes any link
   view create <name> --blocks '[{"table":"Task","where":[["Status","=","Open"]]}]'
   automation list [<table>] | describe [<table>] | delete <id>
   automation create <table> --name N --trigger '{json}' --actions '[json]'
@@ -833,6 +836,18 @@ async function main() {
       if (sub === 'unshare') return out(w.unshareView(ref));
       if (sub === 'list' || !sub) return out(w.listViews());
       throw new WeaveError(`Unknown view subcommand '${sub}'. Try: create, list, get, delete, share, unshare`);
+    }
+    case 'share': {
+      const [sub, a, b] = args;
+      if (sub === 'mint') {
+        return out(w.mintShare({
+          scope: { kind: a, id: a === 'workspace' ? null : b }, mode: flags.mode ?? 'read', visibility: flags.private ? 'private' : 'public',
+          label: typeof flags.label === 'string' ? flags.label : '', expiresAt: typeof flags.expires === 'string' ? flags.expires : null,
+        }));
+      }
+      if (sub === 'revoke') return out(w.revokeShare(a));
+      if (sub === 'list' || !sub) return out(w.listShares({ kind: typeof flags.kind === 'string' ? flags.kind : null, id: typeof flags.id === 'string' ? flags.id : null }));
+      throw new WeaveError(`Unknown share subcommand '${sub}'. Try: list, mint, revoke`);
     }
     case 'automation': {
       const [sub, ref] = args;

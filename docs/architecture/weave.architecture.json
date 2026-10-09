@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "6acc429bb4a2f9cb9c26719970b1a2416a7d31a5"
+      "revision": "208e5a8870b2b1f878db281100fd93f196ba0e48"
     },
     "views": [
       {
@@ -464,7 +464,8 @@
         "src/vocabulary.js and src/field-hints.js: one field vocabulary, schema-write hints",
         "src/ids.js, src/mark.js, src/workspace-name.js: ids, mark, names",
         "src/applet.js, src/bugreport.js, src/legal.js, src/mail.js, src/mail-send.js: routes, legal pages, invite mail",
-        "src/forms.js: Workspace/Forms rows, one-row submissions, the built-in weave docs workspace"
+        "src/forms.js: Workspace/Forms rows, one-row submissions, the built-in weave docs workspace",
+        "src/shares.js: share grants, the withinScope check and the /s/ pages"
       ]
     },
     {
