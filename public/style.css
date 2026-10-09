@@ -1225,13 +1225,17 @@ body.wv-activity-open #main { margin-right: 344px; }
   background: color-mix(in srgb, var(--tblr-body-bg) 94%, transparent);
   animation: loader-in .18s ease both;
 }
+#page-loader.boot { animation: loader-in .18s ease 500ms both; }
 #page-loader .mark-light, #page-loader .mark-dark { position: relative; width: 96px; height: 96px; }
 #page-loader svg { width: 100%; height: 100%; display: block; }
 #page-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-light { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-dark { display: block; }
 @keyframes loader-in { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #page-loader { animation: none; }
+  #page-loader.boot { animation: loader-in 0s linear 500ms both; }
+}
 #main > .table-wrap[aria-busy="true"] { opacity: .5; transition: opacity .12s ease; }
 #main > .grid-loader[hidden] { display: none; }
 #main > .grid-loader {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -266,6 +266,20 @@ export function loaderRopeHtml({ c1 = PALETTE.blue, sw = 3.5 } = {}) {
     mark("mark-light", PALETTE.ink, "rl") + mark("mark-dark", PALETTE.sky, "rd");
 }
 
+export function loaderBootHtml({ c1 = PALETTE.blue, sw = 3.5 } = {}) {
+  const mark = (cls, c2, id) => `<span class="${cls}">${loaderStill({ c1, c2, sw, id })}</span>`;
+  return mark("mark-light", PALETTE.ink, "bl") + mark("mark-dark", PALETTE.sky, "bd");
+}
+
+export const SHELL_LOADER = /<div id="page-loader"[^>]*>[\s\S]*?<\/div>/;
+
+export const SHELL_LOADER_HOST = '<div id="page-loader" class="boot" aria-hidden="true">';
+
+export function shellWithBootMark(html) {
+  if (!SHELL_LOADER.test(html)) throw new Error("the shell has no #page-loader host to fill");
+  return html.replace(SHELL_LOADER, SHELL_LOADER_HOST + loaderBootHtml() + "</div>");
+}
+
 export const LOADERS = {
   travel: { label: "Travel — endless rope through a fading window", fn: loaderTravel },
   twist: { label: "Twist-in — flat strands twist into the mark", fn: loaderTwist },
@@ -309,7 +323,7 @@ export const VARIANTS = [
   { file: "weave-lockup-email-dark.svg",  svg: lockupSvg("#eef2f8", { c1: "#3b82f6" }) },
 ];
 
-export function build(assetsDir, servedDir = assetsDir) {
+export function build(assetsDir, servedDir = assetsDir, shellFile = "") {
   const written = [];
   const put = (dir, file, text) => {
     mkdirSync(dir, { recursive: true });
@@ -318,6 +332,10 @@ export function build(assetsDir, servedDir = assetsDir) {
   };
   for (const { file, svg, served } of VARIANTS) put(served ? servedDir : assetsDir, file, svg);
   put(servedDir, "weave-loader-rope.html", loaderRopeHtml());
+  if (shellFile) {
+    writeFileSync(shellFile, shellWithBootMark(readFileSync(shellFile, "utf8")));
+    written.push(shellFile);
+  }
   return written;
 }
 
@@ -325,6 +343,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const here = dirname(fileURLToPath(import.meta.url));
   const assets = process.argv[2] || join(here, "assets");
   const served = process.argv[3] || join(here, "..", "public", "brand");
-  const files = build(assets, served);
+  const shell = process.argv[4] || join(here, "..", "public", "index.html");
+  const files = build(assets, served, shell);
   console.log(`wrote ${files.length} files:\n  ` + files.join("\n  "));
 }

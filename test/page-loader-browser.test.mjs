@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { launch, eventually } from './lib/browser.mjs';
+import { APP } from './lib/source.mjs';
+const LOADER_SHOW_AFTER_MS = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
 
 const s = await launch('page loader', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -91,4 +93,60 @@ if (s) {
       assert.ok(moved >= 1, `the rope stopped during the task: ${seen}`);
       await page.close();
     });
+
+  test('a boot whose rope never arrives still shows the brand mark past the threshold (Issue #391)', async (t) => {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    await page.route('**/brand/weave-loader-rope.html', (route) => route.abort());
+    await page.route('**/api/schema', async (route) => {
+      await new Promise((r) => setTimeout(r, 2500));
+      await route.continue();
+    });
+    await page.addInitScript(() => {
+      window.__shownAt = null;
+      document.addEventListener('animationstart', (e) => {
+        if (e.target?.id === 'page-loader' && window.__shownAt === null) window.__shownAt = performance.now();
+      }, true);
+    });
+    await page.goto(`${base}/`, { waitUntil: 'commit' });
+    const shown = await eventually(() => page.evaluate(() => window.__shownAt !== null), true, { timeout: 15000 });
+    assert.equal(shown, true, 'the loader never appeared, so the shell sat bare for the whole wait');
+    const opaque = await eventually(() => page.evaluate(() => Number(getComputedStyle(
+      document.querySelector('#page-loader')).opacity)), 1, { timeout: 5000, every: 25 });
+    assert.equal(opaque, 1, 'the loader faded in but never reached full opacity');
+    const seen = await page.evaluate(() => {
+      const host = document.querySelector('#page-loader');
+      const mark = host.querySelector('.mark-light, .mark-dark');
+      const box = mark.getBoundingClientRect();
+      return {
+        at: Math.round(window.__shownAt),
+        size: [box.width, box.height],
+        still: host.querySelectorAll('svg[role="img"]').length,
+        rope: host.querySelectorAll('.rope-a').length,
+        ready: typeof loading !== 'undefined' && loading.ready,
+      };
+    });
+    t.diagnostic(`shown at +${seen.at} ms, still marks ${seen.still}, rope spans ${seen.rope}`);
+    assert.ok(seen.at >= 400, `the gate let the loader through at +${seen.at} ms, before the ${LOADER_SHOW_AFTER_MS} ms threshold`);
+    assert.deepEqual(seen.size, [96, 96], 'the boot mark keeps the 96px box');
+    assert.equal(seen.rope, 0, 'the fetch was blocked for this page: nothing may come from it');
+    assert.equal(seen.ready, false, 'loading.ready still tracks the fetched rope only');
+    assert.ok(seen.still >= 1, 'the mark on screen is the one inlined in index.html');
+    await page.close();
+  });
+
+  test('a show after boot is not held back by the boot gate (Issue #391)', async (t) => {
+    const page = await openWithRope(browser, base, 'light');
+    const lag = await page.evaluate(async () => {
+      const host = document.querySelector('#page-loader');
+      const t0 = performance.now();
+      while (Number(getComputedStyle(host).opacity) < 1 && performance.now() - t0 < 2000) {
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+      return Math.round(performance.now() - t0);
+    });
+    t.diagnostic(`opaque ${lag} ms after the show`);
+    assert.ok(lag < 300,
+      `the show waited ${lag} ms: the one-shot boot delay replayed, so every wait reads late`);
+    await page.close();
+  });
 }

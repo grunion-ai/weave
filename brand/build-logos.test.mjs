@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rope, weaveSvg, VARIANTS, build, LOADERS, loaderSvg, LOADER_CYCLE_MS } from "./build-logos.mjs";
+import { rope, weaveSvg, VARIANTS, build, LOADERS, loaderSvg, LOADER_CYCLE_MS,
+  loaderBootHtml, loaderStill, shellWithBootMark, PALETTE } from "./build-logos.mjs";
 
 test("rope(3,8) produces the selected h3 geometry", () => {
   const r = rope(3, 8);
@@ -271,4 +272,33 @@ test("the shipped loaders are the weave-on pair, matching the marks' strands", (
   }
   assert.notEqual(dark.match(/id="(\w+)A"/)[1], light.match(/id="(\w+)A"/)[1],
     "distinct mask ids so both can be inlined in one document");
+});
+
+test("the boot mark is both themes of the mark at rest, nothing newly drawn (Issue #391)", () => {
+  const boot = loaderBootHtml();
+  assert.ok(boot.includes(`<span class="mark-light">${loaderStill({ c1: PALETTE.blue, c2: PALETTE.ink, id: "bl" })}</span>`));
+  assert.ok(boot.includes(`<span class="mark-dark">${loaderStill({ c1: PALETTE.blue, c2: PALETTE.sky, id: "bd" })}</span>`));
+  assert.ok(!boot.includes("<style>"), "the boot mark carries no CSS: index.html pays for every byte");
+  assert.ok(boot.length < 4000, `the boot mark must stay small, it is ${boot.length} bytes`);
+});
+
+test("shellWithBootMark fills the loader host and keeps the rest of the shell (Issue #391)", () => {
+  const shell = '<body>\n  <div id="page-loader" hidden aria-hidden="true"></div>\n  <script src="/app.js"></script>\n</body>\n';
+  const filled = shellWithBootMark(shell);
+  assert.ok(filled.includes(`<div id="page-loader" class="boot" aria-hidden="true">${loaderBootHtml()}</div>`));
+  assert.ok(!filled.includes("hidden aria-hidden"), "a hidden host cannot paint before app.js runs");
+  assert.ok(filled.includes('<script src="/app.js"></script>'), "the rest of the shell is untouched");
+  assert.equal(shellWithBootMark(filled), filled, "filling an already filled shell changes nothing");
+  assert.throws(() => shellWithBootMark("<body></body>"), /no #page-loader host/);
+});
+
+test("build() rewrites the shell it is given, and leaves it alone otherwise (Issue #391)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "weave-brand-shell-"));
+  const shell = join(dir, "index.html");
+  writeFileSync(shell, '<div id="page-loader" hidden aria-hidden="true"></div>\n');
+  const written = build(dir, dir, shell);
+  assert.ok(written.includes(shell), "the shell is reported as written");
+  assert.ok(readFileSync(shell, "utf8").includes(loaderBootHtml()));
+  const plain = mkdtempSync(join(tmpdir(), "weave-brand-noshell-"));
+  assert.equal(build(plain).length, VARIANTS.length + 1, "no shell argument, no shell write");
 });

@@ -1,0 +1,1 @@
+- The loading mark now ships inside `index.html` and appears on first paint once the 500 ms threshold passes, so a fresh load no longer sits on a bare shell while the app fetches the animated rope (Issue #391).

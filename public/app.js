@@ -11474,7 +11474,7 @@ async function initPageLoader() {
 
 function showPageLoader() {
   const host = $('#page-loader');
-  if (!host || !loading.ready) return;
+  if (!host) return;
   loading.shownAt = Date.now();
   host.hidden = false;
   host.setAttribute('aria-hidden', 'false');
@@ -11483,6 +11483,7 @@ function showPageLoader() {
 function hidePageLoader() {
   const host = $('#page-loader');
   if (!host) return;
+  host.classList.remove('boot');
   host.hidden = true;
   host.setAttribute('aria-hidden', 'true');
   loading.shownAt = 0;
@@ -11506,9 +11507,13 @@ async function withPageLoader(work) {
     if (loading.showTimer) {
       clearTimeout(loading.showTimer);
       loading.showTimer = null;
+      hidePageLoader();
       return;
     }
-    if (!loading.shownAt) return;
+    if (!loading.shownAt) {
+      hidePageLoader();
+      return;
+    }
     const elapsed = Date.now() - loading.shownAt;
     loading.hideTimer = setTimeout(hidePageLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
   }
