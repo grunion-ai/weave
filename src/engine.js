@@ -3342,10 +3342,27 @@ export class Weave {
     return found ? { account: found.a?.name ?? this.#memberName(found.i.email), issuer: found.i.issuer, expiresAt: found.i.expiresAt } : null;
   }
 
-  redeemIdentityInvite(code, { issuer, subject } = {}) {
+  invitesForEmail(email) {
+    const mail = String(email ?? '').trim().toLowerCase();
+    return mail ? this.listInvites().filter((i) => i.email === mail) : [];
+  }
+
+  acceptInvite(id, who = {}) {
+    const mail = String(who.email ?? '').trim().toLowerCase();
+    const i = Object.hasOwn(this.state.meta.identityInvites ?? {}, String(id)) ? this.state.meta.identityInvites[id] : null;
+    if (!mail || !i || i.accountId || i.email !== mail || Date.parse(i.expiresAt) <= Date.now()) throw new WeaveError('This invite expired, was already used or is for another address', 'not-found');
+    return this.#redeem({ h: String(id), i, a: null }, who);
+  }
+
+  redeemIdentityInvite(code, who = {}) {
     const found = this.#invite(code);
     if (!found) throw new WeaveError('This invite expired or was already used', 'not-found');
-    const { h, i, a } = found;
+    return this.#redeem(found, who);
+  }
+
+  #redeem({ h, i, a }, { issuer, subject, email } = {}) {
+    const mail = String(email ?? '').trim().toLowerCase();
+    const stamp = (x) => { if (mail) x.verifiedEmail = mail; return x; };
     const iss = this.#issuer(issuer);
     if (iss !== i.issuer) throw new WeaveError('This invite is for another provider', 'invalid');
     if (!subject) throw new WeaveError('The provider named nobody', 'invalid');
@@ -3360,7 +3377,7 @@ export class Weave {
     if (!a) {
       const { account } = this.createAccount({ name: this.#memberName(i.email), role: i.role });
       const row = this.state.meta.accounts[account.id];
-      row.identities = [{ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at }];
+      row.identities = [stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at })];
       this.save();
       this.#audit('member-joined', { name: row.name, role: row.role, invitedBy: i.invitedBy ?? null });
       const { tokenHash, ...pub } = row;
@@ -3368,10 +3385,10 @@ export class Weave {
     }
     let identity = (a.identities ?? []).find((x) => x.issuer === iss && x.subject === sub);
     if (!identity) {
-      identity = { issuer: iss, subject: sub, createdAt: at, lastUsedAt: at };
+      identity = stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at });
       (a.identities ??= []).push(identity);
       this.#audit('identity-linked', { name: a.name, issuer: iss });
-    } else identity.lastUsedAt = at;
+    } else stamp(identity).lastUsedAt = at;
     this.save();
     const { tokenHash, ...pub } = a;
     return pub;
@@ -3390,12 +3407,14 @@ export class Weave {
     return { unlinked, remaining: keep.length };
   }
 
-  accountForIdentity({ issuer, subject } = {}) {
+  accountForIdentity({ issuer, subject, email } = {}) {
     if (!issuer || !subject) return null;
     for (const a of Object.values(this.state.meta.accounts ?? {})) {
       const i = (a.identities ?? []).find((x) => x.issuer === issuer && x.subject === String(subject));
       if (!i) continue;
       i.lastUsedAt = nowISO();
+      const mail = String(email ?? '').trim().toLowerCase();
+      if (mail) i.verifiedEmail = mail;
       this.save();
       const { tokenHash, ...pub } = a;
       return pub;
@@ -7552,7 +7571,10 @@ export class Weave {
   exportJSON({ blobs: withBlobs = true } = {}) {
     const out = JSON.parse(JSON.stringify(this.state));
     delete out.fileBlobs;
-    for (const a of Object.values(out.meta.accounts ?? {})) delete a.tokenHash;
+    for (const a of Object.values(out.meta.accounts ?? {})) {
+      delete a.tokenHash;
+      for (const i of a.identities ?? []) delete i.verifiedEmail;
+    }
     for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
     Shares.redactTokens(out);
     delete out.meta.sessions;
@@ -7583,6 +7605,10 @@ export class Weave {
     for (const a of Object.values(meta.accounts ?? {})) {
       const was = prior.accounts?.[a.id];
       if (was?.tokenHash && a.tokenHash === undefined) a.tokenHash = was.tokenHash;
+      for (const i of a.identities ?? []) {
+        const mail = was?.identities?.find((x) => x.issuer === i.issuer && x.subject === i.subject)?.verifiedEmail;
+        if (mail && i.verifiedEmail === undefined) i.verifiedEmail = mail;
+      }
     }
     Shares.keepTokens(meta, prior);
     for (const kind of ['sessions', 'identityInvites']) {

@@ -1,6 +1,6 @@
 export const PRIVACY = `# Privacy policy
 
-*Effective date: 2026-10-02*
+*Effective date: 2026-10-08*
 
 The privacy of your data (and it is your data, not ours!) is a big deal to us. In this policy, we lay out: what data we collect and why; how your data is handled; and your rights with respect to your data. We promise we never sell your data: never have, never will.
 
@@ -18,7 +18,7 @@ Our guiding principle is to collect only what we need. Here's what that means in
 
 ### Identity and access
 
-We receive identifying information from the sign-in provider when you sign in to weave, such as the provider's identifier for your account, and we keep the name on your weave account. That's so we can match you to your account.
+We receive identifying information from the sign-in provider when you sign in to weave: the provider's identifier for your account and, when the provider has verified it, your email address. We keep one verified email address for each sign-in, along with the name on your weave account, and nothing else from your provider profile: no name, picture or other details. That's so we can match you to your account, show you the workspaces you have been invited to when you sign in, and send you the notifications you ask for. Deleting your account deletes the address.
 
 We'll never sell your personal information to third parties, and we won't use your name or company in marketing statements without your permission either.
 

@@ -693,7 +693,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (c.start) {
                 const token = newChallenge();
                 prune(starts);
-                starts.set(await digest(token), { issuer: who.issuer, subject: who.subject, expiresAt: Date.now() + START_TTL_MS });
+                starts.set(await digest(token), { issuer: who.issuer, subject: who.subject, email: who.email ?? null, expiresAt: Date.now() + START_TTL_MS });
                 return { status: 302, headers: { Location: '/start', 'Set-Cookie': `wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, 'Cache-Control': 'no-store' }, body: '' };
               }
               const root = hub.get(hub.defaultName);
@@ -768,15 +768,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (startDoor) {
           if (hostOrigin || wsPrefix || !oidc) return notFound({ error: 'Not found', code: 'not-found' });
           const held = cookies.wv_start ? starts.get(await digest(cookies.wv_start)) : null;
-          const me = held && held.expiresAt > Date.now() ? { issuer: held.issuer, subject: held.subject } : null;
+          const me = held && held.expiresAt > Date.now() ? { issuer: held.issuer, subject: held.subject, ...(held.email ? { email: held.email } : {}) } : null;
           if (route === 'GET /api/start' && !me) return out(200, { signedIn: false, provider: oidc.name }, { 'Cache-Control': 'no-store' });
           if (!me) return deny(401, 'Sign in first');
           const hubRoot = hub.get(hub.defaultName);
           const rootAccount = hubRoot.accountForIdentity(me);
           const accountIn = (w) => w.accountForIdentity(me) ?? (rootAccount ? { ...rootAccount, viaRoot: true } : null);
           if (route === 'GET /api/start') {
-            const rows = hub.entries().filter(([, w]) => !w.state.meta.deletedAt && accountIn(w))
-              .map(([name, w]) => ({ kind: 'workspace', name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}` }));
+            const live = hub.entries().filter(([, w]) => !w.state.meta.deletedAt);
+            const rows = [
+              ...live.filter(([, w]) => accountIn(w))
+                .map(([name, w]) => ({ kind: 'workspace', name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}` })),
+              ...live.filter(([, w]) => me.email && !w.accountForIdentity(me))
+                .flatMap(([name, w]) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: w.state.meta.title ?? name, role: i.role, invitedBy: i.invitedBy ?? null, accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` }))),
+            ];
             const accountName = rootAccount?.name ?? hub.entries().map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? null;
             return out(200, { signedIn: true, rows, canCreate: mayAdminister(hubRoot, rootAccount?.role), accountName, base: baseDomain }, { 'Cache-Control': 'no-store' });
           }
@@ -794,6 +799,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (baseDomain) return handOff(engine, account.id, '/', host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
             return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+          }
+          if ((m = path.match(/^\/api\/start\/invites\/([^/]+)\/([A-Za-z0-9_-]+)$/)) && rx.method === 'POST') {
+            const w = hub.bySlug(String(m[1]).toLowerCase());
+            if (!w) return notFound({ error: 'Not found', code: 'not-found' });
+            const account = w.acceptInvite(m[2], me);
+            return out(200, { name: w.state.meta.name, account: account.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
           }
           if (route === 'POST /api/start/workspaces') {
             if (!mayAdminister(hubRoot, rootAccount?.role)) return deny(403, 'Creating a workspace needs an architect on the hub root');

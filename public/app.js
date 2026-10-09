@@ -11045,7 +11045,9 @@ async function membersSection(parent) {
       el('div', { class: 'wv-members-sub' }, 'Accounts'),
       accounts.length ? el('div', { class: 'card list-rows' },
         ...accounts.map((a) => el('div', { class: 'list-row' },
-          el('span', {}, a.name), el('span', { class: 'spacer' }),
+          el('span', {}, a.name),
+          ...[...new Set((a.identities ?? []).map((i) => i.verifiedEmail).filter(Boolean))].map((mail) => el('span', { class: 'pid wv-member-email' }, mail)),
+          el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, ROLE_LABELS[a.role] ?? a.role))))
         : el('div', { class: 'wv-members-empty' }, 'None'),
       el('div', { class: 'wv-members-sub' }, 'Pending invites'),

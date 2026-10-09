@@ -497,8 +497,8 @@ Notes that save round trips:
   `POST /api/accounts/<name>/identities`) mints a one-time invite link that
   lasts 7 days. The person who opens it and signs in at the provider is
   linked by the provider's subject, and `unlink-identity` (`--subject`)
-  closes it. weave asks the provider for `openid` alone and stores no email
-  (Feature #252). The session is the same `wv_session` cookie; agents keep
+  closes it. weave asks the provider for `openid email` and keeps one
+  verified email per identity, no other profile claim (Feature #290). The session is the same `wv_session` cookie; agents keep
   the token.
 - **A new person is invited, never provisioned by signing in.** An architect
   invites an email with a role (`observer`, `editor` by default, or

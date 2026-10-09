@@ -277,7 +277,7 @@ on any instance, including the one you just started):
 - **Door C: sign in with a provider**: one OpenID Connect provider (Clerk,
   Auth0, Keycloak, Authentik, Google). `weave account link <name>` mints a
   one-time invite link that opens an account to it; signing in creates none,
-  and weave stores no email. `WEAVE_ORIGIN`
+  and weave keeps one verified email per sign-in identity, nothing else. `WEAVE_ORIGIN`
   names the origin the provider sends people back to. Agents keep `wv_` tokens.
 - **Deploy: Railway** — project from GitHub, volume at `/data`, variables,
   custom domain, one replica.

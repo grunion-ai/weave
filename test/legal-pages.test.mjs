@@ -29,7 +29,7 @@ test('with requireAuth on, an anonymous visitor reads /privacy and /terms', asyn
       assert.match(html, new RegExp(`<h1>${heading}</h1>`), `${path} lacks its heading`);
       assert.match(html, new RegExp(`<title>${heading}`), `${path} lacks its title`);
       assert.match(html, ATTRIBUTION, `${path} lacks the CC BY attribution`);
-      assert.match(html, /Effective date: 2026-10-02/);
+      assert.match(html, path === '/privacy' ? /Effective date: 2026-10-08/ : /Effective date: 2026-10-02/);
       assert.ok(html.includes('[Entity name]'), `${path} lost the entity placeholder`);
       assert.ok(!html.includes('[Contact email]'), `${path} still shows the contact email slot`);
       assert.ok(!html.includes('[Address]'), `${path} still shows the address slot`);
