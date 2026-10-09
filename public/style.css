@@ -2348,3 +2348,10 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .entity-fields .fieldrow :is(.form-control, .form-select, .picker-face, input.inline-edit, select.inline-edit) { min-height: 44px; }
   .bug-cat, .bug-mail, .bug-send { min-height: 44px; }
 }
+
+.ws-slug-form .form-label { margin-top: 10px; }
+.ws-slug-form .form-label:first-child { margin-top: 0; }
+.ws-slug-status[data-state="available"] { color: var(--tblr-green); }
+.ws-slug-status[data-state="taken"], .ws-slug-status[data-state="reserved"], .ws-slug-status[data-state="invalid"] { color: var(--tblr-red); }
+.ws-slug-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 13px; }
+.ws-slug-chips[hidden] { display: none; }

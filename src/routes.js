@@ -6,17 +6,17 @@ import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from '
 import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
-import { workspaceSlug } from './workspace-name.js';
+import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 import { renderAuthPage, renderRefusalPage } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import '../public/starter-core.js';
-const { WeaveStarters } = globalThis;
+const { WeaveStarters, WeaveSlugs } = globalThis;
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
-  return { 'not-found': 404, conflict: 409, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415 }[err.code] ?? 400;
+  return { 'not-found': 404, conflict: 409, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415 }[err.code] ?? 400;
 }
 
 const STARTED_AT = new Date().toISOString();
@@ -32,13 +32,27 @@ const plainLine = (md) => String(md ?? '').split('\n').map((l) => l.replace(/[*_
 const previewPageHtml = (head, authHref) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${head}<meta name="weave-route" content="${metaAttr(authHref)}" data-sign-in><link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg"><link rel="alternate icon" href="/brand/favicon.ico"><script src="/permalink.js"></script><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style></head><body><p><a href="${escapeHtml(authHref)}">Sign in</a> to open this in weave.</p></body></html>`;
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
-const LIMITS = { options: 10, failed: 5 };
+const HANDOFF_TTL_MS = 60 * 1000;
+const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
+const LIMITS = { options: 10, failed: 5, slugs: 60 };
+const START_TTL_MS = 30 * 60 * 1000;
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null } = {}) {
   const challenges = new Map();
-  const rates = { options: new Map(), failed: new Map() };
+  const handoffs = new Map();
+  const scheme = origin ? new URL(origin).protocol : 'http:';
+  const apexOrigin = origin ?? `${scheme}//${baseDomain}`;
+  const rates = { options: new Map(), failed: new Map(), slugs: new Map() };
+  const starts = new Map();
+  const prune = (map) => { const now = Date.now(); for (const [k, v] of map) if (v.expiresAt <= now) map.delete(k); };
+  const handOff = async (engine, accountId, next, host) => {
+    const code = newChallenge();
+    prune(handoffs);
+    handoffs.set(await digest(code), { engine, accountId, next, host, expiresAt: Date.now() + HANDOFF_TTL_MS });
+    return { status: 302, headers: { Location: `${scheme}//${host}.${baseDomain}/api/auth/handoff?code=${code}`, 'Cache-Control': 'no-store' }, body: '' };
+  };
   const limited = (kind, ip, { peek = false } = {}) => {
     const now = Date.now();
     const bucket = rates[kind];
@@ -124,6 +138,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
     let weave = hub.get(hub.defaultName);
     let wsPrefix = '';
+    const hostSlug = slugOfHost(rx.header('host'), baseDomain);
+    let hostOrigin = null;
+    if (hostSlug !== null) {
+      const holder = hub.bySlug(hostSlug);
+      if (!holder) {
+        const moved = hub.aliasOf(hostSlug);
+        const q = rx.searchParams?.toString();
+        if (moved) return { status: 301, headers: { Location: `${scheme}//${String(moved.state.meta.name).toLowerCase()}.${baseDomain}${encodeURI(rx.path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+        return notFound({ error: 'Not found', code: 'not-found' });
+      }
+      weave = holder;
+      hostOrigin = `${scheme}//${String(rx.header('host')).toLowerCase()}`;
+    }
     const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
     if (wsM && wsM[1] !== 'undefined') {
       const target = hub.get(wsM[1]) ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
@@ -136,8 +163,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     versionOf = weave;
     const updateWorkspace = (patch) => {
       const slug = patch.name != null ? workspaceSlug(patch.name) : null;
-      const held = slug ? hub.get(slug) : null;
-      if (held && held !== weave) throw new WeaveError(`Workspace '${slug}' already exists`, 'conflict');
+      const state = slug != null && patch.name !== weave.state.meta.name ? hub.slugState(slug, weave) : 'available';
+      if (state !== 'available') throw new WeaveError(WeaveSlugs.apiMessage(state, slug), `slug_${state}`);
       const was = weave.state.meta.name;
       const ws = weave.updateWorkspace(patch);
       if (ws.name !== was) hub.rename(was, ws.name);
@@ -203,8 +230,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (signedOut && m && !UUID_RE.test(m[2])) return null;
       const ws = weave.state.meta;
       const site = ws.title ?? ws.name;
-      const base = origin ?? `http://${rx.header('host')}`;
-      const home = `/w/${ws.name || hub.defaultName}`;
+      const canonical = baseDomain && ws.name ? `${scheme}//${String(ws.name).toLowerCase()}.${baseDomain}` : null;
+      const base = canonical ?? origin ?? `http://${rx.header('host')}`;
+      const home = canonical ? '' : `/w/${ws.name || hub.defaultName}`;
       let image = `${base}/brand/weave-mark-512.png`;
       if (ws.logo) {
         try {
@@ -276,7 +304,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
     const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms');
     const previewLogo = path === '/api/workspace/logo' && ['GET', 'HEAD'].includes(rx.method) && !!weave.state.meta.linkPreview;
-    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || previewLogo
+    const startDoor = path === '/start' || path === '/api/start' || path.startsWith('/api/start/');
+    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || previewLogo || startDoor
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
     let session = null;
@@ -309,14 +338,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return notFound({ error: oidc ? 'No such protected resource' : 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
       }
       return out(200, {
-        resource: mcpOrigin(rx) + rest,
+        resource: (hostOrigin ?? mcpOrigin(rx)) + rest,
         authorization_servers: [oidc.issuer],
         scopes_supported: ['openid'],
         bearer_methods_supported: ['header'],
       });
     }
     if (path === '/mcp') {
-      if (oidc) mcpChallenge = `Bearer resource_metadata="${mcpOrigin(rx)}/.well-known/oauth-protected-resource${wsPrefix}/mcp"`;
+      if (oidc) mcpChallenge = `Bearer resource_metadata="${hostOrigin ?? mcpOrigin(rx)}/.well-known/oauth-protected-resource${wsPrefix}/mcp"`;
       const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
       if (oidc && !bearer) return deny(401, `Sign in with ${oidc.name} to use this MCP server`);
       if (oidc && !bearer.startsWith('wv_')) {
@@ -359,6 +388,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         ? deny(401, 'Session expired or revoked')
         : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(cookieName(weave), rx), 'Cache-Control': 'no-store' }, body: '' };
     } else if (weave.state.meta.requireAuth && !openDoor) {
+      if (baseDomain && oidc && !hostOrigin && !wsPrefix && path === '/' && ['GET', 'HEAD'].includes(rx.method)) return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
       if (path.startsWith('/api/')) return deny(401, 'This workspace requires authentication');
       const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -532,6 +562,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
 
+      if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
+        const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
+        if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
+        return notFound({ error: 'Not found', code: 'not-found' });
+      }
+
       if (legalPage) {
         const [title, markdown] = path === '/privacy' ? ['Privacy policy', PRIVACY] : ['Terms of Service', TERMS];
         return out(200, renderDocumentPage({ title, subtitle: 'weave', markdown }), { 'Content-Type': 'text/html; charset=utf-8' });
@@ -553,16 +589,24 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
             const tooMany = () => refusal(429, 'Too many sign-in attempts', 'Wait a minute, then sign in again.');
             const redirectUri = `${originFor(rx)}/api/auth/oidc/callback`;
+            if (hostOrigin && route === 'GET /api/auth/oidc/start') {
+              const q = new URLSearchParams(rx.searchParams ?? '');
+              q.set('handoff', String(weave.state.meta.name).toLowerCase());
+              return { status: 302, headers: { Location: `${apexOrigin}/w/${encodeURIComponent(weave.state.meta.name)}/api/auth/oidc/start?${q}`, 'Cache-Control': 'no-store' }, body: '' };
+            }
             if (route === 'GET /api/auth/oidc/start') {
               if (limited('options', ip)) return tooMany();
+              const handoff = rx.searchParams?.get('handoff') || null;
+              if (handoff && (!baseDomain || hub.bySlug(handoff) !== weave)) return refusal(400, 'This sign-in link is not valid', 'Start again from the sign-in page of the workspace you want.');
               const n = String(rx.searchParams?.get('next') ?? '');
-              const next = /^\/(?![/\\])/.test(n) ? n : `${wsPrefix}/`;
+              const next = /^\/(?![/\\])/.test(n) ? n : handoff ? '/' : `${wsPrefix}/`;
               const invite = rx.searchParams?.get('invite') || null;
               if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
               let trip;
               try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
               const binder = newChallenge();
-              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix }, trip.state);
+              const start = !hostOrigin && !wsPrefix && rx.searchParams?.has('start');
+              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix, handoff, start }, trip.state);
               const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
               return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
             }
@@ -580,9 +624,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 if (!(err instanceof WeaveError)) return refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
                 return refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
               }
+              if (c.start) {
+                const token = newChallenge();
+                prune(starts);
+                starts.set(await digest(token), { issuer: who.issuer, subject: who.subject, expiresAt: Date.now() + START_TTL_MS });
+                return { status: 302, headers: { Location: '/start', 'Set-Cookie': `wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, 'Cache-Control': 'no-store' }, body: '' };
+              }
               const root = hub.get(hub.defaultName);
               let account = null;
-              const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
+              const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
               const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
               let engine = null;
               if (c.invite) {
@@ -600,10 +650,24 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 const ws = c.holder.state.meta.name;
                 return refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [await differentAccount(), signInAgain()]);
               }
+              if (c.handoff) return handOff(engine, account.id, c.next, c.handoff);
               const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
               return { status: 302, headers: { Location: c.next, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
             }
             return notFound({ error: 'Unknown auth route', code: 'not-found' });
+          }
+          if (route === 'GET /api/auth/handoff' && hostOrigin) {
+            if (limited('failed', ip, { peek: true })) return tooMany();
+            const key = await digest(String(rx.searchParams?.get('code') ?? ''));
+            const h = handoffs.get(key);
+            handoffs.delete(key);
+            if (!h || h.expiresAt <= Date.now() || h.host !== hostSlug) {
+              noteFailure(ip);
+              return out(400, renderRefusalPage({ title: 'This sign-in expired or was already used', lines: 'Start again from the sign-in page.', actions: [{ href: '/auth?signed-out=1', label: 'Back to sign in' }] }),
+                { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+            }
+            const minted = h.engine.createSession(h.accountId, { ua: rx.header('user-agent') });
+            return { status: 302, headers: { Location: h.next, 'Set-Cookie': sessionCookie(cookieName(h.engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
           }
           if (route === 'POST /api/auth/logout') {
             const everywhere = ['1', 'true'].includes(rx.searchParams?.get('everywhere') ?? '');
@@ -632,6 +696,53 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, engine.revokeSession(account.id, { id: m[1] }));
           }
           return notFound({ error: 'Unknown auth route', code: 'not-found' });
+        }
+
+        if (startDoor) {
+          if (hostOrigin || wsPrefix || !oidc) return notFound({ error: 'Not found', code: 'not-found' });
+          const held = cookies.wv_start ? starts.get(await digest(cookies.wv_start)) : null;
+          const me = held && held.expiresAt > Date.now() ? { issuer: held.issuer, subject: held.subject } : null;
+          if (route === 'GET /api/start' && !me) return out(200, { signedIn: false, provider: oidc.name }, { 'Cache-Control': 'no-store' });
+          if (!me) return deny(401, 'Sign in first');
+          const hubRoot = hub.get(hub.defaultName);
+          const rootAccount = hubRoot.accountForIdentity(me);
+          const accountIn = (w) => w.accountForIdentity(me) ?? (rootAccount ? { ...rootAccount, viaRoot: true } : null);
+          if (route === 'GET /api/start') {
+            const rows = hub.entries().filter(([, w]) => !w.state.meta.deletedAt && accountIn(w))
+              .map(([name, w]) => ({ kind: 'workspace', name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}` }));
+            const accountName = rootAccount?.name ?? hub.entries().map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? null;
+            return out(200, { signedIn: true, rows, canCreate: mayAdminister(hubRoot, rootAccount?.role), accountName, base: baseDomain }, { 'Cache-Control': 'no-store' });
+          }
+          if (route === 'GET /api/start/slug') {
+            if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
+            const slug = String(rx.searchParams?.get('slug') ?? '');
+            return out(200, { slug, state: hub.slugState(slug), base: baseDomain }, { 'Cache-Control': 'no-store' });
+          }
+          if ((m = path.match(/^\/api\/start\/open\/([^/]+)$/)) && rx.method === 'GET') {
+            const w = hub.bySlug(String(m[1]).toLowerCase());
+            const account = w && accountIn(w);
+            if (!account) return deny(403, 'This sign-in opens no account on that workspace');
+            const engine = account.viaRoot ? hubRoot : w;
+            const host = String(w.state.meta.name).toLowerCase();
+            if (baseDomain) return handOff(engine, account.id, '/', host);
+            const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
+            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+          }
+          if (route === 'POST /api/start/workspaces') {
+            if (!mayAdminister(hubRoot, rootAccount?.role)) return deny(403, 'Creating a workspace needs an architect on the hub root');
+            const w = hub.create(body?.name, { slug: body?.slug ?? null });
+            const owner = w.createAccount({ name: rootAccount?.name ?? 'owner', role: 'architect' }).account;
+            w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
+            return out(201, { name: w.state.meta.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
+          }
+          return notFound({ error: 'Not found', code: 'not-found' });
+        }
+
+        if (route === 'GET /api/workspaces/slug') {
+          if (!role && !session && hub.get(hub.defaultName).state.meta.requireAuth) return deny(401, 'Sign in to check a workspace address');
+          if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
+          const slug = String(rx.searchParams?.get('slug') ?? '');
+          return out(200, { slug, state: hub.slugState(slug), base: baseDomain }, { 'Cache-Control': 'no-store' });
         }
 
         if (route === 'GET /api/health') {
@@ -671,10 +782,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/workspaces') {
           const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
-          return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name))));
+          return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name)))
+            .map((x) => (baseDomain ? { ...x, host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : x)));
         }
         if (route === 'POST /api/workspaces') {
-          const w = hub.create(body.name);
+          const w = hub.create(body.name, { slug: body.slug ?? null });
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/` });
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
@@ -710,7 +822,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (rx.method === 'POST') {
             const name = WeaveStarters.workspaceName(body?.name) || byDefault;
-            if (taken(name)) throw new WeaveError(`Workspace '${name}' already exists`, 'conflict');
+            if (taken(name)) throw new WeaveError(slugTaken(name).message, 'slug_taken');
             const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
             if (body?.template && !template) throw new WeaveError(`Unknown template '${body.template}'`, 'invalid');
             let table = null;

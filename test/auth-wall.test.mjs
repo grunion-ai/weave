@@ -73,9 +73,9 @@ async function serve() {
   return { w, task, view, share, admin, writer, reader, call, stop };
 }
 
-const OPEN = (method, path) => path === '/api/health' || path === '/auth'
+const OPEN = (method, path) => path === '/api/health' || path === '/auth' || path === '/start' || /^\/api\/start(\/|$)/.test(path)
   || (method === 'GET' && (path === '/privacy' || path === '/terms'))
-  || /^\/api\/auth\/oidc\/(start|callback)$/.test(path)
+  || /^\/api\/auth\/(oidc\/(start|callback)|handoff)$/.test(path)
   || path === '/api/auth/logout'
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || path.startsWith('/t/')
     || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)));

@@ -232,7 +232,8 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      is on and the host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
      WEAVE_AUTO_UPDATE=1 (supervise: install each newer release from grunion-ai/weave main in place),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
-     others get 421), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
+     others get 421), WEAVE_BASE_DOMAIN (e.g. weave.example.com: each workspace also answers at <slug>.<base>,
+     sign-in finishes at WEAVE_ORIGIN and hands a one-time code back to the workspace host), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
      with one OpenID Connect provider, redirect URI <origin>/api/auth/oidc/callback; /mcp then signs agents in through it),
      WEAVE_MAIL_KEY + WEAVE_MAIL_FROM (email each invite through Resend; both or neither),
      WEAVE_MCP_ORIGINS (comma-separated other origins the /mcp door answers on), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
