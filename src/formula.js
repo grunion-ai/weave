@@ -58,6 +58,7 @@ const FUNCS = {
       .map((x) => x.v);
   },
 };
+Object.setPrototypeOf(FUNCS, null);
 
 function truthy(v) {
   return !(v == null || v === false || v === 0 || v === '');
