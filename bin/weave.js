@@ -203,7 +203,8 @@ Views & automations
   view list | get <id> | delete <id> | share <id> | unshare <id>
   share list [--kind entity|table|space|view|workspace] [--id <id>]
   share mint <kind> <id> [--mode read|edit|manage] [--private] [--label L] [--expires ISO]
-  share revoke <share id>             An architect's CLI revokes any link
+  share renew <share id>              Thirty more days on the same link
+  share revoke <share id>             Ends a link
   view create <name> --blocks '[{"table":"Task","where":[["Status","=","Open"]]}]'
   automation list [<table>] | describe [<table>] | delete <id>
   automation create <table> --name N --trigger '{json}' --actions '[json]'
@@ -846,8 +847,9 @@ async function main() {
         }));
       }
       if (sub === 'revoke') return out(w.revokeShare(a));
+      if (sub === 'renew') return out(w.renewShare(a));
       if (sub === 'list' || !sub) return out(w.listShares({ kind: typeof flags.kind === 'string' ? flags.kind : null, id: typeof flags.id === 'string' ? flags.id : null }));
-      throw new WeaveError(`Unknown share subcommand '${sub}'. Try: list, mint, revoke`);
+      throw new WeaveError(`Unknown share subcommand '${sub}'. Try: list, mint, renew, revoke`);
     }
     case 'automation': {
       const [sub, ref] = args;

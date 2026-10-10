@@ -44,7 +44,7 @@ test('a grant has the ruled shape, a wvs_ token kept in plaintext, and a /s/ lin
   assert.equal(g.label, 'For the vendor');
   assert.equal(g.createdBy, 'kyle');
   assert.ok(!Number.isNaN(Date.parse(g.createdAt)));
-  assert.equal(g.expiresAt, null);
+  assert.ok(Math.abs(Date.parse(g.expiresAt) - (Date.now() + 30 * 86400000)) < 60000, 'thirty days unless renewed');
   assert.equal(g.revokedAt, null);
   assert.equal(g.url, `/s/${g.token}`);
   assert.equal(w.state.meta.shares[g.id].token, g.token, 'stored in plaintext so the dialog can show the link again');
@@ -389,27 +389,26 @@ test('a private link opens only for a signed-in account', async () => {
   }
 });
 
-test('REST mint, list and revoke follow the roles: editors mint, architects revoke any, observers neither', async () => {
+test('REST mint, list and revoke follow the roles: architects only, editors and observers neither (Issue #496)', async () => {
   const { w, one, call, architect, editor, observer, stop } = await serve();
   try {
     const scope = { kind: 'entity', id: one.id };
-    assert.equal((await call('POST', '/api/shares', { token: observer, body: { scope } })).status, 403);
-    assert.equal((await call('GET', '/api/shares', { token: observer })).status, 403);
-    const made = await call('POST', '/api/shares', { token: editor, body: { scope, mode: 'edit', label: 'bot link' } });
+    for (const token of [observer, editor]) {
+      assert.equal((await call('POST', '/api/shares', { token, body: { scope } })).status, 403);
+      assert.equal((await call('GET', '/api/shares', { token })).status, 403);
+    }
+    const made = await call('POST', '/api/shares', { token: architect, body: { scope, mode: 'edit', label: 'root link' } });
     assert.equal(made.status, 201);
     const g = await made.json();
     assert.match(g.token, /^wvs_/);
     assert.equal(g.url, `/s/${g.token}`);
-    assert.equal(g.createdBy, 'bot');
-    assert.equal((await call('POST', '/api/shares', { token: editor, body: { scope, mode: 'comment' } })).status, 403);
-    const listed = await (await call('GET', `/api/shares?kind=entity&id=${one.id}`, { token: editor })).json();
+    assert.equal(g.createdBy, 'root');
+    assert.equal((await call('POST', '/api/shares', { token: architect, body: { scope, mode: 'comment' } })).status, 403);
+    const listed = await (await call('GET', `/api/shares?kind=entity&id=${one.id}`, { token: architect })).json();
     assert.deepEqual(listed.map((x) => x.id), [g.id]);
-    w.actor = 'kyle';
-    const theirs = w.mintShare({ scope });
-    assert.equal((await call('DELETE', `/api/shares/${theirs.id}`, { token: editor })).status, 403, 'an editor revokes only its own');
-    assert.equal((await call('DELETE', `/api/shares/${g.id}`, { token: editor })).status, 200);
-    assert.equal((await call('DELETE', `/api/shares/${theirs.id}`, { token: observer })).status, 403);
-    assert.equal((await call('DELETE', `/api/shares/${theirs.id}`, { token: architect })).status, 200);
+    assert.equal((await call('DELETE', `/api/shares/${g.id}`, { token: editor })).status, 403);
+    assert.equal((await call('DELETE', `/api/shares/${g.id}`, { token: observer })).status, 403);
+    assert.equal((await call('DELETE', `/api/shares/${g.id}`, { token: architect })).status, 200);
     assert.equal(w.listShares().length, 0);
     for (const [m, p] of [['GET', '/api/shares'], ['POST', '/api/shares'], ['GET', '/api/share']]) {
       assert.equal((await call(m, p)).status, 401, `${m} ${p} is walled for nobody`);
@@ -442,9 +441,11 @@ test('the MCP tool and the CLI verb mint, list and revoke', () => {
   const g = dispatchTool(w, 'weave_shares', { action: 'mint', kind: 'entity', id: one.id, mode: 'edit', label: 'agent' });
   assert.match(g.token, /^wvs_/);
   assert.equal(dispatchTool(w, 'weave_shares', { action: 'list' }).shares.length, 1);
-  assert.throws(() => dispatchTool(w, 'weave_shares', { action: 'list' }, { caller: { role: 'observer' } }), /editor or architect/);
+  w.createAccount({ name: 'root', role: 'architect' });
+  assert.throws(() => dispatchTool(w, 'weave_shares', { action: 'list' }, { caller: { role: 'observer' } }), /architect/);
+  assert.throws(() => dispatchTool(w, 'weave_shares', { action: 'list' }, { caller: { role: 'editor' } }), /architect/);
   assert.ok(dispatchTool(w, 'weave_shares', { action: 'revoke', share: g.id }).revokedAt);
-  assert.throws(() => dispatchTool(w, 'weave_shares', { action: 'nope' }), /list, mint, revoke/);
+  assert.throws(() => dispatchTool(w, 'weave_shares', { action: 'nope' }), /list, mint, renew, revoke/);
 
   const dir = mkdtempSync(join(tmpdir(), 'weave-share-cli-'));
   try {

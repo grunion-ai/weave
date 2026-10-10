@@ -1015,11 +1015,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const { token, url, ...grant } = share;
           return out(200, grant);
         }
-        if (path.startsWith('/api/shares') && role === 'observer') return deny(403, 'An observer cannot mint, list or revoke share links');
+        if (path.startsWith('/api/shares') && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Share links are minted, listed, renewed and revoked by an architect');
         if (route === 'GET /api/shares') return out(200, weave.listShares({ kind: rx.searchParams.get('kind'), id: rx.searchParams.get('id') }));
         if (route === 'POST /api/shares') return out(201, weave.mintShare(body ?? {}));
         if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'DELETE') {
-          return out(200, weave.revokeShare(decodeURIComponent(m[1]), { any: role !== 'editor' }));
+          return out(200, weave.revokeShare(decodeURIComponent(m[1])));
+        }
+        if ((m = path.match(/^\/api\/shares\/([^/]+)\/renew$/)) && rx.method === 'POST') {
+          return out(200, weave.renewShare(decodeURIComponent(m[1])));
         }
         if (route === 'GET /api/views') return out(200, weave.listViews());
         if (route === 'POST /api/views') return out(201, weave.createView(body ?? {}));
@@ -1027,11 +1030,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'GET') return out(200, weave.resolveView(m[1]));
           if (rx.method === 'DELETE') return out(200, weave.deleteView(m[1]));
         }
-        if ((m = path.match(/^\/api\/views\/([^/]+)\/share$/)) && rx.method === 'POST') {
-          return out(201, weave.shareView(m[1]));
-        }
-        if ((m = path.match(/^\/api\/views\/([^/]+)\/share$/)) && rx.method === 'DELETE') {
-          return out(200, weave.unshareView(m[1]));
+        if ((m = path.match(/^\/api\/views\/([^/]+)\/share$/)) && ['POST', 'DELETE'].includes(rx.method)) {
+          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Sharing a view, or ending its link, needs an architect');
+          return rx.method === 'POST' ? out(201, weave.shareView(m[1])) : out(200, weave.unshareView(m[1]));
         }
         if (route === 'GET /api/audit') {
           return out(200, weave.listAudit({

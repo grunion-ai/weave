@@ -68,7 +68,7 @@ const SURFACE = [
   ['file.read', ['readFile'], 'weave_files', 'file read', ['GET /api/files/:ref']],
   ['file.delete', ['deleteFile'], 'weave_files', 'file delete', ['DELETE /api/entities/:ref/files/:ref']],
   ['view', ['createView', 'listViews', 'getView', 'deleteView', 'shareView', 'unshareView', 'resolveView'], 'weave_views', 'view', ['GET /api/views', 'POST /api/views', 'GET /api/views/:ref', 'DELETE /api/views/:ref', 'POST /api/views/:ref/share', 'DELETE /api/views/:ref/share']],
-  ['share', ['mintShare', 'listShares', 'revokeShare'], 'weave_shares', 'share', ['GET /api/shares', 'POST /api/shares', 'DELETE /api/shares/:ref', 'GET /api/share']],
+  ['share', ['mintShare', 'listShares', 'renewShare', 'revokeShare'], 'weave_shares', 'share', ['GET /api/shares', 'POST /api/shares', 'POST /api/shares/:ref/renew', 'DELETE /api/shares/:ref', 'GET /api/share']],
   ['automation.create', ['createAutomation'], 'weave_create_automation', 'automation create', ['POST /api/automations']],
   ['automation.manage', ['listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'], 'weave_automations', 'automation', ['GET /api/automations', 'PATCH /api/automations/:ref', 'DELETE /api/automations/:ref']],
   ['activity', ['activityFeed', 'getActivity'], 'weave_activity', 'activity', ['GET /api/activity', 'GET /api/activity/:rest']],
