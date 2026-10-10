@@ -1,0 +1,1 @@
+- **The workspace logo tool drops its `mime` argument** (Issue #545): a logo is typed from its bytes, so `weave_workspace` no longer advertises an argument the engine ignored.
