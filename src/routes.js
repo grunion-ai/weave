@@ -318,6 +318,47 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     let role = null;
     let session = null;
     const cookies = parseCookies(rx.header('cookie'));
+    const startRoot = baseDomain ? apexOrigin : '';
+    const sameLogin = (a, b) => a.issuer === b.issuer && a.subject === b.subject;
+    const findWorkspaces = (logins) => {
+      const hubRoot = hub.get(hub.defaultName);
+      const live = hub.entries().filter(([, w]) => !w.state.meta.deletedAt);
+      const rootOf = (me) => hubRoot.accountForIdentity(me);
+      const accountFor = (w, me) => w.accountForIdentity(me) ?? (rootOf(me) ? { ...rootOf(me), viaRoot: true } : null);
+      const opener = (w) => logins.find((me) => accountFor(w, me)) ?? null;
+      const label = (me) => me.email ?? live.map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? me.subject;
+      const title = (name, w) => w.state.meta.title ?? name;
+      const rows = [
+        ...live.filter(([, w]) => opener(w))
+          .map(([name, w]) => ({ kind: 'workspace', name, title: title(name, w), login: label(opener(w)), open: `/api/start/open/${encodeURIComponent(name)}` })),
+        ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
+          .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
+      ];
+      const names = live.filter(([, w]) => opener(w) && !isDocsWorkspace(w)).map(([name]) => name.toLowerCase());
+      const creator = logins.find((me) => mayAdminister(hubRoot, rootOf(me)?.role)) ?? null;
+      const accountName = (creator && rootOf(creator).name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@')) ?? null;
+      return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, creator, canCreate: !!creator, accountName, hubRoot };
+    };
+    const heldStart = async () => {
+      prune(starts);
+      const key = cookies.wv_start ? await digest(cookies.wv_start) : null;
+      const held = key ? starts.get(key) : null;
+      return held ? { key, token: cookies.wv_start, logins: held.logins } : null;
+    };
+    const holdLogin = async (who) => {
+      const held = await heldStart();
+      const login = { issuer: who.issuer, subject: who.subject, email: who.email ?? null };
+      const logins = (held?.logins ?? []).map((l) => (sameLogin(l, login) ? login : l));
+      if (!logins.some((l) => sameLogin(l, login))) logins.push(login);
+      const token = held?.token ?? newChallenge();
+      starts.set(held?.key ?? await digest(token), { logins, expiresAt: Date.now() + START_TTL_MS });
+      return { token, logins };
+    };
+    const railDomain = baseDomain ? `; Domain=.${baseDomain}` : '';
+    const railCookie = (names) => `wv_rail=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`;
+    const clearRail = () => `wv_rail=; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=0${secureFlag(rx)}`;
+    const startCookies = ({ token, logins }) => [`wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, railCookie(findWorkspaces(logins).names)];
+    const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
     const resolved = new Map();
     const ownSession = (w) => {
       if (resolved.has(w)) return resolved.get(w);
@@ -668,6 +709,29 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               const next = /^\/(?![/\\])/.test(n) ? n : handoff ? '/' : `${wsPrefix}/`;
               const invite = rx.searchParams?.get('invite') || null;
               if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
+              const heldLogins = invite && !rx.searchParams?.has('pick') ? (await heldStart())?.logins ?? [] : [];
+              if (heldLogins.length) {
+                const again = (extra) => { const u = new URLSearchParams(rx.searchParams ?? ''); for (const [k, v] of Object.entries(extra)) u.set(k, v); return `${mount}/api/auth/oidc/start?${u}`; };
+                const another = { label: WeaveSlugs.COPY.start.otherLogin, href: again({ fresh: '1', pick: '1' }) };
+                const as = rx.searchParams?.get('as');
+                if (as == null) {
+                  const labels = findWorkspaces(heldLogins).logins;
+                  return refusal(200, WeaveSlugs.fill(WeaveSlugs.COPY.start.chooserTitle, { workspace: weave.state.meta.name }), WeaveSlugs.COPY.start.chooserLead,
+                    [...labels.map((login, i) => ({ label: WeaveSlugs.fill(WeaveSlugs.COPY.start.acceptAs, { login }), href: again({ as: String(i) }) })), another]);
+                }
+                const me = heldLogins[Number(as)];
+                if (!me) return refusal(400, 'This choice expired', 'Open the invite link again.', [another]);
+                let account;
+                try { account = weave.redeemIdentityInvite(invite, me); } catch (err) {
+                  noteFailure(ip);
+                  if (err.code === 'conflict') return refusal(409, 'This login already opens another account', 'The invite was not used. Accept it with the login it was meant for.', [another, signInAgain()]);
+                  return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
+                }
+                const kept = startCookies(await holdLogin(me));
+                if (handoff) return withCookies(await handOff(weave, account.id, next, handoff), kept);
+                const minted = weave.createSession(account.id, { ua: rx.header('user-agent') });
+                return { status: 302, headers: { Location: next, 'Set-Cookie': [sessionCookie(cookieName(weave), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
+              }
               let trip;
               try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
               const binder = newChallenge();
@@ -690,12 +754,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 if (!(err instanceof WeaveError)) return refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
                 return refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
               }
-              if (c.start) {
-                const token = newChallenge();
-                prune(starts);
-                starts.set(await digest(token), { issuer: who.issuer, subject: who.subject, email: who.email ?? null, expiresAt: Date.now() + START_TTL_MS });
-                return { status: 302, headers: { Location: '/start', 'Set-Cookie': `wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, 'Cache-Control': 'no-store' }, body: '' };
-              }
+              if (c.start) return { status: 302, headers: { Location: '/start', 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
               const root = hub.get(hub.defaultName);
               let account = null;
               const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
@@ -717,9 +776,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 const ws = c.holder.state.meta.name;
                 return refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [await differentAccount(), signInAgain()]);
               }
-              if (c.handoff) return handOff(engine, account.id, c.next, c.handoff);
+              const kept = startCookies(await holdLogin(who));
+              if (c.handoff) return withCookies(await handOff(engine, account.id, c.next, c.handoff), kept);
               const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
-              return { status: 302, headers: { Location: c.next, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+              return { status: 302, headers: { Location: c.next, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
             }
             return notFound({ error: 'Unknown auth route', code: 'not-found' });
           }
@@ -767,23 +827,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if (startDoor) {
           if (hostOrigin || wsPrefix || !oidc) return notFound({ error: 'Not found', code: 'not-found' });
-          const held = cookies.wv_start ? starts.get(await digest(cookies.wv_start)) : null;
-          const me = held && held.expiresAt > Date.now() ? { issuer: held.issuer, subject: held.subject, ...(held.email ? { email: held.email } : {}) } : null;
-          if (route === 'GET /api/start' && !me) return out(200, { signedIn: false, provider: oidc.name }, { 'Cache-Control': 'no-store' });
-          if (!me) return deny(401, 'Sign in first');
-          const hubRoot = hub.get(hub.defaultName);
-          const rootAccount = hubRoot.accountForIdentity(me);
-          const accountIn = (w) => w.accountForIdentity(me) ?? (rootAccount ? { ...rootAccount, viaRoot: true } : null);
+          const held = await heldStart();
+          const logins = held?.logins ?? [];
+          if (route === 'POST /api/start/signout') {
+            if (held) starts.delete(held.key);
+            return out(200, { ok: true }, { 'Set-Cookie': [clearCookie('wv_start', rx), clearRail()], 'Cache-Control': 'no-store' });
+          }
+          if (route === 'GET /api/start' && !logins.length) return out(200, { signedIn: false, provider: oidc.name }, { 'Cache-Control': 'no-store' });
+          if (!logins.length) return deny(401, 'Sign in first');
+          const found = findWorkspaces(logins);
+          const { hubRoot, accountIn } = found;
           if (route === 'GET /api/start') {
-            const live = hub.entries().filter(([, w]) => !w.state.meta.deletedAt);
-            const rows = [
-              ...live.filter(([, w]) => accountIn(w))
-                .map(([name, w]) => ({ kind: 'workspace', name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}` })),
-              ...live.filter(([, w]) => me.email && !w.accountForIdentity(me))
-                .flatMap(([name, w]) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: w.state.meta.title ?? name, role: i.role, invitedBy: i.invitedBy ?? null, accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` }))),
-            ];
-            const accountName = rootAccount?.name ?? hub.entries().map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? null;
-            return out(200, { signedIn: true, rows, canCreate: mayAdminister(hubRoot, rootAccount?.role), accountName, base: baseDomain }, { 'Cache-Control': 'no-store' });
+            const { rows, canCreate, accountName } = found;
+            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, accountName, base: baseDomain }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/start/slug') {
             if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
@@ -803,13 +859,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if ((m = path.match(/^\/api\/start\/invites\/([^/]+)\/([A-Za-z0-9_-]+)$/)) && rx.method === 'POST') {
             const w = hub.bySlug(String(m[1]).toLowerCase());
             if (!w) return notFound({ error: 'Not found', code: 'not-found' });
+            const me = logins.find((l) => l.email && w.invitesForEmail(l.email).some((i) => i.id === m[2])) ?? logins[0];
             const account = w.acceptInvite(m[2], me);
             return out(200, { name: w.state.meta.name, account: account.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
           }
           if (route === 'POST /api/start/workspaces') {
-            if (!mayAdminister(hubRoot, rootAccount?.role)) return deny(403, 'Creating a workspace needs an architect on the hub root');
+            const me = found.creator;
+            if (!me) return deny(403, 'Creating a workspace needs an architect on the hub root');
             const w = hub.create(body?.name, { slug: body?.slug ?? null });
-            const owner = w.createAccount({ name: rootAccount?.name ?? 'owner', role: 'architect' }).account;
+            const owner = w.createAccount({ name: hubRoot.accountForIdentity(me).name, role: 'architect' }).account;
             w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
             return out(201, { name: w.state.meta.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
           }
@@ -860,8 +918,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/workspaces') {
           const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
-          return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name)))
-            .map((x) => (baseDomain ? { ...x, host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : x)));
+          const rail = oidc ? String(cookies.wv_rail ?? '').split(',').filter(Boolean) : [];
+          const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
+          return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
+            .map((x) => ({
+              ...x,
+              ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : {}),
+              ...(canOpen(hub.get(x.name)) ? {} : { held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
+            })));
         }
         if (route === 'POST /api/workspaces') {
           const w = hub.create(body.name, { slug: body.slug ?? null });
@@ -917,7 +981,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if (route === 'GET /api/workspace') {
           const ws = weave.getWorkspace();
-          return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion() });
+          return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion(), ...(oidc ? { start: `${startRoot}/start` } : {}) });
         }
 
         if (path.startsWith('/api/accounts') || path.startsWith('/api/invites') || (route === 'PATCH /api/workspace' && ('requireAuth' in (body ?? {}) || 'linkPreview' in (body ?? {})))) {

@@ -134,7 +134,7 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
     assert.deepEqual([eve.res.status, eve.res.headers.location], [302, '/start']);
     assert.match([eve.res.headers['set-cookie']].flat().join('\n'), /wv_start=[\w-]{40,}; HttpOnly; SameSite=Lax; Path=\/; Max-Age=1800/);
     const list = (await s.apex('GET', '/api/start', { cookie: eve.cookie })).json();
-    assert.deepEqual(list.rows, [{ kind: 'workspace', name: 'acme', title: 'acme', open: '/api/start/open/acme' }]);
+    assert.deepEqual(list.rows, [{ kind: 'workspace', name: 'acme', title: 'acme', login: 'eve', open: '/api/start/open/acme' }]);
     assert.deepEqual([list.signedIn, list.canCreate, list.accountName, list.base], [true, false, 'eve', 'weave.test']);
 
     const open = await s.apex('GET', list.rows[0].open, { cookie: eve.cookie });

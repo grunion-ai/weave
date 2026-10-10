@@ -11889,12 +11889,13 @@ async function buildWsRail() {
       ...list.filter((w) => w.name !== 'weave').map((w) => {
         const prefix = w.default ? '' : `/w/${w.id}`;
         const chip = el('a', {
-          class: 'ws-icon' + (w.name === current ? ' active' : ''),
-          href: w.default ? '/' : (w.url ?? `/w/${w.id}/`),
-          title: `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
-        }, w.logo
+          class: 'ws-icon' + (w.name === current ? ' active' : '') + (w.held ? ' ws-held' : ''),
+          href: w.held ? w.open : w.default ? '/' : (w.url ?? `/w/${w.id}/`),
+          title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
+        }, w.logo && !w.held
           ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
           : w.name.slice(0, 1).toUpperCase());
+        if (w.held) return chip;
         const openMenu = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -12014,7 +12015,18 @@ function wireWsNew() {
   const btn = $('#ws-new');
   if (!btn) return;
   btn.replaceChildren(iconEl('+', 'wv-icon'));
-  btn.addEventListener('click', async () => {
+  const copy = WeaveSlugs.COPY.start;
+  btn.addEventListener('click', async (e) => {
+    const start = (await api('GET', '/workspace').catch(() => null))?.start;
+    if (!start) return newWorkspaceForm();
+    const apex = start.replace(/\/start$/, '');
+    contextMenu(e, [
+      { label: copy.newWorkspace, run: newWorkspaceForm },
+      { label: copy.addLogin, run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1`; } },
+      { label: copy.find, run: () => { location.href = start; } },
+    ], 'ws-plus');
+  });
+  async function newWorkspaceForm() {
     const me = await api('GET', '/auth/me').catch((err) => {
       if (err.status !== 401) toast(err.message, true);
       return null;
@@ -12032,7 +12044,7 @@ function wireWsNew() {
     }, WeaveSlugs.COPY.submit);
     const done = document.querySelector('#modal button[type="submit"]');
     if (done) slugs.bindSubmit(done);
-  });
+  }
 }
 
 const narrowShell = matchMedia('(max-width: 900px)');
