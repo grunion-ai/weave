@@ -39,6 +39,15 @@ services:
       # With a provider set, /mcp signs agents in through the browser; a second
       # domain for it on this service is listed here (Handbook, Door C).
       # WEAVE_MCP_ORIGINS: https://mcp.weave.example.com
+      # Extra Host names this server answers besides loopback and WEAVE_ORIGIN's
+      # host (Handbook, "Environment reference"); any other Host gets 421.
+      # WEAVE_ALLOWED_HOSTS: weave.internal,10.0.0.5
+      # Other origins allowed to frame weave pages; they join frame-ancestors 'self'.
+      # WEAVE_FRAME_ANCESTORS: https://intranet.example.com
+      # Attachment types served in place beside images, PDF and plain text.
+      # WEAVE_INLINE_FILE_TYPES: audio/mpeg,video/mp4
+      # A passcode the task applet at /t asks for before it opens.
+      # WEAVE_APPLET_PASSCODE: change-me
       # The server asks GitHub for the latest release once a day; off stops it.
       # WEAVE_UPDATE_CHECK: "off"
       # With command ["node", "bin/weave.js", "supervise"], 1 installs each newer
