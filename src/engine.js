@@ -6,7 +6,7 @@ import '../public/icon-registry.js';
 import '../public/mark-icons.js';
 import '../public/editor-lib.js';
 import '../public/list-core.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
@@ -5523,6 +5523,7 @@ export class Weave {
       }
     }
     delete this.state.entities[id];
+    for (const f of e.files) this.#dropBlob(f.id);
     this.store.deleteDocRevisions(id);
     this.#mark(id);
     this.save();
@@ -7162,6 +7163,14 @@ export class Weave {
     return b64 == null ? null : Buffer.from(b64, 'base64');
   }
 
+  #dropBlob(id) {
+    if (this.state.fileBlobs) delete this.state.fileBlobs[id];
+    if (this.state.meta.logo?.id === id) return;
+    for (const e of Object.values(this.state.entities)) if (e.files.some((f) => f.id === id)) return;
+    const p = this.#blobPath(id);
+    if (p) rmSync(p, { force: true });
+  }
+
   #writeBlob(id, buf) {
     const p = this.#blobPath(id);
     if (p) {
@@ -7230,8 +7239,8 @@ export class Weave {
   deleteWorkspaceLogo() {
     const logo = this.state.meta.logo;
     if (!logo) return;
-    if (this.state.fileBlobs) delete this.state.fileBlobs[logo.id];
     delete this.state.meta.logo;
+    this.#dropBlob(logo.id);
     this.save();
   }
 
@@ -7245,7 +7254,7 @@ export class Weave {
         e.values[f.id] = e.values[f.id].filter((id) => id !== fileId);
       }
     }
-    if (this.state.fileBlobs) delete this.state.fileBlobs[fileId];
+    this.#dropBlob(fileId);
     this.#mark(e);
     this.save();
     return { id: fileId, entity: e.id, deleted: had };
