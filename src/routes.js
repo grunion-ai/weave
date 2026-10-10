@@ -426,7 +426,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return wall();
     }
-    if (role && role !== 'architect') {
+    const guarded = () => !!(weave.listAccounts().length || hub.get(hub.defaultName).listAccounts().length);
+    const cap = role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
+    if (cap && cap !== 'architect') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
@@ -454,14 +456,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return !!ref?.system;
         } catch { return false; }
       })();
-      const observer = role !== 'editor';
+      const observer = cap !== 'editor';
       const cm = observer && !read && path.match(/^\/api\/entities\/([^/]+)\/comments(?:\/([^/]+?))?$/);
       const ownComment = cm && (cm[2] == null ? m2 === 'POST' : m2 === 'DELETE' && (() => {
         try { return weave.getEntity(cm[1]).comments.find((c) => c.id === cm[2])?.author === weave.actor; } catch { return false; }
       })());
       const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
-      if (observer && !read && !ownComment && !submits) return deny(403, 'An observer may read and comment, nothing else');
-      if (role === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
+      if (observer && !read && !ownComment && !submits) {
+        return role ? deny(403, 'An observer may read and comment, nothing else') : deny(401, 'This workspace has accounts: send a token or sign in to write');
+      }
+      if (cap === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
     }
     const roleOn = (w) => {
       if (w === weave) return role;
