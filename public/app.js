@@ -1881,9 +1881,8 @@ const KEYSTORE_LABELS = {
 };
 
 function computedMark(type) {
-  return { formula: 'ƒ', rollup: 'Σ', lookup: 'lucide:arrow-up-right', document: 'lucide:file-text', field: 'lucide:sliders-horizontal' }[type] ?? '·';
+  return globalThis.weaveChipView.COMPUTED_GLYPHS[type] ?? '·';
 }
-const computedMarkNode = (type) => { const m = computedMark(type); return iconEl(m, 'ico wv-icon') ?? m; };
 
 const COMPUTED_NAME_MARKS = { formula: 'formula', rollup: 'rollup', lookup: 'lookup' };
 function fieldDescription(f) {
@@ -1904,7 +1903,7 @@ function fieldRoute(f, db) {
   const rel = f.via ? db?.fields?.find((x) => x.type === 'relation' && x.name === f.via) : null;
   const table = rel?.targetDb ?? qualifiedTableName(f.viaTableId ?? rel?.targetDbId);
   const what = f.type === 'lookup'
-    ? `↗ ${f.targetField ?? 'Name'}`
+    ? `${computedMark('lookup')} ${f.targetField ?? 'Name'}`
     : `Σ ${f.aggregate ?? 'count'}${f.targetField ? ` of ${f.targetField}` : ''}`;
   return `${what}${f.via ? ` via ${f.via}` : ''}${table ? ` → ${table}` : ''}`;
 }
@@ -1912,14 +1911,14 @@ function fieldRoute(f, db) {
 function fieldNameLabel(f, text = f?.name, db = null) {
   if (f?.type === 'relation') {
     const route = fieldRoute(f, db);
-    return route ? [text, el('sup', { class: 'field-mark', title: route }, iconEl('lucide:arrow-right', 'ico wv-icon') ?? '→')] : [text];
+    return route ? [text, el('sup', { class: 'field-mark', title: route }, globalThis.weaveChipView.ROUTE_GLYPH)] : [text];
   }
   const kind = COMPUTED_NAME_MARKS[f?.type];
   if (!kind) return [text];
   return [text, el('sup', {
     class: 'field-mark',
     title: fieldRoute(f, db) ?? `${kind} — computed from other values, not editable`,
-  }, computedMarkNode(f.type))];
+  }, computedMark(f.type))];
 }
 
 function openCellPicker(cell) {
@@ -2734,11 +2733,9 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
         ? ratingListEl(f.rating, rawVal, { label: f.name }) : null)
       ?? numberGraphicFor(f, item, text);
     const rich = f.display === 'sparkline' || !!f.rating || cellGraphics.isGraphic(f.display);
-    const box = el('span', { class: 'computed k k-computed' + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
-      rich ? null : el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
+    const derived = COMPUTED_NAME_MARKS[f.type] && !rich ? ' k-derived' : '';
+    return el('span', { class: 'computed k k-computed' + derived + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
       graphic ?? (text || '—'));
-    if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
-    return box;
   }
   if (f.type === 'rating') {
     const box = ratingEl(f.max, f.icon, item.raw?.[f.name] ?? null, { onSet: (v) => patch(v, (x) => box.paint(x)), color: f.color });
@@ -2851,7 +2848,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'field') {
     const def = item.raw?.[f.name] ?? null;
     const chip = el('span', { class: 'computed k k-computed' + (def == null ? ' is-empty' : ''), title: compact ? `field definition — edit on the ${db?.term?.singular ?? WeaveTerm.DEFAULT.singular} page` : 'field definition — click to edit' },
-      el('span', { class: 'computed-mark' }, computedMarkNode('field')),
+      el('span', { class: 'computed-mark' }, iconEl('lucide:sliders-horizontal', 'ico wv-icon')),
       def == null ? '—' : String(val));
     if (compact) return chip;
     chip.style.cursor = 'pointer';
@@ -10587,6 +10584,7 @@ async function relatedGrid(entity, f, onSaved) {
       el('td', { class: 'pid-cell' },
         el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: `Open ${target.term.singular}` }, `#${item.publicId} ↗`)),
       ...cols.map((c) => el('td', {
+        dataset: { ftype: c.type },
         class: (isNumCell(c, item) ? 'num' : '')
           + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),
       }, labeledEditorFor(c, item, target, onSaved, { compact: true }))),
