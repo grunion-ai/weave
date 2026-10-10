@@ -4,21 +4,22 @@
     {
       "name": "mermaid",
       "npm": "mermaid",
-      "version": "11.17.0",
-      "versionSource": "version:\"11.17.0\" string in mermaid.min.js",
+      "version": "11.17.2",
+      "versionSource": "version:\"11.17.2\" string in mermaid.min.js",
       "files": [
         {
           "path": "public/vendor/mermaid.min.js",
-          "sha256": "8d8e0eec56d3a83b4b3c87f42050845546dee93ebe1875d2117c12e6947c0cb3"
+          "sha256": "59cff618e03c0329f575a3ae41011dd7f5f7aec2e458476b40c3c232f6b6ab8e"
         }
-      ]
+      ],
+      "build": "npm pack mermaid@11.17.2 (dist/mermaid.core.mjs, externals left to node_modules), installed fresh on 2026-10-10 so dompurify ^3.3.3 resolved to 3.4.16, then bundled with esbuild 0.25.0: --bundle --minify --keep-names --platform=browser --format=iife --global-name=__esbuild_esm_mermaid_nm.mermaid --banner:js='\"use strict\";' --footer:js='globalThis[\"mermaid\"] = globalThis.__esbuild_esm_mermaid_nm[\"mermaid\"].default;'. The published dist/mermaid.min.js of every mermaid release through 12.1.0 still bundles DOMPurify 3.4.12."
     },
     {
       "name": "dompurify",
       "npm": "dompurify",
-      "version": "3.4.12",
+      "version": "3.4.16",
       "bundledIn": "mermaid",
-      "versionSource": ".version=\"3.4.12\" and the DOMPurify 3.4.12 banner inside mermaid.min.js",
+      "versionSource": ".version=\"3.4.16\" and the DOMPurify 3.4.16 banner inside mermaid.min.js",
       "files": []
     },
     {
