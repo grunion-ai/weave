@@ -1,0 +1,1 @@
+- The document and entity PDF exports carry the same headers the file route gives a PDF: an RFC 6266 encoded filename with an ASCII fallback, `nosniff` and the sandbox policy (Issue #544)
