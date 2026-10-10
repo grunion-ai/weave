@@ -780,7 +780,7 @@ body:has(#tray-back) #wv-toasts { --wv-lane-r: calc(min(480px, 94vw) + 24px); }
 body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 @media (max-width: 999.98px) {
   #wv-toasts { left: 16px; right: 16px; bottom: auto; top: calc(12px + env(safe-area-inset-top, 0px)); flex-direction: column-reverse; align-items: stretch; }
-  body:has(#tray-back) #wv-toasts { top: 60px; }
+  body:has(#tray-back) #wv-toasts { top: calc(60px + env(safe-area-inset-top, 0px)); }
 }
 .wv-toast { display: flex; align-items: flex-start; gap: 10px; max-width: min(440px, 100%); padding: 10px 6px 10px 12px; background: var(--wv-toast-bg); color: var(--wv-toast-fg); border-radius: var(--tblr-border-radius); box-shadow: 0 8px 24px rgba(12, 27, 51, .22); font-size: var(--fs-grid); line-height: 20px; pointer-events: auto; touch-action: pan-y; animation: wv-toast-in .16s ease-out; }
 .wv-toast-icon { flex: 0 0 16px; display: flex; width: 16px; height: 16px; margin-top: 2px; color: var(--wv-toast-info); }
@@ -1478,7 +1478,14 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .picker-iconly { display: inline-flex; align-items: center; gap: 8px; }
 
 #tray-back { position: fixed; inset: 0; background: rgba(0,0,0,.22); z-index: 1040; }
-#tray { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 94vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); display: flex; flex-direction: column; animation: peek-in .16s ease; }
+#tray { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 94vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); display: flex; flex-direction: column; animation: wv-tray-in .18s ease-out; }
+@keyframes wv-tray-in { from { transform: translateX(var(--wv-tray-from, 24px)); } }
+@media (prefers-reduced-motion: reduce) { #tray { animation: none; } }
+@media (max-width: 600px) {
+  #tray { --wv-tray-from: 100%; width: 100%; border-left: 0; box-shadow: none; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
+  .tray-actions { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  body:has(#tray-back) .bug-fab { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+}
 .tray-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px 10px; border-bottom: 1px solid var(--tblr-border-color); }
 .tray-head h2 { font-size: var(--fs-doc); margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tray-close { background: none; border: none; color: var(--tblr-secondary); font-size: var(--fs-body); cursor: pointer; padding: 2px 6px; border-radius: 4px; }
