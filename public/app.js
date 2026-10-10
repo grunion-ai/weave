@@ -9816,8 +9816,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         el('span', { class: 'doc-section-name' }, f.name),
         sourceToggle,
         histBtn,
-        el('span', {
-          class: 'doc-anchor permalink-copy', title: 'Copy link to this document',
+        el('button', {
+          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this document', 'aria-label': 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
         }, iconEl('⧉')),
         status, dl),
@@ -10065,8 +10065,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         el('span', { class: 'doc-section-name' }, label),
         el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, iconEl('⟳')),
         el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, iconEl('⛶')),
-        el('span', {
-          class: 'doc-anchor permalink-copy', title: 'Copy link to this deck',
+        el('button', {
+          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this deck', 'aria-label': 'Copy link to this deck',
           onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
         }, iconEl('⧉')),
         menu),
