@@ -972,6 +972,12 @@ function refreshWsMarks() {
   for (const span of document.querySelectorAll('.crumb-ws-mark')) fillWsMark(span);
 }
 
+function titleEdit(tag, modifier, value, attrs) {
+  const node = el(tag, { ...attrs, class: `title-edit ${modifier}` });
+  node.value = value;
+  return node;
+}
+
 function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page' }) {
   const box = el('div', { class: 'view-header' });
   box.append(el('div', { class: 'crumb crumb-row' },
@@ -985,15 +991,13 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
 
   syncDocTitle(title);
-  const titleInput = el('input', { class: 'view-title', value: title, 'aria-label': 'Title', title: onRename ? 'Click to rename' : '' });
+  const titleInput = titleEdit('input', 'view-title', title, { 'aria-label': 'Title', title: onRename ? 'Click to rename' : '', readonly: onRename ? undefined : '' });
   if (onRename) {
     titleInput.addEventListener('change', async () => {
       const name = titleInput.value.trim();
       if (!name || name === title) { titleInput.value = title; return; }
       try { await onRename(name); syncDocTitle(name); toast('Renamed'); } catch (err) { titleInput.value = title; toast(err.message, true); }
     });
-  } else {
-    titleInput.readOnly = true;
   }
   box.append(el('div', { class: 'wv-toolbar view-title-row' },
     onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null),
@@ -9641,13 +9645,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
-  const nameInput = el('textarea', {
-    class: 'name-edit' + (computed ? ' computed' : ''), rows: '1', 'aria-label': 'Name',
+  const nameInput = titleEdit('textarea', 'name-edit' + (computed ? ' computed' : ''), entity.name, {
+    rows: '1', 'aria-label': 'Name',
     readonly: computed ? '' : undefined,
     title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
     onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
   });
-  nameInput.value = entity.name;
   if (!CSS.supports('field-sizing', 'content')) {
     const fit = () => { nameInput.style.height = 'auto'; nameInput.style.height = `${nameInput.scrollHeight}px`; };
     nameInput.addEventListener('input', fit);
