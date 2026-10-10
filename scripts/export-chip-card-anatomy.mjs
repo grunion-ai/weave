@@ -33,9 +33,35 @@ function selectorList(sels) {
   return parts.map((p) => p.trim()).filter((p) => p && !p.startsWith('@'));
 }
 
+export function cssRules(css, at = []) {
+  const src = at.length ? css : css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  let i = 0;
+  while (i < src.length) {
+    const open = src.indexOf('{', i);
+    if (open < 0) break;
+    const prelude = src.slice(i, open).replace(/\s+/g, ' ').trim();
+    let depth = 1;
+    let j = open + 1;
+    for (; j < src.length && depth; j += 1) {
+      if (src[j] === '{') depth += 1;
+      else if (src[j] === '}') depth -= 1;
+    }
+    const inner = src.slice(open + 1, j - 1);
+    if (/^@(media|container|supports)\b/.test(prelude)) out.push(...cssRules(inner, [...at, prelude]));
+    else if (!prelude.startsWith('@')) out.push({ at, sels: prelude, body: inner });
+    i = j;
+  }
+  return out;
+}
+
+export function scoped(at, rule) {
+  return at.reduceRight((inner, cond) => `${cond} { ${inner} }`, rule);
+}
+
 export function chipCss(css = [readFileSync(join(ROOT, 'public/chip.css'), 'utf8'), readFileSync(join(ROOT, 'public/style.css'), 'utf8')].join('\n')) {
   const out = [];
-  for (const [, sels, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  for (const { at, sels, body } of cssRules(css)) {
     const parts = selectorList(sels);
     const keep = parts.filter((p) => CHIP_SELECTORS.test(p));
     if (!keep.length) continue;
@@ -43,7 +69,7 @@ export function chipCss(css = [readFileSync(join(ROOT, 'public/chip.css'), 'utf8
       ? body.split(';').filter((d) => /--wv-chip-|--fs-/.test(d)).join(';')
       : body.trim();
     if (!decls.trim()) continue;
-    out.push(`${keep.join(', ')} { ${decls.replace(/\s+/g, ' ').trim()}${decls.trim().endsWith(';') ? '' : ';'} }`);
+    out.push(scoped(at, `${keep.join(', ')} { ${decls.replace(/\s+/g, ' ').trim()}${decls.trim().endsWith(';') ? '' : ';'} }`));
   }
   return out.join('\n');
 }

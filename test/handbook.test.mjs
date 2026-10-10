@@ -335,7 +335,10 @@ test('a comma inside a functional pseudo-class is not a selector-list comma', ()
 
 test('the chip CSS carries no selector fragment', () => {
   for (const line of chipCss().split('\n')) {
-    const sels = line.slice(0, line.indexOf('{'));
+    const conds = line.match(/^(@(media|container|supports) [^{]+\{ )*/)[0];
+    for (const cond of conds.split('{ ').filter(Boolean)) assert.equal((cond.match(/\(/g) ?? []).length, (cond.match(/\)/g) ?? []).length, `unbalanced media condition: ${cond}`);
+    const rule = line.slice(conds.length);
+    const sels = rule.slice(0, rule.indexOf('{'));
     const open = (sels.match(/[([]/g) ?? []).length;
     const close = (sels.match(/[)\]]/g) ?? []).length;
     assert.equal(open, close, `unbalanced selector in the chip CSS: ${sels.trim()}`);
@@ -385,4 +388,12 @@ test('the grid guide says a header mark names the route its value travels (Issue
   const doc = GUIDES.find((g) => g.name === 'Making a workspace your own').doc;
   assert.match(doc, /`→` relation\), and hovering the mark names the route its value travels/);
   assert.ok(doc.includes('`Σ sum of Estimate via Tasks → Product/Task`'));
+});
+
+test('chipCss keeps a rule inside @media under its condition, never at the top level', () => {
+  const css = chipCss('.k { color: red; }\n@media (max-width: 600px) {\n  .k { color: blue; }\n  .other { color: green; }\n}\n@keyframes wv-x { from { opacity: 0; } }');
+  assert.match(css, /^\.k \{ color: red; \}$/m, 'a top-level chip rule stays as it is');
+  assert.match(css, /@media \(max-width: 600px\) \{ \.k \{ color: blue; \} \}/, 'the phone rule keeps its media condition');
+  assert.doesNotMatch(css, /^\.k \{ color: blue; \}$/m, 'the phone rule never applies at every width');
+  assert.doesNotMatch(css, /\.other|from \{/, 'non-chip rules and keyframe steps stay out');
 });

@@ -71,7 +71,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: var(--fs-meta); margin-left: 1px; }
 .k-rel { padding: 0; }
 .k-rel > a.mention { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px; color: inherit; text-decoration: none; box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; }
-.k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
+@media (hover: hover) { .k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; } }
 .k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: var(--fs-secondary); }
 .k-rel:not(.has-id) > .mention-entity::before { content: "#"; }
 .k-rel > .mention-table::before { content: "▦"; }
@@ -155,7 +155,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .wv-rating { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; white-space: nowrap; line-height: 1; }
 .wv-rate-ico, .wv-rate-mini { display: inline-flex; flex: none; padding: 0; border: 0; background: none; color: var(--wv-cg-empty); font-size: var(--fs-body); line-height: 1; }
 .wv-rating.editable .wv-rate-ico { cursor: pointer; }
-.wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--cg-rate, var(--wv-cg-ink)); }
+@media (hover: hover) { .wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--cg-rate, var(--wv-cg-ink)); } }
 .wv-rating > .wv-rating-compact { display: none; align-items: center; gap: 3px; font-size: var(--wv-grid-font); color: var(--tblr-body-color); font-variant-numeric: tabular-nums; }
 .wv-rating-list { gap: 10px; }
 .wv-rating-max { display: flex; gap: 8px; align-items: center; }
@@ -207,7 +207,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mention-caret { position: relative; }
 .mention-caret::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%); }
-.mention-caret::after { width: max(100%, 44px); height: max(100%, 44px); }
+@media (max-width: 600px), (pointer: coarse) { .mention-caret::after { width: max(100%, 44px); height: max(100%, 44px); } }
 
 :root, [data-bs-theme="light"] {
   --tblr-border-color: #e6e3dc; --tblr-body-color: #1a1d23; --tblr-secondary: #6b7280;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { ROOT } from './lib/source.mjs';
 
@@ -86,9 +87,27 @@ test('hitboxes are outlined as in the anatomy guide, with a legend', () => {
 });
 
 test('the chip size tokens ride along and the page is self-contained', () => {
-  assert.match(HTML, /--wv-chip-font: 13px/, 'the chip size tokens');
+  assert.match(HTML, /--wv-chip-font: var\(--fs-grid\)/, 'the chip size tokens');
+  assert.match(HTML, /--fs-grid: 13px/, 'the grid type step the chip size reads');
   assert.match(HTML, /\.k-rel, \.k-doc, \.k-attach, \.k-more \{ background: none;/, 'no fill behind a pointer chip');
   assert.match(HTML, /border-radius: 4px/, '4px radius');
   assert.doesNotMatch(HTML, /(src|href)=["'](https?:)?\/\//, 'no external src or href');
   assert.doesNotMatch(HTML, /<link[^>]+stylesheet|<script/, 'no stylesheet link, no script');
+});
+
+test('the checked-in mockup is a fresh run of its generator', () => {
+  const fresh = execFileSync(process.execPath, [join(ROOT, 'scripts/export-chip-anatomy-alternatives.mjs'), '--stdout'], { encoding: 'utf8' });
+  assert.equal(readFileSync(FILE, 'utf8'), fresh, 'the checked-in mockup drifted from its generator: run scripts/export-chip-anatomy-alternatives.mjs');
+});
+
+test('every name link is the anchor the live chip stylesheet styles', () => {
+  const links = HTML.match(/<a [^>]*class="[^"]*hit-link[^"]*"/g) ?? [];
+  assert.ok(links.length > 0, 'the page draws name links');
+  for (const a of links) assert.match(a, /class="mention hit-link/, `the link wears .mention as chip-view.js draws it: ${a}`);
+  assert.match(HTML, /^\.k-rel > a\.mention \{[^}]*color: inherit; text-decoration: none;/m, 'the live rule that sets the link in chip ink rides along');
+});
+
+test('the home badge sits after the link, where chip-view.js draws it', () => {
+  assert.match(HTML, /<\/a><span class="k-home">/, 'a badge follows its link');
+  assert.doesNotMatch(HTML, /<a [^>]*>(?:(?!<\/a>)[\s\S])*class="k-home"/, 'no badge inside a link');
 });

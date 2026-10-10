@@ -6,12 +6,9 @@
 <title>weave — card view options (Features #181, #184)</title>
 <style>
 /* weave chip system, lifted from public/style.css — the same rules a table cell uses */
-:root { --wv-chip-font: 13px; --wv-chip-line: 22px; --wv-grid-font: var(--wv-chip-font); }
-.k) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mention-wrap) { flex: none; }
-.wv-card-head > :not(.wv-card-title)) { display: none; }
+:root { --wv-chip-font: var(--fs-grid); --wv-chip-line: 22px; }
 .k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: var(--wv-chip-font); line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
-.k .ico { font-size: 10.5px; line-height: 1; opacity: .85; flex: none; }
+.k .ico { font-size: var(--fs-meta); line-height: 1; opacity: .85; flex: none; }
 .k-state, .k-select, .k-multi, .k-key { background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); border: 0; }
 .k-state.cat-not-started { --fill: rgba(0, 5, 20, .05); --text: #60646c; }
 .k-state.cat-in-progress { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; }
@@ -21,31 +18,44 @@
 [data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18); --text: #bccaff; }
 [data-bs-theme="dark"] .k-state.cat-done { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
 [data-bs-theme="dark"] .k-state.cat-canceled { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
-.k-key { font-family: var(--tblr-font-monospace); font-size: 11px; letter-spacing: .02em; }
-.k-key .store { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--tblr-border-color); font-size: 9px; letter-spacing: .04em; text-transform: uppercase; opacity: .75; }
 .k-rel, .k-doc, .k-attach, .k-more { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-body-color); cursor: pointer; }
 .k-rel:hover, .k-doc:hover, .k-attach:hover, .k-more:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); }
-.k-rel > a::after, .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: 10px; margin-left: 1px; }
+.k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: var(--fs-meta); margin-left: 1px; }
 .k-rel { padding: 0; }
-.k-rel > a { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px; color: inherit; text-decoration: none; }
-.k-rel > .x { margin: 0 6px 0 -3px; padding: 0 2px; }
-.mention-wrap, .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
+.k-rel > a.mention { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px; color: inherit; text-decoration: none; box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; }
+@media (hover: hover) { .k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; } }
+.k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: var(--fs-secondary); }
+.k-rel:not(.has-id) > .mention-entity::before { content: "#"; }
+.k-rel > .mention-table::before { content: "▦"; }
+.k-rel > .mention-space::before { content: "◇"; }
+.k-rel > .mention-workspace::before { content: "⬡"; }
+.k-rel .wv-chip-id { font-family: var(--tblr-font-monospace); font-size: var(--fs-secondary); color: var(--tblr-secondary); flex: none; }
+.k-rel .k { padding: 0 6px; }
+.k-rel > .wv-chip-mark { margin: 0 1px 0 2px; cursor: pointer; flex: none; }
+.k-rel > .k-home { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); opacity: .55; margin-right: 4px; }
+.k-rel > .x { border: 0; background: none; margin: 0 5px 0 0; padding: 0 1px; }
+.k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; color: var(--tblr-secondary); }
-.k-rel .k-home { font-family: var(--tblr-font-monospace); font-size: .78em; opacity: .55; }
-.k-more { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
-.k-add, .k-doc.is-empty, .k-attach.is-empty { background: none; border: 1px dashed var(--tblr-border-color); color: var(--tblr-secondary); cursor: pointer; }
-.k-doc.is-empty, .k-attach.is-empty { border-style: dashed; }
-.k-doc.is-empty::after, .k-attach.is-empty::after { content: "+"; opacity: .55; }
-.k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
-.k-sys { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 9.5px; line-height: 1.9; letter-spacing: .11em; text-transform: uppercase; padding: 0 7px; }
-.k .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); font-size: 11px; }
+.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); color: var(--tblr-secondary); }
+.k-more { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); }
+.mention-fields { display: none; }
+.k-rel.open > .mention-fields { display: inline-flex; align-items: center; gap: 8px; margin-left: 2px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: var(--fs-secondary); }
+.mention-f { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: inherit; font-family: inherit; font-size: inherit; line-height: inherit; padding: 0; }
+.mention-f-label { opacity: .65; margin-right: 3px; }
+.mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; flex: none; color: var(--tblr-secondary); cursor: pointer; font-size: var(--fs-meta); line-height: 1.4; padding: 0 3px; margin: 0 6px 0 1px; transition: transform .1s; }
+.k-rel.open > .mention-caret { transform: rotate(180deg); }
+.k .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); font-size: var(--fs-meta); }
 .k .x:hover { color: var(--tblr-danger); }
 .k.deleted { opacity: .55; text-decoration: line-through; }
-.av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-family: var(--tblr-font-monospace); font-size: 8.5px; font-weight: 600; letter-spacing: .02em; background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
-.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
+.mention.broken { color: var(--tblr-secondary); border: 1px dashed var(--tblr-border-color); border-radius: 4px; padding: 0 4px; }
+.wv-prose .k-rel { display: inline; font-size: inherit; line-height: inherit; white-space: normal; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.wv-prose .k-rel > a.mention { display: inline; padding: 0 5px 0 4px; }
+.wv-prose .k-rel > :is(.k, .mention-caret, .x, .k-home, .mention-fields) { vertical-align: middle; }
+.wv-prose .k-rel :is(.k, .mention-caret, .x) { line-height: 1; padding-top: 0; padding-bottom: 0; }
+.wv-prose .k-rel :is(.wv-chip-id, .k-home, .mention-f, .mention-f-label) { line-height: 1; }
+.wv-prose .k-rel .k { font-size: inherit; }
+.wv-prose .k-rel.open > .mention-fields { display: inline; }
 .hue-slate { --fill: rgba(0, 5, 20, .05); --text: #60646c; --dot: transparent; }
 .hue-blue { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; --dot: #4769eb; }
 .hue-green { --fill: rgba(46, 160, 67, .14); --text: #218358; --dot: #2ea043; }
@@ -66,43 +76,90 @@
 [data-bs-theme="dark"] .hue-pink { --fill: rgba(240, 120, 170, .18); --text: #f79ec0; }
 [data-bs-theme="dark"] .hue-teal { --fill: rgba(70, 200, 180, .16); --text: #6fdcc8; }
 [data-bs-theme="dark"] .hue-orange { --fill: rgba(250, 150, 80, .18); --text: #ffb183; }
-.k-inline { display: inline; font-size: inherit; line-height: inherit; padding: 0; white-space: normal; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.k-inline > a { display: inline; padding: 0 5px 0 4px; }
-.k-inline > a::after { margin-left: 3px; font-size: .7em; }
-.mention-wrap:has(> .k-inline) { display: inline; white-space: normal; }
-.k-inline .mention-caret { vertical-align: middle; }
-.k-rel > a.mention, .k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
-.k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
-.k-rel > .mention-entity::before { content: "#"; }
-.k-rel > .mention-table::before { content: "▦"; }
-.k-rel > .mention-space::before { content: "◇"; }
-.k-rel > .mention-workspace::before { content: "⬡"; }
-.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
-.mention-fields { display: none; }
-.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: .85em; }
-.mention-f-label { opacity: .65; margin-right: 3px; }
-.mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
-.mention-wrap.open .mention-caret { transform: rotate(180deg); }
-.mention-caret svg { width: 12px; height: 12px; display: block; }
-.k-rel > a > .mention-caret { margin-left: 2px; }
-.k-rel > a > .mention-fields { align-items: center; }
-.k-rel .mention-fields .k-state, .wv-seg-state { font-size: .82em; padding: 0 6px; line-height: 1.5; }
-.wv-card { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 13px; line-height: 1.35; white-space: normal; }
-.wv-card.compact { gap: 3px; padding: 5px 8px; font-size: 12px; max-width: 280px; }
-.wv-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.wv-card-title { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: inherit; text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-.wv-card-title:hover { color: var(--tblr-primary); }
-.wv-card-id { font-family: var(--tblr-font-monospace); font-size: .82em; font-weight: 500; opacity: .55; }
-.wv-card-desc { color: var(--tblr-secondary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.wv-card.compact .wv-card-desc { -webkit-line-clamp: 1; }
-.wv-card-fields { display: grid; grid-template-columns: max-content 1fr; column-gap: 10px; row-gap: 2px; margin: 0; }
-.wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
-.wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-c-ink { --cg-main: var(--wv-cg-ink); --cg-spark: var(--wv-cg-ink-2); --cg-win: var(--wv-cg-ink); --cg-loss: var(--wv-cg-empty); --cg-heat: color-mix(in srgb, var(--wv-cg-ink) 55%, transparent); --cg-rate: var(--wv-cg-ink); }
+.cg-c-icon { --cg-main: var(--wv-cg-teal); --cg-spark: var(--wv-cg-blue); --cg-win: var(--wv-cg-green); --cg-loss: var(--wv-cg-red); --cg-heat: var(--wv-cg-orange); --cg-rate: var(--wv-cg-accent); }
+.cg-c-accent { --cg-main: var(--wv-cg-accent); --cg-spark: var(--wv-cg-accent); --cg-win: var(--wv-cg-accent); --cg-loss: var(--wv-cg-accent-soft); --cg-heat: var(--wv-cg-accent); --cg-rate: var(--wv-cg-accent); }
+.wv-rating.cg-c-icon[data-hue="amber"] { --cg-rate: var(--wv-cg-amber); }
+.wv-rating.cg-c-icon[data-hue="rose"] { --cg-rate: var(--wv-cg-rose); }
+.wv-rating.cg-c-icon[data-hue="violet"] { --cg-rate: var(--wv-cg-violet); }
+.wv-rating.cg-c-icon[data-hue="orange"] { --cg-rate: var(--wv-cg-orange); }
+.cg-wrap { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; position: relative; vertical-align: middle; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+.cg-wrap .cg { flex: none; display: block; }
+.cg-wrap .cg-text { flex: none; overflow: hidden; text-overflow: ellipsis; }
+.cg-wrap.cg-bar { display: flex; width: 100%; }
+.cg-wrap.cg-bar .cg-text { flex: 1 1 auto; text-align: right; }
+.cg-wrap.cg-bar .cg { width: 80px; height: 6px; }
+.cg-bar .cg-track { fill: var(--wv-cg-hair); }
+.cg-bar .cg-fill { fill: var(--cg-main); }
+.cg-wrap.cg-ring .cg { width: 16px; height: 16px; }
+.cg-ring .cg-track { stroke: var(--wv-cg-hair); }
+.cg-ring .cg-fill { stroke: var(--cg-main); }
+.cg-wrap.cg-heat { padding: 0 8px; min-width: 32px; justify-content: center; border-radius: 4px; isolation: isolate; }
+.cg-wrap.cg-heat .cg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
+.cg-heat .cg-fill { fill: var(--cg-heat); }
+.cg-c-icon .cg-heat .cg-fill { fill: color-mix(in oklab, var(--wv-cg-orange) var(--cg-f, 50%), var(--wv-cg-teal)); }
 .wv-card-fields dd .cg-wrap.cg-bar, .mention-f .cg-wrap.cg-bar { width: auto; }
 .wv-card-fields dd .cg-wrap.cg-bar .cg-text, .mention-f .cg-wrap.cg-bar .cg-text { flex: none; }
+.cg-wrap.num-dressed { cursor: text; }
+.cg-preview { display: grid; gap: 6px; max-width: 240px; }
+.cg-preview-row { display: flex; justify-content: flex-end; }
+.cg-preview-row .cg-wrap.cg-bar { width: 100%; }
+.wv-rating { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; white-space: nowrap; line-height: 1; }
+.wv-rate-ico, .wv-rate-mini { display: inline-flex; flex: none; padding: 0; border: 0; background: none; color: var(--wv-cg-empty); font-size: var(--fs-body); line-height: 1; }
+.wv-rating.editable .wv-rate-ico { cursor: pointer; }
+@media (hover: hover) { .wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--cg-rate, var(--wv-cg-ink)); } }
+.wv-rating > .wv-rating-compact { display: none; align-items: center; gap: 3px; font-size: var(--wv-grid-font); color: var(--tblr-body-color); font-variant-numeric: tabular-nums; }
+.wv-rating-list { gap: 10px; }
+.wv-rating-max { display: flex; gap: 8px; align-items: center; }
+.wv-rating-icon { display: inline-flex; gap: 6px; align-items: center; }
+.wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; gap: 2px; }
+.wv-rating-default .wv-rate-ico { font-size: var(--fs-h1); }
+.wv-rating-default .wv-rate-ico .wv-icon, .wv-rating-default .wv-rate-ico .wv-icon svg { width: 19px; height: 19px; }
+.cg-wrap.cg-sparkwrap { display: inline-flex; width: 80px; height: 18px; }
+.cg-wrap.cg-sparkwrap .cg { width: 80px; height: 18px; }
+.cg-spark-line .cg-fill { stroke: var(--cg-spark); fill: none; }
+.cg-spark .cg-dot { fill: var(--cg-spark); }
+.cg-spark-column .cg-fill { fill: var(--cg-spark); }
+.cg-spark-column .cg-fill.cg-neg { fill: var(--cg-loss); }
+.cg-spark-winloss .cg-fill.cg-win { fill: var(--cg-win); }
+.cg-spark-winloss .cg-fill.cg-loss { fill: var(--cg-loss); }
+.cg-spark-winloss .cg-track { stroke: var(--wv-cg-hair); stroke-width: 1; }
+.cg-spark-preview .cg-sparkwrap, .cg-spark-preview .cg-sparkwrap .cg { width: 160px; height: 36px; }
+:root { --fs-meta: 11px; --fs-secondary: 12px; --fs-grid: 13px; --fs-body: 14px; --fs-doc: 16px; --fs-h2: 18px; --fs-h1: 20px; --fs-title: 24px; --wv-grid-font: var(--wv-chip-font); }
+.k-key { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); letter-spacing: .02em; }
+.k-key .store { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--tblr-border-color); font-size: var(--fs-meta); letter-spacing: .04em; text-transform: uppercase; opacity: .75; }
+.k-add, .k-doc.is-empty, .k-attach.is-empty { background: none; border: 1px dashed var(--tblr-border-color); color: var(--tblr-secondary); cursor: pointer; }
+.k-doc.is-empty, .k-attach.is-empty { border-style: dashed; }
+.k-doc.is-empty::after, .k-attach.is-empty::after { content: "+"; opacity: .55; }
+.k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+.k-sys { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); line-height: 18px; letter-spacing: .06em; text-transform: uppercase; padding: 0 7px; }
+.av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); font-weight: 600; letter-spacing: -.06em; background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
+.k-actor, .k-actor-wf.is-inline { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+.k-actor { max-width: 100%; min-width: 0; }
+.k-actor > .k-label { flex: none; }
+.k-actor-via { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tblr-secondary); }
+.k-actor-wf .wv-icon { flex: none; }
+.mention-caret svg { width: 12px; height: 12px; display: block; }
+.wv-card { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: var(--fs-grid); line-height: 1.35; white-space: normal; }
+.wv-card.compact { gap: 3px; padding: 5px 8px; font-size: var(--fs-secondary); max-width: 280px; }
+.wv-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wv-card-cover { display: block; overflow: hidden; border-radius: 4px; margin: -2px -2px 2px; }
+.wv-card-cover img { display: block; width: 100%; height: auto; object-fit: cover; }
+.wv-card-state { display: flex; align-items: center; gap: 6px; }
+.wv-card-title { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: inherit; text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.wv-card-title:hover { color: var(--tblr-primary); }
+.wv-card-id { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); font-weight: 500; opacity: .55; }
+.wv-card-desc { color: var(--tblr-secondary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.wv-card.compact .wv-card-desc { -webkit-line-clamp: 1; }
+.wv-card-fields { display: grid; grid-template-columns: repeat(2, max-content minmax(0, 1fr)); column-gap: 10px; row-gap: 2px; margin: 0; }
+.wv-card.compact .wv-card-fields { grid-template-columns: max-content minmax(0, 1fr); }
+.wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
+.wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mention-caret { position: relative; }
 .mention-caret::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%); }
-.mention-caret::after { width: 100%; }
+@media (max-width: 600px), (pointer: coarse) { .mention-caret::after { width: max(100%, 44px); height: max(100%, 44px); } }
 /* the picker and the date control, lifted the same way — Option O's edit costume */
 .chip-pop { position: fixed; z-index: 1200; min-width: 140px; padding: 4px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
 .chip-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: none; border: 0; border-radius: var(--tblr-border-radius); cursor: pointer; text-align: left; color: var(--tblr-body-color); }
@@ -110,25 +167,28 @@
 .chip-pop-row:focus-visible { outline-offset: -2px; }
 .chip-pop-check { margin-left: auto; color: var(--tblr-primary); font-weight: 700; }
 .chip-pop { animation: wv-pop-in .12s ease-out both; transform-origin: top left; }
-.chip-pop { animation: none; }
-.chip-pop-row.wv-menu-row { gap: 9px; width: 100%; padding: 5px 8px; font: inherit; font-size: 13.5px; line-height: 20px; }
+@media (prefers-reduced-motion: reduce) { .chip-pop { animation: none; } }
+.chip-pop-row.wv-menu-row { gap: 9px; width: 100%; padding: 5px 8px; font: inherit; font-size: var(--fs-body); line-height: 20px; }
+.picker-wrap, .picker-face { min-width: 0; }
+.chip-pop.nav-account-menu { transform-origin: bottom left; }
 .picker-pop { padding: 6px; min-width: 220px; }
-.picker-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); padding: 2px 4px 6px; }
+.picker-title { font-size: var(--fs-meta); text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); padding: 2px 4px 6px; }
 .picker-box { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; width: 100%; border: 1px solid var(--tblr-border-color); border-radius: 5px; background: var(--tblr-bg-surface); padding: 3px 5px; margin-bottom: 6px; cursor: text; }
 .picker-box:focus-within { border-color: var(--tblr-primary); }
 .picker-chips { display: contents; }
 .picker-chip { cursor: default; }
 .picker-chip.sel { outline: 2px solid var(--tblr-primary); outline-offset: 1px; }
-.picker-search { flex: 1 1 90px; min-width: 90px; border: 0; border-radius: 3px; background: none; color: var(--tblr-body-color); font-size: 13px; padding: 3px 3px; outline: none; }
-.picker-name { flex: 0 1 auto; margin-left: auto; padding: 0 2px 0 8px; max-width: 50%; color: var(--tblr-secondary); font-size: 11.5px; font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; user-select: none; }
+.picker-search { flex: 1 1 90px; min-width: 90px; border: 0; border-radius: 3px; background: none; color: var(--tblr-body-color); font-size: var(--fs-grid); padding: 3px 3px; outline: none; }
+.picker-name { flex: 0 1 auto; margin-left: auto; padding: 0 2px 0 8px; max-width: 50%; color: var(--tblr-secondary); font-size: var(--fs-secondary); font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; user-select: none; }
 .picker-name:empty { display: none; }
 .picker-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
 .picker-row { display: flex; align-items: center; gap: 8px; }
 .picker-row.active { background: rgba(var(--tblr-primary-rgb), .10); border-radius: 5px; }
-.picker-hint { color: var(--tblr-secondary); font-size: 11.5px; margin-left: auto; }
-.picker-num { flex: 0 0 11px; text-align: right; color: var(--tblr-secondary); font-size: 10.5px; font-variant-numeric: tabular-nums; opacity: .55; user-select: none; }
-.picker-row.active .picker-num, .picker-row:hover .picker-num { opacity: 1; }
-.picker-cat { padding: 9px 6px 3px; font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); }
+.picker-hint { color: var(--tblr-secondary); font-size: var(--fs-secondary); margin-left: auto; }
+.picker-num { flex: 0 0 11px; text-align: right; color: var(--tblr-secondary); font-size: var(--fs-meta); font-variant-numeric: tabular-nums; opacity: .55; user-select: none; }
+.picker-row.active .picker-num { opacity: 1; }
+@media (hover: hover) { .picker-row:hover .picker-num { opacity: 1; } }
+.picker-cat { padding: 9px 6px 3px; font-size: var(--fs-meta); letter-spacing: .13em; text-transform: uppercase; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); }
 .picker-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: 2px; }
 .picker-cell { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--wv-icon-rest); cursor: pointer; }
 .picker-cell:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); color: var(--tblr-body-color); }
@@ -138,22 +198,37 @@
 .picker-none { color: var(--tblr-secondary); }
 .picker-none .wv-icon { opacity: .75; }
 .picker-pop:has(.picker-cells) { width: 292px; }
-.picker-empty { color: var(--tblr-secondary); font-size: 12.5px; padding: 8px 6px; }
+.picker-empty { color: var(--tblr-secondary); font-size: var(--fs-grid); padding: 8px 6px; }
 .picker-face { text-align: left; cursor: pointer; width: 100%; }
 .picker-wrap { display: block; width: 100%; }
 .picker-centered { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 320px; }
 .picker-cells.picker-terms { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
-.picker-cell.picker-term { display: block; aspect-ratio: auto; width: auto; height: auto; text-align: left; padding: 4px 8px; font-size: 12.5px; line-height: 1.4; color: var(--tblr-body-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker-cell.picker-term { display: block; aspect-ratio: auto; width: auto; height: auto; text-align: left; padding: 4px 8px; font-size: var(--fs-grid); line-height: 1.4; color: var(--tblr-body-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picker-pop:has(.picker-terms) .picker-list { max-height: 340px; }
 .picker-cell.picker-term.on { color: var(--tblr-primary); font-weight: 600; background: rgba(var(--tblr-primary-rgb), .10); }
-.picker-custom { display: block; width: 100%; text-align: left; font-size: 12.5px; color: var(--tblr-primary); background: none; border: none; border-top: 1px solid var(--tblr-border-color); margin-top: 4px; padding: 8px 6px 4px; cursor: pointer; }
+.picker-custom { display: block; width: 100%; text-align: left; font-size: var(--fs-grid); color: var(--tblr-primary); background: none; border: none; border-top: 1px solid var(--tblr-border-color); margin-top: 4px; padding: 8px 6px 4px; cursor: pointer; }
 .picker-pop:has(.picker-terms) { width: auto; min-width: 372px; }
 .picker-iconly { display: inline-flex; align-items: center; gap: 8px; }
 .date-pick-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--tblr-secondary); cursor: pointer; }
 .date-pick-btn:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); border-color: var(--tblr-border-color); }
 .chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
-.chip-pop-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-secondary); padding: 4px 6px 2px; }
-.chip-pop-note { font-size: 11px; color: var(--tblr-secondary); padding: 4px 6px 2px; max-width: 220px; white-space: normal; }
+.chip-pop-title { font-size: var(--fs-meta); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-secondary); padding: 4px 6px 2px; }
+.chip-pop-note { font-size: var(--fs-meta); color: var(--tblr-secondary); padding: 4px 6px 2px; max-width: 220px; white-space: normal; }
+@media (max-width: 600px) { .chip-pop.picker-pop { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; min-width: 0; max-width: none; max-height: calc(100dvh - 72px); transform: none; padding: 6px 10px calc(12px + env(safe-area-inset-bottom, 0px)); border: 0; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgba(12, 27, 51, .32), 0 -8px 24px rgba(12, 27, 51, .18); animation: wv-sheet-in .18s ease-out both; } }
+@media (max-width: 600px) { .chip-pop.picker-pop::before { content: ""; flex: none; align-self: center; width: 36px; height: 5px; margin: 2px 0 8px; border-radius: 3px; background: var(--tblr-border-color); } }
+@media (max-width: 600px) { .picker-pop .picker-title { font-size: var(--fs-h2); font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--tblr-body-color); padding: 2px 10px 10px; } }
+@media (max-width: 600px) { .picker-pop .picker-box { min-height: 44px; border-radius: 10px; } }
+@media (max-width: 600px) { .picker-pop .picker-search { font-size: var(--fs-doc); } }
+@media (max-width: 600px) { .picker-pop.picker-short .picker-box { display: none; } }
+@media (max-width: 600px) { .picker-pop .picker-list { flex: 1 1 auto; max-height: none; min-height: 0; } }
+@media (max-width: 600px) { .picker-pop .picker-row { min-height: 56px; padding: 0 12px; font-size: var(--fs-doc); border-radius: 12px; } }
+@media (max-width: 600px) { .picker-pop .picker-row .picker-num { display: none; } }
+@media (max-width: 600px) { .picker-pop .picker-row .chip-pop-check { font-size: var(--fs-h2); } }
+@media (max-width: 600px) { .picker-pop:has(.picker-cells), .picker-pop:has(.picker-terms) { width: auto; min-width: 0; } }
+@media (prefers-reduced-motion: reduce) { .chip-pop.picker-pop { animation: none; } }
+@media (max-width: 600px), (pointer: coarse) { .date-pick-btn { position: relative; } }
+@media (max-width: 600px), (pointer: coarse) { .date-pick-btn::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); } }
+@media (max-width: 600px), (pointer: coarse) { .picker-face { min-height: 44px; } }
 
 :root { --bg: #ecebe6; --fg: #1a1d23; --muted: #6b7280; --line: #d9d6ce; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
 [data-bs-theme="light"] {
@@ -334,12 +409,12 @@ h1 { font-size: 22px; margin: 0 0 6px; }
 <div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-b">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-card-desc wv-desc-medium">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview, the expand caret is right; the retract…</div>
-  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span><span class="k k-more">+2</span></div>
 </div></div>
 <div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-b">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-card-desc wv-desc-medium">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview, the expand caret is right; the retract…</div>
-  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span><span class="k k-more">+2</span></div>
 </div></div>
 </div>
 </section>
@@ -351,12 +426,12 @@ h1 { font-size: 22px; margin: 0 0 6px; }
 <div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-c">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
-  <dl class="wv-card-fields wv-fields-chips"><dt>Severity</dt><dd><span class="k k-select hue-green">Low</span></dd><dt>Symptom</dt><dd><span class="k k-multi hue-amber">Looks broken</span></dd><dt>Fixed in</dt><dd><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></dd><dt>Reported</dt><dd><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></dd></dl>
+  <dl class="wv-card-fields wv-fields-chips"><dt>Severity</dt><dd><span class="k k-select hue-green">Low</span></dd><dt>Symptom</dt><dd><span class="k k-multi hue-amber">Looks broken</span></dd><dt>Fixed in</dt><dd><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></dd><dt>Reported</dt><dd><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></dd></dl>
 </div></div>
 <div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-c">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
-  <dl class="wv-card-fields wv-fields-chips"><dt>Severity</dt><dd><span class="k k-select hue-green">Low</span></dd><dt>Symptom</dt><dd><span class="k k-multi hue-amber">Looks broken</span></dd><dt>Fixed in</dt><dd><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></dd><dt>Reported</dt><dd><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></dd></dl>
+  <dl class="wv-card-fields wv-fields-chips"><dt>Severity</dt><dd><span class="k k-select hue-green">Low</span></dd><dt>Symptom</dt><dd><span class="k k-multi hue-amber">Looks broken</span></dd><dt>Fixed in</dt><dd><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></dd><dt>Reported</dt><dd><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></dd></dl>
 </div></div>
 </div>
 </section>
@@ -383,12 +458,12 @@ h1 { font-size: 22px; margin: 0 0 6px; }
 <div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-e">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-card-desc wv-desc-large">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview (Feature #163 / #175), the expand caret is right. The retract caret, shown once the chip is open, points down. It should face the text it collapses back into, so expand and retract read as one control folding in and out. Expected. Retract caret oriented toward…</div>
-  <div class="wv-card-foot wv-foot-labelled"><span class="wv-cf"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></span><span class="wv-cf"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span><span class="wv-cf"><span class="wv-cf-l">Area</span><span class="k k-select hue-purple">Chips</span></span></div>
+  <div class="wv-card-foot wv-foot-labelled"><span class="wv-cf"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></span><span class="wv-cf"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span><span class="wv-cf"><span class="wv-cf-l">Area</span><span class="k k-select hue-purple">Chips</span></span></div>
 </div></div>
 <div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-e">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-card-desc wv-desc-large">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview (Feature #163 / #175), the expand caret is right. The retract caret, shown once the chip is open, points down. It should face the text it collapses back into, so expand and retract read as one control folding in and out. Expected. Retract caret oriented toward…</div>
-  <div class="wv-card-foot wv-foot-labelled"><span class="wv-cf"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></span><span class="wv-cf"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span><span class="wv-cf"><span class="wv-cf-l">Area</span><span class="k k-select hue-purple">Chips</span></span></div>
+  <div class="wv-card-foot wv-foot-labelled"><span class="wv-cf"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></span><span class="wv-cf"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span><span class="wv-cf"><span class="wv-cf-l">Area</span><span class="k k-select hue-purple">Chips</span></span></div>
 </div></div>
 </div>
 </section>
@@ -401,13 +476,13 @@ h1 { font-size: 22px; margin: 0 0 6px; }
   <div class="wv-card-cover cat-not-started hue-slate"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
   <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
-  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span><span class="k k-more">+2</span></div>
 </div></div>
 <div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-f">
   <div class="wv-card-cover cat-not-started hue-slate"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
   <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
-  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span><span class="k k-more">+2</span></div>
 </div></div>
 </div>
 </section>
@@ -421,14 +496,14 @@ h1 { font-size: 22px; margin: 0 0 6px; }
     <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
     <div class="wv-card-desc wv-desc-medium">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview, the expand caret is right; the retract…</div>
   </div>
-  <div class="wv-split-aside"><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span></div>
+  <div class="wv-split-aside"><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span></div>
 </div></div>
 <div class="panel wide" data-bs-theme="dark"><div class="wv-card wv-opt-g">
   <div class="wv-split-main">
     <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
     <div class="wv-card-desc wv-desc-medium">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview, the expand caret is right; the retract…</div>
   </div>
-  <div class="wv-split-aside"><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span></div>
+  <div class="wv-split-aside"><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span></div>
 </div></div>
 </div>
 </section>
@@ -439,11 +514,11 @@ h1 { font-size: 22px; margin: 0 0 6px; }
 <div class="pair">
 <div class="panel column" data-bs-theme="light"><div class="wv-card wv-opt-h">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
-  <div class="wv-card-foot wv-foot-between"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-teal">KA</span>Kyle Adriany<span class="k-home">People</span></a></span></span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-12</span></div>
+  <div class="wv-card-foot wv-foot-between"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention"><span class="av hue-teal">KA</span>Kyle Adriany</a><span class="k-home">People</span></span></span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-12</span></div>
 </div></div>
 <div class="panel column" data-bs-theme="dark"><div class="wv-card wv-opt-h">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
-  <div class="wv-card-foot wv-foot-between"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-teal">KA</span>Kyle Adriany<span class="k-home">People</span></a></span></span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-12</span></div>
+  <div class="wv-card-foot wv-foot-between"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention"><span class="av hue-teal">KA</span>Kyle Adriany</a><span class="k-home">People</span></span></span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-12</span></div>
 </div></div>
 </div>
 </section>
@@ -456,13 +531,13 @@ h1 { font-size: 22px; margin: 0 0 6px; }
   <span class="wv-card-corner-id">#193</span>
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false">Collapsible chip: retract caret points down; it should face the text</a></div>
   <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
-  <div class="wv-card-foot wv-foot-nowrap"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+  <div class="wv-card-foot wv-foot-nowrap"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span><span class="k k-more">+2</span></div>
 </div></div>
 <div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-i wv-accent-state cat-not-started hue-slate">
   <span class="wv-card-corner-id">#193</span>
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false">Collapsible chip: retract caret points down; it should face the text</a></div>
   <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
-  <div class="wv-card-foot wv-foot-nowrap"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+  <div class="wv-card-foot wv-foot-nowrap"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span><span class="k k-more">+2</span></div>
 </div></div>
 </div>
 </section>
@@ -476,7 +551,7 @@ h1 { font-size: 22px; margin: 0 0 6px; }
   <div class="wv-row-cell"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-row-cell"><span class="k k-select hue-green">Low</span></div>
   <div class="wv-row-cell"><span class="k k-multi hue-amber">Looks broken</span></div>
-  <div class="wv-row-cell"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></div>
+  <div class="wv-row-cell"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></div>
   <div class="wv-row-cell"><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></div>
 </div></div>
 <div class="panel wide" data-bs-theme="dark"><div class="wv-card wv-opt-j">
@@ -484,7 +559,7 @@ h1 { font-size: 22px; margin: 0 0 6px; }
   <div class="wv-row-cell"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-row-cell"><span class="k k-select hue-green">Low</span></div>
   <div class="wv-row-cell"><span class="k k-multi hue-amber">Looks broken</span></div>
-  <div class="wv-row-cell"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></div>
+  <div class="wv-row-cell"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></div>
   <div class="wv-row-cell"><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></div>
 </div></div>
 </div>
@@ -533,11 +608,11 @@ h1 { font-size: 22px; margin: 0 0 6px; }
 <code class="cfg">{ shape: 'card', link: true, state: true, description: 'none', fields: ['Fixed in','Owner','Area'] }</code>
 <div class="pair">
 <div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-m">
-  <div class="wv-rel-cluster"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-teal">KA</span>Kyle Adriany<span class="k-home">People</span></a></span></span><span class="k k-select hue-purple">Chips</span></div>
+  <div class="wv-rel-cluster"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention"><span class="av hue-teal">KA</span>Kyle Adriany</a><span class="k-home">People</span></span></span><span class="k k-select hue-purple">Chips</span></div>
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
 </div></div>
 <div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-m">
-  <div class="wv-rel-cluster"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-teal">KA</span>Kyle Adriany<span class="k-home">People</span></a></span></span><span class="k k-select hue-purple">Chips</span></div>
+  <div class="wv-rel-cluster"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention"><span class="av hue-teal">KA</span>Kyle Adriany</a><span class="k-home">People</span></span></span><span class="k k-select hue-purple">Chips</span></div>
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
 </div></div>
 </div>
@@ -550,12 +625,12 @@ h1 { font-size: 22px; margin: 0 0 6px; }
 <div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-n">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-range-bar" aria-label="2026-09-05 to 2026-09-12"><span class="wv-range-tick">Sep 5</span><span class="wv-range-fill"></span><span class="wv-range-tick">Sep 12</span></div>
-  <div class="wv-card-foot wv-foot-hang"><span class="k k-select hue-green">Low</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></div>
+  <div class="wv-card-foot wv-foot-hang"><span class="k k-select hue-green">Low</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></div>
 </div></div>
 <div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-n">
   <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
   <div class="wv-range-bar" aria-label="2026-09-05 to 2026-09-12"><span class="wv-range-tick">Sep 5</span><span class="wv-range-fill"></span><span class="wv-range-tick">Sep 12</span></div>
-  <div class="wv-card-foot wv-foot-hang"><span class="k k-select hue-green">Low</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></div>
+  <div class="wv-card-foot wv-foot-hang"><span class="k k-select hue-green">Low</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">v0.4.6</a><span class="k-home">Release</span></span></span></div>
 </div></div>
 </div>
 </section>

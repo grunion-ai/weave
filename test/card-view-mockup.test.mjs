@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { ROOT } from './lib/source.mjs';
+import { pickerCss } from '../scripts/export-card-view-options.mjs';
 
 const FILE = join(ROOT, 'docs/mockups/card-view-options.html');
 const HTML = readFileSync(FILE, 'utf8');
@@ -86,7 +88,8 @@ test('every field value is the table cell’s chip, not text, in both themes', (
   assert.equal(panels('light'), panels('dark'), 'every option is shown light and dark');
   assert.equal(panels('dark'), Object.keys(OPTIONS).length, 'one dark panel per option');
   assert.match(HTML, /k k-computed wv-date/, 'the date chip in the quiet computed costume');
-  assert.match(HTML, /--wv-chip-font: 13px/, 'the chip size tokens');
+  assert.match(HTML, /--wv-chip-font: var\(--fs-grid\)/, 'the chip size tokens');
+  assert.match(HTML, /--fs-grid: 13px/, 'the grid type step the chip size reads');
   assert.match(HTML, /\.k-rel, \.k-doc, \.k-attach, \.k-more \{ background: none;/, 'no fill behind a pointer chip');
   assert.match(HTML, /border-radius: 4px/, '4px radius');
 });
@@ -94,4 +97,28 @@ test('every field value is the table cell’s chip, not text, in both themes', (
 test('the mockup is self-contained', () => {
   assert.doesNotMatch(HTML, /(src|href)=["'](https?:)?\/\//, 'no external src or href');
   assert.doesNotMatch(HTML, /<link[^>]+stylesheet|<script/, 'no stylesheet link, no script');
+});
+
+test('the checked-in mockup is a fresh run of its generator', () => {
+  const fresh = execFileSync(process.execPath, [join(ROOT, 'scripts/export-card-view-options.mjs'), '--stdout'], { encoding: 'utf8' });
+  assert.equal(readFileSync(FILE, 'utf8'), fresh, 'the checked-in mockup drifted from its generator: run scripts/export-card-view-options.mjs');
+});
+
+test('pickerCss keeps the phone bottom sheet inside its media query', () => {
+  const css = pickerCss('.chip-pop { position: fixed; }\n@media (max-width: 600px) {\n  .chip-pop.picker-pop { bottom: 0; }\n}');
+  assert.match(css, /@media \(max-width: 600px\) \{ \.chip-pop\.picker-pop \{ bottom: 0; \} \}/, 'the sheet keeps its condition');
+  assert.doesNotMatch(css, /^\.chip-pop\.picker-pop \{ bottom: 0; \}$/m, 'the sheet never opens over a desktop page');
+  assert.doesNotMatch(HTML, /^\.chip-pop\.picker-pop \{ position: fixed; left: 0/m, 'the checked-in page carries no unconditional sheet');
+});
+
+test('every relation and person chip link is the anchor the live chip stylesheet styles', () => {
+  const links = HTML.match(/<span class="k k-rel[^"]*"><a [^>]*>/g) ?? [];
+  assert.ok(links.length > 0, 'the page draws relation chips');
+  for (const a of links) assert.match(a, /<a [^>]*class="mention"/, `the link wears .mention as chip-view.js draws it: ${a}`);
+  assert.match(HTML, /^\.k-rel > a\.mention \{[^}]*color: inherit; text-decoration: none;/m, 'the live rule that sets the link in chip ink rides along');
+});
+
+test('the home badge sits after the link, where chip-view.js draws it', () => {
+  assert.match(HTML, /<\/a><span class="k-home">/, 'a badge follows its link');
+  assert.doesNotMatch(HTML, /<a [^>]*>(?:(?!<\/a>)[\s\S])*class="k-home"/, 'no badge inside a link');
 });

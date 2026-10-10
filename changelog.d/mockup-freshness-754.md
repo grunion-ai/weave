@@ -1,0 +1,1 @@
+- The chip mockups under `docs/mockups/` are drawn from the live chip stylesheet again and fail their tests when they drift from their generators. The extractor keeps `@media` rules under their condition, so the phone picker sheet and touch-size caret no longer leak into desktop pages, and the mockup links and home badges use the markup `chip-view.js` draws (Issue #754).
