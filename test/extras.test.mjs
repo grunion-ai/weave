@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, parseCSV } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 
 test('parseCSV handles quotes, commas, newlines', () => {
   const rows = parseCSV('a,b\n"x, y","line1\nline2"\n"quo""te",plain\n');

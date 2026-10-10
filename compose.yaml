@@ -39,6 +39,9 @@ services:
       # With a provider set, /mcp signs agents in through the browser; a second
       # domain for it on this service is listed here (Handbook, Door C).
       # WEAVE_MCP_ORIGINS: https://mcp.weave.example.com
+      # Workflow webhooks refuse loopback, link-local and private addresses and
+      # follow no redirect; 1 allows the ranges for hooks on this network.
+      # WEAVE_WEBHOOK_ALLOW_PRIVATE: "1"
       # The server asks GitHub for the latest release once a day; off stops it.
       # WEAVE_UPDATE_CHECK: "off"
       # With command ["node", "bin/weave.js", "supervise"], 1 installs each newer
