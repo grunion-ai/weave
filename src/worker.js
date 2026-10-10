@@ -53,6 +53,7 @@ export class WeaveWorkspace {
         path: decodePath(url.pathname),
         searchParams: url.searchParams,
         header: (name) => request.headers.get(name) ?? undefined,
+        remote: request.headers.get('cf-connecting-ip') ?? null,
         readBody: async () => {
           const raw = await request.text();
           if (!raw) return {};

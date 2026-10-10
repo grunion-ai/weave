@@ -24,6 +24,11 @@ export function statusFor(err) {
 
 const STARTED_AT = new Date().toISOString();
 
+export const clientAddress = ({ forwarded, remote, trustProxy }) => {
+  const hop = trustProxy ? String(forwarded ?? '').split(',').pop().trim() : '';
+  return hop || remote || 'unknown';
+};
+
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -95,10 +100,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (!byEngine.has(engine)) byEngine.set(engine, engine.accountForIdentity(who));
     return byEngine.get(engine);
   };
-  const clientIp = (rx) => {
-    const fwd = trustProxy ? String(rx.header('x-forwarded-for') ?? '').split(',')[0].trim() : '';
-    return fwd || rx.remote || 'unknown';
-  };
+  const clientIp = (rx) => clientAddress({ forwarded: rx.header('x-forwarded-for'), remote: rx.remote, trustProxy });
   const LEGACY_COOKIE = 'wv_session';
   const cookieName = (w) => `${LEGACY_COOKIE}_${w.state.meta.id}`;
   const secureFlag = (rx) => (originFor(rx).startsWith('https:') ? '; Secure' : '');
