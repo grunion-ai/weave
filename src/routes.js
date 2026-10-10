@@ -24,6 +24,13 @@ export function statusFor(err) {
 
 const STARTED_AT = new Date().toISOString();
 
+export function errorBody(err, code = 'internal') {
+  if (err instanceof WeaveError) return { error: err.message, code: err.code ?? code };
+  const id = crypto.randomUUID().slice(0, 8);
+  if (typeof console !== 'undefined') console.error(`weave: request ${id} failed:`, err);
+  return { error: `Internal error (request ${id})`, code: 'internal', id };
+}
+
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -218,7 +225,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         });
         if (hit) return hit;
       } catch (err) {
-        const json = { error: err.message, code: err.code ?? 'error' };
+        const json = errorBody(err, 'error');
         return err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(statusFor(err), json);
       }
     }
@@ -1396,8 +1403,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return notFound('Not found');
     } catch (err) {
       const status = statusFor(err);
-      if (status === 500 && typeof console !== 'undefined') console.error(err);
-      const json = { error: err.message, code: err.code ?? 'internal' };
+      const json = errorBody(err, 'internal');
       return status === 404 ? notFound(json) : out(status, json);
     }
   };
