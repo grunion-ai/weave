@@ -171,6 +171,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
   for (const [name, w] of Object.entries(workspaces)) instances.set(name, enroll(w));
 
   const dataDir = defaultWeave.store.path ? dirname(defaultWeave.store.path) : null;
+  const note = (action, name, actor) => defaultWeave.store.audit({ at: new Date().toISOString(), actor: actor ?? defaultWeave.actor, action, detail: { name } });
   const adoptedPaths = new Set([...instances.values()].map((w) => w.store.path).filter(Boolean));
   const scan = () => {
     if (!dataDir) return;
@@ -238,7 +239,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
           deletable: !!this.remove && name !== defaultName && name !== 'weave' && !w.state.meta.deletedAt,
         }));
     },
-    remove(ref, { hard = false } = {}) {
+    remove(ref, { hard = false, actor = null } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       const name = [...instances.entries()].find(([, x]) => x === w)?.[0];
@@ -249,6 +250,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
         w.state.meta.deletedAt = new Date().toISOString();
         w.save();
         w.syncRegistry();
+        note('workspace-trashed', name, actor);
         return w;
       }
       const path = w.store.path;
@@ -264,15 +266,17 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
           if (existsSync(path + suffix)) renameSync(path + suffix, join(trashDir, `${name}-${stamp}.db${suffix}`));
         }
       }
+      note('workspace-deleted', name, actor);
       return { name, trashed: !!path };
     },
-    restore(ref) {
+    restore(ref, { actor = null } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       if (!w.state.meta.deletedAt) return w;
       w.state.meta.deletedAt = null;
       w.save();
       w.syncRegistry();
+      note('workspace-restored', [...instances.entries()].find(([, x]) => x === w)?.[0] ?? w.state.meta.name, actor);
       return w;
     },
     slugState(slug, self = null) {
@@ -281,7 +285,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       const held = this.get(slug) ?? this.aliasOf(slug);
       return held && held !== self ? 'taken' : 'available';
     },
-    create(asked, { slug = null } = {}) {
+    create(asked, { slug = null, actor = null } = {}) {
       let title, name;
       if (slug != null && slug !== '') {
         name = String(slug);
@@ -305,6 +309,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       w.save();
       instances.set(name, enroll(w));
       adoptedPaths.add(w.store.path);
+      note('workspace-created', name, actor);
       return w;
     },
     entries() {

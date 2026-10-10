@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, logoType, inviteUrl } from './engine.js';
+import { Weave, WeaveError, fileHeaders, logoType, inviteUrl, requestActors } from './engine.js';
 import { handleApplet } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -194,7 +194,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
     }
 
-    weave.actor = String(rx.header('x-weave-actor') || 'web').slice(0, 120);
+    const named = weave.listAccounts().length || hub.get(hub.defaultName).listAccounts().length ? null : rx.header('x-weave-actor');
+    weave.actor = String(named || 'web').slice(0, 120);
     path = path.replace(/^(\/api\/tables\/)([^/]+)/, (whole, head, key) => {
       if (!/%2f/i.test(key)) return whole;
       try { return head + (weave.findTable(key.replace(/%2f/gi, '/'))?.id ?? key); } catch { return whole; }
@@ -808,7 +809,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (route === 'POST /api/start/workspaces') {
             if (!mayAdminister(hubRoot, rootAccount?.role)) return deny(403, 'Creating a workspace needs an architect on the hub root');
-            const w = hub.create(body?.name, { slug: body?.slug ?? null });
+            const w = hub.create(body?.name, { slug: body?.slug ?? null, actor: rootAccount?.name ?? weave.actor });
             const owner = w.createAccount({ name: rootAccount?.name ?? 'owner', role: 'architect' }).account;
             w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
             return out(201, { name: w.state.meta.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
@@ -864,18 +865,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             .map((x) => (baseDomain ? { ...x, host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : x)));
         }
         if (route === 'POST /api/workspaces') {
-          const w = hub.create(body.name, { slug: body.slug ?? null });
+          const w = hub.create(body.name, { slug: body.slug ?? null, actor: weave.actor });
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/` });
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          const w = hub.restore(m[1]);
+          const w = hub.restore(m[1], { actor: weave.actor });
           return out(200, { name: w.state.meta.name, deletedAt: null });
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
           if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
           const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
-          if (hard) return out(200, hub.remove(m[1], { hard: true }));
-          const w = hub.remove(m[1]);
+          if (hard) return out(200, hub.remove(m[1], { hard: true, actor: weave.actor }));
+          const w = hub.remove(m[1], { actor: weave.actor });
           return out(200, { name: w.state.meta.name, deletedAt: w.state.meta.deletedAt });
         }
 
@@ -1418,8 +1419,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
   };
 
-  return async function handle(rx) {
+  return function handle(rx) {
     const jar = [];
-    return withCookies(await respond(rx, jar), jar);
+    return requestActors.run(new Map(), async () => withCookies(await respond(rx, jar), jar));
   };
 }

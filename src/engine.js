@@ -9,6 +9,7 @@ import '../public/list-core.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
@@ -884,9 +885,12 @@ export function runDeferredMigrations() {
   }
 }
 
+export const requestActors = new AsyncLocalStorage();
+
 export const inviteUrl = (origin, code) => `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(code)}`;
 
 export class Weave {
+  #actor = 'local';
   #dirty = new Set();
   #dirtyAll = false;
   #held = false;
@@ -897,7 +901,7 @@ export class Weave {
   #computing = [];
 
   constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, revisionWindowMs = DOC_REVISION_WINDOW_MS, name = null } = {}) {
-    this.actor = actor;
+    this.#actor = actor;
     this.revisionWindowMs = revisionWindowMs;
     this.keystorePath = keystorePath ?? process.env.WEAVE_KEYSTORE ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
     this.keystoreEnv = keystoreEnv ?? process.env;
@@ -3096,6 +3100,18 @@ export class Weave {
       case 'apple-passwords': return 'x-apple.systempreferences:com.apple.Passwords-Settings.extension';
       default: return null;
     }
+  }
+
+  get actor() {
+    if (!(#actor in this)) return undefined;
+    const scope = requestActors.getStore();
+    return scope?.has(this) ? scope.get(this) : this.#actor;
+  }
+
+  set actor(name) {
+    const scope = requestActors.getStore();
+    if (scope) scope.set(this, name);
+    else this.#actor = name;
   }
 
   static ROLES = ['architect', 'editor', 'observer'];
@@ -7591,6 +7607,7 @@ export class Weave {
   }
 
   exportJSON({ blobs: withBlobs = true } = {}) {
+    this.#audit('export', { blobs: withBlobs, entities: Object.keys(this.state.entities).length });
     const out = JSON.parse(JSON.stringify(this.state));
     delete out.fileBlobs;
     for (const a of Object.values(out.meta.accounts ?? {})) {
@@ -7660,6 +7677,12 @@ export class Weave {
     this.#landBlobs();
     this.#dirtyAll = true;
     this.save();
+    this.#audit('import', {
+      spaces: Object.keys(this.state.spaces).length,
+      tables: Object.keys(this.state.tables).length,
+      entities: Object.keys(this.state.entities).length,
+      accounts: Object.keys(this.state.meta.accounts ?? {}).length,
+    });
     return this.#fileLedger();
   }
 

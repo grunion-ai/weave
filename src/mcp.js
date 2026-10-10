@@ -886,7 +886,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
   try {
     switch (method) {
       case 'initialize':
-        weave.actor = 'mcp:' + (params?.clientInfo?.name ?? 'client');
+        if (!caller || (!caller.role && !(weave.listAccounts().length || caller.root?.listAccounts().length))) weave.actor = 'mcp:' + (params?.clientInfo?.name ?? 'client');
         return reply({
           protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
           capabilities: { tools: {} },
