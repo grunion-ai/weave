@@ -27,9 +27,9 @@ const GUIDE_TITLES = [
 ];
 const guide = (name) => GUIDES.find((g) => g.name === name);
 
-test('the Dockerfile pins a node 22.x-slim tag at or above 22.16 and runs the serve verb as a non-root user', () => {
-  const from = DOCKERFILE.match(/^FROM node:(\d+)\.(\d+)\.(\d+)-slim\s*$/m);
-  assert.ok(from, 'FROM pins an exact node:<major>.<minor>.<patch>-slim tag');
+test('the Dockerfile pins a node 22.x-slim tag at or above 22.16 by digest and runs the serve verb as a non-root user', () => {
+  const from = DOCKERFILE.match(/^FROM node:(\d+)\.(\d+)\.(\d+)-slim@sha256:[0-9a-f]{64}$/m);
+  assert.ok(from, 'FROM pins an exact node:<major>.<minor>.<patch>-slim tag and its sha256 digest');
   assert.equal(Number(from[1]), 22);
   assert.ok(Number(from[2]) >= 16, `node 22.${from[2]} is below 22.16, the floor package.json declares`);
   assert.match(DOCKERFILE, /^WORKDIR \/opt\/weave$/m);
@@ -43,7 +43,7 @@ test('the Dockerfile pins a node 22.x-slim tag at or above 22.16 and runs the se
 });
 
 test('.dockerignore keeps workspace state, the browser install and the suite out of the image', () => {
-  for (const pattern of ['*.db', '*.db-wal', '*.db-shm', 'files/', 'node_modules', '.jj', 'test/', 'docs/screenshots']) {
+  for (const pattern of ['**/*.db', '**/*.db-wal', '**/*.db-shm', '**/files/', '**/node_modules', '.jj', 'test/', 'docs/screenshots']) {
     assert.ok(IGNORE.split('\n').map((l) => l.trim()).includes(pattern), `.dockerignore lists ${pattern}`);
   }
 });
