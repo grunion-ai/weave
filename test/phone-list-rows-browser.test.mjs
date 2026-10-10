@@ -45,6 +45,7 @@ if (s) {
       const chips = [...tr.querySelectorAll('td[data-field] .k')].filter((k) => k.getClientRects().length).map((k) => ({ text: k.textContent.trim(), top: k.getBoundingClientRect().top }));
       return {
         i: Number(tr.dataset.i), offset: Math.round(r.top - top0), height: Math.round(r.height), bottom: r.bottom,
+        lead: tr.querySelector('.phone-lead')?.textContent.trim() ?? null,
         name: name?.textContent ?? null, nameShown: !!name && name.getClientRects().length > 0, nameTop: nr?.top, nameH: nr?.height,
         lineH: name ? parseFloat(getComputedStyle(name).lineHeight) : 0,
         pidColor: pid ? getComputedStyle(pid).color : null, chips,
@@ -73,7 +74,7 @@ if (s) {
           assert.equal(r.height, 88, `row ${r.i} is ${r.height}px`);
           assert.ok(r.nameShown, `row ${r.i} shows its name`);
           assert.ok(r.nameH <= 2 * r.lineH + 1, `row ${r.i}'s name takes at most two lines (${r.nameH}px)`);
-          assert.ok(r.chips.some((c) => c.text === 'Open'), `row ${r.i} shows its Status chip`);
+          assert.equal(r.lead, 'Open', `row ${r.i} leads with its Status (Feature #299)`);
           assert.ok(r.chips.every((c) => c.top > r.nameTop), `row ${r.i}'s chips sit under its name`);
         }
         assert.ok(seen.rows.some((r) => r.nameH > 1.5 * r.lineH), 'a long name wraps to a second line');

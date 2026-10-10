@@ -2133,20 +2133,41 @@ function checkRowPitch(grid) {
 }
 
 const PHONE_MORE_W = 44;
+const phoneRowCore = globalThis.weavePhoneRow;
+function phoneRowOf(db) {
+  const raw = allTables().find((t) => t.id === db.id) ?? db;
+  const named = nameFieldOf(raw)?.name;
+  const fields = raw.fields.map((f) => ({ name: f.name, type: f.type, role: f.name === named ? 'name' : null }));
+  return phoneRowCore.resolve(fields, visibleCols(db), db.view?.blank ? null : db.view?.phoneRow ?? null);
+}
+function phoneLeadEl(f, item) {
+  const val = item.fields?.[f.name] ?? null;
+  let seg;
+  if (f.type === 'workflow') {
+    const st = (f.states ?? []).find((x) => x.name === val);
+    seg = { kind: 'state', label: f.name, value: st?.name ?? '—', category: st?.category, ...(st?.hue ? { hue: st.hue } : {}) };
+  } else if (f.type === 'select' && val != null) {
+    const o = (f.optionsFull ?? []).find((x) => x.name === val);
+    seg = { kind: 'field', type: 'select', label: f.name, value: val, option: { hue: chipCore.hueFromHex(o?.color), icon: o?.icon } };
+  } else seg = { kind: 'field', type: f.type, label: f.name, value: String(fieldValueCell(val) ?? '') || '—' };
+  return el('span', { class: 'phone-lead', dataset: { field: f.name } }, viewSegmentEl(seg));
+}
 function fitPhoneChipLines(grid) {
   const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
+  const wrap = grid.dataset.phoneWrap != null;
   for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
     const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
     for (const td of cells) { td.classList.remove('list-hide'); delete td.dataset.more; }
     if (!phone) continue;
-    const shown = cells.filter((td) => td.getClientRects().length);
+    const shown = cells.filter((td) => td.getClientRects().length).sort((a, b) => Number(a.dataset.phoneChip) - Number(b.dataset.phoneChip));
     if (!shown.length) continue;
     const top = shown[0].getBoundingClientRect().top;
-    const edge = tr.getBoundingClientRect().right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
+    const box = tr.getBoundingClientRect();
+    const edge = box.right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
     let n = shown.length;
     const fits = () => {
       const r = shown[n - 1].getBoundingClientRect();
-      return r.top - top < 1 && (n === shown.length || r.right + PHONE_MORE_W <= edge);
+      return (wrap ? r.bottom <= box.bottom + 0.5 : r.top - top < 1) && (n === shown.length || r.right + PHONE_MORE_W <= edge);
     };
     while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
     if (n < shown.length) shown[n - 1].dataset.more = `+${shown.length - n}`;
@@ -3176,7 +3197,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
-    layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null,
+    layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -3541,6 +3562,8 @@ function gridMoves(db, field) {
 
 function gridFields(db) {
   const names = new Set(visibleCols(db));
+  const phone = phoneRowOf(db);
+  for (const n of [phone.lead, ...phone.chips]) if (n) names.add(n);
   for (const s of gridSort(db) ?? []) if (db.fields.some((f) => f.name === s.field)) names.add(s.field);
   for (const n of db.systemFields ?? []) names.add(n);
   return [...names];
@@ -3827,6 +3850,81 @@ function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = 
     },
   });
 }
+function phoneRowPopover(anchor, db) {
+  const PR = phoneRowCore;
+  const raw = () => allTables().find((t) => t.id === db.id) || db;
+  const fields = () => { const named = nameFieldOf(raw())?.name; return raw().fields.map((f) => ({ name: f.name, type: f.type, role: f.name === named ? 'name' : null })); };
+  const here = () => state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id;
+  let cfg = phoneRowOf(db);
+  const body = el('div', { class: 'phone-row-body' });
+  const write = (next) => {
+    if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
+    cfg = next;
+    draw();
+    const release = eyeGesture(gridHold());
+    const turn = eyeWrites.then(() => gridConfigWrite(db, null, { phoneRow: { lead: next.lead, chips: next.chips, labels: next.labels, wrap: next.wrap } }))
+      .catch((err) => toast(err.message, true));
+    eyeWrites = turn; eyeTails.set(db.id, turn);
+    turn.then(async () => {
+      try {
+        if (eyeTails.get(db.id) !== turn) return;
+        eyeTails.delete(db.id);
+        if (here()) await keepScroll(() => showDatabase(db.id, db.view.id));
+      } catch (err) { toast(err.message, true); } finally { release(); }
+    });
+  };
+  const SLOT_LABELS = [['lead', 'Lead'], ['chips', 'Chips'], ['off', 'Off']];
+  const fieldRow = (r, list) => {
+    const grip = r.slot === 'chips'
+      ? el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${r.name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'))
+      : el('span', { class: 'phone-row-nogrip', 'aria-hidden': 'true' });
+    const row = el('div', { class: 'phone-row-field', dataset: { field: r.name, slot: r.slot } }, grip,
+      el('span', { class: 'eye-label' }, r.name),
+      el('span', { class: 'seg phone-row-seg', role: 'radiogroup', 'aria-label': r.name }, ...SLOT_LABELS.map(([slot, label]) => el('button', {
+        type: 'button', class: 'seg-opt' + (r.slot === slot ? ' on' : ''), role: 'radio', 'aria-checked': String(r.slot === slot), dataset: { slot },
+        onclick: () => { if (r.slot !== slot) write(PR.setSlot(cfg, r.name, slot)); },
+      }, label))));
+    if (r.slot !== 'chips') return row;
+    RO().guard(row);
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      startRowDrag(list, row, e, (target, after) => {
+        const rest = cfg.chips.filter((n) => n !== r.name);
+        write(PR.moveChip(cfg, r.name, rest.indexOf(target) + (after ? 1 : 0)));
+      }, { rows: '.phone-row-field' });
+    });
+    grip.addEventListener('keydown', (e) => {
+      if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+      e.preventDefault();
+      const to = cfg.chips.indexOf(r.name) + (e.key === 'ArrowUp' ? -1 : 1);
+      if (to < 0 || to >= cfg.chips.length) return;
+      write(PR.moveChip(cfg, r.name, to));
+      body.querySelector(`.phone-row-field[data-field="${CSS.escape(r.name)}"] .field-reorder-handle`)?.focus({ preventScroll: true });
+    });
+    return row;
+  };
+  const toggleRow = (label, on, flip) => el('label', { class: 'chip-pop-row eye-row' },
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: flip }),
+    el('span', { class: 'eye-label' }, label));
+  const draw = () => {
+    const rows = PR.rows(fields(), cfg);
+    const chips = el('div', { class: 'phone-row-chips' });
+    chips.append(...rows.filter((r) => r.slot === 'chips').map((r) => fieldRow(r, chips)));
+    const part = (slot) => rows.filter((r) => r.slot === slot).map((r) => fieldRow(r, null));
+    body.replaceChildren(
+      el('div', { class: 'eye-head' }, 'Lead'), ...part('lead'),
+      el('div', { class: 'eye-head' }, 'Chips'), chips,
+      el('div', { class: 'eye-head' }, 'Off'), ...part('off'),
+      el('hr'),
+      toggleRow('Field names on chips', cfg.labels, () => write({ ...cfg, labels: !cfg.labels })),
+      toggleRow('Wrap chips instead of +N', cfg.wrap, () => write({ ...cfg, wrap: !cfg.wrap })));
+  };
+  draw();
+  let pop = null;
+  pop = tableControlPopover(anchor, db, 'phone-row-popover', [tableControlHeader('Phone row', () => pop?.remove()), body]);
+  return pop;
+}
+
 function tableFieldsPopover(anchor, db, trashCount) {
   let pop;
   const raw = () => allTables().find((t) => t.id === db.id) || db;
@@ -4019,7 +4117,8 @@ function tableChrome(db, trashCount) {
       (() => {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
         eye.setAttribute('aria-label', 'Show or hide fields');
-        eye.addEventListener('click', () => fieldVisibilityPopover(eye, ref.db, ref.trashCount));
+        eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db)
+          ? phoneRowPopover(eye, ref.db) : fieldVisibilityPopover(eye, ref.db, ref.trashCount)));
         return eye;
       })(),
       filterBtn,
@@ -4809,6 +4908,7 @@ let GRID_SEQ = 0;
 function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   adoptLegacyDensity(db);
   let cols = visibleCols(db);
+  const phone = phoneRowOf(db);
   const isSysCol = (c) => !colField(db, c) && !!SYSTEM_COLS[c];
   const sysTail = db.columns ? [] : (db.systemFields ?? []);
   const cellBox = (...kids) => el('div', { class: 'wv-cb' }, ...kids);
@@ -5039,6 +5139,20 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     clearChosen();
   });
 
+  const fieldCell = (f, item, extra) => {
+    const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
+      : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed'
+      : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
+    const td = el('td', {
+      dataset: { ftype: f.type, field: f.name },
+      class: (isNumCell(f, item) ? 'num' : '') + extra + kind,
+    }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
+    const at = phone.chips.indexOf(f.name) + 1;
+    if (at) { td.dataset.phoneChip = String(at); td.style.order = String(at); }
+    return f.type === 'attachments'
+      ? fileDropZone(td, (files) => td.querySelector('.k-attach')?.dropFiles?.(files))
+      : td;
+  };
   const buildRow = (item) => {
     const row = el('tr', {
       class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
@@ -5063,23 +5177,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : keyHint(`Open ${db.term.singular} beside the table — ⌘-click for a new tab`),
         }, `#${item.publicId} ↗`),
         el('span', { class: 'list-name' }, item.name ?? ''))),
-      ...cols.map((c) => {
-        if (isSysCol(c)) return sysCell(c, item);
-        const f = db.fields.find((x) => x.name === c);
-        const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
-          : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed'
-          : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
-        const td = el('td', {
-          dataset: { ftype: f.type, field: f.name },
-          class: (isNumCell(f, item) ? 'num' : '')
-            + (c === cols[0] ? ' name-cell' : '') + kind,
-        }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
-        return f.type === 'attachments'
-          ? fileDropZone(td, (files) => td.querySelector('.k-attach')?.dropFiles?.(files))
-          : td;
-      }),
-      ...sysTail.map((n) => sysCell(n, item)));
-    for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
+      ...cols.map((c) => (isSysCol(c) ? sysCell(c, item) : fieldCell(db.fields.find((x) => x.name === c), item, c === cols[0] ? ' name-cell' : ''))),
+      ...sysTail.map((n) => sysCell(n, item)),
+      ...phone.chips.filter((n) => !cols.includes(n)).map((n) => fieldCell(db.fields.find((x) => x.name === n), item, ' phone-only')));
+    const lead = phone.lead && db.fields.find((x) => x.name === phone.lead);
+    if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb').prepend(phoneLeadEl(lead, item));
+    for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop, .phone-only)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     return row;
   };
@@ -5762,7 +5865,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
     table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
-      dataset: { density: gridDensity(db) },
+      dataset: { density: gridDensity(db), ...(phone.labels ? { phoneLabels: '' } : {}), ...(phone.wrap ? { phoneWrap: '' } : {}) },
     },
       el('thead', {}, el('tr', {},
         el('th', { class: 'sel-head' },

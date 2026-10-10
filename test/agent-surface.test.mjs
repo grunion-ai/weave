@@ -148,7 +148,7 @@ test('every capability has a CLI command that exists', () => {
     assert.match(CLI, new RegExp(`case '${command}'`), `${capability}: no CLI command '${command}'`);
     if (sub) {
       const start = CLI.indexOf(`case '${command}'`);
-      const block = CLI.slice(start, start + 2600);
+      const block = CLI.slice(start, start + 3200);
       assert.ok(block.includes(`'${sub}'`), `${capability}: '${command}' has no '${sub}' subcommand`);
     }
   }
