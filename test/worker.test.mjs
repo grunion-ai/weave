@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { Weave, WeaveError } from '../src/engine.js';
+import { CFStore } from '../src/store-cf.js';
+import { createForm } from '../src/forms.js';
+import { statusFor } from '../src/routes.js';
 import { WeaveWorkspace } from '../src/worker.js';
 
 function shimStorage() {
@@ -106,4 +110,29 @@ test('worker DO: workspace scoping serves /w/<own name>/ and 404s strangers', as
   assert.equal(own.status, 200);
   const stranger = await call(dobj, 'GET', '/w/nope/api/health');
   assert.equal(stranger.status, 404);
+});
+
+
+test('worker forms accept URLencoded submissions, preserve retries and enforce transport boundaries', async () => {
+  const storage = shimStorage();
+  const w = new Weave({ store: new CFStore(storage), name: 'scratch' });
+  w.createSpace({ name: 'Intake' });
+  w.createTable({ space: 'Intake', name: 'Requests' });
+  const form = createForm(w, { name: 'Requests', table: 'Intake/Requests', fields: ['Name'] });
+  const dobj = makeDO(storage);
+  const send = (path, body, headers = {}) => dobj.fetch(new Request(`http://do${path}`, { method: 'POST', headers: { 'x-weave-workspace': 'scratch', ...headers }, body, ...(body instanceof ReadableStream ? { duplex: 'half' } : {}) }));
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'http://do', 'Idempotency-Key': crypto.randomUUID() };
+  const first = await send(`/f/${form.id}`, 'Name=Worker', headers);
+  assert.equal(first.status, 201);
+  const retry = await send(`/api/forms/${form.id}/submit`, 'Name=Worker', headers);
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).id, (await first.json()).id);
+  assert.equal((await send(`/f/${form.id}`, 'Name=Other', { ...headers, Origin: 'http://evil' })).status, 403);
+  assert.equal((await send('/api/tables/Requests/entities', 'Name=Other', headers)).status, 400);
+  const huge = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('Name=' + 'x'.repeat(65536))); controller.close(); } });
+  assert.equal((await send(`/f/${form.id}`, huge, headers)).status, 413);
+});
+
+test('receipt capacity errors map to HTTP 429', () => {
+  assert.equal(statusFor(new WeaveError('Capacity reached', 'rate-limited')), 429);
 });

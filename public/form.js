@@ -41,21 +41,36 @@
     const send = form.querySelector('button[type="submit"]');
     const error = doc.getElementById('wv-form-error');
     const receipt = doc.getElementById('wv-form-receipt');
+    const storageKey = `weave-form-pending:${form.dataset.submit}`;
+    let pending;
+    try { pending = JSON.parse(win.sessionStorage.getItem(storageKey)); } catch {}
+    const requestKey = () => win.crypto.randomUUID?.() ?? Array.from(win.crypto.getRandomValues(new Uint8Array(24)), (n) => n.toString(16).padStart(2, '0')).join('');
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (send.disabled) return;
+      if (send.disabled || !form.reportValidity()) return;
       send.disabled = true;
       send.textContent = 'Sending…';
       error.classList.add('d-none');
       try {
+        const input = collect(form);
+        const signature = JSON.stringify({ ...input, client: undefined });
+        if (!pending || pending.signature !== signature || Date.now() - pending.at >= 24 * 60 * 60 * 1000) {
+          pending = { signature, body: JSON.stringify(input), key: requestKey(), at: Date.now() };
+          try { win.sessionStorage.setItem(storageKey, JSON.stringify(pending)); } catch {}
+        }
         const res = await win.fetch(form.dataset.submit, {
           method: 'POST',
           credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(collect(form)),
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': pending.key },
+          body: pending.body,
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `The form was refused (${res.status})`);
+        if (!res.ok) {
+          const wait = res.status === 429 ? Number(res.headers.get('Retry-After')) : 0;
+          throw new Error((data.error || `The form was refused (${res.status})`) + (wait > 0 ? ` Try again in ${wait} seconds.` : ''));
+        }
+        pending = null;
+        try { win.sessionStorage.removeItem(storageKey); } catch {}
         send.textContent = 'Sent';
         form.classList.add('sent');
         receipt.textContent = `Filed as ${data.table} #${data.publicId}.`;

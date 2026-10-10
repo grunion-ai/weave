@@ -493,12 +493,13 @@ export const TOOLS = [
   },
   {
     name: 'weave_form_submit',
-    description: 'Submit one row through a form, a Workspace/Forms row: exactly one new row in the form\'s table, written by you, with no write access to that table needed. form is the form\'s id or name; values maps the fields the form shows (by name or label) to values. A field the server fills (reporter, time, version) is refused, and so is a field the form does not show. The bug reporter is a form too: give it note and categories (slow, broken-ui, wrong-data, error) instead of values.',
+    description: 'Submit one row through a Workspace/Forms form without write access to its table. form is its id or name; values accepts stable input keys, field IDs, aliases, names or labels. Reuse idempotencyKey when retrying the same request: it returns the original receipt; changed input with the same key is refused. Server-filled and unlisted fields are refused. Bug forms take note and categories (slow, broken-ui, wrong-data, error).',
     inputSchema: {
       type: 'object',
       properties: {
         form: { type: 'string', description: 'The form id or name, as GET /api/forms lists them.' },
-        values: { type: 'object', description: 'Field name or label to value, for the fields the form shows.' },
+        values: { type: 'object', description: 'Stable input key, field ID, alias, name or label to value, for the fields the form shows.' },
+        idempotencyKey: { type: 'string', description: 'A unique key for this attempt. Reuse it with the same input to safely retry for 24 hours.' },
         note: { type: 'string', description: 'Bug report forms: what happened.' },
         categories: { type: 'array', items: { type: 'string' }, description: 'Bug report forms: the symptoms.' },
       },
@@ -808,7 +809,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_audit':
       return { events: weave.listAudit({ limit: args.limit ?? null, since: args.since ?? null }) };
     case 'weave_form_submit':
-      return submitForm(weave, args.form, { values: args.values, note: args.note, categories: args.categories, events: [] }, { actor: weave.actor, server: { version: VERSION, workspace: weave.state.meta.name } });
+      return submitForm(weave, args.form, { values: args.values, note: args.note, categories: args.categories, events: [] }, { actor: weave.actor, idempotencyKey: args.idempotencyKey, server: { version: VERSION, workspace: weave.state.meta.name } });
     case 'weave_workspace':
       switch (args.action ?? 'get') {
         case 'get': return weave.getWorkspace();

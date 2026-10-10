@@ -54,6 +54,7 @@ export class Store {
   #db = null;
   #dataVersion = null;
   #cache = null;
+  #batch = false;
 
   constructor(path = null) {
     this.legacyJsonPath = null;
@@ -272,11 +273,27 @@ export class Store {
       .map((r) => ({ ...r, detail: JSON.parse(r.detail ?? '{}') }));
   }
 
+  batch(fn) {
+    if (!this.path || this.#batch) return fn();
+    if (!this.#db) this.#open();
+    this.#db.exec('BEGIN IMMEDIATE');
+    this.#batch = true;
+    try {
+      const result = fn();
+      this.#db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      this.#db.exec('ROLLBACK');
+      this.#loadState();
+      throw err;
+    } finally { this.#batch = false; }
+  }
+
   save(state, { dirty = null, all = false } = {}) {
     if (!this.path) return;
     if (!this.#db) this.#open();
     const db = this.#db;
-    db.exec('BEGIN IMMEDIATE');
+    if (!this.#batch) db.exec('BEGIN IMMEDIATE');
     try {
       const { spaces, tables, entities, automations, ...rest } = state;
       const metaJson = JSON.stringify(rest);
@@ -318,9 +335,9 @@ export class Store {
           }
         }
       }
-      db.exec('COMMIT');
+      if (!this.#batch) db.exec('COMMIT');
     } catch (err) {
-      db.exec('ROLLBACK');
+      if (!this.#batch) { db.exec('ROLLBACK'); this.#loadState(); }
       throw err;
     }
   }

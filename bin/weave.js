@@ -217,7 +217,7 @@ The workspace itself
   workspace link-preview [--off]      Link preview before sign-in: a walled permalink unfurls
   workspace leave [--account name]    Remove your own account (never the docs workspace, never its last architect)
   form [list] | get <form>            The forms whose table lives here (Workspace/Forms rows)
-  form submit <form> --values '{json}' [--note text --categories a,b]   One row through a form
+  form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]   One row through a form
   activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n]
 
 Collaboration & data
@@ -902,9 +902,9 @@ async function main() {
       if (sub === 'list' || !sub) return out(listForms(w));
       if (sub === 'get') return out(getForm(w, ref));
       if (sub === 'submit') {
-        if (!ref) throw new WeaveError('Usage: form submit <form> --values \'{"Field":"value"}\' [--note text --categories a,b]');
+        if (!ref) throw new WeaveError('Usage: form submit <form> --values \'{"Field":"value"}\' [--idempotency-key key] [--note text --categories a,b]');
         const input = { values: parseJsonFlag('values') ?? undefined, note: flags.note, categories: flags.categories ? splitList(flags.categories) : undefined, events: [] };
-        return out(submitForm(w, ref, input, { actor: CLI_ACTOR, server: { version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, workspace: w.state.meta.name } }));
+        return out(submitForm(w, ref, input, { actor: CLI_ACTOR, idempotencyKey: flags['idempotency-key'], server: { version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, workspace: w.state.meta.name } }));
       }
       throw new WeaveError(`Unknown form subcommand '${sub}'. Try: list, get, submit`);
     }

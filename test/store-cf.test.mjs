@@ -107,3 +107,42 @@ test('CFStore: changedExternally is always false — one DO, one writer', () => 
   const w = build(storage);
   assert.equal(w.store.changedExternally(), false);
 });
+
+test('CFStore: public forms atomically save rows and durable retry receipts', async () => {
+  const { createForm, submitForm } = await import('../src/forms.js');
+  const storage = shimStorage();
+  const w = build(storage);
+  w.createSpace({ name: 'Intake' });
+  const table = w.createTable({ space: 'Intake', name: 'Request' });
+  const form = createForm(w, { name: 'Public', table: table.id, fields: [{ field: 'Name', key: 'subject' }] });
+  const input = { values: { subject: 'Request' } };
+  const options = { idempotencyKey: 'retry', actor: 'a' };
+  const made = submitForm(w, form.id, input, options);
+  const reopened = build(storage);
+  assert.equal(submitForm(reopened, form.id, input, options).id, made.id);
+  assert.equal(reopened.listEntities(table.id).length, 1);
+});
+
+test('CFStore: failed form batch rolls back row and receipt and repairs save cache', async () => {
+  const { createForm, submitForm } = await import('../src/forms.js');
+  const storage = shimStorage();
+  const w = build(storage);
+  w.createSpace({ name: 'Intake' });
+  const table = w.createTable({ space: 'Intake', name: 'Request' });
+  const form = createForm(w, { name: 'Public', table: table.id, fields: [{ field: 'Name', key: 'subject' }] });
+  const input = { values: { subject: 'Request' } };
+  const options = { idempotencyKey: 'retry', actor: 'a' };
+  const original = w.store.save.bind(w.store);
+  w.store.save = (state, args) => {
+    original(state, args);
+    if (state.meta.formReceipts?.length) throw new Error('receipt failure');
+  };
+  assert.throws(() => submitForm(w, form.id, input, options), /receipt failure/);
+  assert.equal(w.listEntities(table.id).length, 0);
+  const reopened = build(storage);
+  assert.equal(reopened.listEntities(table.id).length, 0);
+  assert.equal(reopened.state.meta.formReceipts?.length ?? 0, 0);
+  w.store.save = original;
+  const made = submitForm(w, form.id, input, options);
+  assert.equal(build(storage).readEntity(made.id).name, 'Request');
+});

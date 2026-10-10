@@ -19,7 +19,7 @@ import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
-import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms } from './forms.js';
+import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms, normalizeFormValues } from './forms.js';
 
 function iconValue(v) {
   const s = String(v ?? '').trim();
@@ -5158,6 +5158,7 @@ export class Weave {
     const db = this.getTable(dbRef);
     const meta = this.#interceptCreate(db, input);
     if (meta) return meta;
+    if (db.system === 'forms') input = { ...input, values: normalizeFormValues(this, db, { ...Object.fromEntries(Object.entries(input).filter(([key]) => !CREATE_INPUT_KEYS.has(key))), ...(input.values ?? {}) }) };
     const flat = Object.fromEntries(
       Object.entries(input).filter(([k]) => !CREATE_INPUT_KEYS.has(k)));
     const values = { ...flat, ...(input.values ?? {}) };
@@ -5232,6 +5233,7 @@ export class Weave {
     const db = this.state.tables[e.dbId];
     const meta = this.#interceptUpdate(e, db, valuesByName);
     if (meta) return meta;
+    if (db.system === 'forms') valuesByName = normalizeFormValues(this, db, valuesByName, e);
     const before = this.#undoBefore(e, db, Object.keys(valuesByName));
     this.#applyValues(e, db, valuesByName, { depth });
     if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
@@ -7599,6 +7601,7 @@ export class Weave {
     }
     for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
     Shares.redactTokens(out);
+    delete out.meta.formReceipts;
     delete out.meta.sessions;
     delete out.meta.invites;
     delete out.meta.identityInvites;
