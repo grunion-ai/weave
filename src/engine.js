@@ -2952,7 +2952,7 @@ export class Weave {
 
   #open(entry, name) {
     try {
-      const d = createDecipheriv('aes-256-gcm', this.#keystoreKey(), Buffer.from(entry.iv, 'base64'));
+      const d = createDecipheriv('aes-256-gcm', this.#keystoreKey(), Buffer.from(entry.iv, 'base64'), { authTagLength: 16 });
       d.setAuthTag(Buffer.from(entry.tag, 'base64'));
       return Buffer.concat([d.update(Buffer.from(entry.ct, 'base64')), d.final()]).toString('utf8');
     } catch {
