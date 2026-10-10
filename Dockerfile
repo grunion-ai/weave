@@ -24,6 +24,7 @@ COPY --chown=node:node . .
 #   WEAVE_UPDATE_CHECK         off: never ask GitHub for a newer release   (on: once a day)
 #   WEAVE_AUTO_UPDATE          1 with `supervise`: install newer releases in place (unset = off)
 #   WEAVE_BACKUP_DEST          s3://bucket/prefix: nightly backup at 04:00 UTC   (unset = off)
+#   WEAVE_MAX_ROWS             most rows one API call returns for a named limit   (500)
 ENV PORT=4400 \
     WEAVE_HOST=0.0.0.0 \
     WEAVE_DATA=/data/workspace.db \

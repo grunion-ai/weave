@@ -245,7 +245,8 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      WEAVE_MAIL_KEY + WEAVE_MAIL_FROM (email each invite through Resend; both or neither),
      WEAVE_MCP_ORIGINS (comma-separated other origins the /mcp door answers on), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
      its own), WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE, WEAVE_INLINE_FILE_TYPES (comma-separated
-     attachment types served in place beside images, PDF and plain text; the rest download)`;
+     attachment types served in place beside images, PDF and plain text; the rest download),
+     WEAVE_MAX_ROWS (most rows one API call returns for a named limit; 500)`;
 
 async function main() {
   if (!command || command === 'help' || flags.help) return out(HELP);
