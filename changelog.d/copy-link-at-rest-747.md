@@ -1,1 +1,0 @@
-- The copy-link button beside a row's title in the header, and the copy-link on each document and deck section, show at rest instead of waiting for a hover; the section copy-link is now a focusable, labelled button (Issue #747).

@@ -1,1 +1,0 @@
-- A date and time column is never narrower than its widest month and hour, so "May 28, 2026 10:48 AM" shows whole in Safari instead of ending in an ellipsis (Issue #217).
