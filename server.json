@@ -1,0 +1,43 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.grunion-ai/weave",
+  "title": "weave",
+  "description": "Connected tables, relations, workflows and markdown documents in one SQLite file, over MCP.",
+  "repository": {
+    "url": "https://github.com/grunion-ai/weave",
+    "source": "github"
+  },
+  "websiteUrl": "https://weave.grunion.ai",
+  "version": "0.4.88",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/grunion-ai/weave:0.4.88",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "-v",
+          "value": "weave-data:/data",
+          "description": "Keep the workspace, its files and the keystore in a named volume across runs"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "node"
+        },
+        {
+          "type": "positional",
+          "value": "bin/weave.js"
+        },
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

@@ -69,7 +69,9 @@ The difference from every other tool in this category is the second audience.
 Work-management tools are built for humans first and APIs second. weave is built
 for **humans and agents as equals**: everything the web UI can do, the REST API,
 the CLI, and the built-in **MCP server** can do too — same engine, same data
-file on your disk. No signup, no cloud, no telemetry.
+file on your disk. A local install needs no account and sends no telemetry. The
+hosted instance at https://weave.grunion.ai runs the same code behind a sign-in
+door.
 
 - **Local-first** — your workspace is one SQLite file next to your project.
 - **Yours to host** — one Node process and one file; run it on a laptop or a
@@ -97,6 +99,12 @@ and nothing to install from npm.
 git clone https://github.com/grunion-ai/weave
 cd weave
 node bin/weave.js serve --port 4400 --data ./my-workspace.db
+```
+
+Or start it in a container from the same checkout:
+
+```bash
+docker compose up -d
 ```
 
 Open http://127.0.0.1:4400 — press **⌘K** to search everything. A

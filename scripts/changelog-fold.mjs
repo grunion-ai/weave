@@ -41,8 +41,23 @@ export function fold(md, fragments, { version, date }) {
   return lines.join('\n');
 }
 
+export function stampServerJson(root, version) {
+  const file = join(root, 'server.json');
+  if (!existsSync(file)) return false;
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  const before = JSON.stringify(doc);
+  doc.version = version;
+  for (const p of doc.packages ?? []) {
+    if (p.registryType !== 'oci') continue;
+    p.identifier = /:[^/:]*$/.test(p.identifier) ? p.identifier.replace(/:[^/:]*$/, `:${version}`) : `${p.identifier}:${version}`;
+  }
+  if (JSON.stringify(doc) === before) return false;
+  writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`);
+  return true;
+}
 export function foldRepo(root, { date = new Date().toLocaleDateString('en-CA') } = {}) {
   const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  stampServerJson(root, version);
   const dir = join(root, 'changelog.d');
   const names = existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith('.md')) : [];
   const fragments = names.map((name) => ({ name, text: readFileSync(join(dir, name), 'utf8') }));

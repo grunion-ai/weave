@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { fold, foldRepo, changelogGuard, fragmentGuard, openSecurityCitations, FRAGMENT_NAME } from '../scripts/changelog-fold.mjs';
+import { fold, foldRepo, stampServerJson, changelogGuard, fragmentGuard, openSecurityCitations, FRAGMENT_NAME } from '../scripts/changelog-fold.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -237,4 +237,19 @@ test('fold finds a heading it wrote itself, so a second fold of one version appe
   const twice = fold(once, [{ name: 'later-11.md', text: '- **Later** (Issue #11): body.\n' }], { version: '0.4.44', date: '2026-09-27' });
   assert.equal(twice.split('## v0.4.44').length - 1, 1, 'one heading, not two');
   assert.match(twice, /## v0\.4\.44 \(2026-09-27\)[\s\S]*- \*\*Alpha\*\*[\s\S]*- \*\*Later\*\*/);
+});
+
+test('foldRepo stamps the package version into server.json: the top-level version and the oci tag', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-changelog-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ version: '0.4.44' }));
+  writeFileSync(join(dir, 'CHANGELOG.md'), MD);
+  mkdirSync(join(dir, 'changelog.d'));
+  const server = { name: 'io.github.x/y', version: '0.4.43', packages: [{ registryType: 'oci', identifier: 'ghcr.io/x/y:0.4.43', transport: { type: 'stdio' } }] };
+  writeFileSync(join(dir, 'server.json'), `${JSON.stringify(server, null, 2)}\n`);
+  assert.equal(foldRepo(dir, { date: '2026-09-27' }).folded, 0);
+  const doc = JSON.parse(readFileSync(join(dir, 'server.json'), 'utf8'));
+  assert.equal(doc.version, '0.4.44');
+  assert.equal(doc.packages[0].identifier, 'ghcr.io/x/y:0.4.44');
+  assert.equal(stampServerJson(dir, '0.4.44'), false, 'a second stamp changes nothing');
+  assert.equal(stampServerJson(join(dir, 'changelog.d'), '0.4.44'), false, 'no server.json, no stamp');
 });

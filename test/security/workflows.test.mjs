@@ -19,12 +19,21 @@ test('every action in every workflow is pinned to a full commit SHA with its ver
   assert.deepEqual(bad, []);
 });
 
-test('every workflow grants contents: read at the top level and nothing wider', () => {
+const JOB_SCOPE = /^ {4,}(?:packages|id-token): write$/;
+const widePermissions = (src) => {
+  const pr = /^\s+pull_request(?:_target)?:/m.test(src);
+  return src.split('\n').filter((l) => /(write|admin)\s*$/.test(l) && (pr || !JOB_SCOPE.test(l)));
+};
+test('every workflow grants contents: read at the top level; a job widens only packages or id-token, and only where no pull request can run it', () => {
   for (const f of files) {
     const src = text(f);
     assert.match(src, /^permissions:\n  contents: read\n/m, `${f}: top-level permissions block`);
-    assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
+    assert.deepEqual(widePermissions(src), [], `${f}: a write permission`);
   }
+  const job = 'permissions:\n  contents: read\njobs:\n  image:\n    permissions:\n      contents: read\n      packages: write\n      id-token: write\n';
+  assert.deepEqual(widePermissions(`on:\n  push:\n    tags: ["v*"]\n${job}`), []);
+  assert.deepEqual(widePermissions(`on:\n  pull_request:\n${job}`), ['      packages: write', '      id-token: write']);
+  assert.deepEqual(widePermissions('on:\n  push:\npermissions:\n  contents: read\njobs:\n  a:\n    permissions:\n      contents: write\n'), ['      contents: write']);
 });
 
 test('every workflow checks out the full history the history-reading tests need', () => {

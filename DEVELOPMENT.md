@@ -91,7 +91,7 @@ cannot pass the gate.
 node scripts/export-development.mjs        # 3. docs/development.json gains the release
 node scripts/changelog-fold.mjs            # 4. every changelog.d/ fragment moves under
 #    `## v<version>` in CHANGELOG.md and the fragments are deleted; edit the digest if
-#    needed
+#    needed; server.json takes the version as well
 node scripts/architecture.mjs              # 5. re-pin docs/architecture/ to the landed
 #    base, then land steps 2-5 through Gerrit as one change
 # 6. automatic: the main watcher tags and publishes it. Then confirm it did:
