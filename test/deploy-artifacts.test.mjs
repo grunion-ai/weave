@@ -13,7 +13,7 @@ const FLY = read('fly.toml');
 const IGNORE = read('.dockerignore');
 const README = read('README.md');
 
-const SPEC_VARS = ['PORT', 'WEAVE_HOST', 'WEAVE_DATA', 'WEAVE_ORIGIN', 'WEAVE_KEYSTORE_PASSPHRASE', 'WEAVE_BACKUP_DEST'];
+const SPEC_VARS = ['PORT', 'WEAVE_HOST', 'WEAVE_DATA', 'WEAVE_ORIGIN', 'WEAVE_KEYSTORE_PASSPHRASE', 'WEAVE_BACKUP_DEST', 'WEAVE_BOOTSTRAP_TOKEN'];
 const varsIn = (text) => new Set([...text.matchAll(/\b(PORT|WEAVE_[A-Z_]+)\b/g)].map((m) => m[1]));
 
 const GUIDE_TITLES = [
@@ -93,6 +93,7 @@ test('the environment contract cannot drift: the reference guide, the Dockerfile
   }
   assert.doesNotMatch(ref.doc, /reserved for phase/i, 'no variable is still a promise');
   assert.match(read('bin/weave.js'), /process\.env\.WEAVE_BACKUP_DEST/, 'serve reads WEAVE_BACKUP_DEST');
+  assert.match(read('bin/weave.js'), /process\.env\.WEAVE_BOOTSTRAP_TOKEN/, 'serve reads WEAVE_BOOTSTRAP_TOKEN');
   assert.match(read('src/backup.js'), /env\.WEAVE_BACKUP_DEST/, 'backup reads WEAVE_BACKUP_DEST');
   assert.doesNotMatch(ref.doc, /`WEAVE_BACKUP_DEST`[^\n]*reserved/i, 'the reference no longer calls it reserved');
 });
@@ -207,6 +208,7 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
     docker('run', '-d', '--name', name, '-p', '127.0.0.1::4400', '-v', `${volume}:/data`,
       '-e', 'PORT=4400', '-e', 'WEAVE_HOST=0.0.0.0', '-e', 'WEAVE_DATA=/data/workspace.db',
       '-e', 'WEAVE_ORIGIN=http://127.0.0.1:4400', '-e', 'WEAVE_KEYSTORE_PASSPHRASE=g3-gate', '-e', 'WEAVE_BACKUP_DEST=', '-e', 'WEAVE_UPDATE_CHECK=off',
+      '-e', 'WEAVE_BOOTSTRAP_TOKEN=g3-bootstrap-token-for-the-gate',
       tag);
     const baseNow = () => `http://127.0.0.1:${docker('port', name, '4400').split('\n')[0].split(':').pop()}`;
     let base = baseNow();

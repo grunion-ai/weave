@@ -1789,9 +1789,17 @@ Service → **Variables**. Railway sets \`PORT\` itself; the Dockerfile sets \`W
 \`\`\`
 WEAVE_DATA=/data/workspace.db
 WEAVE_KEYSTORE_PASSPHRASE=<a long random string, kept in your password manager>
+WEAVE_BOOTSTRAP_TOKEN=<another long random string, for the first boot only>
 \`\`\`
 
-\`WEAVE_KEYSTORE_PASSPHRASE\` is what keeps the keystore key off the volume; lose it and the secrets in the keystore are unreadable (the data is untouched). \`WEAVE_ORIGIN=https://weave.example.com\` (the custom domain from step 4) and \`WEAVE_TRUST_PROXY=1\` join the list once \`requireAuth\` is on and you use **Door C: sign in with a provider**; \`WEAVE_BACKUP_DEST\` (with the bucket credentials) switches on the nightly backup — the **Backup and restore** guide. The **Environment reference** guide has every variable and what breaks when each is wrong.
+\`WEAVE_BOOTSTRAP_TOKEN\` is what lets the first boot start at all: the container binds \`0.0.0.0\`, and \`serve\` refuses that while no account exists, since everyone who reached the port would be an architect. With it set, send it once as a Bearer token to make the first architect, then delete the variable:
+
+\`\`\`bash
+curl -s -X POST https://weave.example.com/api/accounts -H "Authorization: Bearer $WEAVE_BOOTSTRAP_TOKEN" \\
+  -H 'Content-Type: application/json' -d '{"name":"you","role":"architect"}'
+\`\`\`
+
+The answer carries the \`wv_\` token of that account; from then on the bootstrap token answers \`401\`. \`WEAVE_KEYSTORE_PASSPHRASE\` is what keeps the keystore key off the volume; lose it and the secrets in the keystore are unreadable (the data is untouched). \`WEAVE_ORIGIN=https://weave.example.com\` (the custom domain from step 4) and \`WEAVE_TRUST_PROXY=1\` join the list once \`requireAuth\` is on and you use **Door C: sign in with a provider**; \`WEAVE_BACKUP_DEST\` (with the bucket credentials) switches on the nightly backup — the **Backup and restore** guide. The **Environment reference** guide has every variable and what breaks when each is wrong.
 
 ## 4. Custom domain
 
@@ -1896,7 +1904,7 @@ git clone https://github.com/grunion-ai/weave && cd weave
 docker compose up -d
 \`\`\`
 
-To keep the data in a directory you can see instead of a named volume, change the mount to \`./data:/data\` and \`chown 1000:1000 data\` first: the image runs as the unprivileged \`node\` user (uid 1000) and a bind mount keeps the host's ownership. Set \`WEAVE_KEYSTORE_PASSPHRASE\` in the \`environment\` block to keep the keystore key off the disk. Update with \`git pull && docker compose up -d --build\`.
+To keep the data in a directory you can see instead of a named volume, change the mount to \`./data:/data\` and \`chown 1000:1000 data\` first: the image runs as the unprivileged \`node\` user (uid 1000) and a bind mount keeps the host's ownership. Set \`WEAVE_KEYSTORE_PASSPHRASE\` in the \`environment\` block to keep the keystore key off the disk, and \`WEAVE_BOOTSTRAP_TOKEN\` for the first start: the container binds \`0.0.0.0\`, and \`serve\` refuses that while no account exists unless the token is set; \`POST /api/accounts\` with it as a Bearer token once (the **Deploy: Railway** guide shows the call), then take the variable out. Update with \`git pull && docker compose up -d --build\`.
 
 **Check:** \`docker compose ps\` shows the service \`healthy\`; \`curl -s http://127.0.0.1:4400/api/health\` answers ok; \`docker compose restart\` keeps every row.
 
@@ -2034,6 +2042,7 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_DATA\` | every verb | \`~/.weave/workspace.json\` | Points off the volume: every restart starts empty. It names the workspace \`.db\`; the \`weave.db\` docs workspace and the \`files/\` directory of attachments are created beside it, so the directory is what needs to persist. A \`.json\` spelling is accepted and becomes the sibling \`.db\`. |
 | \`WEAVE_KEYSTORE\` | every verb | \`~/.weave/keystore.json\` | Defaults into \`$HOME\`, which in a container is not on the volume: every restart loses the encrypted secrets. The \`Dockerfile\` sets \`/data/keystore.json\`. |
 | \`WEAVE_KEYSTORE_PASSPHRASE\` | every verb | unset | Unset, a random key is written to a \`chmod 600\` file beside the keystore, so a copy of the volume carries the key. Set, the key is derived from the passphrase and nothing lands. Change it and every stored secret becomes unreadable; keep it in a password manager. |
+| \`WEAVE_BOOTSTRAP_TOKEN\` | \`weave serve\` | unset | A long random string (sixteen characters at least) that \`serve\` accepts as an architect Bearer token while the hub root has no account; it stops working the moment one exists. Off loopback with no account, \`serve\` refuses to start without it, since everyone who reached the port would otherwise be an architect. Set it for the first boot, \`POST /api/accounts\` with it to make the first architect, then remove it. |
 | \`WEAVE_ORIGIN\` | \`weave serve\` | unset (loopback: \`http://localhost:<port>\`) | The public origin, scheme and host, no path. The identity provider sends sign-ins back to \`<origin>/api/auth/oidc/callback\`, and the \`wv_session\` cookie is \`Secure\` when it is https. Unset off loopback with \`requireAuth\` on, \`serve\` refuses to start; wrong, the provider refuses the redirect URI or sends the browser to the wrong host. |
 | \`WEAVE_TRUST_PROXY\` | \`weave serve\` | unset | Set to \`1\` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from \`X-Forwarded-For\`. Unset behind a proxy, every visitor shares the proxy's address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header. |
 | \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`. Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit row and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
@@ -2050,7 +2059,7 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 
 ## The container
 
-The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\`. \`WEAVE_ORIGIN\`, \`WEAVE_TRUST_PROXY\`, \`WEAVE_BACKUP_DEST\`, the four provider sign-in variables and the two mail variables are listed as comments, each off unless set, \`WEAVE_UPDATE_CHECK\` is listed as the one that is on unless set to \`off\`, and \`WEAVE_AUTO_UPDATE\` as the switch \`supervise\` reads, so the contract is visible in one place.
+The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\` and, for the first boot, \`WEAVE_BOOTSTRAP_TOKEN\`. \`WEAVE_BOOTSTRAP_TOKEN\`, \`WEAVE_ORIGIN\`, \`WEAVE_TRUST_PROXY\`, \`WEAVE_BACKUP_DEST\`, the four provider sign-in variables and the two mail variables are listed as comments, each off unless set, \`WEAVE_UPDATE_CHECK\` is listed as the one that is on unless set to \`off\`, and \`WEAVE_AUTO_UPDATE\` as the switch \`supervise\` reads, so the contract is visible in one place.
 
 ## How you know it worked
 

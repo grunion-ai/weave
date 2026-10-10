@@ -13,6 +13,7 @@ primary_region = "sjc"
   WEAVE_DATA = "/data/workspace.db"
   WEAVE_KEYSTORE = "/data/keystore.json"
   # WEAVE_KEYSTORE_PASSPHRASE is a secret: fly secrets set WEAVE_KEYSTORE_PASSPHRASE=...
+  # WEAVE_BOOTSTRAP_TOKEN too, until the first account exists: fly secrets set WEAVE_BOOTSTRAP_TOKEN=...
 
 [[mounts]]
   source = "weave_data"

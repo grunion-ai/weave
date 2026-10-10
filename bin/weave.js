@@ -234,7 +234,9 @@ Collaboration & data
 
 Refs: entities accept "Table#publicId" (e.g. Task#3), a UUID, or a name with --db.
 Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json
-Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (public origin the provider
+Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_BOOTSTRAP_TOKEN (a long random string
+     serve accepts as an architect Bearer token until the first account exists; required to bind off loopback
+     while the hub root has no account), WEAVE_ORIGIN (public origin the provider
      redirects back to and the session cookie binds to, e.g. https://weave.example.com — required when auth
      is on and the host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
      WEAVE_AUTO_UPDATE=1 (supervise: install each newer release from grunion-ai/weave main in place),
@@ -267,6 +269,17 @@ async function main() {
     const deferred = process.env.WEAVE_DEFER_MIGRATIONS === '1' && !!process.send;
     if (deferred) deferMigrations();
     const w = openDefaultWorkspace(dataPath, { actor: CLI_ACTOR });
+    const port = Number(flags.port ?? process.env.PORT ?? 4400);
+    const host = String(flags.host ?? process.env.WEAVE_HOST ?? '127.0.0.1');
+    const bootstrap = String(process.env.WEAVE_BOOTSTRAP_TOKEN ?? '').trim() || null;
+    if (bootstrap && bootstrap.length < 16) {
+      console.error('WEAVE_BOOTSTRAP_TOKEN is shorter than sixteen characters: it stands in for the first architect token, so make it a long random string');
+      process.exit(1);
+    }
+    if (!['127.0.0.1', 'localhost', '::1'].includes(host) && !w.listAccounts().length && !bootstrap) {
+      console.error(`Refusing to bind ${host}: the workspace has no account, so everyone who reached it would be an architect. Create one first (weave account create <name> --role architect), or set WEAVE_BOOTSTRAP_TOKEN to a long random string and send it as a Bearer token to POST /api/accounts; it stops working once an account exists.`);
+      process.exit(1);
+    }
     const bootWrites = async () => {
       if (w.state.meta.name !== 'weave') {
         const dir = dirname(dataPath);
@@ -318,8 +331,6 @@ async function main() {
       if (docsW && docsW !== w) docsW.store.close?.();
     };
     if (!deferred) await bootWrites();
-    const port = Number(flags.port ?? process.env.PORT ?? 4400);
-    const host = String(flags.host ?? process.env.WEAVE_HOST ?? '127.0.0.1');
     const { buildInfo, originFromEnv } = await import('../src/server.js');
     const loopback = ['127.0.0.1', 'localhost', '::1'].includes(host);
     const origin = originFromEnv();
@@ -330,7 +341,7 @@ async function main() {
     if (origin) console.log(`Public origin: ${origin}${process.env.WEAVE_TRUST_PROXY ? ' (trusting X-Forwarded-For)' : ''}`);
     let nightly = null;
     const dest = process.env.WEAVE_BACKUP_DEST || null;
-    const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null });
+    const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null, bootstrapToken: bootstrap });
     {
       const { createReleaseCheck, updateCheckFromEnv } = await import('../src/update-check.js');
       const { armReleaseCheck, VERSION } = await import('../src/server.js');
@@ -351,6 +362,7 @@ async function main() {
     }
     const wide = host === '0.0.0.0' || host === '::';
     const shown = wide ? hostname() : host;
+    if (bootstrap && !w.listAccounts().length) console.log('WEAVE_BOOTSTRAP_TOKEN is set and no account exists yet: send it as a Bearer token to POST /api/accounts to make the first architect; it stops working after that.');
     console.log(`Weave running at http://${shown}:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);
     if (wide) console.log(`Bound to ${host} — every workspace on this network can reach it.`);
     console.log(`Docs workspace: http://${shown}:${actual}/w/weave/`);

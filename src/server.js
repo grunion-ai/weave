@@ -375,7 +375,7 @@ const VENDOR_CACHE = 'public, max-age=3600';
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv() } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), bootstrapToken = null } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
   const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
 
@@ -426,6 +426,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     mcpOrigins,
     mail,
     baseDomain,
+    bootstrapToken,
     ...(limits ? { limits } : {}),
   });
 
@@ -465,10 +466,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain } = {}) {
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, bootstrapToken } = {}) {
   const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length || baseDomain ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(bootstrapToken !== undefined ? { bootstrapToken } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

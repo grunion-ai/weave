@@ -19,6 +19,10 @@ services:
       WEAVE_BASE_DOMAIN: ""
       # Set this and no key file lands on the volume (Handbook → "Environment reference").
       # WEAVE_KEYSTORE_PASSPHRASE: change-me
+      # A container binds 0.0.0.0, and serve refuses to start there while no account
+      # exists unless this is set: a long random string sent as a Bearer token to
+      # POST /api/accounts makes the first architect, then the token stops working.
+      # WEAVE_BOOTSTRAP_TOKEN: change-me
       # Sign-in (Handbook → "Door C: sign in with a provider"): the origin browsers
       # use, and 1 when a reverse proxy sits in front so rate limits see the client.
       # WEAVE_ORIGIN: https://weave.example.com

@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { Weave, WeaveError, fileHeaders, logoType, inviteUrl } from './engine.js';
 import { handleApplet } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
@@ -42,9 +43,12 @@ const START_TTL_MS = 30 * 60 * 1000;
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, bootstrapToken = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const challenges = new Map();
   const handoffs = new Map();
+  const sha = (s) => createHash('sha256').update(String(s)).digest();
+  const bootstrapAccount = (token) => (bootstrapToken && !hub.get(hub.defaultName).listAccounts().length && timingSafeEqual(sha(token), sha(bootstrapToken))
+    ? { id: null, name: 'bootstrap', role: 'architect' } : null);
   const scheme = origin ? new URL(origin).protocol : 'http:';
   const apexOrigin = origin ?? `${scheme}//${baseDomain}`;
   const rates = { options: new Map(), failed: new Map(), slugs: new Map() };
@@ -404,7 +408,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     if (share) role = null;
     else if (authz && /^Bearer /i.test(authz)) {
-      const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
+      const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim()) ?? bootstrapAccount(authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = oauth ? `${account.name} via MCP` : account.name;
       role = Weave.roleName(account.role);
