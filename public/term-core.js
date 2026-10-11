@@ -23,6 +23,16 @@
     return w + 's';
   }
 
+  function singularize(s) {
+    const w = String(s ?? '').trim().toLowerCase();
+    const irregular = Object.keys(IRREGULAR).find((k) => w.endsWith(IRREGULAR[k]));
+    if (irregular) return w.slice(0, -IRREGULAR[irregular].length) + irregular;
+    if (/[^aeiou]ies$/.test(w)) return w.slice(0, -3) + 'y';
+    if (/(ss|x|z|ch|sh)es$/.test(w)) return w.slice(0, -2);
+    if (/[^siu]s$/.test(w)) return w.slice(0, -1);
+    return w;
+  }
+
   function normalize(term) {
     if (!term || typeof term !== 'object') throw new Error('A term is { singular, plural } (e.g. { singular: "deal" })');
     const clean = (v, what) => {
@@ -53,5 +63,5 @@
     return GROUPS.flatMap((g) => g.terms.map((t) => ({ id: t, label: cap(t), group: g.name })));
   }
 
-  root.WeaveTerm = { GROUPS, DEFAULT, MAX, pluralize, normalize, resolve, count, cap, options };
+  root.WeaveTerm = { GROUPS, DEFAULT, MAX, pluralize, singularize, normalize, resolve, count, cap, options };
 })(globalThis);
