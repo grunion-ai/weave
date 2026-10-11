@@ -1,1 +1,0 @@
-- The picker, command palette and table searches share one bare search style. The table search is no longer built as a bordered form field and then stripped. Sizes stay as they were: 13 px in the picker, 16 px in the palette and 12 px in the table search (Issue #785).

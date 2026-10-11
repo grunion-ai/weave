@@ -1,1 +1,0 @@
-- The page heading and the record name are built by one title editor and share one base style. Each keeps its own hover, size and edge: the table, space and home heading keeps its outlined hover at 20 px, and the record name keeps its filled hover at 24 px (Issue #784).

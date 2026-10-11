@@ -1,1 +1,0 @@
-- Field marks sit on the name's line: the relation arrow and the lookup, rollup and formula marks in column headers and entity field labels are inline 12px marks, muted and centred on the label text with the target table still in the tooltip, instead of a superscript riding 5px above the name (Issue #790)

@@ -1,1 +1,0 @@
-- ⌘F and Ctrl-F on a focused grid cell now open the browser's own find bar instead of the table search. `/` and the toolbar magnifier still open the table search, which reaches every row of a paged table; the key sheet and the Handbook list `/` alone (Issue #822).
