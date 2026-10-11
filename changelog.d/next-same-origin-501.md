@@ -1,0 +1,1 @@
+- The post-sign-in `next` is resolved as a URL against the page origin on the sign-in page and on the server, so the backslash, tab and newline spellings a browser reads as another host fall back to the mount root (Issue #501)
