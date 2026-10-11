@@ -22,7 +22,10 @@ production, which needs an approved release.
    boots the new commit beside the serving one, moves traffic only after its
    health check passes, and keeps the old worker serving when it fails. A failed
    commit is skipped until main moves. Roll back a bad change by landing its
-   revert. Migrated draft PRs stay drafts until their own review finishes.
+   revert. The dev service runs `weave supervise` with `WEAVE_AUTO_UPDATE=1`,
+   `WEAVE_TRACK=main` (follow main commits into `releases/c<sha>/`) and
+   `WEAVE_DEPLOY_TOKEN` (32+ characters; `POST /_supervisor/check` with that
+   bearer token checks main at once, which the `Deploy dev` job calls). Migrated draft PRs stay drafts until their own review finishes.
 
 ## Verification
 
