@@ -1608,6 +1608,7 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 .row-deleted .open-link { text-decoration: line-through; }
 
 .opt-grip { color: var(--tblr-secondary); cursor: grab; font-size: var(--fs-secondary); user-select: none; }
+@media (pointer: coarse) { .opt-row .opt-grip { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; } .tray-body .opt-row .opt-grip { margin-inline: -18px -6px; } }
 .opt-preview { flex: 0 1 auto; min-width: 0; max-width: 128px; display: flex;
   justify-content: flex-end; align-items: center; overflow: hidden; }
 .opt-preview .k { overflow: hidden; text-overflow: ellipsis; display: inline-flex; }
