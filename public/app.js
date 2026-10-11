@@ -4140,9 +4140,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     if (e.isComposing || e.altKey) return;
     const td = e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
     if (!td || e.target !== td) return;
-    const slash = e.key === '/' && !e.metaKey && !e.ctrlKey;
-    const find = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f';
-    if (!slash && !find) return;
+    if (e.key !== '/' || e.metaKey || e.ctrlKey) return;
     e.preventDefault(); e.stopPropagation();
     openTableSearch(main);
   }, true);
@@ -11444,7 +11442,7 @@ const KEY_SHEET_ANYWHERE = [
   { keys: '⌘Return', does: 'send a problem report from its note' },
 ];
 const KEY_SHEET_TABLE = [
-  { keys: '/ or ⌘F', does: 'search this table' },
+  { keys: '/', does: 'search this table' },
   { keys: '⌘C / ⌘V', does: 'copy or paste the cell or the range' },
 ];
 
