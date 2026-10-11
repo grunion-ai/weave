@@ -38,7 +38,7 @@ if (s) {
       await page.click('.doc-section .doc-dl > .dots-btn');
       await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
       await page.waitForTimeout(250);
-      const chain = await page.$eval('.chip-pop.wv-menu[role="menu"]', (menu) => {
+      const chain = await page.locator('.chip-pop.wv-menu[role="menu"]').first().evaluate((menu) => {
         const out = [];
         for (let n = menu; n; n = n.parentElement) out.push(Number(getComputedStyle(n).opacity));
         return out;

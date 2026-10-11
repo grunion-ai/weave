@@ -38,7 +38,7 @@ if (s) {
         await page.keyboard.press('Enter');
         await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
         assert.equal(await trigger.getAttribute('aria-expanded'), 'true');
-        const rows = await page.$$eval('.wv-menu .wv-menu-row', (rs) => rs.map((r) => [r.getAttribute('role'), r.querySelector('.wv-menu-label, .hold-label')?.textContent]));
+        const rows = await page.locator('.wv-menu .wv-menu-row').evaluateAll((rs) => rs.map((r) => [r.getAttribute('role'), r.querySelector('.wv-menu-label, .hold-label')?.textContent]));
         assert.deepEqual(rows.map((r) => r[1]), TABLE_ROWS, 'every current row, in today\'s order');
         assert.ok(rows.every((r) => r[0] === 'menuitem'), `every row is a menuitem: ${JSON.stringify(rows)}`);
         assert.deepEqual(await focused(page), { text: 'Column stats…', role: 'menuitem', trigger: false }, 'focus lands on the first row');
@@ -95,7 +95,7 @@ if (s) {
       await page.waitForSelector('.chip-pop.wv-menu.ws-ctx[role="menu"]');
       const m = await page.locator('.wv-menu.ws-ctx').boundingBox();
       assert.ok(Math.abs(m.x - (box.x + 6)) <= 1 && Math.abs(m.y - (box.y + 6)) <= 1, `the menu opens at the pointer (${m.x},${m.y} vs ${box.x + 6},${box.y + 6})`);
-      const labels = await page.$$eval('.wv-menu.ws-ctx .wv-menu-row', (rs) => rs.map((r) => r.querySelector('.wv-menu-label').textContent));
+      const labels = await page.locator('.wv-menu.ws-ctx .wv-menu-row').evaluateAll((rs) => rs.map((r) => r.querySelector('.wv-menu-label').textContent));
       assert.equal(labels[0], 'Update logo…');
       assert.equal((await focused(page)).text, labels[0], 'focus lands on its first row');
       assert.equal(await press(page, 'End'), labels.at(-1), 'End moves to the last row');
