@@ -13,6 +13,8 @@ const s = await launch('rating field type', (weave) => {
   weave.addField(vendors, { name: 'Love', type: 'rating', config: { max: 3, icon: 'lucide:heart' } });
   weave.addRelation(vendors, { name: 'Account', targetDb: accounts, cardinality: 'many-to-one', inverseName: 'Vendors' });
   weave.addField(accounts, { name: 'Avg fit', type: 'rollup', config: { relationField: 'Vendors', targetField: 'Fit', aggregate: 'avg' } });
+  weave.addField(accounts, { name: 'Fits', type: 'lookup', config: { relationField: 'Vendors', targetField: 'Fit' } });
+  weave.addField(accounts, { name: 'Loves', type: 'lookup', config: { relationField: 'Vendors', targetField: 'Love' } });
   acme = weave.createEntity(accounts, { name: 'Acme' });
   a = weave.createEntity(vendors, { name: 'A', values: { Fit: 3, Love: 1, Account: acme.id } });
   b = weave.createEntity(vendors, { name: 'B', values: { Fit: 4, Account: acme.id } });
@@ -99,6 +101,26 @@ if (s) {
       weave.updateEntity(b.id, { Fit: 4 });
     }
   });
+
+  for (const colorScheme of ['light', 'dark']) {
+    test(`a lookup of a rating over a to-many relation draws one icon group per related row (${colorScheme}, Issue #377)`, async () => {
+      const page = await grid(accounts.id, colorScheme);
+      try {
+        await page.waitForSelector(`${cell(acme.id, 'Fits')} .wv-rating`);
+        const fits = page.locator(`${cell(acme.id, 'Fits')} .wv-rating`);
+        assert.equal(await fits.count(), 2, 'one icon group per related row, not a joined string');
+        assert.equal(await page.locator(`${cell(acme.id, 'Fits')} .wv-rating:first-child .wv-rate-ico`).count(), 5, 'each group draws the full scale');
+        assert.deepEqual(await fits.evaluateAll((ns) => ns.map((n) => n.getAttribute('aria-label'))), ['3 of 5', '4 of 5'],
+          'each group carries its own "n of max" label');
+        assert.equal(await page.locator(`${cell(acme.id, 'Fits')} .wv-rating button`).count(), 0, 'no buttons: read-only');
+        assert.equal(await page.locator(`${cell(acme.id, 'Fits')}`).innerText(), '', 'the numbers are drawn, not printed');
+        const loves = page.locator(`${cell(acme.id, 'Loves')} .wv-rating`);
+        assert.deepEqual(await loves.evaluateAll((ns) => ns.map((n) => n.getAttribute('aria-label'))), ['1 of 3', 'unrated, of 3'],
+          'a related row with no rating keeps its slot as an unrated group');
+        if (shots) await page.locator('.wv-grid').screenshot({ path: `${shots}/rating-lookup-many-${colorScheme}.png` });
+      } finally { await page.close(); }
+    });
+  }
 
   test('a rollup over a rating draws the same icons, read-only, rounded', async () => {
     const page = await grid(accounts.id);
@@ -268,6 +290,63 @@ if (s) {
     }));
   });
 
+  let computed;
+  const computedTable = () => {
+    if (computed) return computed;
+    const g = gaugeTable();
+    const g1 = weave.query(g, {}).items[0];
+    const panel = weave.createTable({ space: 'Buy', name: 'Panel' });
+    weave.addRelation(g, { name: 'Panel', targetDb: panel, cardinality: 'many-to-one', inverseName: 'Gauges' });
+    weave.addField(panel, { name: 'Zap', type: 'rollup', config: { relationField: 'Gauges', targetField: 'Effort', aggregate: 'max' } });
+    weave.addField(panel, { name: 'Star', type: 'rollup', config: { relationField: 'Gauges', targetField: 'Fit', aggregate: 'avg' } });
+    weave.addField(panel, { name: 'Love', type: 'rollup', config: { relationField: 'Gauges', targetField: 'Love', aggregate: 'avg' } });
+    weave.addField(panel, { name: 'Glow', type: 'rollup', config: { relationField: 'Gauges', targetField: 'Brightness', aggregate: 'avg' } });
+    const p1 = weave.createEntity(panel, { name: 'p1' });
+    weave.updateEntity(g1.id, { Panel: p1.id });
+    const reading = weave.createTable({ space: 'Buy', name: 'Reading' });
+    weave.addRelation(reading, { name: 'Gauge', targetDb: g, cardinality: 'many-to-one', inverseName: 'Readings' });
+    weave.addField(reading, { name: 'Lit', type: 'lookup', config: { relationField: 'Gauge', targetField: 'Brightness' } });
+    weave.createEntity(reading, { name: 'r1', values: { Gauge: g1.id } });
+    computed = { panel, reading };
+    return computed;
+  };
+  const openOn = async (tableId, field, colorScheme) => {
+    const page = await browser.newPage({ viewport: { width: 1500, height: 900 }, colorScheme });
+    await page.goto(`${base}/#/table/${tableId}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector(`.wv-grid tbody tr.entity-row td[data-field="${field}"] .wv-rating`);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return page;
+  };
+
+  for (const colorScheme of ['light', 'dark']) {
+    test(`a rollup that draws rating icons opens wide enough for them (${colorScheme}, Issue #564)`, async () => {
+      const page = await openOn(computedTable().panel.id, 'Glow', colorScheme);
+      try {
+        const cols = await columns(page);
+        for (const [field, max] of [['Zap', 3], ['Star', 5], ['Love', 7], ['Glow', 12]]) {
+          const c = cols[field];
+          assert.ok(c, `${field} drew a rating`);
+          assert.ok(c.icons <= c.room, `${field} (max ${max}): ${c.icons}px of icons in a ${c.room}px content box`);
+          assert.ok(c.overhang <= 1, `${field} (max ${max}): the last icon hangs ${c.overhang}px past the cell's content edge`);
+        }
+        assert.equal(cols.Zap.width, cols.Star.width, 'three and five icons both sit inside the rollup default');
+        assert.ok(cols.Love.width > cols.Star.width, 'seven icons open the rollup wider');
+        assert.ok(cols.Glow.width > cols.Love.width, 'twelve wider still');
+      } finally { await page.close(); }
+    });
+  }
+
+  test('a lookup that draws rating icons opens wide enough for them (Issue #564)', async () => {
+    const page = await openOn(computedTable().reading.id, 'Lit', 'light');
+    try {
+      const c = (await columns(page)).Lit;
+      assert.ok(c, 'the lookup drew a rating');
+      assert.ok(c.icons <= c.room, `Lit (max 12): ${c.icons}px of icons in a ${c.room}px content box`);
+      assert.ok(c.overhang <= 1, `Lit (max 12): the last icon hangs ${c.overhang}px past the cell's content edge`);
+      assert.ok(c.width > CR.DEFAULT_WIDTHS.lookup, 'twelve icons open the lookup past its 136px default');
+    } finally { await page.close(); }
+  });
+
   test('the cell icon geometry is the geometry the width is computed from', async () => {
     const page = await open(gaugeTable().id, 'light');
     try {
@@ -318,7 +397,7 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${deal.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      await page.locator('td[data-field="Vendor"] .mention-wrap .mention-caret').first().click();
+      await page.locator('td[data-field="Vendor"] .k-rel .mention-caret').first().click();
       await page.waitForSelector('td[data-field="Vendor"] .mention-f .wv-rating');
       assert.equal(await page.getAttribute('td[data-field="Vendor"] .mention-f .wv-rating', 'aria-label'), '3 of 5');
     } finally { await page.close(); }

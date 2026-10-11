@@ -5,16 +5,21 @@ import '../public/term-core.js';
 import '../public/icon-registry.js';
 import '../public/mark-icons.js';
 import '../public/editor-lib.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import '../public/list-core.js';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
+import { lookup } from 'node:dns/promises';
+import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
-import { workspaceName, workspaceSlug, nameFromFile } from './workspace-name.js';
+import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
+import * as Shares from './shares.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
+import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms } from './forms.js';
 
 function iconValue(v) {
   const s = String(v ?? '').trim();
@@ -26,7 +31,11 @@ function iconValue(v) {
 }
 
 const Term = globalThis.WeaveTerm;
-const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow' };
+const ListCore = globalThis.weaveListCore;
+const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow', forms: 'form' };
+
+const CSV_FORMULA_START = /^'*[=+\-@\t\r]/;
+const unquoteCSVCell = (cell) => (cell.startsWith("'") && CSV_FORMULA_START.test(cell.slice(1)) ? cell.slice(1) : cell);
 
 export function parseCSV(text) {
   const rows = [];
@@ -92,6 +101,23 @@ export function logoType(bytes) {
     ?? (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!doctype svg[^>]*>\s*)?<svg[\s/>]/i.test(head) ? 'image/svg+xml' : null);
 }
 
+const LOCAL_RANGES = new BlockList();
+for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16], ['224.0.0.0', 3]]) LOCAL_RANGES.addSubnet(net, bits, 'ipv4');
+for (const [net, bits] of [['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10]]) LOCAL_RANGES.addSubnet(net, bits, 'ipv6');
+
+export function localAddress(ip) {
+  const v = isIP(ip);
+  return v ? LOCAL_RANGES.check(ip, v === 6 ? 'ipv6' : 'ipv4') : false;
+}
+
+async function webhookRefusal(url) {
+  if (process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE === '1') return null;
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  if (isIP(host)) return localAddress(host) ? `refused, ${host} is a private or local address` : null;
+  const hit = (await lookup(host, { all: true })).find((a) => localAddress(a.address));
+  return hit ? `refused, ${host} resolves to ${hit.address}, a private or local address` : null;
+}
+
 const INLINE_FILE_TYPES = new Set(['application/pdf', 'text/plain']);
 export const HTML_VIEW_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
 const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
@@ -132,6 +158,16 @@ export const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
 const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
 export const ACTIVITY_CAP = 500;
 const FIELD_CONFIG_ACTIONS = { 'field-config-updated': 'field-config-updated', 'field-config-undo': 'undo' };
+const SCHEMA_AUDIT_ACTIONS = ['space-created', 'space-updated', 'space-trashed', 'space-deleted', 'space-restored', 'space-from-template',
+  'table-created', 'table-updated', 'table-moved', 'table-duplicated', 'table-trashed', 'table-deleted', 'table-restored',
+  'field-added', 'field-updated', 'field-config-updated', 'field-config-undo', 'field-migrated', 'field-trashed', 'field-deleted', 'field-restored', 'relation-added'];
+const UNTAGGED_SCHEMA_ACTIONS = new Set(SCHEMA_AUDIT_ACTIONS.filter((a) => a !== 'field-updated' && a !== 'table-updated'));
+const ONTOLOGY_TYPES = { number: 'num', daterange: 'dates', checkbox: 'check', document: 'doc', attachments: 'files', select: 'one', multiselect: 'many', workflow: 'flow' };
+const ONTOLOGY_LEGEND = 'one/many/flow[..] are select/multiselect/workflow; a -> T (b) is a relation to T, T* many, b its inverse; a = .. is a lookup, rollup or formula. Every table also has Name, Description, Chip and Card.';
+function ontologyEtag(counts) {
+  const text = [...counts].filter(([, n]) => n > 0).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([id, n]) => `${id}:${n}`).join(',');
+  return createHash('sha1').update(text).digest('hex').slice(0, 8);
+}
 function fieldDefinition(f) {
   const { width, ...config } = f.config ?? {};
   return structuredClone({ name: f.name, type: f.type, config });
@@ -200,6 +236,7 @@ export const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
 export const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
 const DEFAULT_PAIR_PARTS = [{ name: 'id', secret: false }, { name: 'secret', secret: true }];
 const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'color'];
+const ROLLUP_COSTUME_KEYS = NUMBER_COSTUME_KEYS.filter((k) => k !== 'separator');
 export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
 const isGraphicDisplay = (d) => d === 'bar' || d === 'ring' || d === 'heat';
 export const CELL_COLORS = ['ink', 'icon', 'accent'];
@@ -257,7 +294,7 @@ const workflowActor = (rowId) => `workflow:${rowId}`;
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 
 const { HUE_HEX, HUES, hueName } = globalThis.chipCore;
-function hueOf(o, { strict = false } = {}) {
+function hueOf(o, { strict = false, fallback = 'slate' } = {}) {
   for (const authored of [o?.hue, o?.color]) {
     if (authored === undefined || authored === null || String(authored).trim() === '') continue;
     const hue = hueName(authored);
@@ -268,7 +305,7 @@ function hueOf(o, { strict = false } = {}) {
         + `or its hex, or '' for slate)`, 'invalid');
     }
   }
-  return 'slate';
+  return fallback;
 }
 function normaliseOption(o, { strict = false } = {}) {
   if (typeof o === 'string') return { id: slug(o), name: o, hue: 'slate', icon: '', color: '' };
@@ -325,12 +362,12 @@ export const ONTOLOGY = {
       key: 'workspace', name: 'Workspace', isEntity: true, registry: 'Workspace/Workspaces', storedIn: 'state.meta',
       contains: 'spaces', identity: 'the .db file; a name and an optional logo',
       definition: 'One workspace file and everything in it. The top level of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and its spaces, tables and fields relate back to it.',
-      api: ['describeSchema', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
+      api: ['describeSchema', 'ontology', 'spaceVersions', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
     },
     {
       key: 'space', name: 'Space', isEntity: true, registry: 'Workspace/Spaces', storedIn: 'state.spaces',
       contains: 'tables', identity: 'uuid; name unique in the workspace, and the left half of Space/Table',
-      definition: 'A named container grouping the tables of one area of work. Its row in the Spaces registry is the same object seen as data.',
+      definition: 'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in Workspace/Spaces is the same object seen as data.',
       api: ['createSpace', 'listSpaces', 'updateSpace', 'deleteSpace'],
     },
     {
@@ -343,7 +380,7 @@ export const ONTOLOGY = {
       key: 'field', name: 'Field', isEntity: true, registry: 'Workspace/Fields', storedIn: 'table.fields',
       contains: 'nothing', identity: 'uuid; name unique within its table',
       definition: 'One typed, named slot on a table. A field is not itself a row of data, but it has a row in the Fields registry — carrying its type and its definition — so the schema is editable as data.',
-      api: ['addField', 'addRelation', 'updateField', 'deleteField', 'materializeField'],
+      api: ['addField', 'addRelation', 'updateField', 'deleteField', 'restoreField', 'materializeField'],
     },
     {
       key: 'row', name: 'Row', isEntity: true, registry: null, storedIn: 'state.entities',
@@ -393,7 +430,7 @@ export const ONTOLOGY = {
       key: 'saved-view', name: 'Saved view', storedIn: 'state.meta.views',
       definition: 'A saved arrangement of one or more table blocks, each with its own filter and layout; optionally published read-only through a share token. Not to be confused with the entity view, which every entity has by existing.',
       identity: 'uuid; a share token when shared',
-      api: ['createView', 'listViews', 'getView', 'deleteView', 'resolveView', 'shareView', 'unshareView'],
+      api: ['createView', 'listViews', 'getView', 'deleteView', 'restoreView', 'resolveView', 'shareView', 'unshareView'],
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.entities',
@@ -405,7 +442,7 @@ export const ONTOLOGY = {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
       definition: 'A named token holder with a role — architect, editor, or observer (admin, writer and reader before 2026-10-02, rewritten on open). Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a row by the passkey door removed in Feature #243 is kept and ignored. Provider identities ({ issuer, subject }, no email) live on the row as identities[] (Feature #212, Feature #252); an identity is linked by redeeming a one-time invite kept as its sha256 in meta.identityInvites.',
       identity: 'uuid; name unique in the workspace',
-      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'listSessions', 'revokeSession', 'linkIdentity', 'inviteMember', 'listInvites', 'revokeInvite', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
+      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'removedSession', 'listSessions', 'revokeSession', 'linkIdentity', 'inviteMember', 'listInvites', 'revokeInvite', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
     },
     {
       key: 'key', name: 'Credential', storedIn: 'keystore',
@@ -415,7 +452,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'audit', name: 'Audit entry', storedIn: 'store.audit_log',
-      definition: 'A workspace-level record of a structural change: spaces, tables, fields, relations, saved views, accounts, keys, applied schemas.',
+      definition: 'A workspace-level record of a structural change: spaces, tables, fields, relations, saved views, accounts, keys, applied schemas. A schema entry names the spaces it touched; their count is each space\'s schema version, and spaceVersions() hashes the versions into the workspace etag (Feature #277).',
       identity: 'rowid in audit_log',
       api: ['listAudit'],
     },
@@ -441,6 +478,11 @@ const { dressNumber } = globalThis.weaveNumberCore;
 
 function dressDate(c, iso) { return DG.formatDate(iso, c); }
 
+function rollupCostume(config) {
+  if (!ROLLUP_COSTUME_KEYS.some((k) => config[k] != null)) return {};
+  return normalizeSelfContainedConfig('number', { ...config, separator: undefined });
+}
+
 function formulaCostume(config) {
   if (config.grain == null) return normalizeSelfContainedConfig('number', config, { formula: true });
   const date = normalizeSelfContainedConfig('date', config);
@@ -456,7 +498,7 @@ function normalizeSelfContainedConfig(type, config = {}, { formula = false, stri
   if (type === 'workflow') {
     const states = (config.states ?? DEFAULT_WORKFLOW_STATES).map((s) => (typeof s === 'string'
       ? { id: slug(s), name: s, category: 'in-progress', default: false }
-      : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}) }));
+      : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}), ...(hueOf(s, { strict, fallback: null }) ? { hue: hueOf(s, { strict, fallback: null }) } : {}) }));
     if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
     let marked = false;
     for (const s of states) { if (s.default && marked) s.default = false; marked ||= s.default; }
@@ -790,7 +832,7 @@ export function templateDoc(spaceDoc, { name, rollups = [] } = {}) {
     space: to,
     tables: src.tables.map((t) => {
       const out = gone.get(t.name);
-      const table = without(t, ['id', 'url', 'entityCount']);
+      const table = without(t, ['id', 'url', 'entityCount', 'maxPublicId']);
       if (table.qualified != null) table.qualified = move(table.qualified);
       table.fields = (t.fields ?? []).filter((f) => !out.has(f.name)).map((f) => {
         const field = without(f, ['id', 'targetDbId', 'targetDbIds', 'inverseFieldId', 'viaTableId']);
@@ -972,6 +1014,7 @@ export class Weave {
       if (role !== a.role) { a.role = role; changed = true; }
     }
     if (this.#scrubIdentityEmails()) changed = true;
+    if (Shares.liftViewShares(s)) changed = true;
     if (changed) this.save();
   }
 
@@ -1129,7 +1172,7 @@ export class Weave {
     if (cfg.state && wf) {
       const st = this.#resolve(e, db, wf, 0);
       const def = wf.config.states.find((s) => s.id === st || s.name === st);
-      if (def) out.state = { name: def.name, category: def.category };
+      if (def) out.state = { name: def.name, category: def.category, ...(def.hue ? { hue: def.hue } : {}) };
     }
     if (cfg.description !== 'none') {
       const docField = this.descriptionField(db);
@@ -1145,10 +1188,25 @@ export class Weave {
       const v = this.#displayValue(db, f, resolved, e);
       const shown = f.type === 'toggle' ? (v ? f.config.on : f.config.off) : v;
       const seg = { label: f.name, value: shown == null ? '' : Array.isArray(shown) ? shown.map((x) => x?.name ?? x).join(', ') : String(shown?.name ?? shown) };
+      if ((f.type === 'select' || f.type === 'multiselect') && seg.value) {
+        const named = (name) => {
+          const o = f.config.options?.find((x) => x.name === name);
+          return { name, ...(o?.hue ? { hue: o.hue } : {}), ...(o?.icon ? { icon: o.icon } : {}) };
+        };
+        seg.type = f.type;
+        if (f.type === 'select') seg.option = named(seg.value);
+        else seg.options = (Array.isArray(shown) ? shown : []).map((x) => named(x?.name ?? x));
+      }
+      if (f.type === 'formula' || f.type === 'rollup' || f.type === 'lookup') seg.type = f.type;
       const nd = typeof resolved === 'number' ? this.#numberDisplay(db, f) : null;
       if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f), color: nd.color };
-      const rt = typeof resolved === 'number' ? this.#ratingOf(db, f) : null;
-      if (rt) seg.rating = { value: resolved, ...rt };
+      const rated = Array.isArray(resolved) ? resolved.some((v) => typeof v === 'number') : typeof resolved === 'number';
+      const rt = rated ? this.#ratingOf(db, f) : null;
+      if (rt) {
+        seg.rating = Array.isArray(resolved)
+          ? { values: resolved.map((v) => (typeof v === 'number' ? v : null)), ...rt }
+          : { value: resolved, ...rt };
+      }
       if (f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) seg.spark = { style: f.config.style ?? 'line', values: resolved, color: f.config.color ?? 'ink' };
       out.fields.push(seg);
     }
@@ -1288,7 +1346,7 @@ export class Weave {
     this.state.spaces[space.id] = space;
     this.save();
     this.#syncSpaceRow(space);
-    if (!space.system) this.#audit('space-created', { name: space.name });
+    if (!space.system) this.#audit('space-created', { name: space.name }, space.id);
     return space;
   }
 
@@ -1314,7 +1372,7 @@ export class Weave {
     const s = this.getSpace(ref);
     if (patch.name != null) refuseReserved('space', patch.name);
     if (patch.template != null && typeof patch.template !== 'boolean') throw new WeaveError(`A space's template is true or false, got ${JSON.stringify(patch.template)}`, 'invalid');
-    this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) });
+    this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) }, s.id);
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
     if (patch.icon != null) { const v = iconValue(patch.icon); if (v) s.icon = v; else delete s.icon; }
@@ -1331,14 +1389,14 @@ export class Weave {
       if (s.deletedAt) return s;
       s.deletedAt = nowISO();
       this.#trashSysRow('spaces', s.id);
-      this.#audit('space-trashed', { name: s.name });
+      this.#audit('space-trashed', { name: s.name }, s.id);
       this.save();
       return s;
     }
     for (const db of this.listTables(s.id, { includeDeleted: true })) this.deleteTable(db.id, { hard: true });
     delete this.state.spaces[s.id];
     this.#dropSysRow('spaces', s.id);
-    this.#audit('space-deleted', { name: s.name });
+    this.#audit('space-deleted', { name: s.name }, s.id);
     this.save();
   }
 
@@ -1353,7 +1411,7 @@ export class Weave {
     if (clash) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
     s.deletedAt = null;
     this.#restoreSysRow('spaces', s.id);
-    this.#audit('space-restored', { name: s.name });
+    this.#audit('space-restored', { name: s.name }, s.id);
     this.save();
     return s;
   }
@@ -1388,7 +1446,7 @@ export class Weave {
     this.save();
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
-    if (!db.system) this.#audit('table-created', { space: sp.name, name: db.name });
+    if (!db.system) this.#audit('table-created', { space: sp.name, name: db.name }, sp.id);
     return db;
   }
 
@@ -1430,6 +1488,8 @@ export class Weave {
   updateTable(ref, patch) {
     const db = this.getTable(ref);
     if (patch.name != null) refuseReserved('table', patch.name);
+    const shape = (t) => JSON.stringify([t.name, t.description ?? '', t.fieldOrder]);
+    const was = shape(db);
     if (patch.name != null && db.system && patch.name !== db.name) throw new WeaveError(`Table '${db.name}' is part of the system registry and cannot be renamed`, 'invalid');
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
@@ -1481,6 +1541,7 @@ export class Weave {
     }
     this.#syncTableRow(db);
     this.save();
+    if (!db.system && shape(db) !== was) this.#audit('table-updated', { name: db.name, patch: Object.keys(patch) }, this.#spacesTouching(db));
     if (patch.name != null) this.#reg.#settleWorkflows();
     return db;
   }
@@ -1498,10 +1559,11 @@ export class Weave {
     if (clash?.deletedAt) throw new WeaveError(`Table '${sp.name}/${db.name}' is in the trash — restore or purge it first`, 'conflict');
     if (clash) throw new WeaveError(`Table '${sp.name}/${db.name}' already exists`, 'conflict');
     const from = this.state.spaces[db.spaceId]?.name;
+    const left = db.spaceId;
     db.spaceId = sp.id;
     this.save();
     this.#syncTableRow(db);
-    this.#audit('table-moved', { name: db.name, from, to: sp.name });
+    this.#audit('table-moved', { name: db.name, from, to: sp.name }, [left, ...this.#spacesTouching(db)]);
     return db;
   }
 
@@ -1558,7 +1620,10 @@ export class Weave {
       tableViews: (src.tableViews ?? []).map((v) => {
         const copy = { ...structuredClone(v), id: uuid(), fields: v.fields.map(mapId) };
         if (copy.widths) copy.widths = Object.fromEntries(Object.entries(copy.widths).map(([k, px]) => [mapId(k), px]));
+        if (copy.group) copy.group = copy.group.map((l) => ({ ...l, field: mapId(l.field) }));
+        for (const k of ['completedBy', 'nest']) if (copy[k]) copy[k] = mapId(copy[k]);
         delete copy.parked;
+        delete copy.order;
         return copy;
       }),
       id: newId,
@@ -1580,7 +1645,7 @@ export class Weave {
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
     for (const [target, inv] of touchedTargets) { this.#syncFieldRow(target, inv); this.#syncTableRow(target); }
-    this.#audit('table-duplicated', { space: sp?.name, source: src.name, name: db.name });
+    this.#audit('table-duplicated', { space: sp?.name, source: src.name, name: db.name }, this.#spacesTouching(db));
     return db;
   }
 
@@ -1592,10 +1657,11 @@ export class Weave {
       db.deletedAt = nowISO();
       this.#trashSysRow('tables', db.id);
       for (const v of db.tableViews ?? []) this.#trashSysRow('views', v.id);
-      this.#audit('table-trashed', { name: db.name });
+      this.#audit('table-trashed', { name: db.name }, this.#spacesTouching(db));
       this.save();
       return db;
     }
+    const touched = this.#spacesTouching(db);
     for (const e of this.listEntities(db.id, { includeDeleted: true })) {
       this.deleteEntity(e.id, { hard: true });
     }
@@ -1625,6 +1691,7 @@ export class Weave {
       if (auto.dbId === db.id) delete this.state.automations[id];
     }
     for (const f of Object.values(db.fields)) this.#dropFieldRow(f.id);
+    for (const t of Object.values(db.trashedFields ?? {})) for (const snap of [t.field, ...t.dependents]) this.#dropFieldRow(snap.field.id);
     for (const v of db.tableViews ?? []) this.#dropSysRow('views', v.id);
     const spacesT = this.#sysTable('spaces');
     if (spacesT) {
@@ -1636,7 +1703,7 @@ export class Weave {
     }
     delete this.state.tables[db.id];
     this.#dropSysRow('tables', db.id);
-    this.#audit('table-deleted', { name: db.name });
+    this.#audit('table-deleted', { name: db.name }, touched);
     this.save();
   }
 
@@ -1657,7 +1724,7 @@ export class Weave {
     db.deletedAt = null;
     this.#restoreSysRow('tables', db.id);
     for (const v of db.tableViews ?? []) this.#restoreSysRow('views', v.id);
-    this.#audit('table-restored', { name: db.name });
+    this.#audit('table-restored', { name: db.name }, this.#spacesTouching(db));
     this.save();
     return db;
   }
@@ -1707,8 +1774,13 @@ export class Weave {
     return v;
   }
 
-  listViews() {
-    return Object.values(this.state.meta.views ?? {}).map(({ shareToken, ...pub }) => ({ ...pub, shared: !!shareToken }));
+  listViews({ trash = false } = {}) {
+    if (trash) {
+      return Object.values(this.state.meta.trashedViews ?? {})
+        .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
+        .map((v) => structuredClone(v));
+    }
+    return Object.values(this.state.meta.views ?? {}).map((v) => ({ ...v, shared: this.listShares({ kind: 'view', id: v.id }).length > 0 }));
   }
 
   getView(id) {
@@ -1717,12 +1789,37 @@ export class Weave {
     return v;
   }
 
-  deleteView(id) {
+  deleteView(id, { hard = false } = {}) {
+    const trashed = own(this.state.meta.trashedViews, id);
+    if (trashed) {
+      if (!hard) return { id: trashed.id, deleted: true };
+      delete this.state.meta.trashedViews[trashed.id];
+      if (!Object.keys(this.state.meta.trashedViews).length) delete this.state.meta.trashedViews;
+      this.save();
+      this.#audit('view-deleted', { name: trashed.name });
+      return { id: trashed.id, deleted: true };
+    }
     const v = this.getView(id);
     delete this.state.meta.views[v.id];
+    if (!hard) (this.state.meta.trashedViews ??= {})[v.id] = { ...v, deletedAt: nowISO() };
     this.save();
-    this.#audit('view-deleted', { name: v.name });
+    this.#audit(hard ? 'view-deleted' : 'view-trashed', { name: v.name });
     return { id: v.id, deleted: true };
+  }
+
+  restoreView(id) {
+    const v = own(this.state.meta.trashedViews, id);
+    if (!v) {
+      if (own(this.state.meta.views, id)) return this.state.meta.views[id];
+      throw new WeaveError(`View '${id}' not found in the trash`, 'not-found');
+    }
+    const { deletedAt, ...live } = v;
+    delete this.state.meta.trashedViews[v.id];
+    if (!Object.keys(this.state.meta.trashedViews).length) delete this.state.meta.trashedViews;
+    (this.state.meta.views ??= {})[v.id] = live;
+    this.save();
+    this.#audit('view-restored', { name: v.name });
+    return live;
   }
 
   resolveView(id) {
@@ -1741,23 +1838,44 @@ export class Weave {
 
   shareView(id) {
     const v = this.getView(id);
-    v.shareToken ??= 'wvv_' + randomBytes(18).toString('base64url');
-    this.save();
-    this.#audit('view-shared', { name: v.name });
-    return { url: `/view/${v.shareToken}`, token: v.shareToken };
+    const held = this.listShares({ kind: 'view', id: v.id }).find((g) => g.mode === 'read' && g.visibility === 'public');
+    const g = held ?? this.mintShare({ scope: { kind: 'view', id: v.id }, label: v.name });
+    return { url: g.url, token: g.token };
   }
 
   unshareView(id) {
     const v = this.getView(id);
-    delete v.shareToken;
-    this.save();
-    this.#audit('view-unshared', { name: v.name });
+    for (const g of this.listShares({ kind: 'view', id: v.id })) this.revokeShare(g.id);
     return { id: v.id, shared: false };
   }
 
   viewByShareToken(token) {
-    if (!token) return null;
-    return Object.values(this.state.meta.views ?? {}).find((v) => v.shareToken === token) ?? null;
+    const g = this.shareByToken(token);
+    return g?.scope.kind === 'view' ? own(this.state.meta.views, g.scope.id) : null;
+  }
+
+  mintShare(opts = {}) {
+    const g = Shares.mint(this, opts);
+    this.save();
+    this.#audit('share-minted', Shares.auditDetail(g));
+    return g;
+  }
+
+  listShares(opts = {}) {
+    return Shares.list(this, opts ?? {});
+  }
+
+  revokeShare(id, { any = true } = {}) {
+    const { grant, changed } = Shares.revoke(this, id, { any });
+    if (changed) {
+      this.save();
+      this.#audit('share-revoked', Shares.auditDetail(grant));
+    }
+    return grant;
+  }
+
+  shareByToken(token) {
+    return Shares.byToken(this, token);
   }
 
   tableView(ref, patch = null) {
@@ -1814,6 +1932,7 @@ export class Weave {
     out.fields = v.fields.map((id) => viewEntryName(db, id)).filter(Boolean);
     if (v.filters) out.filters = structuredClone(v.filters);
     if (v.sort) out.sort = structuredClone(v.sort);
+    if (v.search) out.search = v.search;
     const widths = {};
     for (const [id, px] of Object.entries(v.widths ?? {})) { const n = viewEntryName(db, id); if (n) widths[n] = px; }
     if (Object.keys(widths).length) out.widths = widths;
@@ -1821,7 +1940,86 @@ export class Weave {
     if (v.density) out.density = v.density;
     if (v.deleted) out.deleted = true;
     if (typeof v.rollups === 'boolean') out.rollups = v.rollups;
+    if (v.layout === 'list') out.layout = 'list';
+    const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ field: db.fields[l.field].name, ...ListCore.compactLevel(db.fields[l.field].type, l) }));
+    if (group.length) out.group = group;
+    if (db.fields[v.completedBy]) out.completedBy = db.fields[v.completedBy].name;
+    if (db.fields[v.nest]) out.nest = db.fields[v.nest].name;
+    if (Array.isArray(v.collapsed)) out.collapsed = [...v.collapsed];
+    const order = (v.order ?? []).map((id) => own(this.state.entities, id)).filter((e) => e && !e.deletedAt && e.dbId === db.id).map((e) => e.publicId);
+    if (order.length) out.order = order;
     return out;
+  }
+
+  #listField(db, ref) {
+    const f = this.findField(db, ref);
+    if (!f) throw new WeaveError(`'${ref}' is not a field of ${this.qualifiedName(db)}`, 'not-found');
+    return f;
+  }
+
+  #checkGroup(db, input) {
+    let levels;
+    try { levels = ListCore.parseGroup(input); } catch (err) { throw new WeaveError(err.message, 'invalid'); }
+    const seen = new Set();
+    return levels.map((raw) => {
+      const f = this.#listField(db, raw.field);
+      if (seen.has(f.id)) throw new WeaveError(`group names each field once: '${f.name}' is there twice`, 'invalid');
+      seen.add(f.id);
+      try { return { field: f.id, ...ListCore.normalizeLevel({ name: f.name, type: f.type }, raw) }; } catch (err) { throw new WeaveError(err.message, 'invalid'); }
+    });
+  }
+
+  #orderRow(db, ref) {
+    const pid = typeof ref === 'number' ? ref : /^#?\d+$/.test(String(ref).trim()) ? Number(String(ref).trim().replace('#', '')) : null;
+    const e = pid != null
+      ? Object.values(this.state.entities).find((x) => x.dbId === db.id && x.publicId === pid)
+      : own(this.state.entities, String(ref));
+    if (!e || e.dbId !== db.id) throw new WeaveError(`'${ref}' is not a row of ${this.qualifiedName(db)} — order lists its rows as #ids`, 'invalid');
+    return e.id;
+  }
+
+  #writeListKeys(db, next, patch) {
+    if (patch.layout !== undefined) {
+      if (patch.layout == null || patch.layout === 'table') delete next.layout;
+      else if (patch.layout === 'list') next.layout = 'list';
+      else throw new WeaveError(`layout is table or list — got ${JSON.stringify(patch.layout)}`, 'invalid');
+    }
+    if (patch.group !== undefined) {
+      const g = patch.group == null ? [] : this.#checkGroup(db, patch.group);
+      if (g.length) next.group = g; else delete next.group;
+    }
+    if (patch.completedBy !== undefined) {
+      if (patch.completedBy == null || patch.completedBy === '') delete next.completedBy;
+      else {
+        const f = this.#listField(db, patch.completedBy);
+        if (!isBoolType(f.type)) throw new WeaveError(`completedBy is a checkbox or toggle field: '${f.name}' is a ${f.type}`, 'invalid');
+        next.completedBy = f.id;
+      }
+    }
+    if (patch.nest !== undefined) {
+      if (patch.nest == null || patch.nest === '') delete next.nest;
+      else {
+        const f = this.#listField(db, patch.nest);
+        if (f.type !== 'relation' || f.config.targetDbs || f.config.targetDb !== db.id) throw new WeaveError(`nest is a link from ${db.name} to itself (a Parent link): '${f.name}' is not one`, 'invalid');
+        if (f.config.many) throw new WeaveError(`nest needs one parent per row: '${f.name}' links many`, 'invalid');
+        next.nest = f.id;
+      }
+    }
+    if (patch.collapsed !== undefined) {
+      if (patch.collapsed == null) delete next.collapsed;
+      else {
+        if (!Array.isArray(patch.collapsed) || patch.collapsed.some((x) => typeof x !== 'string')) throw new WeaveError('collapsed is a list of group paths, e.g. ["Japan › P1", "Completed"]', 'invalid');
+        next.collapsed = [...new Set(patch.collapsed.map((x) => x.trim()).filter(Boolean))].slice(0, 500);
+      }
+    }
+    if (patch.order !== undefined) {
+      if (patch.order == null) delete next.order;
+      else {
+        if (!Array.isArray(patch.order)) throw new WeaveError('order is the list of rows, as #ids, in the order the list shows them', 'invalid');
+        const ids = [...new Set(patch.order.map((ref) => this.#orderRow(db, ref)))];
+        if (ids.length) next.order = ids; else delete next.order;
+      }
+    }
   }
 
   #checkViewName(db, name, self = null) {
@@ -1836,7 +2034,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -1942,11 +2140,17 @@ export class Weave {
       if (patch.rollups !== null && typeof patch.rollups !== 'boolean') throw new WeaveError(`rollups is true, false or null: whether the view draws the Σ row (null follows the table). Got ${JSON.stringify(patch.rollups)}`, 'invalid');
       if (patch.rollups === null) delete next.rollups; else next.rollups = patch.rollups;
     }
+    this.#writeListKeys(db, next, patch);
     if ((next.frozen ?? 0) > next.fields.length) next.frozen = next.fields.length;
     if (!next.frozen) delete next.frozen;
     if (next.parked && !Object.keys(next.parked).length) delete next.parked;
     if (patch.filters != null) { const f = this.#checkFilters(db, patch.filters); if (f) next.filters = f; else delete next.filters; }
     if (patch.sort != null) { const s = this.#checkSort(db, patch.sort); if (s) next.sort = s; else delete next.sort; }
+    if (patch.search !== undefined) {
+      if (patch.search !== null && typeof patch.search !== 'string') throw new WeaveError(`search is the text the table search box holds for this view ('' or null clears it). Got ${JSON.stringify(patch.search)}`, 'invalid');
+      const text = (patch.search ?? '').trim();
+      if (text) next.search = text; else delete next.search;
+    }
     if (patch.default === false && i === 0) throw new WeaveError(`'${next.name}' is the default because it is first — move another view to position 0 instead`, 'invalid');
     if (patch.position != null && !(Number.isInteger(patch.position) && patch.position >= 0)) {
       throw new WeaveError('position is a whole number: 0 is the first place in the strip (the default)', 'invalid');
@@ -2377,7 +2581,7 @@ export class Weave {
       throw err;
     }
     const made = target.getSpace(as);
-    target.#audit('space-from-template', { name: made.name, template: sp.name, from: this.state.meta.name ?? null });
+    target.#audit('space-from-template', { name: made.name, template: sp.name, from: this.state.meta.name ?? null }, made.id);
     return { space: made, plan, skipped };
   }
 
@@ -2684,11 +2888,15 @@ export class Weave {
       }
       if (vDoc.filters) out.filters = Object.fromEntries(Object.entries(vDoc.filters).filter(([k]) => has(k)));
       if (vDoc.sort) out.sort = vDoc.sort.filter((s) => has(s.field));
+      if (typeof vDoc.search === 'string' && vDoc.search.trim()) out.search = vDoc.search;
       if (vDoc.widths) out.widths = Object.fromEntries(Object.entries(vDoc.widths).filter(([k]) => has(k)));
       if (vDoc.frozen) out.frozen = vDoc.frozen;
       if (vDoc.density) out.density = vDoc.density;
       if (vDoc.deleted) out.deleted = true;
       if (typeof vDoc.rollups === 'boolean') out.rollups = vDoc.rollups;
+      if (vDoc.layout) out.layout = vDoc.layout;
+      if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
+      for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
       for (const k of ['filters', 'sort', 'widths']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
       return out;
     };
@@ -2708,6 +2916,7 @@ export class Weave {
       if (vDoc.fields && JSON.stringify(vDoc.fields) !== JSON.stringify(have?.fields)) patch.fields = vDoc.fields;
       if (JSON.stringify(vDoc.filters ?? null) !== JSON.stringify(have?.filters ?? null)) patch.filters = vDoc.filters ?? {};
       if (JSON.stringify(vDoc.sort ?? null) !== JSON.stringify(have?.sort ?? null)) patch.sort = vDoc.sort ?? [];
+      if ((vDoc.search?.trim() ?? '') !== (have?.search ?? '')) patch.search = vDoc.search ?? '';
       if (JSON.stringify(vDoc.widths ?? {}) !== JSON.stringify(have?.widths ?? {})) {
         patch.widths = { ...Object.fromEntries(Object.keys(have?.widths ?? {}).map((n) => [n, null])), ...(vDoc.widths ?? {}) };
       }
@@ -2715,6 +2924,9 @@ export class Weave {
       if ((vDoc.density ?? 'comfortable') !== (have?.density ?? 'comfortable')) patch.density = vDoc.density ?? 'comfortable';
       if (!!vDoc.deleted !== !!have?.deleted) patch.deleted = !!vDoc.deleted;
       if ((vDoc.rollups ?? null) !== (have?.rollups ?? null)) patch.rollups = vDoc.rollups ?? null;
+      if ((vDoc.layout ?? 'table') !== (have?.layout ?? 'table')) patch.layout = vDoc.layout ?? 'table';
+      if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
+      for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (!Object.keys(patch).length) continue;
       act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
     }
@@ -2736,6 +2948,7 @@ export class Weave {
   }
 
   updateWorkspace({ name = null, description = null, linkPreview = null } = {}) {
+    if (name != null && name !== this.state.meta.name) refuseOnDocs(this, 'renamed');
     if (description != null) this.state.meta.description = String(description);
     if (linkPreview != null) {
       if ([true, 'true', 'on'].includes(linkPreview)) this.state.meta.linkPreview = true;
@@ -2743,7 +2956,12 @@ export class Weave {
     }
     if (name != null && name !== this.state.meta.name) {
       const slug = workspaceSlug(name);
-      if (!slug) throw new WeaveError('A workspace name needs a letter or a digit: its slug keeps letters, digits, - and _', 'invalid');
+      const refused = hostSlugRefusal(slug);
+      if (refused) throw new WeaveError(refused.message, refused.code);
+      const was = String(this.state.meta.name ?? '').toLowerCase();
+      const aliases = [...(this.state.meta.aliases ?? []), ...(was ? [was] : [])].filter((a, i, all) => a !== slug && all.indexOf(a) === i);
+      if (aliases.length) this.state.meta.aliases = aliases;
+      else delete this.state.meta.aliases;
       this.state.meta.name = slug;
       this.state.meta.title = String(name).trim();
       if (this.state.meta.title === slug) delete this.state.meta.title;
@@ -2928,9 +3146,29 @@ export class Weave {
   static OLD_ROLES = { admin: 'architect', writer: 'editor', reader: 'observer' };
   static roleName(role) { return Weave.OLD_ROLES[role] ?? role; }
 
-  #audit(action, detail = {}) {
-    this.store.audit({ at: nowISO(), actor: this.actor, action, detail });
+  #audit(action, detail = {}, spaces = null) {
+    const touched = spaces ? [...new Set([].concat(spaces).filter(Boolean))] : [];
+    this.store.audit({ at: nowISO(), actor: this.actor, action, detail: touched.length ? { ...detail, spaces: touched } : detail });
     this.#reg.#settleWorkflows();
+  }
+
+  #spacesTouching(db, field = null) {
+    const ids = new Set([db.spaceId]);
+    const fields = field ? [field] : Object.values(db.fields);
+    for (const f of fields) {
+      if (f.type !== 'relation') continue;
+      for (const tid of [f.config.targetDb, ...(f.config.targetDbs ?? [])]) {
+        if (this.state.tables[tid]) ids.add(this.state.tables[tid].spaceId);
+      }
+    }
+    const watched = new Set(fields.map((f) => f.id));
+    for (const other of Object.values(this.state.tables)) {
+      for (const f of Object.values(other.fields)) {
+        if (f.config?.targetField && watched.has(f.config.targetField)) ids.add(other.spaceId);
+        if (!field && f.type === 'relation' && (f.config.targetDb === db.id || f.config.targetDbs?.includes(db.id))) ids.add(other.spaceId);
+      }
+    }
+    return [...ids];
   }
 
   listAudit(opts) {
@@ -2972,8 +3210,17 @@ export class Weave {
     const a = own(accounts, ref) ?? Object.values(accounts).find((x) => x.name === ref);
     if (!a) throw new WeaveError(`Account '${ref}' not found`, 'not-found');
     delete accounts[a.id];
+    const sessions = this.state.meta.sessions ?? {};
+    const removedAt = nowISO();
+    let ended = 0;
+    for (const [h, s] of Object.entries(sessions)) {
+      if (s.accountId !== a.id) continue;
+      sessions[h] = { removedAt, expiresAt: s.expiresAt };
+      ended += 1;
+    }
     this.save();
     this.#audit('account-deleted', { name: a.name });
+    if (ended) this.#audit('session-revoked', { name: a.name, count: ended, all: true });
     return { id: a.id, deleted: true };
   }
 
@@ -3030,15 +3277,24 @@ export class Weave {
     if (!s) return null;
     const now = Date.now();
     if (Date.parse(s.expiresAt) <= now) { delete this.state.meta.sessions[h]; this.save(); return null; }
+    if (s.removedAt) return null;
     const a = this.state.meta.accounts?.[s.accountId];
     if (!a) return null;
-    if (now - Date.parse(s.lastSeenAt) > 60 * 1000) {
+    const renewed = now - Date.parse(s.lastSeenAt) > 60 * 1000;
+    if (renewed) {
       s.lastSeenAt = new Date(now).toISOString();
       s.expiresAt = new Date(now + Weave.SESSION_TTL_MS).toISOString();
       this.save();
     }
     const { tokenHash, ...pub } = a;
-    return { ...pub, sessionId: h };
+    return { ...pub, sessionId: h, expiresAt: s.expiresAt, renewed };
+  }
+
+  removedSession(token) {
+    if (!token) return null;
+    const s = this.state.meta.sessions?.[this.#hash(token)];
+    if (!s?.removedAt || Date.parse(s.expiresAt) <= Date.now()) return null;
+    return { removedAt: s.removedAt };
   }
 
   listSessions(accountRef) {
@@ -3148,10 +3404,27 @@ export class Weave {
     return found ? { account: found.a?.name ?? this.#memberName(found.i.email), issuer: found.i.issuer, expiresAt: found.i.expiresAt } : null;
   }
 
-  redeemIdentityInvite(code, { issuer, subject } = {}) {
+  invitesForEmail(email) {
+    const mail = String(email ?? '').trim().toLowerCase();
+    return mail ? this.listInvites().filter((i) => i.email === mail) : [];
+  }
+
+  acceptInvite(id, who = {}) {
+    const mail = String(who.email ?? '').trim().toLowerCase();
+    const i = Object.hasOwn(this.state.meta.identityInvites ?? {}, String(id)) ? this.state.meta.identityInvites[id] : null;
+    if (!mail || !i || i.accountId || i.email !== mail || Date.parse(i.expiresAt) <= Date.now()) throw new WeaveError('This invite expired, was already used or is for another address', 'not-found');
+    return this.#redeem({ h: String(id), i, a: null }, who);
+  }
+
+  redeemIdentityInvite(code, who = {}) {
     const found = this.#invite(code);
     if (!found) throw new WeaveError('This invite expired or was already used', 'not-found');
-    const { h, i, a } = found;
+    return this.#redeem(found, who);
+  }
+
+  #redeem({ h, i, a }, { issuer, subject, email } = {}) {
+    const mail = String(email ?? '').trim().toLowerCase();
+    const stamp = (x) => { if (mail) x.verifiedEmail = mail; return x; };
     const iss = this.#issuer(issuer);
     if (iss !== i.issuer) throw new WeaveError('This invite is for another provider', 'invalid');
     if (!subject) throw new WeaveError('The provider named nobody', 'invalid');
@@ -3166,7 +3439,7 @@ export class Weave {
     if (!a) {
       const { account } = this.createAccount({ name: this.#memberName(i.email), role: i.role });
       const row = this.state.meta.accounts[account.id];
-      row.identities = [{ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at }];
+      row.identities = [stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at })];
       this.save();
       this.#audit('member-joined', { name: row.name, role: row.role, invitedBy: i.invitedBy ?? null });
       const { tokenHash, ...pub } = row;
@@ -3174,10 +3447,10 @@ export class Weave {
     }
     let identity = (a.identities ?? []).find((x) => x.issuer === iss && x.subject === sub);
     if (!identity) {
-      identity = { issuer: iss, subject: sub, createdAt: at, lastUsedAt: at };
+      identity = stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at });
       (a.identities ??= []).push(identity);
       this.#audit('identity-linked', { name: a.name, issuer: iss });
-    } else identity.lastUsedAt = at;
+    } else stamp(identity).lastUsedAt = at;
     this.save();
     const { tokenHash, ...pub } = a;
     return pub;
@@ -3196,12 +3469,14 @@ export class Weave {
     return { unlinked, remaining: keep.length };
   }
 
-  accountForIdentity({ issuer, subject } = {}) {
+  accountForIdentity({ issuer, subject, email } = {}) {
     if (!issuer || !subject) return null;
     for (const a of Object.values(this.state.meta.accounts ?? {})) {
       const i = (a.identities ?? []).find((x) => x.issuer === issuer && x.subject === String(subject));
       if (!i) continue;
       i.lastUsedAt = nowISO();
+      const mail = String(email ?? '').trim().toLowerCase();
+      if (mail) i.verifiedEmail = mail;
       this.save();
       const { tokenHash, ...pub } = a;
       return pub;
@@ -3275,6 +3550,7 @@ export class Weave {
     }
     if (dirty) this.save();
     this.#syncAll();
+    adoptForms(this, root);
     const spacesT = root.#sysTable('spaces');
     for (const f of rollups) {
       const via = this.state.tables[f.config.via];
@@ -3545,7 +3821,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
-    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox']]) {
+    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Search', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox'], ['Layout', 'text'], ['Group', 'text']]) {
       if (!this.#sysField(viewsT, n)) this.addField(viewsT.id, { name: n, type, ...(type === 'number' ? { config: { decimals: 0 } } : {}) }).system = true;
     }
     const wfT = this.#sysTable('workflows')
@@ -3605,6 +3881,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
+    ensureFormColumns(this, this.#sysTable('forms') ?? mkTable('Forms', 'forms', FORMS_DESCRIPTION), tablesT);
     this.#syncAll();
     this.#migrateAutomations();
     this.#settleWorkflows();
@@ -3761,6 +4038,7 @@ export class Weave {
         Fields: v.fields.map((id) => viewEntryName(db, id)).filter(Boolean).join(', '),
         Filter: formatFilters(v.filters),
         Sort: formatSort(v.sort),
+        Search: v.search ?? '',
         Default: i === 0,
         Position: i,
         Frozen: v.frozen ?? 0,
@@ -3768,6 +4046,8 @@ export class Weave {
         Density: v.density ?? '',
         'Show Deleted': !!v.deleted,
         'Rollup Row': typeof v.rollups === 'boolean' ? v.rollups : db.hideRollups === false,
+        Layout: v.layout ?? '',
+        Group: (v.group ?? []).map((l) => db.fields[l.field]?.name).filter(Boolean).join(ListCore.SEP),
       };
       let row = this.#sysRow('views', v.id);
       if (!row) {
@@ -3783,7 +4063,7 @@ export class Weave {
       }
       const patch = {};
       if (reg.entityName(row) !== v.name) patch.Name = v.name;
-      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row']) {
+      for (const k of ['Fields', 'Filter', 'Sort', 'Search', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row', 'Layout', 'Group']) {
         const f = this.#sysField(t, k);
         if (!f) continue;
         if ((row.values[f.id] ?? (['Default', 'Show Deleted', 'Rollup Row'].includes(k) ? false : k === 'Frozen' ? 0 : '')) !== want[k]) patch[k] = want[k];
@@ -4033,6 +4313,7 @@ export class Weave {
     if ('Fields' in values) vp.fields = String(take('Fields') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
     if ('Filter' in values) vp.filters = parseFilters(take('Filter'));
     if ('Sort' in values) vp.sort = parseSort(take('Sort'));
+    if ('Search' in values) vp.search = String(take('Search') ?? '');
     if ('Default' in values) {
       const on = !!take('Default');
       if (on) vp.default = true; else if (isDefault) vp.default = false;
@@ -4048,6 +4329,11 @@ export class Weave {
     if ('Density' in values) vp.density = String(take('Density') ?? '').trim() || 'comfortable';
     if ('Show Deleted' in values) vp.deleted = !!take('Show Deleted');
     if ('Rollup Row' in values) vp.rollups = !!take('Rollup Row');
+    if ('Layout' in values) vp.layout = String(take('Layout') ?? '').trim().toLowerCase() || 'table';
+    if ('Group' in values) {
+      const names = ListCore.parseGroup(String(take('Group') ?? '')).map((l) => l.field);
+      vp.group = names.map((n) => cur?.group?.find((l) => l.field.toLowerCase() === n.toLowerCase()) ?? n);
+    }
     if ('Widths' in values) {
       vp.widths = { ...Object.fromEntries(Object.keys(cur?.widths ?? {}).map((n) => [n, null])), ...parseWidths(take('Widths')) };
     }
@@ -4066,15 +4352,16 @@ export class Weave {
     }
 
     if (db.system === 'fields') {
-      if (!hard) throw new WeaveError('Deleting a column is not recoverable — pass hard to confirm', 'invalid');
       const hit = this.#fieldAnywhere(e.sysId);
       const owner = hit?.table;
       if (owner && owner.nameFieldId === e.sysId) {
         throw new WeaveError('Cannot delete the Name field', 'invalid');
       }
-      if (owner) hit.owner.deleteField(owner.id, e.sysId);
-      else this.#metaSync(() => this.deleteEntity(e.id, { hard: true }));
-      return { id: e.id, purged: true };
+      const binned = owner ? null : this.#trashedFieldAnywhere(e.sysId);
+      if (owner) hit.owner.deleteField(owner.id, e.sysId, { hard });
+      else if (binned) binned.owner.deleteField(binned.table.id, e.sysId, { hard });
+      else this.#metaSync(() => this.deleteEntity(e.id, { hard }));
+      return hard ? { id: e.id, purged: true } : this.readEntity(e.id);
     }
     const owner = this.#ownerOf(e);
     if (db.system === 'spaces') owner.deleteSpace(e.sysId, { hard });
@@ -4148,6 +4435,7 @@ export class Weave {
         field.config = { relationField: rel.id, targetField: targetFieldId, aggregate };
       }
       if (config.separator != null) field.config.separator = String(config.separator);
+      Object.assign(field.config, rollupCostume(config));
     } else if (type === 'formula') {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
       const checked = checkExpression(config.expression, Object.values(db.fields).map((f) => f.name));
@@ -4175,7 +4463,7 @@ export class Weave {
     this.save();
     this.#syncFieldRow(db, field);
     this.#syncTableRow(db);
-    if (!db.system) this.#audit('field-added', { table: db.name, name: field.name, type: field.type });
+    if (!db.system) this.#audit('field-added', { table: db.name, name: field.name, type: field.type }, this.#spacesTouching(db, field));
     return field;
   }
 
@@ -4207,7 +4495,7 @@ export class Weave {
         this.save();
         this.#syncFieldRow(db, a);
         this.#syncTableRow(db);
-        if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, targets: members.map((m) => this.qualifiedName(m)) });
+        if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, targets: members.map((m) => this.qualifiedName(m)) }, this.#spacesTouching(db, a));
         return { field: a, inverse: null };
       }
       targetDb = members[0].id;
@@ -4230,7 +4518,7 @@ export class Weave {
     this.#syncFieldRow(target, b);
     this.#syncTableRow(db);
     this.#syncTableRow(target);
-    if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, target: target.name });
+    if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, target: target.name }, this.#spacesTouching(db, a));
     return { field: a, inverse: b };
   }
 
@@ -4260,6 +4548,7 @@ export class Weave {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     const before = fieldDefinition(field);
+    const touchedBefore = this.#spacesTouching(db, field);
     let renamed = false;
     if (patch.name != null) refuseReserved('field', patch.name);
     if (patch.name != null && patch.name !== field.name) {
@@ -4314,6 +4603,12 @@ export class Weave {
             else field.config[k] = costume[k];
           }
         }
+      }
+      if (field.type === 'rollup' && ROLLUP_COSTUME_KEYS.some((k) => k in patch.config)) {
+        const merged = { ...field.config, ...patch.config };
+        for (const k of ROLLUP_COSTUME_KEYS) if (merged[k] === null) delete merged[k];
+        const costume = rollupCostume(merged);
+        for (const k of ROLLUP_COSTUME_KEYS) { if (costume[k] == null) delete field.config[k]; else field.config[k] = costume[k]; }
       }
       if (field.type === 'view') field.config = this.#normalizeViewConfig(db, field, patch.config);
       if (field.type === 'text' && 'literal' in patch.config) {
@@ -4387,9 +4682,9 @@ export class Weave {
       : null;
     this.save();
     if (logged) {
-      this.#audit(undo ? 'field-config-undo' : 'field-config-updated', logged);
+      this.#audit(undo ? 'field-config-undo' : 'field-config-updated', logged, [...touchedBefore, ...this.#spacesTouching(db, field)]);
       if (migrated) this.#dropOlderSnapshots(field.id, logged.seq);
-    } else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
+    } else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) }, changed.length ? [...touchedBefore, ...this.#spacesTouching(db, field)] : null);
     return { field, counts: migrated?.counts ?? null };
   }
 
@@ -4655,7 +4950,7 @@ export class Weave {
     if (description) field.config.description = description;
     if (term) field.config.term = term;
     if (toType === 'formula' && field.id === db.nameFieldId) for (const e of rows) this.#mark(e);
-    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length });
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length }, db.spaceId);
     return { rows: snapshot, counts };
   }
 
@@ -4703,7 +4998,7 @@ export class Weave {
     }
     this.#syncFieldRow(target, inverse);
     this.#syncTableRow(target);
-    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'text', to: 'relation', rows: rows.length, target: target.name });
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'text', to: 'relation', rows: rows.length, target: target.name }, [db.spaceId, target.spaceId]);
     return { rows: snapshot, counts: null };
   }
 
@@ -4738,12 +5033,17 @@ export class Weave {
     const { width, description } = field.config;
     field.type = 'text';
     field.config = { ...(width ? { width } : {}), ...(description ? { description } : {}) };
-    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'relation', to: 'text', rows: rows.length });
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'relation', to: 'text', rows: rows.length }, db.spaceId);
     return { rows: snapshot, counts };
   }
 
-  deleteField(dbRef, fieldRef) {
+  deleteField(dbRef, fieldRef, { hard = false } = {}) {
     const db = this.getTable(dbRef);
+    const binned = this.findField(db, fieldRef) ? null : this.#trashedField(db, fieldRef);
+    if (binned) {
+      if (hard) this.#purgeTrashedField(db, binned);
+      return { id: binned.field.field.id, name: binned.field.field.name, db: this.qualifiedName(db), deleted: true };
+    }
     const field = this.getField(db.id, fieldRef);
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
     if (field.type === 'view') throw new WeaveError(`Cannot delete '${field.name}': every row has a ${field.config.shape} by existing — hide it instead`, 'invalid');
@@ -4752,6 +5052,8 @@ export class Weave {
     if (readers.length) {
       throw new WeaveError(`Cannot delete '${field.name}': ${readers.join(', ')} read${readers.length === 1 ? 's' : ''} it — delete ${readers.length === 1 ? 'that field' : 'those fields'} first`, 'invalid');
     }
+    const entry = hard || db.system ? null : this.#fieldTrashEntry(db, field);
+    const touched = this.#spacesTouching(db, field);
     for (const shape of VIEW_SHAPES) {
       const v = this.viewField(db, shape);
       if (Array.isArray(v?.config.fields) && v.config.fields.includes(field.id)) v.config.fields = v.config.fields.filter((id) => id !== field.id);
@@ -4770,7 +5072,12 @@ export class Weave {
       }
     }
     this.#removeFieldRaw(db, field.id);
-    this.#dropFieldRow(field.id);
+    if (entry) {
+      (db.trashedFields ??= {})[field.id] = entry;
+      this.#trashSysRow('fields', field.id);
+    } else {
+      this.#dropFieldRow(field.id);
+    }
     if (field.type === 'relation' && field.config.inverseFieldId) this.#dropFieldRow(field.config.inverseFieldId);
     this.#syncTableRow(db);
     if (field.type === 'relation' && field.config.targetDb) {
@@ -4778,8 +5085,149 @@ export class Weave {
       if (far) this.#syncTableRow(far);
     }
     this.save();
-    if (!db.system) this.#audit('field-deleted', { table: db.name, name: field.name });
+    if (!db.system) this.#audit(entry ? 'field-trashed' : 'field-deleted', { table: db.name, name: field.name }, touched);
     return { id: field.id, name: field.name, db: this.qualifiedName(db), deleted: true };
+  }
+
+  restoreField(dbRef, fieldRef) {
+    const db = this.getTable(dbRef);
+    const binned = this.#trashedField(db, fieldRef);
+    if (!binned) throw new WeaveError(`Field '${fieldRef}' not found in the trash of '${db.name}'`, 'not-found');
+    const sp = this.state.spaces[db.spaceId];
+    if (db.deletedAt || sp?.deletedAt) throw new WeaveError(`Table '${db.name}' is in the trash — restore the table first`, 'invalid');
+    const main = binned.field.field;
+    const clash = (table, name) => Object.values(table.fields).find((f) => f.name.toLowerCase() === name.toLowerCase());
+    if (clash(db, main.name)) throw new WeaveError(`A live field already holds the name '${db.name}.${main.name}' — rename it first`, 'conflict');
+    for (const dep of binned.dependents) {
+      if (clash(db, dep.field.name)) throw new WeaveError(`A live field already holds the name '${db.name}.${dep.field.name}' — rename it first`, 'conflict');
+    }
+    let far = null;
+    if (binned.inverse) {
+      far = this.state.tables[binned.inverse.dbId];
+      if (!far) throw new WeaveError(`'${main.name}' points at a table that is gone — purge it instead`, 'conflict');
+      if (clash(far, binned.inverse.field.name)) {
+        throw new WeaveError(`A live field already holds the name '${far.name}.${binned.inverse.field.name}' — rename it first`, 'conflict');
+      }
+    }
+    const placements = [[db, binned.field], ...binned.dependents.map((d) => [db, d]), ...(far ? [[far, binned.inverse]] : [])]
+      .sort((x, y) => x[1].position - y[1].position);
+    for (const [table, snap] of placements) this.#reinstateField(table, snap);
+    delete db.trashedFields[main.id];
+    if (!Object.keys(db.trashedFields).length) delete db.trashedFields;
+    this.#restoreSysRow('fields', main.id);
+    for (const [table, snap] of placements) this.#syncFieldRow(table, table.fields[snap.field.id]);
+    this.#syncTableRow(db);
+    if (far && far.id !== db.id) this.#syncTableRow(far);
+    this.save();
+    if (!db.system) this.#audit('field-restored', { table: db.name, name: main.name }, this.#spacesTouching(db, db.fields[main.id]));
+    return db.fields[main.id];
+  }
+
+  #trashedField(db, ref) {
+    if (ref && typeof ref === 'object') ref = ref.id;
+    const bin = db.trashedFields ?? {};
+    if (own(bin, ref)) return bin[ref];
+    return Object.values(bin)
+      .filter((t) => t.field.field.name.toLowerCase() === String(ref).toLowerCase())
+      .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))[0] ?? null;
+  }
+
+  #trashedFieldAnywhere(fieldId) {
+    for (const w of this.#engines()) {
+      const table = Object.values(w.state.tables).find((t) => own(t.trashedFields ?? {}, fieldId));
+      if (table) return { owner: w, table };
+    }
+    return null;
+  }
+
+  #purgeTrashedField(db, binned) {
+    const main = binned.field.field;
+    delete db.trashedFields[main.id];
+    if (!Object.keys(db.trashedFields).length) delete db.trashedFields;
+    this.#dropFieldRow(main.id);
+    for (const dep of binned.dependents) this.#dropFieldRow(dep.field.id);
+    this.save();
+    if (!db.system) this.#audit('field-deleted', { table: db.name, name: main.name }, db.spaceId);
+  }
+
+  #fieldTrashEntry(db, field) {
+    const entry = { deletedAt: nowISO(), field: this.#fieldSnapshot(db, field), inverse: null, dependents: [] };
+    if (field.type === 'relation' && field.config.inverseFieldId) {
+      const far = this.state.tables[field.config.targetDb];
+      const inv = far?.fields[field.config.inverseFieldId];
+      if (inv) entry.inverse = { dbId: far.id, ...this.#fieldSnapshot(far, inv) };
+    }
+    for (const f of Object.values(db.fields)) {
+      if ((f.type === 'lookup' || f.type === 'rollup') && f.config.relationField === field.id) entry.dependents.push(this.#fieldSnapshot(db, f));
+    }
+    return entry;
+  }
+
+  #fieldSnapshot(db, field) {
+    const snap = { field: structuredClone(field), position: db.fieldOrder.indexOf(field.id), values: {}, docs: {}, shapes: [], views: [] };
+    if (db.descriptionFieldId === field.id) snap.description = true;
+    for (const shape of VIEW_SHAPES) {
+      const at = this.viewField(db, shape)?.config.fields?.indexOf(field.id) ?? -1;
+      if (at >= 0) snap.shapes.push({ shape, index: at });
+    }
+    for (const v of db.tableViews ?? []) {
+      const index = v.fields.indexOf(field.id);
+      const place = { id: v.id, index };
+      if (index >= 0 && index < (v.frozen ?? 0)) place.frozen = true;
+      if (v.widths?.[field.id] != null) place.width = v.widths[field.id];
+      if (v.parked?.[field.id] != null) place.parked = v.parked[field.id];
+      if (v.filters?.[field.name] != null) place.filter = v.filters[field.name];
+      const sorts = (v.sort ?? []).map((s, i) => [i, s]).filter(([, s]) => s.field === field.name);
+      if (sorts.length) place.sort = sorts;
+      if (Object.keys(place).length > 2 || index >= 0) snap.views.push(place);
+    }
+    for (const e of this.listEntities(db.id)) {
+      if (e.values[field.id] != null) snap.values[e.id] = structuredClone(e.values[field.id]);
+      if (e.docs?.[field.id] != null) snap.docs[e.id] = e.docs[field.id];
+    }
+    return snap;
+  }
+
+  #reinstateField(db, snap) {
+    const f = structuredClone(snap.field);
+    db.fields[f.id] = f;
+    if (!db.fieldOrder.includes(f.id)) db.fieldOrder.splice(Math.max(0, Math.min(snap.position, db.fieldOrder.length)), 0, f.id);
+    if (snap.description && db.descriptionFieldId == null) db.descriptionFieldId = f.id;
+    for (const { shape, index } of snap.shapes) {
+      const vf = this.viewField(db, shape);
+      if (Array.isArray(vf?.config.fields) && !vf.config.fields.includes(f.id)) vf.config.fields.splice(Math.min(index, vf.config.fields.length), 0, f.id);
+    }
+    for (const place of snap.views) {
+      const v = (db.tableViews ?? []).find((x) => x.id === place.id);
+      if (!v) continue;
+      if (place.index >= 0 && !v.fields.includes(f.id)) v.fields.splice(Math.min(place.index, v.fields.length), 0, f.id);
+      if (place.frozen) v.frozen = (v.frozen ?? 0) + 1;
+      if (place.width != null) (v.widths ??= {})[f.id] = place.width;
+      if (place.parked != null) (v.parked ??= {})[f.id] = place.parked;
+      if (place.filter != null) (v.filters ??= {})[f.name] = place.filter;
+      for (const [i, s] of place.sort ?? []) {
+        v.sort ??= [];
+        if (!v.sort.some((x) => x.field === s.field)) v.sort.splice(Math.min(i, v.sort.length), 0, s);
+      }
+    }
+    const exists = (id) => !!own(this.state.entities, id);
+    for (const [id, value] of Object.entries(snap.values)) {
+      const e = own(this.state.entities, id);
+      if (!e) continue;
+      if (f.type === 'relation') {
+        const ids = (Array.isArray(value) ? value : [value]).filter(exists);
+        e.values[f.id] = f.config.many ? ids : (ids[0] ?? null);
+      } else {
+        e.values[f.id] = value;
+      }
+      this.#mark(e);
+    }
+    for (const [id, doc] of Object.entries(snap.docs)) {
+      const e = own(this.state.entities, id);
+      if (!e) continue;
+      (e.docs ??= {})[f.id] = doc;
+      this.#mark(e);
+    }
   }
 
   #targetFieldReaders(fieldId) {
@@ -5311,6 +5759,7 @@ export class Weave {
       }
     }
     delete this.state.entities[id];
+    for (const f of e.files) this.#dropBlob(f.id);
     this.store.deleteDocRevisions(id);
     this.#mark(id);
     this.save();
@@ -5405,6 +5854,11 @@ export class Weave {
     const e = this.getEntity(id);
     {
       const db = this.state.tables[e.dbId];
+      const binned = db?.system === 'fields' && e.deletedAt && !this.#inMetaSync ? this.#trashedFieldAnywhere(e.sysId) : null;
+      if (binned) {
+        binned.owner.restoreField(binned.table.id, e.sysId);
+        return this.readEntity(id);
+      }
       if (db?.system && !this.#inMetaSync && ['spaces', 'tables'].includes(db.system)) {
         const owner = this.#ownerOf(e);
         if (db.system === 'spaces') owner.restoreSpace(e.sysId);
@@ -5495,7 +5949,8 @@ export class Weave {
         }
         if (field.config.aggregate === 'count') return rows.length;
         if (!targetField) return null;
-        const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
+        const ticks = isBoolType(targetField.type) && NUMERIC_AGGREGATES.includes(field.config.aggregate);
+        const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1)).map((v) => (ticks && !isCycle(v) ? (v ? 1 : 0) : v));
         const looped = vals.find(isCycle);
         if (looped) return looped;
         const display = ['distinct', 'join'].includes(field.config.aggregate)
@@ -5604,6 +6059,11 @@ export class Weave {
       case 'rollup': {
         const { targetField } = this.#rollupTarget(db, field);
         const agg = field.config.aggregate;
+        if (typeof resolved === 'number' && ROLLUP_COSTUME_KEYS.some((k) => field.config[k] != null)) {
+          const c = Object.fromEntries(ROLLUP_COSTUME_KEYS.filter((k) => field.config[k] != null).map((k) => [k, field.config[k]]));
+          const fractional = !Number.isInteger(resolved) && c.decimals == null && c.format !== 'currency' && c.format !== 'percent';
+          return dressNumber(fractional ? { ...c, decimals: 2 } : c, resolved);
+        }
         if (!targetField || !NUMERIC_AGGREGATES.includes(agg)) return resolved;
         if (typeof resolved === 'number' && (targetField.type === 'number' || targetField.type === 'formula')) {
           const c = targetField.config;
@@ -5875,6 +6335,7 @@ export class Weave {
   #numberDisplay(db, f) {
     let c = null;
     if (f.type === 'number' || f.type === 'formula') c = f.config;
+    else if (f.type === 'rollup' && f.config.display) c = f.config;
     else if (f.type === 'rollup' && NUMERIC_AGGREGATES.includes(f.config.aggregate)) {
       const { targetField } = this.#rollupTarget(db, f);
       if (targetField && (targetField.type === 'number' || targetField.type === 'formula')) c = targetField.config;
@@ -6253,7 +6714,7 @@ export class Weave {
   #logActivity(e, kind, detail, { ts = null } = {}) {
     const last = e.activity[e.activity.length - 1];
     if (kind === 'doc-updated' && last?.kind === 'doc-updated'
-      && last.detail?.field === detail.field
+      && last.detail?.field === detail.field && last.actor === this.actor
       && detail.restoredFrom == null && last.detail?.restoredFrom == null
       && Date.now() - Date.parse(last.ts) < 10 * 60 * 1000) {
       last.ts = nowISO();
@@ -6694,11 +7155,15 @@ export class Weave {
       const docField = db.fields[action.fieldId] ?? this.documentFields(db)[0];
       if (docField) {
         e.docs = e.docs ?? {};
-        const cur = e.docs[docField.id] ?? '';
-        this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: cur } } });
-        e.docs[docField.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
+        const before = e.docs[docField.id] ?? '';
+        const after = (before ? before.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
+        const prior = { at: e.updatedAt, by: e.modifiedBy };
+        this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: before } } });
+        e.docs[docField.id] = after;
         e.updatedAt = nowISO();
         e.modifiedBy = this.actor;
+        this.#logActivity(e, 'doc-appended', docChange(docField.name, before, after));
+        this.#recordDocRevision(e, docField, before, after, { prior });
       }
     } else if (action.type === 'add-comment') {
       const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db), createdAt: nowISO() };
@@ -6715,16 +7180,19 @@ export class Weave {
       };
       const reg = this.#reg;
       const ms = this.webhookTimeoutMs;
-      fetch(action.url, {
+      const url = new URL(action.url);
+      const failed = (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.code ?? err?.message ?? String(err));
+      webhookRefusal(url).then((refusal) => refusal ?? fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        redirect: 'manual',
         signal: AbortSignal.timeout(ms),
       }).then((res) => {
         res.body?.cancel().catch(() => {});
         return res.ok ? null : `HTTP ${res.status}`;
-      }, (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.message ?? String(err)))
-        .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${new URL(action.url).host}: ${why}`); })
+      }, failed), failed)
+        .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${url.host}: ${why}`); })
         .catch(() => {});
     }
   }
@@ -6800,7 +7268,8 @@ export class Weave {
     return results;
   }
 
-  universalSearch(text, { limit = 25, prefix = '' } = {}) {
+  universalSearch(text, { limit = 25, prefix = '', tables = null } = {}) {
+    if (tables != null) return this.#scopedSearch(text, { limit, prefix, tables });
     const needle = String(text).toLowerCase().trim();
     if (!needle) return [];
     const results = [];
@@ -6836,6 +7305,21 @@ export class Weave {
     return Weave.capRows(results, limit);
   }
 
+  #scopedSearch(text, { limit, prefix, tables }) {
+    const ids = [...new Set((Array.isArray(tables) ? tables : [tables]).map((t) => this.getTable(t).id))];
+    const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
+    if (!String(text ?? '').trim()) {
+      return ids.flatMap((id) => this.listEntities(id))
+        .filter((e) => !e.deletedAt)
+        .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+        .slice(0, limit)
+        .map((e) => hit(e));
+    }
+    return ids.flatMap((id) => this.#searchHits(text, id))
+      .sort((a, b) => b.score - a.score).slice(0, limit)
+      .map(({ e, score, snippet }) => hit(e, score, snippet));
+  }
+
   static capRows(hits, limit) {
     const tier = (h) => (h.kind !== 'entity' ? 1 : h.score >= 20 ? 2 : 0);
     let rows = 0;
@@ -6845,7 +7329,10 @@ export class Weave {
 
   previewFields(entityRef, limit = 3) {
     const v = this.renderView(entityRef, 'chip', { limit });
-    return [...(v.state ? [{ label: this.#stateLabel(v), value: v.state.name }] : []), ...v.fields].slice(0, limit);
+    return [
+      ...(v.state ? [{ label: this.#stateLabel(v), value: v.state.name }] : []),
+      ...v.fields.map((f) => ({ label: f.label, value: f.value })),
+    ].slice(0, limit);
   }
 
   #stateLabel(v) {
@@ -6920,6 +7407,14 @@ export class Weave {
     return b64 == null ? null : Buffer.from(b64, 'base64');
   }
 
+  #dropBlob(id) {
+    if (this.state.fileBlobs) delete this.state.fileBlobs[id];
+    if (this.state.meta.logo?.id === id) return;
+    for (const e of Object.values(this.state.entities)) if (e.files.some((f) => f.id === id)) return;
+    const p = this.#blobPath(id);
+    if (p) rmSync(p, { force: true });
+  }
+
   #writeBlob(id, buf) {
     const p = this.#blobPath(id);
     if (p) {
@@ -6988,8 +7483,8 @@ export class Weave {
   deleteWorkspaceLogo() {
     const logo = this.state.meta.logo;
     if (!logo) return;
-    if (this.state.fileBlobs) delete this.state.fileBlobs[logo.id];
     delete this.state.meta.logo;
+    this.#dropBlob(logo.id);
     this.save();
   }
 
@@ -7003,7 +7498,7 @@ export class Weave {
         e.values[f.id] = e.values[f.id].filter((id) => id !== fileId);
       }
     }
-    if (this.state.fileBlobs) delete this.state.fileBlobs[fileId];
+    this.#dropBlob(fileId);
     this.#mark(e);
     this.save();
     return { id: fileId, entity: e.id, deleted: had };
@@ -7011,7 +7506,7 @@ export class Weave {
 
   importCSV(dbRef, csvText) {
     const db = this.getTable(dbRef);
-    const rows = parseCSV(csvText);
+    const rows = parseCSV(csvText).map((row) => row.map(unquoteCSVCell));
     if (!rows.length) return { created: 0 };
     const header = rows[0];
     const skip = new Set(['Public Id', 'Created At', 'Updated At', 'publicId', 'createdAt', 'updatedAt']);
@@ -7049,6 +7544,150 @@ export class Weave {
     return { created, errors };
   }
 
+  spaceVersions() {
+    const { counts } = this.#schemaHistory();
+    return { etag: ontologyEtag(counts), spaces: this.listSpaces().map((s) => ({ id: s.id, name: s.name, version: counts.get(s.id) ?? 0 })) };
+  }
+
+  ontology({ depth = 'outline', concept = null, since = null } = {}) {
+    if ((depth ?? 'outline') !== 'outline') throw new WeaveError(`depth is "outline"; read one table in full with concept (got ${JSON.stringify(depth)})`, 'invalid');
+    const { counts, seen } = this.#schemaHistory();
+    if (concept != null && concept !== '') return this.#ontologyConcept(this.getTable(concept), counts);
+    const etag = ontologyEtag(counts);
+    const spaces = this.listSpaces();
+    const label = this.#ontologyLabel();
+    const block = (sp) => (sp.system
+      ? [`${sp.name} (system registry, read one with concept): ${this.listTables(sp.id).map((db) => db.name).join(', ')}`]
+      : [`${sp.name} v${counts.get(sp.id) ?? 0}:`, ...this.listTables(sp.id).map((db) => `  ${db.name}: ${this.#ontologyFields(db, label).join('; ') || '-'}`)]);
+    const tables = spaces.reduce((n, sp) => n + this.listTables(sp.id).length, 0);
+    const outline = [`weave ontology: ${tables} tables in ${spaces.length} spaces, one line each. ${ONTOLOGY_LEGEND}`, ...spaces.flatMap(block), `etag ${etag}`].join('\n');
+    if (since == null || since === '') return outline;
+    if (String(since) === etag) return `unchanged; etag ${etag}`;
+    const then = seen.get(String(since));
+    if (!then) return `etag ${since} is not one this workspace issued; the whole outline follows.\n${outline}`;
+    const moved = [...counts.keys()].filter((id) => counts.get(id) > (then.get(id) ?? 0));
+    const live = spaces.filter((sp) => moved.includes(sp.id));
+    const gone = moved.filter((id) => !live.some((sp) => sp.id === id)).map((id) => this.state.spaces[id]?.name ?? id);
+    return [
+      `since ${since}: ${moved.length} space${moved.length === 1 ? '' : 's'} changed. ${ONTOLOGY_LEGEND}`,
+      ...live.flatMap(block),
+      ...(gone.length ? [`gone: ${gone.join(', ')}`] : []),
+      `etag ${etag}`,
+    ].join('\n');
+  }
+
+  #schemaHistory() {
+    const spacesNamed = (n) => Object.values(this.state.spaces).filter((s) => s.name === n).map((s) => s.id);
+    const tablesNamed = (ref) => {
+      if (!ref) return [];
+      const [sp, t] = String(ref).includes('/') ? String(ref).split('/') : [null, String(ref)];
+      return Object.values(this.state.tables).filter((x) => x.name === t && (!sp || this.state.spaces[x.spaceId]?.name === sp)).map((x) => x.spaceId);
+    };
+    const resolve = (action, d) => {
+      if (Array.isArray(d.spaces)) return d.spaces;
+      if (!UNTAGGED_SCHEMA_ACTIONS.has(action)) return [];
+      if (this.state.tables[d.tableId]) return [this.state.tables[d.tableId].spaceId];
+      if (action.startsWith('space-')) return spacesNamed(d.name);
+      if (action === 'table-created' || action === 'table-duplicated') return spacesNamed(d.space);
+      if (action === 'table-moved') return [...spacesNamed(d.from), ...spacesNamed(d.to)];
+      if (action.startsWith('table-')) return tablesNamed(d.name);
+      return [...tablesNamed(d.table), ...tablesNamed(d.target), ...(d.targets ?? []).flatMap(tablesNamed)];
+    };
+    const counts = new Map();
+    const seen = new Map([[ontologyEtag(counts), new Map()]]);
+    for (const r of this.store.listAudit({ limit: -1, actions: SCHEMA_AUDIT_ACTIONS }).reverse()) {
+      const touched = new Set(resolve(r.action, r.detail ?? {}));
+      if (!touched.size) continue;
+      for (const id of touched) counts.set(id, (counts.get(id) ?? 0) + 1);
+      seen.set(ontologyEtag(counts), new Map(counts));
+    }
+    return { counts, seen };
+  }
+
+  #ontologyLabel() {
+    const names = new Map();
+    for (const t of this.listTables()) names.set(t.name.toLowerCase(), (names.get(t.name.toLowerCase()) ?? 0) + 1);
+    return (t) => (!t ? '?' : names.get(t.name.toLowerCase()) > 1 && this.state.tables[t.id] === t ? this.qualifiedName(t) : t.name);
+  }
+
+  #ontologyFields(db, label) {
+    const cap = (names) => (names.length > 8 ? [...names.slice(0, 8), `+${names.length - 8}`] : names).join('|');
+    const parts = [];
+    for (const fid of db.fieldOrder) {
+      const f = db.fields[fid];
+      if (!f || f.type === 'view' || f.id === db.nameFieldId || f.id === db.descriptionFieldId) continue;
+      const c = f.config ?? {};
+      const computed = this.#ontologyComputed(db, f, label);
+      if (f.type === 'relation') {
+        const targets = (c.targetDbs ?? [c.targetDb]).map((id) => label(this.state.tables[id])).join('|');
+        const inverse = c.targetDb ? this.state.tables[c.targetDb]?.fields[c.inverseFieldId]?.name : null;
+        parts.push(`${f.name} -> ${targets}${c.many ? '*' : ''}${inverse ? ` (${inverse})` : ''}`);
+      } else if (computed != null) {
+        parts.push(`${f.name} = ${computed.length > 48 ? `${computed.slice(0, 47)}…` : computed}`);
+      } else {
+        const type = ONTOLOGY_TYPES[f.type] ?? f.type;
+        const names = f.type === 'workflow' ? c.states.map((x) => x.name) : f.type === 'select' || f.type === 'multiselect' ? c.options.map((o) => o.name) : null;
+        parts.push(`${f.name} ${type}${names ? `[${cap(names)}]` : ''}`);
+      }
+    }
+    return parts;
+  }
+
+  #ontologyComputed(db, f, label) {
+    const c = f.config ?? {};
+    if (f.type === 'formula') return String(c.expression ?? '').replace(/\s+/g, ' ').trim();
+    if (f.type !== 'lookup' && f.type !== 'rollup') return null;
+    let base;
+    let tdb;
+    if (f.type === 'rollup' && c.via) {
+      tdb = this.#tableAnywhere(c.via)?.table;
+      base = label(tdb);
+    } else {
+      const rel = db.fields[c.relationField];
+      base = rel?.name ?? '?';
+      tdb = rel ? this.state.tables[rel.config.targetDb] : null;
+    }
+    const target = c.targetField ? tdb?.fields[c.targetField]?.name ?? '?' : null;
+    const path = target ? `${base}.${target}` : base;
+    return f.type === 'lookup' ? path : `${c.aggregate}(${path})`;
+  }
+
+  #ontologyConcept(db, counts) {
+    const rows = this.#liveRowCounts().get(db.id) ?? 0;
+    const sp = this.state.spaces[db.spaceId];
+    const qualified = (t) => (t ? this.qualifiedName(t) : '?');
+    const lines = [`${this.qualifiedName(db)}: ${rows} row${rows === 1 ? '' : 's'}, space ${sp?.name ?? '?'} v${counts.get(db.spaceId) ?? 0}.${db.description ? ` ${db.description}` : ''}`, 'Fields:'];
+    for (const fid of db.fieldOrder) {
+      const f = db.fields[fid];
+      if (!f || f.type === 'view') continue;
+      const c = f.config ?? {};
+      const parts = [f.type];
+      if (f.id === db.nameFieldId) parts.push('the row name');
+      if (f.id === db.descriptionFieldId) parts.push('the row description');
+      if (f.type === 'select' || f.type === 'multiselect') parts.push(`options ${c.options.map((o) => o.name).join(', ')}`);
+      if (f.type === 'workflow') parts.push(`states ${c.states.map((x) => `${x.name} (${x.category}${x.default ? ', default' : ''})`).join(', ')}`);
+      if (f.type === 'relation') {
+        const members = (c.targetDbs ?? [c.targetDb]).map((id) => this.state.tables[id]).filter(Boolean);
+        parts[0] = `relation -> ${members.map(qualified).join(' | ')}, ${c.many ? 'many' : 'one'}`;
+        const inverse = c.targetDb ? this.state.tables[c.targetDb]?.fields[c.inverseFieldId]?.name : null;
+        parts.push(inverse ? `inverse ${inverse}` : 'one-way');
+      }
+      const computed = this.#ontologyComputed(db, f, qualified);
+      if (computed != null) parts[0] = `${f.type} ${computed}`;
+      if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'currency', 'unit']) if (c[k]) parts.push(`${k} ${c[k]}`);
+      if (f.type === 'rating') parts.push(`max ${c.max}`);
+      if (f.type === 'toggle') parts.push(`on ${c.on}, off ${c.off}`);
+      if (f.type === 'document' && c.kind) parts.push(`kind ${c.kind}`);
+      if (f.type === 'field') parts.push(`types ${(c.types ?? []).join(', ')}`);
+      if (c.default !== undefined) {
+        const named = (id) => c.options?.find((o) => o.id === id)?.name ?? id;
+        parts.push(`default ${f.type === 'select' || f.type === 'multiselect' ? [].concat(c.default).map(named).join(', ') : JSON.stringify(c.default)}`);
+      }
+      lines.push(`- ${f.name}: ${parts.join('; ')}${c.description ? `. ${c.description}` : ''}`);
+    }
+    return lines.join('\n');
+  }
+
   describeSchema() {
     const counts = this.#liveRowCounts();
     return this.listSpaces().map((sp) => ({
@@ -7075,6 +7714,7 @@ export class Weave {
         ...(this.termOf(db).set ? { noun: this.termOf(db).singular } : {}),
         qualified: this.qualifiedName(db),
         entityCount: counts.get(db.id) ?? 0,
+        maxPublicId: db.publicIdCounter ?? 0,
         fields: db.fieldOrder.map((fid) => {
           const f = db.fields[fid];
           const out = { id: f.id, name: f.name, type: f.type };
@@ -7087,7 +7727,7 @@ export class Weave {
               id: o.id, name: o.name, hue: hueOf(o), icon: o.icon ?? '', color: o.color ?? '',
             }));
           }
-          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}) }));
+          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}), ...(s.hue ? { hue: s.hue } : {}) }));
           if (f.type === 'relation' && f.config.targetDbs) {
             const members = f.config.targetDbs.map((tid) => this.state.tables[tid]).filter(Boolean);
             out.targetDbs = members.map((t) => this.qualifiedName(t));
@@ -7117,6 +7757,7 @@ export class Weave {
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
           }
           if (f.type === 'rollup') {
+            for (const k of ROLLUP_COSTUME_KEYS) if (f.config[k] != null) out[k] = f.config[k];
             const nd = this.#numberDisplay(db, f);
             if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; out.color = nd.color; }
           }
@@ -7164,8 +7805,12 @@ export class Weave {
   exportJSON({ blobs: withBlobs = true } = {}) {
     const out = JSON.parse(JSON.stringify(this.state));
     delete out.fileBlobs;
-    for (const a of Object.values(out.meta.accounts ?? {})) delete a.tokenHash;
-    for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
+    for (const a of Object.values(out.meta.accounts ?? {})) {
+      delete a.tokenHash;
+      for (const i of a.identities ?? []) delete i.verifiedEmail;
+    }
+    for (const v of [...Object.values(out.meta.views ?? {}), ...Object.values(out.meta.trashedViews ?? {})]) delete v.shareToken;
+    Shares.redactTokens(out);
     delete out.meta.sessions;
     delete out.meta.invites;
     delete out.meta.identityInvites;
@@ -7194,11 +7839,12 @@ export class Weave {
     for (const a of Object.values(meta.accounts ?? {})) {
       const was = prior.accounts?.[a.id];
       if (was?.tokenHash && a.tokenHash === undefined) a.tokenHash = was.tokenHash;
+      for (const i of a.identities ?? []) {
+        const mail = was?.identities?.find((x) => x.issuer === i.issuer && x.subject === i.subject)?.verifiedEmail;
+        if (mail && i.verifiedEmail === undefined) i.verifiedEmail = mail;
+      }
     }
-    for (const v of Object.values(meta.views ?? {})) {
-      const was = prior.views?.[v.id];
-      if (was?.shareToken && v.shareToken === undefined) v.shareToken = was.shareToken;
-    }
+    Shares.keepTokens(meta, prior);
     for (const kind of ['sessions', 'identityInvites']) {
       if (meta[kind] !== undefined || !prior[kind]) continue;
       const kept = Object.entries(prior[kind]).filter(([, s]) => (kind === 'identityInvites' && !s.accountId) || meta.accounts?.[s.accountId]);
@@ -7250,8 +7896,9 @@ export class Weave {
     const header = ['Public Id', ...fieldNames, 'Created At', 'Updated At'];
     const esc = (v) => {
       if (v == null) return '';
-      const s = Array.isArray(v) ? v.map((x) => (x && typeof x === 'object' ? x.name : x)).join('; ') : typeof v === 'object' ? (v.name ?? JSON.stringify(v)) : String(v);
-      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      const raw = Array.isArray(v) ? v.map((x) => (x && typeof x === 'object' ? x.name : x)).join('; ') : typeof v === 'object' ? (v.name ?? JSON.stringify(v)) : String(v);
+      const s = typeof v !== 'number' && CSV_FORMULA_START.test(raw) ? `'${raw}` : raw;
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     const lines = [header.map(esc).join(',')];
     for (const e of this.listEntities(db.id)) {

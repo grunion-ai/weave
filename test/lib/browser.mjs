@@ -63,12 +63,26 @@ export const chromium = browserType && new Proxy(browserType, {
 
 const engineFor = (engine) => (!engine || pw[engine] === browserType ? chromium : pw[engine]);
 
+export const PHONE = 'iPhone 15';
+export function phoneProfile() {
+  if (!pw) return null;
+  const { defaultBrowserType, ...page } = pw.devices[PHONE];
+  return { engine: defaultBrowserType, page };
+}
+export const phonePage = (browser, options = {}) => browser.newPage({ ...phoneProfile().page, ...options });
+export const phoneBrowser = () => engineOf(phoneProfile().engine);
+export const touchScroll = (page, { x, y }, dy) => page.evaluate(([px, py, d]) => {
+  let n = document.elementFromPoint(px, py);
+  while (n && n !== document.documentElement && !(n.scrollHeight > n.clientHeight && /auto|scroll/.test(getComputedStyle(n).overflowY))) n = n.parentElement;
+  (n && n !== document.documentElement ? n : document.scrollingElement).scrollBy({ top: d, behavior: 'instant' });
+}, [x, y, dy]);
+
 export async function launch(name, seed = () => {}, options = {}) {
   if (!chromium) {
     test(`${name} (browser)`, { skip: 'playwright not installed' }, () => {});
     return null;
   }
-  const browser = await engineFor(options.engine).launch();
+  const browser = await engineFor(options.phone ? phoneProfile().engine : options.engine).launch();
   if (THROTTLE) throttle(browser);
   const weave = new Weave();
   let server;
@@ -97,6 +111,42 @@ function throttle(browser) {
     ctx.newPage = async () => { const page = await ctxPage(); await slow(page); return page; };
     return ctx;
   };
+}
+
+const extraEngines = new Map();
+test.after(async () => {
+  for (const browser of extraEngines.values()) await browser?.close().catch(() => {});
+  extraEngines.clear();
+});
+export async function engineOf(name) {
+  if (!pw) return null;
+  if (!extraEngines.has(name)) {
+    const browser = pw[name] ? await pw[name].launch().catch(() => null) : null;
+    if (browser && THROTTLE) throttle(browser);
+    extraEngines.set(name, browser);
+  }
+  return extraEngines.get(name);
+}
+
+export async function painted(page, selector, { timeout = 30000, state } = {}) {
+  try {
+    await page.waitForSelector(selector, state ? { timeout, state } : { timeout });
+  } catch (err) {
+    const read = page.evaluate(() => {
+      const main = document.querySelector('#main');
+      return {
+        hash: location.hash,
+        skeleton: !!document.querySelector('#main .sk-row, #main .sk-card, #main .sk-toolbar'),
+        main: main ? [...main.children].map((n) => n.className || n.tagName) : null,
+        rows: document.querySelectorAll('.wv-grid tbody tr.entity-row').length,
+        toast: document.querySelector('#wv-toasts')?.textContent?.trim() || '',
+      };
+    }).catch((unreadable) => ({ unreadable: String(unreadable) }));
+    const gaveUp = new Promise((say) => setTimeout(() => say({ unreadable: 'the page did not answer in 2000 ms' }), 2000).unref());
+    const why = await Promise.race([read, gaveUp]);
+    err.message += `\n${selector} never painted within ${timeout} ms; the page says ${JSON.stringify(why)}`;
+    throw err;
+  }
 }
 
 export async function styleOf(locator, prop, want, { timeout = 10000 } = {}) {

@@ -16,6 +16,7 @@ services:
       WEAVE_HOST: 0.0.0.0
       WEAVE_DATA: /data/workspace.db
       WEAVE_KEYSTORE: /data/keystore.json
+      WEAVE_BASE_DOMAIN: ""
       # Set this and no key file lands on the volume (Handbook → "Environment reference").
       # WEAVE_KEYSTORE_PASSPHRASE: change-me
       # Sign-in (Handbook → "Door C: sign in with a provider"): the origin browsers
@@ -38,11 +39,25 @@ services:
       # With a provider set, /mcp signs agents in through the browser; a second
       # domain for it on this service is listed here (Handbook, Door C).
       # WEAVE_MCP_ORIGINS: https://mcp.weave.example.com
+      # Extra Host names this server answers besides loopback and WEAVE_ORIGIN's
+      # host (Handbook, "Environment reference"); any other Host gets 421.
+      # WEAVE_ALLOWED_HOSTS: weave.internal,10.0.0.5
+      # Other origins allowed to frame weave pages; they join frame-ancestors 'self'.
+      # WEAVE_FRAME_ANCESTORS: https://intranet.example.com
+      # Attachment types served in place beside images, PDF and plain text.
+      # WEAVE_INLINE_FILE_TYPES: audio/mpeg,video/mp4
+      # A passcode the task applet at /t asks for before it opens.
+      # WEAVE_APPLET_PASSCODE: change-me
+      # Workflow webhooks refuse loopback, link-local and private addresses and
+      # follow no redirect; 1 allows the ranges for hooks on this network.
+      # WEAVE_WEBHOOK_ALLOW_PRIVATE: "1"
       # The server asks GitHub for the latest release once a day; off stops it.
       # WEAVE_UPDATE_CHECK: "off"
       # With command ["node", "bin/weave.js", "supervise"], 1 installs each newer
       # release from grunion-ai/weave main in place (Handbook → "Deploy: Railway").
       # WEAVE_AUTO_UPDATE: "1"
+      # The most rows one API call returns when it names a limit (Handbook → "Environment reference").
+      # WEAVE_MAX_ROWS: "500"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 30s

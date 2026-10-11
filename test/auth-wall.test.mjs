@@ -73,15 +73,15 @@ async function serve() {
   return { w, task, view, share, admin, writer, reader, call, stop };
 }
 
-const OPEN = (method, path) => path === '/api/health' || path === '/auth'
+const OPEN = (method, path) => path === '/api/health' || path === '/auth' || path === '/start' || /^\/api\/start(\/|$)/.test(path)
   || (method === 'GET' && (path === '/privacy' || path === '/terms'))
-  || /^\/api\/auth\/oidc\/(start|callback)$/.test(path)
+  || /^\/api\/auth\/(oidc\/(start|callback)|handoff)$/.test(path)
   || path === '/api/auth/logout'
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || (path.startsWith('/t/') && !/^\/t\/[0-9a-f-]{36}\/new$/.test(path))
     || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)));
 
 test('with requireAuth on, every route the dispatcher serves refuses an anonymous caller — except the doors', async () => {
-  const { w, task, share, call, stop } = await serve();
+  const { w, task, view, share, call, stop } = await serve();
   try {
     const cases = ROUTES.map((r) => ({ ...r, path: r.path.replaceAll(ID, task.id) }));
     for (const { method, path } of cases) {
@@ -103,7 +103,10 @@ test('with requireAuth on, every route the dispatcher serves refuses an anonymou
       const res = await call('GET', p);
       assert.equal(res.status, 401, `${p} answered ${res.status} to nobody`);
     }
-    assert.equal((await call('GET', `/view/${share}`)).status, 200);
+    const hop = await call('GET', `/view/${share}`);
+    assert.equal(hop.status, 302, 'an old view link hops to its share grant');
+    assert.equal((await call('GET', hop.headers.get('location'))).status, 302);
+    assert.equal((await call('GET', `/s/${share}/view/${view.id}`)).status, 200);
     assert.equal((await call('GET', '/view/nosuchtoken')).status, 404, 'a bad share token is a miss, not a wall');
     assert.equal((await call('GET', '/t')).status, 200);
     assert.equal((await call('GET', `${ws}/api/health`)).status, 200);
@@ -205,7 +208,7 @@ test('Issue #230 (c): an export imported back into the same workspace keeps its 
     assert.equal((await call('GET', '/api/workspace', { token: admin })).status, 200, 'the admin who imported is still signed in');
     for (const t of [admin, writer, reader]) assert.ok(w.verifyToken(t), 'every account token still verifies');
     assert.equal(w.viewByShareToken(share)?.id, view.id, 'the share link still opens its view');
-    assert.equal((await call('GET', `/view/${share}`)).status, 200);
+    assert.equal((await call('GET', `/s/${share}/view/${view.id}`)).status, 200);
     assert.ok(w.verifySession(session), 'a browser signed in before the import stays signed in');
     await call('POST', '/api/import', { token: admin, body: await (await call('GET', '/api/export', { token: admin })).json() });
     assert.ok(w.verifyToken(admin) && w.viewByShareToken(share));

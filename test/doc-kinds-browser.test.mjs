@@ -31,7 +31,7 @@ if (s) {
     assert.ok(nodes >= 3, `the three nodes are drawn (${nodes})`);
     await page.click(`${sec} .doc-anchor[title="Edit source"]`);
     await page.waitForSelector(`${sec} textarea.doc-source`, { state: 'visible', timeout: 20000 });
-    const src = await page.$eval(`${sec} textarea.doc-source`, (t) => t.value);
+    const src = await page.locator(`${sec} textarea.doc-source`).first().evaluate((t) => t.value);
     assert.ok(src.startsWith('flowchart TD'), 'the code box holds the mermaid source');
     const drawingHidden = await page.$eval(`${sec} .doc-diagram`, (d) => d.classList.contains('hidden'));
     assert.ok(drawingHidden, 'the drawing steps aside while the source is edited');
@@ -44,7 +44,7 @@ if (s) {
     const sec = sectionOf('Data');
     await page.waitForSelector(`${sec} textarea.doc-source`, { timeout: 20000 });
     assert.equal(await page.$(`${sec} .vditor-ir`), null, 'no markdown editor on a model');
-    const v = await page.$eval(`${sec} textarea.doc-source`, (t) => t.value);
+    const v = await page.locator(`${sec} textarea.doc-source`).first().evaluate((t) => t.value);
     assert.ok(v.includes('"nodes": ["field", "sniff"]'), 'the box holds the JSON verbatim, indentation and all');
     await page.close();
   });

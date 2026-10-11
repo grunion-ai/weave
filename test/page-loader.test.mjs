@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
   LOADER_CYCLE_MS, VARIANTS, PALETTE, ROPE, loaderDraw, loaderStill, loaderRopeHtml, loaderRopeCss,
-  ropePose, ropeStops, strandPose, dashOffset,
+  loaderBootHtml, ropePose, ropeStops, strandPose, dashOffset,
 } from '../brand/build-logos.mjs';
-import { APP, HTML, CSS, px } from './lib/source.mjs';
+import { APP, HTML, CSS, px, rulesFor, fnBody } from './lib/source.mjs';
+import { FLASH_MS } from './lib/flicker.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -90,13 +91,25 @@ test('a fast route never pays for the loader', () => {
   assert.match(APP, /if \(loading\.showTimer\) \{[\s\S]*?clearTimeout\(loading\.showTimer\)/);
 });
 
-test('the rope waits 500ms; the skeleton covers everything shorter', () => {
+test('the rope waits 500ms; the skeleton covers the band above the flash ceiling', () => {
   assert.match(APP, /function route\(\) \{\s*return withPageLoader\(renderRouteSafely\);/);
   assert.match(APP, /window\.addEventListener\('hashchange', route\)/);
   assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRoute\)\.catch\(paintRouteError\)\)/);
   const after = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
   assert.equal(after, 500, 'the rope belongs to loads longer than 500ms');
   assert.match(APP, /if \(loading\.depth > 0\) return;/);
+});
+
+test('a load shorter than the flash ceiling paints no skeleton (Issue #630)', () => {
+  const after = Number(APP.match(/const SKELETON_SHOW_AFTER_MS = (\d+);/)[1]);
+  assert.equal(after, FLASH_MS, 'the skeleton is earned at the same ceiling the flicker probe calls a flash');
+  assert.ok(after < Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]),
+    'the skeleton still comes before the rope');
+  assert.match(APP, /function scheduleSkeleton\(kind, db\) \{[\s\S]*?setTimeout\([\s\S]*?paintSkeleton\(kind, db\)[\s\S]*?SKELETON_SHOW_AFTER_MS\)/,
+    'renderRoute schedules the skeleton rather than painting it');
+  assert.match(APP, /function renderRoute\(\) \{\s*return Promise\.resolve\(\)\.then\(dispatchRoute\)\.finally\(cancelSkeleton\);/,
+    'every route path cancels the pending skeleton when it paints, so the old page holds');
+  assert.match(APP, /function cancelSkeleton\(\) \{\s*clearTimeout\(skeleton\.timer\);/);
 });
 
 test('the table skeleton draws the destination table\'s real columns', () => {
@@ -112,7 +125,10 @@ test('the loader host survives a page render', () => {
   const loaderAt = app.indexOf('id="page-loader"');
   const mainEnd = app.indexOf('</main>');
   assert.ok(loaderAt > mainEnd, 'the loader is a sibling of <main>, not a child');
-  assert.match(HTML, /<div id="page-loader" hidden/, 'hidden is the resting state');
+  assert.match(HTML, /<div id="page-loader" class="boot" aria-hidden="true">\S/,
+    'the host ships the boot mark, gated by CSS until the threshold (Issue #391)');
+  assert.match(fnBody('hidePageLoader'), /host\.hidden = true/,
+    'hidden is the resting state once the script has run');
 });
 
 test('the loader overlays the page without swallowing clicks', () => {
@@ -175,4 +191,50 @@ test('the README hero is a GIF pair, because GitHub will not run SMIL', () => {
     assert.ok(existsSync(join(ROOT, `brand/assets/png/weave-loader-${theme}.gif`)),
       `brand/assets/png/weave-loader-${theme}.gif is missing — run brand/render-gif.mjs`);
   }
+});
+
+test('the boot mark ships in the first HTML byte, drawn by the generator (Issue #391)', () => {
+  const div = HTML.match(/<div id="page-loader"([^>]*)>([\s\S]*?)<\/div>/);
+  assert.ok(div, 'public/index.html must still carry the #page-loader host');
+  assert.doesNotMatch(div[1], /(?:^|\s)hidden(?=[\s=]|$)/,
+    'a hidden host cannot paint before app.js runs — the whole point of Issue #391');
+  assert.equal(div[2], loaderBootHtml(),
+    'public/index.html loader block is stale — re-run node brand/build-logos.mjs');
+  assert.match(loaderBootHtml(), /<span class="mark-light">/);
+  assert.match(loaderBootHtml(), /<span class="mark-dark">/);
+});
+
+test('the boot mark is the same drawing as the rope at rest (Issue #391)', () => {
+  for (const [c2, id] of [[PALETTE.ink, 'bl'], [PALETTE.sky, 'bd']]) {
+    assert.ok(loaderBootHtml().includes(loaderStill({ c1: PALETTE.blue, c2, id })),
+      'the boot mark is loaderStill, never a second drawing of the mark');
+  }
+});
+
+test('CSS gates the first appearance at the threshold app.js uses (Issue #391)', () => {
+  const declared = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
+  const gate = rulesFor('#page-loader.boot').animation;
+  assert.ok(gate, '#page-loader.boot must carry the gating animation');
+  const delay = Number((gate.match(/(\d+)ms/) ?? [])[1]);
+  assert.equal(delay, declared,
+    'the CSS delay and LOADER_SHOW_AFTER_MS must agree, or the shell shows bare or flashes');
+});
+
+test('reduced motion keeps the gate and drops only the fade (Issue #391)', () => {
+  assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*#page-loader \{ animation: none; \}\s*#page-loader\.boot \{ animation:[^;]*\b500ms\b[^;]*; \}/,
+    'animation:none alone would paint the loader from the first byte on a fast boot');
+});
+
+test('showing the loader no longer waits on the fetched rope (Issue #391)', () => {
+  const show = fnBody('showPageLoader');
+  assert.doesNotMatch(show, /loading\.ready/,
+    'the mark is in the HTML now; gating the show on the fetch is the Issue #391 defect');
+  assert.match(fnBody('hidePageLoader'), /classList\.remove\('boot'\)/,
+    'hiding retires the CSS gate, so a later show fades in at once instead of 500 ms late');
+  assert.doesNotMatch(show, /classList\.remove\('boot'\)/,
+    'showing must leave the gate alone: removing it here re-runs the fade on a visible loader');
+  const wrap = fnBody('withPageLoader');
+  const finallyBody = wrap.slice(wrap.indexOf('finally'));
+  assert.equal((finallyBody.match(/hidePageLoader\(\)/g) ?? []).length, 2,
+    'every exit hides: the CSS gate would otherwise strand a loader the script never showed');
 });

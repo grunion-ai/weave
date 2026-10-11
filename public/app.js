@@ -23,6 +23,9 @@ const svgEl = (tag, attrs = {}, ...children) => {
 };
 
 const chevron = () => iconEl('lucide:chevron-right', 'wv-icon');
+const disclosure = (cls, open, attrs = {}) => el('button', { class: `${cls} wv-disclosure`, type: 'button', 'aria-expanded': String(open), ...attrs }, chevron());
+const setDisclosure = (btn, open) => btn.setAttribute('aria-expanded', String(open));
+const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden': 'true' }, chevron());
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
 
@@ -60,7 +63,20 @@ function fileBase64(file) {
   });
 }
 
+const warmGets = new Map();
+const WARM_MS = 5000;
+function warmGet(path, ready = null) {
+  const p = ready ?? api('GET', path);
+  p.catch(() => {});
+  warmGets.set(path, { at: Date.now(), p });
+  return p;
+}
 async function api(method, path, body, { signal } = {}) {
+  if (method === 'GET' && warmGets.has(path)) {
+    const hit = warmGets.get(path);
+    warmGets.delete(path);
+    if (Date.now() - hit.at < WARM_MS) return hit.p;
+  }
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
@@ -72,7 +88,7 @@ async function api(method, path, body, { signal } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
-  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code });
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
@@ -266,30 +282,44 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   document.querySelector('#tray-back')?.remove();
   document.querySelector('#modal-back')?.remove();
-  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const opener = document.activeElement;
+  const close = () => {
+    const at = document.activeElement;
+    const held = !at || at === document.body || back.contains(at);
+    back.remove();
+    if (held && opener?.isConnected) opener.focus();
+  };
+  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) close(); } });
   const form = el('form', { class: 'tray-form' },
     el('div', { class: 'tray-body' }, ...bodyNodes),
     el('div', { class: 'tray-actions' },
-      el('button', { class: 'btn', type: 'button', onclick: () => back.remove() }, 'Cancel'),
+      el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
       el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       await onSubmit(new FormData(form));
-      back.remove();
+      close();
     } catch (err) {
-      toast(err.message, true);
+      if (!err.shown) toast(err.message, true);
     }
   });
-  back.append(el('div', { id: 'tray' },
-    el('div', { class: 'tray-head' }, el('h2', {}, title),
-      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, iconEl('✕'))),
+  back.append(el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },
+    el('div', { class: 'tray-head' }, el('h2', { id: 'tray-title' }, title),
+      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: close }, iconEl('✕'))),
     form));
   document.body.append(back);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape' && !document.querySelector('.chip-pop')) { back.remove(); removeEventListener('keydown', esc); }
-  });
+  const esc = (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.chip-pop')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  };
+  back.addEventListener('keydown', esc);
+  addEventListener('keydown', function stray(e) {
+    if (!back.isConnected) return removeEventListener('keydown', stray, true);
+    if (e.target === document.body && !document.querySelector('#modal-back, #cmdk-back')) esc(e);
+  }, true);
   const first = form.querySelector('input:not([type=hidden]),select,textarea');
   if (first) first.focus();
   return back;
@@ -300,7 +330,11 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
 
 async function openEntity(id, { drill = false } = {}) {
   let entity;
+  const here = allTables().find((d) => d.id === state.route?.dbId);
+  const docs = (here?.fields ?? []).filter((f) => f.type === 'document').map((f) => `/doc/revisions?field=${encodeURIComponent(f.name)}&limit=2`);
+  for (const tail of ['/references', '/references-from', ...docs]) warmGet(`/entities/${id}${tail}`);
   try { entity = await api('GET', `/entities/${id}`); } catch (err) { return toast(err.message, true); }
+  warmGet(`/entities/${id}`, Promise.resolve(entity));
   const db = allTables().find((d) => d.id === entity.dbId);
   if (!db) { location.hash = `#/entity/${id}`; return; }
   if (state.route?.page !== 'db') {
@@ -309,7 +343,7 @@ async function openEntity(id, { drill = false } = {}) {
     history.pushState(null, '', `#/table/${db.id}`);
     await withPageLoader(() => showDatabase(db.id));
   }
-  await dockEntity(db, id, { drill });
+  await dockEntity(db, id, { drill, step: true });
 }
 
 document.addEventListener('click', (e) => {
@@ -462,6 +496,7 @@ function dockClose() {
   const panel = $('#dock');
   panel.hidden = true;
   panel.replaceChildren();
+  delete panel.dataset.eid;
   $('#dock-gutter').hidden = true;
   dock = null;
   syncDocTitle();
@@ -472,7 +507,7 @@ function anchorTable(db) {
   return (state.route?.page === 'db' && allTables().find((d) => d.id === state.route.dbId)) || db;
 }
 
-async function dockEntity(db, id, { drill = false } = {}) {
+async function dockEntity(db, id, { drill = false, step = false } = {}) {
   commitActiveEdit();
   const S = weaveEntitySurface;
   const frame = { kind: 'entity', id, tableId: db.id, tableName: db.name };
@@ -486,7 +521,7 @@ async function dockEntity(db, id, { drill = false } = {}) {
   crumbNav = drill ? weaveBreadcrumbs.navHop(crumbNav, hop) : weaveBreadcrumbs.navOpen(crumbNav, hop);
   dock = { db, state: st, editors: dock?.editors ?? [] };
   syncDockChain();
-  dockSyncUrl();
+  dockSyncUrl({ step });
   await drawDock();
 }
 
@@ -502,15 +537,30 @@ function tableHop(db) {
   return { tableId: db.id, table: db.name, tableIcon: db.icon ?? null, space: db.space ?? '', spaceId: db.spaceId ?? '', spaceIcon: db.spaceIcon ?? null };
 }
 
-function dockSyncUrl() {
+const dockCoversScreen = matchMedia('(max-width: 600px)');
+const touchOnly = matchMedia('(hover: none) and (pointer: coarse)');
+const SHORTCUT_CLAUSE = /\s*(?:\([^()]*(?:⌘|Ctrl)[^()]*\)|— ⌘-click for a new tab|<[^<>]*(?:⌘|Ctrl)[^<>]*>)/g;
+const keyHint = (text) => (touchOnly.matches ? text.replace(SHORTCUT_CLAUSE, '') : text);
+
+function dockSyncUrl({ step = false } = {}) {
   const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+(?:\/view\/[^/?]+)?/);
   if (!m) return;
   const top = dock?.state.chain[dock.state.chain.length - 1];
-  history.replaceState(null, '', top ? `${m[0]}?e=${top.id}` : m[0]);
+  const url = top ? `${m[0]}?e=${top.id}` : m[0];
+  if (step && top && dockCoversScreen.matches && url !== location.hash) {
+    history.pushState({ wvDock: true }, '', url);
+    return;
+  }
+  history.replaceState(top && history.state?.wvDock ? history.state : null, '', url);
 }
 
 function dockDismiss() {
   crumbNav = null;
+  if (history.state?.wvDock) {
+    dockClose();
+    history.back();
+    return;
+  }
   dockClose();
   dockSyncUrl();
 }
@@ -537,20 +587,23 @@ async function drawDock() {
   releaseDockPanel();
   const panel = $('#dock');
   panel.hidden = false;
+  const swapped = panel.dataset.eid !== top.id;
+  panel.dataset.eid = top.id;
   wireDockGutter(panel);
   applyDockWidth(panel);
   const host = el('div', { class: 'dock-entity' });
   panel.replaceChildren(host);
+  if (swapped) panel.scrollTop = 0;
   const dockControls = {
     nav: navArrows(dockGo),
     pose: [
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
-        title: 'Expand (⌘⇧E)', 'aria-label': 'Expand to the full page',
+        title: keyHint('Expand (⌘⇧E)'), 'aria-label': 'Expand to the full page',
         onclick: () => dockExpand(),
       }, poseGlyph(false)),
       el('button', {
-        class: 'btn btn-sm btn-ghost-secondary', type: 'button',
+        class: 'btn btn-sm btn-ghost-secondary dock-close', type: 'button',
         title: 'Close (Esc)', 'aria-label': 'Close',
         onclick: () => dockDismiss(),
       }, iconEl('✕')),
@@ -743,7 +796,9 @@ function lucideEl(name, cls = 'wv-icon') {
   span.innerHTML = window.LUCIDE_MOVING[name];
   return span;
 }
+const canHover = matchMedia('(hover: hover)');
 document.addEventListener('mouseover', (e) => {
+  if (!canHover.matches) return;
   const host = e.target.closest?.('.mi');
   if (host && !(e.relatedTarget && host.contains(e.relatedTarget))) playIcon(host);
 });
@@ -796,10 +851,16 @@ function publishViewHeaderHeight() {
   const dock = document.querySelector('#dock');
   publishHeaderOn(dock, dock?.querySelector('.dock-entity > .view-header'), dock?.clientHeight ?? 0);
 }
-function publishHeaderOn(holder, box, room) {
+function keyboardInset() {
+  const vv = window.visualViewport;
+  return vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
+}
+function publishHeaderOn(holder, box, pane) {
   if (!holder || !box) return;
   const h = box.getBoundingClientRect().height;
-  const holds = h <= room / 2;
+  const keyboard = keyboardInset();
+  const writing = keyboard > 0 && dockCoversScreen.matches;
+  const holds = h <= (pane - keyboard) / (writing ? 4 : 2);
   holder.classList.toggle('view-header-loose', !holds);
   const v = holds ? `${h}px` : '0px';
   if (holder.style.getPropertyValue('--wv-view-h') !== v) holder.style.setProperty('--wv-view-h', v);
@@ -809,6 +870,7 @@ function stickViewHeader(box) {
   return box;
 }
 addEventListener('resize', publishViewHeaderHeight);
+window.visualViewport?.addEventListener('resize', publishViewHeaderHeight);
 
 const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: 'lucide:table' };
 function crumbIconEl(c) {
@@ -876,19 +938,20 @@ function crumbFoldMenu(btn, hidden) {
     ...hidden.map((c) => el('a', {
       class: 'chip-pop-row crumb-fold-row', role: 'menuitem', href: c.kind === 'ws' ? wsHomeHref() : c.href, title: c.title ?? c.label,
     }, ...crumbInner(c))));
+  let off = () => {};
   const close = () => {
     menu.remove();
     btn.setAttribute('aria-expanded', 'false');
-    removeEventListener('click', away, true);
+    off();
     removeEventListener('keydown', esc, true);
   };
-  const away = (e) => { if (!menu.contains(e.target) || e.target.closest('a')) setTimeout(close); };
   const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
+  menu.addEventListener('click', (e) => { if (e.target.closest('a')) setTimeout(close); });
   row.append(menu);
   const over = menu.getBoundingClientRect().right - (innerWidth - 8);
   if (over > 0) menu.style.left = `${Math.max(8, r.left - over)}px`;
   btn.setAttribute('aria-expanded', 'true');
-  addEventListener('click', away, true);
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t), swallow: (t) => btn.contains(t), close });
   addEventListener('keydown', esc, true);
   menu.querySelector('a')?.focus();
 }
@@ -918,12 +981,19 @@ function fillWsMark(span) {
     span.replaceChildren(el('img', { src: chip.querySelector('img').src, alt: '' }));
   } else {
     const name = $('#ws-name')?.textContent || 'w';
-    span.replaceChildren(el('span', { class: 'crumb-ws-letter' }, name.slice(0, 1).toUpperCase()));
+    const id = state.wsList?.find((w) => w.name === state.wsCurrent)?.id ?? name;
+    span.replaceChildren(el('span', { class: `crumb-ws-letter ws-letter hue-${chipCore.hueForName(id)}` }, name.slice(0, 1).toUpperCase()));
   }
   return span;
 }
 function refreshWsMarks() {
   for (const span of document.querySelectorAll('.crumb-ws-mark')) fillWsMark(span);
+}
+
+function titleEdit(tag, modifier, value, attrs) {
+  const node = el(tag, { ...attrs, class: `title-edit ${modifier}` });
+  node.value = value;
+  return node;
 }
 
 function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page' }) {
@@ -939,15 +1009,13 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
 
   syncDocTitle(title);
-  const titleInput = el('input', { class: 'view-title', value: title, 'aria-label': 'Title', title: onRename ? 'Click to rename' : '' });
+  const titleInput = titleEdit('input', 'view-title', title, { 'aria-label': 'Title', title: onRename ? 'Click to rename' : '', readonly: onRename ? undefined : '' });
   if (onRename) {
     titleInput.addEventListener('change', async () => {
       const name = titleInput.value.trim();
       if (!name || name === title) { titleInput.value = title; return; }
       try { await onRename(name); syncDocTitle(name); toast('Renamed'); } catch (err) { titleInput.value = title; toast(err.message, true); }
     });
-  } else {
-    titleInput.readOnly = true;
   }
   box.append(el('div', { class: 'wv-toolbar view-title-row' },
     onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null),
@@ -961,7 +1029,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         descBox.replaceChildren(el('span', { class: 'view-desc-empty' }, 'Add description…'));
         return;
       }
-      const body = el('div', { class: 'view-desc-body clamped' });
+      const body = el('div', { class: 'view-desc-body wv-prose clamped' });
       try {
         const { html } = await api('POST', '/markdown', { md });
         body.innerHTML = html;
@@ -1042,12 +1110,10 @@ function renderNav() {
           }
         },
       }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
-      el('button', {
-        class: 'nav-caret' + (isFolded ? '' : ' open'),
-        title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`, type: 'button',
-        'aria-expanded': String(!isFolded),
+      disclosure('nav-caret', !isFolded, {
+        title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`,
         onclick: () => toggleFold(space.spaceId),
-      }, chevron()),
+      }),
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
         title: `New table in ${space.space}`, type: 'button',
@@ -1125,8 +1191,109 @@ function renderNav() {
     }).catch(() => { status.textContent = 'offline'; });
     stats.append(status);
   }
+  stats.append(accountSlot());
 }
 
+const ACCOUNT_ROLE_LABELS = { architect: 'Architect', editor: 'Editor', observer: 'Observer', admin: 'Architect', writer: 'Editor', reader: 'Observer' };
+
+function accountSlot() {
+  return state.accountSlot ??= el('div', { class: 'nav-account' });
+}
+
+function accountDisplayName(name) {
+  const s = String(name ?? '').trim();
+  return s.includes('@') ? s.split('@')[0] : s;
+}
+
+function accountWorkspaceName() {
+  return state.wsCurrent || $('#ws-name')?.textContent || 'this workspace';
+}
+
+async function refreshAccountChip() {
+  const slot = accountSlot();
+  let me = null;
+  try { me = await api('GET', '/auth/me'); } catch (err) {
+    if (err.status !== 401) return;
+  }
+  closeAccountMenu();
+  if (me?.account) {
+    slot.dataset.state = 'signed-in';
+    slot.replaceChildren(accountChip(me));
+    return;
+  }
+  const walled = await api('GET', '/workspace').then((w) => !!w.requireAuth, (err) => err.status === 401);
+  slot.dataset.state = walled ? 'signed-out' : 'none';
+  slot.replaceChildren(...(walled ? [el('a', {
+    class: 'nav-account-chip nav-account-signin',
+    href: `${WS_PREFIX}/auth?next=${encodeURIComponent(location.pathname + location.hash)}`,
+    title: `Sign in to ${accountWorkspaceName()}`,
+  }, lucideEl('log-in', 'wv-icon nav-account-ic'), el('span', { class: 'nav-account-name' }, 'Sign in'))] : []));
+}
+
+function accountChip(me) {
+  const name = accountDisplayName(me.account.name) || 'Signed in';
+  const role = ACCOUNT_ROLE_LABELS[me.role] ?? me.role ?? '';
+  const avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
+  const btn = el('button', {
+    type: 'button', class: 'nav-account-chip', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    title: `${name}${role ? `, ${role}` : ''} in ${accountWorkspaceName()}`,
+    onclick: (e) => { e.stopPropagation(); accountMenu(btn); },
+  }, avatar, el('span', { class: 'nav-account-name' }, name), role ? el('span', { class: 'nav-account-role' }, role) : null);
+  return btn;
+}
+
+function closeAccountMenu() {
+  document.querySelector('.nav-account-menu')?.close?.();
+}
+
+function accountMenu(btn) {
+  if (document.querySelector('.nav-account-menu')) { closeAccountMenu(); return; }
+  const r = btn.getBoundingClientRect();
+  const ws = accountWorkspaceName();
+  const row = (label, icon, prefixes) => el('button', {
+    type: 'button', class: 'chip-pop-row wv-menu-row', role: 'menuitem',
+    onclick: () => { close(); signOutOf(prefixes); },
+  }, lucideEl(icon, 'wv-icon'), label);
+  const everywhere = [WS_PREFIX, ...(state.wsList ?? []).filter((w) => w.name !== state.wsCurrent).map((w) => `/w/${encodeURIComponent(w.name)}`)];
+  const menu = el('div', {
+    class: 'chip-pop nav-account-menu', role: 'menu', 'aria-label': 'Account',
+    style: `left:${Math.round(r.left)}px;bottom:${Math.round(innerHeight - r.top + 4)}px;min-width:${Math.round(r.width)}px`,
+  }, row(`Sign out of ${ws}`, 'log-out', [WS_PREFIX]), row('Sign out everywhere', 'log-out', everywhere));
+  const rows = [...menu.querySelectorAll('[role="menuitem"]')];
+  let off = () => {};
+  const close = () => {
+    menu.remove();
+    btn.setAttribute('aria-expanded', 'false');
+    off();
+    removeEventListener('keydown', keys, true);
+  };
+  const keys = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); return; }
+    if (e.key === 'Tab') { close(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const i = rows.indexOf(document.activeElement);
+      rows[(i + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length].focus();
+    }
+  };
+  menu.close = close;
+  document.body.append(menu);
+  btn.setAttribute('aria-expanded', 'true');
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t) || btn.contains(t), close });
+  addEventListener('keydown', keys, true);
+  rows[0].focus();
+}
+
+async function signOutOf(prefixes) {
+  await Promise.allSettled([...new Set(prefixes)].map((p) => fetch(`${p}/api/auth/logout`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin',
+  })));
+  location.assign(`${WS_PREFIX}/auth?signed-out=1`);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.accountSlot) refreshAccountChip();
+});
 
 function fieldValueCell(value) {
   if (value == null || value === '') return '';
@@ -1163,20 +1330,11 @@ function stateCategory(fieldSchema, stateName) {
 
 function stateChipClass(fieldSchema, stateName) {
   const cat = stateCategory(fieldSchema, stateName);
-  return `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`;
+  const st = fieldSchema.states?.find((s) => s.name === stateName);
+  return `k k-state cat-${cat} hue-${chipCore.stateHue(st, cat)}`;
 }
 
 const PERSON_TABLE = /^(people|persons?|members?|users?|contacts?|owners?|team|staff|employees?)$/i;
-function relationIsPerson(f) {
-  const table = String(f?.targetDb ?? '').split('/').pop() ?? '';
-  return PERSON_TABLE.test(table.trim());
-}
-function personAvatar(f, target) {
-  if (!relationIsPerson(f)) return null;
-  const name = target?.name ?? '';
-  if (!name) return el('span', { class: 'av unknown' }, '?');
-  return el('span', { class: `av hue-${chipCore.hueForName(name)}` }, chipCore.initialsFor(name));
-}
 
 function deckRoleOf(db) {
   if (!db?.fields) return null;
@@ -1280,10 +1438,10 @@ function openWhiteboard(mmdSource, title = 'Whiteboard') {
         ],
         layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.2 },
         style: [
-          { selector: 'node', style: { label: 'data(label)', shape: 'round-rectangle', 'background-color': box, 'border-color': line, 'border-width': 1, color: fg, 'font-size': 13, 'text-valign': 'center', 'text-halign': 'center', width: 'label', height: 'label', padding: '10px' } },
+          { selector: 'node', style: { label: 'data(label)', shape: 'round-rectangle', 'background-color': box, 'border-color': line, 'border-width': 1, color: fg, 'font-size': 13, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap', width: 'label', height: 'label', padding: '10px' } },
           { selector: 'node.diamond', style: { shape: 'diamond', padding: '18px' } },
           { selector: 'node.circle', style: { shape: 'ellipse', padding: '14px' } },
-          { selector: 'edge', style: { label: 'data(label)', 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'line-color': line, 'target-arrow-color': line, color: fg, 'font-size': 11, width: 1.5 } },
+          { selector: 'edge', style: { label: 'data(label)', 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'line-color': line, 'target-arrow-color': line, color: fg, 'font-size': 11, 'text-wrap': 'wrap', width: 1.5 } },
         ],
         wheelSensitivity: 0.2,
       });
@@ -1321,6 +1479,25 @@ function renderMermaidIn(container) {
   mermaidLoading.then(() => window.mermaid?.run({ nodes }));
 }
 
+function dismissOutside({ inside, close, open = () => true, swallow = () => false }) {
+  const away = (e) => {
+    if (!open()) return off();
+    if (inside(e.target)) return;
+    off();
+    if (swallow(e.target)) swallowClick();
+    close(e);
+  };
+  const off = () => removeEventListener('pointerdown', away, true);
+  addEventListener('pointerdown', away, true);
+  return off;
+}
+function swallowClick(ms = 600) {
+  const eat = (e) => { e.preventDefault(); e.stopImmediatePropagation(); off(); };
+  const off = () => { clearTimeout(timer); removeEventListener('click', eat, true); };
+  const timer = setTimeout(off, ms);
+  addEventListener('click', eat, true);
+}
+
 function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) {
   document.querySelector('.chip-pop')?.remove();
   const pop = el('div', { class: 'chip-pop' }, ...rows);
@@ -1328,14 +1505,7 @@ function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) 
   const r = trigger.getBoundingClientRect();
   pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
   pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (!pop.isConnected) return;
-    pop.remove();
-    if (owns(ev.target)) ev.stopPropagation();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: owns, close: () => pop.remove() });
 
   const opts = [...pop.querySelectorAll('.chip-pop-row')];
   const focusAt = (i) => opts[((i % opts.length) + opts.length) % opts.length].focus();
@@ -1454,19 +1624,22 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     currentId,
     clearId,
   });
-  const input = el('input', { class: 'picker-search', placeholder, type: 'text' });
+  const input = el('input', { class: 'search-bare picker-search', placeholder, type: 'text' });
   const chips = el('span', { class: 'picker-chips' });
   const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
   const box = el('div', { class: 'picker-box' }, chips, input, readout);
   const list = el('div', { class: 'picker-list' });
-  const pop = el('div', { class: 'chip-pop picker-pop' },
-    title ? el('div', { class: 'picker-title' }, title) : null,
+  const sheet = dockCoversScreen.matches;
+  const quiet = sheet && !grid && !groups && options.length <= PHONE_SHORT_LIST;
+  const heading = title || (sheet ? anchor?.dataset?.fieldTitle || anchor?.getAttribute?.('title') || '' : '');
+  const pop = el('div', { class: 'chip-pop picker-pop' + (quiet ? ' picker-quiet' : '') + (quiet && !multi ? ' picker-short' : '') },
+    heading ? el('div', { class: 'picker-title' }, heading) : null,
     box, list);
   const commit = async () => { pop.remove(); await multi.onCommit(core.ids(st)); };
   const dismiss = () => { if (multi) commit(); else pop.remove(); anchor?.focus?.(); };
   if (multi) pop.commit = commit;
   const pick = async (o) => { pop.remove(); await onPick(o); };
-  const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); input.focus(); };
+  const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); if (!quiet) input.focus(); };
 
   const drawChips = () => {
     if (grid || groups) {
@@ -1522,7 +1695,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       el('div', { class: 'picker-cells picker-terms' }, ...items.map((o) => el('button', {
         class: 'picker-cell picker-term' + (o.id === currentId ? ' on' : ''), type: 'button', title: o.label,
         onclick: async () => { await pick(o); },
-      }, o.label))),
+      }, o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label) : o.label))),
     ]));
     const q = st.query.trim();
     const exact = q && options.some((o) => o.label.toLowerCase() === q.toLowerCase() || o.id === q.toLowerCase());
@@ -1583,20 +1756,19 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   });
   document.body.append(pop);
   pop.cellFrom = anchor?.closest?.('tr[data-eid] > td') ?? null;
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (pop.isConnected && anchor?.contains?.(ev.target)) ev.stopPropagation();
-    if (multi && pop.isConnected) { commit(); return; }
-    pop.remove();
-  };
-  addEventListener('click', close, true);
-  input.focus();
+  dismissOutside({
+    open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!anchor?.contains?.(t),
+    close: () => (multi ? commit() : pop.remove()),
+  });
+  if (!quiet) input.focus();
   drawChips();
   draw();
   anchorPop(pop, anchor);
+  if (quiet) (list.querySelector('.chip-pop-check')?.closest('button') ?? list.querySelector('button'))?.focus({ preventScroll: true });
   return pop;
 }
+const PHONE_SHORT_LIST = 8;
+const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 88 };
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
@@ -1620,12 +1792,7 @@ function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', 
   input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); pop.remove(); anchor?.focus?.(); } });
   document.body.append(pop);
   anchorPop(pop, anchor);
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    pop.remove();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), close: () => pop.remove() });
   input.focus();
   return pop;
 }
@@ -1734,22 +1901,44 @@ const KEYSTORE_LABELS = {
 };
 
 function computedMark(type) {
-  return { formula: 'ƒ', rollup: 'Σ', lookup: 'lucide:arrow-up-right', document: 'lucide:file-text', field: 'lucide:sliders-horizontal' }[type] ?? '·';
+  return globalThis.weaveChipView.COMPUTED_GLYPHS[type] ?? '·';
 }
-const computedMarkNode = (type) => { const m = computedMark(type); return iconEl(m, 'ico wv-icon') ?? m; };
 
 const COMPUTED_NAME_MARKS = { formula: 'formula', rollup: 'rollup', lookup: 'lookup' };
 function fieldDescription(f) {
   return f && f.type !== 'view' && typeof f.description === 'string' ? f.description : '';
 }
 
-function fieldNameLabel(f, text = f?.name) {
+function qualifiedTableName(id) {
+  const t = id ? allTables().find((d) => d.id === id) : null;
+  return t ? `${t.space}/${t.name}` : null;
+}
+
+function fieldRoute(f, db) {
+  if (f?.type === 'relation') {
+    const to = f.targetDb ?? f.targetDbs?.join(' or ');
+    return to ? `→ ${to}${f.many ? ', many' : ''}` : null;
+  }
+  if (f?.type !== 'lookup' && f?.type !== 'rollup') return null;
+  const rel = f.via ? db?.fields?.find((x) => x.type === 'relation' && x.name === f.via) : null;
+  const table = rel?.targetDb ?? qualifiedTableName(f.viaTableId ?? rel?.targetDbId);
+  const what = f.type === 'lookup'
+    ? `${computedMark('lookup')} ${f.targetField ?? 'Name'}`
+    : `Σ ${f.aggregate ?? 'count'}${f.targetField ? ` of ${f.targetField}` : ''}`;
+  return `${what}${f.via ? ` via ${f.via}` : ''}${table ? ` → ${table}` : ''}`;
+}
+
+function fieldNameLabel(f, text = f?.name, db = null) {
+  if (f?.type === 'relation') {
+    const route = fieldRoute(f, db);
+    return route ? [text, el('span', { class: 'field-mark', title: route }, globalThis.weaveChipView.ROUTE_GLYPH)] : [text];
+  }
   const kind = COMPUTED_NAME_MARKS[f?.type];
   if (!kind) return [text];
-  return [text, el('sup', {
+  return [text, el('span', {
     class: 'field-mark',
-    title: `${kind} — computed from other values, not editable`,
-  }, computedMarkNode(f.type))];
+    title: fieldRoute(f, db) ?? `${kind} — computed from other values, not editable`,
+  }, computedMark(f.type))];
 }
 
 function openCellPicker(cell) {
@@ -1993,7 +2182,28 @@ function checkRowPitch(grid) {
   console.warn(`weave: a ${grid.dataset.density} row painted ${got}px, not its ${want}px token; tallest cell: ${tallest?.type} (${tallest?.h}px${tallest?.boxed ? '' : ', no clip box'})`);
 }
 
+const PHONE_MORE_W = 44;
+function fitPhoneChipLines(grid) {
+  const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
+  for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
+    const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
+    for (const td of cells) { td.classList.remove('list-hide'); delete td.dataset.more; }
+    if (!phone) continue;
+    const shown = cells.filter((td) => td.getClientRects().length);
+    if (!shown.length) continue;
+    const top = shown[0].getBoundingClientRect().top;
+    const edge = tr.getBoundingClientRect().right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
+    let n = shown.length;
+    const fits = () => {
+      const r = shown[n - 1].getBoundingClientRect();
+      return r.top - top < 1 && (n === shown.length || r.right + PHONE_MORE_W <= edge);
+    };
+    while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
+    if (n < shown.length) shown[n - 1].dataset.more = `+${shown.length - n}`;
+  }
+}
 function markClippedCells(grid) {
+  fitPhoneChipLines(grid);
   fitChips(grid);
   const cutOff = new Set();
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
@@ -2099,7 +2309,7 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
       continue;
     }
     menu.append(el('button', {
-      class: 'dropdown-item' + (it.danger ? ' text-danger' : ''), type: 'button',
+      class: 'dropdown-item' + (it.danger ? ' text-danger' : '') + (it.phone ? ' phone-only' : ''), type: 'button',
       onclick: async () => { close(); await it.run(); },
     }, it.label));
   }
@@ -2122,11 +2332,8 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
         if (!opening) return;
         menu.classList.remove('hidden');
         place();
-        addEventListener('click', function away(ev) {
-          if (wrap.contains(ev.target)) return;
-          close();
-          removeEventListener('click', away);
-        });
+        menu.off?.();
+        menu.off = dismissOutside({ open: () => !menu.classList.contains('hidden'), inside: (t) => wrap.contains(t), close });
       },
     }, iconEl('lucide:ellipsis-vertical', 'wv-icon')),
     menu);
@@ -2251,6 +2458,11 @@ function ratingEl(max, icon, value, { onSet = null, title = null, color = 'ink' 
   if (onSet) box.addEventListener('rate', (e) => onSet(e.detail));
   return box;
 }
+function ratingListEl(rating, values, { label = null } = {}) {
+  const box = el('span', { class: 'ms-box wv-rating-list', role: 'group', ...(label ? { 'aria-label': label } : {}) });
+  for (const v of values) box.append(ratingEl(rating.max, rating.icon, typeof v === 'number' ? v : null, { color: rating.color }));
+  return box;
+}
 function sparkEl(style, values, color = 'ink') {
   const svg = cellGraphics.sparkSvg(style || 'line', values);
   if (!svg) return null;
@@ -2258,72 +2470,101 @@ function sparkEl(style, values, color = 'ink') {
   box.innerHTML = svg;
   return box;
 }
-function segmentValueEl(seg) {
-  if (seg.spark) return sparkEl(seg.spark.style, seg.spark.values, seg.spark.color) ?? seg.value;
-  if (seg.rating) return ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}`, color: seg.rating.color });
-  return seg.meter && cellGraphics.isGraphic(seg.meter.display)
-    ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value, null, seg.meter.color)
-    : seg.value;
+const chipView = globalThis.weaveChipView;
+function chipElFrom(html) {
+  const box = el('span');
+  box.innerHTML = html;
+  return box.firstElementChild;
 }
 function viewSegmentEl(seg) {
-  if (seg.kind === 'state') {
-    const cat = chipCore.categoryOrDefault(seg.category);
-    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)} wv-seg-state` }, seg.value);
-  }
-  return el('span', { class: 'mention-f' }, el('span', { class: 'mention-f-label' }, seg.label), segmentValueEl(seg));
+  return chipElFrom(chipView.segHtml(seg));
 }
-function viewChipEl(v, { lead = null, tail = null, extra = null, href = null } = {}) {
-  const segs = viewCore.viewSegments(v);
-  const a = el('a', { href: href ?? `#/entity/${v.id}`, title: String(v?.name ?? ''), onclick: (e) => e.stopPropagation() },
-    lead, el('span', { class: 'k-label' }, viewCore.viewTitle(v)), tail,
-    segs.length ? el('span', { class: 'mention-fields' }, ...segs.map(viewSegmentEl)) : '');
-  const chip = el('span', { class: 'k k-rel' + (segs.length ? ' has-segs' : '') }, a,
-    segs.length ? el('button', {
-      type: 'button', class: 'mention-caret', 'aria-expanded': 'false', title: 'Show fields',
-      onclick: (e) => { e.preventDefault(); e.stopPropagation(); toggleMentionCaret(e.currentTarget); },
-    }, '›') : '');
-  if (extra) chip.append(extra);
-  return el('span', { class: 'mention-wrap' }, chip);
+function viewChipEl(v, { home = null, href = null, removable = false, broken = false, kind = 'entity', onRemove = null } = {}) {
+  const chip = chipElFrom(chipView.chipHtml(v, {
+    kind, href: href ?? `#/entity/${v.id}`, home, broken, removable: removable || !!onRemove,
+  }));
+  chip.querySelector(':scope > a')?.addEventListener('click', (e) => e.stopPropagation());
+  const x = chip.querySelector(':scope > .x');
+  if (x && onRemove) x.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onRemove(); });
+  return chip;
 }
 function viewCardEl(v, { compact = false } = {}) {
-  const segs = viewCore.viewSegments(v);
-  const state = segs.find((x) => x.kind === 'state');
-  const head = el('div', { class: 'wv-card-head' },
-    el('a', { class: 'wv-card-title', href: `#/entity/${v.id}`, onclick: (e) => e.stopPropagation() },
-      v.link ? el('span', { class: 'wv-card-id' }, `#${v.publicId}`) : '',
-      v.name || (v.link ? '' : `#${v.publicId}`)),
-    state ? viewSegmentEl(state) : '');
-  const card = el('div', { class: 'wv-card' + (compact ? ' compact' : ''), dataset: { eid: v.id } }, head);
-  if (v.description) card.append(el('div', { class: 'wv-card-desc' }, v.description));
-  const fields = segs.filter((x) => x.kind === 'field');
-  if (fields.length) {
-    card.append(el('dl', { class: 'wv-card-fields' },
-      ...fields.flatMap((f) => [el('dt', {}, f.label), el('dd', { dataset: { field: f.label } }, segmentValueEl(f))])));
-  }
+  const card = chipElFrom(chipView.cardHtml(v, { compact }));
+  card.querySelector('.wv-card-title')?.addEventListener('click', (e) => e.stopPropagation());
   return card;
 }
 function viewCell(v, f, { compact = false } = {}) {
   if (!v || typeof v !== 'object') return el('span', { class: 'k k-empty' }, '—');
   return f.shape === 'card' || v.shape === 'card' ? viewCardEl(v, { compact }) : viewChipEl(v);
 }
-function relationChipEl(f, s, { extra = null } = {}) {
+function relationChipEl(f, s, { onRemove = null } = {}) {
   const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [] };
   return viewChipEl(v, {
-    lead: personAvatar(f, s),
-    tail: f.targetDbIds && s.db ? el('span', { class: 'k-home' }, s.db.split('/').pop()) : null,
-    extra,
+    home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
+    onRemove,
   });
 }
 function toggleMentionCaret(caret) {
-  const open = caret.closest('.mention-wrap').classList.toggle('open');
-  caret.setAttribute('aria-expanded', String(open));
+  const open = caret.closest('.k-rel')?.classList.toggle('open');
+  caret.setAttribute('aria-expanded', String(!!open));
 }
 document.addEventListener('click', (ev) => {
-  const caret = ev.target.closest('.mention-caret');
-  if (!caret || !caret.closest('#app, .modal, .cell-pop')) return;
+  const seg = ev.target.closest('[data-seg="state"], [data-seg="multiselect"]');
+  const chip = seg?.closest('.k-rel[data-eid], .wv-card[data-eid]');
+  if (!chip) return;
   ev.preventDefault();
-  toggleMentionCaret(caret);
+  ev.stopPropagation();
+  editChipSegment(seg, chip.dataset.eid, seg.dataset.seg, seg.dataset.field);
 });
+function statePicker(anchor, f, current, onPick) {
+  const options = [{ id: '—', label: 'No state', group: 'None', cls: 'k k-select hue-slate', chip: true }];
+  for (const c of chipCore.CATEGORIES) {
+    for (const s of f.states ?? []) {
+      if (chipCore.categoryOrDefault(s.category) !== c.id) continue;
+      options.push({ id: s.name, label: s.name, group: c.label, cls: stateChipClass(f, s.name), chip: true });
+    }
+  }
+  searchPicker({
+    anchor, title: f.name, placeholder: 'Search states…', groups: true, options, currentId: current,
+    onPick: (o) => onPick(o.id === '—' ? null : o.id),
+  });
+}
+async function editChipSegment(trigger, eid, seg, fieldName) {
+  try {
+    const e = await api('GET', `/entities/${eid}`);
+    const db = allTables().find((d) => d.qualified === e.db) ?? allTables().find((d) => d.name === e.db);
+    const want = seg === 'state' ? 'workflow' : 'multiselect';
+    const f = db?.fields.find((x) => x.name === fieldName && x.type === want)
+      ?? db?.fields.find((x) => x.type === want);
+    if (!f) return toast(`${fieldName} is no longer a ${want} field of ${e.db}`, true);
+    const repaint = (next) => {
+      const drawn = chipElFrom(chipView.segHtml(next));
+      trigger.className = drawn.className;
+      trigger.replaceChildren(...drawn.childNodes);
+    };
+    if (seg === 'state') {
+      return statePicker(trigger, f, e.fields?.[f.name] ?? null, async (name) => {
+        await api('POST', `/entities/${eid}/state`, { field: f.name, state: name });
+        const st = (f.states ?? []).find((s) => s.name === name);
+        repaint({ kind: 'state', label: f.name, value: st?.name ?? '—', category: st?.category, ...(st?.hue ? { hue: st.hue } : {}) });
+      });
+    }
+    const chosen = (names) => names.map((name) => ({ id: name, label: name, cls: `k k-multi ${optionHue(f, name)}`, chip: true }));
+    searchPicker({
+      anchor: trigger, title: f.name, options: chosen(f.options ?? []),
+      multi: {
+        selected: chosen(Array.isArray(e.fields?.[f.name]) ? e.fields[f.name] : []),
+        onCommit: async (names) => {
+          await api('PATCH', `/entities/${eid}`, { values: { [f.name]: names } });
+          repaint({
+            kind: 'field', type: 'multiselect', label: f.name, value: names.join(', '),
+            options: names.map((name) => ({ name, hue: (f.optionsFull ?? []).find((o) => o.name === name)?.hue })),
+          });
+        },
+      },
+    });
+  } catch (err) { toast(err.message, true); }
+}
 
 function toggleSwitch(f, val, patch) {
   const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': f.name });
@@ -2504,16 +2745,17 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   }
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
     const text = fieldValueCell(val);
-    const graphic = (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(item?.raw?.[f.name]) ? sparkEl(f.style, item.raw[f.name], f.color) : null)
-      ?? (f.rating && typeof item?.raw?.[f.name] === 'number'
-        ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${text}`, color: f.rating.color }) : null)
+    const rawVal = item?.raw?.[f.name];
+    const graphic = (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(rawVal) ? sparkEl(f.style, rawVal, f.color) : null)
+      ?? (f.rating && typeof rawVal === 'number'
+        ? ratingEl(f.rating.max, f.rating.icon, rawVal, { title: `${f.name}: ${text}`, color: f.rating.color }) : null)
+      ?? (f.rating && Array.isArray(rawVal) && rawVal.length
+        ? ratingListEl(f.rating, rawVal, { label: f.name }) : null)
       ?? numberGraphicFor(f, item, text);
     const rich = f.display === 'sparkline' || !!f.rating || cellGraphics.isGraphic(f.display);
-    const box = el('span', { class: 'computed k k-computed' + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
-      rich ? null : el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
+    const derived = COMPUTED_NAME_MARKS[f.type] && !rich ? ' k-derived' : '';
+    return el('span', { class: 'computed k k-computed' + derived + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
       graphic ?? (text || '—'));
-    if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
-    return box;
   }
   if (f.type === 'rating') {
     const box = ratingEl(f.max, f.icon, item.raw?.[f.name] ?? null, { onSet: (v) => patch(v, (x) => box.paint(x)), color: f.color });
@@ -2593,16 +2835,13 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
     const hidden = all.length - current.length;
     for (const s of current) {
-      const x = compact ? null : el('span', {
-        class: 'x',
-        onclick: async () => {
-          try {
-            await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
-            await saved();
-          } catch (err) { toast(err.message, true); }
-        },
-      }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
-      box.append(relationChipEl(f, s, { extra: x }), ' ');
+      const onRemove = compact ? null : async () => {
+        try {
+          await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
+          await saved();
+        } catch (err) { toast(err.message, true); }
+      };
+      box.append(relationChipEl(f, s, { onRemove }), ' ');
     }
     if (hidden > 0) {
       box.append(el('span', {
@@ -2611,44 +2850,25 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     }
     box.append(el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny',
-      onclick: async (e2) => {
-        const btn = e2?.currentTarget ?? null;
-        const targets = f.targetDbIds
-          ? f.targetDbIds.map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean)
-          : [allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb)];
-        const lists = await Promise.all(targets.map((t) => api('POST', `/tables/${t.id}/query`, { select: ['Name'] })));
-        const options = targets.flatMap((t, i) => lists[i].items.map((o) => ({
-          id: o.id, label: o.name || '(unnamed)',
-          hint: f.targetDbIds ? `${t.qualified} · #${o.publicId}` : `#${o.publicId}`,
-        })));
-        const before = current.map((sm) => sm.id);
-        searchPicker({
-          anchor: btn, title: `${f.name}`, placeholder: `Search ${termOfTable(f.targetDbId).plural}…`,
-          options,
-          multi: {
-            selected: current.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
-            onCommit: async (ids) => {
-              const add = ids.filter((x) => !before.includes(x));
-              const drop = before.filter((x) => !ids.includes(x));
-              if (!add.length && !drop.length) return;
-              if (add.length) await api('POST', `/entities/${id}/link`, { field: f.name, targets: add });
-              if (drop.length) await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: drop });
-              await saved();
-            },
-          },
-        });
-      },
+      onclick: () => linkSearch(f, {
+        linked: all,
+        commit: async (add, drop) => {
+          if (add.length) await api('POST', `/entities/${id}/link`, { field: f.name, targets: add });
+          if (drop.length) await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: drop });
+          await saved();
+        },
+      }),
     }, '+ link'));
     return box;
   }
   if (f.type === 'document') {
-    if (f.role === 'description') return docPreviewCell(item.docs?.[f.name], f.name, () => dockEntity(db, id));
-    return docChipCell(f, item, () => dockEntity(db, id));
+    if (f.role === 'description') return docPreviewCell(item.docs?.[f.name], f.name, () => dockEntity(db, id, { step: true }));
+    return docChipCell(f, item, () => dockEntity(db, id, { step: true }));
   }
   if (f.type === 'field') {
     const def = item.raw?.[f.name] ?? null;
     const chip = el('span', { class: 'computed k k-computed' + (def == null ? ' is-empty' : ''), title: compact ? `field definition — edit on the ${db?.term?.singular ?? WeaveTerm.DEFAULT.singular} page` : 'field definition — click to edit' },
-      el('span', { class: 'computed-mark' }, computedMarkNode('field')),
+      el('span', { class: 'computed-mark' }, iconEl('lucide:sliders-horizontal', 'ico wv-icon')),
       def == null ? '—' : String(val));
     if (compact) return chip;
     chip.style.cursor = 'pointer';
@@ -2824,7 +3044,7 @@ async function showTrash(dbId) {
   if (dbId && !db) return showHome();
   state.route = { page: 'trash', dbId };
   renderNav();
-  let { items } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
+  let { items, views = [] } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
   if (!db) items = items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views');
   const main = $('#main');
   main.replaceChildren();
@@ -2838,17 +3058,18 @@ async function showTrash(dbId) {
   }));
 
   const wsTrashed = db ? [] : await trashedWorkspaces();
-  if (!items.length && !wsTrashed.length) {
+  if (!items.length && !views.length && !wsTrashed.length) {
     main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
     return;
   }
   const rows = el('tbody');
+  const purgeAt = (path) => api('DELETE', `${path}?hard=1`);
   for (const item of items) {
     rows.append(el('tr', {},
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
       el('td', {}, item.name || el('span', { class: 'view-desc-empty' }, 'Untitled')),
       ...(db ? [] : [el('td', { class: 'trash-table' }, item.db)]),
-      el('td', { class: 'trash-when' }, new Date(item.deletedAt).toLocaleString()),
+      el('td', { class: 'trash-when' }, whenEl(item.deletedAt)),
       el('td', { class: 'trash-acts' },
         el('button', {
           class: 'btn btn-sm', type: 'button',
@@ -2863,14 +3084,31 @@ async function showTrash(dbId) {
         }, 'Restore'),
         holdToConfirm('Delete forever', async () => {
           try {
-            await api('DELETE', `/entities/${item.id}?hard=1`);
+            await purgeAt(`/entities/${item.id}`);
             toast('Purged');
             await loadSchema();
             showTrash(dbId);
           } catch (err) { toast(err.message, true); }
         }, { holdingLabel: 'Hold to purge…' }))));
   }
-  if (items.length) main.append(el('div', { class: 'card table-wrap' },
+  for (const v of views) {
+    const act = (run, done) => async () => {
+      try {
+        await run();
+        toast(done);
+        showTrash(dbId);
+      } catch (err) { toast(err.message, true); }
+    };
+    rows.append(el('tr', {},
+      el('td', { class: 'pid-cell' }),
+      el('td', {}, v.name),
+      el('td', { class: 'trash-table' }, 'Share page'),
+      el('td', { class: 'trash-when' }, whenEl(v.deletedAt)),
+      el('td', { class: 'trash-acts' },
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'),
+        holdToConfirm('Delete forever', act(() => purgeAt(`/views/${v.id}`), 'Purged'), { holdingLabel: 'Hold to purge…' }))));
+  }
+  if (items.length || views.length) main.append(el('div', { class: 'card table-wrap' },
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
@@ -2915,9 +3153,10 @@ function systemDefault(db, view = null) {
   const table = allTables().find((d) => d.id === db.id) || db;
   return {
     fields: [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n] && n !== 'Activity')],
-    filters: {}, sort: [],
+    filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
+    layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -2957,7 +3196,6 @@ function viewStrip(db) {
       let made;
       try {
         made = await api('PATCH', at(name), { from: e.from, ...(e.from === 'blank' ? systemDefault(db) : {}), ...(e.position != null ? { position: e.position } : {}) });
-        if (e.from === 'blank') { stopTableSearchTimer(); tableSearch = { ...tableSearch, text: '', focus: false, only: null }; }
       } catch (err) { toast(err.message, true); redraw(); return; }
       await loadSchema();
       const hash = `#/table/${db.id}/view/${made.id}`;
@@ -3002,9 +3240,9 @@ function viewStrip(db) {
         act('view-dup-btn', 'copy', 'Duplicate', () => edit({ mode: 'dup', after: v.id, from: v.id, position: i + 1, name: nextViewName(db, v.name) })),
         del),
       el('span', { class: 'view-check', 'aria-hidden': 'true' }, active ? '✓' : ''));
+    RO().guard(grip);
     grip.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      e.preventDefault();
       startRowDrag(strip, row, e, (target, after) => {
         const rest = views.filter((x) => x.id !== v.id);
         const to = target === v.id ? i : rest.findIndex((x) => x.id === target) + (after ? 1 : 0);
@@ -3231,8 +3469,8 @@ function filterStrip(db, onChange) {
         clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
       } });
       const chip = st.hue
-        ? el('label', { class: `filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), st.name)
-        : el('label', { class: `filter-chip cat-${st.category}` }, box, st.name);
+        ? el('label', { class: `filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), el('span', { class: 'filter-chip-label' }, st.name))
+        : el('label', { class: `filter-chip cat-${st.category}` }, box, el('span', { class: 'filter-chip-label' }, st.name));
       chips.push({ chip, field: f.name, name: st.name }); values.append(chip);
     }
     row.append(values); scroll.append(row);
@@ -3243,9 +3481,22 @@ function filterStrip(db, onChange) {
 }
 
 const TABLE_SEARCH_DEBOUNCE = 150;
-let tableSearch = { dbId: null, text: '', open: false, focus: false, only: null };
+let tableSearch = { dbId: null, viewId: null, text: '', open: false, focus: false, only: null };
 let tableSearchTimer = 0;
 let tableSearchRelease = null;
+let tableSearchWrites = Promise.resolve();
+let tableSearchLocal = false;
+function saveTableSearch(dbId, text) {
+  const { viewId } = tableSearch;
+  const view = (allTables().find((d) => d.id === dbId)?.views ?? []).find((v) => v.id === viewId);
+  const want = String(text ?? '').trim();
+  if (!view || tableSearchLocal || want === (view.search ?? '')) return tableSearchWrites;
+  if (want) view.search = want; else delete view.search;
+  tableSearchWrites = tableSearchWrites
+    .then(() => api('PATCH', `/tables/${dbId}/views/${encodeURIComponent(viewId)}`, { search: want }))
+    .catch((err) => { if (err.status === 401 || err.status === 403) tableSearchLocal = true; else toast(err.message, true); });
+  return tableSearchWrites;
+}
 function stopTableSearchTimer() {
   clearTimeout(tableSearchTimer); tableSearchTimer = 0;
   tableSearchRelease?.(); tableSearchRelease = null;
@@ -3254,6 +3505,7 @@ const tableSearchText = (db) => (tableSearch.dbId === db.id ? tableSearch.text.t
 function setTableSearch(db, text, { open = tableSearch.open, focus = false } = {}) {
   clearTimeout(tableSearchTimer); tableSearchTimer = 0;
   tableSearch = { ...tableSearch, dbId: db.id, text, open, focus };
+  saveTableSearch(db.id, text);
   return showDatabase(db.id, state.route.view).finally(() => {
     if (!tableSearchTimer) { tableSearchRelease?.(); tableSearchRelease = null; }
   });
@@ -3267,7 +3519,7 @@ function openTableSearch(root = document) {
 }
 function tableSearchBox(db) {
   const input = el('input', {
-    class: 'form-control form-control-sm table-search-input', type: 'search',
+    class: 'search-bare table-search-input', type: 'search',
     placeholder: `Search ${db.term.plural}`, 'aria-label': `Search ${db.term.plural}`,
     value: tableSearchText(db) ? tableSearch.text : '',
   });
@@ -3306,7 +3558,10 @@ async function showDatabase(dbId, view) {
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
   if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
   const db = viewed(table, pickTableView(table, view));
-  if (tableSearch.dbId !== dbId) { stopTableSearchTimer(); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
+  if (tableSearch.dbId !== dbId || tableSearch.viewId !== db.view.id) {
+    stopTableSearchTimer();
+    tableSearch = { dbId, viewId: db.view.id, text: db.view.search ?? '', open: false, focus: false, only: null };
+  }
   const search = tableSearch.text.trim();
   const again = tableChromeOn(dbId);
   state.route = { page: 'db', dbId, view: db.view.id };
@@ -3315,6 +3570,7 @@ async function showDatabase(dbId, view) {
   try { await readAndDrawTable(db, dbId, search); } finally { release(); }
 }
 async function readAndDrawTable(db, dbId, search) {
+  if (isListLayout(db)) return readAndDrawList(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const query = {
@@ -3429,13 +3685,13 @@ function tableControlPopover(anchor, db, className, rows) {
     pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
     pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
   };
-  const outside = (e) => { if (!pop.contains(e.target) && !e.target.closest(selector)) pop.remove(); };
+  let off = () => {};
   const remove = pop.remove.bind(pop);
   pop.remove = () => {
     if (!pop.isConnected) return;
     pop.beforeClose?.();
     trigger().setAttribute('aria-expanded', 'false');
-    document.removeEventListener('click', outside, true);
+    off();
     window.removeEventListener('resize', position);
     remove();
   };
@@ -3460,7 +3716,7 @@ function tableControlPopover(anchor, db, className, rows) {
   document.body.append(pop);
   trigger().setAttribute('aria-expanded', 'true');
   position();
-  document.addEventListener('click', outside, true);
+  off = dismissOutside({ inside: (t) => pop.contains(t) || !!t.closest?.(selector), close: () => pop.remove() });
   window.addEventListener('resize', position);
   pop.querySelector('.view-tab.active .view-name,.seg-opt.on,.eye-row:not(label),.eye-row > input,.filter-chip:not(label),.filter-chip > input,.chip-pop-row:not(label)')?.focus({ preventScroll: true });
   return pop;
@@ -3494,18 +3750,27 @@ function tableViewButton(ref) {
         await eyeWrites;
         stopTableSearchTimer();
         tableSearch = { ...tableSearch, text: '', focus: false, only: null };
-        const patch = raw ? systemDefault(db, current.view) : { filters: {}, sort: [] };
+        const patch = raw ? systemDefault(db, current.view) : { filters: {}, sort: [], search: '' };
         await gridConfigWrite(current, null, patch);
         await showDatabase(db.id, current.view?.id);
         document.querySelector('.table-view-btn')?.focus({ preventScroll: true });
       } catch (err) { toast(err.message, true); } finally { release(); }
     };
+    const setLayout = async (current, layout) => {
+      const release = gridHold();
+      try {
+        if (await gridConfigWrite(current, null, { layout })) await showDatabase(db.id, current.view?.id);
+      } catch (err) { toast(err.message, true); } finally { release(); }
+    };
     const build = (current) => [
       tableControlHeader('Views', () => pop?.remove()), viewStrip(current),
+      el('div', { class: 'view-layout' }, el('span', { class: 'view-layout-label' }, 'Layout'),
+        segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' }],
+          current.view?.layout === 'list' ? 'list' : 'table', (layout) => setLayout(current, layout))),
       el('hr'),
       el('button', { class: 'chip-pop-row view-reset', type: 'button', onclick: () => reset(true, current) }, lucideEl('undo'), 'Reset view'),
       el('button', { class: 'chip-pop-row view-clear', type: 'button', onclick: () => reset(false, current) }, lucideEl('list-filter'), 'Clear filters, search, and sorting'),
-      el('p', { class: 'table-control-note' }, 'Changes save automatically. Reset shows every field in schema order, turns off filters, sorting, search, deleted rows and the Σ rollup row, and sets Comfortable density.'),
+      el('p', { class: 'table-control-note' }, 'Changes save automatically. Reset shows every field in schema order as a Table with no grouping, turns off filters, sorting, search, deleted rows and the Σ rollup row, and sets Comfortable density.'),
     ];
     pop = tableControlPopover(btn, db, 'table-view-popover', build(db));
     if (!pop) return;
@@ -3536,7 +3801,7 @@ function tableDensityButton(ref) {
       { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
       { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' },
     ], gridDensity(db), (next) => {
-      const wrap = document.querySelector('.wv-grid')?.closest('.table-wrap');
+      const wrap = document.querySelector('.wv-grid')?.closest('.table-wrap') ?? document.querySelector('#main .list-wrap');
       if (wrap?.wvSetDensity) wrap.wvSetDensity(next); else saveGridDensity(db, next);
       btn.label(next);
       pop?.remove(); btn.focus({ preventScroll: true });
@@ -3571,55 +3836,69 @@ function tableFilterButton(ref) {
   });
   return btn;
 }
-function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
-  const html = document.documentElement;
-  let started = false, line = null, at = null, raf = 0, lastY = down.clientY;
-  html.classList.add('wv-grabbing');
-  const place = (y) => {
-    const all = [...list.querySelectorAll(rows)];
-    if (!all.length) return;
-    let target = all[all.length - 1], after = true;
-    for (const r of all) { const b = r.getBoundingClientRect(); if (y < b.top + b.height / 2) { target = r; after = false; break; } }
-    if (!line) { line = el('div', { class: 'drop-line', 'aria-hidden': 'true' }); list.append(line); }
-    line.style.top = `${(after ? target.offsetTop + target.offsetHeight : target.offsetTop) - 1}px`;
-    at = { target: key(target), after };
+function tableSortButton(ref) {
+  const btn = tableControlButton('table-sort-btn', 'Sort', 'arrow-down', true);
+  const value = el('span', { class: 'table-sort-value' });
+  btn.querySelector('.table-control-label').after(value);
+  const fieldOf = (name) => ref.db.fields.find((f) => f.name === name) ?? fieldDialogCore.SYSTEM_SORT[name] ?? { name, type: 'text' };
+  const words = (name, dir) => sortLabelsFor(ref.db, fieldOf(name))[dir === 'desc' ? 'desc' : 'asc'];
+  btn.label = () => {
+    const s = ref.db.sort?.[0];
+    value.textContent = s ? `${s.field}, ${words(s.field, s.dir)}` : 'None';
+    btn.setAttribute('aria-label', s ? `Sort: ${s.field}, ${words(s.field, s.dir)}` : 'Sort: none');
   };
-  const scroll = () => {
-    cancelAnimationFrame(raf);
-    const b = list.getBoundingClientRect();
-    const v = lastY < b.top + 24 ? -6 : lastY > b.bottom - 24 ? 6 : 0;
-    if (!v || list.scrollHeight <= list.clientHeight) return;
-    list.style.scrollSnapType = 'none';
-    list.scrollTop += v; place(lastY);
-    raf = requestAnimationFrame(scroll);
-  };
-  const onMove = (e) => {
-    if (e.pointerId !== down.pointerId) return;
-    lastY = e.clientY;
-    if (!started) {
-      if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < 4) return;
-      started = true; row.dragged = true; row.classList.add('dragging');
-    }
-    place(e.clientY); scroll();
-  };
-  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); } };
-  function end(ok) {
-    document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointerup', onUp);
-    document.removeEventListener('pointercancel', onCancel);
-    document.removeEventListener('keydown', onKey, true);
-    cancelAnimationFrame(raf);
-    html.classList.remove('wv-grabbing');
-    line?.remove(); row.classList.remove('dragging'); list.style.scrollSnapType = '';
-    if (started) setTimeout(() => { row.dragged = false; });
-    if (ok && started && at) drop(at.target, at.after);
+  btn.label();
+  btn.addEventListener('click', () => {
+    const db = ref.db;
+    let pop;
+    const write = async (sort) => {
+      pop?.remove();
+      const release = gridHold();
+      try {
+        if (await gridConfigWrite(db, { sort })) await keepScroll(() => showDatabase(db.id, db.view?.id));
+      } catch (err) { toast(err.message, true); } finally { release(); }
+    };
+    const now = db.sort?.[0] ?? null;
+    const fields = db.fields.filter((f) => f.type !== 'view' && f.type !== 'document');
+    const rows = fields.map((f) => el('button', {
+      class: 'chip-pop-row table-sort-field', type: 'button', 'aria-pressed': String(now?.field === f.name),
+      onclick: () => write([{ field: f.name, dir: now?.field === f.name ? now.dir : 'asc' }]),
+    }, el('span', { class: 'table-sort-name' }, f.name), now?.field === f.name ? lucideEl('check', 'wv-icon chip-pop-check') : null));
+    const dir = now ? segCtl([
+      { id: 'asc', label: words(now.field, 'asc') },
+      { id: 'desc', label: words(now.field, 'desc') },
+    ], now.dir === 'desc' ? 'desc' : 'asc', (d) => write([{ field: now.field, dir: d }])) : null;
+    const clear = now ? el('button', { class: 'chip-pop-row table-sort-clear', type: 'button', onclick: () => write([]) }, lucideEl('x'), 'Clear sort') : null;
+    pop = tableControlPopover(btn, db, 'table-sort-popover', [tableControlHeader('Sort', () => pop?.remove()), dir, el('div', { class: 'table-sort-list' }, ...rows), clear]);
+  });
+  return btn;
+}
+function tableSheetGroup(title, items) {
+  const rows = [];
+  for (const it of items.filter(Boolean)) {
+    if (it === 'divider') continue;
+    if (it.href) rows.push(el('a', { class: 'tools-row', href: it.href, download: it.download }, it.label));
+    else if (it.hold) rows.push(holdToConfirm(it.hold, () => it.run(), { holdingLabel: it.holdingLabel ?? 'Hold to confirm…', rowClass: 'tools-row tools-row-danger' }));
+    else rows.push(el('button', { class: 'tools-row', type: 'button', onclick: () => it.run() }, it.label));
   }
-  const onUp = (e) => { if (e.pointerId === down.pointerId) end(true); };
-  const onCancel = (e) => { if (e.pointerId === down.pointerId) end(false); };
-  document.addEventListener('pointermove', onMove);
-  document.addEventListener('pointerup', onUp);
-  document.addEventListener('pointercancel', onCancel);
-  document.addEventListener('keydown', onKey, true);
+  return el('div', { class: 'tools-group', role: 'group', 'aria-label': title }, el('div', { class: 'tools-group-head' }, title), ...rows);
+}
+const RO = () => globalThis.WeaveReorder;
+function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
+  return RO().sortable(down, {
+    source: row,
+    items: () => [...list.querySelectorAll(rows)],
+    zone: () => list.closest('.chip-pop') ?? list,
+    lock: true,
+    onDrop: () => {
+      row.dragged = true;
+      setTimeout(() => { row.dragged = false; });
+      const all = [...list.querySelectorAll(rows)].filter((n) => !RO().lifting(n));
+      const i = all.indexOf(row);
+      if (all[i + 1]) drop(key(all[i + 1]), false);
+      else if (all[i - 1]) drop(key(all[i - 1]), true);
+    },
+  });
 }
 function tableFieldsPopover(anchor, db, trashCount) {
   let pop;
@@ -3677,9 +3956,9 @@ function tableFieldsPopover(anchor, db, trashCount) {
     const toggle = el('label', { class: 'chip-pop-row eye-row' }, box, el('span', { class: 'eye-label' }, name));
     const handle = el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
     const row = el('div', { class: 'table-field-row', dataset: { field: name } }, toggle, handle);
+    RO().guard(row);
     row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target === box || db.view?.blank) return;
-      e.preventDefault();
       startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
     });
     row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
@@ -3736,14 +4015,50 @@ function tableChrome(db, trashCount) {
   const viewBtn = tableViewButton(ref);
   const densityBtn = tableDensityButton(ref);
   const filterBtn = tableFilterButton(ref);
+  const groupBtn = tableGroupButton(ref);
+  const sortBtn = tableSortButton(ref);
   const search = tableSearchBox(db);
   chrome.set = (next, count) => {
     ref.db = next; ref.trashCount = count;
-    viewBtn.label(); densityBtn.label(); filterBtn.label();
+    viewBtn.label(); densityBtn.label(); filterBtn.label(); groupBtn.label(); sortBtn.label(); tools.label();
     const input = search.querySelector('.table-search-input');
     const want = tableSearchText(next) ? tableSearch.text : '';
     if (input.value.trim() !== want.trim()) input.value = want;
   };
+  const tableActions = [
+    { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
+    { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
+    db.system ? null : { label: 'Copy create link', run: () => copyText(weavePrefill.link(prefillBase(ref.db), filterSeed(ref.db)), 'Create link copied') },
+    'divider',
+    { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
+    {
+      label: 'New share page…',
+      run: () => modal('New share page', [
+        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control' }),
+      ], async (fd) => {
+        const where = filterWhere(ref.db);
+        await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
+        toast('Share page saved — find it on the workspace page');
+      }, 'Save'),
+    },
+    'divider',
+    {
+      label: `Row term (${db.term.singular})…`,
+      run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
+    },
+    'divider',
+    {
+      hold: 'Delete table', holdingLabel: 'Hold to delete table…',
+      run: async () => {
+        try {
+          await api('DELETE', `/tables/${db.id}`);
+          await loadSchema();
+          location.hash = `#/space/${db.spaceId}`;
+          toast(`Deleted ${db.name}`);
+        } catch (err) { toast(err.message, true); }
+      },
+    },
+  ];
   chrome.header = viewHeader({
     crumbs: [
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
@@ -3785,45 +4100,62 @@ function tableChrome(db, trashCount) {
         return eye;
       })(),
       filterBtn,
-      dotsMenu([
-        { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
-        { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
-        db.system ? null : { label: 'Copy create link', run: () => copyText(weavePrefill.link(prefillBase(ref.db), filterSeed(ref.db)), 'Create link copied') },
-        'divider',
-        {
-          label: 'New share page…',
-          run: () => modal('New share page', [
-            el('input', { name: 'name', placeholder: 'Page name', class: 'form-control full' }),
-          ], async (fd) => {
-            const where = filterWhere(ref.db);
-            await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
-            toast('Share page saved — find it on the workspace page');
-          }, 'Save'),
-        },
-        'divider',
-        {
-          label: `Row term (${db.term.singular})…`,
-          run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
-        },
-        'divider',
-        {
-          hold: 'Delete table', holdingLabel: 'Hold to delete table…',
-          run: async () => {
-            try {
-              await api('DELETE', `/tables/${db.id}`);
-              await loadSchema();
-              location.hash = `#/space/${db.spaceId}`;
-              toast(`Deleted ${db.name}`);
-            } catch (err) { toast(err.message, true); }
-          },
-        },
-      ], { title: 'Table actions', align: 'right' }),
+      groupBtn,
+      sortBtn,
+      dotsMenu(tableActions, { title: 'Table actions', align: 'right' }),
+      tableSheetGroup('Table', tableActions),
     ],
   });
+  const tools = tableToolsButton(chrome.header, ref);
+  chrome.header.querySelector('.crumb-row').append(tools);
   return chrome;
 }
 
-function drawDatabase(db, items, trashCount = 0, pager = null) {
+function tableToolsButton(header, ref) {
+  const count = el('span', { class: 'table-tools-count', hidden: '' });
+  const btn = el('button', {
+    class: 'btn table-tools-btn', type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
+    'aria-label': 'View, filters, fields and row height', title: 'View, filters, fields and row height',
+  }, lucideEl('sliders-horizontal'), count);
+  const row = () => header.querySelector('.crumb-row');
+  const sheet = () => header.querySelector('.crumb-row > .crumb-actions');
+  btn.label = () => {
+    const n = Object.values(tableFilters(ref.db)).filter((v) => v?.length).length;
+    count.textContent = n ? String(n) : '';
+    count.hidden = !n;
+  };
+  btn.label();
+  let off = () => {};
+  const shut = () => {
+    row()?.classList.remove('tools-open');
+    btn.setAttribute('aria-expanded', 'false');
+    off();
+    removeEventListener('keydown', esc, true);
+  };
+  const esc = (e) => {
+    if (e.key !== 'Escape' || document.querySelector('.chip-pop, .picker-pop, #modal-back, #cmdk-back') || sheet()?.querySelector('.dl-menu:not(.hidden)')) return;
+    shut();
+    btn.focus({ preventScroll: true });
+  };
+  header.addEventListener('click', (e) => { if (e.target.closest('.tools-group .tools-row:not(.hold-btn)')) shut(); });
+  btn.addEventListener('click', () => {
+    if (row().classList.contains('tools-open')) return shut();
+    const r = btn.getBoundingClientRect();
+    row().style.setProperty('--tools-top', `${r.bottom + 8}px`);
+    row().style.setProperty('--tools-right', `${document.documentElement.clientWidth - r.right}px`);
+    row().classList.add('tools-open');
+    btn.setAttribute('aria-expanded', 'true');
+    off = dismissOutside({
+      open: () => btn.isConnected || (shut(), false),
+      inside: (t) => btn.contains(t) || !!sheet()?.contains(t) || !!t.closest?.('.chip-pop, .picker-pop, #modal-back, #cmdk-back'),
+      swallow: () => true, close: shut,
+    });
+    addEventListener('keydown', esc, true);
+  });
+  return btn;
+}
+
+function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   const main = $('#main');
   let chrome = tableChromeOn(db.id);
   if (chrome && chrome.sig === tableChromeSig(db)) {
@@ -3864,6 +4196,14 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
         class: 'btn btn-sm btn-ghost-secondary tiny table-search-clear', type: 'button',
         onclick: () => setTableSearch(db, '', { focus: true }),
       }, 'Clear search')));
+  }
+
+  if (list) {
+    state.inlineAdd = async () => main.querySelector('.list-add-name')?.focus();
+    renderList(main, db, items, list);
+    main.wvDraw = { db, items, trashCount, pager: null };
+    paintGridWait();
+    return;
   }
 
   const onSaved = async (written = null, field = null) => {
@@ -3913,17 +4253,499 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
 
   renderTable(main, db, items, onSaved, state.inlineAdd, pager);
   main.wvDraw = { db, items, trashCount, pager };
+  syncPhoneBar();
   paintGridWait();
   main.querySelector('.table-wrap')?.addEventListener('keydown', (e) => {
     if (e.isComposing || e.altKey) return;
     const td = e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
     if (!td || e.target !== td) return;
-    const slash = e.key === '/' && !e.metaKey && !e.ctrlKey;
-    const find = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f';
-    if (!slash && !find) return;
+    if (e.key !== '/' || e.metaKey || e.ctrlKey) return;
     e.preventDefault(); e.stopPropagation();
     openTableSearch(main);
   }, true);
+}
+
+const listCore = globalThis.weaveListCore;
+const isListLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'list';
+function listSetup(db) {
+  const v = db.view ?? {};
+  const fieldOf = (n) => (n ? db.fields.find((f) => f.name === n) : null) ?? null;
+  const levels = (v.group ?? []).map((l) => {
+    const f = fieldOf(l.field);
+    return f && listCore.groupable(f) ? { ...listCore.levelDefaults(f.type), ...l, f } : null;
+  }).filter(Boolean);
+  const shown = new Set(db.columns ?? []);
+  const dates = db.fields.filter((f) => f.type === 'date');
+  return {
+    levels,
+    completedBy: fieldOf(v.completedBy),
+    nest: fieldOf(v.nest),
+    chip: viewFieldOf(db, 'chip'),
+    dateField: dates.find((f) => shown.has(f.name)) ?? dates[0] ?? null,
+  };
+}
+const listBoolKey = (f, on) => ({
+  key: String(on),
+  label: f.type === 'toggle' ? (on ? f.on : f.off) : (on ? f.name : `Not ${f.name.toLowerCase()}`),
+  value: on,
+});
+function listKeys(level, item) {
+  const f = level.f;
+  if (f.type === 'relation') {
+    const v = item.fields?.[f.name];
+    return (Array.isArray(v) ? v : v ? [v] : []).filter((x) => x?.id).map((x) => ({ key: x.id, label: x.name || `#${x.publicId}`, value: x.id, summary: x }));
+  }
+  if (f.type === 'date') { const b = listCore.dateBucket(item.raw?.[f.name], level.grain); return b ? [b] : []; }
+  if (f.type === 'checkbox' || f.type === 'toggle') return [listBoolKey(f, !!item.raw?.[f.name])];
+  const v = item.fields?.[f.name];
+  return (Array.isArray(v) ? v : v != null && v !== '' ? [v] : []).map((n) => ({ key: String(n), label: String(n), value: String(n) }));
+}
+function listDomain(level, targets, items) {
+  const f = level.f;
+  if (f.type === 'relation') return (targets ?? []).map((t) => ({ key: t.id, label: t.name || `#${t.publicId}`, value: t.id, summary: t }));
+  if (f.type === 'select' || f.type === 'multiselect') return (f.options ?? []).map((n) => ({ key: n, label: n, value: n }));
+  if (f.type === 'workflow') return (f.states ?? []).map((st) => ({ key: st.name, label: st.name, value: st.name }));
+  if (f.type === 'checkbox' || f.type === 'toggle') return [listBoolKey(f, false), listBoolKey(f, true)];
+  const seen = new Map();
+  for (const it of items) for (const k of listKeys(level, it)) seen.set(k.key, k);
+  return [...seen.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+async function listTargetRows(f) {
+  const target = allTables().find((t) => t.id === f.targetDbId);
+  if (!target) return [];
+  const chip = viewFieldOf(target, 'chip');
+  const first = target.views?.[0];
+  const sort = (first?.sort ?? []).length ? first.sort : null;
+  const res = await api('POST', `/tables/${target.id}/query`, { fields: chip ? [chip.name] : [], ...(sort ? { sort } : {}), limit: 500 });
+  const rows = res.items.map((it) => ({ id: it.id, publicId: it.publicId, name: it.name, db: target.qualified ?? target.name, chip: chip ? it.raw?.[chip.name] ?? null : null }));
+  if (sort || !first?.order?.length) return rows;
+  const at = new Map(first.order.map((p, i) => [p, i]));
+  return rows.map((r, i) => ({ r, i })).sort((a, b) => (at.get(a.r.publicId) ?? Infinity) - (at.get(b.r.publicId) ?? Infinity) || a.i - b.i).map((x) => x.r);
+}
+async function readAndDrawList(db, dbId, search) {
+  const s = listSetup(db);
+  const where = filterWhere(db);
+  const sort = gridSort(db);
+  const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
+    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
+  const base = { fields: [...new Set(names)], relations: 'chip' };
+  const filtered = !!(where || search);
+  const [result, everyone, domains] = await Promise.all([
+    api('POST', `/tables/${db.id}/query`, { ...base, ...(where ? { where } : {}), ...(sort ? { sort } : {}), ...(search ? { search } : {}), trashCount: true, countAll: true }).then((r) => graftChips(db, r)),
+    filtered && (s.nest || !sort) ? api('POST', `/tables/${db.id}/query`, base).then((r) => graftChips(db, r).items) : null,
+    Promise.all(s.levels.map((l) => (l.f.type === 'relation' && l.f.targetDbId ? listTargetRows(l.f).catch(() => []) : null))),
+  ]);
+  if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
+  tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
+  setFilterTotal(db, result.total, result.all);
+  drawDatabase(db, result.items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort });
+}
+let listWrites = Promise.resolve();
+function listViewWrite(db, patch) {
+  listWrites = listWrites.catch(() => {}).then(() => api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, patch))
+    .then(() => loadSchema()).catch((err) => toast(err.message, true));
+  return listWrites;
+}
+function listLevelValue(level, item, from, to) {
+  const f = level.f;
+  if (f.type === 'checkbox' || f.type === 'toggle') return to.value === true || to.key === 'true';
+  if (f.type === 'date') return to.key === '' ? null : to.value;
+  if (f.type === 'relation' || f.type === 'multiselect') {
+    const cur = f.type === 'relation'
+      ? (Array.isArray(item?.fields?.[f.name]) ? item.fields[f.name] : item?.fields?.[f.name] ? [item.fields[f.name]] : []).map((x) => x.id)
+      : (item?.fields?.[f.name] ?? []);
+    const many = f.type === 'multiselect' || f.many;
+    if (!many) return to.key === '' ? [] : [to.value];
+    const kept = cur.filter((x) => x !== from?.value);
+    return to.key === '' ? kept : [...new Set([...kept, to.value])];
+  }
+  return to.key === '' ? null : to.value;
+}
+function listPathValues(s, path, item = null, from = null) {
+  const values = {};
+  const changed = from ? listCore.changedLevels(from, path) : path.map((_, i) => i);
+  for (const i of changed) {
+    const level = s.levels[i];
+    if (!level || !path[i]) continue;
+    if (!from && path[i].key === '') continue;
+    values[level.f.name] = listLevelValue(level, item, from?.[i], path[i]);
+  }
+  return values;
+}
+function renderList(main, db, items, ctx) {
+  const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
+  const v = db.view;
+  const parentOf = (it) => {
+    if (!s.nest) return null;
+    const p = it?.fields?.[s.nest.name];
+    return (Array.isArray(p) ? p[0] : p)?.id ?? null;
+  };
+  const rowOf = (it, extra = {}) => ({
+    id: it.id, keys: s.levels.map((l) => listKeys(l, it)), parent: parentOf(it),
+    done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, item: it, ...extra,
+  });
+  const rows = items.map((it) => rowOf(it));
+  const known = new Map((everyone ?? items).map((it) => [it.id, it]));
+  if (s.nest && everyone) {
+    const have = new Set(rows.map((r) => r.id));
+    for (const r of [...rows]) {
+      const seen = new Set();
+      for (let p = r.parent; p && !have.has(p) && !seen.has(p) && known.has(p); p = parentOf(known.get(p))) {
+        seen.add(p);
+        have.add(p);
+        rows.push(rowOf(known.get(p), { keys: r.keys, done: false, ghost: true }));
+      }
+    }
+  }
+  const byPid = new Map([...known.values(), ...items].map((it) => [it.publicId, it.id]));
+  const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
+  const levels = s.levels.map((l, i) => ({ order: l.order, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
+  const arranged = listCore.arrange(rows, { levels, completedBy: !!s.completedBy, nest: !!s.nest, manual, showEmpty: !filtered });
+  const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
+  const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
+  let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
+
+  const reload = async (focusId = null) => {
+    await keepScroll(() => showDatabase(db.id, db.view.id));
+    if (focusId) document.querySelector(`#main .list-row[data-eid="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });
+  };
+  const write = async (it, values, order = null, focusId = it?.id) => {
+    const release = gridHold();
+    try {
+      if (it && Object.keys(values).length) await api('PATCH', `/entities/${it.id}`, { values });
+      if (order) await listViewWrite(db, { order });
+      await reload(focusId);
+    } catch (err) { toast(err.message, true); } finally { release(); }
+  };
+  const fold = (sec, key) => {
+    collapsed = listCore.toggleCollapsed(collapsed, key);
+    const shut = listCore.isCollapsed(collapsed, key);
+    sec.classList.toggle('shut', shut);
+    sec.querySelector(':scope > .list-group-head .list-fold')?.setAttribute('aria-expanded', String(!shut));
+    v.collapsed = collapsed;
+    listViewWrite(db, { collapsed });
+  };
+  const headingEl = (depth, node) => {
+    const level = s.levels[depth];
+    const f = level?.f;
+    if (f && level.heading === 'chip' && node.value !== '' && f.type === 'relation') {
+      const summary = node.path[node.path.length - 1]?.summary ?? { id: node.value, name: node.label };
+      const chip = relationChipEl(f, summary);
+      const caret = chip.querySelector('.mention-caret');
+      if (caret) { chip.classList.add('open'); caret.setAttribute('aria-expanded', 'true'); }
+      return el('span', { class: 'list-group-chip' }, chip);
+    }
+    let hue = 'slate';
+    if (f?.type === 'select' || f?.type === 'multiselect') hue = (f.optionsFull ?? []).find((o) => o.name === node.label)?.hue || 'slate';
+    if (f?.type === 'workflow') { const st = f.states?.find((x) => x.name === node.label); if (st) hue = chipCore.stateHue(st, st.category); }
+    return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
+  };
+  const rowEls = (item, path) => {
+    const r = item.row;
+    const it = r.item;
+    const raw = s.chip ? it.raw?.[s.chip.name] : null;
+    const chipV = raw && typeof raw === 'object' ? raw : { id: it.id, publicId: it.publicId, name: it.name, link: false, state: null, fields: [] };
+    const segs = viewCore.viewSegments(chipV);
+    const box = s.completedBy && !r.ghost ? el('input', {
+      type: 'checkbox', class: 'form-check-input list-check', 'aria-label': `${s.completedBy.name}: ${it.name || `#${it.publicId}`}`,
+      ...(r.done ? { checked: '' } : {}),
+      onchange: (e) => write(it, { [s.completedBy.name]: e.target.checked }),
+    }) : (s.completedBy ? el('span', { class: 'list-check-gap', 'aria-hidden': 'true' }) : null);
+    const grip = el('button', {
+      class: 'list-grip', type: 'button', tabindex: '-1', 'aria-label': `Move ${it.name}`,
+      title: sorted ? 'Sorted: drag into another group, or sideways to nest' : 'Drag to reorder; sideways to nest',
+    }, lucideEl('grip-vertical'));
+    const line = el('div', {
+      class: 'list-row' + (r.ghost ? ' ghost' : '') + (r.done ? ' done' : ''), role: 'listitem',
+      tabindex: r.ghost ? '-1' : '0', dataset: { eid: it.id, depth: String(item.depth) }, style: `--depth:${item.depth}`,
+      ...(r.ghost ? { title: 'Shown for its matching sub-rows; the filter leaves it out' } : {}),
+    }, grip, box,
+      el('span', { class: 'list-chip' },
+        el('a', { class: 'list-title', href: `#/entity/${it.id}`, tabindex: '-1' }, viewCore.viewTitle(chipV) || `#${it.publicId}`),
+        segs.length ? el('span', { class: 'list-segs' }, ...segs.map(viewSegmentEl)) : null));
+    line.wvPath = path;
+    line.wvItem = item;
+    if (!r.ghost) grip.addEventListener('pointerdown', (e) => listDrag(e, line));
+    return [line, ...item.children.flatMap((c) => rowEls(c, path))];
+  };
+  const addEl = (path) => {
+    const where = path.map((p) => p.label).join(listCore.SEP);
+    const name = el('input', { class: 'form-control form-control-sm list-add-name', placeholder: `Add ${db.term.singular}`, 'aria-label': `Add ${db.term.singular}${where ? ` to ${where}` : ''}` });
+    const date = s.dateField ? el('input', { class: 'form-control form-control-sm list-add-date', placeholder: s.dateField.name, 'aria-label': `${s.dateField.name}: today, fri, oct 12` }) : null;
+    const form = el('form', { class: 'list-add', dataset: { key: where } }, lucideEl('plus'), name, date);
+    form.wvPath = path;
+    form.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      form.requestSubmit();
+    });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = name.value.trim();
+      if (!text) return;
+      const values = { ...filterSeed(db), ...listPathValues(s, path) };
+      if (date?.value.trim()) {
+        const day = parseNaturalDate(date.value);
+        if (!day) { toast(`“${date.value}” is not a date weave can read: try today, fri, oct 12 or 2026-10-12`, true); date.focus(); return; }
+        values[s.dateField.name] = day;
+      }
+      const release = gridHold();
+      try {
+        await api('POST', `/tables/${db.id}/entities`, { name: text, values });
+        await keepScroll(() => showDatabase(db.id, db.view.id));
+        document.querySelector(`#main .list-add[data-key="${CSS.escape(where)}"] .list-add-name`)?.focus({ preventScroll: true });
+      } catch (err) { toast(err.message, true); } finally { release(); }
+    });
+    return form;
+  };
+  const groupEl = (node, depth) => {
+    const shut = listCore.isCollapsed(collapsed, node.key);
+    const sec = el('section', { class: 'list-group' + (shut ? ' shut' : ''), dataset: { key: node.key, depth: String(depth) }, 'aria-label': node.key });
+    const body = node.groups
+      ? node.groups.map((g) => groupEl(g, depth + 1))
+      : [...node.items.flatMap((i) => rowEls(i, node.path)), addEl(node.path)];
+    sec.append(
+      el('div', { class: 'list-group-head', style: `--level:${depth}` },
+        el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
+        headingEl(depth, node),
+        el('span', { class: 'list-count' }, String(node.count))),
+      el('div', { class: 'list-group-body' }, ...body));
+    sec.wvPath = node.path;
+    sec.wvItems = node.items ?? null;
+    return sec;
+  };
+  const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
+  if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
+  else { list.append(...arranged.items.flatMap((i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
+  if (arranged.completed?.count) {
+    const c = arranged.completed;
+    const shut = listCore.isCollapsed(collapsed, c.key);
+    const sec = el('section', { class: 'list-group list-completed' + (shut ? ' shut' : ''), dataset: { key: c.key, depth: '0' }, 'aria-label': c.key });
+    sec.append(
+      el('div', { class: 'list-group-head', style: '--level:0' },
+        el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${c.key}`, onclick: () => fold(sec, c.key) }, lucideEl('chevron-right')),
+        el('span', { class: 'list-group-label' }, c.label),
+        el('span', { class: 'list-count' }, String(c.count))),
+      el('div', { class: 'list-group-body' }, ...c.items.flatMap((i) => rowEls(i, null))));
+    sec.wvItems = c.items;
+    list.append(sec);
+  }
+  const footer = el('div', { class: 'list-footer', role: 'status', 'aria-live': 'polite' },
+    listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term }));
+  const wrap = el('div', { class: 'card list-wrap', dataset: { density: gridDensity(db), layout: 'list' } }, list, footer);
+  wrap.wvSetDensity = (mode) => { wrap.dataset.density = mode; saveGridDensity(db, mode); };
+  main.append(wrap);
+
+  const siblingsOf = (line) => {
+    const holder = line.closest('.list-group') ?? list;
+    return listCore.locate(holder.wvItems ?? [], line.dataset.eid);
+  };
+  const renest = (line, parentId) => {
+    const item = line.wvItem.row.item;
+    const order = sorted ? null : parentId ? listCore.moveInOrder(effective(), item.id, parentId, true) : null;
+    return write(item, { [s.nest.name]: parentId ? [parentId] : [] }, order);
+  };
+  list.addEventListener('keydown', (e) => {
+    const line = e.target.closest?.('.list-row');
+    if (!line || e.target !== line) return;
+    const visible = () => [...list.querySelectorAll('.list-row[tabindex="0"]')].filter((x) => x.offsetParent);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const all = visible();
+      const at = all.indexOf(line);
+      if (e.altKey && !sorted) {
+        const hit = siblingsOf(line);
+        const to = hit?.siblings[hit.index + (e.key === 'ArrowUp' ? -1 : 1)];
+        if (to) write(line.wvItem.row.item, {}, listCore.moveInOrder(effective(), line.dataset.eid, to.row.id, e.key === 'ArrowDown'));
+        return;
+      }
+      all[at + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      openEntity(line.dataset.eid);
+    } else if (e.key === ' ' && s.completedBy) {
+      e.preventDefault();
+      line.querySelector('.list-check')?.click();
+    } else if (e.key === 'Tab' && s.nest) {
+      const hit = siblingsOf(line);
+      if (!hit) return;
+      if (!e.shiftKey && hit.index > 0) { e.preventDefault(); renest(line, hit.siblings[hit.index - 1].row.id); }
+      if (e.shiftKey && hit.parent) {
+        e.preventDefault();
+        const up = hit.parent.row.parent && known.has(hit.parent.row.parent) ? hit.parent.row.parent : null;
+        renest(line, up);
+      }
+    }
+  });
+
+  function listDrag(down, line) {
+    if (down.button !== 0) return;
+    const inside = (row) => line.wvItem.children.some(function walk(c) { return c.row.id === row.dataset.eid || c.children.some(walk); });
+    const depth0 = line.style.getPropertyValue('--depth');
+    const modeOf = (p, start) => {
+      const dx = p.x - start.x;
+      return s.nest && dx > 40 ? 'nest' : s.nest && dx < -40 ? 'unnest' : 'move';
+    };
+    const resolve = ({ node, before, point, start }) => {
+      const mode = modeOf(point, start);
+      const target = node.classList.contains('list-row') ? node : null;
+      const sec = node.closest('.list-group:not(.list-completed)');
+      if (!target && !sec) return null;
+      let above = target?.previousElementSibling;
+      while (above && (above === line || inside(above) || !above.classList.contains('list-row'))) above = above.previousElementSibling;
+      return { target, sec, after: target ? !before : true, mode, above };
+    };
+    RO().guard(down.currentTarget);
+    RO().sortable(down, {
+      source: line,
+      items: () => [...list.querySelectorAll('.list-row, .list-add')],
+      members: () => [line, ...[...list.querySelectorAll('.list-row')].filter((r) => r !== line && inside(r))],
+      tail: (n) => n.classList.contains('list-add'),
+      zone: () => list,
+      onPlace: (placed) => {
+        const mode = modeOf(placed.point, placed.start);
+        const base = Number(placed.node.dataset.depth ?? 0);
+        line.style.setProperty('--depth', String(Math.max(0, base + (mode === 'nest' ? 1 : mode === 'unnest' ? -1 : 0))));
+      },
+      onCancel: () => line.style.setProperty('--depth', depth0),
+      onDrop: (placed) => {
+        const drop = resolve(placed);
+        if (drop) commit(drop);
+      },
+    });
+    const commit = ({ target, sec, after, mode, above }) => {
+      const item = line.wvItem.row.item;
+      const from = line.wvPath;
+      const to = target?.wvPath ?? sec?.wvPath ?? [];
+      const values = from ? listPathValues(s, to, item, from) : listPathValues(s, to, item, to.map(() => ({ key: null })));
+      if (!from && s.completedBy) values[s.completedBy.name] = false;
+      let order = null;
+      if (s.nest) {
+        const own = line.wvItem.row.parent;
+        let parent = own;
+        if (mode === 'nest' && target) {
+          const anchor = after ? target : above;
+          parent = anchor && anchor !== line ? anchor.dataset.eid : own;
+        } else if (mode === 'unnest') {
+          parent = own && known.has(own) ? parentOf(known.get(own)) : null;
+        } else if (target) parent = target.wvItem.row.parent && target.wvItem.row.parent !== item.id ? target.wvItem.row.parent : null;
+        if (parent !== own) values[s.nest.name] = parent ? [parent] : [];
+      }
+      if (!sorted && target) order = listCore.moveInOrder(effective(), item.id, target.dataset.eid, after);
+      if (!Object.keys(values).length && !order) return;
+      write(item, values, order);
+    };
+  }
+}
+function groupFieldOptions(db, { dates = true } = {}) {
+  return db.fields.filter((f) => listCore.groupable(f) && (dates || f.type !== 'date'))
+    .map((f) => ({ id: f.name, label: f.name, hint: f.type === 'relation' ? 'link' : f.type }));
+}
+const LEVEL_ORDERS = { option: 'Option order', table: 'Table order', az: 'A to Z' };
+function groupPopoverRows(db, close, save) {
+  const v = db.view ?? {};
+  const levels = (v.group ?? []).map((l) => ({ ...l }));
+  const fieldOf = (n) => db.fields.find((f) => f.name === n);
+  const options = groupFieldOptions(db);
+  const writeLevels = (next) => save({ group: next });
+  const box = el('div', { class: 'group-levels' });
+  levels.forEach((l, i) => {
+    const f = fieldOf(l.field);
+    const d = { ...listCore.levelDefaults(f?.type), ...l };
+    const put = (patch) => { const next = levels.map((x) => ({ ...x })); next[i] = { ...next[i], ...patch }; writeLevels(next); };
+    const fieldSel = pickerSelect({ name: `group-${i}`, title: `Level ${i + 1}`, value: l.field,
+      options: options.filter((o) => o.id === l.field || !levels.some((x) => x.field === o.id)) });
+    fieldSel.classList.add('group-field');
+    fieldSel.input.addEventListener('change', () => { const next = levels.map((x) => ({ ...x })); next[i] = { field: fieldSel.input.value }; writeLevels(next); });
+    const heading = f?.type === 'relation'
+      ? segCtl([{ id: 'label', label: 'Label' }, { id: 'chip', label: 'Chip', title: "The linked row's Chip heads the group" }], d.heading, (h) => put({ heading: h }))
+      : null;
+    heading?.classList.add('group-heading');
+    let orderSel = null;
+    if (f && f.type !== 'date') {
+      orderSel = pickerSelect({ name: `order-${i}`, title: 'Group order', value: d.order,
+        options: (f.type === 'relation' ? ['table', 'az'] : ['option', 'az']).map((id) => ({ id, label: LEVEL_ORDERS[id] })) });
+      orderSel.classList.add('group-order');
+      orderSel.input.addEventListener('change', () => put({ order: orderSel.input.value }));
+    }
+    let grainSel = null;
+    if (f?.type === 'date') {
+      grainSel = pickerSelect({ name: `grain-${i}`, title: 'Grain', value: d.grain, options: listCore.GRAINS.map((g) => ({ id: g, label: `By ${g}` })) });
+      grainSel.classList.add('group-grain');
+      grainSel.input.addEventListener('change', () => put({ grain: grainSel.input.value }));
+    }
+    const grip = el('button', { class: 'view-grip group-grip', type: 'button', 'aria-label': `Reorder ${l.field}`, title: 'Drag to reorder levels' }, lucideEl('grip-vertical'));
+    const row = el('div', { class: 'group-level', dataset: { level: l.field } },
+      grip, el('span', { class: 'group-level-n' }, String(i + 1)), fieldSel, heading, orderSel, grainSel,
+      el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary group-remove', type: 'button', 'aria-label': `Remove ${l.field}`, title: 'Remove level',
+        onclick: () => writeLevels(levels.filter((_, k) => k !== i)) }, lucideEl('x')));
+    RO().guard(grip);
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      startRowDrag(box, row, e, (target, after) => {
+        const rest = levels.filter((x) => x.field !== l.field);
+        const at = rest.findIndex((x) => x.field === target);
+        if (target === l.field || at < 0) return;
+        rest.splice(at + (after ? 1 : 0), 0, l);
+        writeLevels(rest);
+      }, { rows: '.group-level', key: (r) => r.dataset.level });
+    });
+    box.append(row);
+  });
+  const left = options.filter((o) => !levels.some((x) => x.field === o.id));
+  const add = el('button', { class: 'chip-pop-row group-add', type: 'button', ...(levels.length >= listCore.GROUP_CAP || !left.length ? { disabled: '' } : {}) },
+    lucideEl('plus'), levels.length ? 'Add level' : 'Group by…');
+  add.addEventListener('click', (e) => {
+    e.stopPropagation();
+    searchPicker({ anchor: add, title: 'Group by', options: left, onPick: (o) => writeLevels([...levels, { field: o.id }]) });
+  });
+  const pick = (name, label, value, fields) => {
+    const sel = pickerSelect({ name, title: label, value: value ?? '', placeholder: 'None',
+      options: [{ id: '', label: 'None' }, ...fields.map((f) => ({ id: f.name, label: f.name }))] });
+    sel.classList.add(`group-${name}`);
+    return sel;
+  };
+  const doneSel = pick('completed', 'Completed by', v.completedBy, db.fields.filter((f) => f.type === 'checkbox' || f.type === 'toggle'));
+  doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
+  const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
+  nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
+  const list = v.layout === 'list';
+  return [
+    tableControlHeader('Group', close),
+    box, add,
+    el('hr'),
+    el('div', { class: 'eye-head' }, 'Rows'),
+    el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel),
+    el('label', { class: 'group-pref' }, el('span', {}, 'Nest by'), nestSel),
+    list ? el('p', { class: 'table-control-note' }, 'Saved in this view. A sort orders rows inside each group; with no sort, drag sets the order.')
+      : el('p', { class: 'table-control-note group-table-note' }, 'Table layout keeps these and ignores them for now. ',
+        el('button', { class: 'btn btn-sm btn-ghost-primary tiny group-show-list', type: 'button', onclick: () => save({ layout: 'list' }) }, 'Show as list')),
+  ];
+}
+function tableGroupButton(ref) {
+  const btn = tableControlButton('table-group-btn', 'Group', 'layers');
+  btn.label = () => {
+    const names = (ref.db.view?.group ?? []).map((l) => l.field);
+    const text = names.length ? `Group: ${names.join(listCore.SEP)}` : 'Group';
+    if (btn.querySelector('.table-control-label').textContent !== text) btn.querySelector('.table-control-label').textContent = text;
+    btn.setAttribute('aria-label', text);
+    btn.hidden = !isListLayout(ref.db);
+  };
+  btn.label();
+  btn.addEventListener('click', () => {
+    let pop;
+    const save = async (patch) => {
+      const db = ref.db;
+      const release = gridHold();
+      try {
+        if (await gridConfigWrite(db, null, patch)) await showDatabase(db.id, db.view?.id);
+      } catch (err) { toast(err.message, true); } finally { release(); }
+    };
+    const rows = (db) => groupPopoverRows(db, () => pop?.remove(), save);
+    pop = tableControlPopover(btn, ref.db, 'table-group-popover', rows(ref.db));
+    if (pop) pop.refresh = (db) => { pop.replaceChildren(...rows(db)); pop.reposition?.(); };
+  });
+  return btn;
 }
 
 function eyeGlyph() {
@@ -4226,19 +5048,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     options: relations().map((f) => ({ id: f.name, label: f.name, hint: f.targetDbs ? f.targetDbs.join(', ') : f.targetDb })),
     onPick: (o) => onPick(relations().find((f) => f.name === o.id)),
   });
-  const targetsOf = (f) => (f.targetDbIds ?? [f.targetDbId]).map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean);
-  const linkTo = (anchor) => relationPicker(anchor, `Link ${nRows()} to…`, async (f) => {
-    const targets = targetsOf(f);
-    const lists = await Promise.all(targets.map((t) => api('POST', `/tables/${t.id}/query`, { select: ['Name'] })));
-    picker(anchor, {
-      title: f.name, placeholder: `Search ${termOfTable(f.targetDbId).plural}…`,
-      options: targets.flatMap((t, i) => lists[i].items.map((o) => ({
-        id: o.id, label: o.name || '(unnamed)',
-        hint: f.targetDbIds ? `${t.qualified} · #${o.publicId}` : `#${o.publicId}`,
-      }))),
-      onPick: (o) => runBulk('Linked', 'link', { field: f.name, targets: [o.id] }),
-    });
-  });
+  const linkTo = (anchor) => relationPicker(anchor, `Link ${nRows()} to…`, (f) => linkSearch(f, {
+    commit: (add) => runBulk('Linked', 'link', { field: f.name, targets: add }),
+  }));
 
   const MORE_CMDS = {
     move: (anchor) => picker(anchor, {
@@ -4326,13 +5138,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         el('a', {
           class: 'open-link',
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
-          title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
-          onclick: (e) => {
-            if (nativeClick(e) || registryHref(db, item)) return;
-            e.preventDefault();
-            dockEntity(db, item.id);
-          },
-        }, `#${item.publicId} ↗`))),
+          title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : keyHint(`Open ${db.term.singular} beside the table — ⌘-click for a new tab`),
+        }, `#${item.publicId} ↗`),
+        el('span', { class: 'list-name' }, item.name ?? ''))),
       ...cols.map((c) => {
         if (isSysCol(c)) return sysCell(c, item);
         const f = db.fields.find((x) => x.name === c);
@@ -4372,6 +5180,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let lead = 0;
   let pidWidth = 0;
   let grabbed = null;
+  let colShift = null;
   const nudgeTimers = new Map();
   const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 160, 'Modified By': 160, Activity: 88 };
   const canFreezeHere = () => !!db.view && !db.view.blank;
@@ -4432,7 +5241,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       out.push(`${cell(k)}{border-right:1px solid transparent}`,
         `.table-wrap.wv-scrolled-x ${cell(k)}{border-right-color:var(--tblr-border-color)}`);
     }
-    if (grabbed && cols.includes(grabbed)) out.push(`${cell(at + cols.indexOf(grabbed) + 1)}{opacity:.4}`);
+    if (grabbed && cols.includes(grabbed)) out.push(`${cell(at + cols.indexOf(grabbed) + 1)}{opacity:var(--wv-source-opacity)}`);
+    if (colShift) cols.forEach((c, i) => { if (colShift.get(c)) out.push(`${cell(at + i + 1)}{translate:${colShift.get(c)}px 0}`); });
     return out.join('\n');
   };
   const paintLayout = () => {
@@ -4442,8 +5252,18 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const css = layoutCss();
     if (layoutSheet.textContent !== css) layoutSheet.textContent = css;
   };
+  const sizePidColumn = () => {
+    const cell = listRows() ? table.querySelector('tbody tr.entity-row > td.pid-cell > .wv-cb') : null;
+    if (!cell) return table.style.removeProperty('--wv-pid-w');
+    const top = ordered().reduce((n, x) => Math.max(n, x?.publicId ?? 0), db.maxPublicId ?? 0);
+    const probe = el('a', { class: 'open-link pid-probe', 'aria-hidden': 'true' }, `#${'0'.repeat(String(top).length)} ↗`);
+    cell.append(probe);
+    table.style.setProperty('--wv-pid-w', `${Math.ceil(probe.getBoundingClientRect().width)}px`);
+    probe.remove();
+  };
   const settle = () => {
     if (!table?.isConnected) return;
+    sizePidColumn();
     const head = table.tHead.rows[0];
     for (const th of head.querySelectorAll('th.col-head, th.sys-head')) {
       const label = th.querySelector('.col-label');
@@ -4461,7 +5281,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const input = td?.querySelector('input.date-text');
       if (!input) continue;
       const was = input.value;
-      input.value = weaveDateCore.formatDate(f.time ? '2026-09-30T23:45' : '2026-09-30', { ...f, viewerZone: LOCAL_ZONE });
+      const view = { ...f, viewerZone: LOCAL_ZONE };
+      const samples = [...Array.from({ length: 12 }, (_, m) => `2026-${String(m + 1).padStart(2, '0')}-28`), '2026-09-30']
+        .flatMap((d) => (f.time ? ['10:48', '22:48', '23:45'].map((t) => `${d}T${t}`) : [d]))
+        .map((d) => weaveDateCore.formatDate(d, view));
+      input.value = samples.reduce((a, b) => (textWidth(b, input) > textWidth(a, input) ? b : a));
       const probe = cellFitProbe(td);
       input.value = was;
       const measure = el('div', { class: 'wv-measure' }, probe);
@@ -4517,7 +5341,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
     for (const c of cols) {
       const f = colField(db, c);
-      if (f?.type !== 'rating') continue;
+      if (!f || !CR.ratingIcons(f)) continue;
       const td = table.querySelector(`:scope > tbody > tr.entity-row > td[data-field="${CSS.escape(c)}"]`);
       if (!td) continue;
       const cs = getComputedStyle(td);
@@ -4592,10 +5416,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     setTimeout(() => { for (const [cell] of moving) cell.style.transition = ''; }, 240);
   };
 
-  const applyOrder = async (next, shownFrozen, moved) => {
+  const applyOrder = async (next, shownFrozen, moved, seen = null) => {
     const at = leadCount();
     const nextFrozen = Math.min(next.length, Math.max(0, storedFrozen() + shownFrozen - frozenShown));
-    const before = new Map(cols.map((c) => [c, headOf(c)?.getBoundingClientRect().left ?? 0]));
+    const before = seen ?? new Map(cols.map((c) => [c, headOf(c)?.getBoundingClientRect().left ?? 0]));
     const prev = cols;
     const prevFrozen = storedFrozen();
     const reordered = next.some((c, i) => c !== prev[i]);
@@ -4645,106 +5469,115 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
   };
 
-  const columnDrag = (c) => {
-    const head = table.tHead.rows[0];
-    const pidHead = head.querySelector('th.pid-head');
+  const columnDrag = (c, th, grip) => {
+    const R = RO();
+    const pidHead = table.tHead.rows[0].querySelector('th.pid-head');
     const order = [...cols];
     const fz = frozenShown;
-    const ghost = el('div', { class: 'wv-col-ghost', 'aria-hidden': 'true' }, c);
+    const from = order.indexOf(c);
+    const lift = R.liftOf(th, { host: wrap, make: (h) => el('div', { class: 'wv-col-lift' }, h.querySelector('.col-label')?.cloneNode(true) ?? c) });
     const tag = el('span', { class: 'wv-col-insert-tag', hidden: '' });
-    const line = el('div', { class: 'wv-col-insert', hidden: '' }, tag);
-    document.body.append(ghost);
-    wrap.append(line);
+    const slot = el('div', { class: 'wv-reorder-slot wv-col-slot', 'aria-hidden': 'true' }, tag);
+    wrap.append(slot);
     document.body.classList.add('wv-col-dragging');
+    table.classList.add('wv-col-sliding', 'wv-reorder-host');
     grabbed = c;
+    colShift = new Map();
     paintLayout();
-    let plan = null, px = 0, raf = 0;
-    const boxes = () => order.map((n) => {
-      const r = headOf(n).getBoundingClientRect();
-      return { name: n, left: r.left, right: r.right };
-    });
+    const sl0 = wrap.scrollLeft;
+    const start = order.map((n) => { const r = headOf(n).getBoundingClientRect(); return { name: n, left: r.left, right: r.right, width: r.width }; });
+    const widths = start.map((b) => b.width);
+    const boxes = () => {
+      const dx = wrap.scrollLeft - sl0;
+      return start.map((b, i) => (i < fz ? { ...b } : { ...b, left: b.left - dx, right: b.right - dx }));
+    };
     const leadRight = () => pidHead?.getBoundingClientRect().right ?? wrap.getBoundingClientRect().left;
+    const seam = () => (fz ? start[fz - 1].right : leadRight());
+    let plan = null, px = 0, py = 0, gapX = start[from].left;
     const aim = () => {
       const b = boxes();
-      const seam = fz ? b[fz - 1].right : leadRight();
-      const mine = order.indexOf(c) < fz;
+      const mine = from < fz;
       const capOk = canFreezeHere() && (mine || CR.canFreeze({ lead, widths: order.slice(0, fz).map(widthOf), add: widthOf(c), viewport: wrap.clientWidth }));
-      const t = CR.target({ cols: b, frozen: fz, lead: leadRight(), seam, x: px, dragged: c, capOk });
+      const t = CR.target({ cols: b, frozen: fz, lead: leadRight(), seam: seam(), x: px, dragged: c, capOk });
       plan = CR.plan({ order, frozen: fz, dragged: c, gap: t.gap, side: t.side });
-      line.hidden = plan.noop;
-      if (plan.noop) return;
+      const to = plan.order.indexOf(c);
+      const shift = R.columnShift({ widths, from, to });
+      gapX = R.gapStart({ lefts: b.map((x) => x.left), widths, from, to });
+      colShift = new Map(order.map((n, i) => [n, i === from ? gapX - b[from].left : shift[i]]));
+      paintLayout();
       const wr = wrap.getBoundingClientRect();
-      line.style.left = `${t.x - wr.left - wrap.clientLeft + wrap.scrollLeft}px`;
-      line.style.top = `${table.offsetTop}px`;
-      line.style.height = `${table.offsetHeight}px`;
+      slot.style.left = `${gapX - wr.left - wrap.clientLeft + wrap.scrollLeft}px`;
+      slot.style.top = `${table.offsetTop}px`;
+      slot.style.width = `${widths[from]}px`;
+      slot.style.height = `${table.offsetHeight}px`;
       tag.hidden = !plan.tag;
       tag.textContent = plan.tag ?? '';
     };
-    const EDGE = 48;
-    const tick = () => {
-      raf = 0;
-      if (wrap.scrollWidth <= wrap.clientWidth + 1) return;
-      const wr = wrap.getBoundingClientRect();
-      const lo = fz ? boxes()[fz - 1].right : leadRight();
-      let dx = 0;
-      if (px > wr.right - EDGE) dx = Math.ceil((px - (wr.right - EDGE)) / 3);
-      else if (px >= lo && px < lo + EDGE) dx = -Math.ceil((lo + EDGE - px) / 3);
-      if (!dx) return;
-      const was = wrap.scrollLeft;
-      wrap.scrollLeft += dx;
-      if (wrap.scrollLeft === was) return;
-      aim();
-      raf = requestAnimationFrame(tick);
+    const auto = R.autoScroll({ scroller: wrap, axis: 'x', point: () => ({ x: px, y: py }), onScroll: aim, bounds: (r) => [Math.max(r.left, seam()), r.right] });
+    const outside = (p) => {
+      const r = wrap.getBoundingClientRect();
+      return p.y < r.top - 48 || p.y > r.bottom + 48;
+    };
+    const unslide = () => {
+      colShift = null;
+      paintLayout();
+      setTimeout(() => table.classList.remove('wv-col-sliding'), 240);
     };
     return {
       update(x, y) {
-        px = x;
-        ghost.style.transform = `translate(${Math.round(x + 12)}px, ${Math.round(y + 14)}px)`;
+        px = x; py = y;
+        lift.follow(x - grip.x, 0);
         aim();
-        if (!raf) raf = requestAnimationFrame(tick);
+        auto.kick();
       },
-      finish(drop) {
-        cancelAnimationFrame(raf);
-        ghost.remove(); line.remove();
+      finish(drop, p) {
+        auto.stop();
         document.body.classList.remove('wv-col-dragging');
-        grabbed = null;
-        paintLayout();
-        if (drop && plan && !plan.noop) applyOrder(plan.order, plan.frozen, c);
+        table.classList.remove('wv-reorder-host');
+        const home = !drop || !plan || plan.noop || (p && outside(p));
+        const done = () => { slot.remove(); grabbed = null; paintLayout(); };
+        if (home) {
+          unslide();
+          lift.settle({ left: start[from].left - (wrap.scrollLeft - sl0) * (from < fz ? 0 : 1), top: th.getBoundingClientRect().top }).then(done);
+          if (R.reduced()) done();
+          return;
+        }
+        const seen = new Map(cols.map((n) => [n, headOf(n)?.getBoundingClientRect().left ?? 0]));
+        table.classList.remove('wv-col-sliding');
+        colShift = null;
+        applyOrder(plan.order, plan.frozen, c, seen);
+        const landed = headOf(c)?.getBoundingClientRect();
+        lift.settle(landed ? { left: landed.left, top: landed.top } : null).then(done);
+        if (R.reduced()) done();
       },
     };
   };
   const headPointerDown = (e, c) => {
     if (e.button !== 0 || e.target.closest('.field-menu, .col-resize')) return;
     const th = e.currentTarget;
-    const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+    RO().guard(th);
     let drag = null;
-    const move = (ev) => {
-      if (ev.pointerId !== id) return;
-      if (!drag) {
-        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
-        if (blocked()) return end(false);
-        try { th.setPointerCapture(id); } catch {}
-        drag = columnDrag(c);
-      }
-      clearSelection();
-      drag.update(ev.clientX, ev.clientY);
-    };
-    const end = (drop) => {
-      document.removeEventListener('pointermove', move, true);
-      document.removeEventListener('pointerup', up, true);
-      document.removeEventListener('pointercancel', cancel, true);
+    const end = (drop, p) => {
       if (!drag) return;
       th.dataset.gesture = '1';
       document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true });
       const d = drag;
       drag = null;
-      d.finish(drop);
+      d.finish(drop, p);
     };
-    const up = (ev) => { if (ev.pointerId === id) end(true); };
-    const cancel = (ev) => { if (ev.pointerId === id) end(false); };
-    document.addEventListener('pointermove', move, true);
-    document.addEventListener('pointerup', up, true);
-    document.addEventListener('pointercancel', cancel, true);
+    RO().press(e, {
+      keepDefault: true,
+      canLift: () => !blocked(),
+      lift: (p, at) => {
+        try { th.setPointerCapture(e.pointerId); } catch {}
+        clearSelection();
+        drag = columnDrag(c, th, at);
+        drag.update(p.x, p.y);
+      },
+      move: (p) => { clearSelection(); drag?.update(p.x, p.y); },
+      drop: (p) => end(true, p),
+      cancel: () => end(false),
+    });
   };
   const headKey = (e, c) => {
     const th = e.currentTarget;
@@ -4770,12 +5603,14 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     nudgeTimers.set(c, setTimeout(() => { nudgeTimers.delete(c); commitWidth(c, w); }, 350));
   };
   const tokenH = {};
+  const listRows = () => dockCoversScreen.matches && wrap.parentElement === main && main.id === 'main';
   const rowH = () => {
     const d = gridDensity(db);
-    if (!tokenH[d] && table?.isConnected && table.dataset.density === d) {
-      tokenH[d] = parseFloat(getComputedStyle(table).getPropertyValue('--wv-row-h')) || 0;
+    const key = listRows() ? `${d}:list` : d;
+    if (!tokenH[key] && table?.isConnected && table.dataset.density === d) {
+      tokenH[key] = parseFloat(getComputedStyle(table).getPropertyValue('--wv-row-h')) || 0;
     }
-    return tokenH[d] || GW().ROW_H[d];
+    return tokenH[key] || (listRows() ? PHONE_ROW_H[d] : GW().ROW_H[d]);
   };
   const spacer = () => el('tr', { class: 'wv-spacer', 'aria-hidden': 'true' },
     el('td', { colspan: String(colCount) }));
@@ -4876,6 +5711,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
     for (const td of tr.querySelectorAll(':scope > td.sys-cell')) td.replaceChildren(cellBox(sysValue(td.dataset.sys, item)));
+    const listName = tr.querySelector(':scope > td.pid-cell .list-name');
+    if (listName && listName.textContent !== (item.name ?? '')) listName.textContent = item.name ?? '';
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
   const patchRows = async (fresh) => {
@@ -4997,7 +5834,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         onkeydown: (e) => headKey(e, n),
       } : {}),
     },
-      el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·'), sortMark(n)),
+      el('span', { class: 'col-label' }, n, el('span', { class: 'field-mark' }, '·'), sortMark(n)),
       systemMenu(n, n),
       movable ? columnResizeGrip(db, { name: n, type: 'date' }, grid) : null);
 
@@ -5030,7 +5867,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           onkeydown: (e) => headKey(e, c),
         },
           el('span', { class: 'col-label' },
-            fieldNameLabel(colField(db, c), c),
+            fieldNameLabel(colField(db, c), c, db),
             sortMark(c)),
           fieldMenuButton(db, colField(db, c), {
             sorted: sortKey === c ? sortDir : 0,
@@ -5105,7 +5942,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         td.focus();
         return true;
       }
-      case 'open': dockEntity(db, eid); return true;
+      case 'open': dockEntity(db, eid, { step: true }); return true;
       case 'newRow': {
         if (at !== td) at.blur();
         onAdd?.();
@@ -5367,6 +6204,32 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('mouseleave', dropCellPop);
   wrap.addEventListener('mousedown', dropCellPop, true);
   wrap.addEventListener('focusin', dropCellPop);
+  const listRow = (e) => (listRows() && !nativeClick(e) ? e.target?.closest?.('tbody tr.entity-row') : null);
+  let press = null;
+  wrap.addEventListener('pointerdown', (e) => {
+    press = listRows() && e.pointerType !== 'mouse' ? { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId, tap: false } : null;
+  }, true);
+  wrap.addEventListener('pointerup', (e) => {
+    if (!press || e.pointerId !== press.id) return;
+    press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= TAP_SLOP && e.timeStamp - press.t <= TAP_MS;
+  }, true);
+  wrap.addEventListener('pointercancel', () => { press = null; }, true);
+  wrap.addEventListener('mousedown', (e) => {
+    if (!listRow(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  wrap.addEventListener('click', (e) => {
+    const tr = listRow(e);
+    if (!tr) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const touched = press;
+    press = null;
+    if (touched && !touched.tap) return;
+    if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
+    else openEntity(tr.dataset.eid);
+  }, true);
   main.append(wrap);
   settle();
   document.fonts?.ready?.then(() => { if (wrap.isConnected) settle(); });
@@ -5374,6 +6237,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   rewindow();
 }
 
+
+const TAP_SLOP = 10;
+const TAP_MS = 300;
 
 const SYSTEM_COLS = {
   'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
@@ -5408,13 +6274,14 @@ function actorChipEl(actor, { link = true } = {}) {
 function commentAuthorEl(author) {
   if (/^workflow:/.test(author ?? '')) return actorChipEl(author);
   if (author === 'automation') return el('span', { class: 'k k-actor-wf is-inline' }, iconEl('lucide:workflow', 'wv-icon wv-icon-xs'), el('span', { class: 'k-label' }, 'Automation'));
+  if (weaveActor.parseActor(author).via) return actorChipEl(author, { link: false });
   return author;
 }
 function commentAuthorText(author) {
   const a = weaveActor.parseActor(author);
   if (a.kind === 'workflow') return workflowRow(a.workflowId).name ?? 'an automation';
   if (author === 'automation') return 'an automation';
-  return author ?? 'someone';
+  return author ? weaveActor.actorText(author) : 'someone';
 }
 
 const workflowRows = new Map();
@@ -5955,8 +6822,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
     body.replaceChildren();
     if (view === 'days') {
       body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, `${dc.MONTHS_LONG[m - 1]} ▾`),
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, `${y} ▾`) : el('span'),
+        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, dc.MONTHS_LONG[m - 1], lucideEl('chevron-down', 'wv-icon wv-icon-xs')),
+        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, String(y), lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span'),
         el('span', { class: 'date-pop-spacer' }),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '↑'),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '↓')));
@@ -5997,7 +6864,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
         } }, 'Now')));
     } else if (view === 'months') {
       body.append(el('div', { class: 'date-pop-head' },
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, `${y}${hasD ? '' : ' ▾'}`) : el('span', { class: 'date-pop-title' }, 'Month'),
+        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, String(y), hasD ? null : lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span', { class: 'date-pop-title' }, 'Month'),
         el('span', { class: 'date-pop-spacer' }),
         ...(hasY ? [
           el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
@@ -6043,14 +6910,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
   pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (!pop.isConnected) return;
-    pop.remove();
-    if (anchor.contains(ev.target)) ev.stopPropagation();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => anchor.contains(t), close: () => pop.remove() });
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
   smarts[0].querySelector('.date-smart').focus();
   return pop;
@@ -6124,15 +6984,16 @@ function segCtl(options, value, onPick) {
   return wrap;
 }
 
-function huePopover(anchor, current, onPick) {
+function huePopover(anchor, current, onPick, { reset = null, note = 'Stored as a name. A new option takes the next hue in ramp order.' } = {}) {
   const grid = el('div', { class: 'swatch-grid' },
     ...chipCore.HUES.map((h) => el('button', {
       type: 'button', class: `sw hue-${h}${h === 'slate' ? ' neutral' : ''}${h === current ? ' sel' : ''}`,
       title: h === 'slate' ? 'no colour' : h, 'aria-label': h,
       onclick: () => onPick(h),
     })));
-  showPopover(anchor, [grid, el('p', { class: 'pick-note' },
-    'Stored as a name. A new option takes the next hue in ramp order.')]);
+  showPopover(anchor, [grid,
+    reset ? el('button', { type: 'button', class: 'pick-reset', onclick: () => onPick(null) }, reset) : null,
+    el('p', { class: 'pick-note' }, note)].filter(Boolean));
 }
 function glyphPopover(anchor, current, onPick) {
   searchPicker({
@@ -6154,7 +7015,7 @@ function optionPreview(o) {
 }
 function statePreview(st) {
   const cat = chipCore.categoryOrDefault(st.category ?? 'in-progress');
-  return previewChip(`k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`, st, 'State');
+  return previewChip(`k k-state cat-${cat} hue-${chipCore.stateHue(st, cat)}`, st, 'State');
 }
 
 function termSection(state, onChange) {
@@ -6194,6 +7055,22 @@ function termSection(state, onChange) {
     preview);
 }
 
+function optRowGrip(wrap, list, i, commit) {
+  const grip = RO().guard(el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')));
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const row = grip.closest('.opt-row');
+    RO().sortable(e, {
+      source: row,
+      items: () => [...wrap.querySelectorAll(':scope > .opt-row')],
+      zone: () => wrap,
+      lock: true,
+      onDrop: () => commit(fieldDialogCore.moveItem(list(), i, [...wrap.querySelectorAll(':scope > .opt-row')].filter((n) => !RO().lifting(n)).indexOf(row))),
+    });
+  });
+  return grip;
+}
+
 function optionListEditor(state, onChange) {
   const wrap = el('div', { class: 'opt-list' });
   const draw = () => {
@@ -6202,6 +7079,7 @@ function optionListEditor(state, onChange) {
         const hue = o.hue ?? chipCore.hueFromHex(o.color);
         const preview = optionPreview({ ...o, hue });
         return el('div', { class: 'opt-row' },
+          optRowGrip(wrap, () => state.options, i, (next) => { state.options = next; draw(); onChange(); }),
           iconButton(o.icon || null, (id) => { o.icon = id ?? ''; draw(); onChange(); }),
           el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; preview.rename(o.name); onChange(); } }),
           (() => {
@@ -6233,7 +7111,7 @@ function choiceDefaultControl(state, t) {
   const chipCls = (x) => {
     if (t !== 'workflow') return `k k-select hue-${x.hue ?? chipCore.hueFromHex(x.color)}`;
     const cat = chipCore.categoryOrDefault(x.category ?? 'in-progress');
-    return `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`;
+    return `k k-state cat-${cat} hue-${chipCore.stateHue(x, cat)}`;
   };
   const face = el('button', { type: 'button', class: 'form-select picker-face choice-default', 'aria-label': 'Default', 'aria-haspopup': 'listbox' });
   const named = () => fdc.choiceItems(state, t).filter((x) => x.name.trim());
@@ -6270,25 +7148,12 @@ function choiceDefaultControl(state, t) {
 function stateListEditor(state, onChange) {
   const fdc = fieldDialogCore;
   const wrap = el('div', { class: 'opt-list' });
-  let dragFrom = null;
   const draw = () => {
     wrap.replaceChildren(
       ...state.states.map((s, i) => {
         const preview = statePreview(s);
-        const row = el('div', {
-          class: 'opt-row', draggable: 'true',
-          ondragstart: (e) => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); },
-          ondragend: () => row.classList.remove('dragging'),
-          ondragover: (e) => { e.preventDefault(); row.classList.add('drop-target'); },
-          ondragleave: () => row.classList.remove('drop-target'),
-          ondrop: (e) => {
-            e.preventDefault(); row.classList.remove('drop-target');
-            if (dragFrom == null || dragFrom === i) return;
-            state.states = fdc.moveItem(state.states, dragFrom, i);
-            dragFrom = null; draw(); onChange();
-          },
-        },
-        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+        const row = el('div', { class: 'opt-row' },
+        optRowGrip(wrap, () => state.states, i, (next) => { state.states = next; draw(); onChange(); }),
         iconButton(s.icon || null, (id) => { s.icon = id ?? ''; draw(); onChange(); }),
         el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; preview.rename(s.name); onChange(); } }),
         (() => {
@@ -6299,11 +7164,20 @@ function stateListEditor(state, onChange) {
         })(),
         (() => {
           const cat = chipCore.categoryOrDefault(s.category ?? 'in-progress');
-          const hue = chipCore.categoryHue(cat);
-          return el('button', {
-            type: 'button', class: `opt-color locked hue-${hue}${hue === 'slate' ? ' neutral' : ''}`,
-            disabled: true, title: `Colour comes from the ${cat} category`, 'aria-label': `Colour: ${cat}`,
+          const hue = chipCore.stateHue(s, cat);
+          const b = el('button', {
+            type: 'button', class: `opt-color hue-${hue}${hue === 'slate' ? ' neutral' : ''}`,
+            title: s.hue ? 'Choose a colour' : `Colour comes from the ${cat} category`,
+            'aria-label': `Colour: ${hue}`,
+            onclick: () => huePopover(b, hue, (h) => {
+              if (h) s.hue = h; else delete s.hue;
+              draw(); onChange();
+            }, {
+              reset: s.hue ? 'Reset to category colour' : null,
+              note: `Without one, a state wears the ${cat} category colour.`,
+            }),
           });
+          return b;
         })(),
         preview,
         el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'));
@@ -6689,6 +7563,7 @@ function computedShowsAs(db, f, after) {
     const raw = row.raw[f.name];
     const text = row.fields?.[f.name];
     const drawn = f.rating && typeof raw === 'number' ? ratingEl(f.rating.max, f.rating.icon, raw, { color: f.rating.color })
+      : f.rating && Array.isArray(raw) && raw.length ? ratingListEl(f.rating, raw, { label: f.name })
       : numberGraphicFor(f, row, text) ?? (Array.isArray(text) ? text.join(', ') : String(text ?? raw));
     result.replaceChildren(el('span', { class: 'hintnote' }, `${row.name || 'Untitled'}: `), drawn);
   }).catch(() => result.replaceChildren(el('span', { class: 'hintnote' }, 'The rows could not be read.')));
@@ -7165,40 +8040,6 @@ function editFieldDialog(db, f) {
   fieldDialog(db, f, () => keepScroll(() => showDatabase(db.id)));
 }
 
-function slotDrag(list, { itemSel, held, label, onDrop }) {
-  let slot = null;
-  const clear = () => { slot?.remove(); slot = null; };
-  list.addEventListener('dragover', (e) => {
-    const me = held();
-    if (!me) return;
-    e.preventDefault(); e.stopPropagation();
-    if (!slot) slot = el('div', { class: 'drop-slot' }, label(me));
-    const items = [...list.children].filter((n) => n !== me && n !== slot && n.matches(itemSel));
-    const left = (n) => n.getBoundingClientRect().left;
-    let nearest = null, best = Infinity;
-    for (const n of items) { const d = Math.abs(left(n) + 20 - e.clientX); if (d < best) { best = d; nearest = n; } }
-    const inCol = nearest ? items.filter((n) => Math.abs(left(n) - left(nearest)) < 40) : [];
-    let anchor = null;
-    for (const n of inCol) {
-      const r = n.getBoundingClientRect();
-      if (e.clientY < r.top + r.height / 2) { anchor = n; break; }
-    }
-    if (!anchor && inCol.length) anchor = inCol[inCol.length - 1].nextElementSibling;
-    if (anchor === me) anchor = me.nextElementSibling;
-    if (anchor === slot || (anchor === null && list.lastElementChild === slot)) return;
-    if (anchor) list.insertBefore(slot, anchor); else list.append(slot);
-  });
-  list.addEventListener('drop', (e) => {
-    const me = held();
-    if (!me || !slot) return;
-    e.preventDefault(); e.stopPropagation();
-    const at = slot; slot = null;
-    at.replaceWith(me);
-    onDrop(me);
-  });
-  return { clear };
-}
-
 async function reorderBlocks(db, body, onFail) {
   const bodyOrder = [...body.children].map((n) => n.dataset.block).filter(Boolean);
   try {
@@ -7505,7 +8346,8 @@ async function columnStatsPanel(db) {
       if (!bySel) {
         bySel = pickerSelect({ name: 'by', title: 'Group by', placeholder: 'No grouping', options: [
           { id: '', label: 'No grouping' },
-          ...s.columns.filter((x) => x.kind === 'category').map((c) => ({ id: c.name, label: c.name })),
+          ...groupFieldOptions(db, { dates: false }),
+          ...s.columns.filter((x) => x.kind === 'category' && !listCore.groupable(db.fields.find((f) => f.name === x.name))).map((c) => ({ id: c.name, label: c.name })),
         ] });
         bySel.classList.add('wv-stats-by');
         bySel.input.addEventListener('change', load);
@@ -7549,6 +8391,7 @@ async function showSpace(spaceId) {
         await loadSchema();
       },
       actions: space.system ? [] : [
+        el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('space', spaceId, space.space) }, 'Share…'),
         ...(space.template ? [useTemplateButton(space)] : []),
         dotsMenu([
           {
@@ -7616,7 +8459,7 @@ async function useTemplateDialog(space) {
     el('label', { class: 'form-label wv-start-label' }, 'Workspace'),
     pickerSelect({ name: 'workspace', title: 'Workspace', options: others.map((w) => ({ id: w.name, label: w.name })), value: others[0].name }),
     el('label', { class: 'form-label wv-start-label' }, 'Name'),
-    el('input', { name: 'name', class: 'form-control full', style: 'width:100%', value: space.space, required: '' }),
+    el('input', { name: 'name', class: 'form-control', value: space.space, required: '' }),
     el('div', { class: 'form-hint' }, 'Copies the tables, fields and views. Rows stay here.'),
     said,
   ] : [el('p', { class: 'use-template-none' }, 'There is no other workspace to build in. Create one first, from the workspace rail.')];
@@ -7770,7 +8613,10 @@ const SLASH_GROUPS = [
 ];
 
 const refMarker = (kind) => `⁣ref:${kind}⁣`;
-const DEFERRED_INSERTS = { '⁣raw-html⁣': '<div>html</div>' };
+const DEFERRED_INSERTS = {
+  '⁣raw-html⁣': '<div>html</div>',
+  '⁣table⁣': { md: '| Column | Column |\n| --- | --- |\n| Cell | Cell |', select: 'Column' },
+};
 const ENTITY_LINK_MARKER = refMarker('entity');
 const REF_MARKER_RE = /⁣ref:(entity|table|space)⁣/;
 const holdsCommandMarker = (v) => REF_MARKER_RE.test(v)
@@ -7810,7 +8656,7 @@ function slashItems() {
     { label: 'Quote', icon: '❝', flat: 'quote', group: 'all', hint: '>', aliases: ['blockquote'], insert: blockMarker('quote') },
     { label: 'Code block', icon: '#', flat: 'code', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```\ncode\n```' },
     { label: 'Mermaid diagram', icon: '◈', flat: 'workflow', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
-    { label: 'Table', icon: '▦', flat: 'table', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
+    { label: 'Table', icon: '▦', flat: 'table', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '⁣table⁣' },
     { label: 'Divider', icon: '—', flat: 'minus', group: 'all', hint: '***', aliases: ['hr', 'rule', 'separator'], insert: '\n***\n' },
     { label: 'Line break', icon: '↵', flat: 'corner-down-left', group: 'all', hint: '\\ + ⏎', aliases: ['br', 'newline', 'return'], insert: '\\\n' },
     { label: 'Image', icon: '▤', flat: 'image', group: 'all', hint: '![](…)', aliases: ['picture', 'photo'], insert: '![alt](url)' },
@@ -8059,6 +8905,16 @@ const WV_TB_ICONS = {
   outdent: tbIcon('list-indent-decrease'), indent: tbIcon('list-indent-increase'),
   quote: tbIcon('quote'), code: tbIcon('braces'), table: tbIcon('table'), line: tbIcon('minus'),
   undo: tbIcon('undo'), redo: tbIcon('redo'), upload: tbIcon('upload'),
+  'wv-insert': tbIcon('plus'), 'wv-done': tbIcon('chevron-down'),
+};
+const WV_TB_WRITING = {
+  'wv-insert': { tip: 'Insert', click: (e, vd) => {
+    const r = getSelection()?.rangeCount ? getSelection().getRangeAt(0) : null;
+    const before = r ? r.startContainer.textContent.slice(0, r.startOffset) : '';
+    document.execCommand('insertText', false, before && !/\s$/.test(before) ? ' /' : '/');
+    vd.hint.render(vd);
+  } },
+  'wv-done': { tip: 'Hide keyboard', click: () => { document.activeElement?.blur(); getSelection()?.removeAllRanges(); } },
 };
 
 function guardMathRender() {
@@ -8066,6 +8922,18 @@ function guardMathRender() {
   const live = globalThis.WeaveEditorLib.liveMathElements;
   if (adapter && adapter.getElements !== live) adapter.getElements = live;
 }
+function skipCaretOnlyUndo(vditor) {
+  const undo = vditor?.undo;
+  if (!undo?.addToUndoStack || !undo.addCaret) return;
+  const add = undo.addToUndoStack.bind(undo);
+  const bare = (html) => String(html ?? '').replace(/<wbr>/g, '').replace(/ vditor-ir__node--expand/g, '');
+  undo.addToUndoStack = (v) => {
+    const mode = undo[v.currentMode];
+    if (mode?.undoStack?.length && bare(undo.addCaret(v, true)) === bare(mode.lastText)) return;
+    add(v);
+  };
+}
+
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   guardMathRender();
   const t = vditorTheme();
@@ -8099,8 +8967,8 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       'headings', 'bold', 'italic', 'strike', 'inline-code', 'link', '|',
       'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'code', 'table', 'line', '|',
-      'undo', 'redo', 'upload',
-    ].map((n) => (n === '|' ? n : { name: n, icon: WV_TB_ICONS[n] })),
+      'undo', 'redo', 'upload', 'wv-insert', 'wv-done',
+    ].map((n) => (n === '|' ? n : { name: n, icon: WV_TB_ICONS[n], ...WV_TB_WRITING[n] })),
     toolbarConfig: { hide: false, pin: false },
     upload: {
       multiple: true,
@@ -8119,6 +8987,9 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       const md = editor.getValue();
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
       handed = stored(editor.getValue());
+      editor.clearStack();
+      skipCaretOnlyUndo(editor.vditor);
+      aliasBareRefs(editor, onInput);
       scheduleDecorFor(host);
       host.addEventListener('keyup', rememberSelection);
       host.addEventListener('mouseup', rememberSelection);
@@ -8130,6 +9001,18 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       host.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter' || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
         keepPlaceThroughEnter(host);
+      }, { capture: true });
+      host.addEventListener('keydown', (e) => {
+        if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+        e.preventDefault();
+        e.stopPropagation();
+        editor.vditor?.undo?.redo(editor.vditor);
+      }, { capture: true });
+      host.addEventListener('beforeinput', (e) => {
+        const step = { historyUndo: 'undo', historyRedo: 'redo' }[e.inputType];
+        if (!step) return;
+        e.preventDefault();
+        editor.vditor?.undo?.[step](editor.vditor);
       }, { capture: true });
       attachToolbarBubble(host);
       attachFileTools(host, editor, onInput);
@@ -8153,6 +9036,7 @@ const docBubbles = new Set();
 function attachToolbarBubble(host) {
   const st = { host };
   st.place = () => placeToolbarBubble(st);
+  for (const ev of ['focusin', 'focusout']) host.addEventListener(ev, () => queueMicrotask(st.place));
   docBubbles.add(st);
   st.place();
 }
@@ -8165,9 +9049,22 @@ function placeToolbarBubble(st) {
   const sel = getSelection();
   const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
   const inBar = bar.contains(document.activeElement) || bar.matches(':hover');
-  const on = (range && !range.collapsed && root.contains(range.startContainer)
-    && root.contains(range.endContainer)) || (inBar && bar.classList.contains('wv-show'));
+  const docked = dockCoversScreen.matches;
+  const inRoot = range && root.contains(range.startContainer) && root.contains(range.endContainer);
+  const picked = inRoot && !range.collapsed;
+  const caret = docked && !picked && root.contains(document.activeElement);
+  const on = picked || caret || (inBar && bar.classList.contains('wv-show'));
   bar.classList.toggle('wv-show', !!on);
+  bar.classList.toggle('wv-bar-caret', !!caret);
+  bar.classList.toggle('wv-bar-dock', docked);
+  if (docked) {
+    const keyboard = keyboardInset();
+    bar.style.left = '';
+    bar.style.top = '';
+    bar.style.bottom = `${keyboard}px`;
+    return;
+  }
+  bar.style.bottom = '';
   if (!on || inBar) return;
   const r = range.getBoundingClientRect();
   const base = st.host.getBoundingClientRect();
@@ -8181,6 +9078,11 @@ function placeToolbarBubble(st) {
 document.addEventListener('selectionchange', () => {
   for (const st of docBubbles) queueMicrotask(st.place);
 });
+for (const ev of ['resize', 'scroll']) {
+  window.visualViewport?.addEventListener(ev, () => {
+    for (const st of docBubbles) st.place();
+  });
+}
 
 async function uploadDocFiles(files, entityId, getEditor, onInput) {
   if (!entityId) return 'This document has no record to attach to';
@@ -8417,12 +9319,16 @@ async function refreshRefChips(st) {
     const rects = range.getClientRects();
     if (rects.length !== 1) continue;
     const r = rects[0];
-    st.layer.append(el('a', {
-      class: `mention mention-${hit.kind} doc-ref-chip`,
-      href: hit.href,
-      title: hit.title,
-      style: `left:${r.left - base.left}px; top:${r.top - base.top - 2}px; width:${r.width}px; height:${r.height + 4}px;`,
-    }, el('span', { class: 'k k-rel doc-ref-label' }, el('span', { class: 'k-label' }, s.label ?? hit.label))));
+    const slot = el('span', {
+      class: 'doc-ref-slot wv-prose',
+      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; max-width:${Math.max(0, base.width - (r.left - base.left))}px;`,
+    });
+    slot.innerHTML = hit.html;
+    if (s.label) {
+      const label = slot.querySelector('.k-label');
+      if (label) label.textContent = s.label;
+    }
+    st.layer.append(slot);
   }
 }
 
@@ -8547,11 +9453,9 @@ function refreshHeadingFolds(st) {
     const key = headKey(blocks[i]);
     const isFolded = folded.has(key);
     const r = blocks[i].getBoundingClientRect();
-    carets.push(el('button', {
-      class: 'doc-fold' + (isFolded ? ' folded' : ''),
-      type: 'button',
+    carets.push(disclosure('doc-fold' + (isFolded ? ' folded' : ''), !isFolded, {
       title: isFolded ? 'Unfold section' : 'Fold section',
-      style: `top:${r.top - base.top}px; height:${r.height}px;`,
+      style: `top:${r.top - base.top + r.height / 2}px;`,
       onclick: () => {
         const next = docFoldState(st.entityId, st.field);
         next.has(key) ? next.delete(key) : next.add(key);
@@ -8564,6 +9468,19 @@ function refreshHeadingFolds(st) {
   st.layer.replaceChildren(...carets);
 }
 
+async function aliasBareRefs(editor, onInput) {
+  const lib = globalThis.WeaveEditorLib;
+  const md = editor.getValue();
+  const bare = lib.findRefSpans(md).filter((s) => s.label == null).map((s) => s.ref);
+  if (!bare.length) return;
+  await resolveRefs(bare);
+  const next = lib.aliasRefSpans(md, (ref) => refResolveCache.get(ref)?.label ?? null);
+  if (next === md) return;
+  editor.setValue(next);
+  editor.clearStack();
+  onInput(next);
+}
+
 async function resolveRefs(refs) {
   const missing = [...new Set(refs)].filter((r) => !refResolveCache.has(r));
   if (!missing.length) return;
@@ -8573,14 +9490,16 @@ async function resolveRefs(refs) {
     box.innerHTML = html;
     const paras = [...box.children];
     missing.forEach((ref, i) => {
-      const a = paras[i]?.querySelector('a.mention');
+      const chip = paras[i]?.querySelector('.k-rel');
+      const a = chip?.querySelector('a.mention');
       if (!a) return refResolveCache.set(ref, null);
-      let href = a.getAttribute('href');
-      const ent = href.match(/\/e\/([^/]+)\/doc\.html$/);
-      if (ent) href = `#/entity/${ent[1]}`;
+      const ent = a.getAttribute('href').match(/\/e\/([^/]+)\/doc\.html$/);
+      if (ent) a.setAttribute('href', `#/entity/${ent[1]}`);
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
-      a.querySelector('.mention-fields')?.remove();
-      refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });
+      refResolveCache.set(ref, {
+        href: a.getAttribute('href'), html: chip.outerHTML, kind,
+        label: a.dataset.name ?? a.textContent, title: a.title || a.textContent,
+      });
     });
   } catch {}
 }
@@ -8601,6 +9520,7 @@ function applyCommandMarkers(host, editor, onInput) {
   if (globalThis.WeaveEditorLib.BLOCK_MARKER_RE.test(v)) return convertBlockLine(host, editor, onInput);
   for (const [marker, block] of Object.entries(DEFERRED_INSERTS)) {
     if (!v.includes(marker)) continue;
+    if (block.select) return insertSelecting(host, editor, onInput, v.replace(marker, block.md), block.select);
     const next = v.replace(marker, block);
     editor.setValue(next);
     editor.focus();
@@ -8618,15 +9538,25 @@ function convertBlockLine(host, editor, onInput) {
   if (next.line >= 0) {
     token = CARET_SENTINEL;
     const lines = next.md.split('\n');
-    lines[next.line] += token;
+    const line = lines[next.line];
+    const at = line.length - next.select.length;
+    lines[next.line] = line.slice(0, at) + token + line.slice(at);
     editor.setValue(lines.join('\n'));
   }
-  if (!caretToToken(host, token)) { editor.setValue(next.md); editor.focus(); }
+  if (!caretToToken(host, token, next.select.length)) { editor.setValue(next.md); editor.focus(); }
   onInput(editor.getValue());
   scheduleDecorFor(host);
 }
 
-function caretToToken(host, token) {
+function insertSelecting(host, editor, onInput, md, select) {
+  const at = md.indexOf(select);
+  editor.setValue(md.slice(0, at) + CARET_SENTINEL + md.slice(at));
+  if (!caretToToken(host, CARET_SENTINEL, select.length)) { editor.setValue(md); editor.focus(); }
+  onInput(editor.getValue());
+  scheduleDecorFor(host);
+}
+
+function caretToToken(host, token, extend = 0) {
   const root = host.querySelector('.vditor-ir .vditor-reset');
   if (!root) return false;
   const texts = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -8641,7 +9571,7 @@ function caretToToken(host, token) {
   root.focus({ preventScroll: true });
   const range = document.createRange();
   range.setStart(spot.node, spot.at);
-  range.collapse(true);
+  range.setEnd(spot.node, Math.min(spot.at + extend, spot.node.length));
   const sel = getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
@@ -8708,13 +9638,9 @@ async function flushDocSave(entityId, field) {
   await p.write();
 }
 
-function relTime(iso) {
-  const sec = (Date.now() - Date.parse(iso)) / 1000;
-  if (sec < 45) return 'just now';
-  if (sec < 3600) return `${Math.round(sec / 60)} min ago`;
-  if (sec < 86400) return `${Math.round(sec / 3600)} h ago`;
-  if (sec < 7 * 86400) return `${Math.round(sec / 86400)} d ago`;
-  return new Date(iso).toLocaleDateString();
+function whenEl(iso, cls = null) {
+  const w = weaveDateCore.relativeOrShort(iso);
+  return el('time', { ...(cls ? { class: cls } : {}), datetime: iso, title: w.title }, w.text);
 }
 
 function flushDocSaves() {
@@ -8805,6 +9731,36 @@ async function showEntity(id) {
   await renderEntityView(entity, { mount: main, refresh: () => showEntity(id) });
 }
 
+function nextStateButton(entity, db, refresh) {
+  const flows = (db?.fields ?? []).filter((x) => x.type === 'workflow');
+  const buttons = flows.map((f) => nextStateFor(entity, f, flows.length > 1, refresh)).filter(Boolean);
+  if (!buttons.length) return null;
+  return flows.length === 1 ? buttons[0] : el('div', { class: 'next-state-stack' }, ...buttons);
+}
+function nextStateFor(entity, f, named, refresh) {
+  const was = entity.fields?.[f.name] ?? null;
+  const states = f.states ?? [];
+  const next = states[states.findIndex((st) => st.name === was) + 1];
+  if (!next) return null;
+  const move = async (to) => {
+    await api('POST', `/entities/${entity.id}/state`, { field: f.name, state: to });
+    await refresh?.();
+    $('#main > .table-wrap')?.wvRefresh?.();
+  };
+  const label = named ? `Move ${f.name} to ${next.name}` : `Move to ${next.name}`;
+  return el('button', {
+    class: 'btn next-state-fab', type: 'button', dataset: { field: f.name },
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await move(next.name);
+        toast(named ? `Moved ${f.name} to ${next.name}` : `Moved to ${next.name}`, false, { label: 'Undo', run: () => move(was).catch((err) => toast(err.message, true)) });
+      } catch (err) { btn.disabled = false; toast(err.message, true); }
+    },
+  }, label);
+}
+
 function pageGo(next) {
   const to = weaveBreadcrumbs.navCurrent(next);
   if (!to || next === crumbNav) return;
@@ -8825,13 +9781,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
-  const nameInput = el('textarea', {
-    class: 'name-edit' + (computed ? ' computed' : ''), rows: '1', 'aria-label': 'Name',
+  const nameInput = titleEdit('textarea', 'name-edit' + (computed ? ' computed' : ''), entity.name, {
+    rows: '1', 'aria-label': 'Name',
     readonly: computed ? '' : undefined,
     title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
     onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
   });
-  nameInput.value = entity.name;
   if (!CSS.supports('field-sizing', 'content')) {
     const fit = () => { nameInput.style.height = 'auto'; nameInput.style.height = `${nameInput.scrollHeight}px`; };
     nameInput.addEventListener('input', fit);
@@ -8849,7 +9804,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     ...recent.map((a, n) => el('a', {
       class: 'activity-item', href: `#/activity/${id}:${firstIndex - n}`,
       title: 'Open this event',
-    }, `${new Date(a.ts).toLocaleString()} — `, actorChipEl(a.actor, { link: false }), ` ${activitySummary(a)}`)),
+    }, whenEl(a.ts), ' — ', actorChipEl(a.actor, { link: false }), ` ${activitySummary(a)}`)),
     recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'),
     entity.activityDropped ? el('span', { class: 'activity-dropped' }, droppedText(entity.activityDropped)) : null);
   const actPanel = el('div', { class: 'card panel' },
@@ -8862,11 +9817,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const entBase = `${WS_PREFIX}/e/${id}/entity`;
   const dlBtn = dotsMenu([
     inPeek ? { label: 'Activity', run: () => activityPanel.toggle(id, null, mount) } : null,
+    inPeek ? { phone: true, label: 'Copy link', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') } : null,
+    inPeek ? { phone: true, label: 'Show or hide fields', run: () => fieldVisibilityPopover(dlBtn.firstElementChild, db, 0, { redraw: refresh, rowsSection: false }) } : null,
     inPeek ? 'divider' : null,
     ...['md', 'html', 'pdf'].map((ext) => ({
       label: `Download .${ext}`, href: `${entBase}.${ext}`,
       download: `${(entity.name || 'entity')}.${ext}`,
     })),
+    { label: 'Share…', run: () => shareDialog('entity', id, entity.name || `#${entity.publicId}`) },
     'divider',
     {
       label: 'Move to trash', danger: true,
@@ -8898,7 +9856,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const poseControls = inPeek ? (dockControls?.pose ?? []) : db ? [
     el('button', {
       class: 'btn btn-sm pose-btn', type: 'button',
-      title: 'Collapse (⌘⇧E)', 'aria-label': 'Collapse — dock beside the table',
+      title: keyHint('Collapse (⌘⇧E)'), 'aria-label': 'Collapse — dock beside the table',
       onclick: () => collapseToSplit(entity),
     }, poseGlyph(true)),
     el('button', {
@@ -8920,6 +9878,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput))),
   );
+  const nextFab = nextStateButton(entity, db, refresh);
+  if (nextFab) mount.append(nextFab);
   if (!inPeek && db) {
     mount.querySelector(`.crumb-path a[href="#/table/${entity.dbId}"]`)?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -8960,8 +9920,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     let showingSource = false;
     let mounted = false;
     const fieldQ = `field=${encodeURIComponent(f.name)}`;
-    const histBtn = el('span', {
-      class: 'doc-anchor doc-history-btn', title: 'History', 'aria-label': `${f.name} history`, hidden: '',
+    const histBtn = el('button', {
+      type: 'button', class: 'doc-anchor doc-history-btn', title: 'History', 'aria-label': `${f.name} history`, hidden: '',
       onclick: () => activityPanel.toggle(id, f.name, mount),
     }, iconEl('lucide:history', 'wv-icon'));
     const checkHistory = () => api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=2`)
@@ -8980,23 +9940,24 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     }, iconEl('lucide:code-xml', 'wv-icon')) : null;
     if (appFrame) { host.classList.add('hidden'); body.prepend(appFrame); }
     if (isDiagram) drawDiagram();
-    const caret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse section',
+    const caret = disclosure('doc-caret', true, {
+      title: 'Collapse section',
       onclick: () => {
         const open = body.classList.toggle('hidden');
         caret.classList.toggle('closed', open);
+        setDisclosure(caret, !open);
         docSectionCollapse(id, f.name, open);
       },
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
-      el('div', { class: 'doc-section-head', draggable: 'true' },
+      el('div', { class: 'doc-section-head' },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
         sourceToggle,
         histBtn,
-        el('span', {
-          class: 'doc-anchor permalink-copy', title: 'Copy link to this document',
+        el('button', {
+          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this document', 'aria-label': 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
         }, iconEl('⧉')),
         status, dl),
@@ -9005,6 +9966,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     if (docSectionCollapse(id, f.name)) {
       body.classList.add('hidden');
       caret.classList.add('closed');
+      setDisclosure(caret, false);
     }
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
@@ -9040,10 +10002,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     commentsBody);
   for (const c of entity.comments) {
     commentsBody.append(el('div', { class: 'comment' },
-      el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), el('span', { class: 'when' }, new Date(c.createdAt).toLocaleString())),
+      el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), whenEl(c.createdAt, 'when')),
       el('div', {}, c.text)));
   }
-  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…', style: 'width:100%' });
+  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…' });
   commentInput.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter' && commentInput.value.trim()) {
       try {
@@ -9058,8 +10020,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   left.classList.add('entity-body');
   const fields = el('div', { class: 'entity-fields' });
   const values = el('div', { class: 'entity-values' });
-  let dragFrom = null;
-  let blockFrom = null;
   const hidden = new Set(db.hiddenFields ?? []);
   const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
   const coverF = shown.find((x) => x.type === 'attachments' && x.preview === 'cover');
@@ -9068,45 +10028,41 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   if (coverFile) left.prepend(entityCoverEl(coverFile, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' }));
   const blocks = new Map();
 
-  const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .picker-wrap, .permalink-copy, .dl-menu, .attach-box';
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
     for (const h of handles.filter(Boolean)) {
-      h.setAttribute('draggable', 'true');
-      h.addEventListener('dragstart', (e) => {
-        blockFrom = key; e.dataTransfer.effectAllowed = 'move'; e.stopPropagation();
-        node.classList.add('dragging');
+      RO().guard(h);
+      h.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
+        e.stopPropagation();
+        RO().sortable(e, {
+          source: node,
+          items: () => [...left.children].filter((n) => n.matches('[data-block]')),
+          onDrop: () => reorderBlocks(db, left, refresh),
+        });
       });
-      h.addEventListener('dragend', () => { blockFrom = null; node.classList.remove('dragging'); blockSlot.clear(); });
     }
     blocks.set(key, node);
     return node;
   };
-  const blockSlot = slotDrag(left, {
-    itemSel: '[data-block]',
-    held: () => blockFrom ? blocks.get(blockFrom) : null,
-    label: (n) => n.dataset.block === VALUES_BLOCK ? 'Fields' : n.dataset.block,
-    onDrop: () => reorderBlocks(db, left, refresh),
-  });
-
-  const rowSlot = slotDrag(values, {
-    itemSel: '.fieldrow',
-    held: () => dragFrom ? values.querySelector(`[data-field="${CSS.escape(dragFrom)}"]`) : null,
-    label: (n) => n.dataset.field,
-    onDrop: (me) => {
-      const from = me.dataset.field;
-      const next = me.nextElementSibling, prev = me.previousElementSibling;
-      if (next?.dataset.field) reorderField(db, from, next.dataset.field, { after: false, onFail: refresh });
-      else if (prev?.dataset.field) reorderField(db, from, prev.dataset.field, { after: true, onFail: refresh });
-    },
-  });
-  const dragRow = (node, handle, f) => {
+  const dragRow = (node, f) => {
     node.dataset.field = f.name;
-    handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
-    handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); rowSlot.clear(); });
-    for (const stop of node.querySelectorAll('input, select, textarea, .picker-wrap')) {
-      stop.addEventListener('mousedown', (ev) => ev.stopPropagation());
-    }
+    RO().guard(node);
+    node.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
+      RO().sortable(e, {
+        source: node,
+        items: () => [...values.querySelectorAll(':scope > .fieldrow:not(.fieldrow-system)')],
+        zone: () => values,
+        onDrop: () => {
+          const next = node.nextElementSibling, prev = node.previousElementSibling;
+          if (next?.dataset.field && !next.classList.contains('fieldrow-system')) reorderField(db, f.name, next.dataset.field, { after: false, onFail: refresh });
+          else if (prev?.dataset.field) reorderField(db, f.name, prev.dataset.field, { after: true, onFail: refresh });
+        },
+      });
+    });
     return node;
   };
   for (const f of shown) {
@@ -9119,15 +10075,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const node = el('div', { class: 'fieldrow' },
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       el('label', { class: 'fieldrow-label', title: fieldDescription(f) ? `${fieldDescription(f)}\n\nEdit field` : 'Edit field', onclick: () => editFieldDialog(db, f) },
-        fieldNameLabel(f), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
+        fieldNameLabel(f, f.name, db), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
       labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }));
     if (f.type === 'attachments') {
       node.classList.add('attach-block');
       wireBlock(f.name, node, [node.querySelector('.opt-grip')]);
       continue;
     }
-    node.setAttribute('draggable', 'true');
-    values.append(dragRow(node, node, f));
+    values.append(dragRow(node, f));
   }
   for (const n of (db.systemFields ?? [])) {
     if (n === 'Activity' || !SYSTEM_COLS[n]) continue;
@@ -9151,9 +10106,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       values.classList.toggle('hidden', closed);
       summary.classList.toggle('hidden', !closed);
       fieldsCaret.classList.toggle('closed', closed);
+      setDisclosure(fieldsCaret, !closed);
     };
-    const fieldsCaret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse fields',
+    const fieldsCaret = disclosure('doc-caret', true, {
+      title: 'Collapse fields',
       onclick: (e) => {
         e.stopPropagation();
         const closed = !values.classList.contains('hidden');
@@ -9221,11 +10177,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
     const frame = el('iframe', { class: 'deck-frame', src: deckUrl, allowfullscreen: '', allow: 'fullscreen', title: label });
     const body = el('div', { class: 'doc-section-body' }, frame);
-    const caret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse section',
+    const caret = disclosure('doc-caret', true, {
+      title: 'Collapse section',
       onclick: () => {
         const open = body.classList.toggle('hidden');
         caret.classList.toggle('closed', open);
+        setDisclosure(caret, !open);
         docSectionCollapse(id, label, open);
       },
     });
@@ -9251,14 +10208,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         el('span', { class: 'doc-section-name' }, label),
         el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, iconEl('⟳')),
         el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, iconEl('⛶')),
-        el('span', {
-          class: 'doc-anchor permalink-copy', title: 'Copy link to this deck',
+        el('button', {
+          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this deck', 'aria-label': 'Copy link to this deck',
           onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
         }, iconEl('⧉')),
         menu),
       body);
     left.prepend(section);
-    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); }
+    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
   }
   right.append(commentsPanel, actPanel);
   activityPanel.mounted(id, mount);
@@ -9268,6 +10225,7 @@ const activityPanel = (() => {
   const H = () => window.weaveHistoryCore;
   let st = null;
   let panel = null;
+  let sheetBack = null;
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
@@ -9350,7 +10308,7 @@ const activityPanel = (() => {
     if (!others.length) return null;
     const p = pickerSelect({
       name: 'compare', title: 'Compare with', value: st.from ?? prev?.id ?? others[0].id,
-      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${x.actor ?? ''}` })),
+      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${weaveActor.actorText(x.actor)}` })),
     });
     p.classList.add('wv-act-cmp');
     p.input.addEventListener('change', () => { st.from = prev && p.input.value === prev.id ? null : p.input.value; render(); });
@@ -9375,7 +10333,7 @@ const activityPanel = (() => {
       what = [el('span', { class: 'name' }, it.field),
         it.restoredFrom != null ? el('span', {
           class: 'wv-act-src',
-          title: it.source ? `Restored the version from ${new Date(it.source.at).toLocaleString()}${it.source.actor ? ` by ${it.source.actor}` : ''}` : 'Restored a version no longer kept',
+          title: it.source ? `Restored the version from ${weaveDateCore.relativeOrShort(it.source.at).title}${it.source.actor ? ` by ${weaveActor.actorText(it.source.actor)}` : ''}` : 'Restored a version no longer kept',
         }, it.source ? `restored from ${stamp(it.source.at)}` : 'restored from an earlier version') : null,
         it.delta ? el('span', { class: `wv-act-delta ${it.delta > 0 ? 'pos' : 'neg'}` }, it.delta > 0 ? `+${it.delta}` : `−${-it.delta}`) : null];
       if (it.current) who += ' · current'; else if (it.undo) who += ' · undo';
@@ -9423,7 +10381,7 @@ const activityPanel = (() => {
     if (panel) panel.replaceWith(next); else document.body.append(next);
     panel = next;
     const dock = st.mount?.closest?.('#dock');
-    if (dock) panel.style.right = `${innerWidth - dock.getBoundingClientRect().left + 8}px`;
+    if (dock && !dockCoversScreen.matches) panel.style.right = `${innerWidth - dock.getBoundingClientRect().left + 8}px`;
     list.scrollTop = keep;
     const s = list.querySelector('.wv-act-row.sel');
     if (s) {
@@ -9481,9 +10439,19 @@ const activityPanel = (() => {
     const first = H().filterFeed(st.items, st.filter)[0];
     st.sel = first?.id ?? null;
     document.body.classList.toggle('wv-activity-open', !!st.mount?.closest?.('#main'));
+    if (dockCoversScreen.matches && !sheetBack) {
+      sheetBack = () => close({ back: true });
+      history.pushState({ ...(history.state ?? {}), wvSheet: 'activity' }, '', location.href);
+      addEventListener('popstate', sheetBack);
+    }
     render();
   }
-  function close() {
+  function close({ back = false } = {}) {
+    if (sheetBack) {
+      removeEventListener('popstate', sheetBack);
+      sheetBack = null;
+      if (!back && history.state?.wvSheet === 'activity') history.back();
+    }
     panel?.remove(); panel = null;
     clearViews();
     document.body.classList.remove('wv-activity-open');
@@ -9503,7 +10471,7 @@ const activityPanel = (() => {
     renderView();
   }
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop')) return;
+    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
     e.stopPropagation();
     close();
   }, true);
@@ -9519,7 +10487,7 @@ function quickCreate(db) {
     return;
   }
   modal(`New ${db.term.singular}`, [
-    el('input', { name: 'name', placeholder: 'Name', class: 'form-control full', style: 'width:100%' }),
+    el('input', { name: 'name', placeholder: 'Name', class: 'form-control' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
     await loadSchema();
@@ -9531,7 +10499,7 @@ function newTableDialog(reg, after) {
   const spaces = state.schema.filter((s) => !s.system);
   if (!spaces.length) return toast('Create a space first — a table lives in one', true);
   modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
     pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space }),
   ], async (fd) => {
     const made = await api('POST', `/tables/${reg.id}/entities`, { name: fd.get('name'), values: { Space: fd.get('space') } });
@@ -9546,9 +10514,9 @@ function startTableDialog({ spaceId = null } = {}) {
   const fixed = spaceId ? spaces.find((s) => s.spaceId === spaceId) : null;
   const spaceInput = fixed ? null
     : spaces.length ? pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space })
-      : el('input', { name: 'space', value: 'General', class: 'form-control full', style: 'width:100%', required: '' });
+      : el('input', { name: 'space', value: 'General', class: 'form-control', required: '' });
   modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
     ...(spaceInput ? [
       el('label', { class: 'form-label wv-start-label' }, 'Space'),
       spaceInput,
@@ -9618,13 +10586,14 @@ function onboard(defaultName) {
   const heading = el('h2', {});
   const line = el('p', { class: 'wv-onboard-line' });
   const body = el('div', { class: 'wv-onboard-body' });
-  const skip = el('button', { class: 'btn wv-onboard-skip', type: 'button', onclick: () => finish() }, 'Skip setup');
+  const skip = el('button', { class: 'btn wv-onboard-skip', type: 'button', onclick: () => leave() }, 'Skip setup');
   const actions = el('div', { class: 'actions' }, skip);
   const box = el('div', { id: 'modal', class: 'wv-onboard' }, dots, marker, iconSlot, heading, line, body, actions);
   back.append(box);
   holdPage(back, box);
   let name = defaultName;
   let busy = false;
+  const leave = () => finish(box.dataset.step === '3' ? { name } : {});
 
   const primary = (label, run) => el('button', { class: 'btn btn-primary wv-onboard-next', type: 'button', onclick: run }, label);
   function show(i) {
@@ -9686,7 +10655,7 @@ function onboard(defaultName) {
 
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); finish(); }
+    if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); leave(); }
   });
   show(0);
 }
@@ -9696,7 +10665,7 @@ async function schemaDisclosure(parent, draw) {
   let open = false;
   try { open = localStorage.getItem(SCHEMA_OPEN_KEY) === '1'; } catch {}
   const body = el('div', { class: 'wv-schema-body' });
-  const box = el('details', { class: 'wv-schema' }, el('summary', {}, 'Schema'), body);
+  const box = el('details', { class: 'wv-schema' }, el('summary', {}, summaryChevron(), 'Schema'), body);
   let drawn = null;
   const fill = () => (drawn ??= Promise.resolve(draw(body)).catch((err) => toast(err.message, true)));
   box.addEventListener('toggle', () => {
@@ -9761,6 +10730,7 @@ async function relatedGrid(entity, f, onSaved) {
       el('td', { class: 'pid-cell' },
         el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: `Open ${target.term.singular}` }, `#${item.publicId} ↗`)),
       ...cols.map((c) => el('td', {
+        dataset: { ftype: c.type },
         class: (isNumCell(c, item) ? 'num' : '')
           + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),
       }, labeledEditorFor(c, item, target, onSaved, { compact: true }))),
@@ -9788,25 +10758,14 @@ async function relatedGrid(entity, f, onSaved) {
         }, `+ New ${target.term.singular}`),
         el('button', {
           class: 'add-entity-btn', type: 'button',
-          onclick: async (e2) => {
-            const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
-            const before = linked.map((sm) => sm.id);
-            searchPicker({
-              anchor: e2?.currentTarget ?? null, title: `${f.name}`, placeholder: `Search ${target.term.plural}…`,
-              options: list.items.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
-              multi: {
-                selected: linked.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
-                onCommit: async (ids) => {
-                  const add = ids.filter((x) => !before.includes(x));
-                  const drop = before.filter((x) => !ids.includes(x));
-                  if (!add.length && !drop.length) return;
-                  if (add.length) await api('POST', `/entities/${item.id}/link`, { field: f.name, targets: add });
-                  if (drop.length) await api('POST', `/entities/${item.id}/unlink`, { field: f.name, targets: drop });
-                  await onSaved();
-                },
-              },
-            });
-          },
+          onclick: () => linkSearch(f, {
+            linked,
+            commit: async (add, drop) => {
+              if (add.length) await api('POST', `/entities/${entity.id}/link`, { field: f.name, targets: add });
+              if (drop.length) await api('POST', `/entities/${entity.id}/unlink`, { field: f.name, targets: drop });
+              await onSaved();
+            },
+          }),
         }, '+ Link existing'))));
 
   return el('section', { class: 'related-section' },
@@ -9847,7 +10806,7 @@ function activitySummary(a) {
     case 'doc-updated':
     case 'doc-appended': {
       if (d.restoredFrom != null) {
-        return `${d.field ?? 'Description'} restored to the version from ${d.restoredAt ? new Date(d.restoredAt).toLocaleString() : 'an earlier revision'}${d.restoredBy ? ` by ${d.restoredBy}` : ''}`;
+        return `${d.field ?? 'Description'} restored to the version from ${d.restoredAt ? weaveDateCore.relativeOrShort(d.restoredAt).title : 'an earlier revision'}${d.restoredBy ? ` by ${d.restoredBy}` : ''}`;
       }
       const size = d.delta == null ? '' : ` ${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)} chars`;
       const where = d.line ? ` at line ${d.line}` : '';
@@ -9885,7 +10844,7 @@ async function showActivity(param) {
     dataset: { href: `#/activity/${a.id}` },
     onclick: () => { location.hash = `#/activity/${a.id}`; },
   },
-    el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
+    el('td', { class: 'activity-when', title: a.ts }, weaveDateCore.relativeOrShort(a.ts).text),
     el('td', {}, el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
     el('td', {}, actorChipEl(a.actor)),
     el('td', {}, activitySummary(a)),
@@ -9952,7 +10911,7 @@ function fieldChangeChip(type, o) {
   if (!o) return el('span', { class: 'field-change-none' }, '—');
   if (type === 'workflow') {
     const cat = chipCore.categoryOrDefault(o.category ?? 'not-started');
-    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` }, o.icon ? iconEl(o.icon, 'ico wv-icon') : null, chipLabel(o.name));
+    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(o, cat)}` }, o.icon ? iconEl(o.icon, 'ico wv-icon') : null, chipLabel(o.name));
   }
   return el('span', { class: `k k-select hue-${o.hue || chipCore.hueFromHex(o.color)}` }, o.icon ? iconEl(o.icon, 'ico wv-icon') : null, chipLabel(o.name));
 }
@@ -9996,7 +10955,7 @@ async function showActivityDetail(id) {
     row('Record', recordChip(a)),
     row('Table', a.db ? el('a', { href: `#/table/${a.dbId}` }, a.db) : '—'),
     row('Event', el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
-    row('When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())),
+    row('When', whenEl(a.ts)),
     row('Actor', actorChipEl(a.actor) || '—'),
     ...(field
       ? [row('Field', d.field),
@@ -10030,6 +10989,58 @@ async function showActivityDetail(id) {
       fieldsBody));
 }
 
+const SHARE_MODES = [['read', 'Read'], ['comment', 'Comment (soon)'], ['edit', 'Edit rows'], ['manage', 'Add and delete rows']];
+const SHARE_MODE_LABEL = Object.fromEntries(SHARE_MODES);
+
+function shareDialog(kind, id, name) {
+  const rows = el('div', { class: 'share-list', 'aria-live': 'polite' });
+  const fill = async () => {
+    let grants;
+    try { grants = await api('GET', `/shares?kind=${kind}&id=${encodeURIComponent(id)}`); } catch (err) {
+      rows.replaceChildren(el('span', { class: 'share-hint' }, err.message));
+      return;
+    }
+    if (!grants.length) { rows.replaceChildren(el('span', { class: 'share-hint' }, 'No links yet.')); return; }
+    rows.replaceChildren(...grants.map((g) => {
+      const full = location.origin + WS_PREFIX + g.url;
+      return el('div', { class: 'share-row' },
+        el('div', { class: 'share-row-head' },
+          el('span', { class: 'share-chip' }, SHARE_MODE_LABEL[g.mode] ?? g.mode),
+          el('span', { class: 'share-chip' }, g.visibility === 'private' ? 'Signed-in only' : 'Anyone with the link'),
+          g.label ? el('span', { class: 'share-label' }, g.label) : null),
+        el('code', { class: 'share-url' }, full),
+        el('div', { class: 'share-row-actions' },
+          el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(full, 'Link copied') }, 'Copy'),
+          el('button', {
+            class: 'btn btn-sm share-revoke', type: 'button',
+            onclick: async () => {
+              try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
+            },
+          }, 'Revoke')));
+    }));
+  };
+  modal(`Share ${name}`, [
+    el('span', { class: 'form-label', id: 'share-mode' }, 'Access'),
+    el('div', { class: 'share-modes', role: 'radiogroup', 'aria-labelledby': 'share-mode' },
+      ...SHARE_MODES.map(([value, label]) => el('label', { class: `share-mode${value === 'comment' ? ' is-off' : ''}` },
+        el('input', { type: 'radio', name: 'mode', value, checked: value === 'read' ? '' : null, disabled: value === 'comment' ? '' : null }),
+        el('span', {}, label)))),
+    el('label', { class: 'form-check share-private' },
+      el('input', { type: 'checkbox', name: 'private', class: 'form-check-input' }),
+      el('span', { class: 'form-check-label' }, 'Signed-in members only')),
+    el('label', { class: 'form-label', for: 'share-label' }, 'Label'),
+    el('input', { id: 'share-label', name: 'label', class: 'form-control', placeholder: 'Who the link is for' }),
+    el('span', { class: 'share-hint' }, 'Pages open read-only. Edit and add-delete reach the API and MCP through the link\'s token.'),
+    el('h3', { class: 'share-list-title' }, 'Links'),
+    rows,
+  ], async (fd) => {
+    const g = await api('POST', '/shares', { scope: { kind, id }, mode: fd.get('mode'), visibility: fd.get('private') ? 'private' : 'public', label: fd.get('label') || '' });
+    await copyText(location.origin + WS_PREFIX + g.url, 'Link copied');
+    setTimeout(() => shareDialog(kind, id, name));
+  }, 'Create link');
+  fill();
+}
+
 async function showView(id) {
   state.route = { page: 'view', id };
   syncDocTitle(null);
@@ -10038,24 +11049,10 @@ async function showView(id) {
   let v;
   try { v = await api('GET', `/views/${id}`); } catch (err) { toast(`Couldn't open that view: ${err.message}`, true); return showHome(); }
   syncDocTitle(v.name);
-  const meta = (await api('GET', '/views')).find((x) => x.id === id);
   main.replaceChildren(el('div', { class: 'wv-toolbar' },
     el('h1', {}, v.name),
     el('span', { style: 'flex:1' }),
-    el('button', {
-      class: 'btn btn-sm', onclick: async () => {
-        if (meta?.shared) { await api('DELETE', `/views/${id}/share`); toast('Share link revoked'); return showView(id); }
-        const { url } = await api('POST', `/views/${id}/share`);
-        const full = location.origin + WS_PREFIX + url;
-        await navigator.clipboard?.writeText(full).catch(() => {});
-        modal('Share link', [
-          el('div', { class: 'share-box' },
-            el('code', { class: 'share-url' }, full),
-            el('span', { class: 'share-hint' }, 'Copied to the clipboard. Anyone with this link sees this view, read-only, until you revoke it.')),
-        ], async () => {}, 'Done');
-        showView(id);
-      },
-    }, meta?.shared ? 'Revoke share' : 'Share…'),
+    el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('view', id, v.name) }, 'Share…'),
     dotsMenu([{ hold: 'Delete view', holdingLabel: 'Hold to delete…', run: async () => { await api('DELETE', `/views/${id}`); toast('View deleted'); showHome(); } }], { align: 'right' })));
   for (const b of v.blocks) {
     const cols = Object.keys(b.items[0]?.fields ?? {});
@@ -10162,7 +11159,7 @@ async function membersSection(parent) {
   const [acc, inv] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites')]);
   if (acc.status !== 'fulfilled' || inv.status !== 'fulfilled') return;
   const body = el('div', { class: 'wv-members' });
-  const box = el('details', { class: 'wv-members-box' }, el('summary', {}, 'Members'), body);
+  const box = el('details', { class: 'wv-members-box' }, el('summary', {}, summaryChevron(), 'Members'), body);
   const day = (iso) => String(iso ?? '').slice(0, 10);
   const draw = (accounts, invites, link = null) => {
     const email = el('input', { class: 'form-control', type: 'email', placeholder: 'name@company.com', 'aria-label': 'Email to invite', required: '' });
@@ -10192,7 +11189,9 @@ async function membersSection(parent) {
       el('div', { class: 'wv-members-sub' }, 'Accounts'),
       accounts.length ? el('div', { class: 'card list-rows' },
         ...accounts.map((a) => el('div', { class: 'list-row' },
-          el('span', {}, a.name), el('span', { class: 'spacer' }),
+          el('span', {}, a.name),
+          ...[...new Set((a.identities ?? []).map((i) => i.verifiedEmail).filter(Boolean))].map((mail) => el('span', { class: 'pid wv-member-email' }, mail)),
+          el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, ROLE_LABELS[a.role] ?? a.role))))
         : el('div', { class: 'wv-members-empty' }, 'None'),
       el('div', { class: 'wv-members-sub' }, 'Pending invites'),
@@ -10261,21 +11260,32 @@ function paletteIcon(hit, group) {
 
 const marked = (text, needle) => weavePalette.highlight(text, needle).map((s) => (s.hit ? el('mark', {}, s.text) : s.text));
 
-function paletteRow(hit, i, { needle, group, here, onPick, href }) {
+function paletteCreateRow(hit, i, onPick) {
+  return el('div', {
+    class: 'result cmdk-create', id: `cmdk-opt-${i}`, role: 'option', 'aria-selected': 'false', onclick: () => onPick(hit),
+  },
+  iconEl('lucide:plus', 'wv-icon cmdk-ic'),
+  el('span', { class: 'cmdk-text' }, hit.name));
+}
+
+function paletteRow(hit, i, { needle, group, here, onPick, href, checked = null }) {
+  if (hit.kind === 'create') return paletteCreateRow(hit, i, onPick);
   const P = weavePalette;
   const foreign = hit.workspace && (here ? hit.workspace !== here : !hit.url.startsWith(`${WS_PREFIX}/`));
   const state = hit.chip?.state;
   const cat = state && chipCore.categoryOrDefault(state.category);
   return el('div', {
-    class: 'result', id: `cmdk-opt-${i}`, role: 'option', 'aria-selected': 'false',
+    class: checked ? 'result checked' : 'result', id: `cmdk-opt-${i}`, role: 'option', 'aria-selected': 'false',
+    ...(checked == null ? {} : { 'aria-checked': String(checked) }),
     ...(href ? { dataset: { href } } : {}), onclick: () => onPick(hit),
   },
+  checked == null ? null : el('span', { class: 'cmdk-check', 'aria-hidden': 'true' }, iconEl('lucide:check', 'wv-icon')),
   paletteIcon(hit, group),
   el('span', { class: 'cmdk-text' },
     el('span', { class: 'cmdk-name' }, ...marked(P.displayName(hit), needle)),
     group === 'docs' ? [' ', el('span', { class: 'cmdk-ctx' }, ...marked(P.excerpt(hit.snippet, needle), needle))] : null),
   foreign ? el('span', { class: 'cmdk-ws' }, hit.workspace) : null,
-  state ? el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` }, state.name) : null,
+  state ? el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(state, cat)}` }, state.name) : null,
   el('span', { class: 'cmdk-where' }, P.whereText(hit)),
   el('button', {
     class: 'btn btn-sm btn-ghost-secondary tiny copy-btn', type: 'button', tabindex: '-1',
@@ -10291,23 +11301,62 @@ function wireSearchButton() {
   $('#search-btn')?.addEventListener('click', openCommandK);
 }
 
-function openCommandK({ onPick = null, onDismiss = null, kinds = null, placeholder = null } = {}) {
+function openCommandK({
+  onPick = null, onDismiss = null, kinds = null, placeholder = null,
+  scope = null, selected = null, multi = false, onCommit = null, create = null,
+} = {}) {
   if ($('#cmdk-back')) return;
   const P = weavePalette;
   const here = currentWsName();
+  const linked = (selected ?? []).map((h) => ({ kind: 'entity', ...h }));
+  const chosen = new Set(linked.map((h) => h.id));
+  const checks = !!scope || selected != null || multi;
+  const creators = (create ?? []).map((c) => ({ kind: 'create', name: c.label, run: c.run }));
   let picked = false;
-  const dismiss = () => { back.remove(); if (!picked) onDismiss?.(); };
+  const dismiss = () => {
+    back.remove();
+    if (picked) return;
+    picked = true;
+    if (multi) onCommit?.([...chosen]);
+    else onDismiss?.();
+  };
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
-    id: 'cmdk-input', autocomplete: 'off', spellcheck: 'false',
+    id: 'cmdk-input', class: 'search-bare', autocomplete: 'off', spellcheck: 'false',
     role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'cmdk-results', 'aria-autocomplete': 'list',
     placeholder: placeholder ?? (here ? `Search ${here}` : 'Search'),
   });
   input.setAttribute('aria-label', input.placeholder);
-  const list = el('div', { id: 'cmdk-results', role: 'listbox', 'aria-label': 'Results' });
+  const list = el('div', { id: 'cmdk-results', role: 'listbox', 'aria-label': 'Results', ...(multi ? { 'aria-multiselectable': 'true' } : {}) });
+  list.addEventListener('mousedown', (e) => { if (!e.target.closest('button')) e.preventDefault(); });
   let groups = [], flat = [], rowEls = [], sel = 0;
   let timer, inflight = null;
-  const pick = (hit) => {
+  const markRows = () => rowEls.forEach((r, j) => {
+    if (flat[j].kind === 'create' || !checks) return;
+    const on = chosen.has(flat[j].id);
+    r.setAttribute('aria-checked', String(on));
+    r.classList.toggle('checked', on);
+  });
+  const pick = async (hit) => {
+    if (picked) return;
+    if (hit.kind === 'create') {
+      let made;
+      try { made = await hit.run(input.value.trim()); } catch (err) { toast(err.message, true); return; }
+      if (!multi) { picked = true; back.remove(); onPick?.(made); return; }
+      chosen.add(made.id);
+      linked.push(made);
+      input.value = '';
+      input.focus();
+      load('');
+      return;
+    }
+    if (multi) {
+      if (chosen.has(hit.id)) chosen.delete(hit.id);
+      else chosen.add(hit.id);
+      markRows();
+      input.focus();
+      return;
+    }
     picked = true;
     back.remove();
     if (onPick) onPick(hit);
@@ -10329,10 +11378,14 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     rowEls = [];
     const needle = q.toLowerCase();
     const nodes = gs.map((g, gi) => el('div', { class: 'cmdk-group', role: 'group', 'aria-labelledby': `cmdk-g${gi}` },
-      el('div', { class: 'cmdk-hdr', id: `cmdk-g${gi}` }, g.label, g.key === 'recent' ? null : ` · ${g.hits.length}`),
+      g.key === 'create' ? null
+        : el('div', { class: 'cmdk-hdr', id: `cmdk-g${gi}` }, g.label, g.key === 'recent' || g.key === 'linked' ? null : ` · ${g.hits.length}`),
       g.hits.map((h) => {
         const i = rowEls.length;
-        const row = paletteRow(h, i, { needle, group: g.key, here, onPick: pick, href: onPick ? null : h.url });
+        const row = paletteRow(h, i, {
+          needle, group: g.key, here, onPick: pick, href: onPick || scope ? null : h.url,
+          checked: checks && h.kind !== 'create' ? chosen.has(h.id) : null,
+        });
         row.addEventListener('mouseenter', () => setSel(i, false));
         rowEls.push(row);
         return row;
@@ -10342,39 +11395,53 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     input.setAttribute('aria-expanded', String(rowEls.length > 0));
     setSel(0);
   };
+  const withCreate = (gs) => (creators.length ? [...gs, { key: 'create', label: '', hits: creators }] : gs);
+  const scopedGroups = (q, hits) => {
+    if (q) return withCreate(P.groupHits(hits, q));
+    const mine = new Set(linked.map((h) => h.id));
+    return withCreate([
+      { key: 'linked', label: multi ? 'Linked' : 'Current', hits: linked },
+      { key: 'records', label: 'Records', hits: hits.filter((h) => !mine.has(h.id)) },
+    ].filter((g) => g.hits.length));
+  };
   const showRecent = () => {
     const recent = readRecents().filter((h) => !kinds || kinds.includes(h.kind));
     render('', recent.length ? [{ key: 'recent', label: 'Recent', hits: recent }] : [], 'Records and tables you open show up here.');
   };
+  const searchUrl = (q) => (scope
+    ? `/search?q=${encodeURIComponent(q)}&tables=${scope.map(encodeURIComponent).join(',')}&limit=50`
+    : `/search?q=${encodeURIComponent(q)}&all=1`);
+  const load = async (q) => {
+    inflight?.abort();
+    const ctl = inflight = new AbortController();
+    let hits;
+    try {
+      hits = await api('GET', searchUrl(q), undefined, { signal: ctl.signal });
+    } catch (err) {
+      if (ctl.signal.aborted) return;
+      groups = []; flat = []; rowEls = [];
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      list.replaceChildren(el('div', { class: 'cmdk-error', role: 'alert' }, `Couldn't search: ${err.message}`));
+      return;
+    }
+    if (ctl.signal.aborted) return;
+    if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
+    render(q, scope ? scopedGroups(q, hits) : P.groupHits(hits, q), q ? `No matches for “${q}”.` : 'Nothing here yet.');
+  };
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    if (!q) { inflight?.abort(); showRecent(); return; }
-    timer = setTimeout(async () => {
-      inflight?.abort();
-      const ctl = inflight = new AbortController();
-      let hits;
-      try {
-        hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`, undefined, { signal: ctl.signal });
-      } catch (err) {
-        if (ctl.signal.aborted) return;
-        groups = []; flat = []; rowEls = [];
-        input.setAttribute('aria-expanded', 'false');
-        input.removeAttribute('aria-activedescendant');
-        list.replaceChildren(el('div', { class: 'cmdk-error', role: 'alert' }, `Couldn't search: ${err.message}`));
-        return;
-      }
-      if (ctl.signal.aborted) return;
-      if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
-      render(q, P.groupHits(hits, q), `No matches for “${q}”.`);
-    }, 150);
+    if (!q && !scope) { inflight?.abort(); showRecent(); return; }
+    timer = setTimeout(() => load(q), 150);
   });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setSel(sel + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(sel - 1); }
     else if (e.key === 'Tab') { e.preventDefault(); setSel(P.groupJump(groups, sel, e.shiftKey ? -1 : 1)); }
-    else if (e.key === 'Enter' && flat.length) pick(flat[sel] ?? flat[0]);
-    else if (e.key === 'Escape') dismiss();
+    else if (e.key === 'Enter' && multi && !input.value.trim()) { e.preventDefault(); dismiss(); }
+    else if (e.key === 'Enter' && flat.length) { e.preventDefault(); pick(flat[sel] ?? flat[0]); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); }
   });
   const cap = (k) => el('kbd', {}, k);
   back.append(el('div', { id: 'cmdk', role: 'dialog', 'aria-label': 'Search' },
@@ -10385,12 +11452,52 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     list,
     el('div', { class: 'cmdk-foot', 'aria-hidden': 'true' },
       el('span', {}, cap('↑'), ' ', cap('↓'), ' move'),
-      el('span', {}, cap('↵'), ' open'),
+      el('span', {}, cap('↵'), multi ? ' toggle' : scope ? ' pick' : ' open'),
       el('span', {}, cap('tab'), ' next group'),
-      el('span', {}, cap('esc'), ' close'))));
+      multi ? el('span', {}, cap('↵'), ' on empty or ', cap('esc'), ' done') : el('span', {}, cap('esc'), ' close'))));
   document.body.append(back);
-  showRecent();
+  if (scope) {
+    render('', scopedGroups('', []), 'Searching…');
+    load('');
+  } else showRecent();
   input.focus();
+}
+
+function relationTargets(f) {
+  if (f.targetDbIds) return f.targetDbIds.map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean);
+  const one = allTables().find((d) => d.id === f.targetDbId)
+    ?? allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb);
+  return one ? [one] : [];
+}
+
+function linkSearch(f, { linked = [], commit }) {
+  const targets = relationTargets(f);
+  if (!targets.length) return;
+  const before = linked.map((s) => s.id);
+  const term = targets.length === 1 ? targets[0].term ?? termOfTable(targets[0].id) : WeaveTerm.DEFAULT;
+  const run = (add, drop) => commit(add, drop).catch((err) => toast(err.message, true));
+  openCommandK({
+    scope: targets.map((t) => t.id),
+    selected: linked,
+    multi: !!f.many,
+    placeholder: `Search ${term.plural} to link as ${f.name}…`,
+    create: targets.map((t) => {
+      const noun = (t.term ?? termOfTable(t.id)).singular;
+      return {
+        label: targets.length > 1 ? `+ New ${noun} in ${t.qualified}` : `+ New ${noun}`,
+        run: async (q) => {
+          const made = await api('POST', `/tables/${t.id}/entities`, { values: { Name: q || `New ${t.name}` } });
+          return { kind: 'entity', id: made.id, publicId: made.publicId, name: made.name, db: made.db ?? t.qualified, url: `${WS_PREFIX}/e/${made.id}` };
+        },
+      };
+    }),
+    onPick: (hit) => { if (!before.includes(hit.id)) run([hit.id], []); },
+    onCommit: (ids) => {
+      const add = ids.filter((x) => !before.includes(x));
+      const drop = before.filter((x) => !ids.includes(x));
+      if (add.length || drop.length) run(add, drop);
+    },
+  });
 }
 
 document.addEventListener('keydown', (e) => {
@@ -10465,7 +11572,7 @@ const KEY_SHEET_ANYWHERE = [
   { keys: '⌘Return', does: 'send a problem report from its note' },
 ];
 const KEY_SHEET_TABLE = [
-  { keys: '/ or ⌘F', does: 'search this table' },
+  { keys: '/', does: 'search this table' },
   { keys: '⌘C / ⌘V', does: 'copy or paste the cell or the range' },
 ];
 
@@ -10500,6 +11607,7 @@ function wireKeySheet() {
 
 const LOADER_CYCLE_MS = 2000;
 const LOADER_SHOW_AFTER_MS = 500;
+const SKELETON_SHOW_AFTER_MS = 150;
 const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, ready: false };
 
 async function initPageLoader() {
@@ -10514,7 +11622,7 @@ async function initPageLoader() {
 
 function showPageLoader() {
   const host = $('#page-loader');
-  if (!host || !loading.ready) return;
+  if (!host) return;
   loading.shownAt = Date.now();
   host.hidden = false;
   host.setAttribute('aria-hidden', 'false');
@@ -10523,6 +11631,7 @@ function showPageLoader() {
 function hidePageLoader() {
   const host = $('#page-loader');
   if (!host) return;
+  host.classList.remove('boot');
   host.hidden = true;
   host.setAttribute('aria-hidden', 'true');
   loading.shownAt = 0;
@@ -10546,9 +11655,13 @@ async function withPageLoader(work) {
     if (loading.showTimer) {
       clearTimeout(loading.showTimer);
       loading.showTimer = null;
+      hidePageLoader();
       return;
     }
-    if (!loading.shownAt) return;
+    if (!loading.shownAt) {
+      hidePageLoader();
+      return;
+    }
     const elapsed = Date.now() - loading.shownAt;
     loading.hideTimer = setTimeout(hidePageLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
   }
@@ -10643,13 +11756,36 @@ function paintSkeleton(kind, db) {
   }
 }
 
+const skeleton = { timer: 0, watch: null };
+function scheduleSkeleton(kind, db) {
+  cancelSkeleton();
+  const main = $('#main');
+  if (main) {
+    skeleton.watch = new MutationObserver(cancelSkeleton);
+    skeleton.watch.observe(main, { childList: true });
+  }
+  skeleton.timer = setTimeout(() => { cancelSkeleton(); paintSkeleton(kind, db); }, SKELETON_SHOW_AFTER_MS);
+}
+function cancelSkeleton() {
+  clearTimeout(skeleton.timer);
+  skeleton.timer = 0;
+  skeleton.watch?.disconnect();
+  skeleton.watch = null;
+}
+
 function syncDocTitle(pageName) {
   if (pageName !== undefined) state.pageName = pageName;
   const top = dock?.state.chain[dock.state.chain.length - 1];
-  document.title = weaveBreadcrumbs.docTitle(top?.name || state.pageName, $('#ws-name')?.textContent);
+  const row = top ?? (state.route?.page === 'entity' && state.route.entity ? { ...state.route.entity, name: state.pageName } : null);
+  const name = row ? weaveBreadcrumbs.rowTitle(row) : state.pageName;
+  document.title = weaveBreadcrumbs.docTitle(name || state.pageName, $('#ws-name')?.textContent);
 }
 
 function renderRoute() {
+  return Promise.resolve().then(dispatchRoute).finally(cancelSkeleton);
+}
+
+function dispatchRoute() {
   teardownDocEditors();
   dockClose();
   for (const pop of document.querySelectorAll('.chip-pop, .picker-pop')) {
@@ -10661,7 +11797,7 @@ function renderRoute() {
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
   if (!(dbM && tableChromeOn(dbM[1]))) {
     resetGridWait();
-    paintSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
+    scheduleSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
       dbM ? allTables().find((d) => d.id === dbM[1]) : null);
   }
   let m;
@@ -10708,9 +11844,129 @@ const renderRouteSafely = () => {
     .then(() => schemaFetch)
     .then(renderRoute)
     .catch(paintRouteError)
-    .then(ensureNavMenu);
+    .then(ensureNavMenu)
+    .then(syncPhoneBar);
   return renderChain;
 };
+function installPhoneBar() {
+  const label = el('span', { class: 'phone-search-label' }, 'Search');
+  const search = el('button', { class: 'phone-search', type: 'button', onclick: () => openCommandK() }, lucideEl('search'), label);
+  const add = el('button', {
+    class: 'phone-new', type: 'button', hidden: '',
+    onclick: () => {
+      const db = state.route?.page === 'db' ? allTables().find((d) => d.id === state.route.dbId) : null;
+      if (db?.system) state.inlineAdd?.();
+      else if (db) newRowSheet(db);
+    },
+  }, lucideEl('plus'));
+  document.body.append(el('div', { class: 'phone-bar' }, search, add));
+  syncPhoneBar.parts = { label, search, add };
+}
+const NEW_ROW_CHOICES = 3;
+const NEW_ROW_OPTIONS = 6;
+function newRowSheet(start) {
+  document.querySelector('.new-row-sheet')?.closeSheet?.();
+  const back = el('div', { class: 'new-row-back', 'aria-hidden': 'true' });
+  const sheet = el('div', { class: 'new-row-sheet', role: 'dialog', 'aria-modal': 'true' });
+  let db = start;
+  let picked = {};
+  let off = () => {};
+  const close = () => { off(); removeEventListener('keydown', esc, true); sheet.remove(); back.remove(); };
+  const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+  sheet.closeSheet = close;
+  const name = el('textarea', { class: 'new-row-name', rows: '2', 'aria-label': 'Name' });
+  const create = el('button', { class: 'new-row-create', type: 'button', disabled: '' }, 'Create');
+  const more = el('button', { class: 'new-row-more', type: 'button', disabled: '' }, 'All fields');
+  name.addEventListener('input', () => { create.disabled = more.disabled = !name.value.trim(); });
+  const choiceFields = () => {
+    const hidden = new Set(db.hiddenFields ?? []);
+    return db.fields.filter((f) => (f.type === 'select' || f.type === 'multiselect') && !hidden.has(f.name) && (f.options ?? []).length && f.options.length <= NEW_ROW_OPTIONS).slice(0, NEW_ROW_CHOICES);
+  };
+  const choiceEl = (f) => {
+    const many = f.type === 'multiselect';
+    const seg = !many && f.options.length <= 3;
+    const box = el('div', { class: seg ? 'new-row-seg' : 'new-row-chips', role: 'group', 'aria-label': f.name });
+    const paint = () => {
+      for (const b of box.children) {
+        const on = many ? (picked[f.name] ?? []).includes(b.dataset.opt) : picked[f.name] === b.dataset.opt;
+        b.setAttribute('aria-pressed', String(on));
+      }
+    };
+    for (const opt of f.options) {
+      box.append(el('button', {
+        class: `new-row-opt ${optionHue(f, opt)}`, type: 'button', dataset: { opt },
+        onclick: () => {
+          if (many) {
+            const now = new Set(picked[f.name] ?? []);
+            if (now.has(opt)) now.delete(opt); else now.add(opt);
+            picked[f.name] = [...now];
+          } else picked[f.name] = picked[f.name] === opt ? undefined : opt;
+          paint();
+        },
+      }, opt));
+    }
+    paint();
+    return el('div', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, f.name), box);
+  };
+  const tableChip = el('button', { class: 'new-row-table', type: 'button', 'aria-haspopup': 'dialog' });
+  const title = el('h2', { class: 'new-row-title' });
+  const fieldsBox = el('div', { class: 'new-row-fields' });
+  const draw = () => {
+    const term = db.term?.singular ?? 'row';
+    title.textContent = `New ${term}`;
+    sheet.setAttribute('aria-label', `New ${term}`);
+    name.placeholder = `Name this ${term}`;
+    tableChip.replaceChildren(iconEl(db.icon, 'wv-icon') ?? '', el('span', {}, db.name), lucideEl('chevron-down'));
+    tableChip.setAttribute('aria-label', `Table: ${db.name}`);
+    fieldsBox.replaceChildren(...choiceFields().map(choiceEl));
+  };
+  tableChip.addEventListener('click', () => searchPicker({
+    anchor: tableChip, title: 'New row in', placeholder: 'Search tables…',
+    options: allTables().filter((t) => !t.system).map((t) => ({ id: t.id, label: t.name, sub: t.space })),
+    currentId: db.id,
+    onPick: (o) => { db = allTables().find((t) => t.id === o.id) ?? db; picked = {}; draw(); },
+  }));
+  const write = async (then) => {
+    const text = name.value.trim();
+    if (!text) return;
+    create.disabled = more.disabled = true;
+    const values = { ...filterSeed(db) };
+    for (const [k, v] of Object.entries(picked)) if (v !== undefined && !(Array.isArray(v) && !v.length)) values[k] = v;
+    try {
+      const made = await api('POST', `/tables/${db.id}/entities`, { name: text, ...(Object.keys(values).length ? { values } : {}) });
+      close();
+      await loadSchema();
+      if (state.route?.page === 'db' && state.route.dbId === db.id) await showDatabase(db.id, state.route.view);
+      await then(made);
+    } catch (err) { create.disabled = more.disabled = false; toast(err.message, true); }
+  };
+  create.addEventListener('click', () => write((made) => openEntity(made.id)));
+  more.addEventListener('click', () => write((made) => { location.hash = `#/entity/${made.id}`; }));
+  sheet.append(
+    el('div', { class: 'new-row-grip', 'aria-hidden': 'true' }),
+    el('div', { class: 'new-row-head' }, title, tableChip),
+    el('label', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, 'Name'), name),
+    fieldsBox,
+    el('div', { class: 'new-row-actions' }, more, create));
+  draw();
+  document.body.append(back, sheet);
+  off = dismissOutside({ inside: (t) => sheet.contains(t) || !!t.closest?.('.picker-pop, .chip-pop'), close, swallow: () => true, open: () => sheet.isConnected });
+  addEventListener('keydown', esc, true);
+  name.focus({ preventScroll: true });
+  return sheet;
+}
+function syncPhoneBar() {
+  const parts = syncPhoneBar.parts;
+  if (!parts) return;
+  const db = state.route?.page === 'db' ? allTables().find((d) => d.id === state.route.dbId) : null;
+  const text = `Search ${db?.name ?? (currentWsName() || 'weave')}`;
+  parts.label.textContent = text;
+  parts.search.setAttribute('aria-label', text);
+  parts.add.hidden = !db;
+  const noun = db?.term?.singular ?? 'row';
+  parts.add.title = `New ${noun}`;
+  parts.add.setAttribute('aria-label', `New ${noun}`);
+}
 function ensureNavMenu() {
   const main = $('#main');
   if (!main || main.querySelector('.nav-menu')) return;
@@ -10738,8 +11994,7 @@ document.addEventListener('click', (ev) => {
   if (!caret) return;
   ev.preventDefault();
   ev.stopPropagation();
-  const open = caret.closest('.mention-wrap')?.classList.toggle('open');
-  caret.setAttribute('aria-expanded', String(!!open));
+  toggleMentionCaret(caret);
 });
 
 document.addEventListener('keydown', (e) => {
@@ -10764,11 +12019,14 @@ async function buildWsRail() {
     const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
     const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
     const current = cur?.name ?? seg;
+    state.wsList = list;
+    state.wsCurrent = current;
     const wordmark = $('#ws-name');
     wordmark.textContent = current ?? '';
     syncDocTitle();
     wordmark.href = wsHomeHref();
     wordmark.title = current ? `Open the ${current} workspace page` : 'Open the workspace page';
+    syncPhoneBar();
     const weaveWs = list.find((w) => w.name === 'weave');
     const pinned = $('#rail-weave');
     if (pinned) {
@@ -10779,7 +12037,7 @@ async function buildWsRail() {
       ...list.filter((w) => w.name !== 'weave').map((w) => {
         const prefix = w.default ? '' : `/w/${w.id}`;
         const chip = el('a', {
-          class: 'ws-icon' + (w.name === current ? ' active' : ''),
+          class: 'ws-icon' + (w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : ''),
           href: w.default ? '/' : (w.url ?? `/w/${w.id}/`),
           title: `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
         }, w.logo
@@ -10800,13 +12058,14 @@ async function buildWsRail() {
       }));
     refreshWsMarks();
   } catch {}
+  refreshAccountChip();
 }
 
 function contextMenu(e, items, extraClass = '') {
   contextMenu.close?.();
   const menu = el('div', { class: `dl-menu wv-ctx ${extraClass}`, style: `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:120` });
-  const close = () => { menu.remove(); removeEventListener('click', away); removeEventListener('keydown', esc); contextMenu.close = null; };
-  const away = (ev) => { if (!menu.contains(ev.target)) close(); };
+  let off = () => {};
+  const close = () => { menu.remove(); off(); removeEventListener('keydown', esc); contextMenu.close = null; };
   const esc = (ev) => { if (ev.key === 'Escape') close(); };
   for (const it of items) {
     if (it === 'divider') { menu.append(el('div', { class: 'dropdown-divider' })); continue; }
@@ -10820,7 +12079,7 @@ function contextMenu(e, items, extraClass = '') {
     }, it.label));
   }
   document.body.append(menu);
-  addEventListener('click', away);
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t), close });
   addEventListener('keydown', esc);
   contextMenu.close = close;
   return menu;
@@ -10831,7 +12090,7 @@ function confirmDeleteWorkspace(w, { current = false } = {}) {
     el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
       `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from Trash in the sidebar. Type `,
       el('code', {}, w.name), ' to confirm.'),
-    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off', style: 'width:100%' }),
+    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off' }),
   ], async (fd) => {
     if (fd.get('confirm') !== w.name) throw new Error(`Type ${w.name} exactly to delete it`);
     await api('DELETE', `/workspaces/${w.id}`);
@@ -10848,10 +12107,12 @@ async function trashedWorkspaces() {
   try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; }
 }
 function trashedWorkspacesCard(trashed, redraw) {
-  return el('div', { class: 'card panel trash-workspaces', style: 'margin-top:12px' },
+  return el('div', { class: 'card list-rows trash-workspaces', style: 'margin-top:12px' },
     el('h3', { class: 'card-title' }, 'Workspaces'),
-    ...trashed.map((w) => el('div', { class: 'wv-toolbar', style: 'margin-bottom:6px;gap:8px' },
-      el('span', { style: 'flex:1' }, w.name, ' ', el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`)),
+    ...trashed.map((w) => el('div', { class: 'list-row' },
+      el('span', { class: 'list-row-name' }, w.name),
+      el('span', { class: 'text-secondary' }, 'deleted ', whenEl(w.deletedAt)),
+      el('span', { class: 'spacer' }),
       el('button', {
         class: 'btn btn-sm', type: 'button',
         onclick: async () => {
@@ -10903,12 +12164,24 @@ function wireWsNew() {
   const btn = $('#ws-new');
   if (!btn) return;
   btn.replaceChildren(iconEl('+', 'wv-icon'));
-  btn.addEventListener('click', () => {
-    modal('New workspace', [el('input', { name: 'name', class: 'form-control', placeholder: 'Workspace name (e.g. dos)' })],
-      async (fd) => {
-        const created = await api('POST', '/workspaces', { name: fd.get('name') });
+  btn.addEventListener('click', async () => {
+    const me = await api('GET', '/auth/me').catch((err) => {
+      if (err.status !== 401) toast(err.message, true);
+      return null;
+    });
+    const accountName = me?.account?.name ?? null;
+    const slugs = WeaveSlugForm.mount({ accountName, check: (slug) => api('GET', `/workspaces/slug?slug=${encodeURIComponent(slug)}`) });
+    modal('New workspace', [slugs.node], async () => {
+      try {
+        const created = await api('POST', '/workspaces', slugs.value());
         location.href = created.url;
-      });
+      } catch (err) {
+        if (slugs.refused(err.code)) err.shown = true;
+        throw err;
+      }
+    }, WeaveSlugs.COPY.submit);
+    const done = document.querySelector('#modal button[type="submit"]');
+    if (done) slugs.bindSubmit(done);
   });
 }
 
@@ -11098,9 +12371,9 @@ function openBugPanel(fab) {
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
-  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: 'Send (⌘Return)' }, 'Send');
+  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: keyHint('Send (⌘Return)') }, 'Send');
   const note = el('textarea', {
-    class: 'form-control bug-note', rows: '2', maxlength: '600',
+    class: 'form-control form-control-sm bug-note', rows: '2', maxlength: '600',
     placeholder: 'What went wrong?',
   });
   note.value = bugDraft.note;
@@ -11184,14 +12457,11 @@ function openBugPanel(fab) {
   panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
   panel.style.bottom = (innerHeight - r.top + 6) + 'px';
 
-  const away = (ev) => {
-    if (!panel.isConnected) return removeEventListener('click', away, true);
-    if (panel.contains(ev.target) || fab.contains(ev.target)) return;
-    if (bugCore.canSubmit(picked, note.value)) return;
-    closeBugPanel();
-    removeEventListener('click', away, true);
-  };
-  addEventListener('click', away, true);
+  dismissOutside({
+    open: () => panel.isConnected,
+    inside: (t) => panel.contains(t) || fab.contains(t) || bugCore.canSubmit(picked, note.value),
+    close: closeBugPanel,
+  });
   addEventListener('keydown', function esc(ev) {
     if (!panel.isConnected) return removeEventListener('keydown', esc);
     if (ev.key === 'Escape') { closeBugPanel(); fab.focus(); removeEventListener('keydown', esc); }
@@ -11205,6 +12475,7 @@ function openBugPanel(fab) {
 
 initPageLoader();
 installBugReporter();
+installPhoneBar();
 toastLayer();
 wireThemeToggle();
 wireSkipLink();

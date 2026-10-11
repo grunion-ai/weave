@@ -7,7 +7,7 @@ const AGENTS = fileURLToPath(new URL('../AGENTS.md', import.meta.url));
 
 const JOBS = [
   ['Build', ['weave_build']],
-  ['Read and search', ['weave_schema', 'weave_query', 'weave_get_entity', 'weave_search']],
+  ['Read and search', ['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search']],
   ['Write rows', ['weave_create_entity', 'weave_update_entity', 'weave_import_csv']],
   ['Change schema', ['weave_create_space', 'weave_create_table', 'weave_add_field', 'weave_update_field', 'weave_add_relation', 'weave_workspace']],
   ['Look up allowed values', ['weave_vocabulary']],
@@ -15,17 +15,17 @@ const JOBS = [
 ];
 
 const AREAS = [
-  ['Rows', ['weave_delete_entity', 'weave_restore_entity', 'weave_trash', 'weave_undo', 'weave_bulk', 'weave_set_state', 'weave_link', 'weave_unlink']],
+  ['Rows', ['weave_delete_entity', 'weave_restore_entity', 'weave_trash', 'weave_undo', 'weave_bulk', 'weave_set_state', 'weave_link', 'weave_unlink', 'weave_form_submit']],
   ['Documents and comments', ['weave_get_doc', 'weave_set_doc', 'weave_doc_revisions', 'weave_doc_restore', 'weave_add_comment', 'weave_delete_comment']],
   ['Spaces and tables', ['weave_update_space', 'weave_delete_space', 'weave_restore_space', 'weave_update_table', 'weave_move_table', 'weave_duplicate_table', 'weave_delete_table', 'weave_restore_table', 'weave_table_view']],
-  ['Fields and formulas', ['weave_rollback_field', 'weave_delete_field', 'weave_check_formula']],
+  ['Fields and formulas', ['weave_rollback_field', 'weave_delete_field', 'weave_restore_field', 'weave_check_formula']],
   ['Whole schema', ['weave_apply_schema', 'weave_registry', 'weave_relation_map']],
   ['Templates', ['weave_template_list', 'weave_template_use']],
   ['Figures', ['weave_stats']],
   ['Import and export', ['weave_export_csv', 'weave_export_json', 'weave_import_json']],
   ['Files', ['weave_attach_file', 'weave_files']],
   ['Automations', ['weave_create_automation', 'weave_automations']],
-  ['Share pages', ['weave_views']],
+  ['Share pages', ['weave_views', 'weave_shares']],
   ['History', ['weave_activity', 'weave_audit']],
   ['Accounts and secrets', ['weave_accounts', 'weave_keys']],
 ];

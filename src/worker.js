@@ -1,6 +1,6 @@
 import { Weave, WeaveError } from './engine.js';
 import { CFStore } from './store-cf.js';
-import { createRequestHandler, statusFor } from './routes.js';
+import { createRequestHandler, decodePath, statusFor, errorBody } from './routes.js';
 
 export class WeaveWorkspace {
   #handle = null;
@@ -50,9 +50,10 @@ export class WeaveWorkspace {
     try {
       const outcome = await this.#handle({
         method: request.method,
-        path: decodeURIComponent(url.pathname),
+        path: decodePath(url.pathname),
         searchParams: url.searchParams,
         header: (name) => request.headers.get(name) ?? undefined,
+        remote: request.headers.get('cf-connecting-ip') ?? null,
         readBody: async () => {
           const raw = await request.text();
           if (!raw) return {};
@@ -60,10 +61,11 @@ export class WeaveWorkspace {
           catch { throw new WeaveError('Invalid JSON body', 'invalid'); }
         },
       });
-      return new Response(outcome.body, { status: outcome.status, headers: outcome.headers });
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(outcome.headers ?? {})) for (const v of [value].flat()) headers.append(name, v);
+      return new Response(outcome.body, { status: outcome.status, headers });
     } catch (err) {
-      const status = statusFor(err);
-      return Response.json({ error: err.message, code: err.code ?? 'internal' }, { status });
+      return Response.json(errorBody(err), { status: statusFor(err) });
     }
   }
 }

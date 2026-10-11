@@ -168,3 +168,22 @@ test('the doc documents structure-as-tables, and the config fields are real', ()
       `'${name}' is documented but not a field of the Tables registry`);
   }
 });
+
+test('a space is defined as the unit of meaning, in the engine and the glossary alike (Feature #278)', () => {
+  const space = ONTOLOGY.levels.find((l) => l.key === 'space');
+  assert.equal(space.definition,
+    'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in Workspace/Spaces is the same object seen as data.');
+  const row = DOC.split('\n').find((l) => l.startsWith('| **Space** |'));
+  assert.ok(row, 'ONTOLOGY.md has a Space row');
+  assert.equal(row.split(' | ').at(-1).replace(/ \|$/, ''),
+    'The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest.');
+});
+
+test('the glossary Space section carries the approved definition and no container framing (Feature #278)', () => {
+  const start = DOC.indexOf('### Space\n');
+  assert.ok(start > 0, 'the glossary has a Space section');
+  const section = DOC.slice(start, DOC.indexOf('\n### ', start + 1)).replace(/\s+/g, ' ');
+  assert.ok(section.includes('The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest.'),
+    'the Space section opens on the glossary wording');
+  assert.ok(!/container/i.test(section), 'the Space section no longer calls a space a container');
+});

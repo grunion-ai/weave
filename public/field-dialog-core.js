@@ -91,19 +91,26 @@
     plain: ['Ascending', 'Descending'],
   };
   const TEXT_LIKE = ['text', 'url', 'email', 'key'];
+  const DATE_LIKE = ['date', 'daterange'];
   const NUMBER_AGGREGATES = ['count', 'sum', 'avg', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
   function sortReading(f, targetType) {
     const type = f?.type;
-    if (type === 'date' || type === 'daterange') return 'date';
+    if (DATE_LIKE.includes(type)) return 'date';
     if (type === 'number' || type === 'rating') return 'number';
     if (type === 'select' || type === 'workflow') return type;
     if (TEXT_LIKE.includes(type)) return 'text';
     if (type === 'rollup') {
       if (NUMBER_AGGREGATES.includes(f.aggregate)) return 'number';
       if (f.aggregate === 'join') return 'text';
-      return (f.aggregate === 'min' || f.aggregate === 'max') && targetType === 'number' ? 'number' : 'plain';
+      if (f.aggregate !== 'min' && f.aggregate !== 'max') return 'plain';
+      if (targetType === 'number') return 'number';
+      return DATE_LIKE.includes(targetType) ? 'date' : 'plain';
     }
-    if (type === 'lookup') return targetType === 'number' ? 'number' : TEXT_LIKE.includes(targetType) || targetType === 'select' || targetType === 'workflow' ? 'text' : 'plain';
+    if (type === 'lookup') {
+      if (targetType === 'number') return 'number';
+      if (DATE_LIKE.includes(targetType)) return 'date';
+      return TEXT_LIKE.includes(targetType) || targetType === 'select' || targetType === 'workflow' ? 'text' : 'plain';
+    }
     if (type === 'formula') return ['format', 'unit', 'currency', 'decimals'].some((k) => f[k] != null) ? 'number' : 'plain';
     return 'plain';
   }
@@ -407,7 +414,7 @@
       config.options = (state.options ?? []).map((o) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, color: o.color ?? '' }));
     } else if (t === 'workflow') {
       const di = (state.states ?? []).findIndex((s) => s.default && String(s.name ?? '').trim());
-      config.states = (state.states ?? []).map((s, i) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}), ...(i === di ? { default: true } : {}) }));
+      config.states = (state.states ?? []).map((s, i) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}), ...(s.hue ? { hue: s.hue } : {}), ...(i === di ? { default: true } : {}) }));
     } else if (t === 'number') {
       Object.assign(config, numberCostume(state.number));
     } else if (t === 'date' || t === 'daterange') {
@@ -488,7 +495,7 @@
     } else if (def.type === 'workflow') {
       state.states = (c.states ?? defaultStates()).map((s) => (typeof s === 'string'
         ? { name: s, category: 'in-progress', default: false }
-        : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}), ...(s.default ? { default: true } : {}) }));
+        : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}), ...(s.hue ? { hue: s.hue } : {}), ...(s.default ? { default: true } : {}) }));
     } else if (def.type === 'number') {
       state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column', color: c.color ?? 'ink' };
     } else if (def.type === 'date' || def.type === 'daterange') {

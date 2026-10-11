@@ -67,7 +67,7 @@ test('related rows still route a click before opening the entity', () => {
     'no row surface may open the entity without routing first');
   assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 0,
     'the grid no longer peeks — the #id link docks and ⌘-click opens a tab (one entity surface)');
-  assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id\)\)/,
+  assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id, \{ step: true \}\)\)/,
     'and a doc chip docks its entity from the cell (Issue #74; peek excised 2026-09-02)');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
@@ -303,7 +303,7 @@ test('the description clamp is five description line-heights, toggled by a contr
   assert.equal(Number(m[1]), 5, 'five lines');
   assert.equal(m[2], desc['line-height'], 'in the description\'s own line-height');
   const vh = fnBody('viewHeader');
-  assert.match(vh, /class: 'view-desc-body clamped'/, 'the rendered markdown has its own body element, born clamped');
+  assert.match(vh, /class: 'view-desc-body wv-prose clamped'/, 'the rendered markdown has its own body element, born clamped');
   assert.match(vh, /class: 'view-desc-more'/, 'the Show more control exists');
   assert.match(vh, /closest\('a,textarea,button'\)/, 'a click on the control does not start an edit');
   assert.ok(rulesFor('.view-desc-more').cursor, 'the control reads as clickable');
@@ -348,7 +348,7 @@ test('only one overflow menu is open at a time', () => {
   const fn = APP.slice(APP.indexOf('function dotsMenu'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.match(body, /querySelectorAll\('\.dl-menu'\)/, 'opening one must close the others');
-  assert.match(body, /addEventListener\('click', function away/, 'clicking away must close it');
+  assert.match(body, /dismissOutside\(\{ open: \(\) => !menu\.classList\.contains\('hidden'\), inside: \(t\) => wrap\.contains\(t\), close \}\)/, 'a tap or click away must close it (Issue #726)');
 });
 
 test('comments and activity make up the side column; fields lead the body', () => {
@@ -359,7 +359,7 @@ test('comments and activity make up the side column; fields lead the body', () =
 });
 
 test('the space caret is a real hit target, not a 18px sliver', () => {
-  const caret = rulesFor('.nav-caret');
+  const caret = rulesFor('.wv-disclosure');
   assert.ok(px(caret.width) >= 24 && px(caret.height) >= 24,
     `caret must be at least 24x24, got ${caret.width} x ${caret.height}`);
   assert.equal(caret.flex ?? caret['flex-shrink'], '0',
@@ -370,13 +370,14 @@ test('the space caret is a drawn chevron, not a text glyph', () => {
   const fn = APP.slice(APP.indexOf('function renderNav'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.doesNotMatch(body, /'▾'|"▾"|'▸'|'▼'/, 'no text-glyph caret — it cannot match the chrome');
-  assert.match(body, /chevron\(/, 'the caret renders the shared chevron() svg');
+  assert.match(body, /disclosure\('nav-caret'/, 'the caret is the shared disclosure, which renders the chevron() svg');
   const at = APP.indexOf('chevron = (');
   assert.ok(at > 0, 'chevron() must be defined in app.js');
   const decl = APP.slice(at, at + 400);
   assert.match(decl, /lucide:chevron-right/, 'the chevron is the inventory\'s, so it matches the set and moves');
-  const icon = rulesFor('.nav-caret svg');
-  assert.ok(px(icon.width) >= 14, `chevron glyph must be >= 14px, got ${icon.width}`);
+  const icon = rulesFor('.wv-disclosure > .wv-icon svg');
+  assert.equal(icon.width, 'var(--wv-icon-md)', 'the chevron glyph is the 16px medium icon');
+  assert.equal(px(rulesFor(':root')['--wv-icon-md']), 16);
 });
 
 test('the caret trails the space label and rotates to open', () => {
@@ -386,10 +387,10 @@ test('the caret trails the space label and rotates to open', () => {
   assert.ok(body.indexOf('nav-caret', row) > body.indexOf("class: 'nav-space'", row),
     'the caret is appended after the space link — it trails the label ("Routines ›")');
 
-  const caret = rulesFor('.nav-caret');
+  const caret = rulesFor('.wv-disclosure');
   assert.ok(!caret.transform || caret.transform === 'none',
     `the resting caret must not be rotated, got ${caret.transform}`);
-  assert.match(rulesFor('.nav-caret.open').transform, /rotate\(90deg\)/,
+  assert.match(CSS, /\.wv-disclosure\[aria-expanded="true"\][^{]*\{[^}]*transform: rotate\(90deg\)/,
     'the expanded caret rotates the right-pointing glyph down');
 });
 
@@ -516,7 +517,7 @@ test('column reorder is persisted as fieldOrder, not page state', () => {
   assert.doesNotMatch(menu, /reorderField\(/, 'and no wiring left behind for one');
 });
 
-test('a column header is a drag handle for reorder (Feature #233: pointer events, one insertion line)', () => {
+test('a column header is a drag handle for reorder (Feature #233, Feature #282: pointer events, a placeholder at the landing slot)', () => {
   const head = fnBody('renderTable');
   assert.doesNotMatch(head, /draggable: 'true'/, 'the th is not a native drag source');
   assert.match(head, /onpointerdown: \(e\) => headPointerDown\(e, c\)/, 'the header starts the drag');
@@ -524,8 +525,10 @@ test('a column header is a drag handle for reorder (Feature #233: pointer events
   assert.match(head, /CR\.target\(/, 'the drop point comes from the pure core');
   assert.match(head, /CR\.plan\(/, 'and so does what the drop does');
   assert.match(head, /gridConfigWrite\(db, null, patch\)/, 'a view grid saves the move into its view');
-  const line = rulesFor('.wv-col-insert');
-  assert.ok(line.background, 'the drop point is a visible line');
+  assert.match(head, /RO\(\)\.press\(e, \{/, 'the header drag rides the shared reorder module');
+  assert.match(head, /R\.columnShift\(/, 'the neighbours slide aside by the dragged width');
+  assert.match(head, /class: 'wv-reorder-slot wv-col-slot'/, 'and the landing slot is the shared placeholder');
+  assert.deepEqual(rulesFor('.wv-col-insert'), {}, 'no bare insertion line is left');
   assert.equal(rulesFor('.wv-grid th.drop-target').background, undefined, 'and never a tint on the displaced header');
 });
 
@@ -744,7 +747,7 @@ test('every code block carries a copy button in its upper right', () => {
 test('a computed field carries its glyph next to the name, not only in cells', () => {
   const label = fnBody('fieldNameLabel');
   assert.match(label, /computedMark(?:Node)?\(/, 'one glyph vocabulary for names and values');
-  assert.match(label, /'sup'/, 'the mark is a superscript on the name');
+  assert.match(label, /el\('span', \{\n    class: 'field-mark'/, 'the mark is an inline span after the name');
   assert.match(APP, /COMPUTED_NAME_MARKS = \{[^}]*formula/,
     'formula fields are the case this exists for');
 
@@ -767,7 +770,7 @@ test('the entity activity pane shows ten rows, each linking into the Activity ta
 });
 
 test('the Activity table is routed, read-only and reachable from the workspace page', () => {
-  assert.match(fnBody('renderRoute'), /#\\\/activity|#\/activity/, 'the router knows #/activity');
+  assert.match(fnBody('dispatchRoute'), /#\\\/activity|#\/activity/, 'the router knows #/activity');
   assert.match(APP, /hash\.match\(\/\^#\\\/activity/, 'with an optional entity/event parameter');
   const view = fnBody('showActivity');
   assert.match(view, /api\('GET', `\/activity/, 'the view reads the feed endpoint');
@@ -854,20 +857,17 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   assert.match(body, /left\.classList\.add\('entity-body'\)/, 'the main column IS the body');
   assert.doesNotMatch(body, /card-title' \}, 'Fields'/, 'and no longer a side card (Feature #82 superseded)');
 
-  assert.match(body, /let dragFrom = null;/, 'a field drag');
-  assert.match(body, /let blockFrom = null;/, 'and a block drag, tracked apart');
-  assert.match(body, /held: \(\) => dragFrom \? values\.querySelector/, 'the rows\' list holds a row');
-  assert.match(body, /held: \(\) => blockFrom \? blocks\.get\(blockFrom\) : null/, 'the body holds a block');
-  assert.match(body, /reorderField\(db, from, next\.dataset\.field, \{ after: false, onFail: refresh \}\)/,
-    'a field drop is a fieldOrder write through the one reorder function, against the slot\'s neighbour');
+  assert.match(body, /items: \(\) => \[\.\.\.values\.querySelectorAll\(':scope > \.fieldrow:not\(\.fieldrow-system\)'\)\]/, 'a field drag sorts the value rows (Feature #282)');
+  assert.match(body, /items: \(\) => \[\.\.\.left\.children\]\.filter\(\(n\) => n\.matches\('\[data-block\]'\)\)/, 'and a block drag sorts the blocks, tracked apart');
+  assert.equal((body.match(/RO\(\)\.sortable\(e, \{/g) ?? []).length, 2, 'both go through the one shared reorder module');
+  assert.match(body, /reorderField\(db, f\.name, next\.dataset\.field, \{ after: false, onFail: refresh \}\)/,
+    'a field drop is a fieldOrder write through the one reorder function, against the placeholder\'s neighbour');
   assert.match(body, /reorderBlocks\(db, left, refresh\)/, 'a block drop is a bodyOrder write');
-  const slot = fnBody('slotDrag');
-  assert.match(slot, /e\.clientY < r\.top \+ r\.height \/ 2/, 'the pointer\'s height against an item\'s midpoint places the slot');
-  assert.match(slot, /Math\.abs\(left\(n\) - left\(nearest\)\) < 40/, 'only the pointer\'s column is a candidate — the multicol grid is a list');
-  assert.match(slot, /at\.replaceWith\(me\)/, 'the drop swaps the held node into the slot; the DOM is the order');
+  assert.doesNotMatch(APP, /function slotDrag\(/, 'the native drag-and-drop slot is gone');
+  assert.doesNotMatch(body, /draggable/, 'nothing on the page is a native drag source');
   assert.doesNotMatch(body, /compareDocumentPosition\(node\)/, 'no direction arithmetic is left on the page');
-  assert.match(body, /const anchor = \(what\) => el\('span', \{ class: 'opt-grip', draggable: 'true'/,
-    'the anchor is a ⠿ that is itself draggable — the thing you grab is the thing that moves');
+  assert.match(body, /const anchor = \(what\) => el\('span', \{ class: 'opt-grip', title: `Drag to move \$\{what\}` \}/,
+    'the anchor is the grip a row wears: the thing you grab is the thing that moves');
   assert.match(body, /wireBlock\(VALUES_BLOCK, fields,/, 'the field block is anchored');
   assert.match(body, /wireBlock\(f\.name, section, \[section\.querySelector\('\.opt-grip'\), section\.querySelector\('\.doc-section-head'\)\]\)/,
     'a document is anchored, and still draggable by its whole head');
@@ -884,12 +884,11 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   assert.match(rf, /onFail\(\)/, 'and calls whatever the caller gave it');
 
   assert.match(body, /f\.type === 'document'/, 'a document field renders as its section');
-  assert.match(body, /class: 'doc-section-head', draggable: 'true'/, 'and is dragged by its head');
-  assert.match(body, /const dragRow = \(node, handle, f\)/, 'one drag wiring serves the value rows');
-  assert.match(CSS, /\.entity-fields \.fieldrow\.dragging/, 'a dragged row is ghosted');
-  assert.match(CSS, /\.drop-slot \{[^}]*border: 2px dashed var\(--tblr-primary\)/, 'the cue is a dashed slot');
-  assert.match(CSS, /\.drop-slot \{[^}]*break-inside: avoid/, 'that never splits across a column break');
-  assert.match(CSS, /\.entity-body > \.drop-slot/, 'and blocks wear the same one, taller');
+  assert.match(body, /class: 'doc-section-head' \}/, 'and is dragged by its head');
+  assert.match(body, /const dragRow = \(node, f\)/, 'one drag wiring serves the value rows');
+  assert.match(CSS, /\.wv-reorder-slot \{[^}]*outline: 1\.5px dashed var\(--wv-slot-line\)/, 'the cue is a dashed placeholder (Feature #282)');
+  assert.match(CSS, /\.wv-reorder-slot \{[^}]*break-inside: avoid/, 'that never splits across a column break');
+  assert.doesNotMatch(CSS, /\.drop-slot/, 'the old slot is gone');
   assert.doesNotMatch(CSS, /\.fieldrow\.drop-(before|after)/, 'no line on a neighbour\'s edge remains');
   assert.doesNotMatch(CSS, /\[data-block\]\.drop-target/, 'for rows or for blocks');
 
@@ -963,11 +962,12 @@ test('a date cell is type-or-pick: parsed text beside a calendar (Feature #44, p
   assert.ok(fnBody('readTypedDate').includes('dc.partsOf(current)?.t'), 'a typed day keeps the existing time of day');
 });
 
-test('navigation paints a skeleton of the destination first (Feature #49)', () => {
+test('navigation schedules a skeleton of the destination (Feature #49, Issue #630)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   assert.ok(app.includes('function paintSkeleton('));
   const route = app.slice(app.indexOf('function renderRoute()'), app.indexOf('function route()'));
-  assert.ok(route.includes('paintSkeleton('), 'renderRoute paints before it dispatches');
+  assert.ok(route.includes('scheduleSkeleton('), 'renderRoute schedules the destination skeleton before it dispatches');
+  assert.ok(!route.includes('paintSkeleton('), 'and never paints it inline, which flashed on a fast load');
   const sk = rulesFor('.sk');
   assert.equal(sk['border-radius'], '4px');
   assert.ok(readFileSync(join(ROOT, 'public/style.css'), 'utf8').includes('prefers-reduced-motion'), 'shimmer respects reduced motion');
@@ -977,11 +977,11 @@ test('the Share dialog shows the link and no QR code (Feature #263)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-  const start = app.indexOf("modal('Share link'");
+  const start = app.indexOf('function shareDialog(');
   assert.ok(start > 0, 'the Share dialog exists');
-  const share = app.slice(start, app.indexOf("'Done')", start));
+  const share = app.slice(start, app.indexOf("'Create link')", start));
   assert.match(share, /el\('code', \{ class: 'share-url' \}, full\)/, 'the dialog shows the full link');
-  assert.ok(app.slice(app.indexOf("api('POST', `/views/${id}/share`)"), start).includes('clipboard?.writeText(full)'), 'opening it copies the link');
+  assert.ok(share.includes("copyText(location.origin + WS_PREFIX + g.url, 'Link copied')"), 'minting a link copies it (Feature #194)');
   assert.doesNotMatch(share, /canvas|qr|scan/i, 'no QR code and no talk of scanning one');
   for (const gone of ['qrCanvas', 'leanQR', 'share-qr']) assert.ok(!app.includes(gone), `app.js still names ${gone}`);
   assert.ok(!html.includes('lean-qr'), 'the shell no longer loads lean-qr');
@@ -1017,7 +1017,8 @@ test('every selector speaks the one dialect: search bar first, list under it', (
   const box = rulesFor('.picker-box');
   assert.equal(box['width'], '100%');
   assert.ok(box['border'], 'the box is the field');
-  assert.equal(rulesFor('.picker-search')['border'], '0', 'the input inside it draws nothing');
+  assert.ok(picker.includes("class: 'search-bare picker-search'"), 'the input inside it wears the bare search skin');
+  assert.equal(rulesFor('.search-bare')['border'], '0', 'the input inside it draws nothing');
   const list = rulesFor('.picker-list');
   assert.ok(list['max-height'], 'the list is small and scrolls');
 });
@@ -1029,10 +1030,11 @@ test('multi pickers edit in place: selections listed with ×, saved on Enter', (
   assert.ok(picker.includes('drawChips'), 'current selections render inside the picker');
   assert.ok(picker.includes("'Remove'"), 'each selection carries its ×');
   assert.ok(picker.includes('await commit()'), 'Enter on an empty search saves');
-  assert.ok(picker.includes('if (multi && pop.isConnected) { commit('), 'outside click saves, never discards');
+  assert.ok(picker.includes('close: () => (multi ? commit() : pop.remove())'), 'outside click saves, never discards');
   assert.ok(app.includes('function chipPickerMulti('));
-  const links = [...app.matchAll(/multi: \{\s*\n\s*selected:/g)];
-  assert.ok(links.length >= 2, `both link surfaces edit through multi (saw ${links.length})`);
+  const links = [...app.matchAll(/linkSearch\(f, \{/g)];
+  assert.ok(links.length >= 3, `the related section, the relation editor and the bulk bar all link through the scoped search (saw ${links.length})`);
+  assert.match(app.slice(app.indexOf('function linkSearch('), app.indexOf('function linkSearch(') + 2000), /multi: !!f\.many/, 'a to-many relation toggles in place');
   assert.ok(app.includes('unlink'), 'removals commit as unlinks');
 });
 
@@ -1275,8 +1277,10 @@ test('relation is a tile in the add tray and posts to /relations; files and docu
 test('workflow states: rows drag to reorder, icon instead of a default radio, and no fifth category', () => {
   assert.deepEqual(rulesFor('.chip.state-other'), {}, "'other' leaves no tint behind");
   const ed = fnBody('stateListEditor');
-  assert.match(ed, /draggable: 'true'/);
-  assert.match(ed, /fdc\.moveItem\(state\.states, dragFrom, i\)/, 'a drop reorders the states');
+  assert.doesNotMatch(ed, /draggable/, 'no native drag source (Feature #282)');
+  assert.match(ed, /optRowGrip\(wrap, \(\) => state\.states, i,/, 'the grip drags through the shared reorder module');
+  assert.match(fnBody('optRowGrip'), /fieldDialogCore\.moveItem\(list\(\), i,/, 'a drop reorders the states');
+  assert.match(fnBody('optionListEditor'), /optRowGrip\(wrap, \(\) => state\.options, i,/, 'and select options drag the same way');
   assert.match(ed, /iconButton\(/, 'an icon picker per state');
   assert.match(fnBody('iconButton'), /iconCatalogue\(\)/, 'over the shared vocabulary');
   assert.match(fnBody('iconCatalogue'), /fieldDialogCore\.iconChoices/, 'which is the one catalogue');
@@ -1410,7 +1414,7 @@ test('the chrome carries flat icons rather than emoji', () => {
 });
 
 test('a reference chip has an opaque ground', () => {
-  assert.equal(rulesFor('.doc-ref-layer a.doc-ref-chip').background, 'var(--tblr-bg-surface)',
+  assert.equal(rulesFor('.doc-ref-layer .doc-ref-slot').background, 'var(--tblr-bg-surface)',
     'the chip covers its literal with the editor’s own surface');
 });
 
@@ -1536,8 +1540,8 @@ test('dock: the surface core loads before app.js and #dock is a sibling of #main
 });
 
 test('dock: a route change tears the dock down with the doc editors, before the new page paints', () => {
-  const route = fnBody('renderRoute');
-  assert.match(route, /teardownDocEditors\(\);[\s\S]{0,120}dockClose\(\);/, 'renderRoute closes the dock right after the editor teardown');
+  const route = fnBody('dispatchRoute');
+  assert.match(route, /teardownDocEditors\(\);[\s\S]{0,120}dockClose\(\);/, 'the route dispatch closes the dock right after the editor teardown');
   assert.ok(route.indexOf('dockClose()') < route.indexOf('location.hash'), 'and before it reads the destination');
 });
 
@@ -1575,8 +1579,8 @@ test('dock: a repaint releases what the last pass mounted, and the docked row ta
 test('dock: the #id link docks plain rows only; registry rows and modified clicks keep the href', () => {
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
   const link = grid.match(/class: 'open-link',[\s\S]*?`#\$\{item\.publicId\} ↗`/)[0];
-  assert.match(link, /if \(nativeClick\(e\) \|\| registryHref\(db, item\)\) return;/, 'a modifier or a registry row falls through to the real href');
-  assert.match(link, /e\.preventDefault\(\);\s*dockEntity\(db, item\.id\);/, 'a plain click docks');
+  assert.doesNotMatch(link, /onclick/, 'the link carries its destination and no opener of its own');
+  assert.match(APP, /document\.addEventListener\('click', \(e\) => \{\s*if \(nativeClick\(e\)\) return;\s*const a = e\.target\.closest\?\.\('a\[href\^="#\/entity\/"\]'\)/, 'one capture handler opens every entity link, so one click docks once');
   assert.match(link, /`Open \$\{db\.term\.singular\} beside the table — ⌘-click for a new tab`/, 'the title speaks the row term (row-term work) and names both gestures');
   assert.match(grid, /href: registryHref\(db, item\) \?\? `#\/entity\/\$\{item\.id\}`/, '⌘-click on the row opens a tab, registry rows aside — the row carries the destination and openNativeClick opens it');
   const dockFn = fnBody('dockEntity');
@@ -1609,7 +1613,7 @@ test('dock: the Handbook ledger page teaches the new contract', () => {
   assert.match(section, /⌘-click a row .* own browser tab/);
   assert.match(section, /document chip in a cell opens its entity in the dock/, 'a doc chip docks, and the page says so');
   assert.doesNotMatch(section, /side peek/, 'the retired peek is gone from the page');
-  assert.match(APP, /return docChipCell\(f, item, \(\) => dockEntity\(db, id\)\);/, 'and from the code');
+  assert.match(APP, /return docChipCell\(f, item, \(\) => dockEntity\(db, id, \{ step: true \}\)\);/, 'and from the code');
   assert.match(section, /\*\*Docked is the default pose\*\*/, 'the page states the default');
   assert.match(section, /outward diagonal arrows .* expand/, 'and how to reach the full page');
 });
@@ -1637,7 +1641,7 @@ test('no surface says "entity" to a reader where a table has a row term', () => 
   }
   assert.match(APP, /\+ New \$\{db\.term\.singular\}/, 'the grid\'s add row');
   assert.match(APP, /countLabel\(sel\.size, db\.term\)/, 'the puck count');
-  assert.match(APP, /termOfTable\(f\.targetDbId\)\.plural/, 'relation pickers speak the target\'s plural');
+  assert.match(APP, /Search \$\{term\.plural\} to link as/, 'relation pickers speak the target\'s plural');
   assert.match(APP, /WeaveTerm\.count\(n\.entityCount, n\.term\)/, 'relation-map nodes');
   assert.match(APP, /WeaveTerm\.DEFAULT\.singular : WeaveTerm\.DEFAULT\.plural/, 'the workspace total speaks the default term');
   assert.doesNotMatch(APP, /\?\? 'record'/, 'no surface carries its own copy of the default noun');
@@ -1675,11 +1679,11 @@ test('an empty chip invites writing, never promises navigation', () => {
 
 test('the relation chip’s × is spaced as the trailing piece it is', () => {
   const x = rulesFor('.k-rel > .x');
-  assert.ok(x.margin?.startsWith('0 6px 0'), `the × follows the link — got margin ${x.margin}`);
+  assert.ok(x.margin?.startsWith('0 5px 0'), `the × follows the caret — got margin ${x.margin}`);
 });
 
 test('navigating away dismisses any floating picker', () => {
-  const body = fnBody('renderRoute');
+  const body = fnBody('dispatchRoute');
   assert.match(body, /chip-pop.*picker-pop|picker-pop.*chip-pop/, 'route() sweeps both popover kinds');
   assert.match(body, /\.remove\(\)/, 'and removes them');
 });
@@ -1720,10 +1724,11 @@ test('the entity page draws the System toggles — one read-only row per systemF
 
 test('the entity name wraps instead of clipping: a content-sized textarea, Enter commits (Issue #175)', () => {
   const body = fnBody('renderEntityView');
-  assert.match(body, /const nameInput = el\('textarea', \{\s*\n\s*class: 'name-edit'/, 'a textarea, not an input — an input is one line by construction');
+  assert.match(body, /const nameInput = titleEdit\('textarea', 'name-edit'/, 'a textarea, not an input — an input is one line by construction');
   assert.match(body, /rows: '1'/, 'one row at rest');
   assert.match(body, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); nameInput\.blur\(\); \}/, 'Enter commits; a name has no second line of its own');
-  assert.match(body, /nameInput\.value = entity\.name/, 'the value is set, never a child text node');
+  assert.match(body, /titleEdit\('textarea', 'name-edit'[^\n]*, entity\.name, \{/, 'the name is the value it is built with');
+  assert.match(fnBody('titleEdit'), /node\.value = value/, 'the value is set, never a child text node');
   const css = rulesFor('.entity-head textarea.name-edit');
   assert.equal(css['field-sizing'], 'content', 'the box is as tall as the name');
   assert.equal(css.resize, 'none');

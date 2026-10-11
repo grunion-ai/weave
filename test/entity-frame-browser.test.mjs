@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, PHONE, phoneBrowser, phonePage, touchScroll } from './lib/browser.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 
@@ -19,8 +19,8 @@ if (s) {
     page: { hash: () => `#/entity/${issue.id}`, pane: '#main', header: '#main > .view-header' },
     dock: { hash: () => `#/table/${issues.id}?e=${issue.id}`, pane: '#dock', header: '#dock .dock-entity > .view-header' },
   };
-  const open = async (pose, { width = 1440, height = 900, theme = 'light' } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height } });
+  const open = async (pose, { width = 1440, height = 900, theme = 'light', phone = false } = {}) => {
+    const page = phone ? await phonePage(await phoneBrowser()) : await browser.newPage({ viewport: { width, height } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${poses[pose].hash()}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`${poses[pose].pane} .name-edit`);
@@ -43,15 +43,15 @@ if (s) {
       doc: document.scrollingElement.scrollTop,
     };
   }, { pane: poses[pose].pane, header: poses[pose].header });
-  const wheelToBottom = async (page, pose) => {
+  const wheelToBottom = async (page, pose, phone) => {
     const box = await page.evaluate((pane) => {
       const r = document.querySelector(pane).getBoundingClientRect();
       return { x: r.left + r.width / 2, y: r.top + r.height * 0.7 };
     }, poses[pose].pane);
-    await page.mouse.move(box.x, box.y);
+    if (!phone) await page.mouse.move(box.x, box.y);
     let last = null;
     for (let k = 0; k < 30; k++) {
-      await page.mouse.wheel(0, 2000);
+      await (phone ? touchScroll(page, box, 2000) : page.mouse.wheel(0, 2000));
       await page.waitForTimeout(120);
       const now = (await frame(page, pose)).body;
       if (now === last) break;
@@ -62,14 +62,14 @@ if (s) {
 
   const cases = [];
   for (const pose of ['page', 'dock']) for (const theme of ['light', 'dark']) cases.push({ pose, theme, width: 1440, height: 900 });
-  for (const pose of ['page', 'dock']) cases.push({ pose, theme: 'light', width: 390, height: 844 });
+  for (const pose of ['page', 'dock']) cases.push({ pose, theme: 'light', phone: true });
 
-  for (const { pose, theme, width, height } of cases) {
-    test(`${pose}, ${theme}, ${width}x${height}: the card edge, crumb row and title hold while the body scrolls`, async () => {
-      const page = await open(pose, { width, height, theme });
+  for (const { pose, theme, width, height, phone } of cases) {
+    test(`${pose}, ${theme}, ${phone ? PHONE : `${width}x${height}`}: the card edge, crumb row and title hold while the body scrolls`, async () => {
+      const page = await open(pose, { width, height, theme, phone });
       const rest = await frame(page, pose);
       assert.ok(rest.edgeIsFrame, `at rest the card's top edge is the frame: ${JSON.stringify(rest)}`);
-      await wheelToBottom(page, pose);
+      await wheelToBottom(page, pose, phone);
       const end = await frame(page, pose);
       assert.ok(rest.body - end.body > 400, `the body really scrolled: ${rest.body} -> ${end.body}`);
       assert.equal(end.doc, 0, 'the document itself never scrolls');

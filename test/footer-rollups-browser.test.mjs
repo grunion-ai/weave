@@ -57,7 +57,7 @@ if (s) {
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     await footCell(page, 'Cost').click();
     await page.waitForSelector('.chip-pop .foot-row');
-    const offered = await page.$$eval('.chip-pop .foot-row', (rows) => rows.map((r) => r.dataset.agg));
+    const offered = await page.locator('.chip-pop .foot-row').evaluateAll((rows) => rows.map((r) => r.dataset.agg));
     assert.deepEqual(offered, ['sum', 'avg', 'median', 'min', 'max', 'stdev', 'range', 'filled', 'empty']);
     assert.equal(await page.getAttribute('.chip-pop .foot-row[data-agg="sum"]', 'aria-checked'), 'true', 'the existing rollup reads as on');
     await page.click('.chip-pop .foot-row[data-agg="avg"]');
@@ -77,14 +77,14 @@ if (s) {
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     await footCell(page, 'Name').click();
     await page.waitForSelector('.chip-pop .foot-row');
-    assert.deepEqual(await page.$$eval('.chip-pop .foot-row', (rows) => rows.map((r) => r.dataset.agg)), ['count', 'distinct']);
+    assert.deepEqual(await page.locator('.chip-pop .foot-row').evaluateAll((rows) => rows.map((r) => r.dataset.agg)), ['count', 'distinct']);
     await page.click('.chip-pop .foot-row[data-agg="count"]');
     await page.waitForFunction(() => document.querySelector('thead tr.wv-foot td.foot-cell[data-col="Name"] .foot-val')?.textContent === '4');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
     await footCell(page, 'Started').click();
     await page.waitForSelector('.chip-pop .foot-row');
-    assert.deepEqual(await page.$$eval('.chip-pop .foot-row', (rows) => rows.map((r) => r.dataset.agg)), ['min', 'max', 'filled', 'empty']);
+    assert.deepEqual(await page.locator('.chip-pop .foot-row').evaluateAll((rows) => rows.map((r) => r.dataset.agg)), ['min', 'max', 'filled', 'empty']);
     await page.click('.chip-pop .foot-row[data-agg="max"]');
     await page.waitForFunction(() => document.querySelector('thead tr.wv-foot td.foot-cell[data-col="Started"] .foot-val')?.textContent === 'Sep 3, 2026');
     await page.close();
@@ -107,7 +107,7 @@ if (s) {
     await page.locator('.crumb-actions .dots-btn').last().click();
     await page.locator('.dl-menu .dropdown-item', { hasText: 'Column stats…' }).first().click();
     await page.waitForSelector('#modal.wv-stats tr[data-col="Cost"]');
-    const cost = await page.$eval('#modal.wv-stats tr[data-col="Cost"]', (tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent));
+    const cost = await page.locator('#modal.wv-stats tr[data-col="Cost"]').first().evaluate((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent));
     assert.equal(cost[0], 'Cost');
     assert.ok(cost.includes('$14.00') && cost.includes('$2.50'), `sum and median: ${cost}`);
     assert.ok(await page.$('#modal.wv-stats .wv-hist-bar'), 'a histogram');

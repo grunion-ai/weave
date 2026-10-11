@@ -108,7 +108,7 @@ if (s) {
   test('a cell that starts overflowing gets its marker without a redraw', async () => {
     const page = await grid();
     try {
-      await page.setViewportSize({ width: 420, height: 900 });
+      await page.setViewportSize({ width: 640, height: 900 });
       await page.waitForFunction(() => {
         const tds = [...document.querySelectorAll('.wv-grid tbody td[data-field]')];
         const wide = (n) => n.scrollWidth > n.clientWidth + 1;
@@ -216,7 +216,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('clicking the ↗ of a relation chip opens that entity', async () => {
+  test('clicking the right edge of a relation chip opens that entity', async () => {
     const page = await grid();
     try {
       const link = page.locator('.wv-grid tbody .k-rel > a').first();

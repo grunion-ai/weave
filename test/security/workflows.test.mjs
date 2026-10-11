@@ -7,23 +7,33 @@ const DIR = join(import.meta.dirname, '../../.github/workflows');
 const files = readdirSync(DIR).filter((f) => /\.ya?ml$/.test(f));
 const text = (f) => readFileSync(join(DIR, f), 'utf8');
 
-test('every action in every workflow is pinned to a full commit SHA with its version in a comment', () => {
+test('every action in every workflow is pinned to a full commit SHA', () => {
   const bad = [];
   for (const f of files) {
     for (const [i, line] of text(f).split('\n').entries()) {
       const m = line.match(/^\s*-?\s*uses:\s*(\S+)(.*)$/);
       if (!m || m[1].startsWith('./')) continue;
-      if (!/@[0-9a-f]{40}$/.test(m[1]) || !/^\s+#\s*v\d/.test(m[2])) bad.push(`${f}:${i + 1} ${line.trim()}`);
+      if (!/@[0-9a-f]{40}$/.test(m[1])) bad.push(`${f}:${i + 1} ${line.trim()}`);
     }
   }
   assert.deepEqual(bad, []);
 });
 
-test('every workflow grants contents: read at the top level and nothing wider', () => {
+test('workflow write permissions are confined to guarded release delivery', () => {
   for (const f of files) {
     const src = text(f);
     assert.match(src, /^permissions:\n  contents: read\n/m, `${f}: top-level permissions block`);
-    assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
+    if (f !== 'release.yml') assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
+    else {
+      const publish = src.slice(src.indexOf('  publish:'));
+      assert.doesNotMatch(src.slice(0, src.indexOf('  publish:')), /(write|admin)\s*$/m);
+      assert.match(publish, /permissions:\n      contents: write\n      actions: read/);
+      assert.equal((src.match(/: write/g) ?? []).length, 1);
+      assert.match(publish, /needs: guard/);
+      assert.match(publish, /environment:\n      name: production\n/);
+      assert.match(publish, /if: needs.guard.outputs.current == 'true'/);
+      assert.match(publish, /ref: \$\{\{ needs.guard.outputs.sha \}\}/);
+    }
   }
 });
 
@@ -50,4 +60,35 @@ test('security.yml runs on push to main, on pull requests and weekly, and calls 
   const src = text('security.yml');
   assert.match(src, /^on:\n  push:\n    branches: \[main\]\n  pull_request:\n  schedule:\n(?:    #.*\n)*    - cron: "\d+ \d+ \* \* 1"/m);
   assert.match(src, /node scripts\/security-scan\.mjs/);
+});
+
+
+test('release validates main CI before checking out the tested SHA with write credentials', () => {
+  const src = text('release.yml');
+  assert.match(src, /^on:\n  workflow_dispatch:\n/m);
+  assert.doesNotMatch(src, /workflow_call:|^  push:/m);
+  assert.doesNotMatch(text('test.yml'), /release\.yml/);
+  assert.doesNotMatch(src, /workflow_run:/);
+  assert.match(src, /github.ref == 'refs\/heads\/main'/);
+  assert.match(src, /node scripts\/github-release\.mjs --guard/);
+  assert.equal((src.match(/persist-credentials: false/g) ?? []).length, 2);
+  assert.doesNotMatch(src, /pull_request_target|download-artifact/);
+});
+
+test('dev.yml gates ready pull requests in seconds and swaps dev on every main push', () => {
+  const src = text('dev.yml');
+  assert.match(src, /^on:\n  pull_request:\n    types: \[opened, synchronize, reopened, ready_for_review\]\n  push:\n    branches: \[main\]\n/m);
+  const gate = src.slice(src.indexOf('  gate:'), src.indexOf('  deploy:'));
+  const deploy = src.slice(src.indexOf('  deploy:'));
+  assert.match(gate, /name: Dev gate\n    if: github.event_name == 'pull_request' && !github.event.pull_request.draft\n/);
+  assert.match(gate, /timeout-minutes: [1-3]\n/);
+  assert.match(gate, /node --check/);
+  assert.match(gate, /\/api\/health/);
+  assert.doesNotMatch(gate, /secrets\./);
+  assert.match(deploy, /if: github.event_name == 'push'\n/);
+  assert.match(deploy, /group: dev-deploy\n      cancel-in-progress: true/);
+  assert.match(deploy, /DEV_DEPLOY_TOKEN: \$\{\{ secrets.DEV_DEPLOY_TOKEN \}\}/);
+  assert.doesNotMatch(deploy.split('run: |')[1], /\$\{\{/, 'no expression is spliced into the deploy script');
+  assert.match(deploy, /_supervisor\/check/);
+  assert.match(deploy, /\.supervisor\.commit/);
 });

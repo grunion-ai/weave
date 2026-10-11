@@ -1,10 +1,13 @@
-let ICONS = null, ICON_SVG = null, MARKS = null;
+let ICONS = null, ICON_SVG = null, MARKS = null, CHIP = null;
 try {
   const here = new URL('.', import.meta.url);
-  for (const f of ['icon-registry.js', 'vendor/lucide-moving.js', 'mark-icons.js']) await import(new URL(`../public/${f}`, here).href);
+  for (const f of ['icon-registry.js', 'vendor/lucide-moving.js', 'mark-icons.js', 'chip-core.js', 'view-core.js', 'cell-graphics.js', 'chip-view.js']) {
+    await import(new URL(`../public/${f}`, here).href);
+  }
   ICONS = globalThis.weaveIconRegistry ?? null;
   ICON_SVG = globalThis.LUCIDE_MOVING ?? null;
   MARKS = globalThis.weaveMarkIcons ?? null;
+  CHIP = globalThis.weaveChipView ?? null;
 } catch {}
 const ICON_TOKEN = /^:([a-z0-9][a-z0-9-]*):/;
 export function inlineIconHtml(token) {
@@ -67,20 +70,14 @@ function renderInline(text, resolveMention) {
             resolved = resolveMention(kind, target);
           } catch {}
           if (resolved && safeUrl(resolved.href) != null) {
-            const fields = (resolved.fields ?? []).filter((f) => f && f.value != null && f.value !== '').slice(0, 3);
-            const a = `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}"`
-              + (resolved.name ? ` data-name="${escapeHtml(resolved.name)}">` : '>')
-              + `${escapeHtml(label ?? resolved.label)}`
-              + (fields.length
-                ? `<span class="mention-fields">${fields.map((f) =>
-                  `<span class="mention-f"><span class="mention-f-label">${escapeHtml(f.label)}</span>${escapeHtml(String(f.value))}</span>`).join('')}</span>`
-                : '')
-              + '</a>';
-            const caret = fields.length
-              ? `<button type="button" class="mention-caret" aria-expanded="false" aria-label="Show fields">${ICON_SVG?.['chevron-right'] ?? '▸'}</button>`
-              : '';
-            const chip = `<span class="k k-rel k-inline${fields.length ? ' has-segs' : ''}">${a}${caret}</span>`;
-            out += fields.length ? `<span class="mention-wrap">${chip}</span>` : chip;
+            const v = resolved.view ?? {
+              name: resolved.label, link: false, state: null,
+              fields: (resolved.fields ?? []).filter((f) => f && f.value != null && f.value !== '').slice(0, 3),
+            };
+            const title = label ?? (resolved.view ? resolved.name : resolved.label);
+            out += CHIP
+              ? CHIP.chipHtml(v, { kind, href: resolved.href, home: resolved.home, label: title })
+              : `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}">${escapeHtml(title)}</a>`;
             i = end + 2;
             continue;
           }
@@ -333,10 +330,18 @@ export function renderDocumentPage({ title, subtitle = '', markdown, resolveMent
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg">
+<link rel="stylesheet" href="/chip.css">
 <style>
 :root { --fg: #1a1d23; --muted: #6b7280; --line: #e5e7eb; --accent: #4f46e5; --bg: #ffffff; --soft: #f6f7f9; --code-bg: #ffffff; }
 @media (prefers-color-scheme: dark) {
   :root { --fg: #e5e7eb; --muted: #9ca3af; --line: #30343c; --accent: #818cf8; --bg: #111318; --soft: #1a1d23; --code-bg: #0d1117; }
+}
+:root {
+  --tblr-body-color: var(--fg); --tblr-secondary: var(--muted); --tblr-border-color: var(--line);
+  --tblr-primary: var(--accent); --tblr-danger: #e5484d; --tblr-bg-surface: var(--bg);
+  --tblr-bg-surface-secondary: var(--soft);
+  --tblr-font-monospace: ui-monospace, "SF Mono", Menlo, monospace;
+  --fs-meta: 11px; --fs-secondary: 12px; --fs-grid: 13px; --fs-body: 14px; --fs-doc: 16px; --fs-h2: 18px; --fs-h1: 20px; --fs-title: 24px;
 }
 * { box-sizing: border-box; }
 body { margin: 0 auto; max-width: 760px; padding: 48px 24px; background: var(--bg); color: var(--fg);
@@ -345,28 +350,8 @@ h1, h2, h3, h4 { line-height: 1.25; margin: 1.4em 0 0.5em; }
 h1:first-child { margin-top: 0; }
 .doc-meta { color: var(--muted); font-size: 13px; margin-bottom: 2em; border-bottom: 1px solid var(--line); padding-bottom: 1em; }
 a { color: var(--accent); }
-.k-rel { border: 1px solid var(--line); border-radius: 4px; color: var(--fg); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.k-rel > a { color: inherit; text-decoration: none; padding: 0 5px 0 4px; }
-.k-rel > a::after { content: "↗"; opacity: .42; font-size: .7em; margin-left: 3px; }
-.k-rel:hover { border-color: var(--accent); color: var(--accent); }
 .md-icon { display: inline-flex; width: 1em; height: 1em; vertical-align: -.15em; margin-right: .15em; }
 .md-icon svg { width: 1em; height: 1em; }
-.mention.broken { color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 0 4px; }
-/* A leading glyph says what kind of thing a reference points at, so a chip is
-   readable without following it. Generated content, so it never lands in a
-   copy-paste of the text. */
-.mention::before { color: var(--muted); margin-right: 4px; font-size: .9em; }
-.mention-entity::before { content: "#"; }
-.mention-table::before { content: "▦"; }
-.mention-space::before { content: "◇"; }
-.mention-workspace::before { content: "⬡"; }
-.mention-wrap { display: inline; }
-.mention-fields { display: none; }
-.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--line); color: var(--muted); font-size: .85em; }
-.mention-f-label { opacity: .65; margin-right: 3px; }
-.mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; vertical-align: middle; }
-.mention-caret svg { width: 12px; height: 12px; display: block; }
-.mention-wrap.open .mention-caret { transform: rotate(180deg); }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 /* A code block sits on the ground its palette was drawn for — white for
    github, #0d1117 for github-dark — because a token colour answers to the
@@ -398,7 +383,9 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 </head>
 <body>
 <div class="doc-meta">${escapeHtml(subtitle)}</div>
+<div class="wv-prose">
 ${body}
+</div>
 <script>
 for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
   const btn = document.createElement('button');
@@ -417,7 +404,7 @@ document.addEventListener('click', (ev) => {
   const caret = ev.target.closest('.mention-caret');
   if (!caret) return;
   ev.preventDefault();
-  const open = caret.closest('.mention-wrap').classList.toggle('open');
+  const open = caret.closest('.k-rel').classList.toggle('open');
   caret.setAttribute('aria-expanded', String(open));
 });
 </script>

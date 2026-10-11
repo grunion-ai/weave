@@ -43,8 +43,8 @@ if (s) {
       background: cs.backgroundColor,
       color: cs.color,
       href: a.getAttribute('href'),
-      label: a.childNodes[0].textContent,
-      home: a.querySelector('.k-home')?.textContent,
+      label: chip.querySelector('.k-label').textContent,
+      home: chip.querySelector('.k-home')?.textContent,
       mark: getComputedStyle(a, '::after').content,
       unlink: !!chip.querySelector('.x'),
     };
@@ -110,7 +110,7 @@ if (s) {
       await card(page, '.ref-outbound-card');
       const chip = await chipStyle(page, '.ref-outbound-card');
       assert.equal(chip.tag, 'SPAN');
-      assert.deepEqual(chip.classes, ['k', 'k-rel'], 'exactly the relation chip — no bespoke reference class');
+      assert.deepEqual(chip.classes.slice(0, 3), ['k', 'k-rel', 'kind-entity'], 'exactly the relation chip — no bespoke reference class');
       assert.equal(chip.borderWidth, '1px', 'pointer tier: a 1px outline');
       assert.equal(chip.borderStyle, 'solid');
       assert.notEqual(chip.borderColor, 'rgba(0, 0, 0, 0)', `the outline is visible in ${colorScheme}`);
@@ -119,7 +119,7 @@ if (s) {
       assert.equal(chip.href, `#/entity/${target.id}`, 'the chip is the link');
       assert.equal(chip.label, 'Ship the editor');
       assert.equal(chip.home, 'Task', 'the k-home badge names the home table');
-      assert.match(chip.mark, /↗/, 'the open mark rides inside the link');
+      assert.equal(chip.mark, 'none', 'Feature #185 dropped the open mark: the chip is the link');
       assert.equal(chip.unlink, false, 'no ×: a reference is text, there is nothing to unlink');
       await page.close();
     });

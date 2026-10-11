@@ -2,24 +2,36 @@ import { decodePng } from './png.mjs';
 
 export const FLASH_MS = 150;
 
-export const GATED = ['transient', 'blank', 'revert', 'shift'];
+export const ANSWER_FRAMES = 3;
 
-export const fingerprint = (journey, e) => `${journey}|${e.kind}|${String(e.sel).split(' > ').slice(-2).join(' > ')}`;
+export const answering = (at, { input = -Infinity, frames = [], budget = ANSWER_FRAMES } = {}) => {
+  const landed = frames.filter((t) => t <= at).at(-1) ?? at;
+  return frames.filter((t) => t > input && t < landed).length < budget;
+};
 
-function probe(MAX) {
+export const GATED = ['transient', 'blank', 'revert', 'shift', 'cut'];
+
+export const DESKTOP = 'desktop';
+
+export const fingerprint = (journey, e) => `${journey}|${e.kind}|${String(e.sel).split(' > ').slice(-2).join(' > ')}${e.cell && e.cell !== DESKTOP ? `|${e.cell}` : ''}`;
+
+function probe({ maxMs: MAX, answerFrames: FRAMES }) {
   const out = window.__flicker = [];
   const now = () => performance.now();
   const push = (e) => out.push({ ...e, at: Date.now() });
   const word = (s) => !/\d{3,}|[0-9a-f]{8}/i.test(s);
+  const step = (el) => {
+    let p = el.localName;
+    if (el.id && word(el.id)) p += `#${el.id}`;
+    const cls = [...el.classList].filter(word).slice(0, 2);
+    if (cls.length) p += `.${cls.join('.')}`;
+    return p;
+  };
   const sel = (n) => {
     const parts = [];
     for (let el = n; el && el.nodeType === 1 && parts.length < 3; el = el.parentElement) {
       if (el === document.body || el === document.documentElement) break;
-      let p = el.localName;
-      if (el.id && word(el.id)) p += `#${el.id}`;
-      const cls = [...el.classList].filter(word).slice(0, 2);
-      if (cls.length) p += `.${cls.join('.')}`;
-      parts.unshift(p);
+      parts.unshift(step(el));
       if (el.id && word(el.id)) break;
     }
     return parts.join(' > ') || '?';
@@ -30,14 +42,33 @@ function probe(MAX) {
     if (r.width < 2 || r.height < 2 || r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
     return n.checkVisibility ? n.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : true;
   };
+  const SHOWS = /^(img|svg|canvas|video|input|textarea|select|button|hr|iframe)$/;
+  const inked = (n) => {
+    if (n.textContent.trim()) return true;
+    const all = [n, ...n.querySelectorAll('*')];
+    if (all.length > 200) return true;
+    return all.some((el) => {
+      if (SHOWS.test(el.localName)) return true;
+      const cs = getComputedStyle(el);
+      return cs.backgroundImage !== 'none' || !/^(transparent|rgba\(.*,\s*0\))$/.test(cs.backgroundColor) || cs.boxShadow !== 'none'
+        || ['Top', 'Right', 'Bottom', 'Left'].some((side) => cs[`border${side}Style`] !== 'none' && parseFloat(cs[`border${side}Width`]) > 0);
+    });
+  };
   let input = -Infinity;
-  for (const type of ['keydown', 'pointerdown', 'input', 'beforeinput']) {
-    addEventListener(type, () => { input = now(); }, { capture: true, passive: true });
+  const inputs = window.__flickerInputs = [];
+  const painted = window.__flickerFrames = [];
+  for (const type of ['keydown', 'pointerdown', 'input', 'beforeinput', 'scroll']) {
+    addEventListener(type, () => { input = now(); inputs.push(Date.now()); }, { capture: true, passive: true });
   }
-  const answering = (t) => t - input < 50;
+  const answering = (t) => {
+    const landed = painted.filter((f) => f <= t).at(-1) ?? t;
+    return painted.filter((f) => f > input && f < landed).length < FRAMES;
+  };
   const born = new Map();
   const emptied = new Map();
   const attrs = new Map();
+  const cuts = [];
+  const SLIDES = /^(transform|translate|left|right|inset|width|margin-left|margin-right)$/;
   const tokens = (a, b) => {
     const A = new Set(String(a ?? '').split(/\s+/).filter(Boolean));
     const B = new Set(String(b ?? '').split(/\s+/).filter(Boolean));
@@ -57,6 +88,9 @@ function probe(MAX) {
         if (e && r.target.firstElementChild) {
           emptied.delete(r.target);
           if (e.painted && t - e.t < MAX && !answering(t)) push({ kind: 'blank', sel: e.sel, ms: Math.round(t - e.t) });
+        }
+        if (r.target.nodeType === 1 && r.target !== document.body && r.target !== document.documentElement) {
+          for (const n of r.removedNodes) if (n.nodeType === 1 && !n.isConnected) cuts.push({ parent: r.target, t, part: step(n) });
         }
         if (r.removedNodes.length && r.target.nodeType === 1 && !r.target.firstElementChild && !emptied.has(r.target)) {
           emptied.set(r.target, { t, painted: false, sel: null });
@@ -104,11 +138,18 @@ function probe(MAX) {
     const t = now();
     for (const [n, b] of born) {
       if (t - b.t > MAX) born.delete(n);
-      else if (!b.painted && seen(n)) { b.painted = true; b.sel = sel(n); b.parent = n.parentElement; b.parentSel = sel(n.parentElement); }
+      else if (!b.painted && seen(n) && inked(n)) { b.painted = true; b.sel = sel(n); b.parent = n.parentElement; b.parentSel = sel(n.parentElement); }
     }
     for (const [n, e] of emptied) {
       if (t - e.t > MAX || n.firstElementChild) emptied.delete(n);
       else if (!e.painted && seen(n)) { e.painted = true; e.sel = sel(n); }
+    }
+    for (const c of cuts.splice(0)) {
+      if (t - c.t > MAX || !c.parent.isConnected || !seen(c.parent)) continue;
+      const left = c.parent.getAnimations({ subtree: true })
+        .filter((a) => a.playState === 'running' && SLIDES.test(a.transitionProperty ?? ''))
+        .map((a) => { const k = a.effect.getComputedTiming(); return k.endTime - k.localTime; });
+      if (left.length) push({ kind: 'cut', sel: `${sel(c.parent)} > ${c.part}`, ms: Math.round(Math.max(...left)) });
     }
     for (const [n, m] of attrs) {
       for (const [name, e] of m) {
@@ -122,13 +163,18 @@ function probe(MAX) {
       if (!m.size) attrs.delete(n);
     }
   };
-  const tick = () => { chan.port2.postMessage(0); requestAnimationFrame(tick); };
+  const tick = (t) => {
+    painted.push(t);
+    if (painted.length > 300) painted.shift();
+    chan.port2.postMessage(0);
+    requestAnimationFrame(tick);
+  };
   requestAnimationFrame(tick);
 
   try {
     new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
-        if (e.hadRecentInput || e.value < 0.001) continue;
+        if (e.hadRecentInput || e.value < 0.001 || answering(e.startTime)) continue;
         for (const s of e.sources ?? []) {
           const r0 = s.previousRect, r1 = s.currentRect;
           push({ kind: 'shift', sel: s.node ? sel(s.node.nodeType === 1 ? s.node : s.node.parentElement) : '?', ms: 0, value: Number(e.value.toFixed(4)),
@@ -149,8 +195,9 @@ function probe(MAX) {
   } catch {}
 }
 
-export const installProbe = (page, { maxMs = FLASH_MS } = {}) => page.addInitScript(probe, maxMs);
+export const installProbe = (page, { maxMs = FLASH_MS, answerFrames = ANSWER_FRAMES } = {}) => page.addInitScript(probe, { maxMs, answerFrames });
 export const readProbe = (page) => page.evaluate(() => window.__flicker?.slice() ?? []);
+export const readInputs = (page) => page.evaluate(() => window.__flickerInputs?.slice() ?? []);
 export const resetProbe = (page) => page.evaluate(() => { if (window.__flicker) window.__flicker.length = 0; });
 
 export async function recordFrames(page, { maxWidth = 640, maxHeight = 480 } = {}) {
@@ -196,12 +243,18 @@ export function diffBox(a, b) {
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + step, h: y1 - y0 + step };
 }
 
-export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005 } = {}) {
+export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005, inputs = [], answerFrames = ANSWER_FRAMES } = {}) {
+  const painted = frames.map((f) => f.t);
+  const answered = (t) => {
+    const k = inputs.findLastIndex((x) => x <= t);
+    return k >= 0 && answering(t, { input: inputs[k], frames: painted, budget: answerFrames });
+  };
   const out = [];
   for (let i = 1; i + 1 < frames.length; i++) {
     const [a, b, c] = [frames[i - 1], frames[i], frames[i + 1]];
     const ms = c.t - b.t;
     if (ms >= maxMs) continue;
+    if (answered(b.t)) continue;
     if (diffRatio(a.px, c.px) > eps) continue;
     const ratio = diffRatio(a.px, b.px);
     if (ratio < min) continue;
@@ -227,7 +280,7 @@ export function confirm(runs, { min = 2 } = {}) {
       for (const e of events) {
         const fp = fingerprint(journey, e);
         let a = agg.get(fp);
-        if (!a) agg.set(fp, (a = { fp, journey, kind: e.kind, sel: e.sel, runs: 0, ms: 0, value: 0, detail: e.detail ?? '' }));
+        if (!a) agg.set(fp, (a = { fp, journey, cell: e.cell ?? DESKTOP, kind: e.kind, sel: e.sel, runs: 0, ms: 0, value: 0, detail: e.detail ?? '' }));
         a.ms = Math.max(a.ms, e.ms ?? 0);
         a.value = Math.max(a.value, e.value ?? 0);
         if (!once.has(fp)) { once.add(fp); a.runs++; }

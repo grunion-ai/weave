@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Weave</title>
 <link rel="stylesheet" href="/vendor/tabler.min.css">
 <link rel="stylesheet" href="/vendor/vditor/dist/index.css">
+<link rel="stylesheet" href="/chip.css">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/vendor/lucide-moving.css">
 <link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg">
@@ -39,7 +40,7 @@
   <main id="main"></main>
   <div id="dock-gutter" hidden role="separator" aria-orientation="vertical" aria-label="Resize the entity pane"></div>
   <aside id="dock" hidden></aside>
-  <div id="page-loader" hidden aria-hidden="true"></div>
+  <div id="page-loader" class="boot" aria-hidden="true"><span class="mark-light"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Loading"><defs><mask id="blA" maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"><rect x="-24" y="-24" width="96" height="96" fill="#fff"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/><path d="M20,28 C24,28 24,20 28,20" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/></mask><mask id="blB" maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"><rect x="-24" y="-24" width="96" height="96" fill="#fff"/><path d="M20,28 C24,28 24,20 28,20" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/></mask></defs><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="#0c1b33" stroke-width="3.5" stroke-linecap="round" mask="url(#blB)"/><path d="M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" mask="url(#blA)"/></svg></span><span class="mark-dark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Loading"><defs><mask id="bdA" maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"><rect x="-24" y="-24" width="96" height="96" fill="#fff"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/><path d="M20,28 C24,28 24,20 28,20" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/></mask><mask id="bdB" maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"><rect x="-24" y="-24" width="96" height="96" fill="#fff"/><path d="M20,28 C24,28 24,20 28,20" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/></mask></defs><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="#60a5fa" stroke-width="3.5" stroke-linecap="round" mask="url(#bdB)"/><path d="M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" mask="url(#bdA)"/></svg></span></div>
 </div>
 <script src="/vendor/vditor/dist/index.min.js" defer></script>
 <script src="/nl-date.js" defer></script>
@@ -50,6 +51,8 @@
 <script src="/chip-core.js" defer></script>
 <script src="/actor-core.js" defer></script>
 <script src="/view-core.js" defer></script>
+<script src="/chip-view.js" defer></script>
+<script src="/list-core.js" defer></script>
 <script src="/cell-graphics.js" defer></script>
 <script src="/number-core.js" defer></script>
 <script src="/bug-core.js" defer></script>
@@ -59,6 +62,7 @@
 <script src="/field-diff-core.js" defer></script>
 <script src="/selection-core.js" defer></script>
 <script src="/column-resize.js" defer></script>
+<script src="/reorder.js" defer></script>
 <script src="/grid-keymap.js" defer></script>
 <script src="/grid-range.js" defer></script>
 <script src="/grid-window.js" defer></script>
@@ -69,6 +73,8 @@
 <script src="/relmap-layout.js" defer></script>
 <script src="/starter-core.js" defer></script>
 <script src="/prefill-core.js" defer></script>
+<script src="/slug-core.js" defer></script>
+<script src="/slug-form.js" defer></script>
 <script src="/vendor/lucide-moving.js" defer></script>
 <script src="/mark-icons.js" defer></script>
 <script src="/editor-lib.js" defer></script>

@@ -172,7 +172,7 @@ if (s) {
       const before = await order(page);
       assert.equal(before[0], 'j01', 'newest first');
       assert.equal(before.at(-1), 'j12', 'the oldest row is last');
-      const last = await page.$$eval('.wv-grid tbody tr.entity-row', (trs) => trs.at(-1).dataset.eid);
+      const last = await page.locator('.wv-grid tbody tr.entity-row').evaluateAll((trs) => trs.at(-1).dataset.eid);
       const landed = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
       await page.fill(`tr[data-eid="${last}"] td[data-field="Note"] input`, 'touched');
       await page.keyboard.press('Tab');

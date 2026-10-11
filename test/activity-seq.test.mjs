@@ -100,6 +100,42 @@ test('a folded document session keeps the seq it started with', () => {
   assert.equal(folded.seq, was, 'one event, one seq — the fold does not re-stamp it');
 });
 
+test('a second person editing the same document gets an entry of their own (Issue #680)', () => {
+  const { w, t } = workspace({ actor: 'alice' });
+  const e = w.createEntity(t, { name: 'The plan' });
+  w.setDoc(e.id, 'First draft of the plan.');
+  w.actor = 'bob';
+  w.setDoc(e.id, 'First draft of the plan.\nRisks: none yet.');
+  w.actor = 'agent';
+  w.setDoc(e.id, 'A plan.');
+
+  const docs = w.state.entities[e.id].activity.filter((a) => a.kind === 'doc-updated');
+  assert.deepEqual(docs.map((a) => a.actor), ['alice', 'bob', 'agent'], 'three authors inside the window, three entries');
+  assert.deepEqual(docs.map((a) => a.detail.prevLength), [0, 24, 41], 'each entry starts from what the one before it left');
+  assert.deepEqual(docs.map((a) => a.detail.length), [24, 41, 7]);
+  assert.deepEqual(docs.map((a) => a.detail.delta), [24, 17, -34], 'and the delta describes that author\'s edit alone');
+  assert.equal(docs[1].detail.preview, 'Risks: none yet.', 'as does the preview');
+  assert.ok(docs[0].seq < docs[1].seq && docs[1].seq < docs[2].seq, 'in the order they were written');
+  assert.equal(w.listDocRevisions(e.id).revisions.map((r) => r.actor).join(','), 'agent,bob,alice',
+    'and the two logs agree on who wrote what');
+});
+
+test('the same person coming back inside the window still folds into their own entry (Issue #32)', () => {
+  const { w, t } = workspace({ actor: 'alice' });
+  const e = w.createEntity(t, { name: 'The plan' });
+  w.setDoc(e.id, 'one');
+  w.actor = 'bob';
+  w.setDoc(e.id, 'one two');
+  w.actor = 'alice';
+  w.setDoc(e.id, 'one two three');
+  w.setDoc(e.id, 'one two three four');
+
+  const docs = w.state.entities[e.id].activity.filter((a) => a.kind === 'doc-updated');
+  assert.deepEqual(docs.map((a) => a.actor), ['alice', 'bob', 'alice'], 'alice returning is a third entry, not a fourth');
+  assert.equal(docs[2].detail.prevLength, 7, 'her second session spans from what bob left');
+  assert.equal(docs[2].detail.length, 18);
+});
+
 test('a workspace written before seq existed is numbered once, in its stored order', () => {
   const { w, t } = workspace();
   const a = w.createEntity(t, { name: 'a' });

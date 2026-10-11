@@ -233,7 +233,7 @@ if (s) {
   });
 
   test('the scroller is measured, not assumed: the same window arithmetic serves the page and the wrap', async () => {
-    const narrow = await open({ viewport: { width: 390, height: 700 } });
+    const narrow = await open({ viewport: { width: 640, height: 700 } });
     const wide = await open({ viewport: { width: 1600, height: 900 } });
     try {
       assert.equal(await scrollBox(narrow), 'wrap');

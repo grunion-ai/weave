@@ -1,3 +1,27 @@
 {
-  "_": "Flickers that were fixed and must stay fixed. Key: journey|kind|selector, as scripts/flicker-sweep.mjs prints it. Value: { \"issue\": <weave Issue number>, \"why\": \"<what flashed>\" }. The fixer adds the row's fingerprint here in the change that fixes it; test/flicker-gate-browser.test.mjs fails when one comes back."
+  "_": "Flickers that were fixed and must stay fixed. Key: journey|kind|selector, as scripts/flicker-sweep.mjs prints it; a phone-cell flicker ends in |phone, and a key with no cell is the desktop cell. Value: { \"issue\": <weave Issue number>, \"why\": \"<what flashed>\" }. The fixer adds the row's fingerprint here in the change that fixes it; test/flicker-gate-browser.test.mjs fails when one comes back.",
+  "load-home|transient|main#main > *": {
+    "issue": 630,
+    "why": "the route skeleton painted and was replaced inside one frame"
+  },
+  "open-table|transient|main#main > *": {
+    "issue": 630,
+    "why": "the route skeleton painted and was replaced inside one frame"
+  },
+  "open-row|revert|div.doc-section-body > div.doc-editor.vditor": {
+    "issue": 633,
+    "why": "one click on a row's #id link opened it twice, so the document editor mounted and was destroyed inside a frame"
+  },
+  "scroll-grid|shift|tbody > tr.wv-spacer": {
+    "issue": 631,
+    "why": "the probe counted the journey's own scroll: the grid re-windowed inside the scroll that caused it, in the one frame a busy host stretches past 50 ms (Issue #712)"
+  },
+  "scroll-grid|transient|tbody > *": {
+    "issue": 632,
+    "why": "the probe counted rows the reader had scrolled past before the grid recycled them"
+  },
+  "open-row|transient|div.doc-editor.vditor > div.vditor-content": {
+    "issue": 634,
+    "why": "the document editor booted on a host that was already in the dock, so its body was born and destroyed inside a frame"
+  }
 }

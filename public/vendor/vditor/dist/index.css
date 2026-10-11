@@ -931,22 +931,22 @@
   visibility: visible;
 }
 .vditor-reset h1 {
-  font-size: 1.75em;
+  font-size: 20px;
 }
 .vditor-reset h2 {
-  font-size: 1.55em;
+  font-size: 18px;
 }
 .vditor-reset h3 {
-  font-size: 1.38em;
+  font-size: 16px;
 }
 .vditor-reset h4 {
-  font-size: 1.25em;
+  font-size: 16px;
 }
 .vditor-reset h5 {
-  font-size: 1.13em;
+  font-size: 14px;
 }
 .vditor-reset h6 {
-  font-size: 1em;
+  font-size: 14px;
 }
 .vditor-reset hr {
   height: 2px;
@@ -1901,26 +1901,26 @@
   color: black;
 }
 .vditor-sv .h1 {
-  font-size: 1.75em;
+  font-size: 20px;
   line-height: 44px;
 }
 .vditor-sv .h2 {
-  font-size: 1.55em;
+  font-size: 18px;
   line-height: 38px;
 }
 .vditor-sv .h3 {
-  font-size: 1.38em;
+  font-size: 16px;
   line-height: 27px;
 }
 .vditor-sv .h4 {
-  font-size: 1.25em;
+  font-size: 16px;
   line-height: 25px;
 }
 .vditor-sv .h5 {
-  font-size: 1.13em;
+  font-size: 14px;
 }
 .vditor-sv .h6 {
-  font-size: 1em;
+  font-size: 14px;
 }
 .vditor-sv__marker {
   color: var(--second-color);

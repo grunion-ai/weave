@@ -74,3 +74,16 @@ test('a chip or rating floor binds a stored width, a drag, a nudge and a fit for
   assert.equal(CR.fit({ content: 70, floor }), 159);
   assert.equal(CR.width({ base: 200, startX: 500, x: 300, floor }), 159);
 });
+
+test('a rollup or a lookup that draws rating icons sizes and floors on them, from its own default (Issue #564)', () => {
+  assert.equal(CR.defaultWidth({ type: 'rollup', rating: { max: 3 } }), CR.DEFAULT_WIDTHS.rollup, 'three icons sit inside the 88px rollup default');
+  assert.equal(CR.defaultWidth({ type: 'rollup', rating: { max: 7 } }), 112, 'seven 14px icons, six 1px gaps, the cell\'s 8');
+  assert.equal(CR.defaultWidth({ type: 'lookup', rating: { max: 5 } }), CR.DEFAULT_WIDTHS.lookup, 'five icons sit inside the 136px lookup default');
+  assert.equal(CR.defaultWidth({ type: 'lookup', rating: { max: 12 } }), 187, 'twelve icons open the lookup past its default');
+  assert.equal(CR.ratingFloor({ type: 'rollup', rating: { max: 7 } }), 112, 'the floor holds every icon too');
+  assert.equal(CR.ratingFloor({ type: 'lookup', rating: { max: 12 } }, 24), 203, 'the last cell\'s padding is measured and passed in');
+  assert.equal(CR.defaultWidth({ type: 'rollup' }), CR.DEFAULT_WIDTHS.rollup, 'a rollup that draws no icons keeps its default');
+  assert.equal(CR.defaultWidth({ type: 'lookup' }), CR.DEFAULT_WIDTHS.lookup, 'so does a lookup');
+  assert.equal(CR.ratingFloor({ type: 'rollup' }), 0, 'and neither gets a rating floor');
+  assert.equal(CR.defaultWidth({ type: 'rating', max: 3 }), CR.DEFAULT_WIDTHS.rating, 'a plain rating still opens at its own 104 default');
+});

@@ -25,6 +25,7 @@ const section = (doc, heading) => {
 test('the primer fits what Claude Code keeps and leads with the build', () => {
   assert.ok(PRIMER.length <= 2048, `the primer is ${PRIMER.length} characters; Claude Code keeps 2,048`);
   const first = PRIMER.split('\n')[0];
+  assert.match(first, /^weave: read the weave_ontology outline first\./, 'line one sends an agent to the outline first (Feature #277)');
   assert.match(first, /weave_build/, 'line one names weave_build');
   assert.match(first, /dryRun/, 'line one names dryRun');
   const head = PRIMER.slice(0, 300);

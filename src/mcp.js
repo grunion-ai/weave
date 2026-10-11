@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
+import { submitForm } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
 let VERSION = 'dev';
 try {
@@ -39,6 +40,14 @@ function pick(args, keys) {
 }
 
 export const TOOLS = [
+  {
+    name: 'weave_ontology',
+    description: 'The schema, short; read it before weave_schema (the full JSON). Default outline: one line per table by space, [a|b] options or states, name -> Target (inverse) with * for many, name = lookup, rollup or formula, then the etag. concept: one table in full, field descriptions included. since: an etag; answers only the spaces changed since.',
+    inputSchema: {
+      type: 'object',
+      properties: { depth: { type: 'string', enum: ['outline'] }, concept: { type: 'string', description: 'Table or Space/Table' }, since: { type: 'string' } },
+    },
+  },
   {
     name: 'weave_schema',
     description: 'Describe the whole workspace: spaces, tables, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
@@ -303,14 +312,15 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views (the View dropdown over its grid), in order: the first opens with the table; a new table\'s first view is named Standard, and new ones View 2, View 3. view "Task" lists them; "Task/Open" reads one; "Task/blank" is the raw table, read-only. Any other key writes, creating the view if new (from: a view to copy, else all fields). fields: visible columns in order, unlisted hidden. show/hide: names. move: {field, before|after}. filters: {Field: [states|options]}. sort: [{field, dir}]. position: its place, 0 = default. widths: {field: px}, null clears. frozen: leading fields frozen beside #. density: compact, comfortable (default) or spacious. deleted: show trashed rows. rollups: Σ row on/off, null = table default. name renames; delete: true. Returns the view.',
+    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write, creating the view if new (from: view to copy). fields: columns in order. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}]. search: box text. position: 0 = first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: show trash. rollups: Σ row. layout: table|list. group: ≤3 levels, field or {field, heading: label|chip, order: option|table|az, grain}. completedBy: checkbox. nest: Parent link. collapsed: group paths. order: row #ids. null clears; name renames; delete: true.',
     inputSchema: {
       type: 'object',
       properties: {
         view: { type: 'string' }, fields: { type: 'array' }, show: { type: 'array' }, hide: { type: 'array' },
-        move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' },
+        move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
         position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
-        widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string', enum: ['compact', 'comfortable', 'spacious'] }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
+        widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
+        layout: { type: 'string' }, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {},
       },
       required: ['view'],
     },
@@ -355,7 +365,12 @@ export const TOOLS = [
   },
   {
     name: 'weave_delete_field',
-    description: 'Delete a field and its values from every entity of the table. Not recoverable.',
+    description: 'Move a field to the trash: the column leaves the table and its values leave the rows, held in the trash with the column\'s place in every view. Pass hard: true to purge it for good (also purges a field already in the trash).',
+    inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db', 'field'] },
+  },
+  {
+    name: 'weave_restore_field',
+    description: 'Restore a field out of the trash by name or id: the column, its values, its place in the field order and in every view, and for a relation its inverse and every link come back. Refused while a live field holds the name or the table is in the trash.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' } }, required: ['db', 'field'] },
   },
   {
@@ -380,12 +395,24 @@ export const TOOLS = [
   },
   {
     name: 'weave_views',
-    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | share | unshare. Sharing mints a capability token; the /view/<token> URL renders that view read-only, even when the workspace requires auth.',
+    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | restore | share | unshare. delete moves the view to the trash (hard: true purges); list with trash: true lists the trash; restore brings a trashed view and its share links back. Sharing mints a read-only public share grant on the view (weave_shares lists it); the /s/<token> URL renders that view read-only, even when the workspace requires auth.',
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string' }, view: { type: 'string' }, name: { type: 'string' },
-        blocks: { type: 'array', description: '[{table, where?, view?}]' },
+        blocks: { type: 'array', description: '[{table, where?, view?}]' }, hard: { type: 'boolean' }, trash: { type: 'boolean' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'weave_shares',
+    description: 'Share links: one grant opens one entity, table, space, saved view or the whole workspace to whoever holds its wvs_ token. action: list (kind?, id? narrow it) | mint (kind: entity|table|space|view|workspace, id, mode: read|edit|manage, default read: edit changes rows in scope, manage also adds and trashes them, neither touches schema; comment is reserved and refused; visibility: public|private, private opens only for a signed-in account; label; expiresAt ISO) | revoke (share: the grant id). The answer carries token and url (/s/<token>); a holder reads pages there or calls the scoped JSON API with Authorization: Bearer <token>. An observer may do neither; an editor revokes only its own links.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, mode: { type: 'string' },
+        visibility: { type: 'string' }, label: { type: 'string' }, expiresAt: { type: 'string' }, share: { type: 'string' },
       },
       required: ['action'],
     },
@@ -418,10 +445,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_workspace',
-    description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits, - and _, is the /w/<slug>/ address, description, linkPreview) | logo (contentBase64 + name + mime) | clear-logo.',
+    description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits and -, is the /w/<slug>/ address and the <slug>.<base domain> host, description, linkPreview) | logo (contentBase64 + name; the image type is read from the bytes) | clear-logo.',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, mime: { type: 'string' }, contentBase64: { type: 'string' } },
+      properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, contentBase64: { type: 'string' } },
     },
   },
   {
@@ -470,6 +497,20 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { blobs: { type: 'boolean' } } },
   },
   {
+    name: 'weave_form_submit',
+    description: 'Submit one row through a form, a Workspace/Forms row: exactly one new row in the form\'s table, written by you, with no write access to that table needed. form is the form\'s id or name; values maps the fields the form shows (by name or label) to values. A field the server fills (reporter, time, version) is refused, and so is a field the form does not show. The bug reporter is a form too: give it note and categories (slow, broken-ui, wrong-data, error) instead of values.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        form: { type: 'string', description: 'The form id or name, as GET /api/forms lists them.' },
+        values: { type: 'object', description: 'Field name or label to value, for the fields the form shows.' },
+        note: { type: 'string', description: 'Bug report forms: what happened.' },
+        categories: { type: 'array', items: { type: 'string' }, description: 'Bug report forms: the symptoms.' },
+      },
+      required: ['form'],
+    },
+  },
+  {
     name: 'weave_import_json',
     description: 'Replace the workspace with a JSON export. Destructive: everything not in the document is gone. The result names every file that arrived without its bytes (missing).',
     inputSchema: { type: 'object', properties: { state: { type: 'object' } }, required: ['state'] },
@@ -478,13 +519,14 @@ export const TOOLS = [
 for (const t of TOOLS) if (COMPACT_TOOLS.has(t.name)) t.inputSchema.properties.verbose = VERBOSE;
 
 export const CORE_TOOLS = new Set([
-  'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
+  'weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
   'weave_create_space', 'weave_create_table', 'weave_add_field', 'weave_update_field', 'weave_add_relation',
   'weave_import_csv', 'weave_vocabulary', 'weave_workspace', 'weave_search', 'weave_build', 'weave_call',
 ]);
 export const SUMMARY = {
   weave_build: 'spaces, tables, fields, relations and rows in one call (dryRun checks)',
-  weave_schema: 'every space, table and field, with types and options',
+  weave_ontology: 'short schema: outline, one table, changes',
+  weave_schema: 'the full schema as JSON',
   weave_query: 'rows of one table, filtered (where), sorted, paged',
   weave_get_entity: 'one row in full: values, document, comments, activity',
   weave_search: 'find rows, tables and spaces by text; each hit has a permalink',
@@ -510,7 +552,7 @@ export const SUMMARY = {
   weave_unlink: 'unlink rows from a relation field',
   weave_get_doc: 'read a row\'s document as markdown',
   weave_set_doc: 'replace or append a row\'s document',
-  weave_doc_revisions: 'a document\'s version history',
+  weave_doc_revisions: 'a document\'s revisions',
   weave_doc_restore: 'write a past revision back',
   weave_add_comment: 'comment on a row',
   weave_delete_comment: 'delete a comment',
@@ -522,7 +564,7 @@ export const SUMMARY = {
   weave_files: 'read or delete an attached file',
   weave_update_space: 'rename a space; its description, icon, template mark',
   weave_template_list: 'the template spaces here',
-  weave_template_use: 'copy a template space into another workspace',
+  weave_template_use: 'copy a template space to a workspace',
   weave_delete_space: 'trash a space (hard: true purges)',
   weave_restore_space: 'restore a trashed space',
   weave_update_table: 'rename, icon, noun, field order, system fields, Σ row',
@@ -532,9 +574,11 @@ export const SUMMARY = {
   weave_delete_table: 'trash a table (hard: true purges)',
   weave_restore_table: 'restore a trashed table',
   weave_rollback_field: 'put a field back to an earlier config',
-  weave_delete_field: 'delete a field and its values',
+  weave_delete_field: 'trash a field (hard: true purges)',
+  weave_restore_field: 'restore a trashed field',
   weave_apply_schema: 'apply a whole schema document (dryRun plans)',
-  weave_views: 'saved multi-table pages and share links',
+  weave_views: 'saved multi-table pages',
+  weave_shares: 'share links',
   weave_activity: 'the change feed',
   weave_audit: 'the schema and account audit log',
   weave_accounts: 'accounts, tokens, sessions, require-auth',
@@ -543,6 +587,7 @@ export const SUMMARY = {
   weave_relation_map: 'the relation map as mermaid',
   weave_export_json: 'the whole workspace as JSON',
   weave_import_json: 'replace the workspace from a JSON export',
+  weave_form_submit: 'one row through a form',
 };
 TOOLS.push({
   name: 'weave_call',
@@ -607,6 +652,8 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   }
   weave.maybeRefresh?.();
   switch (name) {
+    case 'weave_ontology':
+      return weave.ontology({ depth: args.depth ?? 'outline', concept: args.concept ?? null, since: args.since ?? null });
     case 'weave_schema':
       return weave.describeSchema();
     case 'weave_query':
@@ -722,7 +769,9 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_rollback_field':
       return weave.rollbackFieldConfig(args.activity, { table: args.db ?? null, field: args.field ?? null });
     case 'weave_delete_field':
-      return weave.deleteField(args.db, args.field);
+      return weave.deleteField(args.db, args.field, { hard: Boolean(args.hard) });
+    case 'weave_restore_field':
+      return weave.restoreField(args.db, args.field);
     case 'weave_apply_schema':
       return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive) }) };
     case 'weave_build': {
@@ -731,14 +780,25 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     }
     case 'weave_views':
       switch (args.action) {
-        case 'list': return { views: weave.listViews() };
+        case 'list': return { views: weave.listViews({ trash: Boolean(args.trash) }) };
         case 'get': return weave.resolveView(args.view);
         case 'create': return weave.createView({ name: args.name, blocks: args.blocks ?? [] });
-        case 'delete': return weave.deleteView(args.view);
+        case 'delete': return weave.deleteView(args.view, { hard: Boolean(args.hard) });
+        case 'restore': return weave.restoreView(args.view);
         case 'share': return weave.shareView(args.view);
         case 'unshare': return weave.unshareView(args.view);
-        default: throw new Error(`Unknown views action '${args.action}' (list, get, create, delete, share, unshare)`);
+        default: throw new Error(`Unknown views action '${args.action}' (list, get, create, delete, restore, share, unshare)`);
       }
+    case 'weave_shares': {
+      const asRole = caller?.role ? Weave.roleName(caller.role) : null;
+      if (asRole === 'observer') throw new Error('weave_shares needs an editor or architect token');
+      switch (args.action) {
+        case 'list': return { shares: weave.listShares({ kind: args.kind ?? null, id: args.id ?? null }) };
+        case 'mint': return weave.mintShare({ scope: { kind: args.kind, id: args.id }, mode: args.mode, visibility: args.visibility, label: args.label, expiresAt: args.expiresAt });
+        case 'revoke': return weave.revokeShare(args.share, { any: asRole !== 'editor' });
+        default: throw new Error(`Unknown shares action '${args.action}' (list, mint, revoke)`);
+      }
+    }
     case 'weave_automations':
       switch (args.action) {
         case 'list': return { automations: weave.listAutomations(args.db ?? null) };
@@ -756,11 +816,13 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       });
     case 'weave_audit':
       return { events: weave.listAudit({ limit: args.limit ?? null, since: args.since ?? null }) };
+    case 'weave_form_submit':
+      return submitForm(weave, args.form, { values: args.values, note: args.note, categories: args.categories, events: [] }, { actor: weave.actor, server: { version: VERSION, workspace: weave.state.meta.name } });
     case 'weave_workspace':
       switch (args.action ?? 'get') {
         case 'get': return weave.getWorkspace();
         case 'update': return (caller?.updateWorkspace ?? ((p) => weave.updateWorkspace(p)))(pick(args, ['name', 'description', 'linkPreview']));
-        case 'logo': return weave.setWorkspaceLogo({ name: args.name ?? 'logo.png', mime: args.mime ?? 'image/png', bytes: args.contentBase64 });
+        case 'logo': return weave.setWorkspaceLogo({ name: args.name ?? 'logo.png', bytes: args.contentBase64 });
         case 'clear-logo': weave.deleteWorkspaceLogo(); return { logo: false };
         default: throw new Error(`Unknown workspace action '${args.action}' (get, update, logo, clear-logo)`);
       }

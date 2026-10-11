@@ -17,6 +17,20 @@ globalThis.WeaveEditorLib = {
     return out;
   },
 
+  aliasRefSpans(text, nameOf) {
+    const src = String(text ?? '');
+    let out = '';
+    let at = 0;
+    for (const s of globalThis.WeaveEditorLib.findRefSpans(src)) {
+      if (s.label != null) continue;
+      const name = nameOf(s.ref);
+      if (!name || name === s.ref || /[[\]|\n]/.test(name)) continue;
+      out += src.slice(at, s.start) + `[[${s.ref}|${name}]]`;
+      at = s.end;
+    }
+    return out + src.slice(at);
+  },
+
   cellActivation(type) {
     return {
       text: 'focus-input', number: 'focus-input', url: 'focus-input',
@@ -274,16 +288,19 @@ globalThis.WeaveEditorLib = {
     }
     return lines.join('\n');
   },
+  lineWords(line) {
+    const [, , rest] = String(line ?? '').trimEnd().match(/^(\s*)(.*)$/);
+    return rest
+      .replace(/^(?:>\s?)+/, '')
+      .replace(/^(?:#{1,6}|(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?)(?:\s+|$)/, '')
+      .trim();
+  },
   convertLine(line, kind) {
     const src = String(line ?? '');
     const spec = this.BLOCK_KINDS[kind];
     if (!spec) return src;
-    const [, indent, rest] = src.trimEnd().match(/^(\s*)(.*)$/);
-    const words = rest
-      .replace(/^(?:>\s?)+/, '')
-      .replace(/^(?:#{1,6}|(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?)(?:\s+|$)/, '')
-      .trim();
-    return `${indent}${spec[0]}${words || spec[1]}`;
+    const [, indent] = src.trimEnd().match(/^(\s*)(.*)$/);
+    return `${indent}${spec[0]}${this.lineWords(src) || spec[1]}`;
   },
 
   convertMarkedLine(md) {
@@ -299,13 +316,15 @@ globalThis.WeaveEditorLib = {
     const fenced = lines.slice(0, at).filter((l) => /^\s*(?:```|~~~)/.test(l)).length % 2 === 1;
     if (fenced || /^\s*\|/.test(line)) {
       lines[at] = line.trimEnd();
-      return { md: lines.join('\n'), line: -1 };
+      return { md: lines.join('\n'), line: -1, select: '' };
     }
+    const spec = this.BLOCK_KINDS[hit[1]];
+    const select = spec && !this.lineWords(line) ? spec[1] : '';
     lines[at] = this.convertLine(line, hit[1]);
     if (!/^(?:bullet|number|task)$/.test(hit[1])) {
       if (lines[at + 1]?.trim()) lines.splice(at + 1, 0, '');
       if (lines[at - 1]?.trim()) { lines.splice(at, 0, ''); at += 1; }
     }
-    return { md: lines.join('\n'), line: at };
+    return { md: lines.join('\n'), line: at, select };
   },
 };

@@ -18,7 +18,10 @@
   const maxWidth = (f = {}) => (f.role === 'name' ? 480 : MAX_WIDTHS[f.type] ?? MAX_FALLBACK);
 
   const RATING_METRICS = { icon: 14, gap: 1, pad: 8 };
-  const ratingIcons = (f = {}) => (f.type === 'rating' && Number.isInteger(f.max) && f.max > 0 ? f.max : 0);
+  const ratingIcons = (f = {}) => {
+    const max = f.type === 'rating' ? f.max : f.type === 'rollup' || f.type === 'lookup' ? f.rating?.max : null;
+    return Number.isInteger(max) && max > 0 ? max : 0;
+  };
   const ratingWidth = (n, pad) => n * RATING_METRICS.icon + (n - 1) * RATING_METRICS.gap + (Number.isFinite(pad) ? pad : RATING_METRICS.pad);
   const ratingFits = (width, max, pad) => !(max > 0) || width >= ratingWidth(max, pad);
 
@@ -48,7 +51,7 @@
   const defaultWidth = (f = {}, { widest = null } = {}) => {
     if (f.role === 'name') return NAME_WIDTH;
     const icons = ratingIcons(f);
-    if (icons) return Math.min(maxWidth(f), Math.max(DEFAULT_WIDTHS.rating, ratingWidth(icons, f.pad)));
+    if (icons) return Math.min(maxWidth(f), Math.max(DEFAULT_WIDTHS[f.type] ?? DEFAULT_WIDTHS.rating, ratingWidth(icons, f.pad)));
     const rich = richWidth(f, widest);
     if (rich != null) return Math.min(maxWidth(f), Math.ceil(Math.max(rich, DEFAULT_WIDTHS.number)));
     if (f.type === 'number' && f.currency) return CURRENCY_WIDTH;
@@ -139,7 +142,7 @@
   }
 
   root.WeaveColumnResize = {
-    DEFAULT_WIDTHS, NAME_WIDTH, CAP, RATING_METRICS, TOGGLE_METRICS, toggleWidth, chipWidth, ratingFloor,
+    DEFAULT_WIDTHS, NAME_WIDTH, CAP, RATING_METRICS, TOGGLE_METRICS, toggleWidth, chipWidth, ratingFloor, ratingIcons,
     floor({ label = 0, padLeft = 0, padRight = 0, min = 0 } = {}) {
       return Math.max(min, Math.ceil(label + padLeft + padRight));
     },

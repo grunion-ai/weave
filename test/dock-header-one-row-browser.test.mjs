@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 
@@ -19,8 +19,8 @@ const s = await launch('dock header one row', (weave) => {
 if (s) {
   const { base, browser } = s;
 
-  const openDocked = async ({ width = 1280, height = 720, theme = null } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height } });
+  const openDocked = async ({ width = 1280, height = 720, theme = null, phone = false } = {}) => {
+    const page = phone ? await phonePage(await phoneBrowser()) : await browser.newPage({ viewport: { width, height } });
     await page.goto(`${base}/#/table/${deals.id}?e=${acme.id}`, { waitUntil: 'networkidle' });
     if (theme) await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
@@ -125,17 +125,18 @@ if (s) {
     await page.close();
   });
 
-  test('phone: the full-screen dock keeps expand and close in its one header row', async () => {
-    const page = await openDocked({ width: 390, height: 844 });
+  test('phone: the full-screen dock keeps close in its one header row and drops expand (Issue #734)', async () => {
+    const page = await openDocked({ phone: true });
     await toBottom(page);
     const r = await read(page);
     assert.equal(r.dockHeads, 0);
-    for (const [name, ctl] of [['expand', r.expand], ['close', r.close]]) {
+    assert.equal(await page.locator('#dock .pose-btn').isVisible(), false, 'a full-screen dock has nothing to expand to');
+    for (const [name, ctl] of [['close', r.close]]) {
       assert.ok(ctl?.inRow, `${name} sits in the crumb row`);
       assert.ok(ctl.top >= r.pane.top - 1 && ctl.bottom <= r.pane.bottom + 1, `${name} is on screen: ${JSON.stringify(ctl)}`);
       assert.ok(ctl.reachable, `${name} answers a tap`);
     }
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, 'no sideways scroll');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0, 'no sideways scroll');
     await page.click('#dock .crumb-row button[aria-label="Close"]');
     await page.waitForSelector('#dock', { state: 'hidden' });
     await page.close();

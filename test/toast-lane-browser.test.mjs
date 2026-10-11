@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch } from './lib/browser.mjs';
+import { launch, PHONE, phoneBrowser, phonePage, phoneProfile } from './lib/browser.mjs';
 
 const LONG_ERR = "Couldn't open that record: Entity 'does-not-exist' not found";
 const STALE_MSG = 'This page was served by bbbbbbb but the server is still running aaaaaaa; restart weave, until then saving can fail silently';
@@ -18,8 +18,10 @@ const s = await launch('toast lane', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  async function open(width, height, theme = 'light') {
-    const page = await browser.newPage({ viewport: { width, height } });
+  const phone = phoneProfile().page.viewport;
+  const sizes = [[1440, 900], [phone.width, phone.height, PHONE]];
+  async function open(width, height, theme = 'light', device = null) {
+    const page = device ? await phonePage(await phoneBrowser()) : await browser.newPage({ viewport: { width, height } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(base + '/');
     await page.waitForSelector('#sidebar .nav-health', { state: 'attached' });
@@ -32,9 +34,9 @@ if (s) {
   const hits = (a, b) => a.x < b.right && b.x < a.right && a.y < b.bottom && b.y < a.bottom;
   const toasts = (page) => page.locator('#wv-toasts .wv-toast');
 
-  for (const [w, h] of [[1440, 900], [390, 844]]) {
-    test(`${w}: toasts never touch the bug button or its open panel`, async () => {
-      const page = await open(w, h);
+  for (const [w, h, device] of sizes) {
+    test(`${device ?? w}: toasts never touch the bug button or its open panel`, async () => {
+      const page = await open(w, h, 'light', device);
       try {
         await page.click('.bug-fab');
         await page.waitForSelector('#bug-panel');
@@ -67,8 +69,8 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${w}: a long server error renders whole`, async () => {
-      const page = await open(w, h);
+    test(`${device ?? w}: a long server error renders whole`, async () => {
+      const page = await open(w, h, 'light', device);
       try {
         await page.evaluate((m) => toast(m, true), STALE_MSG);
         const m = await page.evaluate(() => {
@@ -171,9 +173,9 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const [w, h] of [[1440, 900], [390, 844]]) {
-    test(`${w}: an open tray keeps the corner and the toasts off Save changes`, async () => {
-      const page = await open(w, h);
+  for (const [w, h, device] of sizes) {
+    test(`${device ?? w}: an open tray keeps the corner and the toasts off Save changes`, async () => {
+      const page = await open(w, h, 'light', device);
       try {
         await page.evaluate((m) => { tray('Edit Description', [], async () => {}, 'Save changes'); toast(m, true); }, LONG_ERR);
         const bar = (await rect(page, '#tray .tray-actions'))[0];

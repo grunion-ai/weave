@@ -49,7 +49,7 @@ if (s) {
     await page.click('.doc-section .doc-caret');
     await page.mouse.move(2, 2);
     await page.waitForTimeout(250);
-    assert.equal(await page.$eval('.doc-section .doc-dl', (n) => getComputedStyle(n).opacity), '0', 'the downloads ⋮ is not lit by the click');
+    assert.equal(await page.$eval('.doc-section .doc-dl > .dots-btn', (n) => getComputedStyle(n).opacity), '0', 'the downloads ⋮ is not lit by the click');
     await page.close();
   });
 

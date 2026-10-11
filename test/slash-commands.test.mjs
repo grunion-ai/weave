@@ -121,6 +121,31 @@ if (s) {
     assert.equal(fences.length, 2, `a code block needs exactly two fences, got ${fences.length}`);
   });
 
+  test('slash: a new table puts the caret in its first header cell, so typing names the column (Issue #692)', async () => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${base}/#/entity/${freshEntity('Table caret')}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+      await page.evaluate(() => {
+        const ed = window.__weaveEditors?.values().next().value;
+        ed.setValue('Above the table');
+        ed.focus();
+      });
+      await page.click('.vditor-ir [contenteditable="true"]');
+      await page.keyboard.press('End');
+      await page.keyboard.press('Enter');
+      await page.keyboard.type('/table');
+      await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
+      await hintFiltered(page);
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('.vditor-ir table th') && !/⁣/.test(window.__weaveEditors.values().next().value.getValue()));
+      await page.keyboard.type('Name');
+      const md = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
+      assert.match(md, /^\| ?Name ?\| ?Column ?\|/m, `typing replaced the first header, got:\n${JSON.stringify(md)}`);
+      assert.match(md, /^Above the table$/m, 'the line above keeps its words and gains none');
+    } finally { await page.close(); }
+  });
+
   test('slash: the entity link command searches entities and inserts a reference', async () => {
     const linkEntity = freshEntity('Link case');
     const page = await browser.newPage();
@@ -289,7 +314,10 @@ if (s) {
         before.setEnd(r.startContainer, r.startOffset);
         const own = [...block.childNodes].filter((n) => !(n.nodeType === 1 && /^(UL|OL)$/.test(n.tagName)))
           .map((n) => n.textContent).join('');
-        return { collapsed: r.collapsed, before: before.toString().trim(), line: own.trim(), inEditor: !!el.closest('.vditor-ir') };
+        return {
+          collapsed: r.collapsed, before: before.toString().trim(), line: own.trim(),
+          selected: s.toString(), inEditor: !!el.closest('.vditor-ir'),
+        };
       });
       await page.evaluate(() => window.__weaveFlushDocSaves());
       let saved = null;
@@ -391,9 +419,31 @@ if (s) {
   test('convert: an empty line still gets the marker and its placeholder', async () => {
     const r = await convertLine('', 'task');
     assert.match(r.markdown, /^- \[ \] +To do\n?$/, said(r));
-    assert.equal(r.caret.before, 'To do', 'with the caret after the placeholder, where Vditor used to leave it');
+    assert.equal(r.caret.selected, 'To do', 'the placeholder is the selection, not a collapsed caret after it (Issue #556)');
+    assert.equal(r.caret.collapsed, false);
     assert.equal(r.saved.trim(), '- [ ] To do', 'one space after the box reaches storage (Issue #555)');
   });
+
+  const PLACEHOLDERS = [
+    ['task', 'To do', /^- \[ \] +Ship it$/m],
+    ['bullet', 'List item', /^- Ship it$/m],
+    ['quote', 'Quote', /^> Ship it$/m],
+    ['h2', 'Heading', /^## Ship it$/m],
+  ];
+
+  for (const [query, placeholder, typed] of PLACEHOLDERS) {
+    test(`convert: typing after /${query} on an empty line replaces the placeholder (Issue #556)`, async () => {
+      const r = await convertLine('', query, {
+        then: async (page) => {
+          await page.keyboard.type('Ship it');
+          return page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
+        },
+      });
+      assert.equal(r.caret.selected, placeholder, `/${query} selects its placeholder: ${said(r)}`);
+      assert.match(r.after, typed, `typed over it and got ${JSON.stringify(r.after)}`);
+      assert.doesNotMatch(r.after, new RegExp(placeholder), 'the placeholder never reaches the document');
+    });
+  }
 
   test('convert: a block that is not a line prefix still inserts beside the text', async () => {
     const r = await convertLine('Buy milk', 'divider');
@@ -469,9 +519,9 @@ if (s) {
 
     await page.waitForTimeout(600);
     const chips = await page.evaluate(() =>
-      [...document.querySelectorAll('.doc-ref-chip')].map((c) => getComputedStyle(c).backgroundColor));
+      [...document.querySelectorAll('.doc-ref-slot')].map((c) => getComputedStyle(c).backgroundColor));
     assert.equal(chips.length, 1, 'the reference renders as one chip');
-    assert.doesNotMatch(chips[0], /rgba\(.*0\.0?\d+\)$/, 'an see-through chip shows the literal underneath');
+    assert.doesNotMatch(chips[0], /rgba\(.*0\.0?\d+\)$/, 'a see-through slot shows the literal underneath');
     await page.close();
   });
 

@@ -19,7 +19,7 @@ if (s) {
       try {
         await page.goto(`${base}/#/activity`, { waitUntil: 'load' });
         await page.waitForSelector('.activity-row');
-        const hrefs = await page.$$eval('.activity-row', (ns) => ns.map((n) => n.dataset.href));
+        const hrefs = await page.locator('.activity-row').evaluateAll((ns) => ns.map((n) => n.dataset.href));
         assert.deepEqual(hrefs.slice(0, 6), [...made].reverse().map((id) => `#/activity/${id}:0`),
           'the six creations read newest first');
         const when = await page.$eval('.activity-when', (n) => ({ text: n.textContent.trim(), title: n.getAttribute('title'), fg: getComputedStyle(n).color, bg: getComputedStyle(document.body).backgroundColor }));

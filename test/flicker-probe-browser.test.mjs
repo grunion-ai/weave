@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
-import { installProbe, readProbe, recordFrames, frameFlashes } from './lib/flicker.mjs';
+import { launch, engineOf } from './lib/browser.mjs';
+import { installProbe, readProbe, readInputs, recordFrames, frameFlashes } from './lib/flicker.mjs';
 
 const s = await launch('flicker probe', (weave) => {
   weave.createSpace({ name: 'S' });
@@ -10,8 +10,8 @@ const s = await launch('flicker probe', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  const open = async ({ maxMs = 5000 } = {}) => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+  const open = async ({ maxMs = 5000, engine = browser } = {}) => {
+    const page = await engine.newPage({ viewport: { width: 900, height: 700 } });
     await installProbe(page, { maxMs });
     await page.goto(base, { waitUntil: 'networkidle' });
     await page.evaluate(() => {
@@ -27,6 +27,63 @@ if (s) {
   const frames = (page, n) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const events = async (page, kind) => (await readProbe(page)).filter((e) => (kind ? e.kind === kind : e.kind !== 'jank'));
+
+  const slidingRow = (page) => page.evaluate(() => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.cssText = 'position:relative;width:390px;height:88px;overflow:hidden';
+    row.innerHTML = '<div class="body" style="height:88px;background:#ddd;transform:translateX(-176px);transition:transform .3s ease">row</div>'
+      + '<div class="acts" style="position:absolute;top:0;right:0;width:176px;height:88px;background:#36c">act</div>';
+    const shut = Object.assign(document.createElement('button'), { className: 'shut', textContent: 'shut', style: 'width:80px;height:40px' });
+    shut.addEventListener('click', () => { row.querySelector('.body').style.transform = 'translateX(0)'; row.querySelector('.acts').remove(); });
+    document.getElementById('stage').append(row, shut);
+  });
+
+  for (const engine of ['chromium', 'webkit']) {
+    test(`a painted part cut out while the rest of its row is still sliding is a cut (${engine}, Issue #732)`, async (t) => {
+      const other = engine === 'chromium' ? browser : await engineOf(engine);
+      if (!other) return t.skip(`${engine} cannot launch here`);
+      const page = await open({ engine: other });
+      try {
+        await slidingRow(page);
+        await frames(page, 3);
+        await page.evaluate(() => { window.__flicker.length = 0; });
+        await page.evaluate(() => { document.querySelector('#stage .row .body').style.transform = 'translateX(0)'; document.querySelector('#stage .row .acts').remove(); });
+        await frames(page, 3);
+        const c = await events(page, 'cut');
+        assert.equal(c.length, 1, JSON.stringify(await events(page)));
+        assert.match(c[0].sel, /div\.row > div\.acts$/);
+        assert.ok(c[0].ms > 0 && c[0].ms <= 300, `the gap shows for the rest of the slide (${c[0].ms} ms)`);
+      } finally { await page.close(); }
+    });
+  }
+
+  test('a part removed once its row has come to rest is not a cut (Issue #732)', async () => {
+    const page = await open();
+    try {
+      await slidingRow(page);
+      await frames(page, 3);
+      await page.evaluate(() => new Promise((r) => {
+        const body = document.querySelector('#stage .row .body');
+        body.addEventListener('transitionend', () => { document.querySelector('#stage .row .acts').remove(); r(); }, { once: true });
+        body.style.transform = 'translateX(0)';
+      }));
+      await frames(page, 3);
+      assert.deepEqual(await events(page, 'cut'), []);
+    } finally { await page.close(); }
+  });
+
+  test('a cut in answer to a tap is still a cut: the gap shows for the whole slide (Issue #732)', async () => {
+    const page = await open();
+    try {
+      await slidingRow(page);
+      await frames(page, 3);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.click('#stage .shut');
+      await frames(page, 3);
+      assert.equal((await events(page, 'cut')).length, 1, JSON.stringify(await events(page)));
+    } finally { await page.close(); }
+  });
 
   test('a node painted for a beat and removed is a transient, named by its selector', async () => {
     const page = await open();
@@ -122,6 +179,44 @@ if (s) {
       await frames(page, 2);
       const t = await events(page, 'transient');
       assert.equal(t.length, 1, JSON.stringify(await events(page)));
+    } finally { await page.close(); }
+  });
+
+  test('an empty see-through overlay painted and replaced is not a transient: the reader saw nothing (Issue #732)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => new Promise((r) => {
+        const host = Object.assign(document.createElement('div'), { className: 'editor', style: 'position:relative;width:300px;height:200px' });
+        host.append(Object.assign(document.createElement('p'), { textContent: 'the text under it' }));
+        document.getElementById('stage').append(host);
+        const layer = () => Object.assign(document.createElement('div'), { className: 'ref-layer', style: 'position:absolute;inset:0;pointer-events:none' });
+        const first = layer();
+        host.append(first);
+        requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+          const next = layer();
+          next.append(Object.assign(document.createElement('a'), { className: 'chip', textContent: '#12 Spec' }));
+          first.replaceWith(next);
+          r();
+        })));
+      }));
+      await frames(page, 2);
+      assert.deepEqual(await events(page, 'transient'), []);
+    } finally { await page.close(); }
+  });
+
+  test('an overlay that shows something when painted and replaced is still a transient (Issue #732)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => new Promise((r) => {
+        const host = Object.assign(document.createElement('div'), { className: 'editor', style: 'position:relative;width:300px;height:200px' });
+        document.getElementById('stage').append(host);
+        const first = Object.assign(document.createElement('div'), { className: 'ref-layer', style: 'position:absolute;inset:0' });
+        first.append(Object.assign(document.createElement('a'), { className: 'chip', textContent: '#12 Spec' }));
+        host.append(first);
+        requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => { first.replaceWith(Object.assign(document.createElement('div'), { className: 'ref-layer', style: 'position:absolute;inset:0' })); r(); })));
+      }));
+      await frames(page, 2);
+      assert.equal((await events(page, 'transient')).length, 1, JSON.stringify(await events(page)));
     } finally { await page.close(); }
   });
 
@@ -288,6 +383,139 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a row the scroll itself recycled is not a transient (Issue #632)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.className = 'recycler';
+        box.style.cssText = 'height:300px;overflow:auto;width:400px';
+        box.innerHTML = '<div class="inner"></div>';
+        const inner = box.querySelector('.inner');
+        for (let i = 0; i < 40; i++) inner.append(Object.assign(document.createElement('p'), { className: 'keep', textContent: `row ${i}`, style: 'height:80px;margin:0;background:#ddd' }));
+        document.getElementById('stage').append(box);
+        box.addEventListener('scroll', () => {
+          for (const r of box.querySelectorAll('p.recycled')) r.remove();
+        });
+      });
+      await frames(page, 3);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.evaluate(() => new Promise((r) => {
+        const box = document.querySelector('#stage .recycler');
+        box.querySelector('.inner').prepend(Object.assign(document.createElement('p'), { className: 'recycled', textContent: 'windowed row', style: 'height:80px;margin:0;background:#8cf' }));
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          box.scrollTo({ top: 2000, behavior: 'instant' });
+          r();
+        }));
+      }));
+      await frames(page, 2);
+      const t = await events(page, 'transient');
+      assert.deepEqual(t.filter((e) => /p\.recycled/.test(e.sel)), [], 'the scroll took it out, so the reader moved it themselves');
+    } finally { await page.close(); }
+  });
+
+  test('a flash that lands well after the scroll is still a transient (Issue #632)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.className = 'recycler';
+        box.style.cssText = 'height:300px;overflow:auto;width:400px';
+        box.innerHTML = '<div class="inner" style="height:3000px;position:relative"></div>';
+        document.getElementById('stage').append(box);
+      });
+      await frames(page, 3);
+      await page.evaluate(() => { document.querySelector('#stage .recycler').scrollTo({ top: 2000, behavior: 'instant' }); });
+      await wait(300);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.evaluate(() => new Promise((r) => {
+        const row = Object.assign(document.createElement('p'), { className: 'late', textContent: 'late row', style: 'position:absolute;top:2050px;left:0;height:80px;width:300px;margin:0;background:#8cf' });
+        document.querySelector('#stage .recycler .inner').append(row);
+        requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => { row.remove(); r(); })));
+      }));
+      await frames(page, 2);
+      const t = await events(page, 'transient');
+      assert.ok(t.some((e) => /p\.late/.test(e.sel)), JSON.stringify(await events(page)));
+    } finally { await page.close(); }
+  });
+
+  test('a shift inside the scroll that caused it is not a shift (Issue #631)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.className = 'content';
+        box.style.cssText = 'position:relative;width:400px';
+        box.innerHTML = '<p class="para" style="height:80px;margin:0;background:#ddd">text</p>';
+        document.getElementById('stage').append(box);
+      });
+      await frames(page, 3);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.evaluate(() => {
+        document.getElementById('stage').dispatchEvent(new Event('scroll', { bubbles: false }));
+        const ban = document.createElement('div');
+        ban.style.cssText = 'height:120px';
+        document.querySelector('#stage .content').prepend(ban);
+      });
+      await frames(page, 3);
+      await wait(150);
+      assert.deepEqual(await events(page, 'shift'), [], 'the reader moved the content by scrolling');
+    } finally { await page.close(); }
+  });
+
+  test('a shift inside the scroll that caused it is not a shift though the frame ran 120 ms (Issue #712)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.className = 'content';
+        box.style.cssText = 'position:relative;width:400px';
+        box.innerHTML = '<p class="para" style="height:80px;margin:0;background:#ddd">text</p>';
+        document.getElementById('stage').append(box);
+      });
+      await frames(page, 3);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.evaluate(() => {
+        document.getElementById('stage').dispatchEvent(new Event('scroll', { bubbles: false }));
+        const until = performance.now() + 120;
+        while (performance.now() < until);
+        const ban = document.createElement('div');
+        ban.style.cssText = 'height:120px';
+        document.querySelector('#stage .content').prepend(ban);
+      });
+      await frames(page, 3);
+      await wait(150);
+      assert.deepEqual(await events(page, 'shift'), [], 'the re-window and the scroll shared one long frame, so the reader moved the content');
+    } finally { await page.close(); }
+  });
+
+  test('a shift that lands after the scroll settles is still a shift (Issue #631)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.className = 'content';
+        box.style.cssText = 'position:relative;width:400px';
+        box.innerHTML = '<p class="para" style="height:80px;margin:0;background:#ddd">text</p>';
+        document.getElementById('stage').append(box);
+      });
+      await frames(page, 3);
+      await page.evaluate(() => { document.getElementById('stage').dispatchEvent(new Event('scroll', { bubbles: false })); });
+      await wait(300);
+      await page.evaluate(() => { window.__flicker.length = 0; });
+      await page.evaluate(() => {
+        const ban = document.createElement('div');
+        ban.style.cssText = 'height:120px';
+        document.querySelector('#stage .content').prepend(ban);
+      });
+      await frames(page, 3);
+      await wait(150);
+      const sh = await events(page, 'shift');
+      assert.ok(sh.length >= 1, JSON.stringify(await events(page)));
+      assert.ok(sh.some((e) => /p\.para/.test(e.sel)), JSON.stringify(sh));
+    } finally { await page.close(); }
+  });
+
   test('an empty spacer pushed down is not a shift: there is nothing on it to see move', async () => {
     const page = await open();
     try {
@@ -322,6 +550,32 @@ if (s) {
       await frames(page, 3);
       await wait(250);
       assert.deepEqual(await events(page), []);
+    } finally { await page.close(); }
+  });
+
+  test('a screencast flash that answers the reader\'s click is not a flash (Issue #638)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const b = Object.assign(document.createElement('button'), { className: 'popper', textContent: 'open' });
+        b.style.cssText = 'position:absolute;top:10px;left:10px;width:80px;height:30px';
+        document.getElementById('stage').append(b);
+        b.addEventListener('pointerdown', () => {
+          const st = document.getElementById('stage');
+          st.style.background = '#000';
+          requestAnimationFrame(() => requestAnimationFrame(() => { st.style.background = '#fff'; }));
+        });
+      });
+      await frames(page, 3);
+      const rec = await recordFrames(page);
+      await wait(300);
+      await page.click('#stage .popper');
+      await wait(400);
+      const shots = await rec.stop();
+      const inputs = await readInputs(page);
+      assert.equal(inputs.length, 1, 'the probe logged the click on the wall clock');
+      assert.equal(frameFlashes(shots, { maxMs: 2000 }).length, 1, 'the screencast did see the flash');
+      assert.deepEqual(frameFlashes(shots, { maxMs: 2000, inputs }), [], 'the reader opened it themselves');
     } finally { await page.close(); }
   });
 

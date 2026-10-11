@@ -249,6 +249,38 @@ if (s) {
     });
   }
 
+  test('the + New row is a row: a data row height at every density, still the sticky foot', async () => {
+    const page = await openAt(viewUrl(every, everyViews[0]));
+    try {
+      for (const d of ['compact', 'comfortable', 'spacious']) {
+        await pickDensity(page, d);
+        const m = await page.evaluate(() => {
+          const table = document.querySelector('.wv-grid');
+          const td = table.querySelector('tbody tr.add-entity-row > td');
+          const btn = td.querySelector('.add-entity-btn');
+          const cs = getComputedStyle(td);
+          const h = (n) => Math.round(n.getBoundingClientRect().height * 100) / 100;
+          return {
+            density: table.dataset.density,
+            row: h(table.querySelector('tbody tr.entity-row')),
+            add: h(td.closest('tr')),
+            cell: h(td),
+            btn: h(btn),
+            position: cs.position,
+            bottom: cs.bottom,
+          };
+        });
+        assert.equal(m.density, d);
+        assert.equal(m.cell, ROW[d], `${d}: the + New cell is ${ROW[d]}px, not ${m.cell}px`);
+        assert.equal(m.add, m.row, `${d}: the + New row and a data row are the same height (${m.add} against ${m.row})`);
+        assert.equal(m.btn, m.cell, `${d}: the button fills the row (${m.btn} of ${m.cell})`);
+        assert.equal(m.position, 'sticky', `${d}: the foot stays sticky (Feature #196)`);
+        assert.equal(m.bottom, '0px', `${d}: the foot stays pinned to the bottom (Feature #196)`);
+      }
+      await pickDensity(page, 'comfortable');
+    } finally { await page.close(); }
+  });
+
   test('density moves the row height only: the same font sizes and column widths at all three', async () => {
     const page = await openAt(viewUrl(every, everyViews[0]));
     try {

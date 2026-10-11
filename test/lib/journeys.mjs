@@ -28,6 +28,14 @@ export function seed(weave) {
   return { tasks, projects, ids, doc };
 }
 
+export const CELLS = {
+  desktop: { engine: 'chromium', viewport: { width: 1400, height: 900 }, hasTouch: false, isMobile: false },
+  phone: { engine: 'webkit', device: 'iPhone 15' },
+};
+export const cellsOf = (j) => j.cells ?? ['desktop'];
+const BOTH = ['desktop', 'phone'];
+const PHONE = ['phone'];
+
 const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
 const ROW = '.wv-grid tbody tr.entity-row';
 
@@ -46,9 +54,13 @@ async function scrollTo(page, f) {
   await frames(page, 3);
 }
 
+const beat = (page) => page.waitForTimeout(400);
+
+
 export const JOURNEYS = [
   {
     name: 'load-home',
+    cells: BOTH,
     async run(page, ctx) {
       await page.goto(`${ctx.base}/#/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#main');
@@ -56,6 +68,7 @@ export const JOURNEYS = [
   },
   {
     name: 'open-table',
+    cells: BOTH,
     async setup(page, ctx) {
       await page.goto(`${ctx.base}/#/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#main');
@@ -67,6 +80,7 @@ export const JOURNEYS = [
   },
   {
     name: 'scroll-grid',
+    cells: BOTH,
     setup: table,
     async run(page) {
       for (const f of [0.25, 0.5, 0.75, 1]) {
@@ -117,6 +131,7 @@ export const JOURNEYS = [
   },
   {
     name: 'type-doc',
+    cells: BOTH,
     async setup(page, ctx) {
       await page.goto(`${ctx.base}/#/entity/${ctx.doc}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.vditor-ir [contenteditable="true"]');
@@ -154,10 +169,84 @@ export const JOURNEYS = [
       }
     },
   },
+  {
+    name: 'phone-search',
+    cells: PHONE,
+    setup: table,
+    async run(page) {
+      await page.tap('.phone-bar .phone-search');
+      await page.waitForSelector('#cmdk-back #cmdk-input');
+      await beat(page);
+      const vp = page.viewportSize();
+      await page.touchscreen.tap(vp.width / 2, vp.height - 12);
+      await page.waitForSelector('#cmdk-back', { state: 'detached' });
+    },
+  },
+  {
+    name: 'phone-menu',
+    cells: PHONE,
+    setup: table,
+    async run(page) {
+      await page.tap('#main .nav-menu');
+      await page.waitForFunction(() => document.querySelector('#app').classList.contains('nav-peek'));
+      await beat(page);
+      await page.tap('#nav-collapse');
+      await page.waitForFunction(() => !document.querySelector('#app').classList.contains('nav-peek'));
+    },
+  },
+  {
+    name: 'phone-table-sheet',
+    cells: PHONE,
+    setup: table,
+    async run(page) {
+      const sheet = '#main .crumb-row.tools-open > .crumb-actions';
+      await page.tap('#main .table-tools-btn');
+      await page.waitForSelector(sheet);
+      await beat(page);
+      await page.tap('#main .table-tools-btn');
+      await page.waitForSelector(sheet, { state: 'detached' });
+    },
+  },
+  {
+    name: 'phone-picker',
+    cells: PHONE,
+    async setup(page, ctx) {
+      await page.goto(`${ctx.base}/#/table/${ctx.tasks.id}?e=${ctx.ids[7]}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#dock:not([hidden]) .chip-trigger[title="Status"]');
+      await frames(page, 3);
+    },
+    async run(page) {
+      const chip = '#dock .chip-trigger[title="Status"]';
+      const was = (await page.textContent(chip)).trim();
+      const to = ['Open', 'Doing', 'Done'].find((st) => !was.includes(st));
+      await page.tap(chip);
+      await page.waitForSelector('.picker-pop .picker-row');
+      await beat(page);
+      await page.tap(`.picker-pop .picker-row:has-text("${to}")`);
+      await page.waitForSelector('.picker-pop', { state: 'detached' });
+      await page.waitForFunction(([q, st]) => document.querySelector(q)?.textContent.includes(st), [chip, to]);
+    },
+  },
+  {
+    name: 'phone-open-row',
+    cells: PHONE,
+    setup: table,
+    async run(page, ctx) {
+      const name = await page.locator(`tr[data-eid="${ctx.ids[1]}"] .list-name`).boundingBox();
+      await page.touchscreen.tap(name.x + 20, name.y + name.height / 2);
+      await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
+      await beat(page);
+      await page.goBack();
+      await page.waitForFunction(() => document.querySelector('#dock')?.hidden !== false);
+      await page.waitForSelector(ROW);
+    },
+  },
 ];
 
-export async function walk(browser, journey, ctx, { probe, record = null, viewport = { width: 1400, height: 900 } } = {}) {
-  const page = await browser.newPage({ viewport });
+export async function walk(browser, journey, ctx, { probe, record = null, engine, ...options } = {}) {
+  const ran = browser.browserType().name();
+  if (engine && engine !== ran) throw new Error(`${journey.name} wants ${engine} and was handed ${ran}`);
+  const page = await browser.newPage({ viewport: CELLS.desktop.viewport, ...options });
   try {
     await probe.install(page);
     if (journey.setup) await journey.setup(page, ctx);
@@ -168,7 +257,8 @@ export async function walk(browser, journey, ctx, { probe, record = null, viewpo
     await page.waitForTimeout(600);
     await frames(page, 2);
     const events = await probe.read(page);
-    return { events, frames: rec ? await rec.stop() : [] };
+    const inputs = probe.inputs ? await probe.inputs(page) : [];
+    return { events, inputs, frames: rec ? await rec.stop() : [] };
   } finally {
     await page.close();
   }

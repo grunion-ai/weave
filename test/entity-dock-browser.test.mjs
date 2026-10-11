@@ -21,6 +21,16 @@ if (s) {
     return page;
   }
 
+  async function countDraws(page) {
+    await page.evaluate(() => {
+      window.__dockDraws = 0;
+      new MutationObserver((recs) => {
+        for (const r of recs) for (const n of r.addedNodes) if (n.nodeType === 1 && n.classList.contains('dock-entity')) window.__dockDraws++;
+      }).observe(document.querySelector('#dock'), { childList: true });
+    });
+  }
+  const draws = (page) => page.evaluate(() => window.__dockDraws);
+
   test('the #id link docks the entity beside the table; the hash stays put', async () => {
     const page = await freshTablePage();
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
@@ -149,6 +159,20 @@ if (s) {
     await page.waitForSelector('#main .name-edit');
     assert.equal(await page.evaluate(() => location.hash), `#/entity/${jane.id}`);
     assert.equal(await page.inputValue('#main .name-edit'), 'Jane Rivera');
+    await page.close();
+  });
+
+  test('one click on the #id link draws the dock once', async () => {
+    const page = await freshTablePage();
+    await countDraws(page);
+    await page.click(`tr[data-eid="${a.id}"] .open-link`);
+    await dockedName(page, 'Acme Working Capital');
+    await page.waitForLoadState('networkidle');
+    assert.equal(await draws(page), 1, 'the dock entity was drawn once for one click');
+    await page.click(`tr[data-eid="${b.id}"] .open-link`);
+    await dockedName(page, 'Bluefin Renewal');
+    await page.waitForLoadState('networkidle');
+    assert.equal(await draws(page), 2, 'the second row drew the dock once more, not twice');
     await page.close();
   });
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phoneProfile } from './lib/browser.mjs';
 
 let table;
 const s = await launch('document autosave on a phone', (weave) => {
@@ -9,27 +9,44 @@ const s = await launch('document autosave on a phone', (weave) => {
   weave.addField(table, { name: 'Brief', type: 'document' });
 });
 
-const PHONE = {
-  viewport: { width: 390, height: 844 },
-  deviceScaleFactor: 3,
-  isMobile: true,
-  hasTouch: true,
-  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
-};
+const WRITE_CEILING_MS = 15000;
 
 if (s) {
-  const { browser, base, weave } = s;
+  const { base, weave } = s;
   let n = 0;
+
+  const noDebounce = (ctx) => ctx.addInitScript(() => {
+    let saves = null;
+    Object.defineProperty(window, '__weaveDocSaves', {
+      configurable: true,
+      get: () => saves,
+      set: (map) => {
+        const set = map.set.bind(map);
+        map.set = (key, value) => {
+          clearTimeout(value.timer);
+          return set(key, { ...value, timer: 0 });
+        };
+        saves = map;
+        window.__debounceCancelled = true;
+      },
+    });
+  });
+
+  const twoFrames = (page) => page.evaluate(() =>
+    new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
 
   const open = async (field, { hash } = {}) => {
     const id = weave.createEntity(table, { name: `Row ${++n}` }).id;
-    const ctx = await browser.newContext(PHONE);
+    const ctx = await (await phoneBrowser()).newContext(phoneProfile().page);
+    await noDebounce(ctx);
     const page = await ctx.newPage();
     await page.goto(`${base}/`, { waitUntil: 'networkidle' });
     await page.goto(`${base}/${hash ? hash(id) : `#/entity/${id}`}`, { waitUntil: 'networkidle' });
     const section = page.locator('.doc-section', { has: page.locator('.doc-section-name', { hasText: new RegExp(`^${field}$`) }) });
     const surface = section.locator('.vditor-ir [contenteditable="true"]');
     await surface.waitFor();
+    assert.equal(await page.evaluate(() => window.__debounceCancelled === true), true,
+      'the autosave debounce is cancelled in the page, so only a flush can write');
     return { id, ctx, page, section, surface };
   };
 
@@ -42,7 +59,7 @@ if (s) {
     } else {
       await page.keyboard.type(word);
     }
-    return { put: page.waitForRequest((r) => r.method() === 'PUT' && r.url().includes('/doc') && (r.postData() ?? '').includes(word), { timeout: 400 }) };
+    return { put: page.waitForRequest((r) => r.method() === 'PUT' && r.url().includes('/doc') && (r.postData() ?? '').includes(word), { timeout: WRITE_CEILING_MS }) };
   };
 
   const hide = (page) => page.evaluate(() => {
@@ -138,8 +155,10 @@ if (s) {
         page.on('request', (r) => { if (r.method() === 'PUT' && r.url().includes('/doc')) puts.push(r.url()); });
         await surface.tap();
         await page.locator('.name-edit').tap();
+        assert.equal(await page.evaluate(() => window.__weaveDocSaves.size), 0,
+          'nothing is scheduled for a document nobody changed');
         await hide(page);
-        await page.waitForTimeout(400);
+        await twoFrames(page);
         assert.deepEqual(puts, [], 'no write for a document nobody changed');
         assert.equal(weave.getDoc(id, field), '* one\n* two');
       } finally { await ctx.close(); }

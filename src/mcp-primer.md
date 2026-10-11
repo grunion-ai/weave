@@ -1,4 +1,4 @@
-weave: build with ONE weave_build call (workspace, spaces, tables, fields, relations and rows; its description shows the spec). Run it with dryRun:true first, fix every error it lists, then run it for real. Its computed block samples every lookup, rollup and formula.
+weave: read the weave_ontology outline first. Build with ONE weave_build call (workspace, spaces, tables, fields, relations and rows; its description shows the spec). Run it with dryRun:true first, fix every error it lists, then run it for real. Its computed block samples every lookup, rollup and formula.
 Rules for building in weave:
 - One workspace per domain of life or work (personal-finance, sales), never one per request. Name it as a slug (letters, digits, dash) with the spec's workspace key. A request becomes a space; its records become tables with singular names.
 - A value that names a row of another table is a relation, never text: a field {name, type:"relation", to:<table>, cardinality:"many-to-one"}. In rows, a relation value is the target row's Name.

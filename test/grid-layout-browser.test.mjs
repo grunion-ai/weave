@@ -74,11 +74,19 @@ if (s) {
     await settled(page.locator('.wv-grid'));
     return seen;
   };
-  const insertLine = (page) => page.evaluate(() => {
-    const lines = [...document.querySelectorAll('.wv-col-insert')].filter((l) => !l.hidden);
-    const tag = lines[0]?.querySelector('.wv-col-insert-tag');
-    return { count: lines.length, x: lines[0]?.getBoundingClientRect().left ?? null, tag: tag && !tag.hidden ? tag.textContent : null,
-      tinted: document.querySelectorAll('.wv-grid .drop-target').length };
+  const landing = async (page) => {
+    await page.waitForFunction(() => [...document.querySelectorAll('.wv-col-slot')].every((n) => n.getAnimations().every((a) => a.playState !== 'running')));
+    return page.evaluate(() => {
+      const slots = [...document.querySelectorAll('.wv-reorder-slot.wv-col-slot')];
+      const tag = slots[0]?.querySelector('.wv-col-insert-tag');
+      return { count: slots.length, x: slots[0]?.getBoundingClientRect().left ?? null, w: slots[0]?.getBoundingClientRect().width ?? null,
+        tag: tag && !tag.hidden ? tag.textContent : null, tinted: document.querySelectorAll('.wv-grid .drop-target').length };
+    });
+  };
+  const unshifted = (page, name) => head(page, name).evaluate((th) => {
+    const r = th.getBoundingClientRect();
+    const t = parseFloat(getComputedStyle(th).translate) || 0;
+    return { left: r.left - t, w: r.width };
   });
 
   test('every type opens at its default width; a long label raises only its own column', async () => {
@@ -236,22 +244,23 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a reorder drag: ghost, one insertion line, no swap tint, the column lands there, every width holds', async () => {
+  test('a reorder drag: lifted header, a placeholder at the landing slot, no swap tint, the column lands there, every width holds (Feature #282)', async () => {
     const db = ownTable();
     const page = await openGrid(db);
     try {
       const before = await layout(page);
       let statusLeft = 0;
       const seen = await drag(page, 'Points', async () => { statusLeft = (await layout(page)).Status.left; return statusLeft + 12; }, async () => ({
-        line: await insertLine(page),
-        ghost: await page.locator('.wv-col-ghost').textContent(),
+        line: await landing(page),
+        ghost: await page.locator('.wv-col-lift').textContent(),
         dimmed: await head(page, 'Points').evaluate((th) => getComputedStyle(th).opacity),
       }));
-      assert.equal(seen.line.count, 1, 'one insertion line');
-      assert.ok(Math.abs(seen.line.x + 1 - statusLeft) <= 2, `the line sits at the gap before Status (${seen.line.x} vs ${statusLeft})`);
+      assert.equal(seen.line.count, 1, 'one placeholder');
+      assert.ok(Math.abs(seen.line.x - statusLeft) <= 2, `the placeholder opens where Status stood (${seen.line.x} vs ${statusLeft})`);
+      assert.equal(Math.round(seen.line.w), Math.round(before.Points.w), 'as wide as the grabbed column');
       assert.equal(seen.line.tinted, 0, 'no header wears a drop tint');
       assert.equal(seen.line.tag, null, 'a move inside the scrolling side carries no tag');
-      assert.equal(seen.ghost, 'Points', 'the ghost is the grabbed header');
+      assert.equal(seen.ghost, 'Points', 'the lifted copy is the grabbed header');
       assert.ok(Number(seen.dimmed) < 1, 'the grabbed column dims');
       assert.equal(await trayOpen(page), 0, 'rule 4: the drop click opened nothing');
       await head(page, 'Points').evaluate((th) => th.click());
@@ -263,9 +272,12 @@ if (s) {
       for (const r of cells) assert.deepEqual(r, want, 'every body row moved with the header');
       assert.deepEqual(view(db).fields, want, 'saved into the view');
       sameWidths(before, await layout(page), [], 'reorder');
-      assert.equal(await page.locator('.wv-col-insert, .wv-col-ghost').count(), 0, 'the line and the ghost go with the drag');
-      const noop = await drag(page, 'Owner', async () => { const o = (await layout(page)).Owner; return o.left + o.w / 2 + 3; }, () => insertLine(page));
-      assert.equal(noop.count, 0, 'a no-op position hides the line');
+      await page.waitForFunction(() => !document.querySelector('.wv-col-slot, .wv-col-lift'));
+      assert.equal(await page.locator('.wv-col-slot, .wv-col-lift').count(), 0, 'the placeholder and the lifted copy go with the drag');
+      const noop = await drag(page, 'Owner', async () => { const o = (await layout(page)).Owner; return o.left + o.w / 2 + 3; }, () => landing(page));
+      const owner = (await layout(page)).Owner;
+      assert.equal(noop.count, 1, 'a no-op position keeps the placeholder');
+      assert.ok(Math.abs(noop.x - owner.left) <= 2, `in the column's own slot (${noop.x} vs ${owner.left})`);
       assert.deepEqual(await order(page), want);
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -296,8 +308,8 @@ if (s) {
     try {
       const before = await layout(page);
       const pidX = async () => { const b = await page.locator('.wv-grid thead th.pid-head').boundingBox(); return b.x + b.width / 2; };
-      const seen = await drag(page, 'Owner', pidX, () => insertLine(page));
-      assert.equal(seen.tag, 'Freeze here', 'the line says the drop freezes');
+      const seen = await drag(page, 'Owner', pidX, () => landing(page));
+      assert.equal(seen.tag, 'Freeze here', 'the placeholder says the drop freezes');
       assert.equal(await trayOpen(page), 0, 'rule 4: the freeze drop opened nothing');
       assert.equal((await order(page))[0], 'Owner', 'Owner landed first, after #');
       assert.equal(view(db).frozen, 1, 'and is frozen in the view');
@@ -316,6 +328,7 @@ if (s) {
       assert.ok(Math.abs(pinned.owner - pinned.pidRight) <= 1, `the frozen header is pinned beside # (${JSON.stringify(pinned)})`);
       assert.ok(Math.abs(pinned.cell - pinned.pidRight) <= 1, 'and so are its cells');
       assert.ok(pinned.next < pinned.pidRight, 'the first scrolling field slid under the zone');
+      await page.waitForFunction(() => document.querySelector('.table-wrap').classList.contains('wv-scrolled-x'));
       const seam = await page.evaluate(() => getComputedStyle(document.querySelector('.wv-grid thead th[data-col="Owner"]')).borderRightColor);
       assert.doesNotMatch(seam, /rgba\(0, 0, 0, 0\)/, 'the seam hairline moved to the last frozen field while scrolled');
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 0; });
@@ -325,10 +338,10 @@ if (s) {
         await page.waitForTimeout(50);
         const st = (await layout(page)).Status;
         return st.left + st.w - 10;
-      }, () => insertLine(page), {
-        reaim: async () => { const st = (await layout(page)).Status; return st.left + st.w - 10; },
+      }, () => landing(page), {
+        reaim: async () => { const st = await unshifted(page, 'Status'); return st.left + st.w - 10; },
       });
-      assert.equal(back.tag, 'Unfreeze', 'the line says the drop unfreezes');
+      assert.equal(back.tag, 'Unfreeze', 'the placeholder says the drop unfreezes');
       assert.equal(await trayOpen(page), 0, 'rule 4: the unfreeze drop opened nothing');
       assert.ok(!view(db).frozen, 'unfrozen');
       assert.deepEqual((await order(page)).slice(0, 4), ['Name', 'Description', 'Status', 'Owner']);
@@ -342,7 +355,7 @@ if (s) {
     const page = await openGrid(db, { width: 1300 });
     try {
       const pidX = async () => { const b = await page.locator('.wv-grid thead th.pid-head').boundingBox(); return b.x + b.width / 2; };
-      const seen = await drag(page, 'Owner', pidX, () => insertLine(page));
+      const seen = await drag(page, 'Owner', pidX, () => landing(page));
       assert.equal(seen.tag, null, 'no freeze tag past the cap');
       assert.equal(view(db).frozen, 1, 'the zone did not grow');
       assert.deepEqual((await order(page)).slice(0, 2), ['Name', 'Owner'], 'Owner landed first on the scrolling side');
@@ -451,8 +464,8 @@ if (s) {
     try {
       assert.deepEqual(await order(page), want0, 'system columns close the default view');
       const before = await layout(page);
-      const seen = await drag(page, 'Created At', async () => { const st = (await layout(page)).Status; return st.left + st.w - 10; }, () => insertLine(page));
-      assert.equal(seen.count, 1, 'one insertion line');
+      const seen = await drag(page, 'Created At', async () => { const st = (await layout(page)).Status; return st.left + st.w - 10; }, () => landing(page));
+      assert.equal(seen.count, 1, 'one placeholder');
       assert.equal(await trayOpen(page), 0, 'the drop opened nothing');
       const want1 = ['Name', 'Description', 'Status', 'Created At', 'Owner', 'Due', 'Points', 'Price', 'Done', 'Link', 'Approved by finance', 'Modified By'];
       assert.deepEqual(await order(page), want1, 'Created At landed between Status and Owner');
@@ -464,7 +477,7 @@ if (s) {
       assert.deepEqual(await order(page), want2, 'and back past the last field');
       sameWidths(before, await layout(page), [], 'system column back');
       const pidX = async () => { const b = await page.locator('.wv-grid thead th.pid-head').boundingBox(); return b.x + b.width / 2; };
-      const f = await drag(page, 'Modified By', pidX, () => insertLine(page));
+      const f = await drag(page, 'Modified By', pidX, () => landing(page));
       assert.equal(f.tag, 'Freeze here');
       assert.equal((await order(page))[0], 'Modified By', 'it froze first, after #');
       assert.equal(view(db).frozen, 1);

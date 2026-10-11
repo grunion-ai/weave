@@ -80,7 +80,7 @@ if (s) {
     try {
       await page.click('.view-desc .view-desc-body p');
       await page.waitForSelector('.view-desc-edit');
-      const v = await page.$eval('.view-desc-edit', (ta) => ta.value);
+      const v = await page.locator('.view-desc-edit').first().evaluate((ta) => ta.value);
       assert.equal(v, LONG, 'the editor carries the full markdown');
     } finally { await page.close(); }
   });

@@ -50,7 +50,7 @@ test('the description keeps its first-lines preview; only it previews (Kyle, 202
 });
 
 test('clicking a chip docks the entity, never a row expansion (Issue #74)', () => {
-  assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id\)\)/,
+  assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id, \{ step: true \}\)\)/,
     'a doc chip docks its entity beside the table');
   assert.ok(!APP.includes('peekEntity'), 'the side peek is fully excised');
   assert.ok(!APP.includes('docsEditor('), 'the inline under-row editor is gone');

@@ -340,11 +340,11 @@ Order is the order you wrote, not the order of the options list.` },
 
   { name: 'workflow', kind: 'Choice', doc: `# workflow
 
-A lifecycle. One state at a time, each state belonging to a **category**, and the category is what colors the chip.
+A lifecycle. One state at a time, each state belonging to a **category**. The category sets the chip colour, and a state may carry a colour of its own instead.
 
 ## Config
 
-\`states\` — \`[{ name, category, default, icon }]\`. Categories are exactly four: \`not-started\`, \`in-progress\`, \`done\`, \`canceled\`.
+\`states\` — \`[{ name, category, default, icon, hue }]\`. Categories are exactly four: \`not-started\`, \`in-progress\`, \`done\`, \`canceled\`. \`hue\` is optional and overrides the category colour for that one state: a hue name or its hex, stored as the name. Leave it out, or send \`"hue": ""\`, and the chip reads the category again. The swatch in the field dialog writes it, and **Reset to category colour** clears it.
 
 **Leave \`states\` out and you get one.** A workflow whose config never mentions states arrives as \`Not started\` · \`In progress\` · \`Done\` · \`Canceled\` — one per category — in the tray and on \`weave field add\` alike. Rename, reorder, recolour or delete them like any others. Sending \`"states": []\` is a different thing and still refused: a list emptied on purpose is not a lifecycle.
 
@@ -394,7 +394,7 @@ weave link Task#5 Project 'Project#1'
 weave unlink Task#5 Project 'Project#1'
 \`\`\`
 
-Renders as chips carrying the target's name, each with a \`×\`, plus a \`+ link\` control that opens the search-first picker.
+Renders as chips carrying the target's name, each with a \`×\`, plus a \`+ link\` control that opens the ⌘K search scoped to the relation's target tables (Issue #703). It matches a row by name, \`#id\`, any text field or a document, and shows the linked rows checked. A to-one relation replaces its value on a pick and closes; a to-many relation toggles rows and saves on \`Esc\` or \`Return\` in an empty box. The last row, \`+ New <term>\`, creates a row named from what you typed and links it. **+ Link existing** under a related grid and the selection bar's **Link to…** open the same search.
 
 ## Query
 
@@ -458,6 +458,15 @@ An aggregate over everything on the far side of a relation — or, on a space's 
 \`\`\`json
 { "name": "Peer names", "type": "rollup",
   "config": { "relationField": "Peers", "aggregate": "join", "targetField": "Name" } }
+\`\`\`
+
+## Progress over a checkbox
+
+A number aggregate over a checkbox or toggle counts a tick as 1 and an empty box as 0: \`sum\` is how many are ticked, \`avg\` is the share. A rollup takes the number costume of its own (\`format\`, \`decimals\`, \`unit\`, \`display\` \`bar\`/\`ring\`/\`heat\`, \`scale\`, \`color\`), so a progress bar is one field; without one it wears the costume of the number it reads.
+
+\`\`\`json
+{ "name": "% Done", "type": "rollup",
+  "config": { "relationField": "To-dos", "targetField": "Done", "aggregate": "avg", "format": "percent", "display": "bar", "scale": 1 } }
 \`\`\`
 
 ## Over a whole table: the space rollup
@@ -690,11 +699,13 @@ How one row **appears elsewhere**. Every table carries two, minted with it and h
 
 \`link\` — show the public id as a permalink (\`#12\`). A card says yes by default; a chip no.
 
-\`state\` — show the workflow state, first. On by default for both.
+\`state\` — show the workflow state, first. On by default for both. The state is the **mark**: on a chip it leads the line, on a card it takes a row of its own, and on either a click opens the state picker grouped by category and writes the state to the row. It is the only way state changes from a chip or a card.
 
 \`description\` — a preview of the description document: \`none\`, \`small\` (the first line), \`medium\` (about 120 characters across the first lines), \`large\` (about 320). A chip defaults to \`none\`, a card to \`small\`. Prose only: a page, a JSON model or a diagram is named, never flattened.
 
-\`fields\` — the other fields to show, by name, in this order — or \`null\` to take the first few non-empty glanceable values in column order, which is the default: arranging the columns IS the curation. A chip auto-fills to three segments in all, a card to four; the state counts as one. Documents, files, keys and definitions cannot ride along, and neither can the name (always shown) or the views themselves.
+\`fields\` — the other fields to show, by name, in this order — or \`null\` to take the first few non-empty glanceable values in column order, which is the default: arranging the columns IS the curation. A chip auto-fills to three segments in all, a card to four; the state counts as one. A select or multiselect segment draws as its own chip and opens its picker; the rest are label·value pairs. Documents, files, keys and definitions cannot ride along, and neither can the name (always shown) or the views themselves.
+
+One renderer draws both shapes, \`public/chip-view.js\`, with one stylesheet, \`public/chip.css\`. The browser loads them for relation cells and the References panel, and \`src/markdown.js\` loads them for document pages and HTML exports, so the same row prints the same markup on every surface. The **Chip and card anatomy** guide names every element.
 
 \`\`\`json
 { "name": "Card", "type": "view", "role": "card",
@@ -791,7 +802,7 @@ Each row shows its markdown on the right, so the menu teaches the syntax rather 
 
 A format command wraps the text you selected rather than a placeholder — as long as you selected it in the last fifteen seconds. Select a phrase, type \`/bold\`, and the phrase is what ends up bold.
 
-Text, a heading, a list, a task list and a quote take the line they are typed on. \`Buy milk /task\` becomes \`- [ ] Buy milk\`, \`## Plan /task\` becomes \`- [ ] Plan\`, and \`/text\` on a heading gives a plain paragraph. The words, their inline formatting and a nested item's indent stay; the caret goes to the end of the line. On an empty line the command writes its prefix and a placeholder to type over. Every other block (code, mermaid, table, divider, line break, image, raw HTML) is inserted beside the text.
+Text, a heading, a list, a task list and a quote take the line they are typed on. \`Buy milk /task\` becomes \`- [ ] Buy milk\`, \`## Plan /task\` becomes \`- [ ] Plan\`, and \`/text\` on a heading gives a plain paragraph. The words, their inline formatting and a nested item's indent stay; the caret goes to the end of the line. On an empty line the command writes its prefix and a placeholder, selected, so the first thing you type replaces it. Every other block (code, mermaid, table, divider, line break, image, raw HTML) is inserted beside the text.
 
 ## Blocks
 
@@ -820,7 +831,7 @@ Type \`#\` anywhere in a line and the entity search opens inline, arrow-navigabl
 [[space:Handbook]]   a space
 \`\`\`
 
-The stored form is a permalink keyed on the target's id, so renaming the target renames the chip and never breaks the link. Chips render live in the editor, in the rendered view, and in exported HTML. Each is the same pointer chip a relation cell wears (an outline, no fill, the ↗ inside the link) at the size of the text around it, so a line holding one is no taller than a line without. A reference to a missing or deleted row is never drawn as a chip, and a PDF prints the reference's words.
+The stored form is a permalink keyed on the target's id, so renaming the target renames the chip and never breaks the link. Chips render live in the editor, in the rendered view, and in exported HTML. Each is the same pointer chip a relation cell wears, out of the same renderer and the same stylesheet: an outline, no fill, the state mark leading, the \`#id\` in mono, the name, then the configured chips and the home badge. It draws at the size of the text around it, so a line holding one is no taller than a line without. A bare \`[[Table#n]]\` is stored as \`[[Table#n|Name]]\` once the editor resolves it, which is what keeps the chip from being cut to the width of its source (Issue #679). A reference to a missing or deleted row is never drawn as a chip, and a PDF prints the reference's words.
 
 In the editor a chip shows the target's name. Its outline stops where the name does; hover for the table and number. A bare \`[[Task#12]]\` leaves room for a few characters only, so a long name ends in an ellipsis. Picked from the \`#\` search, the reference carries the name and fits.
 
@@ -916,6 +927,10 @@ weave workspace link-preview        # or --off
 
 The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for its menu: **Update logo…** picks an image for that workspace, whether or not it has one yet; **Remove logo** clears it; **Delete workspace…** asks you to type its name to confirm, and it moves to the trash: the Trash row in the sidebar lists it under Workspaces, with a Restore; the default and the \`weave\` docs workspaces cannot be deleted. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
 
+## The space
+
+A space is the unit of meaning in a workspace: it groups the tables of one area, such as Contact, Company and Deal in CRM. You address a table by space and table name, so CRM/Deal is the Deal table in CRM. Spaces never nest. Make a new space only when you have a table whose area no existing space covers. The Σ under a grid column is a rollup on the space's row in Workspace/Spaces. A space's schema version rises when its structure changes, so an agent can ask for only what changed. Mark a space as a template and weave_template_use copies its schema into another workspace.
+
 ## Sharing a link
 
 Every row, table, space and workspace has a permalink built from its id, so a rename never breaks it: \`/w/<ws>/e/<id>\` for a row (\`/w/<ws>/e/Issue%23287\` works too), \`/w/<ws>/t/<id>\` for a table, \`/w/<ws>/s/<id>\` for a space and \`/w/<ws>/\` for the workspace. The ⧉ beside a row's \`#id\`, a table's title or a space's title copies it.
@@ -925,6 +940,30 @@ Paste one into Slack, Messages or an email and it unfurls: the workspace logo (t
 On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by default it gets the sign-in redirect and the paste shows a bare URL. **Link preview before sign-in**, in the **Workspace actions** menu at the right of the workspace page's title (\`weave workspace link-preview\`, or \`PATCH /api/workspace\` with \`{"linkPreview": true}\` and an architect token), lets a signed-out request for a uuid permalink read the preview head: title, path, \`#id\`, name, logo, state and the first fields. Nothing else leaves: no document, no other field, no API. An unknown id and a \`Table#n\` address, which anyone could count through, are walled like any other page. The person who opens the link still signs in first. It is off on every workspace until an architect turns it on.
 
 **Prefilled create links.** \`/w/<ws>/t/<id>/new?<Field>=<value>&…\` opens the new-row form for that table with those fields filled in. Nothing is saved until you press **Save**, so a link on another page cannot add rows. Values are read the way the API reads them: a select takes the option's name, a relation takes the target row's Name, and a repeated key fills a multi-select or a many relation (\`Tags=ai&Tags=ops\`). A field the table does not have, or a computed one, is left out and named at the top of the form, and so is a value that matches no option or row. Each value is cut to 1,000 characters and the whole query to 2,400, so the link survives sign-in: a signed-out visit signs in and lands on the filled form. **Copy create link** in the table's ⋮ menu copies the link with the values the current filter gives a new row; the button of the same name in the form copies a link carrying what you have filled in so far.
+
+## Share links
+
+A share link opens one row, table, space, saved view or the whole workspace to whoever holds it, and nothing beside it. **Share…** sits in a row's **⋮** menu, the **Table actions** menu, the **Space actions** menu and on a saved view's page. The dialog picks the access, whether the link needs a signed-in account, and a label, then copies the new link. Under the form it lists the links already made there, each with **Copy** and **Revoke**.
+
+| Access | What the link can do |
+| --- | --- |
+| Read | open the pages under the link, and read the rows in scope through the API |
+| Comment | reserved: shown but not offered until comments by share link are built |
+| Edit rows | read, and change the values and documents of rows in scope |
+| Add and delete rows | edit, add rows to a table in scope, and move rows in scope to the trash |
+
+No link changes a field, a table, a space or a registry row, and none purges a row. Pages under \`/s/<token>\` open read-only whatever the access: a row opens as its fields and documents, a table as its rows under the columns its schema names, a space as its tables. Edit and add-delete work through the API and MCP, with the link's token as the bearer:
+
+\`\`\`bash
+weave share mint table Dev/Task --mode edit --label "vendor sync"
+weave share list --kind table
+weave share revoke <share id>
+curl -H "Authorization: Bearer wvs_…" https://<host>/api/share
+\`\`\`
+
+\`GET /api/share\` answers what the token reaches. A row or table outside the scope answers 404, and a route no link reaches answers 403. **Signed-in members only** makes the link private: it opens only in a browser signed in to the workspace. Editors and architects make links; an editor revokes its own, an architect revokes any, and an observer does neither. Every mint and revoke lands in the audit log with its actor (\`weave_shares\` over MCP, \`POST\`/\`GET\`/\`DELETE /api/shares\` over HTTP).
+
+The token is stored with the grant so the dialog can show the link again, and \`weave export\` leaves it out: an imported grant opens nothing until someone mints a new link. Revoking is how a link ends. A saved view shared before share links existed keeps its old address: \`/view/<token>\` redirects to \`/s/<token>\`.
 
 ## The home page and a space page
 
@@ -953,7 +992,7 @@ The **noun** is what one row is called — the table's *row term*. It lives on t
 
 ## The grid reads as a record
 
-The table view is a ledger, not a form. The \`#id\` link opens the row in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. A text, number, date or url cell opens with its **whole value selected**, so typing, \`⌘C\` and \`⌘V\` act on the value you can see; a second click inside the open cell places the caret. Chips keep their tint and lose their box. Computed cells keep their glyph and drop their ground. A row hover draws no lines between fields; the row's tint is the feedback. The one cell under the pointer shows the control a click would open.
+The table view is a ledger, not a form. The \`#id\` link opens the row in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. A text, number, date or url cell opens with its **whole value selected**, so typing, \`⌘C\` and \`⌘V\` act on the value you can see; a second click inside the open cell places the caret. Chips keep their tint and lose their box. A computed cell shows its value alone on a faint gray ground across the whole cell; the glyph lives on the field's name. A computed or relation column marks its header with a superscript (\`ƒ\` formula, \`Σ\` rollup, \`↳\` lookup, \`→\` relation), and hovering the mark names the route its value travels: \`Σ sum of Estimate via Tasks → Product/Task\`, \`↳ Name via Project → Product/Project\`, \`→ Product/Task\`. A row hover draws no lines between fields; the row's tint is the feedback. The one cell under the pointer shows the control a click would open.
 
 The dock is the entity itself, not a preview: edit there and the table keeps its place, the docked row stays lit, Esc closes it. **Docked is the default pose** (Issue #198): a relation chip, a card, a mention chip in a document, a ⌘K hit and a document chip in a cell all open the entity in the dock beside the table you are reading. **The dock follows the click and the page stays** (Issue #276): a relation hop into another table docks that row beside the table you were on, the grid keeps its place and its filters, nothing lands in the browser history, and the dock's own crumb carries the path taken — Deals › Acme › Contacts › #4 — with a back arrow (or Esc) that walks it one hop at a time. Only from a page with no table under it (home, a space, the activity page) does a hit travel to the entity's table first. The outward diagonal arrows on the dock expand it to the full page (⌘⇧E flips either way); the inward arrows on the page dock it again. The dock keeps every control on its breadcrumb line (Issue #583): the back arrow at its left, the eye, the ⋮, the expand arrows and the ✕ at its right, and that line stays pinned at the top of the pane while the record scrolls under it. Only a \`#/entity/…\` address opens as the page — the address a new tab, a permalink and the expand arrows land on. ⌘-click a row (or its \`#id\` link) to give the record its own browser tab. Every navigating surface in weave answers the same three gestures — ⌘/Ctrl, Shift, and the middle button — so an activity row, a ⌘K hit and a node on the relation map open in a tab the same way. Text cells keep their own modifiers: shift-click still extends a selection there. A document chip in a cell opens its entity in the dock.
 
@@ -967,11 +1006,13 @@ The grid holds the rows in view plus a buffer of rows above and below — the bu
 
 ⌘K (Ctrl+K on Windows and Linux) or the sidebar's search control opens the palette. A tag at the right of its \`Search <workspace name>\` box names the current workspace. An empty palette lists Recent: the last eight records and tables opened here, newest first, kept in this browser only. Typing searches every workspace; a match from another carries that workspace's name in an outlined tag. Matches are grouped with counts: Records (name or \`#143\` id), In documents (words in a document or text field, with an excerpt), Tables, then Spaces and views; empty groups are dropped. Each match shows a kind icon, its name with your text highlighted, any workflow state chip, and its location on the right (\`Task #1\`, \`Product · table\`).
 
+Linking a relation opens the same palette scoped to the relation's target tables (Issue #703): an empty box lists the linked rows first, then the table's latest rows, and \`GET /api/search?tables=<id,...>\` is the scoped search behind it.
+
 The footer lists the keys: \`↑\` and \`↓\` select, \`Tab\` and \`Shift+Tab\` jump between groups, \`Return\` opens and \`Esc\` closes. The copy button on the selected or hovered match copies its permalink. ⌘-click or middle-click opens a match in a new tab and leaves the palette open (Issue #382).
 
 ## Searching a table
 
-The magnifier in the table's toolbar opens a search box; \`/\` or \`⌘F\` opens it from a resting cell. It uses the ⌘K matcher, scoped to this table: a name fragment, a \`#143\` id, or the words in a text field or a document. The grid keeps only the matching rows as you type, in the table's own sort and inside its saved filter, and the foot reads \`3 rows found\`. The search runs on the server, so it reaches every page of a big table, and it belongs to you alone: it is never saved on the table and nobody else's view changes (Feature #228). \`Return\` on a single match opens that row in the dock. \`Esc\` clears the box and folds it away; a search that finds nothing says so and offers **Clear search**. \`+ New\` clears the search first, since an empty new row matches nothing.
+The magnifier in the table's toolbar opens a search box; \`/\` opens it from a resting cell. \`⌘F\` stays the browser's own find, which sees only the rows the grid has drawn; the search box reaches every row (Issue #822). It uses the ⌘K matcher, scoped to this table: a name fragment, a \`#143\` id, or the words in a text field or a document. The grid keeps only the matching rows as you type, in the table's own sort and inside its saved filter, and the foot reads \`3 rows found\`. The search runs on the server, so it reaches every page of a big table. It is saved with the view, beside its filter and sort: open the view again, or reload, and the box and the rows come back. Duplicate copies the search into the new view, a view started from **+ Add view** has none, and clearing the box clears the view's search (Feature #307). On the raw Blank table the search is yours alone and nothing is written. \`Return\` on a single match opens that row in the dock. \`Esc\` clears the box and folds it away; a search that finds nothing says so and offers **Clear search**. \`+ New\` clears the search first, since an empty new row matches nothing.
 
 ## The grid from the keyboard
 
@@ -985,7 +1026,7 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 | \`Tab\` / \`⇧Tab\` | along the row, wrapping into the next or previous row; the last cell of the last row is the end, never the browser's chrome |
 | \`Return\` | open the cell: a caret with the value selected, a picker, a flipped checkbox |
 | any character | open the cell and start typing over the value |
-| \`/\` or \`⌘F\` | search this table |
+| \`/\` | search this table |
 | \`Space\` | pick the row up — or, on a toggle cell, flip the switch |
 | \`0\`–\`9\`, \`Backspace\` | on a rating cell: set the rating, or clear it to 0 |
 | \`⇧↑\` / \`⇧↓\` | extend the run of chosen rows |
@@ -1078,7 +1119,7 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 
 | Control | Where | What it does |
 | --- | --- | --- |
-| Drag a header | table view | moves the column: a line marks where it lands, and the view keeps the order. Drop it across the seam beside **#** to freeze it; drop a frozen one back across to unfreeze it |
+| Drag a header | table view | moves the column: the header lifts, the columns it passes slide aside, and a dashed placeholder opens where it will land; the view keeps the order. Drop it across the seam beside **#** to freeze it; drop a frozen one back across to unfreeze it. Escape puts it back |
 | Alt+Shift+\u2190 / \u2192 on a focused header | table view | moves the field one place. Crossing the seam freezes or unfreezes it where it stands |
 | Drag a header's right edge | table view | sets the width. Only that column changes; the columns to its right slide over, and a readout shows the width and the change. It stops at its own label |
 | Alt+\u2190 / \u2192 on a focused header | table view | narrows or widens the column by 8px, down to its label |
@@ -1086,7 +1127,7 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | Click a header, or Return on a focused one | table view | opens the field tray to rename, retype or reconfigure. The click that ends a drag or a resize opens nothing |
 | ⋮ on a header | table view | sorts by that column, stored on the table for everyone. The two rows read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The **#** column and the system columns carry a sort-only ⋮ of their own |
 | 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
-| Drag the grip | entity page | reorders fields; the table's columns follow |
+| Drag the grip | entity page | reorders fields; the table's columns follow. On a phone, press and hold a field to pick it up |
 | Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per row in this browser |
 
 The **#** column takes none of this. It is frozen to the grid's left edge, so a wide table scrolls sideways underneath it and the row keeps its id and its \`\u2197\` permalink whatever column you have read your way out to; the selection checkbox travels with it. No drag moves it, and no field can be ordered ahead of it.
@@ -1150,7 +1191,7 @@ The option palette is the ten-hue ramp and it is closed: \`slate\`, \`blue\`, \`
 
 Slate is the honest default. A colour should carry meaning — red for blocked, green for done — and a table where every option is a different colour has told the reader nothing.
 
-Workflow states are the exception that proves it: a state's **category** colours its chip, so \`not-started\`, \`in-progress\`, \`done\` and \`canceled\` look the same everywhere in the workspace without anyone choosing a colour.
+Workflow states start from their **category**, so \`not-started\`, \`in-progress\`, \`done\` and \`canceled\` look the same everywhere in the workspace without anyone choosing a colour. Pick a \`hue\` on one state and it keeps that colour everywhere instead, which is how two states in one category are told apart.
 
 ## Views
 
@@ -1162,11 +1203,11 @@ A **saved view** is a named set of table blocks, and it can be shared:
 
 \`\`\`bash
 weave view create "Ops Monday" --blocks '[{"table":"Task","where":[["Status","=","Open"]]},{"table":"Incident"}]'
-weave view share <id>     # returns a wvv_ capability URL
-weave view unshare <id>
+weave view share <id>     # returns a /s/wvs_… link: a read-only share grant on the view
+weave view unshare <id>   # revokes it
 \`\`\`
 
-The share URL carries its own capability. Anyone holding it reads that view and nothing else — no account, no login, and the link stays open when the workspace requires authentication. The token never leaves through \`weave export\`: an imported view arrives unshared, and \`weave view share\` mints it a fresh link.
+A view's link is a share grant (**Share links** above). Anyone holding it reads that view and nothing else, with no account and no sign-in, and the link stays open when the workspace requires authentication. The token never leaves through \`weave export\`: an imported view arrives unshared, and \`weave view share\` mints it a fresh link.
 
 ## The relation map
 
@@ -1197,7 +1238,7 @@ weave audit --limit 50
 
 Three roles. An **Observer** (free) reads every page and comments: it may post a comment, under its own name, and delete a comment it made. An **Editor** (paid seat) also creates, edits and deletes rows and any comment, and never touches structure: no workspace, space, table or field definition. An **Architect** (paid) does everything, structure, accounts and the keystore included. "Free" and "paid seat" are labels: weave bills nobody. Before 2026-10-02 the three were \`reader\`, \`writer\` and \`admin\`; every open rewrites a stored old name to the new one, so every token keeps working, and \`--role admin|writer|reader\` is still accepted, with a deprecation note, for one more release. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
 
-\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\`, a view's share link, the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. An observer may read any page and write nothing but its own comments; an editor writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an architect token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
+\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\` (status only without credentials: \`{"ok":true,"name":"weave"}\`; the version, build, sizes and backup state need an architect token or session), a share link (\`/s/<token>\`, and the old \`/view/<token>\` that redirects there), the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. An observer may read any page and write nothing but its own comments; an editor writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an architect token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
 
 Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard deletes and file deletions are not. In the app, \`⌘Z\` (Ctrl+Z) steps back the last change: a selection-bar trash comes back whole when nothing was written after it. A text box, an open cell and a document keep \`⌘Z\` as their own text undo. There is no redo.
 
@@ -1563,7 +1604,7 @@ Door C signs people in with one OpenID Connect (OIDC) provider. The provider has
 
 Signing in at the provider creates no account in weave. An architect either invites a new person to a workspace (below, **Invite a new person**), which makes the account when they sign in, or links an existing weave account by minting an invite: a one-time link that lasts 7 days. The person opens it and signs in at the provider, and weave stores the provider's issuer and subject (the \`sub\` claim) on the account as an identity. From then on the subject alone signs that person in.
 
-weave asks the provider for the \`openid\` scope only, so the consent screen lists one line, and weave stores no email address or profile for sign-in. The provider keeps whatever it needs to run its own sign-in.
+weave asks the provider for the \`openid\` and \`email\` scopes (Feature #290, which reverses Feature #252 for the email claim only). It keeps one email address per sign-in identity, and only when the provider marks it verified; it never stores a name, picture or other profile claim. The address lets the start page list the invites waiting for a person as soon as they sign in, gives notification email a recipient, and shows architects who each member is in **Members**. A person sees their own address at \`/api/auth/me\`; deleting the account or unlinking the identity deletes it, and \`weave export\` leaves it out. An identity linked before this release gets its address at its next sign-in; nothing is guessed from old data.
 
 A hosted provider with open sign-up lets anyone create a user there. A sign-in at the provider proves who someone is, and weave admits that person only after they have redeemed an invite for an account. weave keeps only the invite's hash, like a token or a session, and an invite works once.
 
@@ -1623,7 +1664,7 @@ An account linked by email before this release keeps any identity the provider h
 
 An architect invites someone who has no account yet from the workspace's home page: open **Members**, enter the email, pick the role (Editor, paid seat, by default; Observer, free; Architect, paid) and choose **Invite**. weave answers with a one-time sign-in link, which works once and expires in 7 days. When the operator has set \`WEAVE_MAIL_KEY\` and \`WEAVE_MAIL_FROM\`, weave emails the link to that address through Resend and Members says **Emailed**. Without them, or when the send fails, Members shows the link once: copy it and send it yourself. The same section lists the pending invites, with the role, who invited and when, and **Revoke** cancels one.
 
-The person opens the link and signs in at the provider, signing up there first if they have to. weave then makes their account at the invited role, named after the email's local part (\`dylan@example.com\` becomes \`dylan\`, then \`dylan-2\` when that name is taken), pins their subject to it, spends the invite and opens the workspace. Their next sign-in needs no link. The email lives on the pending invite only: the account, the audit log and \`weave export\` never carry it.
+The person opens the link and signs in at the provider, signing up there first if they have to. weave then makes their account at the invited role, named after the email's local part (\`dylan@example.com\` becomes \`dylan\`, then \`dylan-2\` when that name is taken), pins their subject to it, spends the invite and opens the workspace. Their next sign-in needs no link, and the link is not the only way in: a person who signs in at \`/start\` with a verified address that matches a pending invite sees it listed there and can accept it, which does the same thing. The audit log and \`weave export\` never carry the email; the account keeps the verified address the provider sent at sign-in.
 
 An invite opens the workspace it was made in. An invite made on the hub root makes a root account, which opens every workspace the way a root account always has. A link that was revoked, spent, expired or made in another workspace answers \`410\` before the provider; a sign-in with no invite gets the refusal page, **No access to** the workspace.
 
@@ -1654,7 +1695,7 @@ A signed-out visit to any page answers \`302\` to \`/auth?next=<the page>\`, and
 
 ## Sessions and the lost-device day
 
-A session lasts 30 days from its last use and is carried in an \`HttpOnly\` cookie named \`wv_session\`; only its hash is stored. Sign out from \`/auth\`, or end your other sessions from the same page.
+Each workspace keeps its own session in this browser, carried in an \`HttpOnly\` cookie named \`wv_session_<workspace id>\`; only its hash is stored. A session lasts 30 days from its last use, and each use renews the cookie, so a workspace you open every day stays signed in while one you leave for 30 days signs out on its own, without touching the others. **Sign out of <workspace>** on \`/auth\` ends that workspace's session only; **Sign out of every workspace** ends every session this browser holds (\`POST /api/auth/logout?everywhere=1\`). From the same page you can end your other sessions in this workspace. When an architect removes your account, your sessions there end at once and the next visit shows a page saying your access was removed. A plain \`wv_session\` cookie from before per-workspace sessions is still read for one release and moves to the per-workspace name the first time it is used.
 
 When a device is lost, end its sessions from any terminal that holds the data, then deal with the provider account at the provider:
 
@@ -1669,7 +1710,19 @@ Every step lands in the audit log: \`identity-invited\`, \`identity-linked\`, \`
 
 The provider sends the browser back to \`<WEAVE_ORIGIN>/api/auth/oidc/callback\`, so the server has to know its own public origin. Set \`WEAVE_ORIGIN\` to the URL browsers use: \`https://weave.example.com\`, scheme and host, no path. It is required whenever \`requireAuth\` is on and the host is not loopback; \`weave serve\` refuses to start without it. The session cookie is \`Secure\` when it is https. On localhost nothing is needed: the origin is \`http://localhost:<port>\`, and the sign-in page moves an address typed as \`127.0.0.1\` there.
 
-Behind Railway, Fly, Render or any reverse proxy, set \`WEAVE_TRUST_PROXY=1\` so the rate limiter reads the client address from \`X-Forwarded-For\`. Without it every visitor shares the proxy's address. Leave it unset when the process faces the network itself, or a client could forge the header. The limits: 10 sign-in starts a minute per address, 5 failed callbacks a minute.
+Behind Railway, Fly, Render or any reverse proxy, set \`WEAVE_TRUST_PROXY=1\` so the rate limiter reads the client address from the last \`X-Forwarded-For\` entry, the one the proxy appended; entries a client sends ahead of it are ignored. Without it every visitor shares the proxy's address. Leave it unset when the process faces the network itself, or a client could forge the header. The limits: 10 sign-in starts a minute per address, 5 failed callbacks a minute.
+
+## Workspace hosts: \`WEAVE_BASE_DOMAIN\`
+
+Set \`WEAVE_BASE_DOMAIN=weave.example.com\` and every workspace also answers at \`<slug>.weave.example.com\`, where the slug is the workspace's address, the \`name\` that \`/w/<slug>/\` already uses. The apex keeps serving the default workspace, \`/w/<slug>/\` keeps working on every host, a slug nobody holds answers a plain \`404\`, and a host with two labels under the base is refused with \`421\`. Unset, nothing changes.
+
+A slug is a DNS label: lowercase letters, digits and hyphens, 1 to 63 characters, no hyphen at either end. Sixteen names are reserved, among them \`www\`, \`api\`, \`mcp\`, \`auth\`, \`clerk\`, \`weave\` and \`grunion\`, and so is anything starting with \`_\` or \`xn--\`; the full list lives in \`public/slug-core.js\`. The docs workspace keeps the \`weave\` host it already holds. Renaming a workspace keeps its old slug as an alias: the old host answers \`301\` to the new one, and no other workspace can claim it. Create and rename answer \`slug_taken\` (\`409\`), \`slug_reserved\` or \`slug_invalid\` (\`400\`), and \`GET /api/workspaces/slug?slug=<slug>\` answers \`available\`, \`taken\`, \`reserved\` or \`invalid\` to a signed-in account, 60 checks a minute per address.
+
+Sign-in stays on one callback, \`<WEAVE_ORIGIN>/api/auth/oidc/callback\`, so the provider needs no new redirect URI. A workspace host sends the browser to the apex to sign in; after the callback the apex sends it back with a single-use code that lasts 60 seconds and is kept only as its hash. The workspace host trades the code for its own session cookie, which has no \`Domain\` attribute and so never reaches another host. Each workspace keeps its own wall: an identity with no account there gets the same refusal as on the apex. The MCP door answers at \`<slug>.weave.example.com/mcp\`, and its protected-resource metadata names that host.
+
+At the apex, \`/start\` is the way in once \`WEAVE_BASE_DOMAIN\` is set: it names no workspace until the person signs in at the provider, then lists every workspace that identity opens, each one opening at its own host, and offers **Create workspace** to an architect on the hub root. A browser at the apex root lands there, signed in or not, and a permalink to the default workspace at the apex moves to that workspace's own host with a \`301\`. The apex \`/api\` and \`/mcp\` keep answering for the default workspace, so scripts and connected MCP clients need no change.
+
+At DNS, add a wildcard CNAME for \`*.weave\` next to the apex record, DNS only, and add \`*.weave.example.com\` as a second custom domain on the service so the platform issues a wildcard certificate.
 
 ## Sign-in verification
 
@@ -1689,7 +1742,7 @@ The first call opens the provider's sign-in in the browser (in Claude Code, \`/m
 2. That document (RFC 9728) names \`WEAVE_OIDC_ISSUER\` as the authorization server. The client registers itself there and signs the person in, so the provider must allow dynamic client registration (in Clerk: OAuth applications, dynamic client registration on).
 3. The client sends the provider's access token. weave asks the provider's \`userinfo_endpoint\` who it belongs to and opens the account that subject is linked to on this workspace or on the hub root, the same lookup a browser sign-in makes. weave reads the subject alone and asks for the \`openid\` scope only, as the browser door does. Answers are kept a minute under the token's sha256; the token itself is never stored or logged.
 
-A subject no account is linked to gets \`403\`: the person opens their invite (\`weave account link <name>\`) in a browser once, which pins the subject, and the agent's next call goes through. A token the provider rejects or has expired gets \`401\` with the same \`WWW-Authenticate\` header, and the client signs in again. Five refused tokens in a minute from one address get \`429\` for the rest of that minute, since each unknown token costs a call to the provider; a provider that is down gets \`502\`. MCP carries the schema tools, so the account needs the Architect role, as for \`/api/mcp\`. Writes record \`<account> via <client>\`: the client is the access token's \`client_id\` when the token is a JWT, and \`oauth\` when it is opaque, which Clerk's are. A \`wv_\` token works on \`/mcp\` unchanged and never reaches the provider; \`/api/mcp\` accepts only \`wv_\` tokens and sessions.
+A subject no account is linked to gets \`403\`: the person opens their invite (\`weave account link <name>\`) in a browser once, which pins the subject, and the agent's next call goes through. A token the provider rejects or has expired gets \`401\` with the same \`WWW-Authenticate\` header, and the client signs in again. Five refused tokens in a minute from one address get \`429\` for the rest of that minute, since each unknown token costs a call to the provider; a provider that is down gets \`502\`. MCP carries the schema tools, so the account needs the Architect role, as for \`/api/mcp\`. Writes record \`<account> via MCP\`, never the access token's client id, and Created By and Modified By show the person chip with \`via MCP\` beside the name. A \`wv_\` token works on \`/mcp\` unchanged and never reaches the provider; \`/api/mcp\` accepts only \`wv_\` tokens and sessions.
 
 The resource names an origin weave was told about: \`WEAVE_ORIGIN\`, or one of the comma-separated \`WEAVE_MCP_ORIGINS\` when the request arrived on that host (\`https://mcp.weave.example.com\` on the same service). A Host header weave was not told about is refused before it reaches the door.
 
@@ -1766,7 +1819,7 @@ Railway's cron is a separate service and cannot share the volume, so backup runs
 
 ## How you know it worked
 
-1. \`curl -s https://weave.example.com/api/health\` answers \`{"ok":true,"name":"weave","version":"…","workspace":"workspace",…}\` and the Deployments tab shows the health check passed.
+1. \`curl -s https://weave.example.com/api/health\` answers \`{"ok":true,"name":"weave"}\` (the same call with an architect token adds the version, build, sizes and backup state) and the Deployments tab shows the health check passed.
 2. Create a row, then **Redeploy** from the dashboard. The row is still there: the volume, not the container, holds it.
 3. The service shows **1 replica** and one volume at \`/data\`; the log has no \`not writable\` line for the data directory.
 4. With step 7 in place, \`/api/health\` carries a \`supervisor\` object. After the next release it reads \`"release":"v<that version>"\` with \`lastSwap.ok: true\`, \`version\` is the new one, and the Deployments tab shows no new deployment.`,
@@ -1984,21 +2037,28 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_KEYSTORE\` | every verb | \`~/.weave/keystore.json\` | Defaults into \`$HOME\`, which in a container is not on the volume: every restart loses the encrypted secrets. The \`Dockerfile\` sets \`/data/keystore.json\`. |
 | \`WEAVE_KEYSTORE_PASSPHRASE\` | every verb | unset | Unset, a random key is written to a \`chmod 600\` file beside the keystore, so a copy of the volume carries the key. Set, the key is derived from the passphrase and nothing lands. Change it and every stored secret becomes unreadable; keep it in a password manager. |
 | \`WEAVE_ORIGIN\` | \`weave serve\` | unset (loopback: \`http://localhost:<port>\`) | The public origin, scheme and host, no path. The identity provider sends sign-ins back to \`<origin>/api/auth/oidc/callback\`, and the \`wv_session\` cookie is \`Secure\` when it is https. Unset off loopback with \`requireAuth\` on, \`serve\` refuses to start; wrong, the provider refuses the redirect URI or sends the browser to the wrong host. |
-| \`WEAVE_TRUST_PROXY\` | \`weave serve\` | unset | Set to \`1\` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from \`X-Forwarded-For\`. Unset behind a proxy, every visitor shares the proxy's address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header. |
+| \`WEAVE_TRUST_PROXY\` | \`weave serve\` | unset | Set to \`1\` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from the last \`X-Forwarded-For\` entry, the one the proxy appended. Unset behind a proxy, every visitor shares the proxy's address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header. |
 | \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`. Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit row and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
 | \`WEAVE_OIDC_ISSUER\` | \`weave serve\`, \`weave account link\` | unset | The issuer URL of one OpenID Connect provider, \`https\` off loopback. Set with \`WEAVE_OIDC_CLIENT_ID\`, \`/auth\` sends a signed-out browser to the provider (the **Door C: sign in with a provider** guide). Set without it, \`serve\` stops at startup and names the missing variable. A URL the provider does not call its own issuer fails every sign-in with a page that says so. |
 | \`WEAVE_MCP_ORIGINS\` | \`weave serve\` | unset | Other public origins the MCP door answers on, comma separated, each scheme and host only: \`https://mcp.weave.example.com\`. The protected-resource metadata names the one the request arrived on, else \`WEAVE_ORIGIN\`; each host is also served. Unset, a second domain on the same service gets \`421\`; wrong, the agent's client refuses the metadata because it names another URL (the **Door C: sign in with a provider** guide). |
+| \`WEAVE_BASE_DOMAIN\` | \`weave serve\` | unset | The domain workspaces get their own hosts under: \`weave.example.com\` serves each workspace at \`<slug>.weave.example.com\`, host name only. Sign-in still finishes at \`WEAVE_ORIGIN\`. Unset, a workspace host gets \`421\`; wrong, the wildcard certificate does not cover the hosts browsers ask for (the **Door C: sign in with a provider** guide, section Workspace hosts). |
+| \`WEAVE_ALLOWED_HOSTS\` | \`weave serve\` | unset | Extra Host names the server answers, comma separated, besides loopback and the host of \`WEAVE_ORIGIN\`: \`weave.internal,10.0.0.5\`. Any other \`Host\` header gets \`421\`, so a platform that probes by a name missing here sees its health check fail. Unset, with \`WEAVE_ORIGIN\`, \`WEAVE_MCP_ORIGINS\` and \`WEAVE_BASE_DOMAIN\` unset too, a non-loopback bind answers any Host and warns once at start. |
+| \`WEAVE_FRAME_ANCESTORS\` | \`weave serve\` | unset | Other origins allowed to frame weave pages, comma separated, each scheme and host: \`https://intranet.example.com\`. They join \`frame-ancestors 'self'\` in the Content Security Policy of every page. Unset, a weave page embedded in another site stays blank; wrong, the browser console names the refused ancestor. |
+| \`WEAVE_INLINE_FILE_TYPES\` | \`weave serve\` | unset | Attachment types served in place beside images, PDF and plain text, comma separated: \`audio/mpeg,video/mp4\`. Every other type downloads. A type listed here still arrives under \`nosniff\` and a sandbox policy, so a listed HTML type cannot run on the application origin. |
+| \`WEAVE_APPLET_PASSCODE\` | \`weave serve\` | unset | A passcode the task applet at \`/t\` asks for before it opens; a right answer sets an unlock cookie, and ten wrong ones in a row lock the applet for a while. Unset, the applet opens to anyone who reaches it. |
 | \`WEAVE_OIDC_CLIENT_ID\` | \`weave serve\` | unset | The client id the provider issued for this instance. The provider must hold \`<WEAVE_ORIGIN>/api/auth/oidc/callback\` as a redirect URI, or it refuses the sign-in before weave sees it. |
 | \`WEAVE_OIDC_CLIENT_SECRET\` | \`weave serve\` | unset | The client secret, for a confidential client. Unset, weave signs in as a public client and relies on PKCE alone; a provider that expects the secret answers \`invalid_client\`. |
 | \`WEAVE_OIDC_NAME\` | \`weave serve\` | the issuer's host name | The word on the sign-in link: \`Clerk\` reads "Sign in with Clerk". |
 | \`WEAVE_MAIL_KEY\` | \`weave serve\` | unset | A Resend API key. Set with \`WEAVE_MAIL_FROM\`, an invite made from **Members** or \`POST /api/invites\` is emailed to the address typed, one POST to \`api.resend.com/emails\`. Unset, or set without \`WEAVE_MAIL_FROM\`, weave sends no email and the invite answers its link to copy. A wrong or revoked key: the invite is still made, its answer says \`mailed: false\` with Resend's reason in \`mailError\`, and the server log says why. |
 | \`WEAVE_MAIL_FROM\` | \`weave serve\` | unset | The sender, such as \`weave <no-reply@mail.example.com>\`, on a domain Resend has verified (its SPF and DKIM records in your DNS). An unverified domain: Resend refuses each send with \`403\`, which lands in \`mailError\` as above. |
+| \`WEAVE_WEBHOOK_ALLOW_PRIVATE\` | every verb that fires a workflow | unset | A webhook action posts only to a public address: before each delivery weave resolves the host and refuses loopback, link-local, the private ranges and the cloud metadata addresses, follows no redirect, and writes the refusal to the rule's **Health Reason**. Set to \`1\` on an instance whose webhooks land on its own network (a Railway private service, a VPS sidecar) and the ranges are allowed; redirects stay refused. |
 | \`WEAVE_UPDATE_CHECK\` | \`weave serve\` | on | Set to \`off\` and the server makes no request to GitHub. On, it asks \`api.github.com/repos/grunion-ai/weave/releases/latest\` at most once a day (no token, nothing about the install), keeps the answer in \`update-check.json\` beside \`WEAVE_DATA\` (a new version asks again at boot, and never reports a latest release older than itself), and \`/api/health\` carries \`latestRelease\`, \`releaseCheckedAt\` and \`releaseBehind\`; the sidebar instance chip turns amber when a newer release exists. Offline, rate-limited or blocked, the check stays silent and nothing else changes. |
 | \`WEAVE_AUTO_UPDATE\` | \`weave supervise\` | unset | Set to \`1\` and \`weave supervise\` holds the port, runs the server as a worker, and installs each newer release in place: every ten minutes it asks GitHub for the latest release, takes it only when the tag's commit is on \`grunion-ai/weave\` main, unpacks it to \`releases/v<version>/\` beside \`WEAVE_DATA\`, and moves requests to the new worker once its \`/api/health\` answers. Unset, \`supervise\` is \`serve\`. A release that fails its health check stays off and is not tried again; \`/api/health\` carries the supervisor's \`release\`, \`dir\`, \`lastSwap\` and \`failed\`. |
+| \`WEAVE_MAX_ROWS\` | \`weave serve\` | \`500\` | The most rows one API call returns when it names a \`limit\`: entity lists and queries, activity, audit, undo, document revisions and search clamp a larger \`limit\` to this, which is the most the UI ever asks for in one call. A call that names no \`limit\` is unchanged. Raise it for an agent that pages in bigger steps; every row is still built on the one event loop. |
 
 ## The container
 
-The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\`. \`WEAVE_ORIGIN\`, \`WEAVE_TRUST_PROXY\`, \`WEAVE_BACKUP_DEST\`, the four provider sign-in variables and the two mail variables are listed as comments, each off unless set, \`WEAVE_UPDATE_CHECK\` is listed as the one that is on unless set to \`off\`, and \`WEAVE_AUTO_UPDATE\` as the switch \`supervise\` reads, so the contract is visible in one place.
+The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\`. \`WEAVE_ORIGIN\`, \`WEAVE_TRUST_PROXY\`, \`WEAVE_BACKUP_DEST\`, \`WEAVE_ALLOWED_HOSTS\`, \`WEAVE_FRAME_ANCESTORS\`, \`WEAVE_INLINE_FILE_TYPES\`, \`WEAVE_APPLET_PASSCODE\`, the four provider sign-in variables, the two mail variables and \`WEAVE_WEBHOOK_ALLOW_PRIVATE\` are listed as comments, each off unless set, \`WEAVE_UPDATE_CHECK\` is listed as the one that is on unless set to \`off\`, and \`WEAVE_AUTO_UPDATE\` as the switch \`supervise\` reads, so the contract is visible in one place.
 
 ## How you know it worked
 
@@ -2055,6 +2115,52 @@ The address is printed under the panel's foot, so a device with no mail app stil
 The mail app opens with the To, Subject and body already there. If nothing opens, the browser has no mail handler: copy the address from under the panel and send the report from any client.`,
   },
   {
+    name: 'Forms',
+    audience: 'Both',
+    order: 12.5,
+    doc: `# Forms
+
+A form lets someone add one row to one table without write access to that table. An Observer, who can read and comment and nothing else, can still file a bug or send feedback through a form.
+
+## A form is a row
+
+Every form is a row in \`Workspace/Forms\`, beside Spaces, Tables and Fields. The row names:
+
+| Column | What it holds |
+| --- | --- |
+| Table | the table a submission files into |
+| Fields | the fields the form shows, in order, as JSON: \`[{"field": "Mood", "label": "How do you feel", "default": "Happy"}]\` |
+| Hidden | the fields the server fills, as JSON: \`{"Reporter": "$actor", "Filed At": "$now", "Build": "$version"}\` |
+| Enabled | a form that is off refuses every submission |
+| Floor | **Observer** (anyone with a role in the workspace) or **Anonymous** (signed-out visitors too) |
+| Kind | **Row**, or **Bug report** for the bug reporter |
+
+A form row is schema, like a Tables row: an Architect makes and edits it, and an Editor or Observer cannot.
+
+## Submitting
+
+A submission creates exactly one row in the form's table and nothing else. It reads no other row, edits nothing, and changes no schema. The submitter is the row's author and the actor in its history. A submission that names a hidden field is refused, and so is one that names a field the form does not show.
+
+- **Page:** \`/f/<form id>\`, styled for both themes, opens to anyone the form admits.
+- **HTTP:** \`POST /api/forms/<id>/submit\` with \`{"values": {...}}\`; \`GET /api/forms\` lists the forms whose table lives in the workspace.
+- **MCP:** \`weave_form_submit {form, values}\`.
+- **CLI:** \`weave form submit <form> --values '{"Mood": "Sad"}'\`.
+
+An **Anonymous** floor also needs the operator to allow it: start the server with \`WEAVE_ANONYMOUS_FORMS=1\`. Without that switch a signed-out visitor is asked to sign in.
+
+## The bug reporter is the first form
+
+The bug glyph files through the **Report a bug** form on the \`weave\` docs workspace. It keeps its four symptoms, its note, its action trace and the server's own version stamp. \`POST /api/bug-report\` still answers, as an alias that submits through the form, so turning the form off turns the reporter off too.
+
+## The weave docs workspace
+
+The \`weave\` docs workspace is built in. Nobody can delete it, rename it or leave it; each attempt answers 403. Every login any workspace on this instance knows opens it as an Observer, with no invite and no account row there, and may submit a bug through its form.
+
+## How you know it worked
+
+Open \`/f/<id>\`, fill it in and press **Send**. The button reads **Sent** and the line under it names the new row, such as \`Development/Issue #412\`. The row shows you as its author.`,
+  },
+  {
     name: 'Table views',
     audience: 'Both',
     order: 20,
@@ -2064,7 +2170,7 @@ A table can be read several ways. Each **view** keeps which columns show, their 
 
 ## The toolbar
 
-The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Filters → Table actions (⋮)**. The three-dot menu keeps the table's existing actions; add records from the grid.
+The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Filters → Group (List layout only) → Table actions (⋮)**. The three-dot menu keeps the table's existing actions; add records from the grid.
 
 | Control | What it does |
 | --- | --- |
@@ -2073,6 +2179,7 @@ The controls sit beside the breadcrumb, in this order: **Search → View → Den
 | **Compact ▾**, **Comfortable ▾** or **Spacious ▾** | Sets the row height: 32, 44 or 72 pixels, with two lines of text at Spacious. Only the height changes; text size and column widths stay the same. The row under your eye stays put, and the choice saves into the current view like its filters and sorting, so each view keeps its own. A cell shows the chips that fit whole and a +N for the rest; hover it to see them all. |
 | **Fields** | Shows, hides and reorders columns; opens the field tray to add a field. |
 | **Filters** | Narrows rows by workflow states, toggle labels and single-select or multi-select options. The badge counts fields with active filters. |
+| **Group** | Shows in List layout. Sets the list's group levels, its **Completed by** checkbox and its **Nest by** link. The button names the levels: **Group: Trip › Priority**. |
 
 Search is temporary: it is not saved into a view or shared with other people, and leaving the table clears it.
 
@@ -2081,21 +2188,22 @@ Search is temporary: it is not saved into a view or shared with other people, an
 | You do in the view menu | What happens |
 | --- | --- |
 | Select a view | Opens its saved layout, filters and sorting. |
-| Drag a view by its handle | Reorders the list; a straight line marks where it lands. Drop it first to make it open with the table. The handle works with a mouse or a finger. |
+| Drag a view by its handle | Reorders the list; a dashed placeholder opens where it lands. Drop it first to make it open with the table. With a finger, press and hold the handle to pick it up. |
 | **Alt+↑** / **Alt+↓** on a focused view | Moves it one place. |
 | Hover or focus a view | Shows its **Rename**, **Duplicate** and **Delete** buttons. There is no right-click menu. |
 | **Rename** | Edits the name in place. **Enter** or clicking away saves; **Escape** cancels. |
 | **Duplicate** | Adds a row under the view with its name focused (\`Open bugs 2\`). **Enter** or clicking away creates the copy and opens it; **Escape** drops the row. |
 | **Delete** | Hold the button until it fills. The last view cannot be deleted. |
 | **+ Add view** | Adds a row with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view from the system default that **Reset view** restores, and opens it; **Escape** drops the row. The menu stays open throughout. |
-| **Reset view** | Returns the view to the system default: every regular field in schema order with the table's default system columns, no filters, sorting, search, custom widths or frozen columns, no deleted rows, no Σ rollup row, and Comfortable density. **+ Add view** starts from the same default. The view keeps its name. |
+| **Layout: Table · List** | Shows the view as the grid or as a list. Switching loses nothing: Table keeps the list settings and ignores them. |
+| **Reset view** | Returns the view to the system default: a Table with no grouping, every regular field in schema order with the table's default system columns, no filters, sorting, search, custom widths or frozen columns, no deleted rows, no Σ rollup row, and Comfortable density. **+ Add view** starts from the same default. The view keeps its name. |
 | **Clear filters, search, and sorting** | Removes those restrictions while keeping the column layout and density. |
 
 A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` link still opens the raw table, read-only. Choose **+ Add view** to make an editable view.
 
 ## Fields
 
-Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; the straight insertion line marks where it will land. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
+Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; a dashed placeholder opens where it will land and the other fields slide aside. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
 
 These changes save into the current view. Hiding a column does not delete its data. **New field** opens the same field tray as the **+** at the end of the grid's field headers. The **Rows** section shows deleted records and the Σ rollup row; each box saves into the current view, so another view keeps its own.
 
@@ -2105,9 +2213,26 @@ Open **Filters** and tick options under a workflow, toggle, single-select or mul
 
 **Clear all** removes all filters from the view while keeping search, sorting and column layout. If the table has no workflow, toggle or select fields, the popover offers **New field**, opening the usual field tray.
 
+## List layout
+
+A list holds things to finish, in an order you set; a table holds records to compare. Choose **List** under **Layout** in the view menu. The list shows the same rows, filters, sorting and density as the view's table.
+
+| In a list | What happens |
+| --- | --- |
+| A row | Draws the table's **Chip**: the name and the fields the Chip config shows. Click the name to open the row. |
+| **Group** levels | Up to three, in order: a select, workflow, toggle, checkbox, link or date field (dates by day, week, month or year). A link level can head its groups with the linked row's **Chip**, so a rollup with a bar on that Chip shows the group's progress. Groups follow the option order, the linked table's order, or A to Z. Every group folds, and the folds save into the view. |
+| **Completed by** | Draws that checkbox field on every row with the standard checkbox. Ticked rows leave their group for **Completed · N** at the bottom, folded until you open it. |
+| **Nest by** | A to-one link from the table to itself (a Parent link). Children indent under their parent. **Tab** on a row nests it under the row above; **Shift+Tab** takes it out a level. |
+| Drag by the handle | Moves the row: into another group sets every level that differs, sideways right nests it under the row above the placeholder, left takes it out. With no sort the drop saves the view's manual order. |
+| A sort | Orders rows inside each group. The handle still moves rows between groups and nests them; clearing the sort brings the saved order back. |
+| The add row | Ends each innermost group. A row added there takes every group value and every filter that names one value; type the date in its own box (\`today\`, \`fri\`, \`oct 12\`). |
+| A filter | Runs first. Matching ticked rows still go to Completed. A sub-row that matches keeps its parent on screen, dimmed and not counted. Empty groups show only with no filter on. |
+
+The footer counts what shows: **3 of 8 to-dos · 1 completed**.
+
 ## For agents
 
-One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed rows in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`search\` is the table search box's text for the view (\`''\` or \`null\` clears it); pass it to \`weave_query\` as \`search\` to read the rows the grid shows. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed rows in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. The List layout takes \`layout: "list"\`, \`group\` (up to three levels, each a field name or \`{field, heading: "chip", order: "az", grain: "week"}\`; a read leaves out the defaults), \`completedBy\` (a checkbox), \`nest\` (a Parent link), \`collapsed\` (group paths such as \`"Japan › P1"\` and \`"Completed"\`) and \`order\` (the manual order as row #ids); \`null\` clears any of them. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\`, \`Sort\` or \`Search\` runs the same checks.`,
   },
   {
     name: 'Chip and card anatomy',
@@ -2120,46 +2245,48 @@ A row appears in two shapes outside its own page: the **chip**, inline — a rel
 ## The chip
 
 <div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-flex;align-items:center;gap:18px;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
-<span class="mention-wrap open"><span class="k k-rel has-segs"><a href="#" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px" onclick="return false"><span class="av hue-blue" style="overflow:visible;position:relative;outline:1.5px dashed #d6409f;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d6409f">1</i>AL</span><span style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">2</i>#12</span> <span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">3</i>Ship the editor</span> <span class="k-home" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a">4</i>Task</span><span class="mention-fields" style="position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">5</i><span class="k k-state cat-in-progress hue-blue wv-seg-state">Doing</span><span class="mention-f"><span class="mention-f-label">Due</span>2026-09-12</span><span class="mention-f"><span class="mention-f-label">Severity</span>High</span></span><span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px;display:inline-block;width:9px;height:14px;margin-right:-11px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">6</i></span></a><button type="button" class="mention-caret" aria-expanded="true" title="Hide fields" style="position:relative;outline:1.5px dashed #e5484d;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;bottom:-15px;transform:rotate(180deg);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#e5484d">7</i>›</button><span class="x" style="position:relative;outline:1.5px dashed #ce2c31;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#ce2c31">8</i>×</span></span></span>
+<span class="k k-rel kind-entity has-id has-segs open"><button type="button" class="k k-state cat-in-progress hue-blue wv-chip-mark" data-seg="state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">1</i>Doing</button><a href="#" onclick="return false" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px"><span class="wv-chip-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">2</i>#12</span><span class="k-label" style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">3</i>Ship the editor</span></a><span class="mention-fields" style="position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">4</i><button type="button" class="k k-select hue-red" data-seg="select">P1</button><span class="mention-f"><span class="mention-f-label">Due</span>2026-09-12</span></span><span class="k-home" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a">5</i>Task</span><button type="button" class="mention-caret" aria-expanded="true" title="Hide fields" style="position:relative;outline:1.5px dashed #e5484d;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;bottom:-15px;transform:rotate(180deg);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#e5484d">6</i>›</button><button type="button" class="x" data-seg="remove" style="position:relative;outline:1.5px dashed #ce2c31;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#ce2c31">7</i>×</button></span>
 </div>
 
-The grey box is the link to the row, and everything inside it navigates on click. The caret and the × are their own targets beside it.
+The grey box is the link to the row. The state mark, the segments, the caret and the × sit beside it, each its own target: the chip is the link, and the controls are the pixels that do not navigate.
 
 | № | Element | What it does | How you use it | Hitbox |
 | --- | --- | --- | --- | --- |
-| 1 | **Avatar** (\`.av\`) | initials, or the picture, of a person-table row; hue from the name | none of its own — part of the link | inside the link |
-| 2 | **Public id** (\`#12\`) | the row's number; shows when the chip's \`link\` setting is on | read it, quote it — \`[[Task#12]]\` written in any document becomes this chip | inside the link |
-| 3 | **Name** | the row's \`Name\` field | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** opens it in a new tab; **right-click → Copy Link** copies its permalink (the chip is a real anchor); **hover** turns the outline brand-blue | inside the link — the label, its padding, and the space between elements all count |
-| 4 | **Home badge** (\`.k-home\`) | names the far table when a relation can point at several (a target set) | none of its own | inside the link |
-| 5 | **Segments** | the state as a state chip (the category owns the colour), then label·value pairs from the view's \`fields\`; three at most in a chip | read them; the state's colour is the same one the grid cell wears | inside the link — a click on a segment opens the row |
-| 6 | **Open mark** (\`↗\`) | promises navigation; always the last pixel inside the link | click it like the name | inside the link |
-| 7 | **Caret** (\`›\` / \`‹\`) | folds the segments in and out; shows only when there is a segment to show | **click to expand**; it turns to face the label (\`‹\`) and a second click **collapses** — the caret sits beside the link, not inside it, so it never navigates | a 24×24px square around the glyph, beside the link; the click stops there |
-| 8 | **Remove** (\`×\`) | in a relation cell only: unlinks this row from the field — never deletes it | **click to unlink**; \`weave undo\` (or the activity row) puts it back | its own box, outside the link |
+| 1 | **State mark** (\`.wv-chip-mark\`) | the workflow state as the same state chip the grid cell wears, leading the line because the category reads before the words do | **click** opens the state picker, grouped by category — Not started, In progress, Done, Canceled — and the state you pick is written to the row | its own box, outside the link |
+| 2 | **Public id** (\`.wv-chip-id\`) | the row's number in mono; shows when the chip's \`link\` setting is on | read it, quote it — \`[[Task#12]]\` written in any document becomes this chip | inside the link |
+| 3 | **Name** (\`.k-label\`) | the row's \`Name\` field | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** opens it in a new tab; **right-click → Copy Link** copies its permalink (the chip is a real anchor); **hover** turns the outline brand-blue | inside the link — the label, its padding, and the id beside it all count |
+| 4 | **Segments** (\`.mention-fields\`) | the configured \`fields\`, three at most: a select or multiselect as its own chip, anything else as a label·value pair | a **select** or **multiselect** segment opens its picker and writes the row; a label·value pair is read-only | each segment is its own box; none of them navigate |
+| 5 | **Home badge** (\`.k-home\`) | names the far table when a relation can point at several (a target set), and on a document reference it always names the row's table | read it | display only |
+| 6 | **Caret** (\`›\` / \`‹\`) | folds the segments in and out; shows only when there is a segment to show | **click to expand**; it turns to face the label (\`‹\`) and a second click **collapses** | a 24×24px square around the glyph; the click stops there |
+| 7 | **Remove** (\`×\`) | in a relation cell only: unlinks this row from the field — never deletes it | **click to unlink**; \`weave undo\` (or the activity row) puts it back | its own box, outside the link |
 
-The mark (6) and the caret (7) are why the chip never fills behind a pointer: colour is spent on values, and a pointer is a place to go. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in \`--wv-chip-font\` and \`--wv-chip-line\`.
+There is no open mark and no avatar. The chip is the link, so a separate \`↗\` promises nothing, and a person table asks for its avatar through its own Chip config. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in \`--wv-chip-font\` and \`--wv-chip-line\`, and a segment is drawn at that same size rather than shrunk.
+
+One renderer draws this markup: \`public/chip-view.js\`, loaded by the browser and by \`src/markdown.js\`, with one stylesheet, \`public/chip.css\`, behind both. A relation cell, a document page and an HTML export of the same row therefore print the same chip, down to the class names.
 
 ## The card
 
 <div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-block;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
-<div class="wv-card" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px;gap:16px;padding-top:12px"><div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false" style="overflow:visible;position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">10</i><span class="wv-card-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">9</i>#12</span>Ship the editor</a><span class="k k-state cat-in-progress hue-blue wv-seg-state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">11</i>Doing</span></div><div class="wv-card-desc" style="overflow:visible;position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">12</i>The editor is the renderer: no edit mode, no preview pane, no save button.</div><dl class="wv-card-fields" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a;grid-column:1/-1">13</i><dt>Severity</dt><dd>High</dd><dt>Symptom</dt><dd>Looks broken</dd><dt>Due</dt><dd>2026-09-12</dd></dl></div>
+<div class="wv-card" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px;gap:16px;padding-top:12px"><div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false" style="overflow:visible"><span class="wv-card-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">8</i>#12</span><span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">9</i>Ship the editor</span></a></div><div class="wv-card-desc" style="overflow:visible;position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">10</i>The editor is the renderer: no edit mode, no preview pane, no save button.</div><div class="wv-card-state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">11</i><button type="button" class="k k-state cat-in-progress hue-blue wv-chip-mark" data-seg="state">Doing</button></div><dl class="wv-card-fields" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a;grid-column:1/-1">12</i><dt>Severity</dt><dd>High</dd><dt>Symptom</dt><dd>Looks broken</dd><dt>Release</dt><dd>v0.5</dd><dt>Due</dt><dd>2026-09-12</dd></dl></div>
 </div>
 
-Only the title is a link. The rest of the tile is inert — in a grid cell the cell's own click applies.
+The card is the **Tile**: the \`#id\` and the title, the description preview, a state row that is also the control, and the configured properties two-up with their labels. Nothing on it needs a tooltip. The title is the link; the state row is the one other target.
 
 | № | Element | What it does | How you use it | Hitbox |
 | --- | --- | --- | --- | --- |
-| 9 | **Public id** (\`.wv-card-id\`) | the row's number, when the card's \`link\` setting is on (it is, by default) | read it, quote it | inside the title link |
-| 10 | **Title** (\`.wv-card-title\`) | the row's \`Name\`, bold | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** for a new tab; **right-click → Copy Link** for the permalink; **hover** turns it brand-blue | the title text, the id, and the gap between them |
-| 11 | **State** | the workflow state as the same state chip the grid cell wears, right of the title | read it — a card's state changes on the row, not on the card | none — display only |
-| 12 | **Description** | the first lines of the description document at the view's \`description\` size — small (one line), medium (~120 chars), large (~320); prose only, three lines at most, one on a compact card | read it; the row's page has the rest | none |
-| 13 | **Fields** (\`.wv-card-fields\`) | label · value pairs from the view's \`fields\` — the first few glanceable values in column order by default, four at most counting the state | read them; arranging the table's columns IS the curation | none |
+| 8 | **Public id** (\`.wv-card-id\`) | the row's number, when the card's \`link\` setting is on (it is, by default) | read it, quote it | inside the title link |
+| 9 | **Title** (\`.wv-card-title\`) | the row's \`Name\`, bold | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** for a new tab; **right-click → Copy Link** for the permalink; **hover** turns it brand-blue | the title text, the id, and the gap between them |
+| 10 | **Description** | the first lines of the description document at the view's \`description\` size — small (one line), medium (~120 chars), large (~320); prose only, three lines at most, one on a compact card | read it; the row's page has the rest | none |
+| 11 | **State row** (\`.wv-card-state\`) | the workflow state on a line of its own, spelled out, as the same mark the chip leads with | **click** opens the state picker grouped by category and writes the row | the mark's own box |
+| 12 | **Fields** (\`.wv-card-fields\`) | label · value pairs from the view's \`fields\`, two columns across — the first few glanceable values in column order by default | read them; arranging the table's columns IS the curation | none |
 
 ## Where the same chip shows up
 
 | Surface | Which chip | What differs |
 | --- | --- | --- |
-| a relation cell in the grid | the far row's chip | carries the × (8); the avatar (1) on a person relation; the home badge (4) on a target set |
-| a \`[[…]]\` mention in a document | the same chip, from the same config | no ×, no avatar — a reference is text, there is nothing to unlink |
+| a relation cell in the grid | the far row's chip | carries the × (7); the home badge (5) on a target set |
+| a \`[[…]]\` mention in a document | the same chip, from the same config | no × — a reference is text, there is nothing to unlink; Backspace in the editor removes it |
+| an HTML export of that document | the same chip, byte for byte | nothing |
 | a reference panel on the entity page | the same chip | home badge on, no × |
 | the relation picker | the same chip | the × means "take it out of the selection" |
 | the entity page's Appears as strip | this table's own chip and card, for the views the eye shows — both are minted hidden, so unhide one to see it | a gear beside each opens the table's config; the strip shows what every other surface will draw |
