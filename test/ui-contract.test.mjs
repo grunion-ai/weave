@@ -359,7 +359,7 @@ test('comments and activity make up the side column; fields lead the body', () =
 });
 
 test('the space caret is a real hit target, not a 18px sliver', () => {
-  const caret = rulesFor('.nav-caret');
+  const caret = rulesFor('.wv-disclosure');
   assert.ok(px(caret.width) >= 24 && px(caret.height) >= 24,
     `caret must be at least 24x24, got ${caret.width} x ${caret.height}`);
   assert.equal(caret.flex ?? caret['flex-shrink'], '0',
@@ -370,13 +370,14 @@ test('the space caret is a drawn chevron, not a text glyph', () => {
   const fn = APP.slice(APP.indexOf('function renderNav'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.doesNotMatch(body, /'▾'|"▾"|'▸'|'▼'/, 'no text-glyph caret — it cannot match the chrome');
-  assert.match(body, /chevron\(/, 'the caret renders the shared chevron() svg');
+  assert.match(body, /disclosure\('nav-caret'/, 'the caret is the shared disclosure, which renders the chevron() svg');
   const at = APP.indexOf('chevron = (');
   assert.ok(at > 0, 'chevron() must be defined in app.js');
   const decl = APP.slice(at, at + 400);
   assert.match(decl, /lucide:chevron-right/, 'the chevron is the inventory\'s, so it matches the set and moves');
-  const icon = rulesFor('.nav-caret svg');
-  assert.ok(px(icon.width) >= 14, `chevron glyph must be >= 14px, got ${icon.width}`);
+  const icon = rulesFor('.wv-disclosure > .wv-icon svg');
+  assert.equal(icon.width, 'var(--wv-icon-md)', 'the chevron glyph is the 16px medium icon');
+  assert.equal(px(rulesFor(':root')['--wv-icon-md']), 16);
 });
 
 test('the caret trails the space label and rotates to open', () => {
@@ -386,10 +387,10 @@ test('the caret trails the space label and rotates to open', () => {
   assert.ok(body.indexOf('nav-caret', row) > body.indexOf("class: 'nav-space'", row),
     'the caret is appended after the space link — it trails the label ("Routines ›")');
 
-  const caret = rulesFor('.nav-caret');
+  const caret = rulesFor('.wv-disclosure');
   assert.ok(!caret.transform || caret.transform === 'none',
     `the resting caret must not be rotated, got ${caret.transform}`);
-  assert.match(rulesFor('.nav-caret.open').transform, /rotate\(90deg\)/,
+  assert.match(CSS, /\.wv-disclosure\[aria-expanded="true"\][^{]*\{[^}]*transform: rotate\(90deg\)/,
     'the expanded caret rotates the right-pointing glyph down');
 });
 
@@ -746,7 +747,7 @@ test('every code block carries a copy button in its upper right', () => {
 test('a computed field carries its glyph next to the name, not only in cells', () => {
   const label = fnBody('fieldNameLabel');
   assert.match(label, /computedMark(?:Node)?\(/, 'one glyph vocabulary for names and values');
-  assert.match(label, /'sup'/, 'the mark is a superscript on the name');
+  assert.match(label, /el\('span', \{\n    class: 'field-mark'/, 'the mark is an inline span after the name');
   assert.match(APP, /COMPUTED_NAME_MARKS = \{[^}]*formula/,
     'formula fields are the case this exists for');
 
