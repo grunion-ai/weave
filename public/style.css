@@ -403,7 +403,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid tr > td:last-child { padding-right: var(--wv-cell-pad-x); }
 .wv-grid tr > :is(th.col-head, th.pid-head, th.sys-head):last-child { padding-right: var(--wv-head-pad-r); }
 .wv-grid th.col-head .col-label { pointer-events: none; }
-.wv-grid thead th .col-label { display: inline-block; white-space: nowrap; }
+.wv-grid thead th .col-label { display: inline-flex; align-items: center; white-space: nowrap; }
 .wv-grid th.col-head:focus-visible { outline-offset: -2px; }
 .field-menu { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: var(--fs-body); line-height: 1; cursor: pointer; transition: opacity .12s ease; }
 .wv-grid th.col-head:hover { background: var(--tblr-bg-surface-secondary); }
@@ -636,7 +636,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 @media (hover: hover) { .entity-fields .fieldrow:hover .opt-grip { opacity: 1; } }
 @media (hover: none) { .entity-fields .fieldrow .opt-grip { opacity: .7; } }
 .entity-fields .fieldrow label { font-size: var(--fs-grid); }
-.entity-fields .fieldrow-label { cursor: pointer; border-radius: 4px; padding: 2px 6px; margin-left: -6px; width: fit-content; }
+.entity-fields .fieldrow-label { display: inline-flex; align-items: center; cursor: pointer; border-radius: 4px; padding: 2px 6px; margin-left: -6px; width: fit-content; }
 .entity-fields .fieldrow-label:hover { background: var(--wv-pill-active); color: var(--tblr-body-color); }
 .entity-fields .fieldrow-desc { display: block; font-size: var(--fs-secondary); line-height: 1.3; color: var(--tblr-secondary); margin-top: 1px; white-space: normal; }
 .entity-fields .fieldrow { min-height: 32px; }
@@ -883,7 +883,8 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 @media (hover: hover) { .unlink-btn:hover { opacity: 1; } }
 @media (hover: none) { .entity-row .unlink-btn { opacity: .7; } }
 
-.field-mark { font-size: var(--fs-meta); font-weight: 400; color: var(--tblr-secondary); margin-left: 2px; cursor: help; }
+.field-mark { display: inline-flex; align-items: center; vertical-align: middle; margin-left: 4px; font-size: var(--fs-meta); font-weight: 400; line-height: 1; color: var(--tblr-secondary); cursor: help; }
+.field-mark > .wv-icon, .field-mark > .wv-icon svg { width: var(--wv-icon-sm); height: var(--wv-icon-sm); }
 
 .doc-section { margin: 0 0 26px; position: relative; padding-left: 18px; }
 .doc-section.deck-section { padding-left: 0; }
