@@ -13,7 +13,8 @@ import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.j
 import { PRIVACY, TERMS } from './legal.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import '../public/starter-core.js';
-const { WeaveStarters, WeaveSlugs } = globalThis;
+import '../public/prefill-core.js';
+const { WeaveStarters, WeaveSlugs, weavePrefill } = globalThis;
 
 export const decodePath = (pathname) => decodeURIComponent(pathname.replace(/%2f/gi, '%252F'));
 
@@ -47,6 +48,61 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const metaAttr = (s) => escapeHtml(s).replace(/\r?\n/g, '&#10;');
+const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'field']);
+const pickOption = (options, ref) => options.find((o) => o.id === ref)
+  ?? options.find((o) => o.name === ref)
+  ?? options.find((o) => o.name.toLowerCase() === String(ref).toLowerCase());
+function prefillDraft(weave, ref, params) {
+  const db = weave.getTable(ref);
+  const { pairs, cut } = weavePrefill.clip(params);
+  const slots = new Map();
+  const unknown = [];
+  for (const [key, raw] of pairs) {
+    const f = weave.findField(db, key);
+    if (!f || PREFILL_SKIP.has(f.type)) {
+      if (!unknown.includes(key)) unknown.push(key);
+      continue;
+    }
+    if (!slots.has(f.id)) slots.set(f.id, { f, raws: [] });
+    slots.get(f.id).raws.push(raw);
+  }
+  const fields = [...slots.values()].map(({ f, raws }) => {
+    const errors = [];
+    const out = { field: f.name, type: f.type, errors };
+    const list = f.type === 'multiselect' || (f.type === 'relation' && f.config.many);
+    const picked = list ? raws : raws.slice(0, 1);
+    if (f.type === 'select' || f.type === 'multiselect' || f.type === 'workflow') {
+      const choices = f.type === 'workflow' ? f.config.states : f.config.options;
+      const names = picked.map((r) => {
+        const opt = pickOption(choices, r);
+        if (!opt) errors.push(`'${r}' is not ${f.type === 'workflow' ? 'a state' : 'an option'} of '${f.name}'`);
+        return opt ? opt.name : r;
+      });
+      out.value = list ? names : names[0];
+      return out;
+    }
+    if (f.type === 'relation') {
+      out.rows = [];
+      const names = [];
+      for (const r of picked) {
+        let hit = null;
+        for (const dbId of weave.relationTargetDbIds(f)) {
+          try { hit = weave.findEntity(dbId, r); } catch { hit = null; }
+          if (hit && !hit.deletedAt) break;
+          hit = null;
+        }
+        if (hit) out.rows.push({ id: hit.id, name: weave.entityName(hit) });
+        else errors.push(`No row named '${r}' in the related table`);
+        names.push(hit ? weave.entityName(hit) : r);
+      }
+      out.value = list ? names : names[0];
+      return out;
+    }
+    out.value = picked[0];
+    return out;
+  });
+  return { table: db.id, name: db.name, fields, unknown, cut };
+}
 const RASTER = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const plainLine = (md) => String(md ?? '').split('\n').map((l) => l.replace(/[*_`#>]/g, '').trim()).find(Boolean) ?? '';
 const previewPageHtml = (head, authHref) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${head}<meta name="weave-route" content="${metaAttr(authHref)}" data-sign-in><link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg"><link rel="alternate icon" href="/brand/favicon.ico"><script src="/permalink.js"></script><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style></head><body><p><a href="${escapeHtml(authHref)}">Sign in</a> to open this in weave.</p></body></html>`;
@@ -226,7 +282,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
     }
 
-    if (path === '/t' || (path.startsWith('/t/') && !UUID_RE.test(path.slice(3)))) {
+    if (path === '/t' || (path.startsWith('/t/') && !UUID_RE.test(path.slice(3)) && !UUID_RE.test(path.slice(3).replace(/\/new$/, '')))) {
       const wantsBody = ['POST', 'PUT', 'PATCH'].includes(rx.method) && appletOn();
       if (wantsBody && Number(rx.header('content-length') ?? 0) > MAX_BODY_BYTES) return out(413, { error: 'Body too large', code: 'too-large' });
       const appletBody = wantsBody ? await rx.readBody().catch(() => ({})) : {};
@@ -322,7 +378,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return { head, route };
     };
 
-    const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path)}`;
+    const carried = weavePrefill.clip(rx.searchParams).query;
+    const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path + (carried ? `?${carried}` : ''))}`;
     const wallPage = () => out(401, wallPageHtml(authHref, oidc?.name), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
     const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms');
@@ -641,6 +698,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         });
       }
 
+      if ((m = path.match(/^\/t\/([^/]+)\/new$/)) && ['GET', 'HEAD'].includes(rx.method)) {
+        const preview = linkPreview(`/t/${m[1]}`);
+        if (!preview) throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
+        const q = weavePrefill.clip(rx.searchParams).query;
+        const to = `${wsPrefix}/#/table/${m[1]}/new${q ? `?${q}` : ''}`;
+        if (!serveStatic) return { status: 302, headers: { Location: to, 'Cache-Control': 'no-store' }, body: '' };
+        const hit = serveStatic('/', rx, { head: `${preview.head}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
+        if (hit) return { ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } };
+      }
       if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
         throw new WeaveError(`A permalink answers GET, not ${rx.method}`, 'not-found');
       }
@@ -949,6 +1015,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const w = hub.restore(m[1]);
           return out(200, { name: w.state.meta.name, deletedAt: null });
         }
+        if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'PATCH') {
+          if (body?.position == null) throw new WeaveError('position is required: 0 is the first place in the rail', 'invalid');
+          hub.get(hub.defaultName).moveWorkspace(decodeURIComponent(m[1]), body.position);
+          return out(200, hub.list().filter((x) => canOpen(hub.get(x.name))));
+        }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
           if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
           const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
@@ -1238,7 +1309,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/tables') {
           const space = rx.searchParams.get('space');
           const dbs = weave.listTables(space ? weave.getSpace(space).id : null);
-          return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId })));
+          return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId, position: db.position })));
         }
         if (route === 'POST /api/tables') return out(201, guided(weave, 'table', weave.createTable(body)));
         if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
@@ -1265,7 +1336,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/move$/)) && rx.method === 'POST') {
           if (typeof body.space !== 'string' || !body.space.trim()) throw new WeaveError('space is required: the destination space', 'invalid');
-          return out(200, weave.moveTable(m[1], body.space));
+          return out(200, weave.moveTable(m[1], body.space, { position: body.position ?? null }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/duplicate$/)) && rx.method === 'POST') {
           return out(201, weave.duplicateTable(m[1]));
@@ -1314,6 +1385,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const offset = Number(rx.searchParams.get('offset') ?? 0);
             return out(200, weave.query(m[1], { limit, offset, viewerZone }));
           }
+        }
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/prefill$/)) && rx.method === 'GET') {
+          return out(200, prefillDraft(weave, m[1], rx.searchParams));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && rx.method === 'POST') {
           if (body?.limit != null) body.limit = boundedLimit(body.limit);

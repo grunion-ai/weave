@@ -15,8 +15,8 @@ test('every vendored file matches security/vendor.lock.json, and none is unliste
 
 test('the confirmed versions are pinned, and DOMPurify is its own entry inside mermaid', () => {
   const by = Object.fromEntries(readLock().libraries.map((l) => [l.name, l]));
-  assert.equal(by.mermaid.version, '11.17.0');
-  assert.equal(by.dompurify.version, '3.4.12');
+  assert.equal(by.mermaid.version, '11.17.2');
+  assert.equal(by.dompurify.version, '3.4.16');
   assert.equal(by.dompurify.bundledIn, 'mermaid');
   assert.equal(by.vditor.version, '3.11.3');
   assert.equal(by.katex.version, '0.16.47');

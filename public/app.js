@@ -1730,9 +1730,9 @@ function anchorPop(pop, anchor) {
   }
 }
 
-function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', apply = 'Apply', onApply }) {
+function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', apply = 'Apply', value = '', onApply }) {
   document.querySelector('.chip-pop')?.remove();
-  const input = el('input', { class: 'form-control form-control-sm', type, placeholder });
+  const input = el('input', { class: 'form-control form-control-sm', type, placeholder, enterkeyhint: 'done', value: value ?? '' });
   const pop = el('div', { class: 'chip-pop picker-pop value-pop' },
     title ? el('div', { class: 'picker-title' }, title) : null,
     el('form', {
@@ -2133,20 +2133,41 @@ function checkRowPitch(grid) {
 }
 
 const PHONE_MORE_W = 44;
+const phoneRowCore = globalThis.weavePhoneRow;
+function phoneRowOf(db) {
+  const raw = allTables().find((t) => t.id === db.id) ?? db;
+  const named = nameFieldOf(raw)?.name;
+  const fields = raw.fields.map((f) => ({ name: f.name, type: f.type, role: f.name === named ? 'name' : null }));
+  return phoneRowCore.resolve(fields, visibleCols(db), db.view?.blank ? null : db.view?.phoneRow ?? null);
+}
+function phoneLeadEl(f, item) {
+  const val = item.fields?.[f.name] ?? null;
+  let seg;
+  if (f.type === 'workflow') {
+    const st = (f.states ?? []).find((x) => x.name === val);
+    seg = { kind: 'state', label: f.name, value: st?.name ?? '—', category: st?.category, ...(st?.hue ? { hue: st.hue } : {}) };
+  } else if (f.type === 'select' && val != null) {
+    const o = (f.optionsFull ?? []).find((x) => x.name === val);
+    seg = { kind: 'field', type: 'select', label: f.name, value: val, option: { hue: chipCore.hueFromHex(o?.color), icon: o?.icon } };
+  } else seg = { kind: 'field', type: f.type, label: f.name, value: String(fieldValueCell(val) ?? '') || '—' };
+  return el('span', { class: 'phone-lead', dataset: { field: f.name, ftype: f.type } }, viewSegmentEl(seg));
+}
 function fitPhoneChipLines(grid) {
   const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
+  const wrap = grid.dataset.phoneWrap != null;
   for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
     const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
     for (const td of cells) { td.classList.remove('list-hide'); delete td.dataset.more; }
     if (!phone) continue;
-    const shown = cells.filter((td) => td.getClientRects().length);
+    const shown = cells.filter((td) => td.getClientRects().length).sort((a, b) => Number(a.dataset.phoneChip) - Number(b.dataset.phoneChip));
     if (!shown.length) continue;
     const top = shown[0].getBoundingClientRect().top;
-    const edge = tr.getBoundingClientRect().right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
+    const box = tr.getBoundingClientRect();
+    const edge = box.right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
     let n = shown.length;
     const fits = () => {
       const r = shown[n - 1].getBoundingClientRect();
-      return r.top - top < 1 && (n === shown.length || r.right + PHONE_MORE_W <= edge);
+      return (wrap ? r.bottom <= box.bottom + 0.5 : r.top - top < 1) && (n === shown.length || r.right + PHONE_MORE_W <= edge);
     };
     while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
     if (n < shown.length) shown[n - 1].dataset.more = `+${shown.length - n}`;
@@ -3176,7 +3197,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
-    layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null,
+    layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -3302,6 +3323,89 @@ function filterSeed(db) {
   return values;
 }
 
+const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'field']);
+const prefillBase = (db) => `${location.origin}${WS_PREFIX}/t/${db.id}/new`;
+const manyRelation = (f) => f.type === 'relation' && !!f.many;
+
+function prefillControl(f, value) {
+  const name = f.name;
+  if (f.type === 'select' || f.type === 'multiselect' || f.type === 'workflow') {
+    const multi = f.type === 'multiselect';
+    const names = f.type === 'workflow' ? (f.states ?? []).map((st) => st.name) : (f.options ?? []);
+    const sel = el('select', { name, class: 'form-select', ...(multi ? { multiple: '' } : {}) },
+      multi ? null : el('option', { value: '' }, ''),
+      names.map((n) => el('option', { value: n }, n)));
+    const want = value ?? (f.type === 'workflow' ? f.states?.find((st) => st.default)?.name : null);
+    const picked = new Set((Array.isArray(want) ? want : [want]).filter((v) => v != null));
+    for (const o of sel.options) o.selected = picked.has(o.value);
+    if (!multi && !names.some((n) => picked.has(n))) sel.value = '';
+    return sel;
+  }
+  if (f.type === 'checkbox' || f.type === 'toggle') {
+    const v = String(value ?? '').trim().toLowerCase();
+    const on = /^(true|1|yes)$/.test(v) || (!!f.on && v === String(f.on).toLowerCase());
+    return el('input', { type: 'checkbox', name, class: 'form-check-input', ...(on ? { checked: '' } : {}) });
+  }
+  if (f.type === 'document' || manyRelation(f)) {
+    const text = Array.isArray(value) ? value.join('\n') : value ?? '';
+    return el('textarea', { name, class: 'form-control', rows: 3 }, text);
+  }
+  return el('input', { name, class: 'form-control', autocomplete: 'off', value: value ?? null });
+}
+
+function prefillValues(form, fields) {
+  const values = {};
+  for (const f of fields) {
+    const node = form?.elements.namedItem(f.name);
+    if (!node) continue;
+    if (node.type === 'checkbox') { if (node.checked) values[f.name] = true; continue; }
+    if (node.multiple) {
+      const picked = [...node.selectedOptions].map((o) => o.value);
+      if (picked.length) values[f.name] = picked;
+      continue;
+    }
+    if (manyRelation(f)) {
+      const lines = node.value.split('\n').map((x) => x.trim()).filter(Boolean);
+      if (lines.length) values[f.name] = lines;
+      continue;
+    }
+    if (node.value.trim() !== '') values[f.name] = node.value;
+  }
+  return values;
+}
+
+async function openPrefill(dbId, query) {
+  const db = allTables().find((d) => d.id === dbId);
+  if (!db) return;
+  history.replaceState(history.state, '', `#/table/${db.id}`);
+  let draft;
+  try { draft = await api('GET', `/tables/${db.id}/prefill${query ? `?${query}` : ''}`); } catch (err) { return toast(err.message, true); }
+  const given = new Map(draft.fields.map((d) => [d.field, d]));
+  const hidden = new Set(db.hiddenFields ?? []);
+  const fields = db.fields.filter((f) => !PREFILL_SKIP.has(f.type) && (given.has(f.name) || !hidden.has(f.name)));
+  const notes = [
+    draft.unknown.length ? `Not fields of ${db.name}, left out: ${draft.unknown.join(', ')}` : null,
+    draft.cut.length ? `Cut to fit a link: ${draft.cut.join(', ')}` : null,
+    ...draft.fields.flatMap((d) => d.errors),
+  ].filter(Boolean);
+  const linked = (f) => {
+    const found = given.get(f.name)?.rows ?? [];
+    return found.length ? el('div', { class: 'wv-prefill-rows form-hint', dataset: { field: f.name } }, `Links to ${found.map((r) => r.name).join(', ')}`) : null;
+  };
+  const body = el('div', { class: 'wv-prefill' },
+    notes.length ? el('div', { class: 'wv-prefill-notice alert alert-warning', role: 'status' }, notes.map((n) => el('div', {}, n))) : null,
+    fields.map((f) => el('label', { class: 'wv-prefill-field' },
+      el('span', { class: 'form-label' }, f.name), prefillControl(f, given.get(f.name)?.value), linked(f))),
+    el('button', {
+      class: 'btn btn-sm wv-prefill-copy', type: 'button',
+      onclick: (ev) => copyText(weavePrefill.link(prefillBase(db), prefillValues(ev.currentTarget.form, fields)), 'Create link copied'),
+    }, 'Copy create link'));
+  tray(`New ${db.term?.singular ?? 'row'}`, [body], async () => {
+    const made = await api('POST', `/tables/${db.id}/entities`, { values: prefillValues(body.closest('form'), fields) });
+    await loadSchema();
+    location.hash = `#/table/${db.id}?e=${made.id}`;
+  }, 'Save');
+}
 
 function tableFilters(db) {
   return db.filters ?? {};
@@ -3541,6 +3645,8 @@ function gridMoves(db, field) {
 
 function gridFields(db) {
   const names = new Set(visibleCols(db));
+  const phone = phoneRowOf(db);
+  for (const n of [phone.lead, ...phone.chips]) if (n) names.add(n);
   for (const s of gridSort(db) ?? []) if (db.fields.some((f) => f.name === s.field)) names.add(s.field);
   for (const n of db.systemFields ?? []) names.add(n);
   return [...names];
@@ -3827,6 +3933,81 @@ function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = 
     },
   });
 }
+function phoneRowPopover(anchor, db) {
+  const PR = phoneRowCore;
+  const raw = () => allTables().find((t) => t.id === db.id) || db;
+  const fields = () => { const named = nameFieldOf(raw())?.name; return raw().fields.map((f) => ({ name: f.name, type: f.type, role: f.name === named ? 'name' : null })); };
+  const here = () => state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id;
+  let cfg = phoneRowOf(db);
+  const body = el('div', { class: 'phone-row-body' });
+  const write = (next) => {
+    if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
+    cfg = next;
+    draw();
+    const release = eyeGesture(gridHold());
+    const turn = eyeWrites.then(() => gridConfigWrite(db, null, { phoneRow: { lead: next.lead, chips: next.chips, labels: next.labels, wrap: next.wrap } }))
+      .catch((err) => toast(err.message, true));
+    eyeWrites = turn; eyeTails.set(db.id, turn);
+    turn.then(async () => {
+      try {
+        if (eyeTails.get(db.id) !== turn) return;
+        eyeTails.delete(db.id);
+        if (here()) await keepScroll(() => showDatabase(db.id, db.view.id));
+      } catch (err) { toast(err.message, true); } finally { release(); }
+    });
+  };
+  const SLOT_LABELS = [['lead', 'Lead'], ['chips', 'Chips'], ['off', 'Off']];
+  const fieldRow = (r, list) => {
+    const grip = r.slot === 'chips'
+      ? el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${r.name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'))
+      : el('span', { class: 'phone-row-nogrip', 'aria-hidden': 'true' });
+    const row = el('div', { class: 'phone-row-field', dataset: { field: r.name, slot: r.slot } }, grip,
+      el('span', { class: 'eye-label' }, r.name),
+      el('span', { class: 'seg phone-row-seg', role: 'radiogroup', 'aria-label': r.name }, ...SLOT_LABELS.map(([slot, label]) => el('button', {
+        type: 'button', class: 'seg-opt' + (r.slot === slot ? ' on' : ''), role: 'radio', 'aria-checked': String(r.slot === slot), dataset: { slot },
+        onclick: () => { if (r.slot !== slot) write(PR.setSlot(cfg, r.name, slot)); },
+      }, label))));
+    if (r.slot !== 'chips') return row;
+    RO().guard(row);
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      startRowDrag(list, row, e, (target, after) => {
+        const rest = cfg.chips.filter((n) => n !== r.name);
+        write(PR.moveChip(cfg, r.name, rest.indexOf(target) + (after ? 1 : 0)));
+      }, { rows: '.phone-row-field' });
+    });
+    grip.addEventListener('keydown', (e) => {
+      if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+      e.preventDefault();
+      const to = cfg.chips.indexOf(r.name) + (e.key === 'ArrowUp' ? -1 : 1);
+      if (to < 0 || to >= cfg.chips.length) return;
+      write(PR.moveChip(cfg, r.name, to));
+      body.querySelector(`.phone-row-field[data-field="${CSS.escape(r.name)}"] .field-reorder-handle`)?.focus({ preventScroll: true });
+    });
+    return row;
+  };
+  const toggleRow = (label, on, flip) => el('label', { class: 'chip-pop-row eye-row' },
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: flip }),
+    el('span', { class: 'eye-label' }, label));
+  const draw = () => {
+    const rows = PR.rows(fields(), cfg);
+    const chips = el('div', { class: 'phone-row-chips' });
+    chips.append(...rows.filter((r) => r.slot === 'chips').map((r) => fieldRow(r, chips)));
+    const part = (slot) => rows.filter((r) => r.slot === slot).map((r) => fieldRow(r, null));
+    body.replaceChildren(
+      el('div', { class: 'eye-head' }, 'Lead'), ...part('lead'),
+      el('div', { class: 'eye-head' }, 'Chips'), chips,
+      el('div', { class: 'eye-head' }, 'Off'), ...part('off'),
+      el('hr'),
+      toggleRow('Field names on chips', cfg.labels, () => write({ ...cfg, labels: !cfg.labels })),
+      toggleRow('Wrap chips instead of +N', cfg.wrap, () => write({ ...cfg, wrap: !cfg.wrap })));
+  };
+  draw();
+  let pop = null;
+  pop = tableControlPopover(anchor, db, 'phone-row-popover', [tableControlHeader('Phone row', () => pop?.remove()), body]);
+  return pop;
+}
+
 function tableFieldsPopover(anchor, db, trashCount) {
   let pop;
   const raw = () => allTables().find((t) => t.id === db.id) || db;
@@ -3955,6 +4136,7 @@ function tableChrome(db, trashCount) {
   const tableActions = [
     { label: 'Column stats…', section: 'settings', run: () => columnStatsPanel(ref.db) },
     { label: 'Export CSV', section: 'settings', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
+    db.system ? null : { label: 'Copy create link', section: 'share', run: () => copyText(weavePrefill.link(prefillBase(ref.db), filterSeed(ref.db)), 'Create link copied') },
     { label: 'Share…', section: 'organize', run: () => shareDialog('table', db.id, db.name) },
     {
       label: 'New share page…', section: 'organize',
@@ -4019,7 +4201,8 @@ function tableChrome(db, trashCount) {
       (() => {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
         eye.setAttribute('aria-label', 'Show or hide fields');
-        eye.addEventListener('click', () => fieldVisibilityPopover(eye, ref.db, ref.trashCount));
+        eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db)
+          ? phoneRowPopover(eye, ref.db) : fieldVisibilityPopover(eye, ref.db, ref.trashCount)));
         return eye;
       })(),
       filterBtn,
@@ -4809,6 +4992,7 @@ let GRID_SEQ = 0;
 function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   adoptLegacyDensity(db);
   let cols = visibleCols(db);
+  const phone = phoneRowOf(db);
   const isSysCol = (c) => !colField(db, c) && !!SYSTEM_COLS[c];
   const sysTail = db.columns ? [] : (db.systemFields ?? []);
   const cellBox = (...kids) => el('div', { class: 'wv-cb' }, ...kids);
@@ -5039,6 +5223,20 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     clearChosen();
   });
 
+  const fieldCell = (f, item, extra) => {
+    const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
+      : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed'
+      : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
+    const td = el('td', {
+      dataset: { ftype: f.type, field: f.name },
+      class: (isNumCell(f, item) ? 'num' : '') + extra + kind,
+    }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
+    const at = phone.chips.indexOf(f.name) + 1;
+    if (at) { td.dataset.phoneChip = String(at); td.style.order = String(at); }
+    return f.type === 'attachments'
+      ? fileDropZone(td, (files) => td.querySelector('.k-attach')?.dropFiles?.(files))
+      : td;
+  };
   const buildRow = (item) => {
     const row = el('tr', {
       class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
@@ -5063,23 +5261,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : keyHint(`Open ${db.term.singular} beside the table — ⌘-click for a new tab`),
         }, `#${item.publicId} ↗`),
         el('span', { class: 'list-name' }, item.name ?? ''))),
-      ...cols.map((c) => {
-        if (isSysCol(c)) return sysCell(c, item);
-        const f = db.fields.find((x) => x.name === c);
-        const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
-          : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed'
-          : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
-        const td = el('td', {
-          dataset: { ftype: f.type, field: f.name },
-          class: (isNumCell(f, item) ? 'num' : '')
-            + (c === cols[0] ? ' name-cell' : '') + kind,
-        }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
-        return f.type === 'attachments'
-          ? fileDropZone(td, (files) => td.querySelector('.k-attach')?.dropFiles?.(files))
-          : td;
-      }),
-      ...sysTail.map((n) => sysCell(n, item)));
-    for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
+      ...cols.map((c) => (isSysCol(c) ? sysCell(c, item) : fieldCell(db.fields.find((x) => x.name === c), item, c === cols[0] ? ' name-cell' : ''))),
+      ...sysTail.map((n) => sysCell(n, item)),
+      ...phone.chips.filter((n) => !cols.includes(n)).map((n) => fieldCell(db.fields.find((x) => x.name === n), item, ' phone-only')));
+    const lead = phone.lead && db.fields.find((x) => x.name === phone.lead);
+    if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb').prepend(phoneLeadEl(lead, item));
+    for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop, .phone-only)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     return row;
   };
@@ -5762,7 +5949,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
     table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
-      dataset: { density: gridDensity(db) },
+      dataset: { density: gridDensity(db), ...(phone.labels ? { phoneLabels: '' } : {}), ...(phone.wrap ? { phoneWrap: '' } : {}) },
     },
       el('thead', {}, el('tr', {},
         el('th', { class: 'sel-head' },
@@ -6149,6 +6336,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const touched = press;
     press = null;
     if (touched && !touched.tap) return;
+    const chip = phoneChipAt(tr, e.clientX, e.clientY);
+    if (chip) return editPhoneField(chip, db, tr.dataset.eid, chip.dataset.field);
     if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
     else openEntity(tr.dataset.eid);
   }, true);
@@ -6162,6 +6351,90 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
 const TAP_SLOP = 10;
 const TAP_MS = 300;
+const PHONE_HIT = 44;
+
+function phoneChipAt(tr, x, y) {
+  const inside = (n, pad) => {
+    const r = n.getBoundingClientRect();
+    const px = pad ? Math.max(0, (PHONE_HIT - r.width) / 2) : 0, py = pad ? Math.max(0, (PHONE_HIT - r.height) / 2) : 0;
+    return x >= r.left - px && x <= r.right + px && y >= r.top - py && y <= r.bottom + py;
+  };
+  const marks = [...tr.querySelectorAll(':scope > td.pid-cell .phone-lead, :scope > td[data-phone-chip]')]
+    .filter((n) => n.getClientRects().length && !n.classList.contains('list-hide'))
+    .filter((n) => phoneRowCore.tapAction(n.dataset.ftype));
+  const exact = marks.find((n) => inside(n, false));
+  if (exact) return exact;
+  if ([...tr.querySelectorAll(':scope > td.pid-cell :is(.open-link, .list-name)')].some((n) => inside(n, false))) return null;
+  const near = marks.filter((n) => inside(n, true));
+  const dist = (n) => { const r = n.getBoundingClientRect(); return Math.hypot(x - (r.left + r.right) / 2, y - (r.top + r.bottom) / 2); };
+  return near.sort((a, b) => dist(a) - dist(b))[0] ?? null;
+}
+
+async function editPhoneField(anchor, db, eid, name) {
+  try {
+    const f = db.fields.find((x) => x.name === name);
+    const e = await api('GET', `/entities/${eid}`);
+    const was = e.fields?.[f.name] ?? null;
+    const raw = e.raw?.[f.name] ?? was;
+    const write = async (value, shown) => {
+      if (f.type === 'workflow') await api('POST', `/entities/${eid}/state`, { field: f.name, state: value });
+      else await api('PATCH', `/entities/${eid}`, { values: { [f.name]: value } });
+      const gesture = { kind: 'update', ids: [eid] };
+      lastGesture = gesture;
+      toast(`${f.name}: ${shown ?? (value == null || value === '' ? '—' : String(value))}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
+      await refreshView();
+    };
+    const run = (p) => Promise.resolve(p).catch((err) => toast(err.message, true));
+    switch (phoneRowCore.tapAction(f.type)) {
+      case 'picker':
+        if (f.type === 'workflow') return statePicker(anchor, f, was, (st) => run(st === was ? null : write(st)));
+        if (f.type === 'select') {
+          return searchPicker({
+            anchor, title: f.name, currentId: was ?? '—', clearId: '—',
+            options: [{ id: '—', label: '—', cls: 'k k-select hue-slate', chip: true }, ...f.options.map((o) => ({ id: o, label: o, cls: `k k-select ${optionHue(f, o)}`, chip: true }))],
+            onPick: (o) => run(o.id === (was ?? '—') ? null : write(o.id === '—' ? null : o.id)),
+          });
+        }
+        if (f.type === 'multiselect') {
+          const current = Array.isArray(raw) ? raw : [];
+          const chosen = (names) => names.map((n) => ({ id: n, label: n, chip: true, cls: `k k-multi ${optionHue(f, n)}` }));
+          return searchPicker({
+            anchor, title: f.name, options: chosen(f.options ?? []),
+            multi: { selected: chosen(current), onCommit: (ids) => run(ids.join('\u0000') === current.join('\u0000') ? null : write(ids, ids.join(', ') || '—')) },
+          });
+        }
+        return linkSearch(f, {
+          linked: raw == null ? [] : Array.isArray(raw) ? raw : [raw],
+          commit: async (add, drop) => {
+            if (add.length) await api('POST', `/entities/${eid}/link`, { field: f.name, targets: add });
+            if (drop.length) await api('POST', `/entities/${eid}/unlink`, { field: f.name, targets: drop });
+            const gesture = { kind: 'update', ids: [eid] };
+            lastGesture = gesture;
+            toast(`${f.name} changed`, false, { label: 'Undo', run: () => undoGesture(gesture) });
+            await refreshView();
+          },
+        });
+      case 'toggle':
+        return run(write(!raw, raw ? 'off' : 'on'));
+      case 'date': {
+        const c = { ...f };
+        const { store, local } = dateStoreFns(c);
+        return datePopover({ anchor, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) });
+      }
+      case 'value': {
+        const percent = f.type === 'number' && f.format === 'percent';
+        const shown = percent && typeof raw === 'number' ? Math.round(raw * 100 * 1e8) / 1e8 : raw;
+        return valuePop({
+          anchor, title: f.name, type: f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text',
+          value: shown ?? '', apply: 'Save',
+          onApply: (v) => run(write(v === '' ? null : f.type === 'number' ? (percent ? Math.round(Number(v) * 1e8) / 1e10 : Number(v)) : v)),
+        });
+      }
+      default:
+        return openEntity(eid);
+    }
+  } catch (err) { toast(err.message, true); }
+}
 
 const SYSTEM_COLS = {
   'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
@@ -11833,6 +12106,10 @@ function dispatchRoute() {
   let m;
   if (hash === '#/trash') return showTrash(null);
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
+  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)\/new(?:\?(.*))?$/))) {
+    const [, id, query] = m;
+    return showDatabase(id, null).then(() => openPrefill(id, query ?? ''));
+  }
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)(?:\/view\/([^/?]+))?(?:\?e=([^&]+))?/))) return showDatabase(m[1], m[2] ? decodeURIComponent(m[2]) : null).then(() => redock(m[1], m[3]));
   if ((m = hash.match(/^#\/space\/([^/?]+)/))) return showSpace(m[1]);
   if ((m = hash.match(/^#\/activity(?:\/([^/?]+))?/))) return showActivity(m[1] ?? null);
