@@ -167,7 +167,8 @@ a.nav-space:hover { color: var(--tblr-primary); }
 :is(.wv-disclosure[aria-expanded="true"], details[open] > summary > .wv-disclosure) > .wv-icon { transform: rotate(90deg); }
 .wv-disclosure:hover, summary:hover > .wv-disclosure { color: var(--tblr-body-color); background: var(--wv-pill-hover); }
 .wv-disclosure:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
-.wv-disclosure::after { content: ''; position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); }
+.wv-disclosure { isolation: isolate; }
+.wv-disclosure::after { content: ''; position: absolute; z-index: -1; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); }
 @media (prefers-reduced-motion: reduce) { .wv-disclosure > .wv-icon { transition: none; } }
 
 .view-header { padding-bottom: 16px; }
