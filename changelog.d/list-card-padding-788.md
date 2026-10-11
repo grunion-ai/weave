@@ -1,0 +1,1 @@
+- List cards keep their inset again: rows in the space page's table list, the home page's system tables and the New table row sit 14px from the card edge, and trashed workspaces render as list rows with the card title on the same inset (Issue #788)

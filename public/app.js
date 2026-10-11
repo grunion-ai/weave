@@ -981,7 +981,8 @@ function fillWsMark(span) {
     span.replaceChildren(el('img', { src: chip.querySelector('img').src, alt: '' }));
   } else {
     const name = $('#ws-name')?.textContent || 'w';
-    span.replaceChildren(el('span', { class: 'crumb-ws-letter' }, name.slice(0, 1).toUpperCase()));
+    const id = state.wsList?.find((w) => w.name === state.wsCurrent)?.id ?? name;
+    span.replaceChildren(el('span', { class: `crumb-ws-letter ws-letter hue-${chipCore.hueForName(id)}` }, name.slice(0, 1).toUpperCase()));
   }
   return span;
 }
@@ -11923,7 +11924,7 @@ async function buildWsRail() {
       ...list.filter((w) => w.name !== 'weave').map((w) => {
         const prefix = w.default ? '' : `/w/${w.id}`;
         const chip = el('a', {
-          class: 'ws-icon' + (w.name === current ? ' active' : ''),
+          class: 'ws-icon' + (w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : ''),
           href: w.default ? '/' : (w.url ?? `/w/${w.id}/`),
           title: `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
         }, w.logo
@@ -11993,10 +11994,12 @@ async function trashedWorkspaces() {
   try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; }
 }
 function trashedWorkspacesCard(trashed, redraw) {
-  return el('div', { class: 'card panel trash-workspaces', style: 'margin-top:12px' },
+  return el('div', { class: 'card list-rows trash-workspaces', style: 'margin-top:12px' },
     el('h3', { class: 'card-title' }, 'Workspaces'),
-    ...trashed.map((w) => el('div', { class: 'wv-toolbar', style: 'margin-bottom:6px;gap:8px' },
-      el('span', { style: 'flex:1' }, w.name, ' ', el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`)),
+    ...trashed.map((w) => el('div', { class: 'list-row' },
+      el('span', { class: 'list-row-name' }, w.name),
+      el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`),
+      el('span', { class: 'spacer' }),
       el('button', {
         class: 'btn btn-sm', type: 'button',
         onclick: async () => {
