@@ -544,10 +544,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, page, { 'Content-Type': 'text/html; charset=utf-8' });
         }
         const pdf = markdownToPdf(markdown, { title: entity.name || `#${entity.publicId}`, subtitle });
-        return out(200, pdf, {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="${(entity.name || 'document').replace(/[^\w.-]+/g, '_')}.pdf"`,
-        });
+        return out(200, pdf, fileHeaders({ name: `${entity.name || 'document'}.pdf`, mime: 'application/pdf' }, pdf));
       }
       if ((m = path.match(/^\/e\/([^/]+)\/entity\.(md|mmd|html|pdf)$/))) {
         const entity = weave.readEntity(m[1]);
@@ -567,10 +564,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (m[2] === 'html') {
           return out(200, renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown: md, resolveMention }), { 'Content-Type': 'text/html; charset=utf-8' });
         }
-        return out(200, markdownToPdf(md, { title: entity.name || `#${entity.publicId}`, subtitle }), {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="${(entity.name || 'entity').replace(/[^\w.-]+/g, '_')}.pdf"`,
-        });
+        const pdf = markdownToPdf(md, { title: entity.name || `#${entity.publicId}`, subtitle });
+        return out(200, pdf, fileHeaders({ name: `${entity.name || 'entity'}.pdf`, mime: 'application/pdf' }, pdf));
       }
 
       if ((m = path.match(/^\/e\/([^/]+)\/deck\.(html|json)$/))) {
