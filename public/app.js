@@ -3061,7 +3061,7 @@ async function showTrash(dbId) {
   if (dbId && !db) return showHome();
   state.route = { page: 'trash', dbId };
   renderNav();
-  let { items } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
+  let { items, views = [] } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
   if (!db) items = items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views');
   const main = $('#main');
   main.replaceChildren();
@@ -3075,11 +3075,12 @@ async function showTrash(dbId) {
   }));
 
   const wsTrashed = db ? [] : await trashedWorkspaces();
-  if (!items.length && !wsTrashed.length) {
+  if (!items.length && !views.length && !wsTrashed.length) {
     main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
     return;
   }
   const rows = el('tbody');
+  const purgeAt = (path) => api('DELETE', `${path}?hard=1`);
   for (const item of items) {
     rows.append(el('tr', {},
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
@@ -3100,14 +3101,31 @@ async function showTrash(dbId) {
         }, 'Restore'),
         holdToConfirm('Delete forever', async () => {
           try {
-            await api('DELETE', `/entities/${item.id}?hard=1`);
+            await purgeAt(`/entities/${item.id}`);
             toast('Purged');
             await loadSchema();
             showTrash(dbId);
           } catch (err) { toast(err.message, true); }
         }, { holdingLabel: 'Hold to purge…' }))));
   }
-  if (items.length) main.append(el('div', { class: 'card table-wrap' },
+  for (const v of views) {
+    const act = (run, done) => async () => {
+      try {
+        await run();
+        toast(done);
+        showTrash(dbId);
+      } catch (err) { toast(err.message, true); }
+    };
+    rows.append(el('tr', {},
+      el('td', { class: 'pid-cell' }),
+      el('td', {}, v.name),
+      el('td', { class: 'trash-table' }, 'Share page'),
+      el('td', { class: 'trash-when' }, new Date(v.deletedAt).toLocaleString()),
+      el('td', { class: 'trash-acts' },
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'),
+        holdToConfirm('Delete forever', act(() => purgeAt(`/views/${v.id}`), 'Purged'), { holdingLabel: 'Hold to purge…' }))));
+  }
+  if (items.length || views.length) main.append(el('div', { class: 'card table-wrap' },
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
