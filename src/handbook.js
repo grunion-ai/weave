@@ -1010,7 +1010,7 @@ The footer lists the keys: \`↑\` and \`↓\` select, \`Tab\` and \`Shift+Tab\`
 
 ## Searching a table
 
-The magnifier in the table's toolbar opens a search box; \`/\` or \`⌘F\` opens it from a resting cell. It uses the ⌘K matcher, scoped to this table: a name fragment, a \`#143\` id, or the words in a text field or a document. The grid keeps only the matching rows as you type, in the table's own sort and inside its saved filter, and the foot reads \`3 rows found\`. The search runs on the server, so it reaches every page of a big table, and it belongs to you alone: it is never saved on the table and nobody else's view changes (Feature #228). \`Return\` on a single match opens that row in the dock. \`Esc\` clears the box and folds it away; a search that finds nothing says so and offers **Clear search**. \`+ New\` clears the search first, since an empty new row matches nothing.
+The magnifier in the table's toolbar opens a search box; \`/\` opens it from a resting cell. \`⌘F\` stays the browser's own find, which sees only the rows the grid has drawn; the search box reaches every row (Issue #822). It uses the ⌘K matcher, scoped to this table: a name fragment, a \`#143\` id, or the words in a text field or a document. The grid keeps only the matching rows as you type, in the table's own sort and inside its saved filter, and the foot reads \`3 rows found\`. The search runs on the server, so it reaches every page of a big table, and it belongs to you alone: it is never saved on the table and nobody else's view changes (Feature #228). \`Return\` on a single match opens that row in the dock. \`Esc\` clears the box and folds it away; a search that finds nothing says so and offers **Clear search**. \`+ New\` clears the search first, since an empty new row matches nothing.
 
 ## The grid from the keyboard
 
@@ -1024,7 +1024,7 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 | \`Tab\` / \`⇧Tab\` | along the row, wrapping into the next or previous row; the last cell of the last row is the end, never the browser's chrome |
 | \`Return\` | open the cell: a caret with the value selected, a picker, a flipped checkbox |
 | any character | open the cell and start typing over the value |
-| \`/\` or \`⌘F\` | search this table |
+| \`/\` | search this table |
 | \`Space\` | pick the row up — or, on a toggle cell, flip the switch |
 | \`0\`–\`9\`, \`Backspace\` | on a rating cell: set the rating, or clear it to 0 |
 | \`⇧↑\` / \`⇧↓\` | extend the run of chosen rows |
