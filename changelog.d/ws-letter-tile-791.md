@@ -1,0 +1,1 @@
+- A workspace without a logo shows a filled 36px tile in the rail, its colour a stable hash of the workspace id into the option hues and its initial in white, the same size and radius as an uploaded logo; the breadcrumb workspace mark wears the same tile, and hover and the active ring still read (Issue #791)
