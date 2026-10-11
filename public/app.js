@@ -11990,10 +11990,12 @@ async function trashedWorkspaces() {
   try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; }
 }
 function trashedWorkspacesCard(trashed, redraw) {
-  return el('div', { class: 'card panel trash-workspaces', style: 'margin-top:12px' },
+  return el('div', { class: 'card list-rows trash-workspaces', style: 'margin-top:12px' },
     el('h3', { class: 'card-title' }, 'Workspaces'),
-    ...trashed.map((w) => el('div', { class: 'wv-toolbar', style: 'margin-bottom:6px;gap:8px' },
-      el('span', { style: 'flex:1' }, w.name, ' ', el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`)),
+    ...trashed.map((w) => el('div', { class: 'list-row' },
+      el('span', { class: 'list-row-name' }, w.name),
+      el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`),
+      el('span', { class: 'spacer' }),
       el('button', {
         class: 'btn btn-sm', type: 'button',
         onclick: async () => {
