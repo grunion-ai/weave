@@ -39,7 +39,7 @@ if (s) {
         assert.equal(m.Estimate, null, 'a plain field wears no mark');
         assert.equal(m.Project?.title, '→ Product/Project', 'the relation header names its target table');
         assert.ok(m.Project.icon, 'the relation header carries its own mark');
-        assert.equal(m['Project name']?.title, '↗ Name via Project → Product/Project', 'the lookup names the field, the relation and the table');
+        assert.equal(m['Project name']?.title, '↳ Name via Project → Product/Project', 'the lookup names the field, the relation and the table');
         assert.equal(m.Double?.title, 'formula — computed from other values, not editable', 'the formula tooltip is unchanged');
         assert.equal(m.Project.color, m.Double.color, 'the relation mark spends no colour of its own');
         assert.equal((await page.locator('.wv-grid thead th.col-head[data-col="Project"] .col-label').textContent()).trim().startsWith('Project'), true);
