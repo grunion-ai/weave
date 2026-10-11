@@ -142,12 +142,12 @@ test('the written release order ends with the tag and the GitHub Release', () =>
   assert.match(releasing, /`## v<version>`/, 'the CHANGELOG heading the notes are read from');
   assert.match(releasing, /`v<version>` tag/, 'the tag');
   assert.match(releasing, /GitHub Release/, 'the Release');
-  assert.match(releasing, /weave-release-tags\.mjs/, 'the script that publishes them');
+  assert.match(releasing, /release` workflow/, 'the workflow that publishes them');
   assert.match(releasing, /gh release list -R grunion-ai\/weave/, 'the check a person or agent runs');
-  assert.match(releasing, /~\/\.harness-serve/, 'the checkout the watcher and the tagger run from');
+  assert.match(releasing, /exact tested SHA/, 'publication uses the tested commit');
   assert.doesNotMatch(releasing, /~\/Documents\/harness\.nosync/, 'not the shared harness checkout');
   const rule5 = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8').split('\n').find((l) => l.startsWith('5. **Every release'));
-  assert.match(rule5, /land through Gerrit → .*`v<version>` tag.*GitHub Release/, 'CLAUDE.md rule 5 ends on the same step');
+  assert.match(rule5, /land through a GitHub PR → .*`v<version>` tag.*GitHub Release/, 'CLAUDE.md rule 5 ends on the same step');
 });
 
 const WATCHER_INCIDENT = /^gerrit\/main @ [0-9a-f]+ did not reach\b/;
