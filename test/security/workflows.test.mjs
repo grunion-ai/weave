@@ -19,11 +19,23 @@ test('every action in every workflow is pinned to a full commit SHA', () => {
   assert.deepEqual(bad, []);
 });
 
-test('every workflow grants contents: read at the top level and nothing wider', () => {
+test('workflow write permissions are confined to guarded release delivery', () => {
   for (const f of files) {
     const src = text(f);
     assert.match(src, /^permissions:\n  contents: read\n/m, `${f}: top-level permissions block`);
-    if (f !== 'release.yml') assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
+    if (f === 'test.yml') {
+      const release = src.slice(src.indexOf('  release:'));
+      assert.doesNotMatch(src.slice(0, src.indexOf('  release:')), /(write|admin)\s*$/m);
+      assert.equal((src.match(/: write/g) ?? []).length, 1);
+      assert.match(release, /name: Release/);
+      assert.match(release, /needs: gate/);
+      assert.match(release, /if: github.event_name == 'push' && github.ref == 'refs\/heads\/main'/);
+      assert.match(release, /permissions:\n      contents: write\n      actions: read/);
+      assert.match(release, /uses: \.\/\.github\/workflows\/release\.yml/);
+      assert.doesNotMatch(release, /steps:|secrets: inherit/);
+      assert.match(release, /uses: \.\/\.github\/workflows\/release\.yml # zizmor: ignore\[self-repository\]/);
+      assert.equal((src.match(/zizmor: ignore/g) ?? []).length, 1);
+    } else if (f !== 'release.yml') assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
     else {
       const publish = src.slice(src.indexOf('  publish:'));
       assert.doesNotMatch(src.slice(0, src.indexOf('  publish:')), /(write|admin)\s*$/m);

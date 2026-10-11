@@ -599,7 +599,8 @@ For agents changing weave itself: where the code lives and the rules every chang
 
 ### Rules for changing this repo
 
-1. **Tests first.** Run targeted tests for the changed behavior before committing.
+1. **Tests first.** Run `npm test -- --targeted <file...>` for changed behavior
+   before committing.
    New engine or server behavior lands with tests in the same change. Open a
    GitHub PR, self-review and require `CI gate` on the up-to-date merge candidate.
    Hosted CI owns full verification; local workers keep checks targeted. Never

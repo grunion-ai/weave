@@ -133,3 +133,12 @@ jobs:
           ln -s .github/test-tools/node_modules node_modules
       - run: npx --no-install playwright install --with-deps chromium webkit
       - run: npm test -- --test-concurrency=2
+
+  release:
+    name: Release
+    needs: gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository]
