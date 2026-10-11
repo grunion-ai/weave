@@ -1,0 +1,1 @@
+- **The public development export carries no home directory or personal address** (Issue #527): `scripts/export-development.mjs` rewrites `/Users/<name>/` to `~/` and removes every email address outside `@grunion.ai` before it writes `docs/development.json`; the shipped file is regenerated clean.
