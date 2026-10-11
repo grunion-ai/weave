@@ -33,12 +33,12 @@ test('engine: linking mints a one-time invite, stored as its hash; redeeming it 
   assert.equal(w.identityInvite('wvi_made-up'), null);
 
   assert.throws(() => w.redeemIdentityInvite(inv.code, { issuer: 'https://other.example', subject: 'user_1' }), /another provider/);
-  const hit = w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_1', email: 'kyle@example.com' });
+  const hit = w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_1', email: ' Kyle@Example.com ' });
   assert.equal(hit.name, 'kyle');
   assert.ok(!('tokenHash' in hit));
   const ids = w.listAccounts().find((a) => a.name === 'kyle').identities;
-  assert.deepEqual(ids.map((i) => [i.issuer, i.subject]), [[ISS, 'user_1']]);
-  assert.ok(!('email' in ids[0]), 'no email on the identity');
+  assert.deepEqual(ids.map((i) => [i.issuer, i.subject, i.verifiedEmail]), [[ISS, 'user_1', 'kyle@example.com']], 'one verified email per identity, normalised (Feature #290)');
+  assert.ok(!('email' in ids[0]), 'the old unverified field stays gone');
   assert.throws(() => w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_1' }), /expired or was already used/, 'single use');
   assert.equal(w.identityInvite(inv.code), null);
   assert.equal(Object.keys(w.state.meta.identityInvites).length, 0);
@@ -58,7 +58,7 @@ test('engine: linking mints a one-time invite, stored as its hash; redeeming it 
   const audit = w.listAudit({ limit: 50 }).filter((e) => e.action.startsWith('identity-'));
   for (const a of ['identity-invited', 'identity-linked', 'identity-unlinked']) assert.ok(audit.some((e) => e.action === a), a);
   assert.ok(!mail.test(JSON.stringify(audit)), 'no email in the audit');
-  assert.ok(!mail.test(JSON.stringify(w.state.meta)), 'no email in the workspace');
+  assert.ok(!mail.test(JSON.stringify(w.exportJSON().meta)), 'no email leaves through the export');
 });
 
 test('engine: an invite expires', () => {
@@ -211,7 +211,7 @@ test('routes: start sends the browser to the provider with state, nonce and a PK
     assert.equal(q.get('response_type'), 'code');
     assert.equal(q.get('client_id'), s.idp.clientId);
     assert.equal(q.get('redirect_uri'), `${s.base}/api/auth/oidc/callback`);
-    assert.equal(q.get('scope'), 'openid', 'no email, no profile (Feature #252)');
+    assert.equal(q.get('scope'), 'openid email', 'the email claim and no profile (Feature #290 reverses #252 for email only)');
     assert.equal(q.get('code_challenge_method'), 'S256');
     for (const k of ['state', 'nonce', 'code_challenge']) assert.ok(q.get(k)?.length >= 32, k);
     assert.notEqual(q.get('state'), q.get('nonce'));
@@ -251,7 +251,7 @@ test('oidc: what comes back is the issuer and the subject, and userinfo is never
       const trip = await oidc.begin({ redirectUri: 'http://localhost/cb' });
       const back = s.idp.approve(trip.url, KYLE);
       const who = await oidc.redeem({ code: back.searchParams.get('code'), redirectUri: 'http://localhost/cb', verifier: trip.verifier, nonce: trip.nonce });
-      assert.deepEqual(who, { issuer: s.idp.issuer, subject: 'user_kyle' });
+      assert.deepEqual(who, { issuer: s.idp.issuer, subject: 'user_kyle', ...(claimsInIdToken ? { email: 'kyle@example.com' } : {}) }, 'the verified email from the id token only, never userinfo');
     } finally { s.stop(); }
   }
 });
@@ -362,7 +362,7 @@ test('routes: an identity with no account gets a page that offers a different ac
     const html = await res.text();
     assert.match(html, /<meta name="robots" content="noindex, nofollow">/);
     assert.match(html, /<meta name="viewport"/);
-    assert.ok(!mail.test(html), 'no email: weave asks the provider for none (Feature #252)');
+    assert.ok(!mail.test(html), 'the refusal page names no email');
     assert.match(html, /invite link/);
     const links = hrefs(html);
     assert.deepEqual(links.filter(intoRedirect), [], `a link leads into the automatic redirect: ${links}`);
@@ -507,18 +507,18 @@ test('routes: an invite link signs the person in through the provider and pins t
     const inv = await (await s.call('POST', '/api/accounts/kyle/identities', { body: {}, token: s.admin })).json();
     const { start, res, cookie } = await s.signIn(KYLE, { invite: inv.code });
     assert.equal(start.status, 302);
-    assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'openid');
+    assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'openid email');
     assert.equal(res.status, 302);
     assert.equal(res.headers.get('location'), '/');
     const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
     assert.equal(me.account.name, 'kyle');
     assert.deepEqual(me.account.identities.map((i) => i.subject), ['user_kyle']);
-    assert.ok(!('email' in me.account.identities[0]));
+    assert.equal(me.account.identities[0].verifiedEmail, 'kyle@example.com', 'a member sees their own address');
     assert.equal((await s.signIn(KYLE)).res.status, 302);
     const again = await s.call('GET', `/api/auth/oidc/start?invite=${inv.code}`);
     assert.equal(again.status, 410);
     assert.match(await again.text(), /expired or was already used/);
-    assert.ok(!mail.test(JSON.stringify(s.w.state.meta)), 'no email stored');
+    assert.ok(!mail.test(JSON.stringify(s.w.exportJSON().meta)), 'no email exported');
     assert.ok(!mail.test(JSON.stringify(s.w.listAudit({ limit: -1 }))), 'no email audited');
   } finally { s.stop(); }
 });
