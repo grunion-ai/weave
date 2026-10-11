@@ -579,7 +579,7 @@ matched by name, so a guide you wrote yourself is never touched.
 
 ## Developing weave
 
-For agents changing weave itself: where the code lives and the rules every change follows. weave is a local, self-hosted work platform, an open-source alternative to Airtable, Fibery, Notion databases and ClickUp; the maintainers' own workflow (Gerrit, the weave docs workspace) is in [CLAUDE.md](CLAUDE.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
+For agents changing weave itself: where the code lives and the rules every change follows. weave is a local, self-hosted work platform, an open-source alternative to Airtable, Fibery, Notion databases and ClickUp; the maintainers' own workflow (GitHub PRs, the weave docs workspace) is in [CLAUDE.md](CLAUDE.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Repo map
 
@@ -600,9 +600,10 @@ For agents changing weave itself: where the code lives and the rules every chang
 ### Rules for changing this repo
 
 1. **Tests first.** Run targeted tests for the changed behavior before committing.
-   New engine or server behavior lands with tests in the same change. Push once
-   to Gerrit, self-review and cast Code-Review +2; the poller runs the authoritative full gate before landing. Parallel
-   workers must not each run `npm test` or invoke a duplicate manual gate.
+   New engine or server behavior lands with tests in the same change. Open a
+   GitHub PR, self-review and require `CI gate` on the up-to-date merge candidate.
+   Hosted CI owns full verification; local workers keep checks targeted. Never
+   bypass branch protection or push main directly. See DEVELOPMENT.md.
 2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
    is `node:sqlite`, built into Node. Third-party browser code is vendored and
    pinned into `public/vendor/` (mermaid 11.4.1, @tabler/core 1.4.0) — never

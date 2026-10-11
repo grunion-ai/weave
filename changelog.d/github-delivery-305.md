@@ -1,0 +1,1 @@
+- GitHub releases follow successful main CI, preserve immutable tested tags, resume interrupted publication, and verify the hosted supervisor reaches the released version (Feature #305).

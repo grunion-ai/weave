@@ -1,139 +1,90 @@
-# Weave — Standard Development Approach
+# Weave development
 
-Two layers, adopted 2026-08-22. Rationale: multiple concurrent AI agents (plus Kyle)
-write to this repo; git-alone had no isolation and GitHub-PR review is human-paced.
-
-| Layer | Tool | What it buys |
-| --- | --- | --- |
-| Local VCS | **jj (colocated)** | Every working-copy change auto-snapshotted; any operation undoable (`jj undo`); lock-free concurrent ops; agents can't clobber uncommitted work |
-| Review & landing | **Gerrit change queue** (local, `http://localhost:8282`) | Each push is a *change* with iterating patchsets; Verified vote gates landing; submit queue serializes merges |
-| Mirror | GitHub `grunion-ai/weave` | Unchanged remote; push pending grunion credential |
+GitHub is the canonical repository. Pull requests replace the Gerrit review queue.
+Agents work in isolated branches, run targeted checks locally, and let hosted CI
+run the full required test inventory before merging.
 
 ## Daily flow
 
-```bash
-# hack (jj snapshots continuously; git commands still work — repo is colocated)
-jj st                                  # see snapshot state
-jj describe -m "viewer: fix X (#NN)"   # describe current change
+1. Query the weave Development tracker before work and add the regression test
+   before the fix. Keep one concern per worktree and coordinate file ownership.
+2. Run relevant local tests with explicit filenames. Read the complete diff,
+   including lifecycle, undo, CLI, API and MCP parity. Check both themes for UI
+   changes and update the Handbook where behavior changes.
+3. Push the feature branch to origin and open a GitHub pull request. Record the
+   tracker reference, changes and test evidence. Never push directly to main.
+4. Require the `CI gate` check on the exact current PR merge candidate. Branch
+   protection requires the branch to be up to date with main. If main advances,
+   update the branch and wait for fresh checks; an earlier green SHA cannot land.
+5. The shipping agent self-reviews and squash-merges after all required checks
+   pass, then verifies main CI and delivery. Do not bypass branch protection.
+   Migrated draft PRs stay drafts until their individual review and checks finish.
 
-# send for review — every commit needs a Change-Id (hook installed)
-git push gerrit HEAD:refs/for/main
+## Verification
 
-# approve + land — the shipping agent does this itself (Kyle, 2026-09-02)
-# after its own review pass; the +2 message names what was reviewed and
-# which tests were added. UI: http://localhost:8282  — or REST:
-#   POST /a/changes/<n>/revisions/current/review {"labels":{"Code-Review":2},"message":"..."}
-# after Code-Review +2, the poller verifies the exact patchset and casts Verified ±1
-# wait for Verified +1; do not launch a second manual gate
-#   POST /a/changes/<n>/submit        # 409 = main moved: rebase, re-push, await gate
+The `tests` workflow owns full landing verification. Its final `CI gate` succeeds
+only after every required job succeeds. Browser dependencies are installed in CI;
+a missing browser or skipped required browser suite fails the gate. Parallel CI
+jobs have isolated runners and test data. Superseded branch runs are canceled.
 
-# sync landed work back
-git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
-```
-
-## Rules for agents
-
-1. **Never push directly to `refs/heads/main`.** All work goes through `refs/for/main`.
-2. **One logical change per push.** Re-push amended commits to iterate the same change
-   (the Change-Id keeps them together) instead of opening new ones.
-3. **Verified is earned, not asserted**: the poller runs `weave-review.sh`, which runs
-   the authoritative full `npm test` gate on the exact patchset in an isolated
-   worktree. A red suite votes −1 and blocks submit. Workers run targeted tests
-   before committing, then push once, self-review and cast Code-Review +2. The
-   poller selects reviewed stack tips without a Verified vote. Wait for its result. Do not launch a
-   duplicate manual gate while the poller owns the queue.
-   The `*-browser.test.mjs` suites `import('playwright')` and skip on a bare checkout;
-   the gate links its shared install (`~/.gerrit/weave/pw/node_modules`) into the
-   worktree and votes −1 if they skipped anyway. For targeted browser tests, link
-   `~/.gerrit/weave/pw/node_modules` as `node_modules` (gitignored), then name the
-   test files explicitly: `node scripts/test.mjs test/<name>.test.mjs`. An empty
-   dynamic file selection must stop; bare `node --test` discovers extra scripts.
-   A browser case that is red in the gate and green alone is almost always a
-   read taken after a fixed sleep; `WEAVE_CPU_THROTTLE=4 node --test <file>`
-   slows each page fourfold and usually turns it red on a quiet machine.
-4. Parallel workers use separate worktrees and coordinate file ownership. Gerrit
-   serializes submit; the poller owns full verification. Keep local checks targeted
-   so workers do not compete with the gate for CPU, memory, or browser capacity.
-5. jj is the local safety net: after any suspected clobber, `jj op log` + `jj undo`.
-6. **The shipping agent lands its own change.** Before +2: read the whole diff again,
-   check tombstone/undo/lifecycle paths, CLI + route + MCP parity for any new engine
-   verb, both themes for UI, the Handbook when chrome or a field type is new; add the
-   tests that assert each of those (a regression gets its failing test first). Then
-   +2 with a message naming what was tightened and which tests were added, submit,
-   and confirm MERGED. Never leave a green change parked for someone else's +2.
-7. **Never push `origin main`.** The repo's pre-push hook refuses it. The main watcher
-   (`harness/scripts/weave-review-poll.mjs`) mirrors a green gerrit/main to GitHub
-   fast-forward only, ff-pulls `~/.weave-serve`, restarts launchd `ai.grunion.weave`,
-   and files a weave Issue if :4400 is not launchd's pid started after the landing.
-8. **Never hand-deploy the hosted instance after a landing** (Feature #250,
-   2026-10-03). https://weave.grunion.ai runs `node bin/weave.js supervise` with
-   `WEAVE_AUTO_UPDATE=1`: within ten minutes of a `v<version>` tag on GitHub it
-   unpacks the release and swaps workers with no failed request
-   (`/api/health` → `supervisor.release`, `supervisor.lastSwap`). A Railway
-   `serviceInstanceDeployV2` restarts the container, fails requests for 20 to 60
-   seconds and resets that state. Redeploy only for a change to the Node version,
-   the `Dockerfile` or `src/supervisor.js`. To ship a fix to the host, cut a
-   release (below); the tag is the deploy.
+Local workers use `npm test -- --targeted <file...>` and leave full verification
+to CI. Never invoke bare `node --test`; empty selections must fail before Node
+starts. The shared test manager serializes local browser work across worktrees.
+Use `npm test -- --status` to inspect the queue and cancel only your own job.
+Browser assertions use `styleOf` or `settled` from `test/lib/browser.mjs`, never
+fixed sleeps. `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
+Retries remain visible in test output; repeated flakiness gets a tracker issue.
 
 ## Releasing
 
-A release is a `Development/Release` row in the weave docs workspace first and a version
-bump second. The row carries the version as its name, Date, Commit, `Fixes` (Issues) and
-`Ships` (Features) relations, and the release notes as its Description — the notes are
-mandatory. `scripts/export-development.mjs` refuses to run without a notes-bearing row
-named `v<package.json version>`, `syncDevelopment` refuses a manifest release without
-notes, and `test/development-sync.test.mjs` fails the build, so an unwritten release
-cannot pass the gate.
+A release starts with a notes-bearing `Development/Release` row in the canonical
+weave workspace on `:4400`: name `v<version>`, Date, Commit, Fixes and Ships relations,
+and Description. Preserve this tracker contract before bumping `package.json`.
 
 ```bash
-# 1. write the Release row (notes in Description) on the canonical workspace, :4400
-# 2. bump package.json
-node scripts/export-development.mjs        # 3. docs/development.json gains the release
-node scripts/changelog-fold.mjs            # 4. every changelog.d/ fragment moves under
-#    `## v<version>` in CHANGELOG.md and the fragments are deleted; edit the digest if
-#    needed
-node scripts/architecture.mjs              # 5. re-pin docs/architecture/ to the landed
-#    base, then land steps 2-5 through Gerrit as one change
-# 6. automatic: the main watcher tags and publishes it. Then confirm it did:
-gh release list -R grunion-ai/weave --limit 1   # the new version, marked Latest
+node scripts/export-development.mjs
+node scripts/changelog-fold.mjs
+node scripts/architecture.mjs
 ```
 
-Between releases nothing edits CHANGELOG.md. Each change adds its own fragment,
-`changelog.d/<short-slug>-<Issue or Feature number>.md`, holding its bullet(s), so no two
-open changes touch the same file and Gerrit rebases them without a hand (Issue #408: when
-every change added a bullet under `## Unreleased`, each landing sent every open change
-back for a hand rebase and a fresh gate). Step 4 folds the fragments, sorted by file name;
-it is idempotent, so a second run changes nothing. `test/changelog-fragments.test.mjs`
-guards both directions: it fails a commit that adds lines to CHANGELOG.md without changing
-the package.json version, and it fails a commit that changes `src/`, `public/`, `bin/` or
-`scripts/` and names `(Issue #N)` or `(Feature #N)` in its subject while adding no fragment
-(Issue #573: change 527 landed `e85ada8` with nine files and no fragment, and its fix reached
-the v0.4.54 notes only because the bullet was written by hand). A refactor or a docs-only
-change that owes no bullet says so in a `No-changelog: <reason>` trailer; a release commit,
-which bumps the version and deletes the fragments it folded, is exempt.
+Land the version, exported manifest, folded changelog and architecture map in one
+PR. Between releases every change adds its own
+`changelog.d/<short-slug>-<Issue or Feature number>.md`; only a version bump edits
+CHANGELOG.md. The fold sorts and deletes fragments. A refactor or documentation
+change without a release bullet carries `No-changelog: <reason>` in its commit.
+The changelog and development-sync tests enforce these contracts.
 
-Step 6 is the one users see. After the change lands and the main watcher mirrors the
-green gerrit/main to GitHub (rule 7), it runs `harness/scripts/weave-release-tags.mjs`:
-every version in the landed range with no `v<version>` tag gets an annotated
-`v<version>` tag on the commit that introduced it, pushed to GitHub, and a GitHub Release
-titled `weave v<version>` whose notes are that version's `## v<version>` section of
-CHANGELOG.md. A normal landing needs no hand on it. Without the tag and the Release a bump is
-invisible: `gh release list`, the repo's Releases sidebar and `git describe` keep naming
-the last tagged build, which is how an install sat on 0.4.4 while main was at 0.4.15
-(Issue #253). The notes are mandatory here too: a version with no `## v<version>`
-section is skipped rather than published empty, and the watcher files a weave Issue
-named `weave v<version> did not publish a GitHub Release`.
+After successful `tests` CI for a main push, the `release` workflow validates the
+same-repository event and successful `CI gate` in a read-only job. Its publishing
+job checks out the exact tested SHA and checks GitHub main again. A superseded run
+skips publication so the newer main run owns delivery. The publisher validates the
+version, matching tracker manifest and nonempty `## v<version>` changelog section
+before creating an immutable `v<version>` tag and GitHub Release. Existing published ancestor versions stay
+unchanged. A partial publication resumes only if its tag names the tested commit;
+a conflicting tag fails and is never moved.
 
-The check is not automatic. Whoever lands the bump confirms, the same day, that
-`gh release list -R grunion-ai/weave` names the new version as Latest. The watcher runs
-on the Mac that hosts Gerrit, from `~/.harness-serve`, a detached harness worktree kept at
-the harness `origin/main` (launchd jobs `ai.grunion.weave-review` and
-`ai.grunion.weave-deploy`). It once ran from a shared checkout that sat on another
-branch, and v0.4.16 went out untagged on 2026-09-10 because of it. The tagger compares
-against the tags and Releases on GitHub, never local tags.
-`node scripts/weave-release-tags.mjs --dry-run` in `~/.harness-serve` prints every version
-still owed a tag or a Release; write the missing CHANGELOG section or fix the push, then
-run it without `--dry-run`.
+The hosted supervisor at https://weave.grunion.ai polls GitHub releases every ten
+minutes. It downloads the tag's immutable SHA, checks health, and swaps workers.
+The release job polls health for at most 90 attempts, with ten-second intervals and
+five-second request timeouts. Success requires the exact package version and
+`supervisor.release` tag. A rejected update or timeout fails the workflow visibly.
+For a no-version-change landing, an existing image at the matching version is a
+valid baseline. The local deployment watcher separately follows verified GitHub
+main into `~/.weave-serve` and refreshes the local tracker and quality mirror.
+
+Recovery uses Actions' `release` workflow dispatch with the successful main push
+`tests` run ID. The same event, gate, SHA and current-main checks apply on retries.
+Confirm the workflow is green and the expected release is Latest:
+
+```bash
+gh release list -R grunion-ai/weave --limit 1
+curl -fsS https://weave.grunion.ai/api/health
+```
+
+Never hand-deploy Railway after a routine landing. The release tag is the hosted
+deployment. Container redeployment is reserved for Node, Dockerfile or supervisor
+changes. To revert application behavior, land a tested revert PR and cut a new
+version; never retarget an existing release tag.
 
 ## Architecture map
 
@@ -148,33 +99,12 @@ re-renders. Release step 5 re-pins it too, so every tagged version carries a map
 code it shipped. archify is a dev tool, found at `$ARCHIFY` or
 `~/.claude/skills/archify/bin/archify.mjs`; weave never depends on it.
 
-## Service operations
+## Retired Gerrit queue
 
-| What | How |
-| --- | --- |
-| Status | `launchctl list \| grep gerrit` · `curl http://localhost:8282/config/server/version` |
-| Restart | `launchctl kickstart -k gui/501/ai.grunion.gerrit-weave` |
-| Stop / start | `launchctl bootout gui/501/ai.grunion.gerrit-weave` / `launchctl bootstrap gui/501 ~/Library/LaunchAgents/ai.grunion.gerrit-weave.plist` |
-| Logs | `~/.gerrit/weave/logs/` (error_log, launchd.*.log) |
-| Site / config | `~/.gerrit/weave/etc/gerrit.config` (localhost-only: http 8282, ssh 29418) |
-| Agent REST credential | `~/.gerrit/weave/etc/agent-http-cred` (`user:http-password`, mode 600) |
-| Install gate | `node --test ~/Documents/harness.nosync/scripts/weave-gerrit.test.mjs` |
-
-Auth is `DEVELOPMENT_BECOME_ANY_ACCOUNT` — acceptable **only** because the service
-binds 127.0.0.1. Do not expose these ports; re-auth properly before any remote hosting.
-
-## GitHub mirror
-
-Gerrit is the source of truth; GitHub is the public mirror and nothing else. The main
-watcher pushes every green gerrit/main tip to GitHub fast-forward only (rule 7). If
-that push is ever refused, someone pushed GitHub directly: reconcile by merging
-GitHub main into gerrit/main in a temp worktree and pushing both, never force.
-
-## Rollback
-
-`launchctl bootout gui/501/ai.grunion.gerrit-weave`, delete `~/.gerrit/`, delete the
-`gerrit` remote and `.git/hooks/commit-msg`, `rm -rf .jj/`. The git repo is untouched
-by all of this — colocation and Gerrit are both additive.
+Gerrit and its review worker are retired from the landing path. Preserve their
+repositories and open-change exports until migrated draft PRs are reconciled.
+Do not run the old mirror or release publisher alongside GitHub delivery. Retained
+Gerrit refs are historical recovery material, not an authority for new landings.
 
 ## Shared test manager
 
@@ -191,7 +121,7 @@ callers also lease this queue. Use the CLI for predictable whole-job admission.
 | Batch targeted regressions | `npm test -- --targeted test/formula.test.mjs test/service.test.mjs` |
 | Inspect affected selection | `npm test -- --affected --base=HEAD --plan` |
 | Run affected selection | `npm test -- --affected --base=HEAD` |
-| Full landing verification | Gerrit poller runs `npm test` on the reviewed patchset |
+| Full landing verification | GitHub Actions `tests` runs every required suite; `CI gate` reports the result |
 | Queue and browser status | `npm test -- --status` |
 | Cancel one queued or active job | `npm test -- --cancel=<id>` |
 | Stop owned jobs and browser | `npm test -- --stop` |
@@ -231,7 +161,7 @@ are removed after process cleanup; stale manager-owned temp directories older th
 
 `WEAVE_TEST_MIN_FREE_GB`, `WEAVE_TEST_MIN_MEMORY_PERCENT`, `WEAVE_TEST_MAX_LOAD` and
 `WEAVE_TEST_QUEUE_WAIT_MS` override admission for a deliberately sized CI machine, or
-for a caller that is already serial, such as the Gerrit gate. A raw `node --test`
+for a caller that is already serial, such as a hosted CI runner. A raw `node --test`
 browser suite sends them with its lease. Keep the defaults for ad hoc runs on this
 shared workstation. One process holds one browser lease however many times its suites
 call `launch()`, and releases it when the last connection closes.
@@ -256,7 +186,7 @@ node scripts/flicker-sweep.mjs                         # 3 runs, keeps what 2 sa
 node scripts/flicker-sweep.mjs --journey open-row --runs 1 --min 1   # reproduce one
 ```
 
-The harness routine `weave-flicker` runs the sweep nightly against gerrit/main
+The harness routine `weave-flicker` runs the sweep nightly against GitHub main
 and files each confirmed finding as an Issue row carrying its fingerprint
 (`journey|kind|selector`) and the frames around it. The overnight fixer picks
 those rows up like any other. **Fixing one:** reproduce with the sweep, fix,
