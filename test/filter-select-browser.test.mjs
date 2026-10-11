@@ -24,7 +24,7 @@ const s = await launch('select filters and the count', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
   const view = () => weave.tableView(bugs).views[0];
-  const reset = () => weave.tableView(`${bugs.id}/${view().id}`, { filters: {}, sort: [] });
+  const reset = () => weave.tableView(`${bugs.id}/${view().id}`, { filters: {}, sort: [], search: '' });
   const rows = (page) => page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.length);
   const total = (page) => page.locator('.table-filter-popover .filter-total');
   const box = (page, group, name) => page.locator(`.table-filter-popover .filter-group[aria-label="${group}"]`).getByRole('checkbox', { name, exact: true });
@@ -94,7 +94,9 @@ if (s) {
       await page.click('.table-filter-btn');
       await settled(page, '1 of 5 bugs');
       await page.keyboard.press('Escape');
+      const cleared = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.request().postDataJSON()?.search === '');
       await page.fill('.table-search-input', '');
+      await cleared;
       weave.tableView(`${bugs.id}/${view().id}`, { deleted: true });
       await page.reload({ waitUntil: 'networkidle' });
       await page.click('.table-filter-btn');
