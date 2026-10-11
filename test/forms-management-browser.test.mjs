@@ -20,7 +20,8 @@ const app = await launch('Native form management', w => {
 if (app) for (const theme of ['light', 'dark']) for (const width of [390, 1280]) {
   test(`native forms lifecycle at ${width}px in ${theme}`, async () => {
     const { browser, base, table, weave, architect } = app;
-    const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
+    const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: theme });
+    const page = await context.newPage();
     try {
       await page.context().addCookies([{ name: 'wv_session', value: weave.createSession(architect.account.id).token, url: base }]);
       await page.goto(`${base}/#/db/${table.id}`);
@@ -52,7 +53,7 @@ if (app) for (const theme of ['light', 'dark']) for (const width of [390, 1280])
       const item = page.locator('[data-form-id]').filter({ has: page.getByText(title, { exact: true }) });
       await item.getByRole('button', { name: 'Copy link' }).click();
       assert.equal(await item.getByRole('link', { name: 'Open', exact: true }).getAttribute('href'), `${base}/f/${form.id}`);
-      const capture = await page.context().newPage();
+      const capture = await context.newPage();
       await capture.goto(`${base}/f/${form.id}`);
       await capture.getByLabel('Request title', { exact: true }).fill(`Submitted ${title}`);
       await capture.getByRole('button', { name: 'Send', exact: true }).click();
@@ -67,7 +68,7 @@ if (app) for (const theme of ['light', 'dark']) for (const width of [390, 1280])
       assert.equal(listForms(weave).find(f => f.id === form.id).enabled, false);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await page.screenshot({ path: `/tmp/weave-form-builder-${theme}-${width}.png`, fullPage: true });
-    } finally { await page.close(); }
+    } finally { await context.close(); }
   });
 }
 
