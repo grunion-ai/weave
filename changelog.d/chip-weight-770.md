@@ -1,0 +1,1 @@
+- A chip now pins its own weight at 400, so a state chip on the bold current row of a picker no longer turns bold and reads the same as the chip in the cell beside it (Issue #770).
