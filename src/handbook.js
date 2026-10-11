@@ -925,7 +925,11 @@ weave workspace require-auth
 weave workspace link-preview        # or --off
 \`\`\`
 
-The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for the workspace menu, the same one the **⋮** on the workspace page opens: the **Link preview before sign-in** switch, and **Delete workspace…**, which asks you to type its name to confirm, and it moves to the trash: the Trash row in the sidebar lists it under Workspaces, with a Restore; the default and the \`weave\` docs workspaces cannot be deleted. **Click the logo** at the left of the workspace page's title to pick an image, whether or not the workspace has one yet; **Remove logo**, the small **×** beside it, clears it. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
+The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for the workspace menu, the same one the **⋮** on the workspace page opens: the **Link preview before sign-in** switch. **Delete workspace** has left the app until Settings takes it (Feature #297). \`DELETE /api/workspaces/<id>\` still moves one to the trash, and the Trash row in the sidebar lists it under Workspaces with a Restore; the default and the \`weave\` docs workspaces cannot be deleted. **Click the logo** at the left of the workspace page's title to pick an image, whether or not the workspace has one yet; **Remove logo**, the small **×** beside it, clears it. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
+
+## Deleting
+
+Every menu deletes the same way: **Move to trash**, one click, for a table, a space, a record, a share page or a field. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu deletes for good. **Delete forever** lives on the Trash page and asks you to hold it.
 
 ## The space
 
@@ -2229,7 +2233,7 @@ A table can be read several ways. Each **view** keeps which columns show, their 
 
 ## The toolbar
 
-The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Stats → Filters → Group (List layout only) → Sort → Table actions (⋮)**. **Stats** opens the column statistics. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **Share…**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Delete table**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
+The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Stats → Filters → Group (List layout only) → Sort → Table actions (⋮)**. **Stats** opens the column statistics. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **Share…**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
 
 | Control | What it does |
 | --- | --- |

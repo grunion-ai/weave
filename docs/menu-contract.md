@@ -16,6 +16,7 @@ One builder draws every action menu, and each object kind has exactly one menu d
 | `menuCore.exportSection` | `public/menu-core.js` | Builds Export rows from the one format registry. |
 | `MENU_ROWS[kind](obj, ctx)` | `public/app.js` | Builds the live rows for one object: labels, runs, links. |
 | `menuFor(kind, obj, ctx)` | `public/app.js` | `assemble(kind, MENU_ROWS[kind](obj, ctx))`. Every trigger calls it. |
+| `trashRow({ remove, restore, after, undone })` | `public/app.js` | The one delete row every kind uses: **Move to trash**, then a **Moved to trash** toast whose **Undo** calls `restore`. |
 | `menu(items, opts)` | `public/app.js` | Draws the panel: the desktop popover or the phone bottom sheet. |
 | `kindDots`, `kindContext` | `public/app.js` | The ⋮ button and the right-click listener for a kind. |
 
@@ -33,15 +34,33 @@ Sections run in a fixed order with a thin separator between them. Only Export sh
 
 | Kind | Settings | Organize | Share | Export | Delete |
 | --- | --- | --- | --- | --- | --- |
-| Table | | Move to space…, Duplicate | Share…, New share page…, Forms… (architects), Copy create link | CSV | Delete table |
+| Table | | Move to space…, Duplicate | Share…, New share page…, Forms… (architects), Copy create link | CSV | Move to trash |
 | Record (decks too) | | Duplicate | Share… | Markdown, HTML, PDF | Move to trash |
 | Document section | | | | Markdown, Mermaid, HTML, PDF | |
-| Space | | | | | Delete space |
-| Share page | | | | | Delete view |
-| Workspace | | | Link preview before sign-in (switch) | | Delete workspace… |
-| Field (column header) | Field settings… | Insert field… | | | Delete field |
+| Space | | | | | Move to trash |
+| Share page | | | | | Move to trash |
+| Workspace | | | Link preview before sign-in (switch) | | (none, Feature #297) |
+| Field (column header) | Field settings… | Insert field… | | | Move to trash |
 
-Share… keeps its current place while its redesign is parked. The delete rows keep today's behaviour until the trash-with-Undo stage lands.
+Share… keeps its current place while its redesign is parked.
+
+## Delete
+
+Every delete row is `trashRow`, labelled **Move to trash**. One click moves the object to the trash and raises a **Moved to trash** toast with **Undo**. Undo calls the kind's restore route and puts the object back where it was.
+
+| Kind | Trash | Undo | Back where it was |
+| --- | --- | --- | --- |
+| Table | `DELETE /api/tables/:id` | `POST /api/tables/:id/restore` | its place in the sidebar; reopens if it was open |
+| Space | `DELETE /api/spaces/:id` | `POST /api/spaces/:id/restore` | its place in the sidebar, with its tables; reopens if it was open |
+| Record | `DELETE /api/entities/:id` | `POST /api/entities/:id/restore` | its page, or its grid row from the dock |
+| Share page | `DELETE /api/views/:id` | `POST /api/views/:id/restore` | its row on the workspace page; reopens if it was open |
+| Field | `DELETE /api/tables/:table/fields/:field` | `POST /api/tables/:table/fields/:field/restore` | its column, with its values |
+
+The multi-select toolbar trash uses the same verb, `TRASHED`, and the same Undo; its toast adds the count.
+
+A hold is for permanent delete only. The builder keeps `hold: true` rows for it, and no kind's definition uses one today. **Delete forever** on the Trash page keeps its hold until Settings takes permanent delete (Feature #295).
+
+Workspace delete has left the interface until Settings takes it (Feature #297). Its routes stay: `DELETE /api/workspaces/:id` trashes a workspace and the Trash page restores it.
 
 ## Triggers
 
@@ -50,7 +69,7 @@ Share… keeps its current place while its redesign is parked. The delete rows k
 | Table | the header ⋮ (Table actions), a right-click on the table header, the sidebar row's ⋮, a right-click on the sidebar row |
 | Record | the header ⋮, a right-click on the record header, the same two in the dock |
 | Document section | the section's ⋮, a right-click on the section head |
-| Space | the header ⋮, a right-click on the space header, a right-click on its sidebar row |
+| Space | the header ⋮, a right-click on the space header, the sidebar row's ⋮, a right-click on its sidebar row |
 | Share page | the header ⋮, a right-click on its header, a right-click on its row on the workspace page |
 | Workspace | the ⋮ on the workspace page, a right-click on its header, a click on the current workspace's rail chip, a right-click on any rail chip |
 | Field | the column ⋮, a right-click on the column header |

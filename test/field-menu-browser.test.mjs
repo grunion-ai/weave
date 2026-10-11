@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, styleOf } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 
 let tasks;
 const s = await launch('field menu', (weave) => {
@@ -64,7 +64,7 @@ if (s) {
     try {
       await openMenu(page);
       const rows = await rowMetrics(page);
-      assert.deepEqual(rows.map((r) => r.text), ['Field settings…', 'Insert field…', 'Delete field'], 'Settings, Organize, Delete (Feature #296)');
+      assert.deepEqual(rows.map((r) => r.text), ['Field settings…', 'Insert field…', 'Move to trash'], 'Settings, Organize, Delete (Feature #296)');
       const lefts = new Set(rows.map((r) => r.labelLeft));
       assert.equal(lefts.size, 1,
         `labels must share one left edge, found ${[...lefts].join(', ')} — ${rows.map((r) => r.text).join(' | ')}`);
@@ -110,7 +110,7 @@ if (s) {
         seen.push(await page.evaluate(() => document.activeElement?.textContent?.trim() ?? ''));
         await page.keyboard.press('ArrowDown');
       }
-      assert.ok(seen.some((t) => /Delete field/.test(t)),
+      assert.ok(seen.some((t) => /Move to trash/.test(t)),
         `↑↓ never landed on the delete row — visited: ${seen.join(' → ')}`);
     } finally { await page.close(); }
   });
@@ -131,39 +131,19 @@ if (s) {
   const hasField = (name) =>
     Object.values(weave.getTable(tasks.id).fields).some((f) => f.name === name);
 
-  const hold = async (page, locator, ms) => {
-    const box = await locator.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(ms);
-    await page.mouse.up();
-  };
-
-  test('the hold still gates the delete, and says so before it is pressed', async () => {
+  test('one click moves the field to the trash, no hold, and the toast\'s Undo brings it back (Issue #768, Feature #296)', async () => {
     const page = await grid();
     try {
       const pop = await openMenu(page, 'Estimate');
       const del = pop.locator('.wv-menu-row.wv-menu-danger');
-      assert.equal((await del.locator('.hold-hint').textContent()).trim().toLowerCase(), 'hold',
-        'the row advertises its gesture at rest');
-
-      await hold(page, del, 200);
-      await page.waitForTimeout(350);
-      assert.ok(hasField('Estimate'), 'a cancelled hold must delete nothing');
-
-      const box = await del.boundingBox();
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
-      const fillA = () => { const f = document.querySelector('.hold-btn.holding .hold-fill'); return f ? new DOMMatrixReadOnly(getComputedStyle(f).transform).a : null; };
-      await page.waitForFunction(`(${fillA})() > 0.15`, null, { polling: 'raf', timeout: 10000 }).catch(() => {});
-      const mid = await page.evaluate(fillA);
-      assert.ok(mid > 0.15 && mid < 0.95, `the fill must be part-swept mid-hold, was ${mid}`);
-      assert.equal(await styleOf(del.locator('.hold-hint'), 'opacity', '0'), '0',
-        'and the hint gets out of the way once the press starts');
-      await page.waitForSelector('.hold-btn.holding', { state: 'detached', timeout: 10000 }).catch(() => {});
-      await page.mouse.up();
-
-      assert.equal(await eventually(() => hasField('Estimate'), false), false, 'a completed hold deletes the field');
+      assert.equal((await del.textContent()).trim(), 'Move to trash');
+      assert.equal(await del.locator('.hold-hint, .hold-fill').count(), 0, 'the row carries no hold gesture');
+      await del.click();
+      assert.equal(await eventually(() => hasField('Estimate'), false), false, 'one click trashes the field');
+      const toast = page.locator('.wv-toast', { hasText: 'Moved to trash' }).last();
+      await toast.locator('.wv-toast-action', { hasText: 'Undo' }).click();
+      assert.equal(await eventually(() => hasField('Estimate'), true), true, 'Undo restores it');
+      await page.waitForSelector('.wv-grid thead th.col-head[data-col="Estimate"]');
     } finally { await page.close(); }
   });
 
@@ -197,14 +177,12 @@ if (s) {
             panelLum: lum(bg(pop)),
             dangerLum: lum(getComputedStyle(danger).color),
             normalLum: lum(getComputedStyle(normal).color),
-            fill: getComputedStyle(pop.querySelector('.hold-fill')).backgroundImage,
           };
         });
         assert.ok(theme === 'light' ? paint.panelLum > 0.5 : paint.panelLum < 0.5,
           `${theme}: the panel paints the wrong way (luminance ${paint.panelLum.toFixed(3)})`);
         assert.ok(Math.abs(paint.dangerLum - paint.normalLum) > 0.02,
           `${theme}: the destructive row does not read as destructive`);
-        assert.match(paint.fill, /gradient/, `${theme}: the sweep keeps its leading edge`);
         await page.keyboard.press('Escape');
       }
     } finally { await page.close(); }

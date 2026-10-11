@@ -25,39 +25,27 @@ if (s) {
   const chip = (page, name) => page.locator(`#ws-list .ws-icon[title^="${name} "]`);
   const menuItems = (page) => page.locator('.ws-ctx .wv-menu-row').allTextContents();
 
-  test('right-click on a sibling chip offers Delete; the default chip does not', async () => {
+  test('no workspace menu offers Delete workspace: not a sibling chip, not the default chip (Feature #297)', async () => {
     const page = await open();
-    await chip(page, 'scratch').click({ button: 'right' });
-    await page.waitForSelector('.ws-ctx .wv-menu-row');
-    assert.ok((await menuItems(page)).some((t) => /Delete workspace/.test(t)), 'scratch offers a delete');
-    await page.keyboard.press('Escape');
-    await chip(page, 'main').click({ button: 'right' });
-    await page.waitForSelector('.ws-ctx .wv-menu-row');
-    const items = await menuItems(page);
-    assert.ok(!items.some((t) => /Delete workspace/.test(t)), `the default offers no delete: ${items}`);
-    assert.ok(items.some((t) => /Link preview before sign-in/.test(t)), 'the current workspace still opens its menu (Feature #296)');
-    await page.keyboard.press('Escape');
-    assert.equal(await page.locator('.ws-ctx').count(), 0, 'Escape closes the menu');
+    for (const name of ['scratch', 'main']) {
+      await chip(page, name).click({ button: 'right' });
+      await page.waitForSelector('.ws-ctx .wv-menu-row');
+      const items = (await menuItems(page)).map((t) => t.trim());
+      assert.deepEqual(items, ['Link preview before sign-in'], `${name} opens its menu without a delete: ${items}`);
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('.ws-ctx').count(), 0, 'Escape closes the menu');
+    }
     await page.close();
   });
 
-  test('delete confirms by typing the name, then Trash in the sidebar offers restore, in dark too', async () => {
+  test('a workspace trashed through the API lists in Trash in the sidebar with Restore, in dark too; the routes stay (Feature #297)', async () => {
     const page = await open('/', 'dark');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), 'dark');
-    await chip(page, 'scratch').click({ button: 'right' });
-    await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Delete workspace' }).click();
-    await page.waitForSelector('#modal input[name="confirm"]');
-    assert.match(await page.textContent('#modal'), /Trash in the sidebar/);
-    assert.doesNotMatch(await page.textContent('#modal'), /corner|glyph/);
-    await page.fill('#modal input[name="confirm"]', 'scratchy');
-    await page.click('#modal button[type="submit"]');
-    await page.waitForSelector('.wv-toast.err');
-    assert.equal(await page.locator('#modal').count(), 1, 'the dialog stays open on a wrong name');
-    assert.equal(await chip(page, 'scratch').count(), 1);
-    await page.fill('#modal input[name="confirm"]', 'scratch');
-    await page.click('#modal button[type="submit"]');
-    await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
-    assert.equal(await chip(page, 'scratch').count(), 0, 'the deleted workspace leaves the rail');
+    const { id } = (await fetch(`${base}/api/workspaces`).then((r) => r.json())).find((w) => w.name === 'scratch');
+    assert.equal((await fetch(`${base}/api/workspaces/${id}`, { method: 'DELETE' })).status, 200, 'DELETE /api/workspaces/:id still trashes');
+    await page.reload();
+    await page.waitForSelector('#ws-list .ws-icon');
+    assert.equal(await chip(page, 'scratch').count(), 0, 'the trashed workspace leaves the rail');
     const res = await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json());
     assert.ok(res.find((w) => w.name === 'scratch')?.deletedAt, 'the server holds the tombstone');
     await assertNoCornerTrash(page);
@@ -88,17 +76,17 @@ if (s) {
     await page.close();
   });
 
-  test('the workspace page carries the same delete; the default page has none', async () => {
+  test('the workspace page menu carries no delete either, on a sibling or the default (Feature #297)', async () => {
     const list = await fetch(`${base}/api/workspaces`).then((r) => r.json());
     const row = list.find((w) => w.name === 'scratch');
-    const page = await open(`/w/${row.id}/`);
-    await page.waitForSelector('.view-header .dots-btn');
-    await page.click('.view-header .dots-btn');
-    assert.ok(await page.locator('.wv-menu .wv-menu-row', { hasText: 'Delete workspace' }).count(), 'scratch page offers delete');
-    await page.close();
-    const home = await open('/');
-    await home.waitForSelector('.view-header');
-    assert.equal(await home.locator('.wv-menu .wv-menu-row', { hasText: 'Delete workspace' }).count(), 0, 'the default page offers none');
-    await home.close();
+    for (const path of [`/w/${row.id}/`, '/']) {
+      const page = await open(path);
+      await page.waitForSelector('.view-header .dots-btn');
+      await page.click('.view-header .dots-btn');
+      await page.waitForSelector('.wv-menu .wv-menu-row');
+      assert.equal(await page.locator('.wv-menu .wv-menu-row', { hasText: 'Delete workspace' }).count(), 0, `${path} offers no delete`);
+      assert.equal(await page.locator('#modal input[name="confirm"]').count(), 0, 'and no confirm dialog');
+      await page.close();
+    }
   });
 }

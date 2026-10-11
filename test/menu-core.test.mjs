@@ -119,8 +119,13 @@ test('the definitions match the target menu table', () => {
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
   assert.deepEqual(shape('space'), { delete: ['delete'] });
   assert.deepEqual(shape('share-page'), { delete: ['delete'] });
-  assert.deepEqual(shape('workspace'), { share: ['link-preview'], delete: ['delete'] });
+  assert.deepEqual(shape('workspace'), { share: ['link-preview'] });
   assert.deepEqual(shape('field'), { settings: ['settings'], organize: ['insert'], delete: ['delete'] });
+});
+
+test('the workspace menu holds no delete row: workspace delete leaves the interface (Feature #297)', () => {
+  assert.equal(core.definition('workspace').delete, undefined);
+  assert.throws(() => core.assemble('workspace', { delete: { label: 'Delete workspace…', run() {} } }), /"delete" is not on the workspace menu/);
 });
 
 test('only a kind whose settings live in a dialog with no inline surface declares a Settings row', () => {
