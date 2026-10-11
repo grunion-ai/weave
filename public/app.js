@@ -23,6 +23,9 @@ const svgEl = (tag, attrs = {}, ...children) => {
 };
 
 const chevron = () => iconEl('lucide:chevron-right', 'wv-icon');
+const disclosure = (cls, open, attrs = {}) => el('button', { class: `${cls} wv-disclosure`, type: 'button', 'aria-expanded': String(open), ...attrs }, chevron());
+const setDisclosure = (btn, open) => btn.setAttribute('aria-expanded', String(open));
+const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden': 'true' }, chevron());
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
 
@@ -1102,12 +1105,10 @@ function renderNav() {
           }
         },
       }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
-      el('button', {
-        class: 'nav-caret' + (isFolded ? '' : ' open'),
-        title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`, type: 'button',
-        'aria-expanded': String(!isFolded),
+      disclosure('nav-caret', !isFolded, {
+        title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`,
         onclick: () => toggleFold(space.spaceId),
-      }, chevron()),
+      }),
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
         title: `New table in ${space.space}`, type: 'button',
@@ -6732,8 +6733,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
     body.replaceChildren();
     if (view === 'days') {
       body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, `${dc.MONTHS_LONG[m - 1]} ▾`),
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, `${y} ▾`) : el('span'),
+        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, dc.MONTHS_LONG[m - 1], lucideEl('chevron-down', 'wv-icon wv-icon-xs')),
+        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, String(y), lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span'),
         el('span', { class: 'date-pop-spacer' }),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '↑'),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '↓')));
@@ -6774,7 +6775,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
         } }, 'Now')));
     } else if (view === 'months') {
       body.append(el('div', { class: 'date-pop-head' },
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, `${y}${hasD ? '' : ' ▾'}`) : el('span', { class: 'date-pop-title' }, 'Month'),
+        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, String(y), hasD ? null : lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span', { class: 'date-pop-title' }, 'Month'),
         el('span', { class: 'date-pop-spacer' }),
         ...(hasY ? [
           el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
@@ -9350,11 +9351,9 @@ function refreshHeadingFolds(st) {
     const key = headKey(blocks[i]);
     const isFolded = folded.has(key);
     const r = blocks[i].getBoundingClientRect();
-    carets.push(el('button', {
-      class: 'doc-fold' + (isFolded ? ' folded' : ''),
-      type: 'button',
+    carets.push(disclosure('doc-fold' + (isFolded ? ' folded' : ''), !isFolded, {
       title: isFolded ? 'Unfold section' : 'Fold section',
-      style: `top:${r.top - base.top}px; height:${r.height}px;`,
+      style: `top:${r.top - base.top + r.height / 2}px;`,
       onclick: () => {
         const next = docFoldState(st.entityId, st.field);
         next.has(key) ? next.delete(key) : next.add(key);
@@ -9844,11 +9843,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     }, iconEl('lucide:code-xml', 'wv-icon')) : null;
     if (appFrame) { host.classList.add('hidden'); body.prepend(appFrame); }
     if (isDiagram) drawDiagram();
-    const caret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse section',
+    const caret = disclosure('doc-caret', true, {
+      title: 'Collapse section',
       onclick: () => {
         const open = body.classList.toggle('hidden');
         caret.classList.toggle('closed', open);
+        setDisclosure(caret, !open);
         docSectionCollapse(id, f.name, open);
       },
     });
@@ -9869,6 +9869,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     if (docSectionCollapse(id, f.name)) {
       body.classList.add('hidden');
       caret.classList.add('closed');
+      setDisclosure(caret, false);
     }
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
@@ -10008,9 +10009,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       values.classList.toggle('hidden', closed);
       summary.classList.toggle('hidden', !closed);
       fieldsCaret.classList.toggle('closed', closed);
+      setDisclosure(fieldsCaret, !closed);
     };
-    const fieldsCaret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse fields',
+    const fieldsCaret = disclosure('doc-caret', true, {
+      title: 'Collapse fields',
       onclick: (e) => {
         e.stopPropagation();
         const closed = !values.classList.contains('hidden');
@@ -10078,11 +10080,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
     const frame = el('iframe', { class: 'deck-frame', src: deckUrl, allowfullscreen: '', allow: 'fullscreen', title: label });
     const body = el('div', { class: 'doc-section-body' }, frame);
-    const caret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse section',
+    const caret = disclosure('doc-caret', true, {
+      title: 'Collapse section',
       onclick: () => {
         const open = body.classList.toggle('hidden');
         caret.classList.toggle('closed', open);
+        setDisclosure(caret, !open);
         docSectionCollapse(id, label, open);
       },
     });
@@ -10115,7 +10118,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         menu),
       body);
     left.prepend(section);
-    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); }
+    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
   }
   right.append(commentsPanel, actPanel);
   activityPanel.mounted(id, mount);
@@ -10565,7 +10568,7 @@ async function schemaDisclosure(parent, draw) {
   let open = false;
   try { open = localStorage.getItem(SCHEMA_OPEN_KEY) === '1'; } catch {}
   const body = el('div', { class: 'wv-schema-body' });
-  const box = el('details', { class: 'wv-schema' }, el('summary', {}, 'Schema'), body);
+  const box = el('details', { class: 'wv-schema' }, el('summary', {}, summaryChevron(), 'Schema'), body);
   let drawn = null;
   const fill = () => (drawn ??= Promise.resolve(draw(body)).catch((err) => toast(err.message, true)));
   box.addEventListener('toggle', () => {
@@ -11059,7 +11062,7 @@ async function membersSection(parent) {
   const [acc, inv] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites')]);
   if (acc.status !== 'fulfilled' || inv.status !== 'fulfilled') return;
   const body = el('div', { class: 'wv-members' });
-  const box = el('details', { class: 'wv-members-box' }, el('summary', {}, 'Members'), body);
+  const box = el('details', { class: 'wv-members-box' }, el('summary', {}, summaryChevron(), 'Members'), body);
   const day = (iso) => String(iso ?? '').slice(0, 10);
   const draw = (accounts, invites, link = null) => {
     const email = el('input', { class: 'form-control', type: 'email', placeholder: 'name@company.com', 'aria-label': 'Email to invite', required: '' });
