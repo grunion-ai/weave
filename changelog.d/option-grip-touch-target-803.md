@@ -1,0 +1,1 @@
+- Phone: the reorder grip on a workflow state or select option in the field tray is a 44x44 touch target at the row's edge, so a long press no longer has to land on a 16px sliver (Issue #803).
