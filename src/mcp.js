@@ -365,7 +365,12 @@ export const TOOLS = [
   },
   {
     name: 'weave_delete_field',
-    description: 'Delete a field and its values from every entity of the table. Not recoverable.',
+    description: 'Move a field to the trash: the column leaves the table and its values leave the rows, held in the trash with the column\'s place in every view. Pass hard: true to purge it for good (also purges a field already in the trash).',
+    inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db', 'field'] },
+  },
+  {
+    name: 'weave_restore_field',
+    description: 'Restore a field out of the trash by name or id: the column, its values, its place in the field order and in every view, and for a relation its inverse and every link come back. Refused while a live field holds the name or the table is in the trash.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' } }, required: ['db', 'field'] },
   },
   {
@@ -390,12 +395,12 @@ export const TOOLS = [
   },
   {
     name: 'weave_views',
-    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | share | unshare. Sharing mints a read-only public share grant on the view (weave_shares lists it); the /s/<token> URL renders that view read-only, even when the workspace requires auth.',
+    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | restore | share | unshare. delete moves the view to the trash (hard: true purges); list with trash: true lists the trash; restore brings a trashed view and its share links back. Sharing mints a read-only public share grant on the view (weave_shares lists it); the /s/<token> URL renders that view read-only, even when the workspace requires auth.',
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string' }, view: { type: 'string' }, name: { type: 'string' },
-        blocks: { type: 'array', description: '[{table, where?, view?}]' },
+        blocks: { type: 'array', description: '[{table, where?, view?}]' }, hard: { type: 'boolean' }, trash: { type: 'boolean' },
       },
       required: ['action'],
     },
@@ -440,10 +445,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_workspace',
-    description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits and -, is the /w/<slug>/ address and the <slug>.<base domain> host, description, linkPreview) | logo (contentBase64 + name + mime) | clear-logo.',
+    description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits and -, is the /w/<slug>/ address and the <slug>.<base domain> host, description, linkPreview) | logo (contentBase64 + name; the image type is read from the bytes) | clear-logo.',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, mime: { type: 'string' }, contentBase64: { type: 'string' } },
+      properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, contentBase64: { type: 'string' } },
     },
   },
   {
@@ -569,7 +574,8 @@ export const SUMMARY = {
   weave_delete_table: 'trash a table (hard: true purges)',
   weave_restore_table: 'restore a trashed table',
   weave_rollback_field: 'put a field back to an earlier config',
-  weave_delete_field: 'delete a field and its values',
+  weave_delete_field: 'trash a field (hard: true purges)',
+  weave_restore_field: 'restore a trashed field',
   weave_apply_schema: 'apply a whole schema document (dryRun plans)',
   weave_views: 'saved multi-table pages',
   weave_shares: 'share links',
@@ -763,7 +769,9 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_rollback_field':
       return weave.rollbackFieldConfig(args.activity, { table: args.db ?? null, field: args.field ?? null });
     case 'weave_delete_field':
-      return weave.deleteField(args.db, args.field);
+      return weave.deleteField(args.db, args.field, { hard: Boolean(args.hard) });
+    case 'weave_restore_field':
+      return weave.restoreField(args.db, args.field);
     case 'weave_apply_schema':
       return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive) }) };
     case 'weave_build': {
@@ -772,13 +780,14 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     }
     case 'weave_views':
       switch (args.action) {
-        case 'list': return { views: weave.listViews() };
+        case 'list': return { views: weave.listViews({ trash: Boolean(args.trash) }) };
         case 'get': return weave.resolveView(args.view);
         case 'create': return weave.createView({ name: args.name, blocks: args.blocks ?? [] });
-        case 'delete': return weave.deleteView(args.view);
+        case 'delete': return weave.deleteView(args.view, { hard: Boolean(args.hard) });
+        case 'restore': return weave.restoreView(args.view);
         case 'share': return weave.shareView(args.view);
         case 'unshare': return weave.unshareView(args.view);
-        default: throw new Error(`Unknown views action '${args.action}' (list, get, create, delete, share, unshare)`);
+        default: throw new Error(`Unknown views action '${args.action}' (list, get, create, delete, restore, share, unshare)`);
       }
     case 'weave_shares': {
       const asRole = caller?.role ? Weave.roleName(caller.role) : null;
@@ -813,7 +822,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       switch (args.action ?? 'get') {
         case 'get': return weave.getWorkspace();
         case 'update': return (caller?.updateWorkspace ?? ((p) => weave.updateWorkspace(p)))(pick(args, ['name', 'description', 'linkPreview']));
-        case 'logo': return weave.setWorkspaceLogo({ name: args.name ?? 'logo.png', mime: args.mime ?? 'image/png', bytes: args.contentBase64 });
+        case 'logo': return weave.setWorkspaceLogo({ name: args.name ?? 'logo.png', bytes: args.contentBase64 });
         case 'clear-logo': weave.deleteWorkspaceLogo(); return { logo: false };
         default: throw new Error(`Unknown workspace action '${args.action}' (get, update, logo, clear-logo)`);
       }

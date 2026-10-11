@@ -1,0 +1,1 @@
+- `GET /api/health` answers `{ok, name}` to an anonymous caller and the version alone to a signed-in editor or observer; the build, sizes, workspace name and backup state are an architect's to see. Health probes keep their 200 (Issue #520)

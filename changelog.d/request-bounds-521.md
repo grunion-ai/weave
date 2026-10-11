@@ -1,0 +1,1 @@
+- The task applet reads a request body only when the applet is configured and the declared size is under the 10 MiB cap, answering 413 otherwise; every route `limit` (entity lists and queries, activity, audit, undo, document revisions, search) is clamped to 500, the most the UI asks for, and `WEAVE_MAX_ROWS` raises it (Issue #521)
