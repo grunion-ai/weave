@@ -137,8 +137,8 @@ carries the schema tools.
 
 Seventeen tools by default, the ones a workspace build uses, `weave_build` among
 them, plus `weave_call`,
-which reaches the other forty-four. `weave mcp --tools all` (or
-`WEAVE_MCP_TOOLS=all`) lists all 61. The same undo the UI has, and
+which reaches the other forty-seven. `weave mcp --tools all` (or
+`WEAVE_MCP_TOOLS=all`) lists all 64. The same undo the UI has, and
 `weave_vocabulary` so an agent reads the allowed values instead of guessing. Full map:
 [Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
 
@@ -218,7 +218,7 @@ servers, so one config block works in each of them:
 }
 ```
 
-It exposes the whole platform as 61 tools. `tools/list` names the core build
+It exposes the whole platform as 64 tools. `tools/list` names the core build
 set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave_create_entity`,
 `weave_update_entity`, `weave_create_space`, `weave_create_table`,
 `weave_add_field`, `weave_update_field`, `weave_add_relation`,
@@ -229,7 +229,7 @@ set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave
 `weave_views`, `weave_automations`, `weave_activity` and the rest) in one line
 each; `weave_call {name: "help", args: {tool}}` returns a tool's full schema.
 Add `--tools all` to the `mcp` args, or set `WEAVE_MCP_TOOLS=all`, to list all
-61 directly. An agent designs a schema,
+64 directly. An agent designs a schema,
 fills it, and configures how it reads — icons, option colors, column widths and
 order, hidden columns, saved views — without a human opening the UI.
 
@@ -265,27 +265,27 @@ form is not yet accepted.
 
 ## Self-hosting
 
-A server install is the local install plus a door. The container is the same
+A hosted install is the local install plus a door. The container is the same
 on every target and the Handbook carries the guides (open **Handbook → Guide**
 on any instance, including the one you just started):
 
-- **Self-host weave: choose your door** — the two authentication surfaces
+- **Self-host weave: choose your door**: the two authentication surfaces
   (an edge gate, an identity provider) and the rule: the surface is the
   operator's choice. The built-in passkey door was removed after 0.4.52.
-- **Door A: an edge gate** — Cloudflare Access, Tailscale, Caddy, oauth2-proxy,
+- **Door A: an edge gate**: Cloudflare Access, Tailscale, Caddy, oauth2-proxy,
   Authelia: one config block and one check each.
 - **Door C: sign in with a provider**: one OpenID Connect provider (Clerk,
   Auth0, Keycloak, Authentik, Google). `weave account link <name>` mints a
   one-time invite link that opens an account to it; signing in creates none,
-  and weave stores no email. `WEAVE_ORIGIN`
+  and weave keeps one verified email per sign-in identity, nothing else. `WEAVE_ORIGIN`
   names the origin the provider sends people back to. Agents keep `wv_` tokens.
-- **Deploy: Railway** — project from GitHub, volume at `/data`, variables,
+- **Deploy: Railway**: project from GitHub, volume at `/data`, variables,
   custom domain, one replica.
-- **Deploy: Fly.io, Render, a VPS, Docker** — one section each, same shape;
+- **Deploy: Fly.io, Render, a VPS, Docker**: one section each, same shape;
   the service unit lives here.
-- **Backup and restore** — `weave backup` (one sealed tar of every workspace,
-  attachments and keystore), `weave restore`, the nightly switch, retention.
-- **Environment reference** — every variable, its default, and what breaks
+- **Backup and restore**: `weave backup` (one sealed tar of every workspace, attachments
+  and keystore), `weave restore`, the nightly switch, retention.
+- **Environment reference**: every variable, its default, and what breaks
   when it is wrong.
 
 Quick start with Docker, using the `Dockerfile` and `compose.yaml` in the repo:
@@ -295,8 +295,9 @@ docker compose up -d        # http://127.0.0.1:4400, data in the weave-data volu
 ```
 
 `railway.json` and `fly.toml` are the platform manifests for the same image.
-Whatever the target, put a door in front before the port is reachable from
-anywhere but your own machine.
+Whatever the target, put a door in front and run `weave workspace require-auth`
+before the port is reachable from anywhere but your own machine. The threat
+model behind that rule is in [SECURITY.md](SECURITY.md).
 
 ## What weave is not
 
@@ -335,7 +336,7 @@ graph — is the model weave implements, in a single file you own. See
 [docs/PARITY.md](docs/PARITY.md) for the feature-by-feature matrix.
 
 **Can AI agents use it?**
-That is the point. The MCP server exposes 61 tools covering schema design,
+That is the point. The MCP server exposes 64 tools covering schema design,
 CRUD, documents, relations, workflow states, search, automations, and CSV
 import/export, seventeen of them listed by default and the rest one `weave_call`
 away. Agents can build the schema, not just fill it in.
@@ -383,23 +384,24 @@ README screenshots are regenerated with `node scripts/screenshots.mjs`.
 
 ## Security
 
-weave ships with authentication off. Until a workspace runs
-`weave workspace require-auth`, anyone who reaches the port can do everything
-an architect can in it. The server binds `127.0.0.1`, so a local install stays
-private to your machine.
-
-Before anyone else can reach a self-hosted install, put a door in front of it
-(see [Self-hosting](#self-hosting)) and turn on `require-auth`. Every page and
-API route then refuses a caller without a `wv_` token or a signed-in session.
-Never expose the port directly.
+Authentication is off until an architect runs `weave workspace require-auth`
+on a workspace. Until then, anyone who reaches the port does everything an
+architect can in it. A local install binds `127.0.0.1`, so it stays private to
+your machine. The container binds `0.0.0.0` for the platform's proxy, so before
+anyone else can reach a hosted install, put a door in front of it (see
+[Self-hosting](#self-hosting)) and run `require-auth`. Every page and API route
+then refuses a caller without a `wv_` token or a signed-in session.
 
 Roles stop at the workspace. An observer reads and comments, an editor writes
 rows, and an architect changes structure, accounts and keys.
 
-Documents may contain raw HTML, which renders same-origin — treat access to a
-shared workspace the way you'd treat write access to a repo.
+A document of kind `html` renders on the application's origin, so script an
+editor places in one runs for whoever opens it. We are reviewing that
+limitation. Until it changes, grant editor access the way you grant write
+access to a repository.
 
-To report a vulnerability, see [SECURITY.md](SECURITY.md).
+The threat model, the scope and private reporting are in
+[SECURITY.md](SECURITY.md).
 
 ## License
 

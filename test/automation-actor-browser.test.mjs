@@ -18,6 +18,7 @@ const s = await launch('automation actor', (w) => {
   w.actor = 'local';
   w.addComment(rows[0].id, { author: 'automation', text: 'Logged by an old rule.' });
   w.addComment(rows[0].id, { author: `workflow:${rule.id}`, text: 'Logged by the rule.' });
+  w.addComment(rows[0].id, { author: `kyle via ${TOKEN}`, text: 'Logged through MCP.' });
   const workflows = Object.values(w.state.tables).find((x) => x.system === 'workflows');
   const broken = w.createEntity(workflows.id, { name: 'Ping the webhook', Health: 'Failed', 'Health Reason': 'The webhook answered 500' });
   member.updateWorkspace({ name: 'member' });
@@ -53,8 +54,8 @@ if (s) {
     await page.locator('.picker-pop .picker-list').getByText(name, { exact: true }).first().click();
   };
 
-  test('a write through an MCP client is a person chip: the name, "via MCP", never the client id', async () => {
-    const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+  for (const colorScheme of ['light', 'dark']) test(`a write through an MCP client is a person chip: the name, "via MCP", never the client id (${colorScheme})`, async () => {
+    const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, colorScheme });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
     const cell = page.locator(`tr[data-eid="${rows[0].id}"] td[data-sys="Created By"] .k-actor`);
     await cell.waitFor();
@@ -71,6 +72,10 @@ if (s) {
     assert.equal(await authors.nth(0).locator('.k-actor-wf.is-inline .k-label').textContent(), 'Automation', 'a legacy author is a neutral Automation label');
     assert.equal(await authors.nth(1).locator('.k-actor-wf a').getAttribute('href'), `#/entity/${rule.id}`, 'a workflow author is the rule\'s chip');
     await page.waitForFunction(() => document.querySelectorAll('.comment .who .k-actor-wf .k-label')[1]?.textContent === 'Close out on Done');
+    assert.equal(await authors.nth(2).locator('.k-actor .k-label').textContent(), 'Kyle', 'an MCP author is the person chip');
+    assert.match(await authors.nth(2).locator('.k-actor-via').textContent(), /via MCP/);
+    const label = authors.nth(2).locator('.k-actor .k-label');
+    assert.notEqual(await label.evaluate((n) => getComputedStyle(n).color), await page.evaluate(() => getComputedStyle(document.body).backgroundColor), `the chip reads in ${colorScheme}`);
     await page.goto(`${base}/#/activity/${rows[0].id}`, { waitUntil: 'networkidle' });
     await page.locator('.activity-row .k-actor').first().waitFor();
     assert.doesNotMatch(await page.locator('body').innerText(), new RegExp(TOKEN));

@@ -21,6 +21,14 @@ test('the three actor shapes, and nothing', () => {
   assert.deepEqual(A.parseActor('  '), { kind: 'none' });
 });
 
+test('an actor as plain text: the name and its door, never a client id (Issue #675)', () => {
+  assert.equal(A.actorText('kyle via VMH4hSRpVOhCwUno'), 'Kyle via MCP');
+  assert.equal(A.actorText('kyle via MCP'), 'Kyle via MCP');
+  assert.equal(A.actorText('kyle'), 'kyle', 'a plain author reads as written');
+  assert.equal(A.actorText('workflow:7d1da813-a75c'), 'Automation', 'a rule never prints its row id');
+  assert.equal(A.actorText(null), '');
+});
+
 const T = '2026-10-06T04:14:51.000Z';
 const NOW = Date.parse(T);
 const entry = (seq, kind, actor, detail = {}, ts = T) => ({ seq, kind, actor, detail, ts });

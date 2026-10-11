@@ -107,17 +107,19 @@ test('token: the provider\'s userinfo names the subject, and the account it is p
     assert.equal(made.res.status, 200);
     assert.ok(!made.data.result.isError, made.data.result.content[0].text);
     const row = s.w.getEntity(JSON.parse(made.data.result.content[0].text).id);
-    assert.equal(row.createdBy, 'kyle via oauth', 'the account is the actor; an opaque token names no client');
+    assert.equal(row.createdBy, 'kyle via MCP', 'the account is the actor and the door is its label');
   } finally { s.stop(); }
 });
 
-test('audit: a JWT access token that names its client puts the client beside the account', async () => {
+test('Issue #675: a JWT access token that names its client stores the account and the door, never the client id', async () => {
   const s = await serve();
   try {
     const token = s.idp.mint(KYLE, { jwt: { client_id: 'claude-code_123' } });
     const made = await s.rpc('/mcp', token, 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Task', name: 'jwt row' } });
     const row = s.w.getEntity(JSON.parse(made.data.result.content[0].text).id);
-    assert.equal(row.createdBy, 'kyle via claude-code_123');
+    assert.equal(row.createdBy, 'kyle via MCP');
+    assert.equal(row.modifiedBy, 'kyle via MCP');
+    assert.doesNotMatch(JSON.stringify(s.w.getEntity(row.id)), /claude-code_123/, 'the client id lands nowhere on the row');
   } finally { s.stop(); }
 });
 
@@ -194,7 +196,7 @@ test('workspace: /w/<name>/mcp opens that workspace for an account linked there,
     assert.equal(made.res.status, 200);
     assert.ok(!made.data.result.isError, made.data.result.content[0].text);
     const id = JSON.parse(made.data.result.content[0].text).id;
-    assert.equal(s.docs.getEntity(id).createdBy, 'ann via oauth', 'the row lands in docs');
+    assert.equal(s.docs.getEntity(id).createdBy, 'ann via MCP', 'the row lands in docs');
     assert.throws(() => s.w.getEntity(id), /not found/);
     assert.equal((await s.rpc('/mcp', ann, 'tools/list')).res.status, 403, 'ann has no account on the root workspace');
   } finally { s.stop(); }

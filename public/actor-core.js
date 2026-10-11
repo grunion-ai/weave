@@ -12,6 +12,13 @@
     return { kind: 'person', handle: s, name: displayName(s), via: null };
   };
 
+  const actorText = (actor) => {
+    const a = parseActor(actor);
+    if (a.kind === 'none') return '';
+    if (a.kind === 'workflow') return 'Automation';
+    return a.via ? `${a.name} via ${a.via}` : String(actor).trim();
+  };
+
   const workflowOf = (a) => /^workflow:(.+)$/.exec(a?.actor ?? '')?.[1] ?? null;
   const isAutomation = (a) => !!workflowOf(a) || a?.kind === 'automation-ran';
 
@@ -40,5 +47,5 @@
     return { runs, fields, seq };
   };
 
-  globalThis.weaveActor = { displayName, parseActor, automationWrites };
+  globalThis.weaveActor = { displayName, parseActor, actorText, automationWrites };
 })();

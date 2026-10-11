@@ -59,11 +59,11 @@ if (s) {
         await page.waitForSelector('#modal input[name="name"]');
         const walk = [await focused(page)];
         for (let i = 0; i < 3; i += 1) { await page.keyboard.press('Tab'); walk.push(await focused(page)); }
-        assert.deepEqual(walk, ['name', 'Cancel', 'Create', 'name'], 'Tab cycles inside the dialog');
+        assert.deepEqual(walk, ['name', 'slug', 'Cancel', 'name'], 'Tab cycles inside the dialog, past the Create button held disabled until the address is available');
         await page.keyboard.press('Shift+Tab');
-        assert.equal(await focused(page), 'Create', 'Shift+Tab from the first control lands on the last');
+        assert.equal(await focused(page), 'Cancel', 'Shift+Tab from the first control lands on the last');
         await page.keyboard.press('Shift+Tab');
-        assert.equal(await focused(page), 'Cancel', 'and steps back from there as usual');
+        assert.equal(await focused(page), 'slug', 'and steps back from there as usual');
         await page.evaluate(() => document.activeElement.blur());
         await page.keyboard.press('Tab');
         assert.equal(await focused(page), 'name', 'Tab from nowhere lands on the dialog\'s first control');

@@ -371,7 +371,7 @@ if (s) {
     try {
       await page.locator(sel(0, 'Kind')).click();
       await page.waitForSelector('.picker-pop input.picker-search');
-      assert.equal(await page.evaluate(() => document.activeElement?.className), 'picker-search', 'focus is in the popover, off the grid');
+      assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('picker-search')), true, 'focus is in the popover, off the grid');
       await page.keyboard.press('ControlOrMeta+c');
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'bug', 'the picker’s empty search box is no selection: the cell is copied');
       await page.keyboard.press('Escape');
