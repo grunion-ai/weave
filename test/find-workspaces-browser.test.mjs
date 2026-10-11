@@ -72,14 +72,14 @@ if (s) {
         await page.locator('.rows li a').first().click();
         await page.waitForSelector('#ws-new');
         await page.locator('#ws-new').click();
-        await page.waitForSelector('.wv-ctx.ws-plus');
-        const items = await page.locator('.wv-ctx.ws-plus .dropdown-item').allInnerTexts();
+        await page.waitForSelector('.wv-menu.ws-plus');
+        const items = await page.locator('.wv-menu.ws-plus .wv-menu-row').allInnerTexts();
         assert.deepEqual(items.map((t) => t.trim()), ['New workspace', 'Add login', 'Find my workspaces']);
-        const menu = page.locator('.wv-ctx.ws-plus');
-        const [mfg, mbg] = await menu.evaluate((n) => { const cs = getComputedStyle(n); return [getComputedStyle(n.querySelector('.dropdown-item')).color, cs.backgroundColor]; });
+        const menu = page.locator('.wv-menu.ws-plus');
+        const [mfg, mbg] = await menu.evaluate((n) => { const cs = getComputedStyle(n); return [getComputedStyle(n.querySelector('.wv-menu-row')).color, cs.backgroundColor]; });
         assert.notEqual(mfg, mbg, 'menu text is readable');
         await page.keyboard.press('Escape');
-        assert.equal(await page.locator('.wv-ctx.ws-plus').count(), 0, 'Escape closes the menu');
+        assert.equal(await page.locator('.wv-menu.ws-plus').count(), 0, 'Escape closes the menu');
       } finally { await page.close(); }
     });
   }

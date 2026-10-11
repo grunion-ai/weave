@@ -12186,11 +12186,11 @@ function wireWsNew() {
     const start = (await api('GET', '/workspace').catch(() => null))?.start;
     if (!start) return newWorkspaceForm();
     const apex = start.replace(/\/start$/, '');
-    contextMenu(e, [
-      { label: copy.newWorkspace, run: newWorkspaceForm },
-      { label: copy.addLogin, run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1`; } },
-      { label: copy.find, run: () => { location.href = start; } },
-    ], 'ws-plus');
+    menu([
+      { label: copy.newWorkspace, section: 'organize', run: newWorkspaceForm },
+      { label: copy.addLogin, section: 'organize', run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1`; } },
+      { label: copy.find, section: 'organize', run: () => { location.href = start; } },
+    ], { anchor: btn, className: 'ws-plus', label: 'Workspaces' });
   });
   async function newWorkspaceForm() {
     const me = await api('GET', '/auth/me').catch((err) => {
