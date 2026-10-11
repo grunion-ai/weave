@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, parseCSV } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 
 test('parseCSV handles quotes, commas, newlines', () => {
   const rows = parseCSV('a,b\n"x, y","line1\nline2"\n"quo""te",plain\n');
@@ -141,12 +142,16 @@ test('webhook automation fires on state change', async () => {
   }
 });
 
-test('npm test runs exactly the command CI and the docs run', async () => {
+test('npm test and CI shards use the same runner the docs name', async () => {
   const { readFileSync } = await import('node:fs');
   const root = new URL('../', import.meta.url);
   const CI = readFileSync(new URL('.github/workflows/test.yml', root), 'utf8');
 
-  assert.match(CI, /^ +- run: npm test$/m, 'CI must run the same command the docs do');
+  const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
+  const shard = readFileSync(new URL('scripts/ci-test.mjs', root), 'utf8');
+  assert.equal(pkg.scripts.test, 'node scripts/test.mjs');
+  assert.match(CI, /node scripts\/ci-test.mjs run/);
+  assert.match(shard, /spawnSync\(process.execPath, \['scripts\/test.mjs'/);
 
   for (const doc of ['README.md', 'CONTRIBUTING.md', 'AGENTS.md', '.github/PULL_REQUEST_TEMPLATE.md']) {
     const src = readFileSync(new URL(doc, root), 'utf8');
