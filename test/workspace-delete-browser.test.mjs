@@ -23,7 +23,7 @@ if (s) {
     return page;
   }
   const chip = (page, name) => page.locator(`#ws-list .ws-icon[title^="${name} "]`);
-  const menuItems = (page) => page.locator('.ws-ctx .dropdown-item').allTextContents();
+  const menuItems = (page) => page.locator('.ws-ctx .wv-menu-row').allTextContents();
 
   test('right-click on a sibling chip offers Delete; the default chip does not', async () => {
     const page = await open();
@@ -43,7 +43,7 @@ if (s) {
     const page = await open('/', 'dark');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), 'dark');
     await chip(page, 'scratch').click({ button: 'right' });
-    await page.locator('.ws-ctx .dropdown-item', { hasText: 'Delete workspace' }).click();
+    await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Delete workspace' }).click();
     await page.waitForSelector('#modal input[name="confirm"]');
     assert.match(await page.textContent('#modal'), /Trash in the sidebar/);
     assert.doesNotMatch(await page.textContent('#modal'), /corner|glyph/);
@@ -92,11 +92,11 @@ if (s) {
     const page = await open(`/w/${row.id}/`);
     await page.waitForSelector('.view-header .dots-btn');
     await page.click('.view-header .dots-btn');
-    assert.ok(await page.locator('.dl-menu .dropdown-item', { hasText: 'Delete workspace' }).count(), 'scratch page offers delete');
+    assert.ok(await page.locator('.wv-menu .wv-menu-row', { hasText: 'Delete workspace' }).count(), 'scratch page offers delete');
     await page.close();
     const home = await open('/');
     await home.waitForSelector('.view-header');
-    assert.equal(await home.locator('.dl-menu .dropdown-item', { hasText: 'Delete workspace' }).count(), 0, 'the default page offers none');
+    assert.equal(await home.locator('.wv-menu .wv-menu-row', { hasText: 'Delete workspace' }).count(), 0, 'the default page offers none');
     await home.close();
   });
 }

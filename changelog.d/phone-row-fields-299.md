@@ -1,0 +1,1 @@
+- On a phone, Fields in the table menu opens a Phone row sheet: pick one lead field, order the chips on line two, or turn a field off, saved per view as phoneRow (Feature #299)

@@ -31,7 +31,7 @@ jobs:
       - name: Boot
         run: |
           node bin/weave.js serve --port 4401 --host 127.0.0.1 --data "$RUNNER_TEMP/dev.db" &
-          for _ in $(seq 60); do
+          for _ in $(seq 180); do
             if curl -fsS http://127.0.0.1:4401/api/health | grep -q '"ok": *true'; then exit 0; fi
             sleep 0.5
           done
@@ -47,7 +47,7 @@ jobs:
       cancel-in-progress: true
     environment:
       name: dev
-      url: https://weave-dev.grunion.ai
+      url: https://dev.weave.grunion.ai
     steps:
       - name: Swap dev to this commit
         env:
@@ -55,9 +55,9 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           for _ in 1 2 3; do
-            body=$(curl -sS --max-time 300 -X POST -H "Authorization: Bearer $DEV_DEPLOY_TOKEN" https://weave-dev.grunion.ai/_supervisor/check) || body=''
+            body=$(curl -sS --max-time 300 -X POST -H "Authorization: Bearer $DEV_DEPLOY_TOKEN" https://dev.weave.grunion.ai/_supervisor/check) || body=''
             echo "$body"
-            commit=$(curl -fsS https://weave-dev.grunion.ai/api/health | jq -r '.supervisor.commit')
+            commit=$(curl -fsS https://dev.weave.grunion.ai/api/health | jq -r '.supervisor.commit')
             if [ "$commit" = "$SHA" ]; then exit 0; fi
             if [ "$(jq -r '.action // empty' <<<"$body")" = skipped ]; then exit 1; fi
             sleep 5
