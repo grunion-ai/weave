@@ -13,6 +13,7 @@ const WINDOW_MS = 10 * 60 * 1000;
 const tries = new WeakMap();
 
 const passcodeOf = () => (process.env.WEAVE_APPLET_PASSCODE ?? '').trim();
+export const appletOn = () => passcodeOf() !== '';
 const tableOf = () => (process.env.WEAVE_APPLET_TABLE ?? 'Product/Task').trim();
 const defaultsOf = () => {
   try { return JSON.parse(process.env.WEAVE_APPLET_DEFAULTS ?? '{}'); } catch { return {}; }
