@@ -6,6 +6,7 @@ import '../public/icon-registry.js';
 import '../public/mark-icons.js';
 import '../public/editor-lib.js';
 import '../public/list-core.js';
+import '../public/phone-row.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -32,6 +33,7 @@ function iconValue(v) {
 
 const Term = globalThis.WeaveTerm;
 const ListCore = globalThis.weaveListCore;
+const PhoneRow = globalThis.weavePhoneRow;
 const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow', forms: 'form' };
 
 const CSV_FORMULA_START = /^'*[=+\-@\t\r]/;
@@ -2005,7 +2007,40 @@ export class Weave {
     if (Array.isArray(v.collapsed)) out.collapsed = [...v.collapsed];
     const order = (v.order ?? []).map((id) => own(this.state.entities, id)).filter((e) => e && !e.deletedAt && e.dbId === db.id).map((e) => e.publicId);
     if (order.length) out.order = order;
+    if (v.phoneRow) out.phoneRow = PhoneRow.compact(this.#phoneRowNamed(db, v.phoneRow));
     return out;
+  }
+
+  #phoneRowNamed(db, p) {
+    return { lead: db.fields[p.lead]?.name ?? null, chips: p.chips.map((id) => db.fields[id]?.name).filter(Boolean), labels: !!p.labels, wrap: !!p.wrap };
+  }
+
+  #writePhoneRow(db, next, patch) {
+    if (patch === null) { delete next.phoneRow; return; }
+    const keys = PhoneRow.KEYS.join(', ');
+    if (typeof patch !== 'object' || Array.isArray(patch)) throw new WeaveError(`phoneRow is {${keys}}: the phone list row's lead field, its chip fields in order, and two switches. null clears it`, 'invalid');
+    const stray = Object.keys(patch).filter((k) => !PhoneRow.KEYS.includes(k));
+    if (stray.length) throw new WeaveError(`phoneRow takes ${keys} — not ${stray.join(', ')}`, 'invalid');
+    const shown = next.fields.map((id) => viewEntryName(db, id)).filter(Boolean);
+    const fields = db.fieldOrder.map((id) => db.fields[id]).filter(Boolean).map((f) => ({ name: f.name, type: f.type, role: f.id === db.nameFieldId ? 'name' : null }));
+    const cur = PhoneRow.resolve(fields, shown, next.phoneRow ? this.#phoneRowNamed(db, next.phoneRow) : null);
+    const pick = (ref) => {
+      const f = this.#listField(db, ref);
+      if (f.id === db.nameFieldId) throw new WeaveError(`'${f.name}' is the row's name: line one always shows it, so it is never a lead or a chip`, 'invalid');
+      return f.id;
+    };
+    for (const k of ['labels', 'wrap']) {
+      if (patch[k] !== undefined && typeof patch[k] !== 'boolean') throw new WeaveError(`phoneRow.${k} is true or false — got ${JSON.stringify(patch[k])}`, 'invalid');
+    }
+    if (patch.chips !== undefined && !Array.isArray(patch.chips)) throw new WeaveError('phoneRow.chips is the list of fields on the chip line, in order', 'invalid');
+    const lead = patch.lead === undefined ? (cur.lead == null ? null : pick(cur.lead)) : patch.lead == null || patch.lead === '' ? null : pick(patch.lead);
+    const chips = (patch.chips ?? cur.chips).map(pick);
+    if (new Set(chips).size !== chips.length) throw new WeaveError('phoneRow.chips names each field once', 'invalid');
+    if (patch.lead !== undefined && patch.chips === undefined) { const k = chips.indexOf(lead); if (k >= 0) chips.splice(k, 1); }
+    if (lead != null && chips.includes(lead)) throw new WeaveError(`'${db.fields[lead].name}' is either the lead or a chip, not both`, 'invalid');
+    next.phoneRow = { lead, chips };
+    if (patch.labels ?? cur.labels) next.phoneRow.labels = true;
+    if (patch.wrap ?? cur.wrap) next.phoneRow.wrap = true;
   }
 
   #listField(db, ref) {
@@ -2091,7 +2126,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order', 'phoneRow'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -2198,6 +2233,7 @@ export class Weave {
       if (patch.rollups === null) delete next.rollups; else next.rollups = patch.rollups;
     }
     this.#writeListKeys(db, next, patch);
+    if (patch.phoneRow !== undefined) this.#writePhoneRow(db, next, patch.phoneRow);
     if ((next.frozen ?? 0) > next.fields.length) next.frozen = next.fields.length;
     if (!next.frozen) delete next.frozen;
     if (next.parked && !Object.keys(next.parked).length) delete next.parked;
@@ -2954,6 +2990,8 @@ export class Weave {
       if (vDoc.layout) out.layout = vDoc.layout;
       if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
       for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
+      const pr = vDoc.phoneRow;
+      if (pr && typeof pr === 'object') out.phoneRow = PhoneRow.compact({ lead: pr.lead != null && has(pr.lead) ? pr.lead : null, chips: (pr.chips ?? []).filter(has), labels: pr.labels, wrap: pr.wrap });
       for (const k of ['filters', 'sort', 'widths']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
       return out;
     };
@@ -2984,6 +3022,9 @@ export class Weave {
       if ((vDoc.layout ?? 'table') !== (have?.layout ?? 'table')) patch.layout = vDoc.layout ?? 'table';
       if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
       for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
+      if (JSON.stringify(vDoc.phoneRow ?? null) !== JSON.stringify(have?.phoneRow ?? null)) {
+        patch.phoneRow = vDoc.phoneRow ? { lead: vDoc.phoneRow.lead ?? null, chips: vDoc.phoneRow.chips ?? [], labels: !!vDoc.phoneRow.labels, wrap: !!vDoc.phoneRow.wrap } : null;
+      }
       if (!Object.keys(patch).length) continue;
       act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
     }

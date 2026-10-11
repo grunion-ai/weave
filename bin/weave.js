@@ -142,6 +142,7 @@ Schema
   table view <table/view> [--fields A,B] [--filters '{json}'] [--sort '[json]'] [--search text] [--density compact]
               [--layout table|list] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
               [--completed-by Done|none] [--nest Parent|none] [--order 3,1,2] [--collapsed '["Completed"]']
+              [--phone-row '{"lead":"Status","chips":["Severity"],"labels":true,"wrap":true}'|none]
   field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
   field list <table> | delete <table> <field> [--hard] | restore <table> <field>
   field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
@@ -631,6 +632,7 @@ async function main() {
         for (const [flag, key] of [['completed-by', 'completedBy'], ['nest', 'nest']]) if (flags[flag] != null) patch[key] = flags[flag] === 'none' ? null : flags[flag];
         if (flags.collapsed != null) patch.collapsed = parseJsonFlag('collapsed');
         if (flags.order != null) patch.order = splitList(flags.order);
+        if (flags['phone-row'] != null) patch.phoneRow = flags['phone-row'] === 'none' ? null : parseJsonFlag('phone-row');
         Object.assign(patch, viewRowFlags(flags));
         if (flags.name != null) patch.name = flags.name;
         if (flags.from != null) patch.from = flags.from;
