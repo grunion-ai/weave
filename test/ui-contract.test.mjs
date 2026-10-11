@@ -747,7 +747,7 @@ test('every code block carries a copy button in its upper right', () => {
 test('a computed field carries its glyph next to the name, not only in cells', () => {
   const label = fnBody('fieldNameLabel');
   assert.match(label, /computedMark(?:Node)?\(/, 'one glyph vocabulary for names and values');
-  assert.match(label, /'sup'/, 'the mark is a superscript on the name');
+  assert.match(label, /el\('span', \{\n    class: 'field-mark'/, 'the mark is an inline span after the name');
   assert.match(APP, /COMPUTED_NAME_MARKS = \{[^}]*formula/,
     'formula fields are the case this exists for');
 
