@@ -19,6 +19,15 @@
 
   const ROW = {
     workspace: (r) => make('li', {}, make('a', { href: r.open }, r.title, r.title !== r.name ? make('small', {}, r.name) : null)),
+    invite: (r) => make('li', { class: 'invite' },
+      make('span', {}, r.title, make('small', {}, fill(COPY.start.inviteLead, { role: r.role }))),
+      make('button', { type: 'button', class: 'btn', onclick: async (e) => {
+        e.target.disabled = true;
+        try {
+          const done = await getJson(r.accept, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          location.href = done.open;
+        } catch (err) { e.target.disabled = false; alert(err.message); }
+      } }, COPY.start.accept)),
   };
 
   function createForm(me) {

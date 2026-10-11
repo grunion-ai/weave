@@ -9,6 +9,8 @@ import '../public/list-core.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
+import { lookup } from 'node:dns/promises';
+import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
@@ -94,6 +96,23 @@ export function logoType(bytes) {
   const head = Buffer.from(bytes ?? []).subarray(0, 1024).toString('utf8').replace(/^\ufeff/, '');
   return sniffImage(bytes)
     ?? (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!doctype svg[^>]*>\s*)?<svg[\s/>]/i.test(head) ? 'image/svg+xml' : null);
+}
+
+const LOCAL_RANGES = new BlockList();
+for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16], ['224.0.0.0', 3]]) LOCAL_RANGES.addSubnet(net, bits, 'ipv4');
+for (const [net, bits] of [['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10]]) LOCAL_RANGES.addSubnet(net, bits, 'ipv6');
+
+export function localAddress(ip) {
+  const v = isIP(ip);
+  return v ? LOCAL_RANGES.check(ip, v === 6 ? 'ipv6' : 'ipv4') : false;
+}
+
+async function webhookRefusal(url) {
+  if (process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE === '1') return null;
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  if (isIP(host)) return localAddress(host) ? `refused, ${host} is a private or local address` : null;
+  const hit = (await lookup(host, { all: true })).find((a) => localAddress(a.address));
+  return hit ? `refused, ${host} resolves to ${hit.address}, a private or local address` : null;
 }
 
 const INLINE_FILE_TYPES = new Set(['application/pdf', 'text/plain']);
@@ -3342,10 +3361,27 @@ export class Weave {
     return found ? { account: found.a?.name ?? this.#memberName(found.i.email), issuer: found.i.issuer, expiresAt: found.i.expiresAt } : null;
   }
 
-  redeemIdentityInvite(code, { issuer, subject } = {}) {
+  invitesForEmail(email) {
+    const mail = String(email ?? '').trim().toLowerCase();
+    return mail ? this.listInvites().filter((i) => i.email === mail) : [];
+  }
+
+  acceptInvite(id, who = {}) {
+    const mail = String(who.email ?? '').trim().toLowerCase();
+    const i = Object.hasOwn(this.state.meta.identityInvites ?? {}, String(id)) ? this.state.meta.identityInvites[id] : null;
+    if (!mail || !i || i.accountId || i.email !== mail || Date.parse(i.expiresAt) <= Date.now()) throw new WeaveError('This invite expired, was already used or is for another address', 'not-found');
+    return this.#redeem({ h: String(id), i, a: null }, who);
+  }
+
+  redeemIdentityInvite(code, who = {}) {
     const found = this.#invite(code);
     if (!found) throw new WeaveError('This invite expired or was already used', 'not-found');
-    const { h, i, a } = found;
+    return this.#redeem(found, who);
+  }
+
+  #redeem({ h, i, a }, { issuer, subject, email } = {}) {
+    const mail = String(email ?? '').trim().toLowerCase();
+    const stamp = (x) => { if (mail) x.verifiedEmail = mail; return x; };
     const iss = this.#issuer(issuer);
     if (iss !== i.issuer) throw new WeaveError('This invite is for another provider', 'invalid');
     if (!subject) throw new WeaveError('The provider named nobody', 'invalid');
@@ -3360,7 +3396,7 @@ export class Weave {
     if (!a) {
       const { account } = this.createAccount({ name: this.#memberName(i.email), role: i.role });
       const row = this.state.meta.accounts[account.id];
-      row.identities = [{ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at }];
+      row.identities = [stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at })];
       this.save();
       this.#audit('member-joined', { name: row.name, role: row.role, invitedBy: i.invitedBy ?? null });
       const { tokenHash, ...pub } = row;
@@ -3368,10 +3404,10 @@ export class Weave {
     }
     let identity = (a.identities ?? []).find((x) => x.issuer === iss && x.subject === sub);
     if (!identity) {
-      identity = { issuer: iss, subject: sub, createdAt: at, lastUsedAt: at };
+      identity = stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at });
       (a.identities ??= []).push(identity);
       this.#audit('identity-linked', { name: a.name, issuer: iss });
-    } else identity.lastUsedAt = at;
+    } else stamp(identity).lastUsedAt = at;
     this.save();
     const { tokenHash, ...pub } = a;
     return pub;
@@ -3390,12 +3426,14 @@ export class Weave {
     return { unlinked, remaining: keep.length };
   }
 
-  accountForIdentity({ issuer, subject } = {}) {
+  accountForIdentity({ issuer, subject, email } = {}) {
     if (!issuer || !subject) return null;
     for (const a of Object.values(this.state.meta.accounts ?? {})) {
       const i = (a.identities ?? []).find((x) => x.issuer === issuer && x.subject === String(subject));
       if (!i) continue;
       i.lastUsedAt = nowISO();
+      const mail = String(email ?? '').trim().toLowerCase();
+      if (mail) i.verifiedEmail = mail;
       this.save();
       const { tokenHash, ...pub } = a;
       return pub;
@@ -6938,16 +6976,19 @@ export class Weave {
       };
       const reg = this.#reg;
       const ms = this.webhookTimeoutMs;
-      fetch(action.url, {
+      const url = new URL(action.url);
+      const failed = (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.code ?? err?.message ?? String(err));
+      webhookRefusal(url).then((refusal) => refusal ?? fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        redirect: 'manual',
         signal: AbortSignal.timeout(ms),
       }).then((res) => {
         res.body?.cancel().catch(() => {});
         return res.ok ? null : `HTTP ${res.status}`;
-      }, (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.message ?? String(err)))
-        .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${new URL(action.url).host}: ${why}`); })
+      }, failed), failed)
+        .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${url.host}: ${why}`); })
         .catch(() => {});
     }
   }
@@ -7552,7 +7593,10 @@ export class Weave {
   exportJSON({ blobs: withBlobs = true } = {}) {
     const out = JSON.parse(JSON.stringify(this.state));
     delete out.fileBlobs;
-    for (const a of Object.values(out.meta.accounts ?? {})) delete a.tokenHash;
+    for (const a of Object.values(out.meta.accounts ?? {})) {
+      delete a.tokenHash;
+      for (const i of a.identities ?? []) delete i.verifiedEmail;
+    }
     for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
     Shares.redactTokens(out);
     delete out.meta.sessions;
@@ -7583,6 +7627,10 @@ export class Weave {
     for (const a of Object.values(meta.accounts ?? {})) {
       const was = prior.accounts?.[a.id];
       if (was?.tokenHash && a.tokenHash === undefined) a.tokenHash = was.tokenHash;
+      for (const i of a.identities ?? []) {
+        const mail = was?.identities?.find((x) => x.issuer === i.issuer && x.subject === i.subject)?.verifiedEmail;
+        if (mail && i.verifiedEmail === undefined) i.verifiedEmail = mail;
+      }
     }
     Shares.keepTokens(meta, prior);
     for (const kind of ['sessions', 'identityInvites']) {

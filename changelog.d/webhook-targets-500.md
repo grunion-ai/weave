@@ -1,0 +1,1 @@
+- Workflow webhooks post only to public addresses: the host is resolved first, loopback, link-local, private and cloud metadata ranges are refused with the reason on the rule's Health, and a redirect is a failed delivery; `WEAVE_WEBHOOK_ALLOW_PRIVATE=1` allows the ranges for a self-hosted instance (Issue #500)
