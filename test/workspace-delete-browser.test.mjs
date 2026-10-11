@@ -28,12 +28,14 @@ if (s) {
   test('right-click on a sibling chip offers Delete; the default chip does not', async () => {
     const page = await open();
     await chip(page, 'scratch').click({ button: 'right' });
+    await page.waitForSelector('.ws-ctx .wv-menu-row');
     assert.ok((await menuItems(page)).some((t) => /Delete workspace/.test(t)), 'scratch offers a delete');
     await page.keyboard.press('Escape');
     await chip(page, 'main').click({ button: 'right' });
+    await page.waitForSelector('.ws-ctx .wv-menu-row');
     const items = await menuItems(page);
     assert.ok(!items.some((t) => /Delete workspace/.test(t)), `the default offers no delete: ${items}`);
-    assert.ok(items.some((t) => /logo/i.test(t)), 'the current workspace still offers its logo');
+    assert.ok(items.some((t) => /Link preview before sign-in/.test(t)), 'the current workspace still opens its menu (Feature #296)');
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('.ws-ctx').count(), 0, 'Escape closes the menu');
     await page.close();

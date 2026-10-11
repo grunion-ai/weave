@@ -18,7 +18,7 @@ const press = (page, sel, cell) => {
 };
 const menu = async (page, cell, trigger, label) => {
   await press(page, trigger, cell);
-  await press(page, `.dl-menu >> visible=true >> text=${label}`, cell);
+  await press(page, `.wv-menu >> visible=true >> text=${label}`, cell);
 };
 const tools = async (page, cell) => {
   const sheet = '#main .crumb-row.tools-open > .crumb-actions';
@@ -31,10 +31,8 @@ const toolsThen = (trigger) => async (page, ctx, cell) => {
   await press(page, trigger, cell);
 };
 const tableMenu = (label) => async (page, ctx, cell) => {
-  if (cell === 'phone') {
-    await tools(page, cell);
-    await press(page, `#main .tools-row >> text=${label}`, cell);
-  } else await menu(page, cell, '#main .dots-btn[title="Table actions"]', label);
+  await tools(page, cell);
+  await menu(page, cell, '#main .dots-btn[title="Table actions"]', label);
 };
 const scope = (cell) => (cell === 'phone' ? '#dock' : '#main');
 
@@ -50,8 +48,8 @@ export const OVERLAYS = [
   },
   { name: 'shortcuts', surface: 'home', cells: DESKTOP, root: '#modal-back', open: (page, ctx, cell) => press(page, 'button[aria-label="Keyboard shortcuts"]', cell) },
   { name: 'new-workspace', surface: 'home', cells: DESKTOP, root: '#modal-back', open: (page, ctx, cell) => press(page, '.ws-new', cell) },
-  { name: 'workspace-menu', surface: 'home', cells: BOTH, root: '.dl-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Workspace actions"]', cell) },
-  { name: 'nav-table-menu', surface: 'home', cells: DESKTOP, root: '.dl-menu', open: (page, ctx, cell) => press(page, '#nav .dots-btn[title="Task actions"]', cell) },
+  { name: 'workspace-menu', surface: 'home', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Workspace actions"]', cell) },
+  { name: 'nav-table-menu', surface: 'home', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#nav .dots-btn[title="Task actions"]', cell) },
   { name: 'bug-report', surface: 'home', cells: BOTH, root: '#bug-panel', open: (page, ctx, cell) => press(page, '.bug-fab', cell) },
   {
     name: 'nav', surface: 'home', cells: PHONE, root: '#nav',
@@ -67,18 +65,28 @@ export const OVERLAYS = [
   { name: 'density', surface: 'table', cells: BOTH, root: '.table-density-popover', open: toolsThen('#main .table-density-btn') },
   { name: 'fields', surface: 'table', cells: BOTH, root: '.table-fields-popover', open: toolsThen('#main .eye-btn') },
   { name: 'filters', surface: 'table', cells: BOTH, root: '.table-filter-popover', open: toolsThen('#main .table-filter-btn') },
-  { name: 'table-menu', surface: 'table', cells: DESKTOP, root: '.dl-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Table actions"]', cell) },
-  { name: 'column-stats', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('Column stats') },
+  { name: 'table-menu', surface: 'table', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Table actions"]', cell) },
+  { name: 'column-stats', surface: 'table', cells: BOTH, root: '#modal-back', open: toolsThen('#main .table-stats-btn') },
   { name: 'share-table', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('Share…') },
   { name: 'share-page', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('New share page') },
-  { name: 'row-term', surface: 'table', cells: BOTH, root: '#tray-back', open: tableMenu('Row term') },
+  {
+    name: 'name-field-editor', surface: 'table', cells: BOTH, root: '#tray-back',
+    async open(page, ctx, cell) {
+      if (cell === 'phone') {
+        await press(page, '#main .wv-grid thead th.col-head[data-col="Name"]', cell);
+        return;
+      }
+      await press(page, '.field-menu[title="Configure Name"]', cell);
+      await press(page, '.chip-pop .chip-pop-row >> text=Field settings', cell);
+    },
+  },
   { name: 'table-icon', surface: 'table', cells: BOTH, root: '.picker-pop', open: (page, ctx, cell) => press(page, '#main .icon-btn', cell) },
   { name: 'field-menu', surface: 'table', cells: DESKTOP, root: '.chip-pop', open: (page, ctx, cell) => press(page, '.field-menu[title="Configure Status"]', cell) },
   {
     name: 'field-editor', surface: 'table', cells: DESKTOP, root: '#tray-back',
     async open(page, ctx, cell) {
       await press(page, '.field-menu[title="Configure Status"]', cell);
-      await press(page, '.chip-pop .chip-pop-row >> text=Edit field', cell);
+      await press(page, '.chip-pop .chip-pop-row >> text=Field settings', cell);
     },
   },
   {
@@ -94,9 +102,9 @@ export const OVERLAYS = [
   { name: 'link-picker', surface: 'table', cells: DESKTOP, root: '#cmdk-back', open: (page, ctx, cell) => press(page, `${ROW} button >> text=+ link`, cell) },
   { name: 'activity', surface: 'entity', cells: DESKTOP, root: 'aside.wv-activity', open: (page, ctx, cell) => press(page, '#main .activity-btn', cell) },
   { name: 'entity-fields', surface: 'entity', cells: DESKTOP, root: '.chip-pop', open: (page, ctx, cell) => press(page, '#main .eye-btn', cell) },
-  { name: 'row-actions', surface: 'entity', cells: BOTH, root: '.dl-menu', open: (page, ctx, cell) => press(page, `${scope(cell)} .dots-btn[title="Row actions"]`, cell) },
+  { name: 'row-actions', surface: 'entity', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, `${scope(cell)} .dots-btn[title="Row actions"]`, cell) },
   { name: 'share-row', surface: 'entity', cells: BOTH, root: '#modal-back', open: (page, ctx, cell) => menu(page, cell, `${scope(cell)} .dots-btn[title="Row actions"]`, 'Share…') },
-  { name: 'doc-downloads', surface: 'entity', cells: BOTH, root: '.dl-menu', open: (page, ctx, cell) => press(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
+  { name: 'doc-downloads', surface: 'entity', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
   { name: 'entity-status', surface: 'entity', cells: BOTH, root: '.picker-pop', open: (page, ctx, cell) => press(page, `${scope(cell)} .fieldrow[data-field="Status"] .chip-trigger`, cell) },
   { name: 'date-picker', surface: 'entity', cells: BOTH, root: '.date-pop', open: (page, ctx, cell) => press(page, `${scope(cell)} .fieldrow[data-field="Due"] .date-pick-btn`, cell) },
   { name: 'range-picker', surface: 'entity', cells: BOTH, root: '.date-pop', open: (page, ctx, cell) => press(page, `${scope(cell)} .fieldrow[data-field="Window"] .date-pick-btn`, cell) },

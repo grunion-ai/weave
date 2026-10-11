@@ -34,7 +34,7 @@ if (s) {
     const th = page.locator('.wv-grid thead th.col-head', { hasText: new RegExp(`^${field}\\W*$`) }).first();
     await th.hover();
     await th.locator('.field-menu').click();
-    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
+    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Field settings' }).click();
     await page.waitForSelector('.tray-form');
   }
   const section = (page, label) => page.locator('.tray-form .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: new RegExp(`^${label}$`) }) });

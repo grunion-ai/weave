@@ -88,3 +88,77 @@ test('typeahead jumps to the next row starting with the typed letters', () => {
   assert.equal(core.typeahead(labels, 0, 'CH'), 1, 'case does not matter');
   assert.equal(core.typeahead(labels, 1, 'z'), -1, 'no match leaves focus where it is');
 });
+
+test('the format registry runs Markdown, Mermaid, HTML, PDF, CSV, JSON, each with its extension', () => {
+  assert.deepEqual(core.FORMATS.map((f) => [f.key, f.label, f.ext]), [
+    ['md', 'Markdown', '.md'], ['mmd', 'Mermaid', '.mmd'], ['html', 'HTML', '.html'],
+    ['pdf', 'PDF', '.pdf'], ['csv', 'CSV', '.csv'], ['json', 'JSON', '.json'],
+  ]);
+});
+
+test('exportSection keeps registry order, filters to what the object serves, and puts the extension in the hint', () => {
+  const rows = core.exportSection({ name: 'Plan', serves: ['pdf', 'md', 'html'], href: (k) => `/e/1/entity.${k}` });
+  assert.deepEqual(rows.map((r) => [r.label, r.hint, r.section, r.href, r.download]), [
+    ['Markdown', '.md', 'export', '/e/1/entity.md', 'Plan.md'],
+    ['HTML', '.html', 'export', '/e/1/entity.html', 'Plan.html'],
+    ['PDF', '.pdf', 'export', '/e/1/entity.pdf', 'Plan.pdf'],
+  ]);
+  assert.deepEqual(core.exportSection({ name: 'x', serves: [], href: () => '' }), []);
+  assert.throws(() => core.exportSection({ name: 'x', serves: ['docx'], href: () => '' }), /unknown export format "docx"/);
+});
+
+test('every kind has exactly one definition, and the registry names them all', () => {
+  assert.deepEqual(core.kinds(), ['table', 'record', 'doc', 'space', 'share-page', 'workspace', 'field']);
+  assert.throws(() => core.definition('deck'), /no menu definition for "deck"/);
+});
+
+test('the definitions match the target menu table', () => {
+  const shape = (kind) => Object.fromEntries(core.SECTIONS.map((s) => [s, core.definition(kind)[s] ?? []]).filter(([, ids]) => ids.length));
+  assert.deepEqual(shape('table'), { organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
+  assert.deepEqual(shape('record'), { organize: ['duplicate'], share: ['share'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
+  assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
+  assert.deepEqual(shape('space'), { delete: ['delete'] });
+  assert.deepEqual(shape('share-page'), { delete: ['delete'] });
+  assert.deepEqual(shape('workspace'), { share: ['link-preview'], delete: ['delete'] });
+  assert.deepEqual(shape('field'), { settings: ['settings'], organize: ['insert'], delete: ['delete'] });
+});
+
+test('only a kind whose settings live in a dialog with no inline surface declares a Settings row', () => {
+  const withSettings = core.kinds().filter((k) => core.definition(k).settings?.length);
+  assert.deepEqual(withSettings, ['field']);
+});
+
+test('every export list in a definition follows the format registry order', () => {
+  const order = core.FORMATS.map((f) => f.key);
+  for (const kind of core.kinds()) {
+    const ids = core.definition(kind).export ?? [];
+    assert.deepEqual(ids, [...ids].sort((a, b) => order.indexOf(a) - order.indexOf(b)), `${kind} export order`);
+  }
+});
+
+test('assemble lays rows out in the definition order, whatever order the caller writes them in', () => {
+  const rows = core.assemble('table', {
+    delete: { label: 'Delete table', run },
+    export: core.exportSection({ name: 'Task', serves: ['csv'], href: () => '/x.csv' }),
+    'share-page': { label: 'New share page…', run },
+    duplicate: { label: 'Duplicate', run },
+    share: { label: 'Share…', run },
+    move: { label: 'Move to space…', run },
+  });
+  assert.deepEqual(rows.map((r) => [r.section, r.label]), [
+    ['organize', 'Move to space…'], ['organize', 'Duplicate'], ['share', 'Share…'], ['share', 'New share page…'], ['export', 'CSV'], ['delete', 'Delete table'],
+  ]);
+  assert.deepEqual(shape(core.plan(rows)).map((s) => s[0]), ['organize', 'share', 'export', 'delete']);
+});
+
+test('context may hide a row that cannot work there, never add one', () => {
+  const rows = core.assemble('table', { move: null, duplicate: false, share: { label: 'Share…', run }, delete: { label: 'Delete table', run } });
+  assert.deepEqual(rows.map((r) => r.label), ['Share…', 'Delete table']);
+  assert.throws(() => core.assemble('space', { rename: { label: 'Rename…', run } }), /"rename" is not on the space menu/);
+  assert.throws(() => core.assemble('record', { export: core.exportSection({ name: 'x', serves: ['csv'], href: () => '' }) }), /CSV is not on the record menu/);
+});
+
+test('assemble drops export formats the object does not serve and keeps the rest in registry order', () => {
+  const rows = core.assemble('doc', { export: core.exportSection({ name: 'Notes', serves: ['pdf', 'md'], href: (k) => k }) });
+  assert.deepEqual(rows.map((r) => r.label), ['Markdown', 'PDF']);
+});

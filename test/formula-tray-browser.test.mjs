@@ -33,7 +33,7 @@ if (s) {
     await th.scrollIntoViewIfNeeded();
     await th.hover();
     await th.locator('.field-menu').click();
-    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
+    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Field settings' }).click();
     await page.waitForSelector('.tray-form');
   }
   const section = (page, label) => page.locator(`.tray-form .dlg-sec:has(> .dlg-lbl:text-is("${label}"))`);

@@ -101,11 +101,10 @@ if (s) {
     await page.close();
   });
 
-  test('Column stats… summarises every column and groups on a chip column', async () => {
+  test('the Stats toolbar button summarises every column and groups on a chip column (Feature #296)', async () => {
     const page = await open(`/table/${sessions.id}`);
     await page.waitForSelector('thead tr.wv-foot');
-    await page.locator('.crumb-actions .dots-btn').last().click();
-    await page.locator('.wv-menu .wv-menu-row', { hasText: 'Column stats…' }).first().click();
+    await page.click('#main .crumb-actions .table-stats-btn');
     await page.waitForSelector('#modal.wv-stats tr[data-col="Cost"]');
     const cost = await page.locator('#modal.wv-stats tr[data-col="Cost"]').first().evaluate((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent));
     assert.equal(cost[0], 'Cost');

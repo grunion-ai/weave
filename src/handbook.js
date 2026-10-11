@@ -925,7 +925,7 @@ weave workspace require-auth
 weave workspace link-preview        # or --off
 \`\`\`
 
-The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for its menu: **Update logo…** picks an image for that workspace, whether or not it has one yet; **Remove logo** clears it; **Delete workspace…** asks you to type its name to confirm, and it moves to the trash: the Trash row in the sidebar lists it under Workspaces, with a Restore; the default and the \`weave\` docs workspaces cannot be deleted. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
+The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for the workspace menu, the same one the **⋮** on the workspace page opens: the **Link preview before sign-in** switch, and **Delete workspace…**, which asks you to type its name to confirm, and it moves to the trash: the Trash row in the sidebar lists it under Workspaces, with a Restore; the default and the \`weave\` docs workspaces cannot be deleted. **Click the logo** at the left of the workspace page's title to pick an image, whether or not the workspace has one yet; **Remove logo**, the small **×** beside it, clears it. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
 
 ## The space
 
@@ -937,13 +937,13 @@ Every row, table, space and workspace has a permalink built from its id, so a re
 
 Paste one into Slack, Messages or an email and it unfurls: the workspace logo (the weave mark when the workspace has none, or only an SVG one), the row's table, \`#id\` and name as the title, the path \`weave › Development › Issue\` on the first line and the state and the first fields on the next (\`Status Fixed · Severity Medium\`). The browser tab reads the row before the app has loaded. Opening the link lands on the row, and Back leaves in one step.
 
-On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by default it gets the sign-in redirect and the paste shows a bare URL. **Link preview before sign-in**, in the **Workspace actions** menu at the right of the workspace page's title (\`weave workspace link-preview\`, or \`PATCH /api/workspace\` with \`{"linkPreview": true}\` and an architect token), lets a signed-out request for a uuid permalink read the preview head: title, path, \`#id\`, name, logo, state and the first fields. Nothing else leaves: no document, no other field, no API. An unknown id and a \`Table#n\` address, which anyone could count through, are walled like any other page. The person who opens the link still signs in first. It is off on every workspace until an architect turns it on.
+On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by default it gets the sign-in redirect and the paste shows a bare URL. **Link preview before sign-in**, a switch in the workspace menu (the **⋮** at the right of the workspace page's title, or the workspace's chip on the rail) (\`weave workspace link-preview\`, or \`PATCH /api/workspace\` with \`{"linkPreview": true}\` and an architect token), lets a signed-out request for a uuid permalink read the preview head: title, path, \`#id\`, name, logo, state and the first fields. Nothing else leaves: no document, no other field, no API. An unknown id and a \`Table#n\` address, which anyone could count through, are walled like any other page. The person who opens the link still signs in first. It is off on every workspace until an architect turns it on.
 
 **Prefilled create links.** \`/w/<ws>/t/<id>/new?<Field>=<value>&…\` opens the new-row form for that table with those fields filled in. Nothing is saved until you press **Save**, so a link on another page cannot add rows. Values are read the way the API reads them: a select takes the option's name, a relation takes the target row's Name, and a repeated key fills a multi-select or a many relation (\`Tags=ai&Tags=ops\`). A field the table does not have, or a computed one, is left out and named at the top of the form, and so is a value that matches no option or row. Each value is cut to 1,000 characters and the whole query to 2,400, so the link survives sign-in: a signed-out visit signs in and lands on the filled form. **Copy create link** in the table's ⋮ menu copies the link with the values the current filter gives a new row; the button of the same name in the form copies a link carrying what you have filled in so far.
 
 ## Share links
 
-A share link opens one row, table, space, saved view or the whole workspace to whoever holds it, and nothing beside it. **Share…** sits in a row's **⋮** menu, the **Table actions** menu, the **Space actions** menu and on a saved view's page. The dialog picks the access, whether the link needs a signed-in account, and a label, then copies the new link. Under the form it lists the links already made there, each with **Copy** and **Revoke**.
+A share link opens one row, table, space, saved view or the whole workspace to whoever holds it, and nothing beside it. **Share…** sits in a row's **⋮** menu and the table menu, and as a button on a space's page and a saved view's page. The dialog picks the access, whether the link needs a signed-in account, and a label, then copies the new link. Under the form it lists the links already made there, each with **Copy** and **Revoke**.
 
 | Access | What the link can do |
 | --- | --- |
@@ -988,7 +988,7 @@ weave table update Invoice --icon lucide:file --noun invoice
 
 The icon value is **\`lucide:<name>\`** — one of the names in weave's inventory, Lucide shapes curated for what a space, a table, an option or a state tends to be called (\`activity bell bookmark bug calendar chart-bar compass file-text folder funnel heart house layout-grid lock mail map-pin pencil search settings shield-check star trash-2 users wallet\` among them; \`weave vocabulary icons\` lists them all). Most of them move — once when the page loads, once when the picker scrolls them into view, once per hover, never on a loop. A value stored before 2026-09-02 as \`iconly:<name>\` keeps drawing through a built-in alias, so nothing migrates. An emoji is not an icon: the engine refuses any value outside the inventory (Kyle, 2026-09-02).
 
-The **noun** is what one row is called — the table's *row term*. It lives on the Name field (open the Name column's menu → Edit field → "Rows in this table are…"), with a curated list to pick from and a plural you can correct. Every surface speaks it: the create control says "New invoice" instead of "New Invoice", the selection puck counts "3 invoices", the trash toggle reads "Deleted invoices". \`--noun\` on the CLI and \`noun\` over MCP set the same term.
+The **noun** is what one row is called — the table's *row term*. It lives on the Name field (open the Name column's menu → Field settings… → "Rows in this table are…"), with a curated list to pick from and a plural you can correct. Every surface speaks it: the create control says "New invoice" instead of "New Invoice", the selection puck counts "3 invoices", the trash toggle reads "Deleted invoices". \`--noun\` on the CLI and \`noun\` over MCP set the same term.
 
 ## The grid reads as a record
 
@@ -1125,7 +1125,7 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | Alt+\u2190 / \u2192 on a focused header | table view | narrows or widens the column by 8px, down to its label |
 | Double-click that edge | table view | fits the column to its longest value, up to the type's maximum and never under its label |
 | Click a header, or Return on a focused one | table view | opens the field tray to rename, retype or reconfigure. The click that ends a drag or a resize opens nothing |
-| ⋮ on a header | table view | sorts by that column, stored on the table for everyone. The two rows read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The **#** column and the system columns carry a sort-only ⋮ of their own |
+| **Sort** in the toolbar | table view | sorts by the field you pick, stored on the table for everyone. The two directions read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The system columns and **Public Id** (the **#** column) are in its list too; a column's ⋮ holds no sort rows |
 | 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
 | Drag the grip | entity page | reorders fields; the table's columns follow. On a phone, press and hold a field to pick it up |
 | Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per row in this browser |
@@ -1136,7 +1136,7 @@ Fields dropped across the seam beside **#** freeze with it, and stay put while t
 
 Every field type opens at a default width: Name 260px, text, links and multi-selects 180, long text 280, selects and workflows 124, relations 136, dates 112, numbers 88, currency 104, checkboxes 56. A header label never clips: a label longer than its default widens that column, and no drag, nudge or fit goes under it. Widths belong to the view, so each view keeps its own. Showing, hiding, adding or removing a field never resizes another one; the neighbours slide, and the space at the right of the grid takes up the difference. A hidden field keeps its width and its place for when it comes back.
 
-The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record. A view shows the ones you turn on in its own list: each one drags, freezes across the seam and sizes like any field, and its place and width are the view's. Activity is the history panel on the record, not a column, so it stays a switch for the whole table. Every one but Activity sorts from its ⋮; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
+The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record. A view shows the ones you turn on in its own list: each one drags, freezes across the seam and sizes like any field, and its place and width are the view's. Activity is the history panel on the record, not a column, so it stays a switch for the whole table. Every one but Activity sorts from the toolbar **Sort**; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
 
 \`Created By\` and \`Modified By\` show a person as their name on an initial, followed by "via MCP" when they wrote through an MCP client. A write an automation made shows the rule's Workflows row instead, and the chip opens that row. When a rule writes to a row you have open, in the grid or on its page, each cell it changed lights up in the order the rule wrote it, Modified By last, and a toast names the rule and the row. With reduced motion on, the cells stay still and the chip and the toast still show.
 
@@ -2229,7 +2229,7 @@ A table can be read several ways. Each **view** keeps which columns show, their 
 
 ## The toolbar
 
-The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Filters → Group (List layout only) → Table actions (⋮)**. The three-dot menu keeps the table's existing actions; add records from the grid.
+The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Stats → Filters → Group (List layout only) → Sort → Table actions (⋮)**. **Stats** opens the column statistics. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **Share…**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Delete table**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
 
 | Control | What it does |
 | --- | --- |
@@ -2237,8 +2237,10 @@ The controls sit beside the breadcrumb, in this order: **Search → View → Den
 | **Current view name ▾** | Selects and manages saved views. Changes save automatically. |
 | **Compact ▾**, **Comfortable ▾** or **Spacious ▾** | Sets the row height: 32, 44 or 72 pixels, with two lines of text at Spacious. Only the height changes; text size and column widths stay the same. The row under your eye stays put, and the choice saves into the current view like its filters and sorting, so each view keeps its own. A cell shows the chips that fit whole and a +N for the rest; hover it to see them all. |
 | **Fields** | Shows, hides and reorders columns; opens the field tray to add a field. |
+| **Stats** | Opens the column statistics: sums, medians, histograms and distributions, grouped by a chip column if you pick one. |
 | **Filters** | Narrows rows by workflow states, toggle labels and single-select or multi-select options. The badge counts fields with active filters. |
 | **Group** | Shows in List layout. Sets the list's group levels, its **Completed by** checkbox and its **Nest by** link. The button names the levels: **Group: Trip › Priority**. |
+| **Sort** | Picks the field the table sorts by and its direction, worded by type; **Clear sort** removes it. |
 
 Search is temporary: it is not saved into a view or shared with other people, and leaving the table clears it.
 

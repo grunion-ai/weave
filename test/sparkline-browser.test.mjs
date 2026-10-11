@@ -86,7 +86,7 @@ if (s) {
         const th = page.locator('.wv-grid thead th.col-head', { hasText: 'Series' }).first();
         await th.hover();
         await th.locator('.field-menu').click();
-        await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
+        await page.locator('.chip-pop .wv-menu-row', { hasText: 'Field settings' }).click();
         const display = page.locator('.tray-form .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: /^Display$/ }) });
         await display.waitFor();
         await display.locator('.seg-opt', { hasText: 'sparkline' }).click();

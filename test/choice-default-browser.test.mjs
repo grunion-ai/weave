@@ -77,7 +77,7 @@ if (s) {
     const th = page.locator('.wv-grid thead th.col-head', { hasText: 'Size' }).first();
     await th.hover();
     await th.locator('.field-menu').click();
-    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
+    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Field settings' }).click();
     await page.waitForSelector('#tray-back .choice-default');
     assert.equal((await face(page).innerText()).trim(), 'M', 'the stored default is shown');
     await page.locator('#tray-back .opt-row').nth(1).locator('.opt-del').click();
