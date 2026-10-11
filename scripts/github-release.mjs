@@ -52,7 +52,9 @@ export async function waitForDeployment(url, metadata, { attempts = 90, delayMs 
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { 'cache-control': 'no-cache' } });
       health = await response.json();
-      if (response.ok && health.ok && health.version === metadata.version && (health.supervisor?.release === metadata.tag || (allowImage && health.supervisor?.release === 'image'))) return health;
+      const tagged = health.supervisor?.release === metadata.tag && (health.version ?? metadata.version) === metadata.version;
+      const image = allowImage && health.supervisor?.release === 'image' && health.version === metadata.version;
+      if (response.ok && health.ok && (tagged || image)) return health;
       last = `HTTP ${response.status}, version ${health.version}, release ${health.supervisor?.release}`;
     } catch (error) { last = error.message; }
     if (health?.supervisor?.failed?.includes(metadata.version)) throw new Error(`Supervisor rejected ${metadata.tag}`);

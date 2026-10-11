@@ -369,7 +369,7 @@ async function main() {
           process.send({ weave: 'migrated' });
         });
       }
-      process.send({ weave: 'listening', port: actual });
+      process.send({ weave: 'listening', port: actual, version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
     }
     return;
   }

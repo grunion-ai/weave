@@ -86,7 +86,7 @@ export async function startSupervisor({
     const w = { ...rel, child, port: null, inflight: 0, idle: null, settling: defer, queue: [], since: null };
     w.exited = new Promise((r) => child.once('exit', r));
     w.listening = new Promise((res, rej) => {
-      child.on('message', (m) => { if (m?.weave === 'listening') { w.port = m.port; res(); } });
+      child.on('message', (m) => { if (m?.weave === 'listening') { w.port = m.port; w.reported = m.version; res(); } });
       child.once('exit', (code, signal) => rej(new Refusal(`the worker exited before it listened (${signal ?? `code ${code}`})`)));
       child.once('error', rej);
     });
@@ -108,8 +108,9 @@ export async function startSupervisor({
       try {
         const r = await globalThis.fetch(`${origin(w)}/api/health`, { signal: AbortSignal.timeout(5000) });
         const h = await r.json();
-        if (r.ok && h.ok && h.version === w.version) return h;
-        last = `HTTP ${r.status}, version ${h.version}`;
+        const version = h.version ?? w.reported;
+        if (r.ok && h.ok && version === w.version) return h;
+        last = `HTTP ${r.status}, version ${version}`;
       } catch (err) { last = err.message; }
       await sleep(100);
     }

@@ -426,3 +426,36 @@ test('without a deploy token the hook path is not special', async () => {
     await sup.close();
   }
 });
+
+function walledBin(reported) {
+  return `import { createServer } from 'node:http';
+const s = createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end(JSON.stringify({ ok: true, name: 'weave' })); });
+s.listen(0, '127.0.0.1', () => process.send({ weave: 'listening', port: s.address().port, version: ${JSON.stringify(reported)} }));
+process.on('message', (m) => { if (m?.weave === 'migrate') process.send({ weave: 'migrated' }); });
+`;
+}
+
+test('a walled worker that hides its version from anonymous health is verified by the version it reports over IPC', async () => {
+  const dataPath = dataDir('walled');
+  const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: walledBin(NEXT) }) });
+  const { sup } = await supervise(dataPath, gh);
+  try {
+    const result = await sup.check();
+    assert.equal(result.action, 'swapped', result.reason);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a worker that reports a different version over IPC is refused', async () => {
+  const dataPath = dataDir('walled-wrong');
+  const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: walledBin('0.0.1') }) });
+  const { sup, base } = await supervise(dataPath, gh);
+  try {
+    const result = await sup.check();
+    assert.equal(result.action, 'failed');
+    assert.equal((await health(base)).version, IMAGE_VERSION);
+  } finally {
+    await sup.close();
+  }
+});
