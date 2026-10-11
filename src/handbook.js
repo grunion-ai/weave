@@ -2150,6 +2150,22 @@ A submission creates exactly one row in the form's table and nothing else. It re
 
 An **Anonymous** floor also needs the operator to allow it: start the server with \`WEAVE_ANONYMOUS_FORMS=1\`. Without that switch a signed-out visitor is asked to sign in.
 
+## Forms inside a table
+
+Open the table's actions menu and choose **Forms…**. The same action appears in the phone menu. An Architect can create a form, choose its fields, change labels and defaults, mark required inputs, and save it. Each form has controls to open it, copy its link, edit it or pause submissions. Editing keeps its form ID and permalink.
+
+The editor writes the existing Workspace/Forms row. Server-filled values survive edits. Advanced input keys remain stable, and old keys remain aliases. Forms created by an agent appear in the same manager.
+
+The audience control reports whether the server allows anonymous submissions. In a workspace with sign-in disabled, forms follow that workspace's open access. A member-workspace Architect also needs Architect access on the hub registry to manage its forms.
+
+| Surface | Management |
+| --- | --- |
+| HTTP | \`GET /api/forms/manage?table=<id>\`, \`POST /api/forms\`, \`PATCH /api/forms/<id>\` |
+| CLI | \`weave form create --definition '{json}'\`, \`weave form update <id> --definition '{json}'\`, \`weave form config <id>\` |
+| MCP | \`weave_forms {action, form, definition}\`; actions: list, get, create, update |
+
+A creation definition contains \`name\`, \`table\` and \`fields\`. Updates contain only settings to change. Hidden values are available only through the privileged management read. The built-in bug form keeps its dedicated bug-report flow.
+
 ## Stable links and input keys
 
 The form ID keeps its address stable while its name, labels and layout change. Prefix the path with \`/w/<workspace>\` when needed. Configure a field with a stable input key:

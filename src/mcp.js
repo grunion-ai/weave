@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
-import { submitForm } from './forms.js';
+import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
 let VERSION = 'dev';
 try {
@@ -498,6 +498,19 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { blobs: { type: 'boolean' } } },
   },
   {
+    name: 'weave_forms',
+    description: 'Manage native table forms. Architect access is required on the workspace and its hub registry. list shows forms here; get reads an editable definition; create takes a definition with name, table and fields; update changes a form without changing its permalink. Fields accept field, key, label, required, default and aliases. Omitted settings survive edits. Public submissions use weave_form_submit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'get', 'create', 'update'] },
+        form: { type: 'string', description: 'The form ID or name for get or update.' },
+        definition: { type: 'object', description: 'name, description, table, fields, hidden, enabled and floor (Observer or Anonymous). Update accepts only the settings to change.' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'weave_form_submit',
     description: 'Submit one row through a Workspace/Forms form without write access to its table. form is its id or name; values accepts stable input keys, field IDs, aliases, names or labels. Reuse idempotencyKey when retrying the same request: it returns the original receipt; changed input with the same key is refused. Server-filled and unlisted fields are refused. Bug forms take note and categories (slow, broken-ui, wrong-data, error).',
     inputSchema: {
@@ -589,6 +602,7 @@ export const SUMMARY = {
   weave_relation_map: 'the relation map as mermaid',
   weave_export_json: 'the whole workspace as JSON',
   weave_import_json: 'replace the workspace from a JSON export',
+  weave_forms: 'create, configure and pause native table forms',
   weave_form_submit: 'one row through a form',
 };
 TOOLS.push({
@@ -651,6 +665,11 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     if (!mayAdminister(atRoot ? caller.root ?? weave : weave, atRoot ? caller.rootRole : caller.role)) {
       throw new Error(`${name} needs an architect token${atRoot ? ' on the hub root' : ''}`);
     }
+  }
+  if (caller && name === 'weave_forms') {
+    const registry = weave.registryHost ?? weave;
+    const rootRole = registry === weave ? caller.role : caller.rootRole;
+    if ((weave.state.meta.requireAuth && !caller.role) || (registry.state.meta.requireAuth && !rootRole) || !mayAdminister(weave, caller.role) || !mayAdminister(registry, rootRole)) throw new Error('Form management needs an architect token on the workspace and hub registry');
   }
   weave.maybeRefresh?.();
   switch (name) {
@@ -819,6 +838,15 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       });
     case 'weave_audit':
       return { events: weave.listAudit({ limit: args.limit ?? null, since: args.since ?? null }) };
+    case 'weave_forms':
+      if (args.action === 'list') return listForms(weave);
+      if (args.action === 'get') return getFormDefinition(weave, args.form);
+      if (args.action === 'create') {
+        if (args.definition?.kind !== undefined) throw new Error('Form management creates row forms');
+        return createForm(weave, args.definition);
+      }
+      if (args.action === 'update') return updateForm(weave, args.form, args.definition);
+      throw new Error('Form action must be list, get, create or update');
     case 'weave_form_submit':
       return submitForm(weave, args.form, { values: args.values, note: args.note, categories: args.categories, events: [] }, { actor: weave.actor, idempotencyKey: args.idempotencyKey, server: { version: VERSION, workspace: weave.state.meta.name } });
     case 'weave_workspace':

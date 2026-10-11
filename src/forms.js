@@ -220,11 +220,57 @@ export function normalizeFormValues(reg, forms, values, row = null) {
   return { ...patch, Fields: JSON.stringify(normalized.fields), Hidden: JSON.stringify(normalized.hidden) };
 }
 
-export function createForm(w, { name, description = '', table, fields = [], hidden = {}, enabled = true, floor = 'Observer', kind = 'Row' } = {}) {
-  if (!name) throw new WeaveError('A form needs a name', 'invalid');
+const FORM_SETTINGS = ['name', 'description', 'table', 'fields', 'hidden', 'enabled', 'floor'];
+
+function validateFormSettings(settings, creating = false) {
+  if (!isMap(settings)) throw new WeaveError('Form settings must be an object', 'invalid');
+  for (const key of Object.keys(settings)) if (!FORM_SETTINGS.includes(key) && !(creating && key === 'kind')) throw new WeaveError(`Unknown form setting '${key}'`, 'invalid');
+  if ((creating || hasOwn(settings, 'name')) && (typeof settings.name !== 'string' || !settings.name.trim())) throw new WeaveError('A form needs a name', 'invalid');
+  if (hasOwn(settings, 'description') && typeof settings.description !== 'string') throw new WeaveError('Description must be text', 'invalid');
+  if (hasOwn(settings, 'enabled') && typeof settings.enabled !== 'boolean') throw new WeaveError('Enabled must be true or false', 'invalid');
+  if (hasOwn(settings, 'floor') && !FORM_FLOORS.includes(settings.floor)) throw new WeaveError('Floor must be Observer or Anonymous', 'invalid');
+  if (hasOwn(settings, 'kind') && !FORM_KINDS.includes(settings.kind)) throw new WeaveError('Unknown form kind', 'invalid');
+}
+
+export function getFormDefinition(w, ref) {
+  const form = getForm(w, ref);
+  if (form.owner !== w) throw new WeaveError(`Form '${ref}' not found in this workspace`, 'not-found');
+  return { ...form, tableId: form.tableId, hiddenValues: structuredClone(form.hiddenMap) };
+}
+
+export function updateForm(w, ref, patch = {}) {
+  validateFormSettings(patch);
+  const form = getForm(w, ref);
+  if (form.owner !== w) throw new WeaveError(`Form '${ref}' not found in this workspace`, 'not-found');
+  if (form.kind !== 'Row') throw new WeaveError('The built-in bug form cannot be changed in the form builder', 'forbidden');
+  const reg = registryOf(w);
+  const values = {};
+  for (const key of ['name', 'description', 'enabled', 'floor']) if (hasOwn(patch, key)) values[key[0].toUpperCase() + key.slice(1)] = patch[key];
+  if (hasOwn(patch, 'fields')) values.Fields = JSON.stringify(patch.fields);
+  if (hasOwn(patch, 'hidden')) values.Hidden = JSON.stringify(patch.hidden);
+  if (hasOwn(patch, 'table')) {
+    const db = w.getTable(patch.table);
+    if (db.system) throw new WeaveError('A form needs a table outside the system registry', 'invalid');
+    const row = reg.listEntities(sysTable(reg, 'tables').id).find(e => e.sysId === db.id);
+    if (!row) throw new WeaveError('The table has no registry row', 'not-found');
+    values.Table = row.id;
+  }
+  const before = structuredClone(reg.state);
+  try {
+    return reg.store.batch(() => {
+      reg.updateEntity(form.id, values);
+      return getFormDefinition(w, form.id);
+    });
+  } catch (err) { reg.state = before; throw err; }
+}
+
+export function createForm(w, settings = {}) {
+  validateFormSettings(settings, true);
+  let { name, description = '', table, fields = [], hidden = {}, enabled = true, floor = 'Observer', kind = 'Row' } = settings;
   const reg = registryOf(w);
   const formsT = formsTable(w);
   const db = w.getTable(table);
+  if (db.system) throw new WeaveError('A form needs a table outside the system registry', 'invalid');
   const tablesT = sysTable(reg, 'tables');
   const tablesRow = tablesT && reg.listEntities(tablesT.id).find((e) => e.sysId === db.id);
   if (!tablesRow) throw new WeaveError(`${w.qualifiedName(db)} has no Workspace/Tables row to point a form at`, 'not-found');

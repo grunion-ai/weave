@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-const TABLE_ROWS = ['Column stats…', 'Export CSV', 'Share…', 'New share page…', 'Row term (row)…', 'Delete table'];
+const TABLE_ROWS = ['Column stats…', 'Export CSV', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'Row term (row)…', 'Delete table'];
 
 const s = await launch('menu keyboard', (weave) => {
   weave.createSpace({ name: 'Product' });

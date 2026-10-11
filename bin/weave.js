@@ -14,7 +14,7 @@ import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
 import { vocabularyView } from '../src/vocabulary.js';
-import { listForms, getForm, submitForm, leaveWorkspace } from '../src/forms.js';
+import { listForms, getForm, submitForm, leaveWorkspace, createForm, updateForm, getFormDefinition } from '../src/forms.js';
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -224,6 +224,9 @@ The workspace itself
   workspace link-preview [--off]      Link preview before sign-in: a walled permalink unfurls
   workspace leave [--account name]    Remove your own account (never the docs workspace, never its last architect)
   form [list] | get <form>            The forms whose table lives here (Workspace/Forms rows)
+  form config <form>                 Editable form definition
+  form create --definition '{json}'  Create a native table form
+  form update <form> --definition '{json}'  Edit or pause; preserve its link
   form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]   One row through a form
   activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n]
 
@@ -914,12 +917,19 @@ async function main() {
       const [sub, ref] = args;
       if (sub === 'list' || !sub) return out(listForms(w));
       if (sub === 'get') return out(getForm(w, ref));
+      if (sub === 'config') return out(getFormDefinition(w, ref));
+      if (sub === 'create' || sub === 'update') {
+        const definition = parseJsonFlag('definition');
+        if (!definition || typeof definition !== 'object' || Array.isArray(definition)) throw new WeaveError('form create/update needs --definition as a JSON object');
+        if (definition.kind !== undefined) throw new WeaveError('Form management creates row forms');
+        return out(sub === 'create' ? createForm(w, definition) : updateForm(w, ref, definition));
+      }
       if (sub === 'submit') {
         if (!ref) throw new WeaveError('Usage: form submit <form> --values \'{"Field":"value"}\' [--idempotency-key key] [--note text --categories a,b]');
         const input = { values: parseJsonFlag('values') ?? undefined, note: flags.note, categories: flags.categories ? splitList(flags.categories) : undefined, events: [] };
         return out(submitForm(w, ref, input, { actor: CLI_ACTOR, idempotencyKey: flags['idempotency-key'], server: { version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, workspace: w.state.meta.name } }));
       }
-      throw new WeaveError(`Unknown form subcommand '${sub}'. Try: list, get, submit`);
+      throw new WeaveError(`Unknown form subcommand '${sub}'. Try: list, get, config, create, update, submit`);
     }
     case 'file': {
       const [sub, ref, fileId] = args;
