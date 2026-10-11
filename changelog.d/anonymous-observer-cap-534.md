@@ -1,0 +1,1 @@
+- Once a workspace, or the hub root it belongs to, holds an account, a caller with no token and no session is capped at observer even while the wall is off: reads, comments, form submits and bug reports still answer, and every other write answers 401. A hub with no accounts anywhere keeps today's open local use (Issue #534).
