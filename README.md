@@ -218,7 +218,7 @@ servers, so one config block works in each of them:
 }
 ```
 
-It exposes the whole platform as 64 tools. `tools/list` names the core build
+It exposes the whole platform as 65 tools. `tools/list` names the core build
 set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave_create_entity`,
 `weave_update_entity`, `weave_create_space`, `weave_create_table`,
 `weave_add_field`, `weave_update_field`, `weave_add_relation`,
@@ -336,7 +336,7 @@ graph — is the model weave implements, in a single file you own. See
 [docs/PARITY.md](docs/PARITY.md) for the feature-by-feature matrix.
 
 **Can AI agents use it?**
-That is the point. The MCP server exposes 64 tools covering schema design,
+That is the point. The MCP server exposes 65 tools covering schema design,
 CRUD, documents, relations, workflow states, search, automations, and CSV
 import/export, seventeen of them listed by default and the rest one `weave_call`
 away. Agents can build the schema, not just fill it in.

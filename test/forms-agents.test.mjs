@@ -42,3 +42,46 @@ test('CLI retries persist across processes and reject changed content with the s
     assert.throws(() => cli('Changed payload'));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('MCP form management creates and edits one native registry form with architect authorization', () => {
+  const w = new Weave();
+  seed(w);
+  w.createAccount({ name: 'owner', role: 'architect' });
+  const admin = { role: 'architect' };
+  const args = { action: 'create', definition: { name: 'Native intake', table: 'Capture/Request', fields: [{ field: 'Name', key: 'title', required: true }] } };
+  assert.throws(() => dispatchTool(w, 'weave_forms', args, { caller: { role: 'editor' } }), /architect/);
+  const form = dispatchTool(w, 'weave_forms', args, { caller: admin });
+  assert.equal(form.name, 'Native intake');
+  const edited = dispatchTool(w, 'weave_forms', { action: 'update', form: form.id, definition: { name: 'Renamed intake', enabled: false } }, { caller: admin });
+  assert.equal(edited.id, form.id);
+  assert.equal(edited.enabled, false);
+  assert.equal(dispatchTool(w, 'weave_forms', { action: 'get', form: form.id }, { caller: admin }).fields[0].key, 'title');
+  assert.throws(() => dispatchTool(w, 'weave_forms', { action: 'get', form: form.id }, { caller: { role: 'observer' } }), /architect/);
+  assert.ok(dispatchTool(w, 'weave_forms', { action: 'list' }, { caller: admin }).some(f => f.id === form.id));
+});
+
+test('CLI form configuration creates and updates the same saved form', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-native-form-cli-'));
+  const path = join(dir, 'capture.db');
+  const w = new Weave({ path });
+  seed(w);
+  w.store.close();
+  const cli = (...args) => JSON.parse(execFileSync(process.execPath, [fileURLToPath(new URL('../bin/weave.js', import.meta.url)), '--data', path, 'form', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+  try {
+    const form = cli('create', '--definition', JSON.stringify({ name: 'CLI intake', table: 'Capture/Request', fields: ['Name'] }));
+    const edited = cli('update', form.id, '--definition', JSON.stringify({ name: 'New label', enabled: false }));
+    assert.equal(edited.id, form.id);
+    assert.equal(edited.enabled, false);
+    assert.equal(cli('config', form.id).name, 'New label');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('MCP management honors an accountless sign-in wall on the workspace and registry', () => {
+  const w = new Weave();
+  const form = seed(w);
+  w.setRequireAuth(true);
+  assert.throws(() => dispatchTool(w, 'weave_forms', { action: 'get', form: form.id }, { caller: { role: null } }), /architect/);
+  const member = new Weave();
+  member.registryHost = w;
+  assert.throws(() => dispatchTool(member, 'weave_forms', { action: 'list' }, { caller: { role: 'architect', rootRole: null } }), /architect/);
+});

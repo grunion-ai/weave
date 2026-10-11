@@ -8,7 +8,7 @@ import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
-import { getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
+import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
@@ -1220,6 +1220,24 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'POST /api/markdown') {
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });
+        }
+
+        if (route === 'GET /api/forms/manage' || route === 'POST /api/forms' || (rx.method === 'PATCH' && /^\/api\/forms\/[^/]+$/.test(path))) {
+          const registry = weave.registryHost ?? weave;
+          const registryRole = roleOn(registry);
+          if ((weave.state.meta.requireAuth && role == null) || (registry.state.meta.requireAuth && registryRole == null) || !mayAdminister(weave, role) || !mayAdminister(registry, registryRole)) return deny(role ? 403 : 401, 'Managing forms needs an architect on the workspace and its registry');
+          if (route === 'GET /api/forms/manage') {
+            const tableRef = rx.searchParams?.get('table');
+            const table = tableRef ? weave.getTable(tableRef) : null;
+            const forms = listForms(weave).filter(form => !table || form.tableId === table.id).map(form => getFormDefinition(weave, form.id));
+            return out(200, { forms, anonymousAllowed: anonymousForms, requireAuth: !!weave.state.meta.requireAuth }, { 'Cache-Control': 'no-store' });
+          }
+          if (route === 'POST /api/forms') {
+            if (body?.kind !== undefined) throw new WeaveError('The form builder creates row forms', 'invalid');
+            const form = createForm(weave, body);
+            return out(201, getFormDefinition(weave, form.id));
+          }
+          return out(200, updateForm(weave, decodeURIComponent(path.split('/').pop()), body));
         }
 
         if (route === 'GET /api/forms') {
