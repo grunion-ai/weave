@@ -1897,6 +1897,7 @@ export class Weave {
     out.fields = v.fields.map((id) => viewEntryName(db, id)).filter(Boolean);
     if (v.filters) out.filters = structuredClone(v.filters);
     if (v.sort) out.sort = structuredClone(v.sort);
+    if (v.search) out.search = v.search;
     const widths = {};
     for (const [id, px] of Object.entries(v.widths ?? {})) { const n = viewEntryName(db, id); if (n) widths[n] = px; }
     if (Object.keys(widths).length) out.widths = widths;
@@ -1998,7 +1999,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -2110,6 +2111,11 @@ export class Weave {
     if (next.parked && !Object.keys(next.parked).length) delete next.parked;
     if (patch.filters != null) { const f = this.#checkFilters(db, patch.filters); if (f) next.filters = f; else delete next.filters; }
     if (patch.sort != null) { const s = this.#checkSort(db, patch.sort); if (s) next.sort = s; else delete next.sort; }
+    if (patch.search !== undefined) {
+      if (patch.search !== null && typeof patch.search !== 'string') throw new WeaveError(`search is the text the table search box holds for this view ('' or null clears it). Got ${JSON.stringify(patch.search)}`, 'invalid');
+      const text = (patch.search ?? '').trim();
+      if (text) next.search = text; else delete next.search;
+    }
     if (patch.default === false && i === 0) throw new WeaveError(`'${next.name}' is the default because it is first — move another view to position 0 instead`, 'invalid');
     if (patch.position != null && !(Number.isInteger(patch.position) && patch.position >= 0)) {
       throw new WeaveError('position is a whole number: 0 is the first place in the strip (the default)', 'invalid');
@@ -2847,6 +2853,7 @@ export class Weave {
       }
       if (vDoc.filters) out.filters = Object.fromEntries(Object.entries(vDoc.filters).filter(([k]) => has(k)));
       if (vDoc.sort) out.sort = vDoc.sort.filter((s) => has(s.field));
+      if (typeof vDoc.search === 'string' && vDoc.search.trim()) out.search = vDoc.search;
       if (vDoc.widths) out.widths = Object.fromEntries(Object.entries(vDoc.widths).filter(([k]) => has(k)));
       if (vDoc.frozen) out.frozen = vDoc.frozen;
       if (vDoc.density) out.density = vDoc.density;
@@ -2874,6 +2881,7 @@ export class Weave {
       if (vDoc.fields && JSON.stringify(vDoc.fields) !== JSON.stringify(have?.fields)) patch.fields = vDoc.fields;
       if (JSON.stringify(vDoc.filters ?? null) !== JSON.stringify(have?.filters ?? null)) patch.filters = vDoc.filters ?? {};
       if (JSON.stringify(vDoc.sort ?? null) !== JSON.stringify(have?.sort ?? null)) patch.sort = vDoc.sort ?? [];
+      if ((vDoc.search?.trim() ?? '') !== (have?.search ?? '')) patch.search = vDoc.search ?? '';
       if (JSON.stringify(vDoc.widths ?? {}) !== JSON.stringify(have?.widths ?? {})) {
         patch.widths = { ...Object.fromEntries(Object.keys(have?.widths ?? {}).map((n) => [n, null])), ...(vDoc.widths ?? {}) };
       }
@@ -3778,7 +3786,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
-    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox'], ['Layout', 'text'], ['Group', 'text']]) {
+    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Search', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox'], ['Layout', 'text'], ['Group', 'text']]) {
       if (!this.#sysField(viewsT, n)) this.addField(viewsT.id, { name: n, type, ...(type === 'number' ? { config: { decimals: 0 } } : {}) }).system = true;
     }
     const wfT = this.#sysTable('workflows')
@@ -3995,6 +4003,7 @@ export class Weave {
         Fields: v.fields.map((id) => viewEntryName(db, id)).filter(Boolean).join(', '),
         Filter: formatFilters(v.filters),
         Sort: formatSort(v.sort),
+        Search: v.search ?? '',
         Default: i === 0,
         Position: i,
         Frozen: v.frozen ?? 0,
@@ -4019,7 +4028,7 @@ export class Weave {
       }
       const patch = {};
       if (reg.entityName(row) !== v.name) patch.Name = v.name;
-      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row', 'Layout', 'Group']) {
+      for (const k of ['Fields', 'Filter', 'Sort', 'Search', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row', 'Layout', 'Group']) {
         const f = this.#sysField(t, k);
         if (!f) continue;
         if ((row.values[f.id] ?? (['Default', 'Show Deleted', 'Rollup Row'].includes(k) ? false : k === 'Frozen' ? 0 : '')) !== want[k]) patch[k] = want[k];
@@ -4269,6 +4278,7 @@ export class Weave {
     if ('Fields' in values) vp.fields = String(take('Fields') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
     if ('Filter' in values) vp.filters = parseFilters(take('Filter'));
     if ('Sort' in values) vp.sort = parseSort(take('Sort'));
+    if ('Search' in values) vp.search = String(take('Search') ?? '');
     if ('Default' in values) {
       const on = !!take('Default');
       if (on) vp.default = true; else if (isDefault) vp.default = false;
