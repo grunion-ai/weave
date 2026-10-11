@@ -11,7 +11,8 @@
   "scripts": {
     "test": "node scripts/test.mjs",
     "start": "node bin/weave.js serve",
-    "seed": "node scripts/seed.mjs"
+    "seed": "node scripts/seed.mjs",
+    "ui-catalog": "node tools/ui-catalog/run.mjs"
   },
   "engines": {
     "node": ">=22.16"
