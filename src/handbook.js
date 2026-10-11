@@ -959,7 +959,7 @@ weave share revoke <share id>
 curl -H "Authorization: Bearer wvs_…" https://<host>/api/share
 \`\`\`
 
-\`GET /api/share\` answers what the token reaches. A row or table outside the scope answers 404, and a route no link reaches answers 403. **Signed-in members only** makes the link private: it opens only in a browser signed in to the workspace. Editors and architects make links; an editor revokes its own, an architect revokes any, and an observer does neither. Every mint and revoke lands in the audit log with its actor (\`weave_shares\` over MCP, \`POST\`/\`GET\`/\`DELETE /api/shares\` over HTTP).
+\`GET /api/share\` answers what the token reaches. A row or table outside the scope answers 404, and a route no link reaches answers 403. **Signed-in members only** makes the link private: it opens only in a browser signed in to the workspace. An architect makes, lists, renews and revokes links; a link passes the wall, so minting one is a publishing decision, and editors and observers do none of it. A link lasts thirty days unless an architect renews it for thirty more on the same token (\`weave share renew <id>\`, \`weave_shares\` renew, \`POST /api/shares/<id>/renew\`), or names its own expiry when minting. Every mint, renew and revoke lands in the audit log with its actor (\`weave_shares\` over MCP, \`POST\`/\`GET\`/\`DELETE /api/shares\` over HTTP).
 
 The token is stored with the grant so the dialog can show the link again, and \`weave export\` leaves it out: an imported grant opens nothing until someone mints a new link. Revoking is how a link ends. A saved view shared before share links existed keeps its old address: \`/view/<token>\` redirects to \`/s/<token>\`.
 
@@ -1205,7 +1205,7 @@ weave view share <id>     # returns a /s/wvs_… link: a read-only share grant o
 weave view unshare <id>   # revokes it
 \`\`\`
 
-A view's link is a share grant (**Share links** above). Anyone holding it reads that view and nothing else, with no account and no sign-in, and the link stays open when the workspace requires authentication. The token never leaves through \`weave export\`: an imported view arrives unshared, and \`weave view share\` mints it a fresh link.
+A view's link is a share grant (**Share links** above), so sharing a view takes an architect and the link lasts thirty days unless renewed. Anyone holding it reads that view and nothing else, with no account and no sign-in, and the link stays open when the workspace requires authentication. The token never leaves through \`weave export\`: an imported view arrives unshared, and \`weave view share\` mints it a fresh link.
 
 ## The relation map
 
