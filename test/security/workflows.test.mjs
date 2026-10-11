@@ -64,9 +64,9 @@ test('security.yml runs on push to main, on pull requests and weekly, and calls 
 
 test('release validates main CI before checking out the tested SHA with write credentials', () => {
   const src = text('release.yml');
-  assert.match(src, /workflow_run:\n    workflows: \[tests\]/);
-  assert.match(src, /github.event.workflow_run.event == 'push'/);
-  assert.match(src, /github.event.workflow_run.head_repository.full_name == github.repository/);
+  assert.match(src, /workflow_call:/);
+  assert.match(src, /github.event_name == 'push'/);
+  assert.doesNotMatch(src, /workflow_run:/);
   assert.match(src, /github.ref == 'refs\/heads\/main'/);
   assert.match(src, /node scripts\/github-release\.mjs --guard/);
   assert.equal((src.match(/persist-credentials: false/g) ?? []).length, 2);

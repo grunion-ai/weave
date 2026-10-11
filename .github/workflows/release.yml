@@ -1,14 +1,11 @@
 name: release
 
 on:
-  workflow_run:
-    workflows: [tests]
-    types: [completed]
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Successful main push tests run ID to retry
+        description: Main push tests run ID with a successful CI gate
         required: true
         type: string
 
@@ -22,12 +19,7 @@ concurrency:
 
 jobs:
   guard:
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -46,7 +38,7 @@ jobs:
         run: node scripts/github-release.mjs --guard
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+          CI_RUN_ID: ${{ inputs.run_id || github.run_id }}
   publish:
     needs: guard
     if: needs.guard.outputs.current == 'true'
@@ -67,4 +59,4 @@ jobs:
       - run: node scripts/github-release.mjs
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+          CI_RUN_ID: ${{ inputs.run_id || github.run_id }}

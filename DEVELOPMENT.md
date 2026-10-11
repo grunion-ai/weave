@@ -54,8 +54,9 @@ CHANGELOG.md. The fold sorts and deletes fragments. A refactor or documentation
 change without a release bullet carries `No-changelog: <reason>` in its commit.
 The changelog and development-sync tests enforce these contracts.
 
-After successful `tests` CI for a main push, the `release` workflow validates the
-same-repository event and successful `CI gate` in a read-only job. Its publishing
+After the `CI gate` succeeds on a main push, `tests` calls the reusable `release`
+workflow. Its read-only guard validates the same-repository event, current run
+ID and completed `CI gate`. Pull requests never call release publication. Its publishing
 job checks out the exact tested SHA and checks GitHub main again. A superseded run
 skips publication so the newer main run owns delivery. The publisher validates the
 version, matching tracker manifest and nonempty `## v<version>` changelog section
@@ -72,8 +73,10 @@ For a no-version-change landing, an existing image at the matching version is a
 valid baseline. The local deployment watcher separately follows verified GitHub
 main into `~/.weave-serve` and refreshes the local tracker and quality mirror.
 
-Recovery uses Actions' `release` workflow dispatch with the successful main push
-`tests` run ID. The same event, gate, SHA and current-main checks apply on retries.
+Recovery uses Actions' `release` workflow dispatch with the main push `tests`
+run ID. The same event, gate, SHA and current-main checks apply. A completed run
+with failed delivery jobs can retry only when the CI gate succeeded and no test
+job failed. Other failed or canceled runs cannot publish.
 Confirm the workflow is green and the expected release is Latest:
 
 ```bash

@@ -84,3 +84,20 @@ test('publication stops on write failures and a later retry resumes safely', asy
   assert.equal((await publishRelease(metadata, sha, race.io)).state, 'superseded');
   assert.equal(race.writes.length, 0);
 });
+
+
+test('reusable delivery accepts only its own active run after CI gate completes', () => {
+  const active = { ...run, status: 'in_progress', conclusion: null };
+  assert.equal(validateRun(active, jobs, repo, { activeRunId: run.id }), sha);
+  assert.throws(() => validateRun(active, jobs, repo));
+  assert.throws(() => validateRun(active, jobs, repo, { activeRunId: 456 }));
+  assert.throws(() => validateRun(active, [{ ...jobs[0], conclusion: 'skipped' }], repo, { activeRunId: run.id }));
+});
+
+test('recovery accepts a delivery failure but refuses failed or canceled required tests', () => {
+  const failed = { ...run, conclusion: 'failure' };
+  const delivery = { name: 'Release / publish', conclusion: 'failure', status: 'completed' };
+  assert.equal(validateRun(failed, [...jobs, delivery], repo), sha);
+  assert.throws(() => validateRun(failed, [...jobs, { ...delivery, name: 'Unit tests' }], repo));
+  assert.throws(() => validateRun(failed, [...jobs, { name: 'Browser 1', conclusion: 'cancelled', status: 'completed' }], repo));
+});

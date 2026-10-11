@@ -3,9 +3,16 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export function validateRun(run, jobs, repo) {
-  if (run.name !== 'tests' || run.path !== '.github/workflows/test.yml' || run.event !== 'push' || run.head_branch !== 'main' || run.head_repository?.full_name !== repo || run.status !== 'completed' || run.conclusion !== 'success' || !/^[a-f0-9]{40}$/.test(run.head_sha ?? '')) throw new Error('Release requires successful same-repository main push tests');
+export function validateRun(run, jobs, repo, { activeRunId } = {}) {
+  if (run.name !== 'tests' || run.path !== '.github/workflows/test.yml' || run.event !== 'push' || run.head_branch !== 'main' || run.head_repository?.full_name !== repo || !/^[a-f0-9]{40}$/.test(run.head_sha ?? '')) throw new Error('Release requires same-repository main push tests');
   if (!jobs.some((job) => job.name === 'CI gate' && job.status === 'completed' && job.conclusion === 'success')) throw new Error('Required CI gate did not succeed');
+  const deliveryJobs = new Set(['Release / guard', 'Release / publish']);
+  const failed = jobs.filter((job) => job.conclusion && !['success', 'skipped', 'neutral'].includes(job.conclusion));
+  const deliveryFailed = failed.length > 0 && failed.every((job) => deliveryJobs.has(job.name));
+  const active = activeRunId !== undefined && String(run.id) === String(activeRunId) && run.status === 'in_progress';
+  const completed = run.status === 'completed' && (run.conclusion === 'success' || (run.conclusion === 'failure' && deliveryFailed));
+  if (!active && !completed) throw new Error('Release requires completed successful tests or its own active gated run');
+  if (failed.some((job) => !deliveryJobs.has(job.name))) throw new Error('Required test job failed');
   return run.head_sha;
 }
 
@@ -73,7 +80,8 @@ async function main() {
   const base = `repos/${repo}`;
   const run = api(`${base}/actions/runs/${runId}`);
   const pages = JSON.parse(gh(['api', `${base}/actions/runs/${runId}/jobs?filter=latest&per_page=100`, '--paginate', '--slurp']));
-  const sha = validateRun(run, pages.flatMap((page) => page.jobs), repo);
+  const activeRunId = process.env.GITHUB_EVENT_NAME === 'push' ? process.env.GITHUB_RUN_ID : undefined;
+  const sha = validateRun(run, pages.flatMap((page) => page.jobs), repo, { activeRunId });
   const io = {
     main: async () => api(`${base}/git/ref/heads/main`).object.sha,
     tag: async (tag) => {
