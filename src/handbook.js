@@ -2142,7 +2142,7 @@ A form row is schema, like a Tables row: an Architect makes and edits it, and an
 A submission creates exactly one row in the form's table and nothing else. It reads no other row, edits nothing, and changes no schema. The submitter is the row's author and the actor in its history. A submission that names a hidden field is refused, and so is one that names a field the form does not show.
 
 - **Page:** \`/f/<form id>\`, styled for both themes, opens to anyone the form admits.
-- **HTTP:** \`POST /f/<id>\` or \`POST /api/forms/<id>/submit\` with \`{"values": {...}}\`; \`GET /api/forms\` lists the forms whose table lives in the workspace.
+- **HTTP:** \`POST /api/forms/<id>/submit\` with \`{"values": {...}}\`; \`GET /api/forms\` lists the forms whose table lives in the workspace.
 - **MCP:** \`weave_form_submit {form, values, idempotencyKey}\`.
 - **CLI:** \`weave form submit <form> --values '{"Mood": "Sad"}' --idempotency-key <key>\`.
 

@@ -402,7 +402,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms');
     const previewLogo = path === '/api/workspace/logo' && ['GET', 'HEAD'].includes(rx.method) && !!weave.state.meta.linkPreview;
     const startDoor = path === '/start' || path === '/api/start' || path.startsWith('/api/start/');
-    const formDoor = (['GET', 'HEAD'].includes(rx.method) && /^\/(?:f|api\/forms)\/[^/]+$/.test(path)) || (rx.method === 'POST' && /^\/(?:f\/[^/]+|api\/forms\/[^/]+\/submit)$/.test(path));
+    const formDoor = (['GET', 'HEAD'].includes(rx.method) && /^\/(?:f|api\/forms)\/[^/]+$/.test(path)) || (rx.method === 'POST' && /^\/api\/forms\/[^/]+\/submit$/.test(path));
     const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || previewLogo || startDoor || formDoor
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
@@ -557,7 +557,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const ownComment = cm && (cm[2] == null ? m2 === 'POST' : m2 === 'DELETE' && (() => {
         try { return weave.getEntity(cm[1]).comments.find((c) => c.id === cm[2])?.author === weave.actor; } catch { return false; }
       })());
-      const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/(?:f\/[^/]+|api\/forms\/[^/]+\/submit)$/.test(path));
+      const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
       if (observer && !read && !ownComment && !submits) {
         return role ? deny(403, 'An observer may read and comment, nothing else') : deny(401, 'This workspace has accounts: send a token or sign in to write');
       }
@@ -718,7 +718,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(200, renderFormPage(form, { mount: wsPrefix, searchParams: rx.searchParams }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
 
-      if ((m = (path.match(/^\/f\/([^/]+)$/) ?? path.match(/^\/api\/forms\/([^/]+)\/submit$/))) && rx.method === 'POST') {
+      if ((m = path.match(/^\/api\/forms\/([^/]+)\/submit$/)) && rx.method === 'POST') {
         const { form, admitted } = formFor(m[1]);
         if (!admitted) return deny(401, 'Sign in to submit this form');
         const ip = clientIp(rx);

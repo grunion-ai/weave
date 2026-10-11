@@ -52,7 +52,7 @@ export class WeaveWorkspace {
       const path = decodePath(url.pathname);
       const from = request.headers.get('origin');
       if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) && (request.headers.get('sec-fetch-site') === 'cross-site' || (from !== null && from.toLowerCase() !== url.origin.toLowerCase()))) throw new WeaveError('Cross-site write refused', 'forbidden');
-      const form = request.method === 'POST' && /^(?:\/w\/[^/]+)?\/(?:f\/[^/]+|api\/forms\/[^/]+\/submit)$/.test(path);
+      const form = request.method === 'POST' && /^(?:\/w\/[^/]+)?\/api\/forms\/[^/]+\/submit$/.test(path);
       const outcome = await this.#handle({
         method: request.method,
         path,

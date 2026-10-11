@@ -469,7 +469,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         path,
         searchParams: url.searchParams,
         header: (name) => req.headers[name.toLowerCase()],
-        readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined, form: req.method === 'POST' && /^(?:\/w\/[^/]+)?\/(?:f\/[^/]+|api\/forms\/[^/]+\/submit)$/.test(path) }),
+        readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined, form: req.method === 'POST' && /^(?:\/w\/[^/]+)?\/api\/forms\/[^/]+\/submit$/.test(path) }),
         remote: req.socket?.remoteAddress ?? null,
       });
       const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });

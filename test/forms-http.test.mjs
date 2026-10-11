@@ -19,7 +19,7 @@ async function fixture(t, options = {}) {
 
 test('form permalink accepts flat URLencoded and wrapped JSON with safe retries', async (t) => {
   const { w, form, base, send } = await fixture(t);
-  const first = await send(`/f/${form.id}`, 'Name=Hello&idempotencyKey=8a07ec72-e021-4f2e-b3a7-0d3f8af952f5', { 'Content-Type': 'application/x-www-form-urlencoded', Origin: base });
+  const first = await send(`/api/forms/${form.id}/submit`, 'Name=Hello&idempotencyKey=8a07ec72-e021-4f2e-b3a7-0d3f8af952f5', { 'Content-Type': 'application/x-www-form-urlencoded', Origin: base });
   assert.equal(first.status, 201);
   const receipt = await first.json();
   const retry = await send(`/api/forms/${form.id}/submit`, JSON.stringify({ values: { Name: 'Hello' } }), { 'Content-Type': 'application/json', 'Idempotency-Key': '8a07ec72-e021-4f2e-b3a7-0d3f8af952f5' });
@@ -30,26 +30,26 @@ test('form permalink accepts flat URLencoded and wrapped JSON with safe retries'
 
 test('form limits reject before reading body and supply Retry-After', async (t) => {
   const { form, send } = await fixture(t, { limits: { formSender: 1, formTotal: 120, formServer: 1000 } });
-  assert.equal((await send(`/f/${form.id}`, '{"Name":"First"}', { 'Content-Type': 'application/json' })).status, 201);
-  const limited = await send(`/f/${form.id}`, 'not json', { 'Content-Type': 'application/json' });
+  assert.equal((await send(`/api/forms/${form.id}/submit`, '{"Name":"First"}', { 'Content-Type': 'application/json' })).status, 201);
+  const limited = await send(`/api/forms/${form.id}/submit`, 'not json', { 'Content-Type': 'application/json' });
   assert.equal(limited.status, 429);
   assert.ok(Number(limited.headers.get('retry-after')) > 0);
 });
 
 test('form transport keeps cross-origin and unrelated JSON gates, limits body size', async (t) => {
   const { form, base, send } = await fixture(t);
-  assert.equal((await send(`/f/${form.id}`, 'Name=Bad', { Origin: 'https://other.example', 'Content-Type': 'application/x-www-form-urlencoded' })).status, 403);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, 'Name=Bad', { Origin: 'https://other.example', 'Content-Type': 'application/x-www-form-urlencoded' })).status, 403);
   assert.equal((await send('/api/tables/Requests/entities', 'Name=Bad', { Origin: base, 'Content-Type': 'application/x-www-form-urlencoded' })).status, 400);
-  assert.equal((await send(`/f/${form.id}`, JSON.stringify({ Name: 'x'.repeat(65536) }), { 'Content-Type': 'application/json' })).status, 413);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, JSON.stringify({ Name: 'x'.repeat(65536) }), { 'Content-Type': 'application/json' })).status, 413);
 });
 
 test('form and server buckets constrain independent senders and forms', async (t) => {
   const { w, form, send } = await fixture(t, { trustProxy: true, limits: { formSender: 20, formTotal: 1, formServer: 2 } });
   const other = createForm(w, { name: 'Other', table: 'Intake/Requests', fields: ['Name'] });
   const headers = { 'Content-Type': 'application/json', 'X-Forwarded-For': '192.0.2.1' };
-  assert.equal((await send(`/f/${form.id}`, '{"Name":"First"}', headers)).status, 201);
-  assert.equal((await send(`/f/${form.id}`, '{"Name":"Second"}', { ...headers, 'X-Forwarded-For': '192.0.2.2' })).status, 429);
-  assert.equal((await send(`/f/${other.id}`, '{"Name":"Third"}', headers)).status, 429);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, '{"Name":"First"}', headers)).status, 201);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, '{"Name":"Second"}', { ...headers, 'X-Forwarded-For': '192.0.2.2' })).status, 429);
+  assert.equal((await send(`/api/forms/${other.id}/submit`, '{"Name":"Third"}', headers)).status, 429);
 });
 
 test('anonymous receipts use independent browser cookies and strong retry capabilities', async (t) => {
@@ -68,22 +68,22 @@ test('anonymous receipts use independent browser cookies and strong retry capabi
   const cookie = page.headers.get('set-cookie');
   assert.match(cookie, /wv_form_client=[\w-]{43}; HttpOnly; SameSite=Lax/);
   const headers = { 'Content-Type': 'application/json', Cookie: cookie.split(';')[0] };
-  const one = await send(`/f/${form.id}`, '{"Name":"Same"}', headers);
+  const one = await send(`/api/forms/${form.id}/submit`, '{"Name":"Same"}', headers);
   const first = await one.json();
   assert.equal(one.status, 201);
-  const two = await send(`/f/${form.id}`, '{"Name":"Same"}', headers);
+  const two = await send(`/api/forms/${form.id}/submit`, '{"Name":"Same"}', headers);
   assert.equal(two.status, 200);
   assert.equal((await two.json()).id, first.id);
-  const newKey = await send(`/f/${form.id}`, '{"Name":"Same"}', { ...headers, 'Idempotency-Key': crypto.randomUUID() });
+  const newKey = await send(`/api/forms/${form.id}/submit`, '{"Name":"Same"}', { ...headers, 'Idempotency-Key': crypto.randomUUID() });
   assert.equal(newKey.status, 200);
   assert.equal((await newKey.json()).id, first.id);
-  const separate = await send(`/f/${form.id}`, '{"Name":"Same"}', { 'Content-Type': 'application/json' });
+  const separate = await send(`/api/forms/${form.id}/submit`, '{"Name":"Same"}', { 'Content-Type': 'application/json' });
   assert.equal(separate.status, 201);
   assert.notEqual((await separate.json()).id, first.id);
-  assert.equal((await send(`/f/${form.id}`, '{"Name":"Keyed"}', { ...headers, 'Idempotency-Key': 'guessable' })).status, 400);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, '{"Name":"Keyed"}', { ...headers, 'Idempotency-Key': 'guessable' })).status, 400);
   const keyed = { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() };
-  const original = await send(`/f/${form.id}`, '{"Name":"Keyed"}', keyed);
-  const replay = await send(`/f/${form.id}`, '{"Name":"Keyed"}', { ...keyed, Cookie: original.headers.get('set-cookie').split(';')[0] });
+  const original = await send(`/api/forms/${form.id}/submit`, '{"Name":"Keyed"}', keyed);
+  const replay = await send(`/api/forms/${form.id}/submit`, '{"Name":"Keyed"}', { ...keyed, Cookie: original.headers.get('set-cookie').split(';')[0] });
   assert.equal(replay.status, 200);
   assert.equal((await replay.json()).id, (await original.json()).id);
 });
@@ -105,12 +105,12 @@ test('signed-in observers submit URLencoded forms with their identity and retry 
   const { token } = w.createAccount({ name: 'reader', role: 'observer' });
   w.setRequireAuth(true);
   const headers = { Origin: base, Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Idempotency-Key': 'signed-in-retry' };
-  const response = await send(`/f/${form.id}`, 'Name=Observer', headers);
+  const response = await send(`/api/forms/${form.id}/submit`, 'Name=Observer', headers);
   assert.equal(response.status, 201);
   const receipt = await response.json();
   assert.equal(w.readEntity(receipt.id).createdBy, 'reader');
-  assert.equal((await send(`/f/${form.id}`, 'Name=Observer', headers)).status, 200);
-  assert.equal((await send(`/f/${form.id}`, 'Name=Forged', { ...headers, Origin: 'https://evil.example' })).status, 403);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, 'Name=Observer', headers)).status, 200);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, 'Name=Forged', { ...headers, Origin: 'https://evil.example' })).status, 403);
   assert.equal(w.listEntities(w.getTable('Intake/Requests').id).length, 1);
 });
 
@@ -123,7 +123,7 @@ test('an interleaved request cannot change the authenticated form author or rece
   const payload = JSON.stringify({ values: { Name: 'Alice request' } });
   let post;
   const finished = new Promise((resolve, reject) => {
-    post = request(`${base}/f/${form.id}`, { method: 'POST', headers: { Authorization: `Bearer ${alice}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'Idempotency-Key': 'alice-request' } }, response => {
+    post = request(`${base}/api/forms/${form.id}/submit`, { method: 'POST', headers: { Authorization: `Bearer ${alice}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'Idempotency-Key': 'alice-request' } }, response => {
       let data = '';
       response.on('data', chunk => data += chunk);
       response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
@@ -141,10 +141,10 @@ test('an interleaved request cannot change the authenticated form author or rece
   const result = await finished;
   assert.equal(result.status, 201);
   assert.equal(w.readEntity(result.body.id).createdBy, 'alice');
-  const retry = await send(`/f/${form.id}`, payload, { Authorization: `Bearer ${alice}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'alice-request' });
+  const retry = await send(`/api/forms/${form.id}/submit`, payload, { Authorization: `Bearer ${alice}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'alice-request' });
   assert.equal(retry.status, 200);
   assert.equal((await retry.json()).id, result.body.id);
-  const independent = await send(`/f/${form.id}`, payload, { Authorization: `Bearer ${bob}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'alice-request' });
+  const independent = await send(`/api/forms/${form.id}/submit`, payload, { Authorization: `Bearer ${bob}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'alice-request' });
   assert.equal(independent.status, 201);
   assert.notEqual((await independent.json()).id, result.body.id);
 });

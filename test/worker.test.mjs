@@ -122,15 +122,15 @@ test('worker forms accept URLencoded submissions, preserve retries and enforce t
   const dobj = makeDO(storage);
   const send = (path, body, headers = {}) => dobj.fetch(new Request(`http://do${path}`, { method: 'POST', headers: { 'x-weave-workspace': 'scratch', ...headers }, body, ...(body instanceof ReadableStream ? { duplex: 'half' } : {}) }));
   const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'http://do', 'Idempotency-Key': crypto.randomUUID() };
-  const first = await send(`/f/${form.id}`, 'Name=Worker', headers);
+  const first = await send(`/api/forms/${form.id}/submit`, 'Name=Worker', headers);
   assert.equal(first.status, 201);
   const retry = await send(`/api/forms/${form.id}/submit`, 'Name=Worker', headers);
   assert.equal(retry.status, 200);
   assert.equal((await retry.json()).id, (await first.json()).id);
-  assert.equal((await send(`/f/${form.id}`, 'Name=Other', { ...headers, Origin: 'http://evil' })).status, 403);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, 'Name=Other', { ...headers, Origin: 'http://evil' })).status, 403);
   assert.equal((await send('/api/tables/Requests/entities', 'Name=Other', headers)).status, 400);
   const huge = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('Name=' + 'x'.repeat(65536))); controller.close(); } });
-  assert.equal((await send(`/f/${form.id}`, huge, headers)).status, 413);
+  assert.equal((await send(`/api/forms/${form.id}/submit`, huge, headers)).status, 413);
 });
 
 test('receipt capacity errors map to HTTP 429', () => {
