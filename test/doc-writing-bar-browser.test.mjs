@@ -71,6 +71,27 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('on a phone a tap into a document leaves Undo greyed until the first edit (Issue #755)', async () => {
+    const { id, page } = await open();
+    try {
+      await page.waitForFunction(() => document.querySelector('.doc-editor .vditor-toolbar.wv-show.wv-bar-caret'), null, { timeout: 5000 });
+      const stack = () => page.evaluate(() => window.__weaveEditors.values().next().value.vditor.undo.ir.undoStack.length);
+      const until = Date.now() + 1800;
+      while (Date.now() < until) {
+        assert.equal((await bar(page)).undoOff, true, 'Undo stays greyed after a tap with nothing typed');
+        await page.waitForTimeout(150);
+      }
+      assert.equal(await stack(), 1, 'the tap adds no undo step');
+      await page.keyboard.type('!');
+      await settles(page, 'First line.!');
+      await page.waitForFunction(() => !document.querySelector('.doc-editor .vditor-toolbar button[data-type="undo"]').classList.contains('vditor-menu--disabled'), null, { timeout: 5000 });
+      await page.tap('.doc-editor .vditor-toolbar button[data-type="undo"]');
+      await settles(page, 'First line.');
+      assert.equal((await bar(page)).undoOff, true, 'one press undoes the one edit and greys Undo again');
+      for (let i = 0; i < 60 && (weave.getDoc(id) ?? '').trim() !== 'First line.'; i++) await new Promise((r) => setTimeout(r, 50));
+      assert.equal((weave.getDoc(id) ?? '').trim(), 'First line.');
+    } finally { await page.close(); }
+  });
   test('on a phone insert opens the slash menu at the caret, and hide keyboard puts the bar away (Feature #289)', async () => {
     const { page } = await open();
     try {

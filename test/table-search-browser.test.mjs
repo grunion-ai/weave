@@ -24,6 +24,7 @@ if (s) {
   const TOTAL = 503;
 
   const open = async () => {
+    weave.tableView(`${jobs.id}/${weave.tableView(jobs).views[0].name}`, { search: '' });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -38,11 +39,11 @@ if (s) {
     await page.fill('.table-search-input', text);
   };
 
-  test('typing narrows the grid across every page, and the table is never written', async () => {
+  test('typing narrows the grid across every page, and only the view\'s search is written', async () => {
     const page = await open();
     try {
-      let patches = 0;
-      page.on('request', (r) => { if (r.method() === 'PATCH' && r.url().includes(`/tables/${jobs.id}`)) patches++; });
+      const patches = [];
+      page.on('request', (r) => { if (r.method() === 'PATCH' && r.url().includes(`/tables/${jobs.id}`)) patches.push(r.postDataJSON()); });
       assert.match(await page.textContent('.wv-loaded'), /200 of 503 loaded/, 'the grid opens paged');
       await typeSearch(page, 'launch');
       await rowsAre(page, [named['Alpha launch'].id, named['Beta launch'].id]);
@@ -51,7 +52,8 @@ if (s) {
       assert.match(await page.textContent('.wv-loaded'), /2 rows found/, 'the foot counts the matches');
       assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('table-search-input')), true, 'the caret stays in the box');
       await page.waitForLoadState('networkidle');
-      assert.equal(patches, 0, 'no PATCH: the search is not saved');
+      assert.ok(patches.length && patches.every((p) => JSON.stringify(Object.keys(p)) === '["search"]'), 'each PATCH carries the search alone');
+      assert.equal(weave.tableView(jobs).views[0].search, 'launch', 'the view holds the search (Feature #307)');
       assert.deepEqual(weave.tableView(jobs).views[0].filters ?? {}, {}, 'the saved filter is untouched');
     } finally { await page.close(); }
   });
@@ -104,19 +106,39 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('/ and ⌘F from the grid open the box, and no cell starts editing', async () => {
+  test('/ from the grid opens the box, and no cell starts editing', async () => {
     const page = await open();
     try {
       const controls = () => page.locator('.wv-grid tbody td input, .wv-grid tbody td textarea').count();
-      for (const key of ['/', 'ControlOrMeta+f']) {
-        await page.locator('.wv-grid tbody tr.entity-row td[tabindex="0"]').first().focus();
-        const before = await controls();
+      await page.locator('.wv-grid tbody tr.entity-row td[tabindex="0"]').first().focus();
+      const before = await controls();
+      await page.keyboard.press('/');
+      await page.waitForFunction(() => document.activeElement?.classList.contains('table-search-input'));
+      assert.equal(await page.inputValue('.table-search-input'), '', '/ typed nothing into the box');
+      assert.equal(await controls(), before, '/ opened no cell editor');
+      await page.press('.table-search-input', 'Escape');
+      assert.equal(await page.isVisible('.table-search-input'), true);
+    } finally { await page.close(); }
+  });
+
+  test('⌘F and Ctrl-F on a focused cell are left to the browser find bar (Issue #822)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        window.wvFindKeys = [];
+        window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'f') window.wvFindKeys.push(e); }, true);
+      });
+      for (const key of ['Meta+f', 'Control+f']) {
+        const cell = page.locator('.wv-grid tbody tr.entity-row td[tabindex="0"]').first();
+        await cell.focus();
         await page.keyboard.press(key);
-        await page.waitForFunction(() => document.activeElement?.classList.contains('table-search-input'));
-        assert.equal(await page.inputValue('.table-search-input'), '', `${key} typed nothing into the box`);
-        assert.equal(await controls(), before, `${key} opened no cell editor`);
-        await page.press('.table-search-input', 'Escape');
-        assert.equal(await page.isVisible('.table-search-input'), true);
+        const seen = await page.evaluate(() => {
+          const e = window.wvFindKeys.pop();
+          return { prevented: e?.defaultPrevented, search: document.activeElement?.classList.contains('table-search-input') };
+        });
+        assert.equal(seen.prevented, false, `${key} reaches the browser`);
+        assert.equal(seen.search, false, `${key} leaves the table search alone`);
+        assert.equal(await cell.evaluate((td) => td === document.activeElement), true, `${key} keeps the cell focused`);
       }
     } finally { await page.close(); }
   });
