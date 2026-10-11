@@ -1,1 +1,0 @@
-- Phone: a tap into a document no longer lights Undo in the writing bar. A caret move with no edit adds no undo step, so the first press of Undo always undoes a real change (Issue #755).

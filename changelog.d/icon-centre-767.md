@@ -1,1 +1,0 @@
-- Icon-only buttons centre their glyph: icons carry no margin, buttons space an icon from its label with a 5px gap, so the selection bar's Move to trash, the view delete and grip buttons and the toolbar no longer sit 2.5px left of centre; filter chip labels trim to cap height so the letters line up with the colour dot (Issue #767)
