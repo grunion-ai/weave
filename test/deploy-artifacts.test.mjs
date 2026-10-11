@@ -97,6 +97,19 @@ test('the environment contract cannot drift: the reference guide, the Dockerfile
   assert.doesNotMatch(ref.doc, /`WEAVE_BACKUP_DEST`[^\n]*reserved/i, 'the reference no longer calls it reserved');
 });
 
+test('every variable the CLI help names is in the reference guide, the Dockerfile and compose', () => {
+  const help = read('bin/weave.js').split('\nEnv: ')[1]?.split('`')[0] ?? '';
+  const named = [...varsIn(help)];
+  assert.ok(named.includes('WEAVE_ALLOWED_HOSTS') && named.length >= 10, `the Env: lines of the CLI help were found (${named.length} variables)`);
+  for (const [file, text] of [['the Environment reference guide', guide('Environment reference').doc], ['the Dockerfile', DOCKERFILE], ['compose.yaml', COMPOSE]]) {
+    const missing = named.filter((v) => !varsIn(text).has(v));
+    assert.deepEqual(missing, [], `${file} does not name ${missing.join(', ')}`);
+  }
+  for (const v of ['WEAVE_ALLOWED_HOSTS', 'WEAVE_FRAME_ANCESTORS', 'WEAVE_INLINE_FILE_TYPES']) {
+    assert.match(guide('Environment reference').doc, new RegExp(`^\\| \\x60${v}\\x60 \\|`, 'm'), `the guide has a table row for ${v}`);
+  }
+});
+
 test('the Dockerfile and compose agree with the code on what each variable does', () => {
   const bin = read('bin/weave.js');
   assert.match(bin, /flags\.port \?\? process\.env\.PORT \?\? 4400/);
