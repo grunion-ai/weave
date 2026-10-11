@@ -1,6 +1,6 @@
 import { Weave, WeaveError } from './engine.js';
 import { CFStore } from './store-cf.js';
-import { createRequestHandler, decodePath, statusFor } from './routes.js';
+import { createRequestHandler, decodePath, statusFor, errorBody } from './routes.js';
 
 export class WeaveWorkspace {
   #handle = null;
@@ -56,9 +56,9 @@ export class WeaveWorkspace {
       const outcome = await this.#handle({
         method: request.method,
         path,
-        remote: request.headers.get('cf-connecting-ip'),
         searchParams: url.searchParams,
         header: (name) => request.headers.get(name) ?? undefined,
+        remote: request.headers.get('cf-connecting-ip') ?? null,
         readBody: async () => {
           const type = request.headers.get('content-type') ?? '';
           const encoded = form && /^application\/x-www-form-urlencoded\s*(;|$)/i.test(type);
@@ -99,8 +99,7 @@ export class WeaveWorkspace {
       for (const [name, value] of Object.entries(outcome.headers ?? {})) for (const v of [value].flat()) headers.append(name, v);
       return new Response(outcome.body, { status: outcome.status, headers });
     } catch (err) {
-      const status = statusFor(err);
-      return Response.json({ error: err.message, code: err.code ?? 'internal' }, { status });
+      return Response.json(errorBody(err), { status: statusFor(err) });
     }
   }
 }

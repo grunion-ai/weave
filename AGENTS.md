@@ -48,7 +48,7 @@ also adds `Company.Deals`, and a rollup over `Deals` totals them per company.
 | --- | --- | --- |
 | MCP over stdio | `node bin/weave.js mcp --data <file.db>` (`weave mcp --data <file>`) | you are an MCP client and the workspace is a local file; the default |
 | MCP over HTTP | `POST /api/mcp` on a running `weave serve`; `/mcp` with a sign-in provider | the workspace lives on a server, local or hosted |
-| REST | `weave serve --data <file.db>`, then routes under `/w/<workspace>/api` (`/api` for the default workspace) | you are writing a script or service rather than making tool calls |
+| REST | `weave serve --data <file.db>`, then routes under `/w/<workspace>/api` (`/api` for the default workspace) | you are writing a script or service |
 | CLI | `node bin/weave.js <command> --data <file.db>`; `weave build <spec.json> --dry-run` builds from a file | a shell is all you have, or the step belongs in a script |
 | Browser UI | `weave serve`, then http://127.0.0.1:4400 | a person wants to see or edit the result |
 
@@ -69,7 +69,7 @@ workspace file; a second workspace is a second file (see
 ### Tool map
 
 <!-- tool-map:start (generated from src/mcp.js by scripts/agent-docs.mjs) -->
-17 listed by default, out of 63. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
+17 listed by default, out of 64. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
 
 | Job | Tool | What it does |
 | --- | --- | --- |
@@ -91,14 +91,14 @@ workspace file; a second workspace is a second file (see
 | Look up allowed values | `weave_vocabulary` | allowed values; several sections and icon queries in one call |
 | Everything else | `weave_call` | run any other tool by name; help describes one |
 
-The other 46, through `weave_call {name, args}`:
+The other 47, through `weave_call {name, args}`:
 
 | Area | Tools |
 | --- | --- |
 | Rows | `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo`, `weave_bulk`, `weave_set_state`, `weave_link`, `weave_unlink`, `weave_form_submit` |
 | Documents and comments | `weave_get_doc`, `weave_set_doc`, `weave_doc_revisions`, `weave_doc_restore`, `weave_add_comment`, `weave_delete_comment` |
 | Spaces and tables | `weave_update_space`, `weave_delete_space`, `weave_restore_space`, `weave_update_table`, `weave_move_table`, `weave_duplicate_table`, `weave_delete_table`, `weave_restore_table`, `weave_table_view` |
-| Fields and formulas | `weave_rollback_field`, `weave_delete_field`, `weave_check_formula` |
+| Fields and formulas | `weave_rollback_field`, `weave_delete_field`, `weave_restore_field`, `weave_check_formula` |
 | Whole schema | `weave_apply_schema`, `weave_registry`, `weave_relation_map` |
 | Templates | `weave_template_list`, `weave_template_use` |
 | Figures | `weave_stats` |
@@ -406,7 +406,7 @@ workspace. Every MCP tool has a command:
 | --- | --- | --- |
 | `weave ontology [--concept T] [--since E]` / `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
 | `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table view` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
-| `weave map` | `weave field add` / `weave field update` / `weave field rollback` / `weave field delete` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
+| `weave map` | `weave field add` / `weave field update` / `weave field rollback` / `weave field delete` / `weave field restore` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave template list` | `weave template use <space> --into <other.db> [--name N]` | |
 | `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
@@ -579,7 +579,7 @@ matched by name, so a guide you wrote yourself is never touched.
 
 ## Developing weave
 
-For agents changing weave itself: where the code lives and the rules every change follows. weave is a local, self-hosted work platform, an open-source alternative to Airtable, Fibery, Notion databases and ClickUp; the maintainers' own workflow (Gerrit, the weave docs workspace) is in [CLAUDE.md](CLAUDE.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
+For agents changing weave itself: where the code lives and the rules every change follows. weave is a local, self-hosted work platform, an open-source alternative to Airtable, Fibery, Notion databases and ClickUp; the maintainers' own workflow (GitHub PRs, the weave docs workspace) is in [CLAUDE.md](CLAUDE.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Repo map
 
@@ -589,7 +589,7 @@ For agents changing weave itself: where the code lives and the rules every chang
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP server: 63 tools over the engine, 17 listed by default |
+| `src/mcp.js` | MCP server: 64 tools over the engine, 17 listed by default |
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
@@ -599,10 +599,12 @@ For agents changing weave itself: where the code lives and the rules every chang
 
 ### Rules for changing this repo
 
-1. **Tests first.** Run targeted tests for the changed behavior before committing.
-   New engine or server behavior lands with tests in the same change. Push once
-   to Gerrit, self-review and cast Code-Review +2; the poller runs the authoritative full gate before landing. Parallel
-   workers must not each run `npm test` or invoke a duplicate manual gate.
+1. **Tests first.** Run `npm test -- --targeted <file...>` for changed behavior
+   before committing.
+   New engine or server behavior lands with tests in the same change. Open a
+   GitHub PR, self-review and arm `gh pr merge --auto --squash`; `Dev gate` is the required check.
+   Hosted CI owns full verification; local workers keep checks targeted. Never
+   bypass branch protection or push main directly. See DEVELOPMENT.md.
 2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
    is `node:sqlite`, built into Node. Third-party browser code is vendored and
    pinned into `public/vendor/` (mermaid 11.4.1, @tabler/core 1.4.0) — never

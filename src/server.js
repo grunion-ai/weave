@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
-import { createRequestHandler, decodePath } from './routes.js';
+import { createRequestHandler, decodePath, MAX_BODY_BYTES } from './routes.js';
 import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
@@ -131,7 +131,7 @@ export function securityHeaders(headers, { https = false, frameAncestors = [] } 
 
 async function readBody(req, { requireJson = false, form = false } = {}) {
   const encoded = form && /^application\/x-www-form-urlencoded\s*(;|$)/i.test(req.headers['content-type'] ?? '');
-  const maxSize = form ? 64 * 1024 : 10 * 1024 * 1024;
+  const maxSize = form ? 64 * 1024 : MAX_BODY_BYTES;
   if (Number(req.headers['content-length']) > maxSize) throw new WeaveError('Body too large', form ? 'too-large' : 'invalid');
   if (requireJson && !encoded && !/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) {
     throw new WeaveError('A request with an Origin must send its body as application/json', 'invalid');
