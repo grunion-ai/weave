@@ -62,9 +62,28 @@
 
   const defaultKind = (d) => (!d ? 'none' : DYNAMIC_DATE_DEFAULTS.includes(d) ? 'today' : 'specific');
 
+  const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  function relativeOrShort(iso, now = new Date()) {
+    const d = new Date(iso);
+    if (iso == null || iso === '' || Number.isNaN(d.getTime())) return { text: '', title: '' };
+    const title = d.toLocaleString([], { dateStyle: 'long', timeStyle: 'medium' });
+    const sec = (now.getTime() - d.getTime()) / 1000;
+    const days = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+    const clock = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const short = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+    let text;
+    if (sec < 60 && sec > -60) text = 'just now';
+    else if (sec > 0 && sec < 3600) text = `${Math.floor(sec / 60)} min ago`;
+    else if (days === 0) text = `Today ${clock}`;
+    else if (days === 1) text = 'Yesterday';
+    else if (d.getFullYear() === now.getFullYear()) text = short;
+    else text = `${short}, ${d.getFullYear()}`;
+    return { text, title };
+  }
+
   root.weaveDateCore = {
     MONTHS, MONTHS_LONG, WEEKDAYS, DYNAMIC_DATE_DEFAULTS,
-    formatDate, formatDateRange, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
+    formatDate, formatDateRange, relativeOrShort, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
     legalFormats, toInstant, fromInstant, partsOf, storeOf, coerce, grainOf, parseClock, DATE_FORMATS, CLOCKS, ZONES,
     get DEFAULT_FORMAT() { return DG().DEFAULT_FORMAT; }, get DEFAULT_CLOCK() { return DG().DEFAULT_CLOCK; },
   };
