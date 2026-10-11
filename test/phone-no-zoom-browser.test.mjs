@@ -84,7 +84,8 @@ if (s) {
         const where = new Set(seen.map((c) => c.where));
         for (const w of ['table sheet', 'view popover', 'bug panel', 'search', 'row', 'picker']) assert.ok(where.has(w), `the sweep reached the ${w}: ${[...where]}`);
         const names = seen.map((c) => c.what).join(' ');
-        for (const want of ['bug-note', 'picker-search', 'view-name-input', 'textarea.name-edit', 'vditor-reset']) assert.ok(names.includes(want), `the sweep focused a ${want}: ${names}`);
+        for (const want of ['bug-note', 'picker-search', 'view-name-input', 'vditor-reset']) assert.ok(names.includes(want), `the sweep focused a ${want}: ${names}`);
+        assert.match(names, /textarea\.\S*\bname-edit\b/, `the sweep focused the record name textarea: ${names}`);
         const small = seen.filter((c) => !(c.px >= 16) || (c.focused !== undefined && !(c.focused >= 16)));
         assert.deepEqual(small, [], `every focused text control is at least 16px: ${JSON.stringify(small)}`);
       });
