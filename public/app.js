@@ -8622,7 +8622,7 @@ async function useTemplateDialog(space) {
   try { list = await api('GET', '/workspaces'); } catch (err) { return toast(err.message, true); }
   const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
   const here = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
-  const others = list.filter((w) => w !== here);
+  const others = list.filter((w) => w !== here && !w.held);
   const said = el('div', { class: 'use-template-said', role: 'alert' });
   said.hidden = true;
   const body = others.length ? [
@@ -12354,12 +12354,13 @@ async function buildWsRail() {
       ...list.filter((w) => w.name !== 'weave').map((w) => {
         const prefix = w.default ? '' : `/w/${w.id}`;
         const chip = el('a', {
-          class: 'ws-icon' + (w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : ''),
-          href: w.default ? '/' : (w.url ?? `/w/${w.id}/`),
-          title: `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
-        }, w.logo
+          class: 'ws-icon' + (w.logo && !w.held ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : '') + (w.held ? ' ws-held' : ''),
+          href: w.held ? w.open : w.default ? '/' : (w.url ?? `/w/${w.id}/`),
+          title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
+        }, w.logo && !w.held
           ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
           : w.name.slice(0, 1).toUpperCase());
+        if (w.held) return chip;
         const wsMenu = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -12457,7 +12458,18 @@ function wireWsNew() {
   const btn = $('#ws-new');
   if (!btn) return;
   btn.replaceChildren(iconEl('+', 'wv-icon'));
-  btn.addEventListener('click', async () => {
+  const copy = WeaveSlugs.COPY.start;
+  btn.addEventListener('click', async (e) => {
+    const start = (await api('GET', '/workspace').catch(() => null))?.start;
+    if (!start) return newWorkspaceForm();
+    const apex = start.replace(/\/start$/, '');
+    menu([
+      { label: copy.newWorkspace, section: 'organize', run: newWorkspaceForm },
+      { label: copy.addLogin, section: 'organize', run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1`; } },
+      { label: copy.find, section: 'organize', run: () => { location.href = start; } },
+    ], { anchor: btn, className: 'ws-plus', label: 'Workspaces' });
+  });
+  async function newWorkspaceForm() {
     const me = await api('GET', '/auth/me').catch((err) => {
       if (err.status !== 401) toast(err.message, true);
       return null;
@@ -12475,7 +12487,7 @@ function wireWsNew() {
     }, WeaveSlugs.COPY.submit);
     const done = document.querySelector('#modal button[type="submit"]');
     if (done) slugs.bindSubmit(done);
-  });
+  }
 }
 
 const narrowShell = matchMedia('(max-width: 900px)');
