@@ -26,6 +26,7 @@ COPY --chown=node:node . .
 #   WEAVE_FRAME_ANCESTORS      other origins allowed to frame weave pages, comma separated (unset)
 #   WEAVE_INLINE_FILE_TYPES    attachment types served in place beside images, PDF and text; the rest download (unset)
 #   WEAVE_APPLET_PASSCODE      a passcode the task applet asks for before it opens   (unset)
+#   WEAVE_WEBHOOK_ALLOW_PRIVATE 1 lets workflow webhooks post to private and loopback addresses (unset = refused)
 #   WEAVE_UPDATE_CHECK         off: never ask GitHub for a newer release   (on: once a day)
 #   WEAVE_AUTO_UPDATE          1 with `supervise`: install newer releases in place (unset = off)
 #   WEAVE_BACKUP_DEST          s3://bucket/prefix: nightly backup at 04:00 UTC   (unset = off)
