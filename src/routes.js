@@ -933,9 +933,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
           return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
             .map((x) => ({
-              ...x,
+              ...(canOpen(hub.get(x.name)) ? x : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
               ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : {}),
-              ...(canOpen(hub.get(x.name)) ? {} : { held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
             })));
         }
         if (route === 'POST /api/workspaces') {

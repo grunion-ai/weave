@@ -8368,7 +8368,7 @@ async function useTemplateDialog(space) {
   try { list = await api('GET', '/workspaces'); } catch (err) { return toast(err.message, true); }
   const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
   const here = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
-  const others = list.filter((w) => w !== here);
+  const others = list.filter((w) => w !== here && !w.held);
   const said = el('div', { class: 'use-template-said', role: 'alert' });
   said.hidden = true;
   const body = others.length ? [

@@ -146,6 +146,7 @@ test('rail: a workspace host lists the held workspaces from the rail cookie as c
     assert.equal(other.held, true, 'a rail entry this host cannot verify is marked held');
     assert.equal(other.open, 'http://weave.test/api/start/open/other', 'its chip opens through the apex start page');
     assert.equal(other.host, 'http://other.weave.test/');
+    assert.deepEqual(Object.keys(other).sort(), ['held', 'host', 'id', 'name', 'open'], 'a held entry names the workspace and nothing it holds');
     assert.equal(list.find((w) => w.name === 'acme').held, undefined, 'a workspace this host verifies is not held');
     assert.equal(list.find((w) => w.name === 'ghost'), undefined, 'an unknown rail entry is dropped');
 
