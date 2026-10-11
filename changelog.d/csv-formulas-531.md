@@ -1,0 +1,1 @@
+- A CSV export writes a cell that opens on `=`, `+`, `-`, `@`, a tab or a carriage return behind one quote, so a spreadsheet reads it as text, and a CSV import strips that one quote again; a number is exported as it is (Issue #531)
