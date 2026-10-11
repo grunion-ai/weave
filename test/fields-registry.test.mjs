@@ -68,12 +68,15 @@ test('editing a Definition edits the config; changing its type is refused', () =
   assert.throws(() => w.updateEntity(row.id, { Definition: { type: 'text', config: {} } }), /type/i);
 });
 
-test('deleting a Fields row deletes the real column — hard only', () => {
+test('deleting a Fields row trashes the real column; hard purges it', () => {
   const w = fresh();
   w.addField('Task', { name: 'Estimate', type: 'number' });
   const row = rowNamed(w, 'Estimate');
-  assert.throws(() => w.deleteEntity(row.id), /hard/i);
+  w.deleteEntity(row.id);
+  assert.equal(Object.values(w.getTable('Task').fields).find((f) => f.name === 'Estimate'), undefined);
+  assert.ok(w.getTable('Task').trashedFields, 'a soft delete holds the column in the trash');
   w.deleteEntity(row.id, { hard: true });
+  assert.equal(w.getTable('Task').trashedFields, undefined, 'hard purges it');
   assert.equal(Object.values(w.getTable('Task').fields).find((f) => f.name === 'Estimate'), undefined);
 });
 

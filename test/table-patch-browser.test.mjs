@@ -128,7 +128,7 @@ if (s) {
       await page.click('.table-filter-btn');
       await page.locator('.table-filter-popover').evaluate((pop) => { pop.dataset.probe = 'same'; });
       const m = await measure(page, 'filter', async () => {
-        await page.locator('.table-filter-popover .filter-chip:text-is("Done")').click();
+        await page.locator('.table-filter-popover .filter-chip-label:text-is("Done")').click();
         await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 20);
       });
       clean(m, 'filter');
@@ -224,7 +224,7 @@ if (s) {
       });
       hold = 1200;
       await page.click('.table-filter-btn');
-      await page.locator('.table-filter-popover .filter-chip:text-is("Done")').click();
+      await page.locator('.table-filter-popover .filter-chip-label:text-is("Done")').click();
       await page.waitForTimeout(120);
       const early = await page.evaluate(() => ({
         busy: document.querySelector('#main .table-wrap')?.closest('[aria-busy="true"]') ? true : false,
@@ -237,7 +237,7 @@ if (s) {
       assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main .table-wrap')).opacity !== '1'), true, 'the stale rows are dimmed');
       await page.waitForTimeout(500);
       assert.equal(await page.locator('#main .grid-loader:not([hidden])').count(), 1, 'past 500 ms the rope covers the grid');
-      await page.locator('.table-filter-popover .filter-chip:text-is("Doing")').click();
+      await page.locator('.table-filter-popover .filter-chip-label:text-is("Doing")').click();
       assert.equal(await page.locator('#main .grid-loader svg').count() > 0, true, 'the rope is the weave loader');
       assert.equal(await page.evaluate(() => document.querySelector('#page-loader').hidden), true, 'the page-wide rope stays down');
       hold = 0;
