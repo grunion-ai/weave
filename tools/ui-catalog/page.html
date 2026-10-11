@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Weave UI catalog</title>
+<style>
+:root {
+  --bg: #f3f5f9;
+  --panel: #ffffff;
+  --ink: #0c1b33;
+  --muted: #5a6b85;
+  --line: #d9e0ea;
+  --accent: #2563eb;
+  --accent-soft: #e3ecfd;
+  --font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111a2c; --ink: #e6ecf6; --muted: #93a3bd; --line: #24324a;
+    --accent: #60a5fa; --accent-soft: #16294a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1220; --panel: #111a2c; --ink: #e6ecf6; --muted: #93a3bd; --line: #24324a;
+  --accent: #60a5fa; --accent-soft: #16294a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.top-in { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 12px 20px; }
+.brand { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+h1 { font-weight: 700; font-size: 22px; letter-spacing: -0.01em; margin: 0; white-space: nowrap; }
+.meta { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-left: auto; }
+.search { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); width: 240px; max-width: 100%; }
+.search:focus-visible, .seg button:focus-visible, .idx a:focus-visible, .stepper button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.seg button { font: 500 11px var(--font-body); color: var(--muted); background: none; border: 0; padding: 6px 10px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+.seg-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 4px; }
+.wrap { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 28px; padding: 20px 20px 60px; }
+.idx { position: sticky; top: 72px; align-self: start; display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 92px); overflow: auto; }
+.idx a { display: flex; justify-content: space-between; gap: 8px; padding: 5px 10px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 14px; }
+.idx a:hover { background: var(--accent-soft); }
+.idx .n { font: 11px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.intro { max-width: 72ch; color: var(--muted); margin: 0 0 24px; }
+section.fn { margin-bottom: 48px; scroll-margin-top: 76px; }
+section.fn > h2 { font-weight: 700; font-size: 18px; margin: 0 0 4px; display: flex; gap: 10px; align-items: baseline; text-wrap: balance; }
+section.fn > h2 .n { font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-weight: 400; }
+section.fn > p { margin: 0 0 14px; color: var(--muted); max-width: 72ch; }
+.ctl { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 14px; min-width: 0; scroll-margin-top: 84px; }
+.ctl:target { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.ctl > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 12px 4px; min-width: 0; }
+.code { font: 500 11px var(--font-mono); color: var(--accent); flex: none; }
+.nm { font-weight: 600; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.kind { font-size: 11px; color: var(--muted); }
+.ct { margin-left: auto; font: 11px var(--font-mono); color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
+.ctl-meta { display: flex; flex-wrap: wrap; gap: 2px 16px; padding: 0 12px 8px; font-size: 11px; color: var(--muted); }
+.ctl-meta b { color: var(--ink); font-weight: 500; }
+.ctl-meta a { color: var(--accent); text-decoration: none; font-family: var(--font-mono); }
+.ctl-meta .sig { font: 11px var(--font-mono); overflow-wrap: anywhere; }
+.look { border-top: 1px solid var(--line); padding: 8px 12px 12px; min-width: 0; }
+.look-tag { font: 500 11px var(--font-mono); color: var(--muted); margin-bottom: 6px; overflow-wrap: anywhere; }
+.look-tag a { color: var(--accent); text-decoration: none; }
+.stepper { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+.stepper button { font: 500 14px var(--font-mono); width: 28px; height: 26px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.stepper button:hover { border-color: var(--accent); }
+.st-pos { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.views { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--vmin, 240px)), 1fr)); gap: 10px; align-items: start; }
+.view { border: 1px solid var(--line); border-radius: 6px; min-width: 0; display: flex; flex-direction: column; }
+.view-cap { display: flex; justify-content: space-between; gap: 8px; font: 500 11px var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.view-cap .note { text-transform: none; letter-spacing: 0; }
+.view-stage { overflow: auto; min-height: 56px; display: flex; flex-direction: column; gap: 8px; background: var(--bg); border-radius: 0 0 6px 6px; }
+.view-host { display: block; min-width: 0; }
+.view.dark .view-stage { background: #0f172a; }
+.shot { padding: 10px; }
+.shot img { display: block; max-width: none; box-shadow: 0 0 0 1px var(--line); }
+.shot-label { font: 11px var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 6px 10px 0; }
+.missing { padding: 14px 10px; color: var(--muted); font-size: 11px; }
+.empty-hit { color: var(--muted); padding: 40px 0; }
+@media (max-width: 760px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); padding: 16px 16px 48px; gap: 16px; }
+  .idx { position: static; flex-direction: row; overflow-x: auto; max-height: none; padding-bottom: 4px; }
+  .idx a { white-space: nowrap; border: 1px solid var(--line); }
+  .top-in { padding: 10px 16px; }
+  .controls { margin-left: 0; }
+  .search { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="top"><div class="top-in">
+  <div class="brand"><h1>Weave UI catalog</h1><span class="meta" id="meta"></span></div>
+  <div class="controls">
+    <input class="search" id="q" type="search" placeholder="Filter by job, control, label or code" aria-label="Filter controls">
+    <span><span class="seg-label">Show</span><span class="seg" id="mode"><button type="button" data-v="live">Live</button><button type="button" data-v="shot">Captured</button><button type="button" data-v="both">Both</button></span></span>
+  </div>
+</div></div>
+<div class="wrap">
+  <nav class="idx" id="idx" aria-label="Functions"></nav>
+  <main id="main"><p class="intro" id="intro"></p></main>
+</div>
+<script type="text/plain" id="weave-css">__WEAVE_CSS__</script>
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById('data').textContent);
+  if (D.pool) {
+    for (const c of D.controls) for (const l of c.looks) for (const v of Object.values(l.views)) {
+      if (typeof v.html === 'number') v.html = D.pool[v.html];
+      if (typeof v.chain === 'number') v.chain = JSON.parse(D.pool[v.chain]);
+    }
+  }
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(document.getElementById('weave-css').textContent);
+  const fix = new CSSStyleSheet();
+  fix.replaceSync(`
+    .sh-html, .sh-body { display: block !important; height: auto !important; min-height: 0 !important; overflow: visible !important; position: static !important; }
+    .sh-body { padding: 12px; font-size: var(--fs-body, 14px); transform: translateZ(0); }
+    .sh-body.phone { container: wvphone / inline-size; width: 390px; }
+    .sh-body.center { display: flex !important; align-items: center; justify-content: flex-start; min-height: 56px; }
+    .sh-html { flex: 1 1 auto; }
+    .anc::before, .anc::after { content: none !important; display: none !important; }
+    .spec-root { position: relative !important; inset: auto !important; transform: none !important; translate: none !important; margin: 0 !important; opacity: 1 !important; visibility: visible !important; animation: none !important; transition: none !important; z-index: auto !important; }
+    .spec-root.leaf { max-width: 100%; }
+    table.spec-root { width: auto !important; }
+  `);
+  const VIEWS = [['desktop-light', 'Desktop', 'light'], ['desktop-dark', 'Desktop', 'dark'], ['phone-light', 'Phone', 'light'], ['phone-dark', 'Phone', 'dark']];
+  const state = { mode: 'live' };
+  try { const s = JSON.parse(localStorage.getItem('wv-ui-catalog') || '{}'); if (s.mode) state.mode = s.mode; } catch {}
+  const save = () => { try { localStorage.setItem('wv-ui-catalog', JSON.stringify(state)); } catch {} };
+  const LEAF = new Set(['button', 'chip', 'input', 'toggle', 'tabs']);
+  const SIZED = new Set(['card', 'bar', 'menu', 'colmenu', 'popover', 'picker', 'dialog', 'toast', 'nav']);
+  const TABLEISH = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'colgroup']);
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const byCode = new Map(D.controls.map((c) => [c.code, c]));
+  const catTitle = Object.fromEntries(D.cats.map((c) => [c.id, c.title]));
+  const fnTitle = Object.fromEntries(D.functions.map((f) => [f.id, f.title]));
+
+  function mount(host, c, v, theme, phone) {
+    const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
+    root.adoptedStyleSheets = [sheet, fix];
+    root.innerHTML = '';
+    let parent = root;
+    for (const a of v.chain) {
+      let el;
+      if (a.t === 'html') {
+        el = document.createElement('div');
+        el.className = 'anc sh-html ' + (a.a.class || '');
+        el.setAttribute('data-bs-theme', theme);
+      } else if (a.t === 'body') {
+        el = document.createElement('div');
+        el.className = 'anc sh-body ' + (a.a.class || '') + (phone ? ' phone' : '') + (LEAF.has(c.cat) ? ' center' : '');
+        if (v.bg && theme === 'light' && LEAF.has(c.cat)) el.style.background = v.bg;
+      } else {
+        el = document.createElement(['details', 'summary', 'dialog'].includes(a.t) ? 'div' : a.t);
+        for (const [k, val] of Object.entries(a.a)) if (k !== 'data-bs-theme') el.setAttribute(k, val);
+        el.classList.add('anc');
+        if (TABLEISH.has(a.t)) { if (a.t === 'table') el.style.cssText = 'width:auto!important;margin:0!important'; }
+        else el.style.cssText = 'display:contents!important';
+      }
+      parent.appendChild(el);
+      parent = el;
+    }
+    parent.insertAdjacentHTML('beforeend', v.html);
+    let r = parent.lastElementChild;
+    if (!r) return null;
+    if (v.full) {
+      const panel = r.querySelector(':scope > [role=dialog], :scope > #modal, :scope > #tray, :scope > #cmdk, :scope > .new-row-sheet, :scope > [class$=-sheet]') || [...r.children].sort((a, b) => b.innerHTML.length - a.innerHTML.length)[0];
+      if (panel) {
+        r.style.cssText = 'display:contents!important';
+        r.classList.add('anc');
+        r = panel;
+        for (const [k, val] of [['max-height', 'none'], ['height', 'auto'], ['min-height', '0'], ['width', phone ? '366px' : 'auto'], ['max-width', phone ? '366px' : '720px'], ['min-width', phone ? '0' : '320px']]) r.style.setProperty(k, val, 'important');
+      }
+    } else if (SIZED.has(c.cat) || r.matches('[class*=overlay], [role=dialog]')) {
+      r.style.setProperty('width', Math.min(v.w, phone ? 366 : 1400) + 'px', 'important');
+      r.style.setProperty('max-height', 'none', 'important');
+    } else r.classList.add('leaf');
+    r.classList.add('spec-root');
+    r.querySelectorAll('a[href]').forEach((a) => a.addEventListener('click', (e) => e.preventDefault()));
+    r.querySelectorAll('form').forEach((f) => f.addEventListener('submit', (e) => e.preventDefault()));
+    return r;
+  }
+
+  function viewCell(c, l, [key, width, theme]) {
+    const v = l.views[key];
+    const box = document.createElement('div');
+    box.className = 'view ' + theme;
+    box.dataset.view = key;
+    const note = !v ? '' : v.derived ? 'live only' : v.shot == null ? 'no capture' : '';
+    box.innerHTML = `<div class="view-cap"><span>${width} · ${theme === 'light' ? 'Light' : 'Dark'}</span><span class="note">${note}</span></div>`;
+    const stage = document.createElement('div');
+    stage.className = 'view-stage';
+    box.appendChild(stage);
+    if (!v) {
+      stage.innerHTML = `<div class="missing">Not seen at ${width.toLowerCase()} width</div>`;
+      return box;
+    }
+    if (state.mode !== 'shot' || v.shot == null) {
+      const host = document.createElement('div');
+      host.className = 'view-host';
+      stage.appendChild(host);
+      mount(host, c, v, theme, width === 'Phone');
+    }
+    if (state.mode !== 'live' && v.shot != null) stage.insertAdjacentHTML('beforeend', `<div class="shot">${state.mode === 'both' ? '<div class="shot-label">Captured</div>' : ''}<img alt="${esc(c.name)}, ${width.toLowerCase()} ${theme}, as captured in weave" src="${D.shots[v.shot]}" width="${v.w}"></div>`);
+    return box;
+  }
+
+  function lookTag(c, l) {
+    const bits = [l.state, l.label && l.label !== c.name ? `“${l.label}”` : '', l.where].filter(Boolean);
+    const from = l.trig && l.trig.code ? ` · opened from <a href="#" data-code="${l.trig.code}">${l.trig.code}</a>` : '';
+    return esc(bits.join(' · ')) + from;
+  }
+
+  function lookBlock(c, l) {
+    const div = document.createElement('div');
+    div.className = 'look';
+    div.innerHTML = `<div class="look-tag">${lookTag(c, l)}</div>`;
+    const views = document.createElement('div');
+    views.className = 'views';
+    const maxW = Math.max(...Object.values(l.views).map((v) => (v.full ? 720 : v.w)));
+    views.style.setProperty('--vmin', Math.max(200, Math.min(maxW + 44, 760)) + 'px');
+    for (const v of VIEWS) views.appendChild(viewCell(c, l, v));
+    div.appendChild(views);
+    return div;
+  }
+
+  function render(rec) {
+    const { el, c } = rec;
+    const body = el.querySelector('.ctl-body');
+    body.innerHTML = '';
+    if (c.step && c.looks.length > 1) {
+      const n = c.looks.length;
+      const st = document.createElement('div');
+      st.className = 'stepper look';
+      st.innerHTML = `<button type="button" aria-label="Previous look">‹</button><span class="st-pos">${rec.at + 1} / ${n}</span><button type="button" aria-label="Next look">›</button>`;
+      const [prev, , next] = st.children;
+      prev.addEventListener('click', () => { rec.at = (rec.at + n - 1) % n; render(rec); });
+      next.addEventListener('click', () => { rec.at = (rec.at + 1) % n; render(rec); });
+      body.appendChild(st);
+      body.appendChild(lookBlock(c, c.looks[rec.at]));
+    } else for (const l of c.looks) body.appendChild(lookBlock(c, l));
+    rec.mounted = true;
+  }
+
+  const m = D.meta;
+  document.getElementById('meta').textContent = `v${m.version} · ${m.sha} · ${m.functions} functions · ${m.controls} controls · ${m.looks} looks · harvested ${m.at}`;
+  document.getElementById('intro').textContent = `Each entry is a job someone does in weave, and lists every control that does that job, so two controls for one job show up side by side. Each control shows every look it was seen in, at desktop and phone width, in light and dark, drawn live with weave's own stylesheets. npm run ui-catalog harvested them from a throwaway workspace seeded by the repo (${(m.routes || []).length} pages per lane) and blocked every write. Quote the control code (B-01, K-03) when you comment.`;
+  const idx = document.getElementById('idx');
+  const main = document.getElementById('main');
+  const recs = [];
+  for (const f of D.functions) {
+    idx.insertAdjacentHTML('beforeend', `<a href="#fn-${f.id}"><span>${esc(f.title)}</span><span class="n">${f.controls.length}</span></a>`);
+    const sec = document.createElement('section');
+    sec.className = 'fn';
+    sec.id = 'fn-' + f.id;
+    sec.innerHTML = `<h2>${esc(f.title)}<span class="n">${f.controls.length} control${f.controls.length === 1 ? '' : 's'}</span></h2>${f.blurb ? `<p>${esc(f.blurb)}</p>` : ''}`;
+    main.appendChild(sec);
+    for (const code of f.controls) {
+      const c = byCode.get(code);
+      const el = document.createElement('article');
+      el.className = 'ctl';
+      el.id = `${f.id}--${c.code}`;
+      el.dataset.cat = c.cat;
+      el.dataset.code = c.code;
+      const also = c.functions.filter((x) => x !== f.id).map((x) => `<a href="#${x}--${c.code}">${esc(fnTitle[x])}</a>`).join(', ');
+      const opens = c.opens.length ? `<span>Opens ${c.opens.map((o) => `<a href="#" data-code="${o}">${o}</a>`).join(' ')}</span>` : '';
+      el.innerHTML = `<header><span class="code">${c.code}</span><span class="nm">${esc(c.name)}</span><span class="kind">${esc(catTitle[c.cat])}</span><span class="ct">${c.looks.length} look${c.looks.length === 1 ? '' : 's'} · ×${c.count}</span></header>
+        <div class="ctl-meta">${c.land ? `<span>Lives in <b>${esc(c.land)}</b></span>` : ''}<span>Seen on ${esc(c.routes.slice(0, 4).join(', '))}${c.routes.length > 4 ? ` +${c.routes.length - 4}` : ''}</span>${also ? `<span>Also under ${also}</span>` : ''}${opens}<span class="sig">${esc(c.sig)}</span></div>
+        <div class="ctl-body"></div>`;
+      sec.appendChild(el);
+      el.dataset.text = [c.code, c.name, c.sig, f.title, ...c.texts, ...c.looks.map((l) => `${l.label} ${l.state} ${(l.rows || []).join(' ')}`)].join(' ').toLowerCase();
+      const rec = { el, c, sec, mounted: false, at: 0 };
+      el.__rec = rec;
+      recs.push(rec);
+    }
+  }
+  main.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-code]');
+    if (!a) return;
+    e.preventDefault();
+    const t = document.querySelector(`.ctl[data-code="${a.dataset.code}"]`);
+    if (t) { history.replaceState(null, '', '#' + t.id); t.scrollIntoView({ block: 'start' }); }
+  });
+  const io = new IntersectionObserver((es) => {
+    for (const e of es) if (e.isIntersecting) { const rec = e.target.__rec; if (!rec.mounted) render(rec); io.unobserve(e.target); }
+  }, { rootMargin: '1200px 0px' });
+  for (const rec of recs) io.observe(rec.el);
+  const syncSeg = (id, v) => document.querySelectorAll(`#${id} button`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+  syncSeg('mode', state.mode);
+  document.getElementById('mode').addEventListener('click', (e) => {
+    const v = e.target.closest('button')?.dataset.v;
+    if (!v) return;
+    state.mode = v; save(); syncSeg('mode', v);
+    for (const rec of recs) if (rec.mounted) render(rec);
+  });
+  const q = document.getElementById('q');
+  q.addEventListener('input', () => {
+    const v = q.value.trim().toLowerCase();
+    for (const rec of recs) rec.el.hidden = !!v && !rec.el.dataset.text.includes(v);
+    for (const s of document.querySelectorAll('section.fn')) s.hidden = ![...s.querySelectorAll('.ctl')].some((x) => !x.hidden);
+  });
+  if (location.hash) { const el = document.getElementById(location.hash.slice(1)); if (el) setTimeout(() => el.scrollIntoView(), 50); }
+  window.uiCatalog = { data: D, ready: true, renderAll() { for (const rec of recs) if (!rec.mounted) render(rec); } };
+})();
+</script>
+</body>
+</html>
