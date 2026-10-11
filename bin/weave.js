@@ -621,9 +621,7 @@ async function main() {
         if (flags.move != null) patch.move = { field: flags.move, ...(flags.before != null ? { before: flags.before } : { after: flags.after }) };
         for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
         if (flags.frozen != null) patch.frozen = Number(flags.frozen);
-        if (flags.density != null) patch.density = flags.density;
-        if (flags.search != null) patch.search = flags.search === true ? '' : String(flags.search);
-        if (flags.layout != null) patch.layout = flags.layout;
+        for (const k of ['density', 'layout', 'search']) if (flags[k] != null) patch[k] = flags[k] === true ? '' : String(flags[k]);
         if (flags.group != null) patch.group = String(flags.group).trim().startsWith('[') ? parseJsonFlag('group') : String(flags.group);
         for (const [flag, key] of [['completed-by', 'completedBy'], ['nest', 'nest']]) if (flags[flag] != null) patch[key] = flags[flag] === 'none' ? null : flags[flag];
         if (flags.collapsed != null) patch.collapsed = parseJsonFlag('collapsed');
