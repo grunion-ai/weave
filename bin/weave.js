@@ -649,8 +649,8 @@ async function main() {
       }
       if (sub === 'move') return out(w.moveTable(space, name, pickFlags(['position'])));
       if (sub === 'duplicate') return out(w.duplicateTable(space));
-      if (sub === 'delete') { w.deleteTable(space, { hard: Boolean(flags.hard) }); return out({ table: space, deleted: true }); }
       if (sub === 'restore') return out(w.restoreTable(space));
+      if (sub === 'delete') { w.deleteTable(space, { hard: Boolean(flags.hard) }); return out({ table: space, deleted: true }); }
       if (sub === 'list' || !sub) return out(w.listTables().map((d) => w.qualifiedName(d)));
       throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, view, move, duplicate, delete, restore`);
     }
