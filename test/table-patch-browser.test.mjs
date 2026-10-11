@@ -83,7 +83,7 @@ if (s) {
     await page.waitForTimeout(300);
   };
   async function open(view = '') {
-    weave.tableView(`${table.id}/Standard`, { fields: ['Name', 'Description', 'Owner', 'Status'], filters: {}, sort: [], density: 'comfortable' });
+    weave.tableView(`${table.id}/Standard`, { fields: ['Name', 'Description', 'Owner', 'Status'], filters: {}, sort: [], search: '', density: 'comfortable' });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/#/table/${table.id}${view}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');

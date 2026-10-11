@@ -3153,7 +3153,7 @@ function systemDefault(db, view = null) {
   const table = allTables().find((d) => d.id === db.id) || db;
   return {
     fields: [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n] && n !== 'Activity')],
-    filters: {}, sort: [],
+    filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
     layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null,
@@ -3196,7 +3196,6 @@ function viewStrip(db) {
       let made;
       try {
         made = await api('PATCH', at(name), { from: e.from, ...(e.from === 'blank' ? systemDefault(db) : {}), ...(e.position != null ? { position: e.position } : {}) });
-        if (e.from === 'blank') { stopTableSearchTimer(); tableSearch = { ...tableSearch, text: '', focus: false, only: null }; }
       } catch (err) { toast(err.message, true); redraw(); return; }
       await loadSchema();
       const hash = `#/table/${db.id}/view/${made.id}`;
@@ -3399,9 +3398,22 @@ function filterStrip(db, onChange) {
 }
 
 const TABLE_SEARCH_DEBOUNCE = 150;
-let tableSearch = { dbId: null, text: '', open: false, focus: false, only: null };
+let tableSearch = { dbId: null, viewId: null, text: '', open: false, focus: false, only: null };
 let tableSearchTimer = 0;
 let tableSearchRelease = null;
+let tableSearchWrites = Promise.resolve();
+let tableSearchLocal = false;
+function saveTableSearch(dbId, text) {
+  const { viewId } = tableSearch;
+  const view = (allTables().find((d) => d.id === dbId)?.views ?? []).find((v) => v.id === viewId);
+  const want = String(text ?? '').trim();
+  if (!view || tableSearchLocal || want === (view.search ?? '')) return tableSearchWrites;
+  if (want) view.search = want; else delete view.search;
+  tableSearchWrites = tableSearchWrites
+    .then(() => api('PATCH', `/tables/${dbId}/views/${encodeURIComponent(viewId)}`, { search: want }))
+    .catch((err) => { if (err.status === 401 || err.status === 403) tableSearchLocal = true; else toast(err.message, true); });
+  return tableSearchWrites;
+}
 function stopTableSearchTimer() {
   clearTimeout(tableSearchTimer); tableSearchTimer = 0;
   tableSearchRelease?.(); tableSearchRelease = null;
@@ -3410,6 +3422,7 @@ const tableSearchText = (db) => (tableSearch.dbId === db.id ? tableSearch.text.t
 function setTableSearch(db, text, { open = tableSearch.open, focus = false } = {}) {
   clearTimeout(tableSearchTimer); tableSearchTimer = 0;
   tableSearch = { ...tableSearch, dbId: db.id, text, open, focus };
+  saveTableSearch(db.id, text);
   return showDatabase(db.id, state.route.view).finally(() => {
     if (!tableSearchTimer) { tableSearchRelease?.(); tableSearchRelease = null; }
   });
@@ -3462,7 +3475,10 @@ async function showDatabase(dbId, view) {
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
   if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
   const db = viewed(table, pickTableView(table, view));
-  if (tableSearch.dbId !== dbId) { stopTableSearchTimer(); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
+  if (tableSearch.dbId !== dbId || tableSearch.viewId !== db.view.id) {
+    stopTableSearchTimer();
+    tableSearch = { dbId, viewId: db.view.id, text: db.view.search ?? '', open: false, focus: false, only: null };
+  }
   const search = tableSearch.text.trim();
   const again = tableChromeOn(dbId);
   state.route = { page: 'db', dbId, view: db.view.id };
@@ -3651,7 +3667,7 @@ function tableViewButton(ref) {
         await eyeWrites;
         stopTableSearchTimer();
         tableSearch = { ...tableSearch, text: '', focus: false, only: null };
-        const patch = raw ? systemDefault(db, current.view) : { filters: {}, sort: [] };
+        const patch = raw ? systemDefault(db, current.view) : { filters: {}, sort: [], search: '' };
         await gridConfigWrite(current, null, patch);
         await showDatabase(db.id, current.view?.id);
         document.querySelector('.table-view-btn')?.focus({ preventScroll: true });
