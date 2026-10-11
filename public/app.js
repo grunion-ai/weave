@@ -279,30 +279,44 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   document.querySelector('#tray-back')?.remove();
   document.querySelector('#modal-back')?.remove();
-  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const opener = document.activeElement;
+  const close = () => {
+    const at = document.activeElement;
+    const held = !at || at === document.body || back.contains(at);
+    back.remove();
+    if (held && opener?.isConnected) opener.focus();
+  };
+  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) close(); } });
   const form = el('form', { class: 'tray-form' },
     el('div', { class: 'tray-body' }, ...bodyNodes),
     el('div', { class: 'tray-actions' },
-      el('button', { class: 'btn', type: 'button', onclick: () => back.remove() }, 'Cancel'),
+      el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
       el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       await onSubmit(new FormData(form));
-      back.remove();
+      close();
     } catch (err) {
-      toast(err.message, true);
+      if (!err.shown) toast(err.message, true);
     }
   });
-  back.append(el('div', { id: 'tray' },
-    el('div', { class: 'tray-head' }, el('h2', {}, title),
-      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, iconEl('✕'))),
+  back.append(el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },
+    el('div', { class: 'tray-head' }, el('h2', { id: 'tray-title' }, title),
+      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: close }, iconEl('✕'))),
     form));
   document.body.append(back);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape' && !document.querySelector('.chip-pop')) { back.remove(); removeEventListener('keydown', esc); }
-  });
+  const esc = (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.chip-pop')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  };
+  back.addEventListener('keydown', esc);
+  addEventListener('keydown', function stray(e) {
+    if (!back.isConnected) return removeEventListener('keydown', stray, true);
+    if (e.target === document.body && !document.querySelector('#modal-back, #cmdk-back')) esc(e);
+  }, true);
   const first = form.querySelector('input:not([type=hidden]),select,textarea');
   if (first) first.focus();
   return back;
@@ -10328,7 +10342,7 @@ const activityPanel = (() => {
     renderView();
   }
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop')) return;
+    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
     e.stopPropagation();
     close();
   }, true);
