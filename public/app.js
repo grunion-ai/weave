@@ -1730,9 +1730,9 @@ function anchorPop(pop, anchor) {
   }
 }
 
-function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', apply = 'Apply', onApply }) {
+function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', apply = 'Apply', value = '', onApply }) {
   document.querySelector('.chip-pop')?.remove();
-  const input = el('input', { class: 'form-control form-control-sm', type, placeholder });
+  const input = el('input', { class: 'form-control form-control-sm', type, placeholder, enterkeyhint: 'done', value: value ?? '' });
   const pop = el('div', { class: 'chip-pop picker-pop value-pop' },
     title ? el('div', { class: 'picker-title' }, title) : null,
     el('form', {
@@ -2150,7 +2150,7 @@ function phoneLeadEl(f, item) {
     const o = (f.optionsFull ?? []).find((x) => x.name === val);
     seg = { kind: 'field', type: 'select', label: f.name, value: val, option: { hue: chipCore.hueFromHex(o?.color), icon: o?.icon } };
   } else seg = { kind: 'field', type: f.type, label: f.name, value: String(fieldValueCell(val) ?? '') || '—' };
-  return el('span', { class: 'phone-lead', dataset: { field: f.name } }, viewSegmentEl(seg));
+  return el('span', { class: 'phone-lead', dataset: { field: f.name, ftype: f.type } }, viewSegmentEl(seg));
 }
 function fitPhoneChipLines(grid) {
   const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
@@ -6252,6 +6252,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const touched = press;
     press = null;
     if (touched && !touched.tap) return;
+    const chip = phoneChipAt(tr, e.clientX, e.clientY);
+    if (chip) return editPhoneField(chip, db, tr.dataset.eid, chip.dataset.field);
     if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
     else openEntity(tr.dataset.eid);
   }, true);
@@ -6265,6 +6267,90 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
 const TAP_SLOP = 10;
 const TAP_MS = 300;
+const PHONE_HIT = 44;
+
+function phoneChipAt(tr, x, y) {
+  const inside = (n, pad) => {
+    const r = n.getBoundingClientRect();
+    const px = pad ? Math.max(0, (PHONE_HIT - r.width) / 2) : 0, py = pad ? Math.max(0, (PHONE_HIT - r.height) / 2) : 0;
+    return x >= r.left - px && x <= r.right + px && y >= r.top - py && y <= r.bottom + py;
+  };
+  const marks = [...tr.querySelectorAll(':scope > td.pid-cell .phone-lead, :scope > td[data-phone-chip]')]
+    .filter((n) => n.getClientRects().length && !n.classList.contains('list-hide'))
+    .filter((n) => phoneRowCore.tapAction(n.dataset.ftype));
+  const exact = marks.find((n) => inside(n, false));
+  if (exact) return exact;
+  if ([...tr.querySelectorAll(':scope > td.pid-cell :is(.open-link, .list-name)')].some((n) => inside(n, false))) return null;
+  const near = marks.filter((n) => inside(n, true));
+  const dist = (n) => { const r = n.getBoundingClientRect(); return Math.hypot(x - (r.left + r.right) / 2, y - (r.top + r.bottom) / 2); };
+  return near.sort((a, b) => dist(a) - dist(b))[0] ?? null;
+}
+
+async function editPhoneField(anchor, db, eid, name) {
+  try {
+    const f = db.fields.find((x) => x.name === name);
+    const e = await api('GET', `/entities/${eid}`);
+    const was = e.fields?.[f.name] ?? null;
+    const raw = e.raw?.[f.name] ?? was;
+    const write = async (value, shown) => {
+      if (f.type === 'workflow') await api('POST', `/entities/${eid}/state`, { field: f.name, state: value });
+      else await api('PATCH', `/entities/${eid}`, { values: { [f.name]: value } });
+      const gesture = { kind: 'update', ids: [eid] };
+      lastGesture = gesture;
+      toast(`${f.name}: ${shown ?? (value == null || value === '' ? '—' : String(value))}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
+      await refreshView();
+    };
+    const run = (p) => Promise.resolve(p).catch((err) => toast(err.message, true));
+    switch (phoneRowCore.tapAction(f.type)) {
+      case 'picker':
+        if (f.type === 'workflow') return statePicker(anchor, f, was, (st) => run(st === was ? null : write(st)));
+        if (f.type === 'select') {
+          return searchPicker({
+            anchor, title: f.name, currentId: was ?? '—', clearId: '—',
+            options: [{ id: '—', label: '—', cls: 'k k-select hue-slate', chip: true }, ...f.options.map((o) => ({ id: o, label: o, cls: `k k-select ${optionHue(f, o)}`, chip: true }))],
+            onPick: (o) => run(o.id === (was ?? '—') ? null : write(o.id === '—' ? null : o.id)),
+          });
+        }
+        if (f.type === 'multiselect') {
+          const current = Array.isArray(raw) ? raw : [];
+          const chosen = (names) => names.map((n) => ({ id: n, label: n, chip: true, cls: `k k-multi ${optionHue(f, n)}` }));
+          return searchPicker({
+            anchor, title: f.name, options: chosen(f.options ?? []),
+            multi: { selected: chosen(current), onCommit: (ids) => run(ids.join('\u0000') === current.join('\u0000') ? null : write(ids, ids.join(', ') || '—')) },
+          });
+        }
+        return linkSearch(f, {
+          linked: raw == null ? [] : Array.isArray(raw) ? raw : [raw],
+          commit: async (add, drop) => {
+            if (add.length) await api('POST', `/entities/${eid}/link`, { field: f.name, targets: add });
+            if (drop.length) await api('POST', `/entities/${eid}/unlink`, { field: f.name, targets: drop });
+            const gesture = { kind: 'update', ids: [eid] };
+            lastGesture = gesture;
+            toast(`${f.name} changed`, false, { label: 'Undo', run: () => undoGesture(gesture) });
+            await refreshView();
+          },
+        });
+      case 'toggle':
+        return run(write(!raw, raw ? 'off' : 'on'));
+      case 'date': {
+        const c = { ...f };
+        const { store, local } = dateStoreFns(c);
+        return datePopover({ anchor, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) });
+      }
+      case 'value': {
+        const percent = f.type === 'number' && f.format === 'percent';
+        const shown = percent && typeof raw === 'number' ? Math.round(raw * 100 * 1e8) / 1e8 : raw;
+        return valuePop({
+          anchor, title: f.name, type: f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text',
+          value: shown ?? '', apply: 'Save',
+          onApply: (v) => run(write(v === '' ? null : f.type === 'number' ? (percent ? Math.round(Number(v) * 1e8) / 1e10 : Number(v)) : v)),
+        });
+      }
+      default:
+        return openEntity(eid);
+    }
+  } catch (err) { toast(err.message, true); }
+}
 
 const SYSTEM_COLS = {
   'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),

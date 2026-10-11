@@ -1,0 +1,1 @@
+- On a phone, a list row's lead and chips open their editor in place, so a field changes without opening the row (Feature #300)

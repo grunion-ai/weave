@@ -50,5 +50,11 @@
     return { lead: cfg.lead ?? null, chips: [...cfg.chips], ...(cfg.labels ? { labels: true } : {}), ...(cfg.wrap ? { wrap: true } : {}) };
   }
 
-  root.weavePhoneRow = { SLOTS, LONG_FORM, KEYS, defaults, resolve, slotOf, rows, setSlot, moveChip, compact };
+  const TAP = {
+    workflow: 'picker', select: 'picker', multiselect: 'picker', relation: 'picker',
+    checkbox: 'toggle', toggle: 'toggle', date: 'date', number: 'value', text: 'value', url: 'value', email: 'value',
+  };
+  const tapAction = (type) => TAP[type] ?? null;
+
+  root.weavePhoneRow = { SLOTS, LONG_FORM, KEYS, defaults, resolve, slotOf, rows, setSlot, moveChip, compact, tapAction };
 })(typeof window !== 'undefined' ? window : globalThis);

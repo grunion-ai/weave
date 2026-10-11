@@ -109,7 +109,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('on a phone a tap on a row opens the row and never edits a cell (Feature #272)', async () => {
+  test('on a phone a tap on a row\'s name opens the row and never edits a cell, and a tap on a chip opens its picker instead (Feature #272, Feature #300)', async () => {
     const page = await open();
     try {
       const tr = page.locator('#main tbody tr.entity-row').nth(1);
@@ -127,8 +127,8 @@ if (s) {
       await settled(page.locator('#main .table-wrap'));
       const cb = await chip.boundingBox();
       await page.mouse.click(cb.x + 4, cb.y + 4);
-      await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      assert.equal(await page.locator('.picker-pop').count(), 0, 'a tap on a chip opens the row, not the picker');
+      await page.waitForSelector('.picker-pop');
+      assert.equal(page.url().includes('?e='), false, 'a tap on a chip opens its picker, not the row');
     } finally { await page.close(); }
   });
 

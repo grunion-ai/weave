@@ -65,6 +65,14 @@ test('setting a slot moves the field, one lead at a time, and chips reorder by d
   assert.throws(() => PR.setSlot(cfg, 'Due', 'middle'), /lead, chips or off/);
 });
 
+test('a tap on a phone chip picks, flips, dates or types by field type, and anything else opens the row', () => {
+  for (const t of ['workflow', 'select', 'multiselect', 'relation']) assert.equal(PR.tapAction(t), 'picker', t);
+  for (const t of ['checkbox', 'toggle']) assert.equal(PR.tapAction(t), 'toggle', t);
+  assert.equal(PR.tapAction('date'), 'date');
+  for (const t of ['number', 'text', 'url', 'email']) assert.equal(PR.tapAction(t), 'value', t);
+  for (const t of ['rating', 'daterange', 'attachments', 'formula', 'lookup', 'rollup', 'document', 'view', 'key', 'field']) assert.equal(PR.tapAction(t), null, t);
+});
+
 test('phoneRow is a view setting: absent until written, merged key by key, null clears it', () => {
   const w = issues();
   assert.equal(w.tableView('Issue/Standard').phoneRow, undefined);
