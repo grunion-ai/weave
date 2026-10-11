@@ -85,7 +85,7 @@ if (s) {
     },
     {
       name: 'an empty textarea whose placeholder wraps past its height is a field-placeholder (rule 5)',
-      html: `<textarea class="field-desc" style="width:160px;height:58px;padding:8px 12px" placeholder="What this field holds and how it is written — shown under the label and to agents in the schema"></textarea>`,
+      html: `<textarea class="field-desc" style="font:inherit;box-sizing:border-box;width:160px;height:46px;padding:8px 12px" placeholder="What this field holds and how it is written — shown under the label and to agents in the schema"></textarea>`,
       want: 'field-placeholder', selector: /textarea\.field-desc$/,
     },
   ];
