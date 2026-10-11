@@ -1,10 +1,7 @@
-# weave — one container, no build step, no npm install (zero runtime
-# dependencies). Pinned to an exact node 22.x-slim tag: node:sqlite needs
-# ≥ 22.16, and an exact tag is what Dependabot/Renovate can bump.
-FROM node:22.23.2-slim
+FROM node:22.23.2-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
 
 WORKDIR /opt/weave
-COPY --chown=node:node . .
+COPY . .
 
 # The environment contract (Handbook → "Environment reference"):
 #   PORT                       listen port; Railway and Fly set it        (4400)
