@@ -73,7 +73,7 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      const chip = page.locator('td[data-field="Account"] .mention-wrap').first();
+      const chip = page.locator('td[data-field="Account"] .k-rel').first();
       await chip.locator('.mention-caret').click();
       await page.waitForSelector('td[data-field="Account"] .mention-f .cg-sparkwrap svg');
     } finally { await page.close(); }

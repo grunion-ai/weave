@@ -76,7 +76,7 @@ if (s) {
     try {
       const before = (await previewText(page, 0)).trim();
       await row(page, 0).locator('.opt-name').click();
-      await page.keyboard.press('End');
+      await row(page, 0).locator('.opt-name').evaluate((el) => el.setSelectionRange(el.value.length, el.value.length));
       const seen = [];
       for (const ch of ' by design') {
         await page.keyboard.type(ch);

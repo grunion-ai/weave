@@ -37,6 +37,7 @@ const SURFACE = [
   ['field.add', ['addField', 'materializeField'], 'weave_add_field', 'field add', ['POST /api/tables/:ref/fields']],
   ['field.update', ['updateField'], 'weave_update_field', 'field update', ['PATCH /api/tables/:ref/fields/:ref']],
   ['field.delete', ['deleteField'], 'weave_delete_field', 'field delete', ['DELETE /api/tables/:ref/fields/:ref']],
+  ['field.restore', ['restoreField'], 'weave_restore_field', 'field restore', ['POST /api/tables/:ref/fields/:ref/restore']],
   ['field.rollback', ['rollbackFieldConfig'], 'weave_rollback_field', 'field rollback', ['POST /api/tables/:ref/fields/:ref/rollback']],
   ['relation.add', ['addRelation'], 'weave_add_relation', 'relation add', ['POST /api/tables/:ref/relations']],
   ['formula.check', ['checkFormula'], 'weave_check_formula', 'formula check', ['POST /api/tables/:ref/formula-check']],
@@ -67,7 +68,8 @@ const SURFACE = [
   ['file.attach', ['attachFile', 'attachToField'], 'weave_attach_file', 'file attach', ['POST /api/entities/:ref/files', 'POST /api/entities/:ref/fields/:ref/files']],
   ['file.read', ['readFile'], 'weave_files', 'file read', ['GET /api/files/:ref']],
   ['file.delete', ['deleteFile'], 'weave_files', 'file delete', ['DELETE /api/entities/:ref/files/:ref']],
-  ['view', ['createView', 'listViews', 'getView', 'deleteView', 'shareView', 'unshareView', 'resolveView'], 'weave_views', 'view', ['GET /api/views', 'POST /api/views', 'GET /api/views/:ref', 'DELETE /api/views/:ref', 'POST /api/views/:ref/share', 'DELETE /api/views/:ref/share']],
+  ['view', ['createView', 'listViews', 'getView', 'deleteView', 'restoreView', 'shareView', 'unshareView', 'resolveView'], 'weave_views', 'view', ['GET /api/views', 'POST /api/views', 'GET /api/views/:ref', 'DELETE /api/views/:ref', 'POST /api/views/:ref/restore', 'POST /api/views/:ref/share', 'DELETE /api/views/:ref/share']],
+  ['share', ['mintShare', 'listShares', 'revokeShare'], 'weave_shares', 'share', ['GET /api/shares', 'POST /api/shares', 'DELETE /api/shares/:ref', 'GET /api/share']],
   ['automation.create', ['createAutomation'], 'weave_create_automation', 'automation create', ['POST /api/automations']],
   ['automation.manage', ['listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'], 'weave_automations', 'automation', ['GET /api/automations', 'PATCH /api/automations/:ref', 'DELETE /api/automations/:ref']],
   ['activity', ['activityFeed', 'getActivity'], 'weave_activity', 'activity', ['GET /api/activity', 'GET /api/activity/:rest']],
@@ -103,6 +105,7 @@ const INTERNAL = {
   credentialLink: 'read helper — where a remote keystore keeps the credential',
   bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',
   viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
+  shareByToken: 'auth path (Feature #194): a /s/<token> link and an Authorization: Bearer wvs_ header ARE this call; GET /api/share answers what the token reaches',
   verifySession: 'auth path — the wv_session cookie IS this call (Feature #222 part 2)',
   removedSession: 'auth path (Feature #280) — the access-removed page reads it from a browser cookie; an agent holds no browser session',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
@@ -118,6 +121,8 @@ const INTERNAL = {
   onboardedAt: 'first-run state (Feature #248) — a person\'s welcome mark; GET /api/onboarding is the door, and an agent never onboards',
   markOnboarded: 'first-run state (Feature #248) — POST /api/onboarding sets it as the welcome finishes; nothing for an agent to do',
   affectedBy: 'read helper (Issue #257) — the rows a client must re-read after writing one; PATCH /api/entities/:ref ships it as `affected`',
+  invitesForEmail: 'auth path (Feature #290) — the pending invites sent to the signed-in person\'s verified address; GET /api/start lists them as rows of kind "invite", and an agent holds no browser session',
+  acceptInvite: 'auth path (Feature #290) — accepts one of those invites by its id through the same path as the link; POST /api/start/invites/:slug/:ref is the door',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));

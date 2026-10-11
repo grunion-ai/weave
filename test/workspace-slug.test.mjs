@@ -9,11 +9,11 @@ import { workspaceSlug } from '../src/workspace-name.js';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'weave-wsslug-'));
 
-test('workspaceSlug: a display name folds to lowercase letters, digits, - and _', () => {
+test('workspaceSlug: a display name folds to a DNS label: lowercase letters, digits and -', () => {
   assert.equal(workspaceSlug('Personal finance'), 'personal-finance');
   assert.equal(workspaceSlug('Acme'), 'acme');
   assert.equal(workspaceSlug('  Café & Co.  '), 'cafe-co');
-  assert.equal(workspaceSlug('ops_hub-2'), 'ops_hub-2');
+  assert.equal(workspaceSlug('ops_hub-2'), 'ops-hub-2');
   assert.equal(workspaceSlug('***'), '', 'nothing usable left');
 });
 
@@ -24,7 +24,7 @@ test('engine: renaming to a display name keeps it and derives the slug (Issue #5
   assert.equal(got.title, 'Personal finance', 'title is what a person reads');
   assert.deepEqual([w.getWorkspace().name, w.getWorkspace().title], ['personal-finance', 'Personal finance']);
   assert.equal(w.updateWorkspace({ name: 'sales' }).title, 'sales', 'a bare slug is its own title');
-  assert.throws(() => w.updateWorkspace({ name: '***' }), /letters, digits, - and _/, 'the refusal names the rule');
+  assert.throws(() => w.updateWorkspace({ name: '***' }), /lowercase letters, numbers and hyphens/, 'the refusal names the rule');
   assert.equal(new Weave().getWorkspace().title, 'personal-workspace', 'a workspace with no title reads as its slug');
 });
 
@@ -35,7 +35,7 @@ test('hub: a case variant of a held slug is the same workspace (Issue #599)', ()
     const hub = createWorkspaceHub(main);
     const acme = hub.create('acme');
     assert.equal(hub.get('ACME'), acme, 'any casing resolves');
-    assert.throws(() => hub.create('Acme'), (e) => e.code === 'conflict');
+    assert.throws(() => hub.create('Acme'), (e) => e.code === 'slug_taken');
     const team = hub.create('Acme Team');
     assert.deepEqual([team.state.meta.name, team.getWorkspace().title], ['acme-team', 'Acme Team']);
     assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith('.db')).sort(), ['acme-team.db', 'acme.db', 'main.db']);
@@ -55,7 +55,7 @@ test('hub: an existing mixed-case workspace keeps its file and its slug, and own
     const held = hub.get('Acme');
     assert.equal(held?.state.meta.name, 'Acme', 'the slug it carries still resolves');
     assert.equal(hub.get('acme'), held, 'and so does its lowercase');
-    assert.throws(() => hub.create('acme'), (e) => e.code === 'conflict');
+    assert.throws(() => hub.create('acme'), (e) => e.code === 'slug_taken');
     assert.ok(readdirSync(dir).includes('Acme.db') && !readdirSync(dir).includes('acme.db'), 'no file renamed or added');
   } finally {
     rmSync(dir, { recursive: true, force: true });

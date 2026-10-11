@@ -303,7 +303,7 @@ test('the description clamp is five description line-heights, toggled by a contr
   assert.equal(Number(m[1]), 5, 'five lines');
   assert.equal(m[2], desc['line-height'], 'in the description\'s own line-height');
   const vh = fnBody('viewHeader');
-  assert.match(vh, /class: 'view-desc-body clamped'/, 'the rendered markdown has its own body element, born clamped');
+  assert.match(vh, /class: 'view-desc-body wv-prose clamped'/, 'the rendered markdown has its own body element, born clamped');
   assert.match(vh, /class: 'view-desc-more'/, 'the Show more control exists');
   assert.match(vh, /closest\('a,textarea,button'\)/, 'a click on the control does not start an edit');
   assert.ok(rulesFor('.view-desc-more').cursor, 'the control reads as clickable');
@@ -359,7 +359,7 @@ test('comments and activity make up the side column; fields lead the body', () =
 });
 
 test('the space caret is a real hit target, not a 18px sliver', () => {
-  const caret = rulesFor('.nav-caret');
+  const caret = rulesFor('.wv-disclosure');
   assert.ok(px(caret.width) >= 24 && px(caret.height) >= 24,
     `caret must be at least 24x24, got ${caret.width} x ${caret.height}`);
   assert.equal(caret.flex ?? caret['flex-shrink'], '0',
@@ -370,13 +370,14 @@ test('the space caret is a drawn chevron, not a text glyph', () => {
   const fn = APP.slice(APP.indexOf('function renderNav'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.doesNotMatch(body, /'▾'|"▾"|'▸'|'▼'/, 'no text-glyph caret — it cannot match the chrome');
-  assert.match(body, /chevron\(/, 'the caret renders the shared chevron() svg');
+  assert.match(body, /disclosure\('nav-caret'/, 'the caret is the shared disclosure, which renders the chevron() svg');
   const at = APP.indexOf('chevron = (');
   assert.ok(at > 0, 'chevron() must be defined in app.js');
   const decl = APP.slice(at, at + 400);
   assert.match(decl, /lucide:chevron-right/, 'the chevron is the inventory\'s, so it matches the set and moves');
-  const icon = rulesFor('.nav-caret svg');
-  assert.ok(px(icon.width) >= 14, `chevron glyph must be >= 14px, got ${icon.width}`);
+  const icon = rulesFor('.wv-disclosure > .wv-icon svg');
+  assert.equal(icon.width, 'var(--wv-icon-md)', 'the chevron glyph is the 16px medium icon');
+  assert.equal(px(rulesFor(':root')['--wv-icon-md']), 16);
 });
 
 test('the caret trails the space label and rotates to open', () => {
@@ -386,10 +387,10 @@ test('the caret trails the space label and rotates to open', () => {
   assert.ok(body.indexOf('nav-caret', row) > body.indexOf("class: 'nav-space'", row),
     'the caret is appended after the space link — it trails the label ("Routines ›")');
 
-  const caret = rulesFor('.nav-caret');
+  const caret = rulesFor('.wv-disclosure');
   assert.ok(!caret.transform || caret.transform === 'none',
     `the resting caret must not be rotated, got ${caret.transform}`);
-  assert.match(rulesFor('.nav-caret.open').transform, /rotate\(90deg\)/,
+  assert.match(CSS, /\.wv-disclosure\[aria-expanded="true"\][^{]*\{[^}]*transform: rotate\(90deg\)/,
     'the expanded caret rotates the right-pointing glyph down');
 });
 
@@ -746,7 +747,7 @@ test('every code block carries a copy button in its upper right', () => {
 test('a computed field carries its glyph next to the name, not only in cells', () => {
   const label = fnBody('fieldNameLabel');
   assert.match(label, /computedMark(?:Node)?\(/, 'one glyph vocabulary for names and values');
-  assert.match(label, /'sup'/, 'the mark is a superscript on the name');
+  assert.match(label, /el\('span', \{\n    class: 'field-mark'/, 'the mark is an inline span after the name');
   assert.match(APP, /COMPUTED_NAME_MARKS = \{[^}]*formula/,
     'formula fields are the case this exists for');
 
@@ -976,11 +977,11 @@ test('the Share dialog shows the link and no QR code (Feature #263)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-  const start = app.indexOf("modal('Share link'");
+  const start = app.indexOf('function shareDialog(');
   assert.ok(start > 0, 'the Share dialog exists');
-  const share = app.slice(start, app.indexOf("'Done')", start));
+  const share = app.slice(start, app.indexOf("'Create link')", start));
   assert.match(share, /el\('code', \{ class: 'share-url' \}, full\)/, 'the dialog shows the full link');
-  assert.ok(app.slice(app.indexOf("api('POST', `/views/${id}/share`)"), start).includes('clipboard?.writeText(full)'), 'opening it copies the link');
+  assert.ok(share.includes("copyText(location.origin + WS_PREFIX + g.url, 'Link copied')"), 'minting a link copies it (Feature #194)');
   assert.doesNotMatch(share, /canvas|qr|scan/i, 'no QR code and no talk of scanning one');
   for (const gone of ['qrCanvas', 'leanQR', 'share-qr']) assert.ok(!app.includes(gone), `app.js still names ${gone}`);
   assert.ok(!html.includes('lean-qr'), 'the shell no longer loads lean-qr');
@@ -1016,7 +1017,8 @@ test('every selector speaks the one dialect: search bar first, list under it', (
   const box = rulesFor('.picker-box');
   assert.equal(box['width'], '100%');
   assert.ok(box['border'], 'the box is the field');
-  assert.equal(rulesFor('.picker-search')['border'], '0', 'the input inside it draws nothing');
+  assert.ok(picker.includes("class: 'search-bare picker-search'"), 'the input inside it wears the bare search skin');
+  assert.equal(rulesFor('.search-bare')['border'], '0', 'the input inside it draws nothing');
   const list = rulesFor('.picker-list');
   assert.ok(list['max-height'], 'the list is small and scrolls');
 });
@@ -1412,7 +1414,7 @@ test('the chrome carries flat icons rather than emoji', () => {
 });
 
 test('a reference chip has an opaque ground', () => {
-  assert.equal(rulesFor('.doc-ref-layer a.doc-ref-chip').background, 'var(--tblr-bg-surface)',
+  assert.equal(rulesFor('.doc-ref-layer .doc-ref-slot').background, 'var(--tblr-bg-surface)',
     'the chip covers its literal with the editor’s own surface');
 });
 
@@ -1677,7 +1679,7 @@ test('an empty chip invites writing, never promises navigation', () => {
 
 test('the relation chip’s × is spaced as the trailing piece it is', () => {
   const x = rulesFor('.k-rel > .x');
-  assert.ok(x.margin?.startsWith('0 6px 0'), `the × follows the link — got margin ${x.margin}`);
+  assert.ok(x.margin?.startsWith('0 5px 0'), `the × follows the caret — got margin ${x.margin}`);
 });
 
 test('navigating away dismisses any floating picker', () => {
@@ -1722,10 +1724,11 @@ test('the entity page draws the System toggles — one read-only row per systemF
 
 test('the entity name wraps instead of clipping: a content-sized textarea, Enter commits (Issue #175)', () => {
   const body = fnBody('renderEntityView');
-  assert.match(body, /const nameInput = el\('textarea', \{\s*\n\s*class: 'name-edit'/, 'a textarea, not an input — an input is one line by construction');
+  assert.match(body, /const nameInput = titleEdit\('textarea', 'name-edit'/, 'a textarea, not an input — an input is one line by construction');
   assert.match(body, /rows: '1'/, 'one row at rest');
   assert.match(body, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); nameInput\.blur\(\); \}/, 'Enter commits; a name has no second line of its own');
-  assert.match(body, /nameInput\.value = entity\.name/, 'the value is set, never a child text node');
+  assert.match(body, /titleEdit\('textarea', 'name-edit'[^\n]*, entity\.name, \{/, 'the name is the value it is built with');
+  assert.match(fnBody('titleEdit'), /node\.value = value/, 'the value is set, never a child text node');
   const css = rulesFor('.entity-head textarea.name-edit');
   assert.equal(css['field-sizing'], 'content', 'the box is as tall as the name');
   assert.equal(css.resize, 'none');

@@ -37,8 +37,8 @@ async function withServer(w, body, { workspaces = {} } = {}) {
 }
 
 const chips = (html) =>
-  [...html.matchAll(/<a class="(mention mention-\w+)" href="([^"]+)"(?: data-name="[^"]*")?>([^<]*)<\/a>/g)]
-    .map((m) => [m[1], m[2], m[3]]);
+  [...html.matchAll(/<a class="(mention mention-\w+)" href="([^"]+)"[^>]*>(.*?)<\/a>/g)]
+    .map((m) => [m[1], m[2], m[3].replace(/<[^>]+>/g, '')]);
 
 function recordingResolver(calls = []) {
   const fn = (kind, ref) => {
@@ -205,11 +205,19 @@ test('the server resolves every kind to a real, working URL', async () => {
   });
 });
 
-test('an entity reference is labelled with its table, id and name', async () => {
-  const { w } = buildWorkspace();
+test('an entity reference reads as the Ledger, and follows the table’s Chip config', async () => {
+  const { w, tasks } = buildWorkspace();
   await withServer(w, async ({ render }) => {
-    assert.equal(chips(await render('[[Task#1]]'))[0][2], 'Task#1 — Ship it');
-    assert.match(await render('[[Task#1]]'), /data-name="Ship it"/);
+    const plain = await render('[[Task#1]]');
+    assert.equal(chips(plain)[0][2], 'Ship it', 'the name is the title');
+    assert.match(plain, /<span class="k-home">Task<\/span>/, 'the home badge names the table');
+    assert.match(plain, /data-name="Ship it"/);
+    assert.ok(!plain.includes('wv-chip-id'), 'a chip hides the id until its config asks for it');
+
+    w.updateField(tasks, 'Chip', { config: { link: true } });
+    const linked = await render('[[Task#1]]');
+    assert.equal(chips(linked)[0][2], '#1Ship it', 'with link on, the id leads the title inside the link');
+    assert.match(linked, /<span class="wv-chip-id">#1<\/span>/);
   });
 });
 
@@ -307,16 +315,18 @@ test('storing a reference never rewrites the markdown', async () => {
   assert.equal(copy.getDoc(t.id), md);
 });
 
-test('both stylesheets give every kind the same glyph', async () => {
+test('one stylesheet gives every kind its glyph, and both surfaces link it', async () => {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const { dirname, join } = await import('node:path');
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const sheet = readFileSync(join(root, 'public/chip.css'), 'utf8');
   const page = readFileSync(join(root, 'src/markdown.js'), 'utf8');
-  const app = readFileSync(join(root, 'public/style.css'), 'utf8');
+  const app = readFileSync(join(root, 'public/index.html'), 'utf8');
   for (const [kind, glyph] of [['entity', '#'], ['table', '▦'], ['space', '◇'], ['workspace', '⬡']]) {
-    const rule = new RegExp(`mention-${kind}::before \\{ content: "${glyph}"`);
-    assert.match(page, rule, `${kind} glyph missing from the document page`);
-    assert.match(app, rule, `${kind} glyph missing from the in-app preview`);
+    assert.match(sheet, new RegExp(`mention-${kind}[^{]*::before \\{ content: "${glyph}"`), kind);
   }
+  assert.ok(!/mention-\w+::before/.test(readFileSync(join(root, 'public/style.css'), 'utf8')),
+    'the app stylesheet no longer keeps a second copy');
+  for (const src of [page, app]) assert.match(src, /href="\/chip\.css"/);
 });

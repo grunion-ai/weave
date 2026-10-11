@@ -4,7 +4,7 @@ const CSS = `
 :root{
   --ground:#f3f1ec; --surface:#fafaf8; --line:#e6e3dc; --ink:#24292e; --body:#374151; --muted:#6b7280;
   --accent:#3a5bc7; --accent-ink:#fff; --bad:#ce2c31; --bad-soft:rgba(229,72,77,.12); --ok:#218358; --ok-soft:rgba(46,160,67,.14);
-  --app:"Inter Var","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --app:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root{
@@ -40,11 +40,20 @@ a.provider{display:block;text-align:center;text-decoration:none;color:var(--ink)
 .legal a{color:var(--muted)}
 `;
 
+export function sameOriginPath(raw, origin, fallback) {
+  const n = String(raw ?? '');
+  if (!n.startsWith('/')) return fallback;
+  let u, base;
+  try { base = new URL(origin); u = new URL(n, base); } catch { return fallback; }
+  return u.origin === base.origin ? u.pathname + u.search + u.hash : fallback;
+}
+
 const JS = `
 (() => {
   const mount = document.body.dataset.mount || '';
   const q = new URLSearchParams(location.search);
-  const next = (() => { const n = q.get('next') || ''; return n.startsWith('/') && !n.startsWith('//') ? n : (mount + '/'); })();
+  const sameOriginPath = ${sameOriginPath.toString()};
+  const next = sameOriginPath(q.get('next') || '', location.origin, mount + '/');
   // The loopback dev instance's redirect URI is http://localhost:<port>, and
   // the trip cookie is per host, so an address typed as 127.0.0.1 moves there.
   if (location.hostname === '127.0.0.1') { location.replace(location.href.replace('127.0.0.1', 'localhost')); return; }

@@ -6,8 +6,9 @@ import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
-import { workspaceName, workspaceSlug, nameFromFile } from './workspace-name.js';
-import { createRequestHandler } from './routes.js';
+import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
+import { createRequestHandler, decodePath, MAX_BODY_BYTES } from './routes.js';
+import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
 
@@ -136,7 +137,7 @@ async function readBody(req, { requireJson = false } = {}) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 10 * 1024 * 1024) throw new WeaveError('Body too large', 'invalid');
+    if (size > MAX_BODY_BYTES) throw new WeaveError('Body too large', 'invalid');
     chunks.push(chunk);
   }
   const raw = Buffer.concat(chunks).toString('utf8');
@@ -192,6 +193,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
     }
   };
   scan();
+  try { if (instances.has('weave')) ensureBugForm(instances.get('weave')); } catch {}
   if (!Array.isArray(defaultWeave.state.meta.workspaceOrder)) {
     defaultWeave.state.meta.workspaceOrder = [...instances.values()].map((w) => w.state.meta.id);
     defaultWeave.save();
@@ -221,6 +223,13 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       };
       return find() ?? (scan(), find());
     },
+    bySlug(label) {
+      const find = () => [...instances].find(([n, w]) => n.toLowerCase() === label && !w.state.meta.deletedAt)?.[1] ?? null;
+      return find() ?? (scan(), find());
+    },
+    aliasOf(label) {
+      return [...instances.values()].find((w) => w.state.meta.aliases?.includes(label)) ?? null;
+    },
     list({ includeDeleted = false } = {}) {
       scan();
       for (const w of instances.values()) w.maybeRefresh();
@@ -243,8 +252,8 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       const name = [...instances.entries()].find(([, x]) => x === w)?.[0];
+      refuseOnDocs(w, 'deleted');
       if (w === defaultWeave || name === defaultName) throw new WeaveError('The default workspace cannot be deleted', 'invalid');
-      if (name === 'weave') throw new WeaveError('The weave docs workspace cannot be deleted', 'invalid');
       if (!hard) {
         if (w.state.meta.deletedAt) return w;
         w.state.meta.deletedAt = new Date().toISOString();
@@ -276,19 +285,29 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       w.syncRegistry();
       return w;
     },
-    create(asked) {
+    slugState(slug, self = null) {
+      const refused = hostSlugRefusal(slug);
+      if (refused) return refused.state;
+      const held = this.get(slug) ?? this.aliasOf(slug);
+      return held && held !== self ? 'taken' : 'available';
+    },
+    create(asked, { slug = null } = {}) {
       let title, name;
-      if (asked == null || asked === '') {
+      if (slug != null && slug !== '') {
+        name = String(slug);
+        title = String(asked ?? '').trim() || name;
+      } else if (asked == null || asked === '') {
         scan();
         ({ name: title, slug: name } = workspaceName({ taken: instances.keys() }));
       } else {
         title = String(asked).trim();
         name = workspaceSlug(asked);
       }
-      if (!name) throw new WeaveError('A workspace name needs a letter or a digit: its slug keeps letters, digits, - and _', 'invalid');
+      const refused = hostSlugRefusal(name);
+      if (refused) throw new WeaveError(refused.message, refused.code);
       const held = this.get(name);
-      if (held?.state.meta.deletedAt) throw new WeaveError(`Workspace '${name}' is in the trash — restore it instead`, 'conflict');
-      if (held) throw new WeaveError(`Workspace '${name}' already exists`, 'conflict');
+      if (held?.state.meta.deletedAt) throw new WeaveError(`Workspace '${name}' is in the trash — restore it instead`, 'slug_taken');
+      if (held || this.aliasOf(name)) throw new WeaveError(slugTaken(name).message, 'slug_taken');
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
       const w = new Weave({ path: join(dataDir, `${name}.db`) });
       w.state.meta.name = name;
@@ -325,14 +344,24 @@ export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].inc
 const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const hostnameOf = (host) => { try { return host ? new URL(`http://${host}`).hostname : null; } catch { return null; } };
 export const allowedHostsFromEnv = (env = process.env) => String(env.WEAVE_ALLOWED_HOSTS ?? '').split(',').map((h) => hostnameOf(h.trim())).filter(Boolean);
-export function hostAllowed(host, { origin = null, allowedHosts = [] } = {}) {
+export function baseDomainFromEnv(env = process.env) {
+  const raw = env.WEAVE_BASE_DOMAIN?.trim().toLowerCase();
+  if (!raw) return null;
+  if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(raw)) {
+    throw new WeaveError(`WEAVE_BASE_DOMAIN must be a bare host name like weave.example.com, no scheme, port or path (got '${raw}')`, 'invalid');
+  }
+  return raw;
+}
+export function hostAllowed(host, { origin = null, allowedHosts = [], baseDomain = null } = {}) {
   const name = hostnameOf(String(host ?? ''));
   if (!name) return false;
-  return LOOPBACK_NAMES.has(name) || (!!origin && new URL(origin).hostname === name) || allowedHosts.includes(name);
+  const label = slugOfHost(name, baseDomain);
+  return LOOPBACK_NAMES.has(name) || (!!origin && new URL(origin).hostname === name) || allowedHosts.includes(name)
+    || (!!baseDomain && name === baseDomain) || (!!label && !label.includes('.'));
 }
 export function hostCheckFor({ host, env = process.env }) {
   const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host);
-  if (loopback || env.WEAVE_ORIGIN?.trim() || env.WEAVE_MCP_ORIGINS?.trim() || allowedHostsFromEnv(env).length) return { enforce: true, warning: null };
+  if (loopback || env.WEAVE_ORIGIN?.trim() || env.WEAVE_MCP_ORIGINS?.trim() || env.WEAVE_BASE_DOMAIN?.trim() || allowedHostsFromEnv(env).length) return { enforce: true, warning: null };
   return { enforce: false, warning: `weave: bound to ${host} with neither WEAVE_ORIGIN nor WEAVE_ALLOWED_HOSTS set, so any Host header is answered; set one to refuse DNS-rebound requests` };
 }
 
@@ -358,7 +387,7 @@ const VENDOR_CACHE = 'public, max-age=3600';
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv() } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
   const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
 
@@ -408,6 +437,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     oidc,
     mcpOrigins,
     mail,
+    baseDomain,
     ...(limits ? { limits } : {}),
   });
 
@@ -422,8 +452,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     try {
       const url = new URL(req.url, 'http://localhost');
       let path;
-      try { path = decodeURIComponent(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
-      if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts: answers })) {
+      try { path = decodePath(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
+      if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts: answers, baseDomain })) {
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
       }
       if (crossSiteWrite(req, { origin, trustProxy })) return fail(res, 403, 'Cross-site write refused', 'forbidden');
@@ -447,10 +477,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail } = {}) {
-  const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length ? { enforce: true, warning: null } : hostCheckFor({ host });
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain } = {}) {
+  const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length || baseDomain ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

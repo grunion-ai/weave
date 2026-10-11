@@ -258,6 +258,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { ROOT } from './lib/source.mjs';
+import { chipCss } from '../scripts/export-chip-card-anatomy.mjs';
 const ANATOMY = GUIDES.find((g) => g.name === 'Chip and card anatomy');
 
 test('the anatomy guide exists, is for both audiences, and follows the view page', () => {
@@ -280,7 +281,7 @@ test('the anatomy names every element of the chip and the card, what it does, an
 
 test('the figures are the real chip and the real card, with each hitbox drawn as an outline', () => {
   const doc = ANATOMY.doc;
-  for (const cls of ['mention-wrap open', 'k k-rel', 'mention-caret', 'mention-fields', 'k-state', 'k-home', 'mention-f-label']) {
+  for (const cls of ['k k-rel kind-entity has-id has-segs open', 'wv-chip-mark', 'wv-chip-id', 'mention-caret', 'mention-fields', 'k-state', 'k-home', 'mention-f-label']) {
     assert.ok(doc.includes(cls), `the chip figure carries .${cls.split(' ').pop()}`);
   }
   for (const cls of ['wv-card', 'wv-card-head', 'wv-card-title', 'wv-card-id', 'wv-card-desc', 'wv-card-fields']) {
@@ -304,10 +305,45 @@ test('docs/chip-card-anatomy.html is the exported page, self-contained, and curr
   assert.equal(html, fresh, 'the checked-in export drifted from the guide — run scripts/export-chip-card-anatomy.mjs');
   assert.doesNotMatch(html, /(src|href)=["'](https?:)?\/\//, 'no network requests: no external src or href');
   assert.doesNotMatch(html, /<link[^>]+rel="stylesheet"/, 'no linked stylesheet — the chip CSS is inlined');
-  assert.match(html, /--wv-chip-font:\s*13px/, 'the chip tokens ride along, so the specimen is the real size');
+  assert.match(html, /--wv-chip-font:\s*var\(--fs-grid\)/, 'the chip tokens ride along');
+  assert.match(html, /--fs-grid:\s*13px/, 'with the scale step they read, so the specimen is the real size');
   assert.match(html, /data-bs-theme="dark"\]|prefers-color-scheme:\s*dark/, 'both themes');
-  assert.match(html, /class="k k-rel has-segs"/, 'the chip figure is in the export');
+  assert.match(html, /class="k k-rel kind-entity has-id has-segs open"/, 'the chip figure is in the export');
   assert.match(html, /class="wv-card"/, 'and the card figure');
+});
+
+test('a comma inside a functional pseudo-class is not a selector-list comma', () => {
+  const inner = '#main .wv-grid td:not(:has(> .wv-cb > :is(.k, .mention-wrap))) { display: none; }';
+  assert.equal(chipCss(inner), '', 'a rule that only mentions a chip class inside :is() is not chip CSS');
+  assert.equal(
+    chipCss('.wv-grid .wv-card :is(.wv-card-fields, .wv-card-head > :not(.wv-card-title)) { display: none; }'),
+    '',
+    'nor is a rule whose :is() list ends in a nested :not()',
+  );
+  assert.equal(
+    chipCss('.k-attr[title="a,b"], #main .x { color: red; }'),
+    '.k-attr[title="a,b"] { color: red; }',
+    'a comma inside an attribute string stays inside its part',
+  );
+  assert.equal(
+    chipCss('.k, #main .x { color: red; }'),
+    '.k { color: red; }',
+    'a top-level comma still splits the list and the chip part is kept',
+  );
+  assert.equal(chipCss('@font-face { font-family: .k; }'), '', 'an at-rule prelude is never a selector');
+});
+
+test('the chip CSS carries no selector fragment', () => {
+  for (const line of chipCss().split('\n')) {
+    const conds = line.match(/^(@(media|container|supports) [^{]+\{ )*/)[0];
+    for (const cond of conds.split('{ ').filter(Boolean)) assert.equal((cond.match(/\(/g) ?? []).length, (cond.match(/\)/g) ?? []).length, `unbalanced media condition: ${cond}`);
+    const rule = line.slice(conds.length);
+    const sels = rule.slice(0, rule.indexOf('{'));
+    const open = (sels.match(/[([]/g) ?? []).length;
+    const close = (sels.match(/[)\]]/g) ?? []).length;
+    assert.equal(open, close, `unbalanced selector in the chip CSS: ${sels.trim()}`);
+    assert.doesNotMatch(sels, /^\s*@/, `an at-rule prelude reached the chip CSS: ${sels.trim()}`);
+  }
 });
 
 test('the grid guide names the cell clipboard rule and select-on-open', () => {
@@ -346,4 +382,18 @@ test('the handbook defines a space as the unit of meaning where it walks workspa
   applyHandbook(w);
   const row = w.findEntity(w.findTable('Handbook/Guide'), 'Making a workspace your own');
   assert.ok(w.readEntity(row.id).doc.includes(definition), 'applyHandbook writes the definition into the Guide row');
+});
+
+test('the grid guide says a header mark names the route its value travels (Issue #66)', () => {
+  const doc = GUIDES.find((g) => g.name === 'Making a workspace your own').doc;
+  assert.match(doc, /`→` relation\), and hovering the mark names the route its value travels/);
+  assert.ok(doc.includes('`Σ sum of Estimate via Tasks → Product/Task`'));
+});
+
+test('chipCss keeps a rule inside @media under its condition, never at the top level', () => {
+  const css = chipCss('.k { color: red; }\n@media (max-width: 600px) {\n  .k { color: blue; }\n  .other { color: green; }\n}\n@keyframes wv-x { from { opacity: 0; } }');
+  assert.match(css, /^\.k \{ color: red; \}$/m, 'a top-level chip rule stays as it is');
+  assert.match(css, /@media \(max-width: 600px\) \{ \.k \{ color: blue; \} \}/, 'the phone rule keeps its media condition');
+  assert.doesNotMatch(css, /^\.k \{ color: blue; \}$/m, 'the phone rule never applies at every width');
+  assert.doesNotMatch(css, /\.other|from \{/, 'non-chip rules and keyframe steps stay out');
 });

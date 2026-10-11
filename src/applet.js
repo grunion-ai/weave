@@ -13,6 +13,7 @@ const WINDOW_MS = 10 * 60 * 1000;
 const tries = new WeakMap();
 
 const passcodeOf = () => (process.env.WEAVE_APPLET_PASSCODE ?? '').trim();
+export const appletOn = () => passcodeOf() !== '';
 const tableOf = () => (process.env.WEAVE_APPLET_TABLE ?? 'Product/Task').trim();
 const defaultsOf = () => {
   try { return JSON.parse(process.env.WEAVE_APPLET_DEFAULTS ?? '{}'); } catch { return {}; }
@@ -230,7 +231,7 @@ const CSS = `
   --slate:#60646c; --slate-soft:rgba(0,5,20,.05);
   --shadow:0 1px 4px rgba(0,0,0,.10);
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
-  --app:"Inter Var","Inter",-apple-system,BlinkMacSystemFont,"San Francisco","Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --app:-apple-system,BlinkMacSystemFont,"San Francisco","Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root{
