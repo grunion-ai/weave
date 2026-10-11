@@ -1,0 +1,1 @@
+- Release delivery reads `gh` responses of any size up to 256 MiB, so a compare against the last release that passes 1 MiB no longer fails publication with `spawnSync gh ENOBUFS`. (Issue #841)

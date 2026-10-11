@@ -61,8 +61,14 @@ export async function waitForDeployment(url, metadata, { attempts = 90, delayMs 
   throw new Error(`Deployment did not reach ${metadata.tag}: ${last}`);
 }
 
+export const MAX_BUFFER = 256 * 1024 * 1024;
+
+export function capture(cmd, args, options = {}) {
+  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000, maxBuffer: MAX_BUFFER, ...options }).trim();
+}
+
 function gh(args, options = {}) {
-  return execFileSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000, ...options }).trim();
+  return capture('gh', args, options);
 }
 
 function api(path, { optional = false, ...options } = {}) {
