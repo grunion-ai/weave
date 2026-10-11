@@ -40,11 +40,20 @@ a.provider{display:block;text-align:center;text-decoration:none;color:var(--ink)
 .legal a{color:var(--muted)}
 `;
 
+export function sameOriginPath(raw, origin, fallback) {
+  const n = String(raw ?? '');
+  if (!n.startsWith('/')) return fallback;
+  let u, base;
+  try { base = new URL(origin); u = new URL(n, base); } catch { return fallback; }
+  return u.origin === base.origin ? u.pathname + u.search + u.hash : fallback;
+}
+
 const JS = `
 (() => {
   const mount = document.body.dataset.mount || '';
   const q = new URLSearchParams(location.search);
-  const next = (() => { const n = q.get('next') || ''; return n.startsWith('/') && !n.startsWith('//') ? n : (mount + '/'); })();
+  const sameOriginPath = ${sameOriginPath.toString()};
+  const next = sameOriginPath(q.get('next') || '', location.origin, mount + '/');
   // The loopback dev instance's redirect URI is http://localhost:<port>, and
   // the trip cookie is per host, so an address typed as 127.0.0.1 moves there.
   if (location.hostname === '127.0.0.1') { location.replace(location.href.replace('127.0.0.1', 'localhost')); return; }
