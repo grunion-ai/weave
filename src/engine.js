@@ -34,6 +34,9 @@ const Term = globalThis.WeaveTerm;
 const ListCore = globalThis.weaveListCore;
 const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow', forms: 'form' };
 
+const CSV_FORMULA_START = /^'*[=+\-@\t\r]/;
+const unquoteCSVCell = (cell) => (cell.startsWith("'") && CSV_FORMULA_START.test(cell.slice(1)) ? cell.slice(1) : cell);
+
 export function parseCSV(text) {
   const rows = [];
   let row = [];
@@ -7294,7 +7297,7 @@ export class Weave {
 
   importCSV(dbRef, csvText) {
     const db = this.getTable(dbRef);
-    const rows = parseCSV(csvText);
+    const rows = parseCSV(csvText).map((row) => row.map(unquoteCSVCell));
     if (!rows.length) return { created: 0 };
     const header = rows[0];
     const skip = new Set(['Public Id', 'Created At', 'Updated At', 'publicId', 'createdAt', 'updatedAt']);
@@ -7684,8 +7687,9 @@ export class Weave {
     const header = ['Public Id', ...fieldNames, 'Created At', 'Updated At'];
     const esc = (v) => {
       if (v == null) return '';
-      const s = Array.isArray(v) ? v.map((x) => (x && typeof x === 'object' ? x.name : x)).join('; ') : typeof v === 'object' ? (v.name ?? JSON.stringify(v)) : String(v);
-      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      const raw = Array.isArray(v) ? v.map((x) => (x && typeof x === 'object' ? x.name : x)).join('; ') : typeof v === 'object' ? (v.name ?? JSON.stringify(v)) : String(v);
+      const s = typeof v !== 'number' && CSV_FORMULA_START.test(raw) ? `'${raw}` : raw;
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     const lines = [header.map(esc).join(',')];
     for (const e of this.listEntities(db.id)) {
