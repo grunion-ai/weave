@@ -3064,7 +3064,7 @@ async function showTrash(dbId) {
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
       el('td', {}, item.name || el('span', { class: 'view-desc-empty' }, 'Untitled')),
       ...(db ? [] : [el('td', { class: 'trash-table' }, item.db)]),
-      el('td', { class: 'trash-when' }, new Date(item.deletedAt).toLocaleString()),
+      el('td', { class: 'trash-when' }, whenEl(item.deletedAt)),
       el('td', { class: 'trash-acts' },
         el('button', {
           class: 'btn btn-sm', type: 'button',
@@ -3098,7 +3098,7 @@ async function showTrash(dbId) {
       el('td', { class: 'pid-cell' }),
       el('td', {}, v.name),
       el('td', { class: 'trash-table' }, 'Share page'),
-      el('td', { class: 'trash-when' }, new Date(v.deletedAt).toLocaleString()),
+      el('td', { class: 'trash-when' }, whenEl(v.deletedAt)),
       el('td', { class: 'trash-acts' },
         el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'),
         holdToConfirm('Delete forever', act(() => purgeAt(`/views/${v.id}`), 'Purged'), { holdingLabel: 'Hold to purge…' }))));
@@ -9520,13 +9520,9 @@ async function flushDocSave(entityId, field) {
   await p.write();
 }
 
-function relTime(iso) {
-  const sec = (Date.now() - Date.parse(iso)) / 1000;
-  if (sec < 45) return 'just now';
-  if (sec < 3600) return `${Math.round(sec / 60)} min ago`;
-  if (sec < 86400) return `${Math.round(sec / 3600)} h ago`;
-  if (sec < 7 * 86400) return `${Math.round(sec / 86400)} d ago`;
-  return new Date(iso).toLocaleDateString();
+function whenEl(iso, cls = null) {
+  const w = weaveDateCore.relativeOrShort(iso);
+  return el('time', { ...(cls ? { class: cls } : {}), datetime: iso, title: w.title }, w.text);
 }
 
 function flushDocSaves() {
@@ -9691,7 +9687,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     ...recent.map((a, n) => el('a', {
       class: 'activity-item', href: `#/activity/${id}:${firstIndex - n}`,
       title: 'Open this event',
-    }, `${new Date(a.ts).toLocaleString()} — `, actorChipEl(a.actor, { link: false }), ` ${activitySummary(a)}`)),
+    }, whenEl(a.ts), ' — ', actorChipEl(a.actor, { link: false }), ` ${activitySummary(a)}`)),
     recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'),
     entity.activityDropped ? el('span', { class: 'activity-dropped' }, droppedText(entity.activityDropped)) : null);
   const actPanel = el('div', { class: 'card panel' },
@@ -9889,7 +9885,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     commentsBody);
   for (const c of entity.comments) {
     commentsBody.append(el('div', { class: 'comment' },
-      el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), el('span', { class: 'when' }, new Date(c.createdAt).toLocaleString())),
+      el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), whenEl(c.createdAt, 'when')),
       el('div', {}, c.text)));
   }
   const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…' });
@@ -10220,7 +10216,7 @@ const activityPanel = (() => {
       what = [el('span', { class: 'name' }, it.field),
         it.restoredFrom != null ? el('span', {
           class: 'wv-act-src',
-          title: it.source ? `Restored the version from ${new Date(it.source.at).toLocaleString()}${it.source.actor ? ` by ${weaveActor.actorText(it.source.actor)}` : ''}` : 'Restored a version no longer kept',
+          title: it.source ? `Restored the version from ${weaveDateCore.relativeOrShort(it.source.at).title}${it.source.actor ? ` by ${weaveActor.actorText(it.source.actor)}` : ''}` : 'Restored a version no longer kept',
         }, it.source ? `restored from ${stamp(it.source.at)}` : 'restored from an earlier version') : null,
         it.delta ? el('span', { class: `wv-act-delta ${it.delta > 0 ? 'pos' : 'neg'}` }, it.delta > 0 ? `+${it.delta}` : `−${-it.delta}`) : null];
       if (it.current) who += ' · current'; else if (it.undo) who += ' · undo';
@@ -10693,7 +10689,7 @@ function activitySummary(a) {
     case 'doc-updated':
     case 'doc-appended': {
       if (d.restoredFrom != null) {
-        return `${d.field ?? 'Description'} restored to the version from ${d.restoredAt ? new Date(d.restoredAt).toLocaleString() : 'an earlier revision'}${d.restoredBy ? ` by ${d.restoredBy}` : ''}`;
+        return `${d.field ?? 'Description'} restored to the version from ${d.restoredAt ? weaveDateCore.relativeOrShort(d.restoredAt).title : 'an earlier revision'}${d.restoredBy ? ` by ${d.restoredBy}` : ''}`;
       }
       const size = d.delta == null ? '' : ` ${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)} chars`;
       const where = d.line ? ` at line ${d.line}` : '';
@@ -10731,7 +10727,7 @@ async function showActivity(param) {
     dataset: { href: `#/activity/${a.id}` },
     onclick: () => { location.hash = `#/activity/${a.id}`; },
   },
-    el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
+    el('td', { class: 'activity-when', title: a.ts }, weaveDateCore.relativeOrShort(a.ts).text),
     el('td', {}, el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
     el('td', {}, actorChipEl(a.actor)),
     el('td', {}, activitySummary(a)),
@@ -10842,7 +10838,7 @@ async function showActivityDetail(id) {
     row('Record', recordChip(a)),
     row('Table', a.db ? el('a', { href: `#/table/${a.dbId}` }, a.db) : '—'),
     row('Event', el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
-    row('When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())),
+    row('When', whenEl(a.ts)),
     row('Actor', actorChipEl(a.actor) || '—'),
     ...(field
       ? [row('Field', d.field),
@@ -11994,7 +11990,7 @@ function trashedWorkspacesCard(trashed, redraw) {
     el('h3', { class: 'card-title' }, 'Workspaces'),
     ...trashed.map((w) => el('div', { class: 'list-row' },
       el('span', { class: 'list-row-name' }, w.name),
-      el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`),
+      el('span', { class: 'text-secondary' }, 'deleted ', whenEl(w.deletedAt)),
       el('span', { class: 'spacer' }),
       el('button', {
         class: 'btn btn-sm', type: 'button',
