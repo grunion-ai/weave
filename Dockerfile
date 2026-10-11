@@ -21,6 +21,7 @@ COPY --chown=node:node . .
 #   WEAVE_MAIL_KEY             a Resend API key; with WEAVE_MAIL_FROM, invites are emailed (unset = off)
 #   WEAVE_MAIL_FROM            the sender, on a domain Resend has verified (unset)
 #   WEAVE_MCP_ORIGINS          other origins the /mcp door answers on, comma separated (unset)
+#   WEAVE_WEBHOOK_ALLOW_PRIVATE 1 lets workflow webhooks post to private and loopback addresses (unset = refused)
 #   WEAVE_UPDATE_CHECK         off: never ask GitHub for a newer release   (on: once a day)
 #   WEAVE_AUTO_UPDATE          1 with `supervise`: install newer releases in place (unset = off)
 #   WEAVE_BACKUP_DEST          s3://bucket/prefix: nightly backup at 04:00 UTC   (unset = off)

@@ -9,7 +9,7 @@ const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
-import { renderAuthPage, renderRefusalPage } from './auth-page.js';
+import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import '../public/starter-core.js';
@@ -23,6 +23,11 @@ export function statusFor(err) {
 }
 
 const STARTED_AT = new Date().toISOString();
+
+export const clientAddress = ({ forwarded, remote, trustProxy }) => {
+  const hop = trustProxy ? String(forwarded ?? '').split(',').pop().trim() : '';
+  return hop || remote || 'unknown';
+};
 
 export function errorBody(err, code = 'internal') {
   if (err instanceof WeaveError) return { error: err.message, code: err.code ?? code };
@@ -102,10 +107,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (!byEngine.has(engine)) byEngine.set(engine, engine.accountForIdentity(who));
     return byEngine.get(engine);
   };
-  const clientIp = (rx) => {
-    const fwd = trustProxy ? String(rx.header('x-forwarded-for') ?? '').split(',')[0].trim() : '';
-    return fwd || rx.remote || 'unknown';
-  };
+  const clientIp = (rx) => clientAddress({ forwarded: rx.header('x-forwarded-for'), remote: rx.remote, trustProxy });
   const LEGACY_COOKIE = 'wv_session';
   const cookieName = (w) => `${LEGACY_COOKIE}_${w.state.meta.id}`;
   const secureFlag = (rx) => (originFor(rx).startsWith('https:') ? '; Secure' : '');
@@ -171,6 +173,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     weave.maybeRefresh();
     versionOf = weave;
+    if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+      if (path === '/') return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
+      if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
+        return { status: 301, headers: { Location: `${scheme}//${String(hub.defaultName).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+      }
+    }
     const updateWorkspace = (patch) => {
       const slug = patch.name != null ? workspaceSlug(patch.name) : null;
       const state = slug != null && patch.name !== weave.state.meta.name ? hub.slugState(slug, weave) : 'available';
@@ -427,7 +435,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         ? deny(401, 'Session expired or revoked')
         : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(cookieName(weave), rx), 'Cache-Control': 'no-store' }, body: '' };
     } else if (weave.state.meta.requireAuth && !openDoor) {
-      if (baseDomain && oidc && !hostOrigin && !wsPrefix && path === '/' && ['GET', 'HEAD'].includes(rx.method)) return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
       if (path.startsWith('/api/')) return deny(401, 'This workspace requires authentication');
       const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -619,8 +626,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!origin && String(rx.header('host') ?? '').split(':')[0] === '127.0.0.1') {
             return { status: 302, headers: { Location: `${originFor(rx)}${wsPrefix}/auth${q ? '?' + q : ''}`, 'Cache-Control': 'no-store' }, body: '' };
           }
-          const n = String(rx.searchParams?.get('next') ?? '');
-          const next = /^\/(?![/\\])/.test(n) ? `?next=${encodeURIComponent(n)}` : '';
+          const n = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), null);
+          const next = n ? `?next=${encodeURIComponent(n)}` : '';
           return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
         }
         return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -666,8 +673,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (limited('options', ip)) return tooMany();
               const handoff = rx.searchParams?.get('handoff') || null;
               if (handoff && (!baseDomain || hub.bySlug(handoff) !== weave)) return refusal(400, 'This sign-in link is not valid', 'Start again from the sign-in page of the workspace you want.');
-              const n = String(rx.searchParams?.get('next') ?? '');
-              const next = /^\/(?![/\\])/.test(n) ? n : handoff ? '/' : `${wsPrefix}/`;
+              const next = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), handoff ? '/' : `${wsPrefix}/`);
               const invite = rx.searchParams?.get('invite') || null;
               if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
               let trip;
@@ -695,7 +701,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (c.start) {
                 const token = newChallenge();
                 prune(starts);
-                starts.set(await digest(token), { issuer: who.issuer, subject: who.subject, expiresAt: Date.now() + START_TTL_MS });
+                starts.set(await digest(token), { issuer: who.issuer, subject: who.subject, email: who.email ?? null, expiresAt: Date.now() + START_TTL_MS });
                 return { status: 302, headers: { Location: '/start', 'Set-Cookie': `wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, 'Cache-Control': 'no-store' }, body: '' };
               }
               const root = hub.get(hub.defaultName);
@@ -770,15 +776,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (startDoor) {
           if (hostOrigin || wsPrefix || !oidc) return notFound({ error: 'Not found', code: 'not-found' });
           const held = cookies.wv_start ? starts.get(await digest(cookies.wv_start)) : null;
-          const me = held && held.expiresAt > Date.now() ? { issuer: held.issuer, subject: held.subject } : null;
+          const me = held && held.expiresAt > Date.now() ? { issuer: held.issuer, subject: held.subject, ...(held.email ? { email: held.email } : {}) } : null;
           if (route === 'GET /api/start' && !me) return out(200, { signedIn: false, provider: oidc.name }, { 'Cache-Control': 'no-store' });
           if (!me) return deny(401, 'Sign in first');
           const hubRoot = hub.get(hub.defaultName);
           const rootAccount = hubRoot.accountForIdentity(me);
           const accountIn = (w) => w.accountForIdentity(me) ?? (rootAccount ? { ...rootAccount, viaRoot: true } : null);
           if (route === 'GET /api/start') {
-            const rows = hub.entries().filter(([, w]) => !w.state.meta.deletedAt && accountIn(w))
-              .map(([name, w]) => ({ kind: 'workspace', name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}` }));
+            const live = hub.entries().filter(([, w]) => !w.state.meta.deletedAt);
+            const rows = [
+              ...live.filter(([, w]) => accountIn(w))
+                .map(([name, w]) => ({ kind: 'workspace', name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}` })),
+              ...live.filter(([, w]) => me.email && !w.accountForIdentity(me))
+                .flatMap(([name, w]) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: w.state.meta.title ?? name, role: i.role, invitedBy: i.invitedBy ?? null, accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` }))),
+            ];
             const accountName = rootAccount?.name ?? hub.entries().map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? null;
             return out(200, { signedIn: true, rows, canCreate: mayAdminister(hubRoot, rootAccount?.role), accountName, base: baseDomain }, { 'Cache-Control': 'no-store' });
           }
@@ -796,6 +807,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (baseDomain) return handOff(engine, account.id, '/', host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
             return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+          }
+          if ((m = path.match(/^\/api\/start\/invites\/([^/]+)\/([A-Za-z0-9_-]+)$/)) && rx.method === 'POST') {
+            const w = hub.bySlug(String(m[1]).toLowerCase());
+            if (!w) return notFound({ error: 'Not found', code: 'not-found' });
+            const account = w.acceptInvite(m[2], me);
+            return out(200, { name: w.state.meta.name, account: account.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
           }
           if (route === 'POST /api/start/workspaces') {
             if (!mayAdminister(hubRoot, rootAccount?.role)) return deny(403, 'Creating a workspace needs an architect on the hub root');
@@ -815,6 +832,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if (route === 'GET /api/health') {
+          if (!mayAdminister(weave, role)) return out(200, { ok: true, name: 'weave', ...(role ? { version } : {}) });
           const nightly = backup();
           return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}) });
         }

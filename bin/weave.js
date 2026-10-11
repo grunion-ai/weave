@@ -236,13 +236,15 @@ Refs: entities accept "Table#publicId" (e.g. Task#3), a UUID, or a name with --d
 Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json
 Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (public origin the provider
      redirects back to and the session cookie binds to, e.g. https://weave.example.com — required when auth
-     is on and the host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
+     is on and the host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by the last X-Forwarded-For entry behind Railway/Fly/a proxy),
      WEAVE_AUTO_UPDATE=1 (supervise: install each newer release from grunion-ai/weave main in place),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
      others get 421), WEAVE_BASE_DOMAIN (e.g. weave.example.com: each workspace also answers at <slug>.<base>,
      sign-in finishes at WEAVE_ORIGIN and hands a one-time code back to the workspace host), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
      with one OpenID Connect provider, redirect URI <origin>/api/auth/oidc/callback; /mcp then signs agents in through it),
      WEAVE_MAIL_KEY + WEAVE_MAIL_FROM (email each invite through Resend; both or neither),
+     WEAVE_WEBHOOK_ALLOW_PRIVATE=1 (let workflow webhooks post to loopback, link-local and private addresses;
+     off, those deliveries are refused and the rule's Health says so),
      WEAVE_MCP_ORIGINS (comma-separated other origins the /mcp door answers on), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
      its own), WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE, WEAVE_INLINE_FILE_TYPES (comma-separated
      attachment types served in place beside images, PDF and plain text; the rest download)`;
