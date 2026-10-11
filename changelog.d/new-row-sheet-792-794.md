@@ -1,0 +1,3 @@
+- The phone new-row sheet names the row after its table when the table has no row term ("New task", "Name this task" on a Tasks table) instead of "New row"; the phone New button reads the same (Issue #792)
+- The phone new-row sheet opened from a table or view has no table chip, so the row always lands in that table; the chip stays only for a create with no table in context (Issue #793)
+- On a phone the new-row Name is a single line whose Return key reads Done and creates the row through the Create button, never while the name is empty or an IME composition is open; the desktop sheet keeps its two-line Name (Issue #794)

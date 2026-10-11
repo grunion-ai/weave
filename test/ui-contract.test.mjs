@@ -356,7 +356,7 @@ test('comments and activity make up the side column; fields lead the body', () =
 });
 
 test('the space caret is a real hit target, not a 18px sliver', () => {
-  const caret = rulesFor('.nav-caret');
+  const caret = rulesFor('.wv-disclosure');
   assert.ok(px(caret.width) >= 24 && px(caret.height) >= 24,
     `caret must be at least 24x24, got ${caret.width} x ${caret.height}`);
   assert.equal(caret.flex ?? caret['flex-shrink'], '0',
@@ -367,13 +367,14 @@ test('the space caret is a drawn chevron, not a text glyph', () => {
   const fn = APP.slice(APP.indexOf('function renderNav'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.doesNotMatch(body, /'▾'|"▾"|'▸'|'▼'/, 'no text-glyph caret — it cannot match the chrome');
-  assert.match(body, /chevron\(/, 'the caret renders the shared chevron() svg');
+  assert.match(body, /disclosure\('nav-caret'/, 'the caret is the shared disclosure, which renders the chevron() svg');
   const at = APP.indexOf('chevron = (');
   assert.ok(at > 0, 'chevron() must be defined in app.js');
   const decl = APP.slice(at, at + 400);
   assert.match(decl, /lucide:chevron-right/, 'the chevron is the inventory\'s, so it matches the set and moves');
-  const icon = rulesFor('.nav-caret svg');
-  assert.ok(px(icon.width) >= 14, `chevron glyph must be >= 14px, got ${icon.width}`);
+  const icon = rulesFor('.wv-disclosure > .wv-icon svg');
+  assert.equal(icon.width, 'var(--wv-icon-md)', 'the chevron glyph is the 16px medium icon');
+  assert.equal(px(rulesFor(':root')['--wv-icon-md']), 16);
 });
 
 test('the caret trails the space label and rotates to open', () => {
@@ -383,10 +384,10 @@ test('the caret trails the space label and rotates to open', () => {
   assert.ok(body.indexOf('nav-caret', row) > body.indexOf("class: 'nav-space'", row),
     'the caret is appended after the space link — it trails the label ("Routines ›")');
 
-  const caret = rulesFor('.nav-caret');
+  const caret = rulesFor('.wv-disclosure');
   assert.ok(!caret.transform || caret.transform === 'none',
     `the resting caret must not be rotated, got ${caret.transform}`);
-  assert.match(rulesFor('.nav-caret.open').transform, /rotate\(90deg\)/,
+  assert.match(CSS, /\.wv-disclosure\[aria-expanded="true"\][^{]*\{[^}]*transform: rotate\(90deg\)/,
     'the expanded caret rotates the right-pointing glyph down');
 });
 
@@ -747,7 +748,7 @@ test('every code block carries a copy button in its upper right', () => {
 test('a computed field carries its glyph next to the name, not only in cells', () => {
   const label = fnBody('fieldNameLabel');
   assert.match(label, /computedMark(?:Node)?\(/, 'one glyph vocabulary for names and values');
-  assert.match(label, /'sup'/, 'the mark is a superscript on the name');
+  assert.match(label, /el\('span', \{\n    class: 'field-mark'/, 'the mark is an inline span after the name');
   assert.match(APP, /COMPUTED_NAME_MARKS = \{[^}]*formula/,
     'formula fields are the case this exists for');
 
@@ -1017,7 +1018,8 @@ test('every selector speaks the one dialect: search bar first, list under it', (
   const box = rulesFor('.picker-box');
   assert.equal(box['width'], '100%');
   assert.ok(box['border'], 'the box is the field');
-  assert.equal(rulesFor('.picker-search')['border'], '0', 'the input inside it draws nothing');
+  assert.ok(picker.includes("class: 'search-bare picker-search'"), 'the input inside it wears the bare search skin');
+  assert.equal(rulesFor('.search-bare')['border'], '0', 'the input inside it draws nothing');
   const list = rulesFor('.picker-list');
   assert.ok(list['max-height'], 'the list is small and scrolls');
 });
@@ -1723,10 +1725,11 @@ test('the entity page draws the System toggles — one read-only row per systemF
 
 test('the entity name wraps instead of clipping: a content-sized textarea, Enter commits (Issue #175)', () => {
   const body = fnBody('renderEntityView');
-  assert.match(body, /const nameInput = el\('textarea', \{\s*\n\s*class: 'name-edit'/, 'a textarea, not an input — an input is one line by construction');
+  assert.match(body, /const nameInput = titleEdit\('textarea', 'name-edit'/, 'a textarea, not an input — an input is one line by construction');
   assert.match(body, /rows: '1'/, 'one row at rest');
   assert.match(body, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); nameInput\.blur\(\); \}/, 'Enter commits; a name has no second line of its own');
-  assert.match(body, /nameInput\.value = entity\.name/, 'the value is set, never a child text node');
+  assert.match(body, /titleEdit\('textarea', 'name-edit'[^\n]*, entity\.name, \{/, 'the name is the value it is built with');
+  assert.match(fnBody('titleEdit'), /node\.value = value/, 'the value is set, never a child text node');
   const css = rulesFor('.entity-head textarea.name-edit');
   assert.equal(css['field-sizing'], 'content', 'the box is as tall as the name');
   assert.equal(css.resize, 'none');

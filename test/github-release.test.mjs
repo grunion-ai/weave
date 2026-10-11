@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateRun, releaseMetadata, publishRelease, waitForDeployment } from '../scripts/github-release.mjs';
+import { validateRun, releaseMetadata, publishRelease, waitForDeployment, capture } from '../scripts/github-release.mjs';
 
 const sha = 'a'.repeat(40);
 const repo = 'grunion-ai/weave';
@@ -66,6 +66,9 @@ test('health waits for exact version and tag; baseline image allowed only for un
   await assert.rejects(waitForDeployment('https://example.com/api/health', metadata, image));
   await waitForDeployment('https://example.com/api/health', metadata, { ...image, allowImage: true });
   await assert.rejects(waitForDeployment('https://example.com/api/health', metadata, { ...image, fetch: async () => { throw new Error('offline'); } }), /offline/);
+  const walled = { ok: true, name: 'weave', supervisor: { release: 'v1.2.3', failed: [] } };
+  assert.deepEqual(await waitForDeployment('https://example.com/api/health', metadata, { ...options, fetch: async () => ({ ok: true, json: async () => walled }) }), walled, 'an auth-walled health body proves the release by its supervisor tag');
+  await assert.rejects(waitForDeployment('https://example.com/api/health', metadata, { ...image, allowImage: true, fetch: async () => ({ ok: true, json: async () => ({ ok: true, name: 'weave', supervisor: { release: 'image' } }) }) }), 'a versionless image proves nothing');
   await assert.rejects(waitForDeployment('https://example.com/api/health', metadata, { ...image, fetch: async () => ({ ok: true, json: async () => ({ ...health, supervisor: { release: 'v1.2.2', failed: ['1.2.3'] } }) }) }), /rejected/);
 });
 
@@ -100,4 +103,10 @@ test('recovery accepts a delivery failure but refuses failed or canceled require
   assert.equal(validateRun(failed, [...jobs, delivery], repo), sha);
   assert.throws(() => validateRun(failed, [...jobs, { ...delivery, name: 'Unit tests' }], repo));
   assert.throws(() => validateRun(failed, [...jobs, { name: 'Browser 1', conclusion: 'cancelled', status: 'completed' }], repo));
+});
+
+test('a gh response past the 1 MiB default buffer is read whole, so a large unreleased compare cannot fail delivery (Issue #841)', () => {
+  const size = 3 * 1024 * 1024;
+  const out = capture(process.execPath, ['-e', `process.stdout.write('x'.repeat(${size}))`]);
+  assert.equal(out.length, size);
 });

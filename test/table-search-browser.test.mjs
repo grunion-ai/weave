@@ -24,6 +24,7 @@ if (s) {
   const TOTAL = 503;
 
   const open = async () => {
+    weave.tableView(`${jobs.id}/${weave.tableView(jobs).views[0].name}`, { search: '' });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -38,11 +39,11 @@ if (s) {
     await page.fill('.table-search-input', text);
   };
 
-  test('typing narrows the grid across every page, and the table is never written', async () => {
+  test('typing narrows the grid across every page, and only the view\'s search is written', async () => {
     const page = await open();
     try {
-      let patches = 0;
-      page.on('request', (r) => { if (r.method() === 'PATCH' && r.url().includes(`/tables/${jobs.id}`)) patches++; });
+      const patches = [];
+      page.on('request', (r) => { if (r.method() === 'PATCH' && r.url().includes(`/tables/${jobs.id}`)) patches.push(r.postDataJSON()); });
       assert.match(await page.textContent('.wv-loaded'), /200 of 503 loaded/, 'the grid opens paged');
       await typeSearch(page, 'launch');
       await rowsAre(page, [named['Alpha launch'].id, named['Beta launch'].id]);
@@ -51,7 +52,8 @@ if (s) {
       assert.match(await page.textContent('.wv-loaded'), /2 rows found/, 'the foot counts the matches');
       assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('table-search-input')), true, 'the caret stays in the box');
       await page.waitForLoadState('networkidle');
-      assert.equal(patches, 0, 'no PATCH: the search is not saved');
+      assert.ok(patches.length && patches.every((p) => JSON.stringify(Object.keys(p)) === '["search"]'), 'each PATCH carries the search alone');
+      assert.equal(weave.tableView(jobs).views[0].search, 'launch', 'the view holds the search (Feature #307)');
       assert.deepEqual(weave.tableView(jobs).views[0].filters ?? {}, {}, 'the saved filter is untouched');
     } finally { await page.close(); }
   });

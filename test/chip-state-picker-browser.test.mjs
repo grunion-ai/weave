@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, painted, eventually } from './lib/browser.mjs';
+import { launch, painted, eventually, styleOf } from './lib/browser.mjs';
 
 const s = await launch('the chip state picker', (weave) => {
   weave.createSpace({ name: 'Dev' });
@@ -73,6 +73,22 @@ if (s) {
 
       await page.locator(`.k-rel[data-eid="${target.id}"] > a.mention`).click();
       await page.waitForFunction((id) => location.hash.includes(id) || !!document.querySelector('#dock:not([hidden])'), target.id);
+    } finally { await page.close(); }
+  });
+
+  test('a state chip in the picker keeps weight 400 on the bold current row (Issue #770)', async () => {
+    const page = await browser.newPage();
+    try {
+      await openCell(page);
+      await page.locator(`.k-rel[data-eid="${target.id}"] [data-seg="state"]`).click();
+      await painted(page, '.chip-pop .picker-term.on .k.k-state');
+      const row = page.locator('.chip-pop .picker-term.on').first();
+      assert.equal(await styleOf(row, 'font-weight', '600'), '600', 'the current row is bold');
+      const chip = row.locator('.k.k-state').first();
+      assert.equal(await styleOf(chip, 'font-weight', '400'), '400', 'the chip pins its own weight');
+      const cell = page.locator(`.k-rel[data-eid="${target.id}"] [data-seg="state"]`);
+      assert.equal(await styleOf(cell, 'font-weight', '400'), '400', 'the cell chip reads the same');
+      await page.keyboard.press('Escape');
     } finally { await page.close(); }
   });
 

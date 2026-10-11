@@ -3,9 +3,6 @@ name: tests
 on:
   push:
     branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  merge_group:
   schedule:
     - cron: "31 7 * * 1"
   workflow_dispatch:
@@ -15,14 +12,13 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 env:
   PLAYWRIGHT_VERSION: "1.62.1"
 
 jobs:
   plan:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -133,12 +129,3 @@ jobs:
           ln -s .github/test-tools/node_modules node_modules
       - run: npx --no-install playwright install --with-deps chromium webkit
       - run: npm test -- --test-concurrency=2
-
-  release:
-    name: Release
-    needs: gate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
-      actions: read
-    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository]

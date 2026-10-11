@@ -52,7 +52,9 @@ export async function waitForDeployment(url, metadata, { attempts = 90, delayMs 
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { 'cache-control': 'no-cache' } });
       health = await response.json();
-      if (response.ok && health.ok && health.version === metadata.version && (health.supervisor?.release === metadata.tag || (allowImage && health.supervisor?.release === 'image'))) return health;
+      const tagged = health.supervisor?.release === metadata.tag && (health.version ?? metadata.version) === metadata.version;
+      const image = allowImage && health.supervisor?.release === 'image' && health.version === metadata.version;
+      if (response.ok && health.ok && (tagged || image)) return health;
       last = `HTTP ${response.status}, version ${health.version}, release ${health.supervisor?.release}`;
     } catch (error) { last = error.message; }
     if (health?.supervisor?.failed?.includes(metadata.version)) throw new Error(`Supervisor rejected ${metadata.tag}`);
@@ -61,8 +63,14 @@ export async function waitForDeployment(url, metadata, { attempts = 90, delayMs 
   throw new Error(`Deployment did not reach ${metadata.tag}: ${last}`);
 }
 
+export const MAX_BUFFER = 256 * 1024 * 1024;
+
+export function capture(cmd, args, options = {}) {
+  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000, maxBuffer: MAX_BUFFER, ...options }).trim();
+}
+
 function gh(args, options = {}) {
-  return execFileSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000, ...options }).trim();
+  return capture('gh', args, options);
 }
 
 function api(path, { optional = false, ...options } = {}) {

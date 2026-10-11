@@ -1,8 +1,10 @@
 # Weave development
 
 GitHub is the canonical repository. Pull requests replace the Gerrit review queue.
-Agents work in isolated branches, run targeted checks locally, and let hosted CI
-run the full required test inventory before merging.
+Agents work in isolated branches and run targeted checks locally. A ready pull
+request lands on main after a fast `Dev gate` and deploys to weave-dev.grunion.ai
+within a minute. The full test inventory runs on main and informs promotion to
+production, which needs an approved release.
 
 ## Daily flow
 
@@ -13,17 +15,23 @@ run the full required test inventory before merging.
    changes and update the Handbook where behavior changes.
 3. Push the feature branch to origin and open a GitHub pull request. Record the
    tracker reference, changes and test evidence. Never push directly to main.
-4. Require the `CI gate` check on the exact current PR merge candidate. Branch
-   protection requires the branch to be up to date with main. If main advances,
-   update the branch and wait for fresh checks; an earlier green SHA cannot land.
-5. The shipping agent self-reviews and squash-merges after all required checks
-   pass, then verifies main CI and delivery. Do not bypass branch protection.
-   Migrated draft PRs stay drafts until their individual review and checks finish.
+4. Self-review, then arm auto-merge: `gh pr merge --auto --squash`. The only
+   required check is `Dev gate` (syntax plus a boot health check, under a
+   minute). The branch does not have to be up to date with main.
+5. Every main push swaps weave-dev.grunion.ai to that commit. The dev supervisor
+   boots the new commit beside the serving one, moves traffic only after its
+   health check passes, and keeps the old worker serving when it fails. A failed
+   commit is skipped until main moves. Roll back a bad change by landing its
+   revert. The dev service runs `weave supervise` with `WEAVE_AUTO_UPDATE=1`,
+   `WEAVE_TRACK=main` (follow main commits into `releases/c<sha>/`) and
+   `WEAVE_DEPLOY_TOKEN` (32+ characters; `POST /_supervisor/check` with that
+   bearer token checks main at once, which the `Deploy dev` job calls). Migrated draft PRs stay drafts until their own review finishes.
 
 ## Verification
 
-The `tests` workflow owns full landing verification. Its final `CI gate` succeeds
-only after every required job succeeds. Browser dependencies are installed in CI;
+The `tests` workflow runs the full inventory on every main push. Its final
+`CI gate` succeeds only after every required job succeeds, and a release can
+only publish a main commit whose `CI gate` succeeded. Browser dependencies are installed in CI;
 a missing browser or skipped required browser suite fails the gate. Parallel CI
 jobs have isolated runners and test data. Superseded branch runs are canceled.
 
@@ -54,9 +62,11 @@ CHANGELOG.md. The fold sorts and deletes fragments. A refactor or documentation
 change without a release bullet carries `No-changelog: <reason>` in its commit.
 The changelog and development-sync tests enforce these contracts.
 
-After the `CI gate` succeeds on a main push, `tests` calls the reusable `release`
-workflow. Its read-only guard validates the same-repository event, current run
-ID and completed `CI gate`. Pull requests never call release publication. Its publishing
+Production promotion is manual: dispatch the `release` workflow with the main
+`tests` run ID. Its publish job runs in the `production` environment and waits
+for a required reviewer to approve. Its read-only guard validates the
+same-repository event, run ID and completed `CI gate`. Pull requests never call
+release publication. Its publishing
 job checks out the exact tested SHA and checks GitHub main again. A superseded run
 skips publication so the newer main run owns delivery. The publisher validates the
 version, matching tracker manifest and nonempty `## v<version>` changelog section
@@ -124,7 +134,8 @@ callers also lease this queue. Use the CLI for predictable whole-job admission.
 | Batch targeted regressions | `npm test -- --targeted test/formula.test.mjs test/service.test.mjs` |
 | Inspect affected selection | `npm test -- --affected --base=HEAD --plan` |
 | Run affected selection | `npm test -- --affected --base=HEAD` |
-| Full landing verification | GitHub Actions `tests` runs every required suite; `CI gate` reports the result |
+| Landing check | GitHub Actions `dev` runs `Dev gate` on ready pull requests |
+| Full verification | GitHub Actions `tests` runs every suite on main; `CI gate` reports the result |
 | Queue and browser status | `npm test -- --status` |
 | Cancel one queued or active job | `npm test -- --cancel=<id>` |
 | Stop owned jobs and browser | `npm test -- --stop` |
@@ -197,3 +208,33 @@ and add the fingerprint to `test/flicker-fixed.json` with the Issue number in
 the same change. `test/flicker-gate-browser.test.mjs` walks every journey in
 the gate and fails when a listed fingerprint comes back, so a fixed flicker
 stays fixed. A journey whose selectors rot fails the gate too.
+
+## Cut-off loop
+
+Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page
+function that reports text cut by an overflow hidden or clip box (`clipped`), a
+truncated `text-overflow: ellipsis` box (`ellipsis`), a `-webkit-line-clamp` box
+holding more lines than it shows (`line-clamp`), and an input or textarea whose
+value or placeholder runs past its box (`field-value`, `field-placeholder`).
+Text inside an overflow auto or scroll container, visually hidden text and
+invisible elements are not cut-offs. A finding's fingerprint is its kind plus its
+selector with every number folded to `#`, and `|phone` for the phone cell.
+
+```bash
+node scripts/cutoff-sweep.mjs                       # both cells, writes cutoff-out/findings.json
+node scripts/cutoff-sweep.mjs --cell phone --overlay field-editor,new-field   # reproduce one
+node scripts/cutoff-sweep.mjs --lower               # after a fix: lower this platform's baseline
+```
+
+The sweep walks the flicker journeys and opens every dialog and popover listed in
+`test/lib/overlays.mjs`, at desktop 1440x900 in Chromium and phone 390x844 in
+WebKit, on the messy seed. `test/cutoff-gate-browser.test.mjs` runs the same
+sweep in the gate against `test/cutoff-baseline.json`, which holds today's counts
+per platform, since system fonts differ between macOS and the Linux CI runner.
+The gate fails on a fingerprint the baseline does not hold, or more instances
+than it holds, and fails when a fingerprint disappears or drops in count until
+the change lowers the baseline. `test/cutoff-core.test.mjs` refuses a baseline
+that grows past its committed version or past the base a pull request merges
+into. **Fixing one:** fix the cut-off, run the sweep with `--lower`, and commit
+the lowered counts in the same change. A red gate prints the Linux counts it
+measured; copy them into the `linux` section.
