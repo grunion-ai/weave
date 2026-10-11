@@ -140,7 +140,7 @@ Schema
               [--layout table|list] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
               [--completed-by Done|none] [--nest Parent|none] [--order 3,1,2] [--collapsed '["Completed"]']
   field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
-  field list <table> | delete <table> <field>
+  field list <table> | delete <table> <field> [--hard] | restore <table> <field>
   field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
                [--description "what it holds"|null]
   relation add <table> <name> <targetTable> [--cardinality many-to-one] [--inverse Name] [--target-dbs 'A,B,C']
@@ -200,7 +200,7 @@ Undo (entity mutations only — schema work is not undoable)
   undo [--steps n]                    Revert the last n entity mutations
   undo --list [--limit 20]           Show what undo would revert, newest first
 Views & automations
-  view list | get <id> | delete <id> | share <id> | unshare <id>
+  view list [--trash] | get <id> | delete <id> [--hard] | restore <id> | share <id> | unshare <id>
   share list [--kind entity|table|space|view|workspace] [--id <id>]
   share mint <kind> <id> [--mode read|edit|manage] [--private] [--label L] [--expires ISO]
   share revoke <share id>             An architect's CLI revokes any link
@@ -247,7 +247,8 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      off, those deliveries are refused and the rule's Health says so),
      WEAVE_MCP_ORIGINS (comma-separated other origins the /mcp door answers on), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
      its own), WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE, WEAVE_INLINE_FILE_TYPES (comma-separated
-     attachment types served in place beside images, PDF and plain text; the rest download)`;
+     attachment types served in place beside images, PDF and plain text; the rest download),
+     WEAVE_MAX_ROWS (most rows one API call returns for a named limit; 500)`;
 
 async function main() {
   if (!command || command === 'help' || flags.help) return out(HELP);
@@ -668,9 +669,10 @@ async function main() {
         return out(guided(w, 'field', w.updateField(db, name, patch), patch.type == null ? patch.config : {}));
       }
       if (sub === 'rollback') return out(w.rollbackFieldConfig(flags.activity, { table: db ?? null, field: name ?? null }));
-      if (sub === 'delete') return out(w.deleteField(db, name));
+      if (sub === 'delete') return out(w.deleteField(db, name, { hard: Boolean(flags.hard) }));
+      if (sub === 'restore') return out(w.restoreField(db, name));
       if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
-      throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, rollback, delete`);
+      throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, rollback, delete, restore`);
     }
     case 'formula': {
       const [sub, db, expression] = args;
@@ -833,11 +835,12 @@ async function main() {
       const [sub, ref] = args;
       if (sub === 'create') return out(w.createView({ name: ref, blocks: parseJsonFlag('blocks') ?? [] }));
       if (sub === 'get') return out(w.resolveView(ref));
-      if (sub === 'delete') return out(w.deleteView(ref));
+      if (sub === 'delete') return out(w.deleteView(ref, { hard: Boolean(flags.hard) }));
+      if (sub === 'restore') return out(w.restoreView(ref));
       if (sub === 'share') return out(w.shareView(ref));
       if (sub === 'unshare') return out(w.unshareView(ref));
-      if (sub === 'list' || !sub) return out(w.listViews());
-      throw new WeaveError(`Unknown view subcommand '${sub}'. Try: create, list, get, delete, share, unshare`);
+      if (sub === 'list' || !sub) return out(w.listViews({ trash: Boolean(flags.trash) }));
+      throw new WeaveError(`Unknown view subcommand '${sub}'. Try: create, list, get, delete, restore, share, unshare`);
     }
     case 'share': {
       const [sub, a, b] = args;

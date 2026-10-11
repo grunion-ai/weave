@@ -1,0 +1,1 @@
+- An error that is not weave's own answers `Internal error (request <id>)` with `code: internal` and the id; the message and stack go to the server log under that id instead of to the caller, on the API, the task applet and the Worker (Issue #522)

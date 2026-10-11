@@ -279,30 +279,44 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   document.querySelector('#tray-back')?.remove();
   document.querySelector('#modal-back')?.remove();
-  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const opener = document.activeElement;
+  const close = () => {
+    const at = document.activeElement;
+    const held = !at || at === document.body || back.contains(at);
+    back.remove();
+    if (held && opener?.isConnected) opener.focus();
+  };
+  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) close(); } });
   const form = el('form', { class: 'tray-form' },
     el('div', { class: 'tray-body' }, ...bodyNodes),
     el('div', { class: 'tray-actions' },
-      el('button', { class: 'btn', type: 'button', onclick: () => back.remove() }, 'Cancel'),
+      el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
       el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       await onSubmit(new FormData(form));
-      back.remove();
+      close();
     } catch (err) {
-      toast(err.message, true);
+      if (!err.shown) toast(err.message, true);
     }
   });
-  back.append(el('div', { id: 'tray' },
-    el('div', { class: 'tray-head' }, el('h2', {}, title),
-      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, iconEl('✕'))),
+  back.append(el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },
+    el('div', { class: 'tray-head' }, el('h2', { id: 'tray-title' }, title),
+      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: close }, iconEl('✕'))),
     form));
   document.body.append(back);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape' && !document.querySelector('.chip-pop')) { back.remove(); removeEventListener('keydown', esc); }
-  });
+  const esc = (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.chip-pop')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  };
+  back.addEventListener('keydown', esc);
+  addEventListener('keydown', function stray(e) {
+    if (!back.isConnected) return removeEventListener('keydown', stray, true);
+    if (e.target === document.body && !document.querySelector('#modal-back, #cmdk-back')) esc(e);
+  }, true);
   const first = form.querySelector('input:not([type=hidden]),select,textarea');
   if (first) first.focus();
   return back;
@@ -1882,9 +1896,8 @@ const KEYSTORE_LABELS = {
 };
 
 function computedMark(type) {
-  return { formula: 'ƒ', rollup: 'Σ', lookup: 'lucide:arrow-up-right', document: 'lucide:file-text', field: 'lucide:sliders-horizontal' }[type] ?? '·';
+  return globalThis.weaveChipView.COMPUTED_GLYPHS[type] ?? '·';
 }
-const computedMarkNode = (type) => { const m = computedMark(type); return iconEl(m, 'ico wv-icon') ?? m; };
 
 const COMPUTED_NAME_MARKS = { formula: 'formula', rollup: 'rollup', lookup: 'lookup' };
 function fieldDescription(f) {
@@ -1905,7 +1918,7 @@ function fieldRoute(f, db) {
   const rel = f.via ? db?.fields?.find((x) => x.type === 'relation' && x.name === f.via) : null;
   const table = rel?.targetDb ?? qualifiedTableName(f.viaTableId ?? rel?.targetDbId);
   const what = f.type === 'lookup'
-    ? `↗ ${f.targetField ?? 'Name'}`
+    ? `${computedMark('lookup')} ${f.targetField ?? 'Name'}`
     : `Σ ${f.aggregate ?? 'count'}${f.targetField ? ` of ${f.targetField}` : ''}`;
   return `${what}${f.via ? ` via ${f.via}` : ''}${table ? ` → ${table}` : ''}`;
 }
@@ -1913,14 +1926,14 @@ function fieldRoute(f, db) {
 function fieldNameLabel(f, text = f?.name, db = null) {
   if (f?.type === 'relation') {
     const route = fieldRoute(f, db);
-    return route ? [text, el('sup', { class: 'field-mark', title: route }, iconEl('lucide:arrow-right', 'ico wv-icon') ?? '→')] : [text];
+    return route ? [text, el('sup', { class: 'field-mark', title: route }, globalThis.weaveChipView.ROUTE_GLYPH)] : [text];
   }
   const kind = COMPUTED_NAME_MARKS[f?.type];
   if (!kind) return [text];
   return [text, el('sup', {
     class: 'field-mark',
     title: fieldRoute(f, db) ?? `${kind} — computed from other values, not editable`,
-  }, computedMarkNode(f.type))];
+  }, computedMark(f.type))];
 }
 
 function openCellPicker(cell) {
@@ -2735,11 +2748,9 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
         ? ratingListEl(f.rating, rawVal, { label: f.name }) : null)
       ?? numberGraphicFor(f, item, text);
     const rich = f.display === 'sparkline' || !!f.rating || cellGraphics.isGraphic(f.display);
-    const box = el('span', { class: 'computed k k-computed' + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
-      rich ? null : el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
+    const derived = COMPUTED_NAME_MARKS[f.type] && !rich ? ' k-derived' : '';
+    return el('span', { class: 'computed k k-computed' + derived + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
       graphic ?? (text || '—'));
-    if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
-    return box;
   }
   if (f.type === 'rating') {
     const box = ratingEl(f.max, f.icon, item.raw?.[f.name] ?? null, { onSet: (v) => patch(v, (x) => box.paint(x)), color: f.color });
@@ -2852,7 +2863,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'field') {
     const def = item.raw?.[f.name] ?? null;
     const chip = el('span', { class: 'computed k k-computed' + (def == null ? ' is-empty' : ''), title: compact ? `field definition — edit on the ${db?.term?.singular ?? WeaveTerm.DEFAULT.singular} page` : 'field definition — click to edit' },
-      el('span', { class: 'computed-mark' }, computedMarkNode('field')),
+      el('span', { class: 'computed-mark' }, iconEl('lucide:sliders-horizontal', 'ico wv-icon')),
       def == null ? '—' : String(val));
     if (compact) return chip;
     chip.style.cursor = 'pointer';
@@ -3028,7 +3039,7 @@ async function showTrash(dbId) {
   if (dbId && !db) return showHome();
   state.route = { page: 'trash', dbId };
   renderNav();
-  let { items } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
+  let { items, views = [] } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
   if (!db) items = items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views');
   const main = $('#main');
   main.replaceChildren();
@@ -3042,11 +3053,12 @@ async function showTrash(dbId) {
   }));
 
   const wsTrashed = db ? [] : await trashedWorkspaces();
-  if (!items.length && !wsTrashed.length) {
+  if (!items.length && !views.length && !wsTrashed.length) {
     main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
     return;
   }
   const rows = el('tbody');
+  const purgeAt = (path) => api('DELETE', `${path}?hard=1`);
   for (const item of items) {
     rows.append(el('tr', {},
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
@@ -3067,14 +3079,31 @@ async function showTrash(dbId) {
         }, 'Restore'),
         holdToConfirm('Delete forever', async () => {
           try {
-            await api('DELETE', `/entities/${item.id}?hard=1`);
+            await purgeAt(`/entities/${item.id}`);
             toast('Purged');
             await loadSchema();
             showTrash(dbId);
           } catch (err) { toast(err.message, true); }
         }, { holdingLabel: 'Hold to purge…' }))));
   }
-  if (items.length) main.append(el('div', { class: 'card table-wrap' },
+  for (const v of views) {
+    const act = (run, done) => async () => {
+      try {
+        await run();
+        toast(done);
+        showTrash(dbId);
+      } catch (err) { toast(err.message, true); }
+    };
+    rows.append(el('tr', {},
+      el('td', { class: 'pid-cell' }),
+      el('td', {}, v.name),
+      el('td', { class: 'trash-table' }, 'Share page'),
+      el('td', { class: 'trash-when' }, new Date(v.deletedAt).toLocaleString()),
+      el('td', { class: 'trash-acts' },
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'),
+        holdToConfirm('Delete forever', act(() => purgeAt(`/views/${v.id}`), 'Purged'), { holdingLabel: 'Hold to purge…' }))));
+  }
+  if (items.length || views.length) main.append(el('div', { class: 'card table-wrap' },
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
@@ -3353,8 +3382,8 @@ function filterStrip(db, onChange) {
         clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
       } });
       const chip = st.hue
-        ? el('label', { class: `filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), st.name)
-        : el('label', { class: `filter-chip cat-${st.category}` }, box, st.name);
+        ? el('label', { class: `filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), el('span', { class: 'filter-chip-label' }, st.name))
+        : el('label', { class: `filter-chip cat-${st.category}` }, box, el('span', { class: 'filter-chip-label' }, st.name));
       chips.push({ chip, field: f.name, name: st.name }); values.append(chip);
     }
     row.append(values); scroll.append(row);
@@ -3900,7 +3929,7 @@ function tableChrome(db, trashCount) {
     {
       label: 'New share page…',
       run: () => modal('New share page', [
-        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control full' }),
+        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control' }),
       ], async (fd) => {
         const where = filterWhere(ref.db);
         await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
@@ -4125,9 +4154,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     if (e.isComposing || e.altKey) return;
     const td = e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
     if (!td || e.target !== td) return;
-    const slash = e.key === '/' && !e.metaKey && !e.ctrlKey;
-    const find = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f';
-    if (!slash && !find) return;
+    if (e.key !== '/' || e.metaKey || e.ctrlKey) return;
     e.preventDefault(); e.stopPropagation();
     openTableSearch(main);
   }, true);
@@ -8327,7 +8354,7 @@ async function useTemplateDialog(space) {
     el('label', { class: 'form-label wv-start-label' }, 'Workspace'),
     pickerSelect({ name: 'workspace', title: 'Workspace', options: others.map((w) => ({ id: w.name, label: w.name })), value: others[0].name }),
     el('label', { class: 'form-label wv-start-label' }, 'Name'),
-    el('input', { name: 'name', class: 'form-control full', style: 'width:100%', value: space.space, required: '' }),
+    el('input', { name: 'name', class: 'form-control', value: space.space, required: '' }),
     el('div', { class: 'form-hint' }, 'Copies the tables, fields and views. Rows stay here.'),
     said,
   ] : [el('p', { class: 'use-template-none' }, 'There is no other workspace to build in. Create one first, from the workspace rail.')];
@@ -9865,7 +9892,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), el('span', { class: 'when' }, new Date(c.createdAt).toLocaleString())),
       el('div', {}, c.text)));
   }
-  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…', style: 'width:100%' });
+  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…' });
   commentInput.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter' && commentInput.value.trim()) {
       try {
@@ -10329,7 +10356,7 @@ const activityPanel = (() => {
     renderView();
   }
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop')) return;
+    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
     e.stopPropagation();
     close();
   }, true);
@@ -10345,7 +10372,7 @@ function quickCreate(db) {
     return;
   }
   modal(`New ${db.term.singular}`, [
-    el('input', { name: 'name', placeholder: 'Name', class: 'form-control full', style: 'width:100%' }),
+    el('input', { name: 'name', placeholder: 'Name', class: 'form-control' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
     await loadSchema();
@@ -10357,7 +10384,7 @@ function newTableDialog(reg, after) {
   const spaces = state.schema.filter((s) => !s.system);
   if (!spaces.length) return toast('Create a space first — a table lives in one', true);
   modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
     pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space }),
   ], async (fd) => {
     const made = await api('POST', `/tables/${reg.id}/entities`, { name: fd.get('name'), values: { Space: fd.get('space') } });
@@ -10372,9 +10399,9 @@ function startTableDialog({ spaceId = null } = {}) {
   const fixed = spaceId ? spaces.find((s) => s.spaceId === spaceId) : null;
   const spaceInput = fixed ? null
     : spaces.length ? pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space })
-      : el('input', { name: 'space', value: 'General', class: 'form-control full', style: 'width:100%', required: '' });
+      : el('input', { name: 'space', value: 'General', class: 'form-control', required: '' });
   modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
     ...(spaceInput ? [
       el('label', { class: 'form-label wv-start-label' }, 'Space'),
       spaceInput,
@@ -10588,6 +10615,7 @@ async function relatedGrid(entity, f, onSaved) {
       el('td', { class: 'pid-cell' },
         el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: `Open ${target.term.singular}` }, `#${item.publicId} ↗`)),
       ...cols.map((c) => el('td', {
+        dataset: { ftype: c.type },
         class: (isNumCell(c, item) ? 'num' : '')
           + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),
       }, labeledEditorFor(c, item, target, onSaved, { compact: true }))),
@@ -11429,7 +11457,7 @@ const KEY_SHEET_ANYWHERE = [
   { keys: '⌘Return', does: 'send a problem report from its note' },
 ];
 const KEY_SHEET_TABLE = [
-  { keys: '/ or ⌘F', does: 'search this table' },
+  { keys: '/', does: 'search this table' },
   { keys: '⌘C / ⌘V', does: 'copy or paste the cell or the range' },
 ];
 
@@ -11943,7 +11971,7 @@ function confirmDeleteWorkspace(w, { current = false } = {}) {
     el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
       `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from Trash in the sidebar. Type `,
       el('code', {}, w.name), ' to confirm.'),
-    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off', style: 'width:100%' }),
+    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off' }),
   ], async (fd) => {
     if (fd.get('confirm') !== w.name) throw new Error(`Type ${w.name} exactly to delete it`);
     await api('DELETE', `/workspaces/${w.id}`);
@@ -12224,7 +12252,7 @@ function openBugPanel(fab) {
 
   const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: keyHint('Send (⌘Return)') }, 'Send');
   const note = el('textarea', {
-    class: 'form-control bug-note', rows: '2', maxlength: '600',
+    class: 'form-control form-control-sm bug-note', rows: '2', maxlength: '600',
     placeholder: 'What went wrong?',
   });
   note.value = bugDraft.note;
