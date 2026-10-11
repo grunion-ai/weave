@@ -1245,7 +1245,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && rx.method === 'POST') {
-          return out(200, weave.query(m[1], { ...body, limit: boundedLimit(body?.limit), viewerZone }));
+          if (body?.limit != null) body.limit = boundedLimit(body.limit);
+          return out(200, weave.query(m[1], { ...body, viewerZone }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/formula-check$/)) && rx.method === 'POST') {
           return out(200, weave.checkFormula(m[1], body?.expression, { entity: body?.entity ?? null, excludeField: body?.excludeField ?? null, scan: Boolean(body?.scan) }));
