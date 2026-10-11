@@ -312,16 +312,16 @@ test('the description clamp is five description line-heights, toggled by a contr
 test('one dotsMenu implementation serves entity, table and space', () => {
   assert.match(APP, /function dotsMenu\(/);
   assert.equal((APP.match(/dots-btn/g) ?? []).length, 1, 'only dotsMenu may build the ⋮ button');
-  assert.match(fnBody('dotsMenu'), /\bmenu\(items, \{ anchor: btn/, 'the ⋮ opens the one menu builder');
-  for (const t of ["title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions`", "title: 'Table actions'", "title: 'Space actions'"]) {
-    assert.ok(APP.includes(t), `${t} must be a dotsMenu call`);
+  assert.match(fnBody('dotsMenu'), /\bmenu\(typeof items === 'function' \? items\(btn\) : items, \{ anchor: btn/, 'the ⋮ opens the one menu builder');
+  for (const t of ["kindDots('record', entity, recordCtx, { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions` })", "kindDots('table', () => ref.db, () => ({}), { title: 'Table actions'", "kindDots('space', space, () => ({}), { title: 'Space actions' })"]) {
+    assert.ok(APP.includes(t), `${t} must open the kind's one definition (Feature #296)`);
   }
 });
 
 test('the table menu carries CSV export; table and space menus carry delete', () => {
-  assert.ok(APP.includes("label: 'Export CSV'"), 'the table menu exports CSV');
+  assert.ok(APP.includes("exportSection({ name: db.name, serves: ['csv']"), 'the table menu exports CSV from the format registry (Feature #296)');
   assert.match(APP, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
-  assert.match(APP, /api\('DELETE', `\/spaces\/\$\{spaceId\}`\)/);
+  assert.match(APP, /api\('DELETE', `\/spaces\/\$\{space\.spaceId\}`\)/);
   assert.doesNotMatch(APP, /class: 'btn btn-sm', href: `\$\{WS_PREFIX\}\/api\/tables\/\$\{db\.id\}\/export\.csv`/);
 });
 
@@ -336,7 +336,7 @@ test('deleting a table or a space is behind a hold', () => {
 });
 
 test('header menus hang off the right edge and fill their rows', () => {
-  assert.match(APP, /align: 'right'/);
+  assert.match(fnBody('kindDots'), /align = 'right'/, 'a kind\'s ⋮ hangs off the right edge by default');
   assert.match(fnBody('menu'), /side === 'right' \? a\.right - w : a\.left/, 'a right-aligned menu ends at its trigger\'s right edge');
   assert.equal(rulesFor('.chip-pop-row.wv-menu-row').width, '100%',
     'a hold item must fill the menu row like any other item');
@@ -409,20 +409,21 @@ test('number inputs show no native spinner chip', () => {
   assert.equal(num['-moz-appearance'], 'textfield', 'Firefox needs the prefixed spelling');
 });
 
-test('every column header carries a field menu; a header click edits, sorting lives in the menu', () => {
+const FIELD_ROWS = APP.slice(APP.indexOf('  field: (f, { db }) => ({'), APP.indexOf('\n};\n', APP.indexOf('  field: (f, { db }) => ({')));
+
+test('every column header carries a field menu; a header click edits, and sorting lives on the toolbar (Feature #296)', () => {
   const head = fnBody('renderTable');
-  assert.match(head, /fieldMenuButton\(/, 'each column th mounts the field menu');
+  assert.match(head, /fieldMenuButton\(db, colField\(db, c\)\)/, 'each column th mounts the field menu');
   assert.match(head, /onclick: \(e\) => \{ const th = e\.currentTarget; if \(!th\.dataset\.resized && !th\.dataset\.gesture\) editFieldDialog\(db, colField\(db, c\)\); \}/,
     'the header click opens the field editor — unless it is the click a resize or reorder gesture leaves behind (Issue #98, Feature #233)');
-  assert.match(head, /onSort: sortBy\(c\)/, 'the menu is handed the sort control');
-  assert.match(head, /systemMenu\('Public Id', '#'\)/, 'the # header mounts a sort menu');
-  assert.match(head, /systemMenu\(n, n\)/, 'each system header mounts one too');
+  assert.doesNotMatch(head, /onSort|systemMenu/, 'no sort control is handed to a header menu');
+  assert.match(head, /kindContext\(th, 'field', /, 'a right-click on a column header opens the same field menu');
   const menu = fnBody('fieldMenuButton');
-  assert.match(menu, /\bmenu\(\[/, 'the column menu is drawn by the one menu builder, not a new overlay');
+  assert.match(menu, /\bmenu\(menuFor\('field', f, \{ db, anchor: btn \}\)/, 'the column menu is the field definition, drawn by the one menu builder');
   assert.match(menu, /stopPropagation/, 'opening the menu must not also open the editor');
-  assert.match(menu, /const words = onSort \? sortLabelsFor\(db, f\) : null/, 'the sort rows take their words from the field');
-  assert.match(menu, /words\.asc/, 'ascending is in the menu');
-  assert.match(menu, /words\.desc/, 'descending is in the menu');
+  assert.match(menu, /if \(!menuFor\('field', f, \{ db \}\)\.length\) return null/, 'a column with nothing to offer carries no ⋮');
+  assert.match(FIELD_ROWS, /label: 'Field settings…'[\s\S]*editFieldDialog\(db, f\)/, 'Settings opens the field editor');
+  assert.match(fnBody('tableSortButton'), /Object\.values\(fieldDialogCore\.SYSTEM_SORT\)/, 'the toolbar Sort reaches the system columns the header menus used to sort');
 });
 
 test('the field menu edits a field rather than dropping and rebuilding it', () => {
@@ -433,7 +434,7 @@ test('the field menu edits a field rather than dropping and rebuilding it', () =
 });
 
 test('deleting a field from the header is guarded and never offered for Name', () => {
-  const menu = fnBody('fieldMenuButton');
+  const menu = FIELD_ROWS;
   assert.match(menu, /label: 'Delete field', hold: true/, 'destructive rows are hold-to-confirm, like the schema page');
   assert.match(fnBody('menuRow'), /if \(it\.hold\) \{\n\s+const btn = holdToConfirm\(/, 'and a hold row is the house holdToConfirm');
   assert.match(menu, /f\.role !== 'name'/, 'the name-role field must not offer a delete row (by role — it can be renamed, Feature #168)');
@@ -464,28 +465,27 @@ test('every row of the field menu is the same row, destructive included', () => 
     'the icon box never collapses, or a row without a glyph loses the left edge');
 });
 
-test('sort state is the popover check, not a character prefixed to the label', () => {
+test('a checked or switched row is the popover check, not a character prefixed to the label', () => {
   const menu = fnBody('fieldMenuButton') + fnBody('menuRow');
   assert.ok(!menu.includes("'✓ '"), 'no check pasted onto the front of a label');
   assert.match(menu, /chip-pop-check/, 'the popover already has a current-value cue');
-  assert.match(menu, /checked: sorted > 0/, 'ascending is marked when it is the live sort');
-  assert.match(menu, /checked: sorted < 0/, 'and descending too');
+  assert.match(fnBody('menuRow'), /typeof it\.checked === 'boolean' \|\| typeof it\.switch === 'boolean'/, 'a check row and a switch row are both checkable');
   assert.match(fnBody('menuRow'), /'menuitemcheckbox'/, 'a checkable row is a menuitemcheckbox');
+  assert.match(fnBody('menuRow'), /'aria-checked': String\(on\)/, 'and says whether it is on');
   assert.match(fnBody('showPopover'), /findIndex\(\(o\) => o\.querySelector\('\.chip-pop-check'\)\)/);
 });
 
 test('the menu names the column it belongs to', () => {
-  const menu = fnBody('fieldMenuButton');
-  assert.match(menu, /head: \{ title: f\.name/, 'a title line opens the panel');
+  assert.match(fnBody('fieldMenuButton'), /head: kindHead\('field', f\)/, 'a title line opens the panel');
   assert.match(fnBody('menu'), /class: 'wv-menu-head'/, 'drawn by the builder');
-  assert.match(menu, /fieldDialogCore\.typeLabel\(f\.type\)/, 'naming the type as well as the name');
+  assert.match(fnBody('kindHead'), /if \(kind === 'field'\) return \{ title: obj\.name, kind: obj\.system \? 'system' : fieldDialogCore\.typeLabel\(obj\.type\) \}/, 'naming the type as well as the name');
   const head = rulesFor('.wv-menu-head');
   assert.match(head['border-bottom'] ?? '', /var\(--tblr-border-color\)/, 'it is a header, so it is ruled off');
   assert.equal(rulesFor('.wv-menu-title')['text-overflow'], 'ellipsis', 'a long field name must not stretch the panel');
 });
 
 test('the hold gesture is advertised before it is pressed', () => {
-  assert.match(fnBody('fieldMenuButton'), /hint: 'hold'/);
+  assert.match(FIELD_ROWS, /hint: 'hold'/);
   const hint = rulesFor('.hold-hint');
   assert.ok(hint['border-radius'], 'the hint is a chip, in the chip idiom');
   assert.equal(rulesFor('.hold-btn.holding .hold-hint').opacity, '0',
@@ -687,9 +687,9 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.equal(rulesFor('.entity-head .dl-wrap')['margin-left'], 'auto',
     'margin-left:auto is what pushes the menu to the right edge');
 
-  const call = APP.match(/\{ title: `[^`]*\} actions`, align: 'right' \}/);
+  const call = APP.match(/kindDots\('record', entity, recordCtx, \{ title: `[^`]*\} actions` \}\)/);
   assert.ok(call, 'the entity menu call site should be findable');
-  assert.match(call[0], /align: 'right'/, 'a right-edge menu must drop its panel to the left');
+  assert.match(fnBody('kindDots'), /align = 'right'/, 'a right-edge menu must drop its panel to the left');
 });
 
 test('reference panels join the opt-in side column, dressed like Activity, wearing the pointer-tier relation chip', () => {

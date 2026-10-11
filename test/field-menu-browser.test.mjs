@@ -64,7 +64,7 @@ if (s) {
     try {
       await openMenu(page);
       const rows = await rowMetrics(page);
-      assert.ok(rows.length >= 5, `expected the full menu, got ${rows.length} rows`);
+      assert.deepEqual(rows.map((r) => r.text), ['Field settings…', 'Insert field…', 'Delete field'], 'Settings, Organize, Delete (Feature #296)');
       const lefts = new Set(rows.map((r) => r.labelLeft));
       assert.equal(lefts.size, 1,
         `labels must share one left edge, found ${[...lefts].join(', ')} — ${rows.map((r) => r.text).join(' | ')}`);
@@ -115,24 +115,16 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a live sort is the popover check, and focus still opens on the first row (Issue #763)', async () => {
+  test('the column menu holds no sort rows: the toolbar Sort owns sort, and focus opens on Field settings… (Feature #296, Issue #763)', async () => {
     const page = await grid();
     try {
-      const sortRow = (pop, label) => pop.locator('.wv-menu-row').filter({ has: page.getByText(label, { exact: true }) });
-      let pop = await openMenu(page);
-      await sortRow(pop, 'Option order').click();
-      await page.waitForTimeout(250);
-      pop = await openMenu(page);
-      const asc = sortRow(pop, 'Option order');
-      assert.equal(await asc.locator('.chip-pop-check').count(), 1, 'the live sort wears the check');
-      assert.equal(await sortRow(pop, 'Reverse option order')
-        .locator('.chip-pop-check').count(), 0, 'and only it does');
-      assert.equal((await asc.locator('.wv-menu-label').textContent()).trim(), 'Option order');
-      assert.equal(await asc.getAttribute('role'), 'menuitemcheckbox', 'a checkable row says so');
-      assert.equal(await asc.getAttribute('aria-checked'), 'true');
-      assert.match(await page.evaluate(() => document.activeElement?.textContent ?? ''), /^Edit field…/,
-        'the menu button pattern: focus lands on the first row, whatever is checked');
-      assert.equal(await pop.locator('.wv-menu-row', { hasText: 'Clear sort' }).count(), 1);
+      const pop = await openMenu(page);
+      const words = await pop.locator('.wv-menu-label, .hold-label').allTextContents();
+      assert.ok(!words.some((w) => /option order|clear sort|ascending|descending/i.test(w)), `no sort rows: ${words.join(' | ')}`);
+      assert.match(await page.evaluate(() => document.activeElement?.textContent ?? ''), /^Field settings…/,
+        'the menu button pattern: focus lands on the first row');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('#tray-back, #modal-back');
     } finally { await page.close(); }
   });
 

@@ -32,64 +32,69 @@ if (s) {
   const menuItems = (page) => page.locator('.ws-ctx .wv-menu-row').allTextContents();
   const closeMenu = async (page) => { await page.keyboard.press('Escape'); assert.equal(await page.locator('.ws-ctx').count(), 0); };
 
-  test('every chip offers Update logo…; Remove logo only where a logo exists; never "Set logo"', async () => {
+  test('the tray menu is the workspace definition: no logo rows, the link preview switch in Share (Feature #296)', async () => {
     const page = await open();
-    for (const [name, hasLogo] of [['main', true], ['scratch', true], ['blank', false]]) {
+    for (const name of ['main', 'scratch', 'blank']) {
       await chip(page, name).click({ button: 'right' });
+      await page.waitForSelector('.ws-ctx .wv-menu-row');
       const items = await menuItems(page);
-      assert.ok(items.includes('Update logo…'), `${name} offers Update logo…: ${items}`);
-      assert.equal(items.includes('Remove logo'), hasLogo, `${name} Remove logo: ${items}`);
-      assert.ok(!items.some((t) => /Set logo/.test(t)), `${name} still says Set logo: ${items}`);
+      assert.ok(!items.some((t) => /logo/i.test(t)), `${name} keeps logo rows out of the menu: ${items}`);
+      assert.equal(items[0], 'Link preview before sign-in', `${name} opens on the link preview switch: ${items}`);
+      assert.equal(await page.locator('.ws-ctx .wv-menu-row').first().getAttribute('role'), 'menuitemcheckbox', 'a switch row says so');
       await closeMenu(page);
     }
     await page.close();
   });
 
-  test('Update logo… on a non-current chip PUTs that workspace\'s logo and redraws only that chip', async () => {
-    const page = await open('/', 'dark');
-    assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), 'dark');
-    assert.equal(await chip(page, 'blank').locator('img').count(), 0, 'blank starts as a letter chip');
-    const before = { main: logoOf(main), scratch: logoOf(scratch) };
-    await chip(page, 'scratch').click({ button: 'right' });
-    const chooser = page.waitForEvent('filechooser');
-    await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Update logo…' }).click();
-    await (await chooser).setFiles({ name: 'green.svg', mimeType: 'image/svg+xml', buffer: svg('green') });
-    await page.waitForSelector('.wv-toast:not(.err)');
-    await page.waitForFunction(() => document.querySelector('#ws-list .ws-icon[title^="scratch "] img'));
-    assert.match(logoOf(scratch), /green/, 'scratch carries the new logo');
-    assert.equal(logoOf(main), before.main, 'the current workspace is untouched');
-    assert.equal(logoOf(blank), null, 'blank is untouched');
-    const src = await chip(page, 'scratch').locator('img').getAttribute('src');
-    assert.match(src, new RegExp(`^/w/${scratch.state.meta.id}/api/workspace/logo`), `the chip reads its own workspace's logo: ${src}`);
-    await chip(page, 'blank').click({ button: 'right' });
-    const chooser2 = page.waitForEvent('filechooser');
-    await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Update logo…' }).click();
-    await (await chooser2).setFiles({ name: 'gold.svg', mimeType: 'image/svg+xml', buffer: svg('gold') });
-    await page.waitForSelector('#ws-list .ws-icon[title^="blank "] img');
-    assert.match(logoOf(blank), /gold/);
-    assert.match(logoOf(scratch), /green/, 'scratch keeps its logo');
-    await page.close();
-  });
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: clicking the logo on the workspace page replaces it, and the page and its chip redraw (Feature #296)`, async () => {
+      const page = await open('/', theme);
+      try {
+        assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
+        await page.waitForSelector('#main .ws-logo-pick img');
+        const before = { scratch: logoOf(scratch), blank: logoOf(blank) };
+        const chooser = page.waitForEvent('filechooser');
+        await page.click('#main .ws-logo-pick');
+        await (await chooser).setFiles({ name: 'green.svg', mimeType: 'image/svg+xml', buffer: svg('green') });
+        await page.waitForSelector('.wv-toast:not(.err)');
+        assert.match(logoOf(main), /green/, 'main carries the new logo');
+        assert.equal(logoOf(scratch), before.scratch, 'other workspaces are untouched');
+        assert.equal(logoOf(blank), before.blank);
+        await page.waitForSelector('#main .ws-logo-pick img');
+        assert.equal(await chip(page, 'main').locator('img').count(), 1, 'the chip still shows a logo');
+        const ink = await page.$eval('#main .ws-logo-pick', (n) => getComputedStyle(n).borderColor);
+        assert.ok(ink && ink !== 'rgba(0, 0, 0, 0)', `${theme}: the logo sits in a visible frame (${ink})`);
+      } finally { await page.close(); }
+    });
+  }
 
-  test('Remove logo clears that workspace\'s logo and the chip falls back to its letter', async () => {
-    const page = await open();
-    await chip(page, 'blank').click({ button: 'right' });
-    await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Remove logo' }).click();
-    await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="blank "] img'));
-    assert.equal(logoOf(blank), null, 'the server no longer holds a logo');
-    assert.equal((await chip(page, 'blank').textContent()).trim(), 'B');
-    assert.ok(logoOf(main), 'the current workspace keeps its logo');
-    await chip(page, 'blank').click({ button: 'right' });
-    assert.ok(!(await menuItems(page)).includes('Remove logo'), 'no logo, no Remove');
-    await closeMenu(page);
-    await page.close();
+  test('a workspace without a logo shows its letter; the logo adds one and Remove logo clears it (Feature #296)', async () => {
+    const page = await open(`/w/${blank.state.meta.id}/`);
+    try {
+      await page.waitForSelector('#main .ws-logo-pick');
+      assert.equal((await page.locator('#main .ws-logo-pick').textContent()).trim(), 'B');
+      assert.equal(await page.locator('#main .ws-logo-clear').count(), 0, 'no logo, no Remove');
+      const chooser = page.waitForEvent('filechooser');
+      await page.click('#main .ws-logo-pick');
+      await (await chooser).setFiles({ name: 'gold.svg', mimeType: 'image/svg+xml', buffer: svg('gold') });
+      await page.waitForSelector('#main .ws-logo-pick img');
+      assert.match(logoOf(blank), /gold/);
+      await page.hover('#main .ws-logo');
+      await page.click('#main .ws-logo-clear');
+      await page.waitForFunction(() => !document.querySelector('#main .ws-logo-pick img'));
+      assert.equal(logoOf(blank), null, 'the server no longer holds a logo');
+      assert.equal((await page.locator('#main .ws-logo-pick').textContent()).trim(), 'B');
+      await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="blank "] img'));
+      assert.ok(logoOf(main), 'the other workspace keeps its logo');
+    } finally { await page.close(); }
   });
 
   test('a left click on the current chip opens the menu instead of reloading; siblings still switch', async () => {
     const page = await open();
     const url = page.url();
     await chip(page, 'main').click();
-    assert.ok((await menuItems(page)).includes('Update logo…'), 'the current chip\'s click opens its menu');
+    await page.waitForSelector('.ws-ctx .wv-menu-row');
+    assert.ok((await menuItems(page)).includes('Link preview before sign-in'), 'the current chip\'s click opens its menu');
     assert.equal(page.url(), url, 'no navigation');
     await closeMenu(page);
     await chip(page, 'scratch').click();

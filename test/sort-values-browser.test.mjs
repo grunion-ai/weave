@@ -54,6 +54,30 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
   };
 
+  const sortPop = async (page) => {
+    await page.waitForLoadState('networkidle');
+    await page.click('#main .table-sort-btn');
+    await page.waitForSelector('.table-sort-popover .table-sort-field');
+    await page.locator('.table-sort-popover').evaluate((p) => Promise.all(p.getAnimations({ subtree: true }).map((a) => a.finished)));
+    return page.locator('.table-sort-popover');
+  };
+  const sortBy = async (page, field, words = null) => {
+    let pop = await sortPop(page);
+    const now = await pop.locator('.table-sort-field[aria-pressed="true"] .table-sort-name').textContent().catch(() => null);
+    if (now !== field) {
+      await pop.locator('.table-sort-field').filter({ has: page.locator('.table-sort-name', { hasText: new RegExp(`^${field}$`) }) }).click();
+      await page.waitForSelector('.table-sort-popover', { state: 'detached' });
+      await page.waitForFunction((f) => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.startsWith(`Sort: ${f},`), field);
+      if (!words) return;
+      pop = await sortPop(page);
+    }
+    if (words) {
+      await pop.locator('.seg-opt', { hasText: words }).click();
+      await page.waitForFunction((w) => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.endsWith(w), words);
+    }
+    await page.keyboard.press('Escape');
+  };
+
   test('a date column reads newest first, whichever half does the sorting', async () => {
     const page = await open();
     const cells = await page.$$eval('.wv-grid tbody tr.entity-row td[data-field="Created"] input', (ins) => ins.map((i) => i.value));
@@ -67,8 +91,7 @@ if (s) {
   test('a number column sorts through its separators when the grid sorts itself', async () => {
     const page = await open();
     await stopPaging(page);
-    await page.locator('.wv-grid thead th', { hasText: 'Cache Read' }).locator('.field-menu').click();
-    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Smallest to largest' }).first().click();
+    await sortBy(page, 'Cache Read', 'Smallest to largest');
     await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'oct-01');
     assert.deepEqual(await order(page), ['oct-01', 'sep-12', 'sep-09'], '900 < 2,048 < 15,829,984');
     await page.close();
@@ -78,8 +101,7 @@ if (s) {
     const page = await open();
     const cells = await page.$$eval('.wv-grid tbody tr.entity-row td[data-field="Window"] input', (ins) => ins.map((i) => i.value));
     assert.ok(cells.every((c) => / – /.test(c)), `the cells wear the painted span: ${cells.join(' | ')}`);
-    await page.locator('.wv-grid thead th', { hasText: 'Window' }).locator('.field-menu').click();
-    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Oldest to newest' }).first().click();
+    await sortBy(page, 'Window', 'Oldest to newest');
     await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'sep-09');
     assert.deepEqual(await order(page), ['sep-09', 'sep-12', 'oct-01'], 'paged: the server orders page one');
     await page.close();
@@ -88,8 +110,7 @@ if (s) {
   test('the grid sorts a daterange itself the same way the server does (Issue #287)', async () => {
     const page = await open();
     await stopPaging(page);
-    await page.locator('.wv-grid thead th', { hasText: 'Window' }).locator('.field-menu').click();
-    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Oldest to newest' }).first().click();
+    await sortBy(page, 'Window', 'Oldest to newest');
     await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'sep-09');
     assert.deepEqual(await order(page), ['sep-09', 'sep-12', 'oct-01'], 'Sep 9–12 < Sep 9–30 < Oct 1–3');
     await page.close();
@@ -102,41 +123,30 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
   };
-  const menuOf = async (page, th) => {
-    await th.hover();
-    const btn = th.locator('.field-menu');
-    await page.waitForFunction((b) => getComputedStyle(b).opacity === '1', await btn.elementHandle());
-    const ink = await btn.evaluate((b) => [getComputedStyle(b).color, getComputedStyle(b.closest('th')).backgroundColor]);
-    assert.notEqual(ink[0], ink[1], `the ⋮ does not vanish into its header: ${ink.join(' on ')}`);
-    await btn.click();
-    await page.waitForSelector('.chip-pop .wv-menu-row');
-    return page.locator('.chip-pop');
-  };
-  const labels = (pop) => pop.locator('.wv-menu-label').allTextContents();
+  const labels = (pop) => pop.locator('.seg-opt').allTextContents();
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: Created At sorts from its own ⋮, worded as dates (Issues #254, #273)`, async () => {
+    test(`${theme}: Created At sorts from the toolbar Sort, worded as dates (Issues #254, #273, Feature #296)`, async () => {
       const page = await openEntries(theme);
       try {
         assert.deepEqual(await order(page), ['middle', 'oldest', 'newest'], 'unsorted, the rows stand in the order they were made');
         const head = page.locator('.wv-grid thead th.sys-head', { hasText: 'Created At' });
-        let pop = await menuOf(page, head);
-        assert.equal((await pop.locator('.wv-menu-title').textContent()).trim(), 'Created At');
-        assert.equal((await pop.locator('.wv-menu-kind').textContent()).trim(), 'system');
-        assert.deepEqual(await labels(pop), ['Oldest to newest', 'Newest to oldest']);
-        await pop.locator('.wv-menu-row', { hasText: 'Newest to oldest' }).click();
+        assert.equal(await head.locator('.field-menu').count(), 0, 'a system column has no ⋮: sort lives on the toolbar');
+        await sortBy(page, 'Created At', 'Newest to oldest');
         await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'newest');
         assert.deepEqual(await order(page), ['newest', 'middle', 'oldest'], 'paged: the server orders by the stamp');
-        assert.equal(await head.locator('.wv-icon-xs').count(), 1, 'the header wears the sort arrow');
+        assert.equal(await page.locator('.wv-grid thead th.sys-head', { hasText: 'Created At' }).locator('.wv-icon-xs').count(), 1, 'the header wears the sort arrow');
         assert.deepEqual(s.weave.describeSchema().flatMap((sp) => sp.tables).find((x) => x.id === entries.id).sort, [{ field: 'Created At', dir: 'desc' }], 'the direction stored is still desc (on the default view, Feature #229)');
         await page.reload({ waitUntil: 'networkidle' });
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         await page.waitForSelector('.wv-grid tbody tr.entity-row');
         assert.deepEqual(await order(page), ['newest', 'middle', 'oldest'], 'stored, so a reload keeps it');
-        pop = await menuOf(page, page.locator('.wv-grid thead th.sys-head', { hasText: 'Created At' }));
-        assert.equal(await pop.locator('.wv-menu-row', { hasText: 'Newest to oldest' }).locator('.chip-pop-check').count(), 1);
-        assert.deepEqual(await labels(pop), ['Oldest to newest', 'Newest to oldest', 'Clear sort']);
-        await pop.locator('.wv-menu-row', { hasText: 'Clear sort' }).click();
+        const pop = await sortPop(page);
+        assert.deepEqual(await labels(pop), ['Oldest to newest', 'Newest to oldest']);
+        assert.equal(await pop.locator('.seg-opt.on').textContent(), 'Newest to oldest');
+        const ink = await pop.evaluate((p) => [getComputedStyle(p).color, getComputedStyle(p).backgroundColor]);
+        assert.notEqual(ink[0], ink[1], `${theme}: the popover reads`);
+        await pop.locator('.table-sort-clear').click();
         await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'middle');
       } finally { await page.close(); }
     });
@@ -146,21 +156,23 @@ if (s) {
     const page = await openEntries('light');
     try {
       await stopPaging(page);
-      let pop = await menuOf(page, page.locator('.wv-grid thead th.sys-head', { hasText: 'Created At' }));
-      await pop.locator('.wv-menu-row', { hasText: 'Oldest to newest' }).click();
+      await sortBy(page, 'Created At', 'Oldest to newest');
       await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'oldest');
       assert.deepEqual(await order(page), ['oldest', 'middle', 'newest'], 'whole table: app.js orders by the stamp too');
       assert.equal(await page.locator('.wv-grid thead th.sys-head', { hasText: 'Activity' }).locator('.field-menu').count(), 0);
-      pop = await menuOf(page, page.locator('.wv-grid thead th.pid-head'));
-      assert.equal((await pop.locator('.wv-menu-title').textContent()).trim(), '#');
+      await sortBy(page, 'Public Id');
+      let pop = await sortPop(page);
       assert.deepEqual(await labels(pop), ['Smallest to largest', 'Largest to smallest']);
-      await pop.locator('.wv-menu-row', { hasText: 'Largest to smallest' }).click();
+      await page.keyboard.press('Escape');
+      await sortBy(page, 'Public Id', 'Largest to smallest');
       await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'newest');
       assert.deepEqual(await order(page), ['newest', 'oldest', 'middle'], '#3, #2, #1');
-      pop = await menuOf(page, page.locator('.wv-grid thead th.col-head', { hasText: 'Stage' }));
+      await sortBy(page, 'Stage');
+      pop = await sortPop(page);
       const words = await labels(pop);
       assert.ok(words.includes('Option order') && words.includes('Reverse option order'), words.join(' | '));
       assert.ok(!words.some((w) => /Sort ascending|Sort descending/.test(w)), 'no type-blind wording left');
+      await page.keyboard.press('Escape');
     } finally { await page.close(); }
   });
 

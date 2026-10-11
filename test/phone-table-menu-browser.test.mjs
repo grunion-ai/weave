@@ -4,13 +4,13 @@ import { engineOf, launch, settled, phoneProfile } from './lib/browser.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
 
-const SHEET = ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn', '.table-sort-btn'];
+const SHEET = ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-stats-btn', '.table-filter-btn', '.table-sort-btn'];
 const FOLDED = ['.table-search', '.dots-btn'];
 const rgb = (c) => {
   const n = String(c).match(/[\d.]+/g).map(Number);
   return (c.startsWith('color(') ? n.slice(0, 3).map((v) => Math.round(v * 255)) : n.slice(0, 3)).join(',');
 };
-const DESKTOP = ['.table-search', '.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn', '.dots-btn'];
+const DESKTOP = ['.table-search', '.table-view-btn', '.table-density-btn', '.eye-btn', '.table-stats-btn', '.table-filter-btn', '.table-sort-btn', '.dots-btn'];
 
 const s = await launch('phone table menu', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -121,7 +121,7 @@ if (s) {
           assert.ok(Math.abs(seen.menu.box.bottom - (await page.evaluate(() => innerHeight))) <= 1, 'pinned to the bottom edge');
           assert.ok(seen.menu.box.left <= 0.5 && seen.menu.box.right >= seen.vw - 0.5, 'and full width');
           assert.equal(seen.kebab.expanded, 'true', 'the trigger says its menu is open');
-          assert.deepEqual(seen.menu.rows.map((r) => r.text), ['Column stats…', 'Export CSV', 'Share…', 'New share page…', 'Row term (row)…', 'Delete table'], 'every table action is a row, Delete table last');
+          assert.deepEqual(seen.menu.rows.map((r) => r.text), ['Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV.csv', 'Delete table'], 'the table definition as rows, Delete table last (Feature #296)');
           for (const r of seen.menu.rows) {
             assert.ok(r.h >= 44, `${r.text} is a ${r.h}px row`);
             assert.ok(r.inside, `${r.text} sits inside the sheet`);
@@ -169,13 +169,12 @@ if (s) {
     }
   }
 
-  test('on a desktop the toolbar stays inline, keeps its search and kebab, and has no sliders button or Sort row (Feature #271, Issue #723)', async () => {
+  test('on a desktop the toolbar stays inline, keeps its search, Stats, Sort and kebab, and has no sliders button (Feature #271, Issue #723, Feature #296)', async () => {
     const page = await open(browser);
     try {
-      const seen = await read(page, [...DESKTOP, '.table-sort-btn']);
+      const seen = await read(page, DESKTOP);
       assert.equal(seen.tools, null);
       for (const q of DESKTOP) assert.ok(seen.controls[q] && seen.controls[q].height < 40, `${q} shows inline at its desktop size`);
-      assert.equal(seen.controls['.table-sort-btn'], null, 'the Sort row is a phone control');
       assert.equal(seen.kebab?.text, '', 'the kebab keeps its icon-only face on a desktop');
     } finally { await page.close(); }
   });

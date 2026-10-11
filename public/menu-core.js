@@ -42,5 +42,65 @@
     return -1;
   }
 
-  root.menuCore = { SECTIONS, plan, move, typeahead };
+  const FORMATS = [
+    { key: 'md', label: 'Markdown', ext: '.md' },
+    { key: 'mmd', label: 'Mermaid', ext: '.mmd' },
+    { key: 'html', label: 'HTML', ext: '.html' },
+    { key: 'pdf', label: 'PDF', ext: '.pdf' },
+    { key: 'csv', label: 'CSV', ext: '.csv' },
+    { key: 'json', label: 'JSON', ext: '.json' },
+  ];
+
+  function exportSection({ name = 'export', serves = [], href }) {
+    const want = new Set(serves);
+    for (const k of want) if (!FORMATS.some((f) => f.key === k)) throw new Error(`unknown export format "${k}"`);
+    return FORMATS.filter((f) => want.has(f.key))
+      .map((f) => ({ key: f.key, label: f.label, hint: f.ext, section: 'export', href: href(f.key), download: `${name}${f.ext}` }));
+  }
+
+  const KINDS = {
+    table: { organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] },
+    record: { organize: ['duplicate'], share: ['share'], export: ['md', 'html', 'pdf'], delete: ['delete'] },
+    doc: { export: ['md', 'mmd', 'html', 'pdf'] },
+    space: { delete: ['delete'] },
+    'share-page': { delete: ['delete'] },
+    workspace: { share: ['link-preview'], delete: ['delete'] },
+    field: { settings: ['settings'], organize: ['insert'], delete: ['delete'] },
+  };
+
+  const kinds = () => Object.keys(KINDS);
+
+  function definition(kind) {
+    const def = KINDS[kind];
+    if (!def) throw new Error(`no menu definition for "${kind}"`);
+    return def;
+  }
+
+  function assemble(kind, rows = {}) {
+    const def = definition(kind);
+    const ids = new Set(SECTIONS.flatMap((s) => (s === 'export' ? [] : def[s] ?? [])));
+    for (const id of Object.keys(rows)) {
+      if (id !== 'export' && !ids.has(id)) throw new Error(`"${id}" is not on the ${kind} menu`);
+    }
+    const formats = def.export ?? [];
+    for (const r of rows.export ?? []) {
+      if (!formats.includes(r.key)) throw new Error(`${r.label} is not on the ${kind} menu`);
+    }
+    const out = [];
+    for (const section of SECTIONS) {
+      if (section === 'export') {
+        for (const key of formats) {
+          const r = (rows.export ?? []).find((x) => x.key === key);
+          if (r) out.push({ ...r, section, id: key });
+        }
+        continue;
+      }
+      for (const id of def[section] ?? []) {
+        if (rows[id]) out.push({ ...rows[id], section, id });
+      }
+    }
+    return out;
+  }
+
+  root.menuCore = { SECTIONS, FORMATS, plan, move, typeahead, exportSection, kinds, definition, assemble };
 })(typeof window !== 'undefined' ? window : globalThis);

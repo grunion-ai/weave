@@ -3,9 +3,41 @@ import assert from 'node:assert/strict';
 import { APP, HTML, CSS, fnBody } from './lib/source.mjs';
 
 test('the retired menu markup is gone from app.js (Feature #296, Issue #762)', () => {
-  for (const gone of ['dl-menu', 'tools-row', 'tools-group', 'tableSheetGroup', 'contextMenu(', 'dropdown-divider', 'phone-only']) {
+  for (const gone of ['dl-menu', 'tools-row', 'tools-group', 'tableSheetGroup', 'contextMenu(', 'dropdown-divider']) {
     assert.equal(APP.includes(gone), false, `app.js still carries ${gone}`);
   }
+  for (const fn of ['menu', 'menuRow', 'dotsMenu', 'kindDots', 'kindContext']) {
+    assert.doesNotMatch(fnBody(fn), /phone-only|phone: true/, `${fn} draws no phone-only menu row`);
+  }
+});
+
+await import('../public/menu-core.js');
+const ROWS_SRC = APP.slice(APP.indexOf('const MENU_ROWS = {'), APP.indexOf('\n};\n', APP.indexOf('const MENU_ROWS = {')));
+
+test('every kind in the registry has exactly one row builder in app.js (Feature #296)', () => {
+  const keys = [...ROWS_SRC.matchAll(/^  (?:'([a-z-]+)'|([a-z]+)): \(/gm)].map((m) => m[1] ?? m[2]);
+  assert.deepEqual(keys, globalThis.menuCore.kinds(), 'MENU_ROWS names every kind once, in registry order');
+  assert.match(fnBody('menuFor'), /globalThis\.menuCore\.assemble\(kind, MENU_ROWS\[kind\]\(obj, ctx\)\)/, 'rows are laid out by the pure registry');
+});
+
+test('every trigger opens a kind\'s menu through menuFor (Feature #296)', () => {
+  assert.match(fnBody('kindDots'), /menuFor\(kind, /, 'the ⋮ button');
+  assert.match(fnBody('kindContext'), /addEventListener\('contextmenu'[\s\S]*menuFor\(kind, /, 'right-click');
+  assert.match(fnBody('fieldMenuButton'), /menuFor\('field', /, 'the column ⋮');
+  assert.match(fnBody('buildWsRail'), /menuFor\('workspace', /, 'the tray chip, click and right-click');
+  for (const [fn, kind] of [['navTableMenu', 'table'], ['tableChrome', 'table'], ['showSpace', 'space'], ['showView', 'share-page'], ['showHome', 'workspace'], ['renderEntityView', 'record']]) {
+    assert.match(fnBody(fn), new RegExp(`kind(?:Dots|Context)\\([^,]*'${kind}'|kind(?:Dots|Context)\\('${kind}'`), `${fn} opens the ${kind} definition`);
+  }
+  assert.match(fnBody('renderEntityView'), /kindDots\('doc', f, /, 'the document section ⋮');
+  assert.match(fnBody('renderEntityView'), /'doc', f, \(\) => \(\{ entity \}\)\)/, 'and its right-click');
+});
+
+test('rows that left the menus stay out of app.js menus (Feature #296)', () => {
+  for (const gone of ['Column stats…', 'Export CSV', 'Rename table…', 'Change icon…', 'Update logo…', 'Row term (', 'Edit field…', 'Open the composed model (.json)', 'Clear sort', 'Duplicate table']) {
+    assert.equal(ROWS_SRC.includes(gone), false, `the registry still carries ${gone}`);
+    assert.equal(APP.includes(`label: '${gone}'`), false, `a menu row still says ${gone}`);
+  }
+  assert.doesNotMatch(fnBody('fieldMenuButton'), /onSort|sortLabelsFor/, 'the column menu holds no sort rows');
 });
 
 test('no menu row is a Bootstrap dropdown-item; only the menu-less hold button keeps that default', () => {

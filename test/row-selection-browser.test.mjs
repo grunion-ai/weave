@@ -127,9 +127,17 @@ if (s) {
       await boxes(page).nth(0).check();
       await boxes(page).nth(1).check();
       const before = await chosen();
-      await page.locator('.wv-grid thead .col-head').first().locator('.field-menu').click();
-      await page.locator('.chip-pop .chip-pop-row', { hasText: 'Z to A' }).click();
-      await page.waitForTimeout(120);
+      const first = await page.locator('.wv-grid thead .col-head').first().getAttribute('data-col');
+      await page.click('#main .table-sort-btn');
+      await page.locator('.table-sort-popover .table-sort-field').filter({ has: page.locator('.table-sort-name', { hasText: new RegExp(`^${first}$`) }) }).click();
+      await page.waitForFunction((f) => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.startsWith(`Sort: ${f},`), first);
+      await page.waitForLoadState('networkidle');
+      await page.click('#main .table-sort-btn');
+      await page.locator('.table-sort-popover').evaluate((p) => Promise.all(p.getAnimations({ subtree: true }).map((a) => a.finished)));
+      await page.locator('.table-sort-popover .seg-opt', { hasText: 'Z to A' }).click();
+      await page.waitForFunction((f) => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label') === `Sort: ${f}, Z to A`, first);
+      await page.waitForSelector('.table-sort-popover', { state: 'detached' });
+      await page.waitForSelector('.wv-grid tbody .sel-box');
       assert.deepEqual(await chosen(), before, 'the same entity ids survive the sort');
     } finally { await page.close(); }
   });

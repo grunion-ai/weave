@@ -718,64 +718,8 @@ function inlineNameInput(placeholder, onCommit) {
   return input;
 }
 
-function navTableMenu(db, space, row) {
-  const wrap = dotsMenu([
-    {
-      label: 'Rename table…', section: 'settings',
-      run: () => {
-        const input = inlineNameInput('Table name…', async (name) => {
-          await api('PATCH', `/tables/${db.id}`, { name });
-          await loadSchema();
-        });
-        input.value = db.name;
-        input.addEventListener('blur', () => { if (!input.disabled && input.isConnected) { input.remove(); renderNav(); } });
-        row.style.display = 'none';
-        row.after(input);
-      },
-    },
-    {
-      label: 'Change icon…', section: 'settings',
-      run: () => searchPicker({
-        anchor: wrap, title: 'Icon', placeholder: 'Search by name or category…',
-        options: iconCatalogue(), grid: true, currentId: db.icon ?? '',
-        onPick: async (o) => {
-          await api('PATCH', `/tables/${db.id}`, { icon: o.id || '' });
-          await loadSchema();
-        },
-      }),
-    },
-    {
-      label: 'Move to space…', section: 'organize',
-      run: () => searchPicker({
-        anchor: wrap, title: `Move ${db.name} to…`, placeholder: 'Space…',
-        options: state.schema.filter((s) => s.space !== space.space && !s.system)
-          .map((s) => ({ id: s.space, label: s.space })),
-        onPick: async (o) => {
-          await api('POST', `/tables/${db.id}/move`, { space: o.id });
-          await loadSchema();
-          toast(`Moved ${db.name} to ${o.id}`);
-        },
-      }),
-    },
-    {
-      label: 'Duplicate table', section: 'organize',
-      run: async () => {
-        const copy = await api('POST', `/tables/${db.id}/duplicate`);
-        await loadSchema();
-        location.hash = `#/table/${copy.id}`;
-        toast(`Duplicated ${db.name} as ${copy.name}`);
-      },
-    },
-    {
-      label: 'Delete table', hold: true, holdingLabel: 'Hold to delete table…', section: 'delete',
-      run: async () => {
-        await api('DELETE', `/tables/${db.id}`);
-        await loadSchema();
-        if (state.route?.dbId === db.id) location.hash = `#/space/${space.spaceId}`;
-        toast(`Deleted ${db.name}`);
-      },
-    },
-  ], { title: `${db.name} actions`, align: 'right', extraClass: 'nav-db-menu' });
+function navTableMenu(db) {
+  const wrap = kindDots('table', db, () => ({}), { title: `${db.name} actions`, extraClass: 'nav-db-menu', head: true });
   wrap.addEventListener('click', (e) => e.preventDefault(), true);
   return wrap;
 }
@@ -977,7 +921,7 @@ function titleEdit(tag, modifier, value, attrs) {
   return node;
 }
 
-function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page' }) {
+function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page', lead = null }) {
   const box = el('div', { class: 'view-header' });
   box.append(el('div', { class: 'crumb crumb-row' },
     navMenuButton(),
@@ -999,7 +943,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     });
   }
   box.append(el('div', { class: 'wv-toolbar view-title-row' },
-    onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null),
+    lead ?? (onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null)),
     el('h1', { class: 'view-title-h' }, titleInput)));
 
   if (onSaveDescription) {
@@ -1068,6 +1012,15 @@ function fmtSize(bytes) {
   return `${gb.toFixed(2)} GB`;
 }
 
+document.addEventListener('dblclick', (e) => {
+  const row = e.target.closest?.('#nav .nav-db[data-db]');
+  if (!row || e.target.closest('.nav-db-menu')) return;
+  const db = allTables().find((d) => d.id === row.dataset.db);
+  if (!db || db.system) return;
+  e.preventDefault();
+  renameNavTable(db, row);
+});
+
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
@@ -1103,6 +1056,7 @@ function renderNav() {
           await loadSchema();
         })),
       }, iconEl('+', 'wv-icon')));
+    kindContext(spaceRow, 'space', space);
     nav.append(spaceRow);
     if (isFolded) continue;
     for (const db of space.tables) {
@@ -1110,8 +1064,12 @@ function renderNav() {
       const row = el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
+        dataset: { db: db.id },
       }, iconEl(db.icon, 'wv-icon nav-icon'), db.name);
-      if (!db.system) row.append(navTableMenu(db, space, row));
+      if (!db.system) {
+        row.append(navTableMenu(db));
+        kindContext(row, 'table', db);
+      }
       nav.append(row);
     }
   }
@@ -2271,9 +2229,10 @@ const MENU_SHEET = matchMedia('(max-width: 600px)');
 let openMenu = null;
 
 function menuRow(it, done) {
-  const checkable = typeof it.checked === 'boolean';
+  const checkable = typeof it.checked === 'boolean' || typeof it.switch === 'boolean';
+  const on = typeof it.switch === 'boolean' ? it.switch : it.checked;
   const cls = ['chip-pop-row', 'wv-menu-row', it.danger || it.hold ? 'wv-menu-danger' : '', it.checked ? 'is-current' : '', it.className ?? ''].filter(Boolean).join(' ');
-  const attrs = { role: checkable ? 'menuitemcheckbox' : 'menuitem', tabindex: '-1', ...(checkable ? { 'aria-checked': String(it.checked) } : {}) };
+  const attrs = { role: checkable ? 'menuitemcheckbox' : 'menuitem', tabindex: '-1', ...(checkable ? { 'aria-checked': String(on) } : {}) };
   if (it.hold) {
     const btn = holdToConfirm(it.label, async () => { done(); await it.run(); },
       { holdingLabel: it.holdingLabel ?? 'Hold to confirm…', rowClass: cls, icon: it.icon ?? null, hint: it.hint ?? null });
@@ -2284,7 +2243,7 @@ function menuRow(it, done) {
     it.icon ? iconEl(it.icon, 'wv-icon wv-menu-icon') : null,
     el('span', { class: 'wv-menu-label' }, it.label),
     it.hint ? el('span', { class: 'wv-menu-hint' }, it.hint) : null,
-    it.switch != null ? el('span', { class: `switch${it.switch ? ' on' : ''}`, 'aria-hidden': 'true' }) : null,
+    it.switch != null ? el('span', { class: `switch${it.switch ? ' on' : ''}`, 'aria-hidden': 'true' }, el('span', { class: 'switch-knob' })) : null,
     it.checked ? el('span', { class: 'chip-pop-check' }, iconEl('✓', 'wv-icon')) : null,
   ];
   if (it.href) {
@@ -2375,13 +2334,221 @@ function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, 
   return pop;
 }
 
-function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '', labelled = false, onRun = null } = {}) {
+function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '', labelled = false, onRun = null, head = null } = {}) {
   const btn = el('button', {
     class: 'btn btn-sm btn-ghost-secondary dots-btn', title, type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
-    onclick: (e) => { e.stopPropagation(); menu(items, { anchor: btn, align, label: title, onRun }); },
+    onclick: (e) => { e.stopPropagation(); menu(typeof items === 'function' ? items(btn) : items, { anchor: btn, align, label: title, onRun, head: typeof head === 'function' ? head() : head }); },
   }, iconEl('lucide:ellipsis-vertical', 'wv-icon'), labelled ? el('span', { class: 'dots-label' }, title) : null);
   return el('span', { class: `dl-wrap ${extraClass}`.trim() }, btn);
 }
+
+const KIND_LABELS = { table: 'Table', doc: 'Document', space: 'Space', 'share-page': 'Share page', workspace: 'Workspace' };
+const unthunk = (x) => (typeof x === 'function' ? x() : x);
+
+function kindHead(kind, obj, ctx = {}) {
+  if (kind === 'record') return { title: obj.name || `#${obj.publicId}`, kind: WeaveTerm.cap(termOfTable(obj.dbId).singular) };
+  if (kind === 'field') return { title: obj.name, kind: obj.system ? 'system' : fieldDialogCore.typeLabel(obj.type) };
+  if (kind === 'doc') return { title: obj.name, kind: KIND_LABELS.doc };
+  if (kind === 'share-page') return { title: obj.name, kind: KIND_LABELS[kind] };
+  if (kind === 'space') return { title: obj.space, kind: KIND_LABELS[kind] };
+  if (kind === 'workspace') return { title: obj.title ?? obj.name, kind: KIND_LABELS[kind] };
+  return { title: obj.name, kind: KIND_LABELS[kind] ?? kind };
+}
+
+function menuFor(kind, obj, ctx = {}) {
+  return globalThis.menuCore.assemble(kind, MENU_ROWS[kind](obj, ctx));
+}
+
+function kindDots(kind, obj, ctx = () => ({}), { title, align = 'right', extraClass = '', labelled = false, onRun = null, head = false } = {}) {
+  if (!menuFor(kind, unthunk(obj), ctx()).length) return null;
+  return dotsMenu((btn) => menuFor(kind, unthunk(obj), { ...ctx(), anchor: btn }), {
+    title, align, extraClass, labelled, onRun, head: head ? () => kindHead(kind, unthunk(obj)) : null,
+  });
+}
+
+const OWN_CONTEXT = 'input, textarea, select, [contenteditable="true"], .chip-pop, .cm-editor, .vditor';
+function kindContext(node, kind, obj, ctx = () => ({}), { skip = OWN_CONTEXT, onRun = null } = {}) {
+  node.addEventListener('contextmenu', async (e) => {
+    if (skip && e.target.closest?.(skip)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const point = { x: e.clientX, y: e.clientY };
+    const o = await unthunk(obj);
+    const items = menuFor(kind, o, { ...(await ctx()), anchor: node });
+    if (!items.length) return;
+    openMenu?.close();
+    menu(items, { point, trigger: node, head: kindHead(kind, o), label: `${kindHead(kind, o).title} actions`, onRun });
+  });
+  return node;
+}
+
+function renameNavTable(db, row) {
+  const input = inlineNameInput('Table name…', async (name) => {
+    await api('PATCH', `/tables/${db.id}`, { name });
+    await loadSchema();
+  });
+  input.value = db.name;
+  input.addEventListener('blur', () => { if (!input.disabled && input.isConnected) { input.remove(); renderNav(); } });
+  row.style.display = 'none';
+  row.after(input);
+}
+
+async function duplicateEntity(db, id) {
+  const row = await api('GET', `/entities/${id}`);
+  const values = { ...row.fields };
+  for (const f of db.fields) {
+    if (READONLY_FIELD_TYPES.includes(f.type) || f.type === 'document') delete values[f.name];
+  }
+  return api('POST', `/tables/${db.id}/entities`, { values });
+}
+
+async function toggleLinkPreview(w, on, after) {
+  try {
+    const r = await wsApi(w, 'PATCH', '/workspace', { linkPreview: !on });
+    toast(`Link preview before sign-in is ${r.linkPreview ? 'on' : 'off'}`);
+    after?.();
+  } catch (err) { toast(err.message, true); }
+}
+
+const MENU_ROWS = {
+  table: (db, { anchor = null, onDeleted = null } = {}) => ({
+    move: db.system ? null : {
+      label: 'Move to space…',
+      run: () => searchPicker({
+        anchor, title: `Move ${db.name} to…`, placeholder: 'Space…',
+        options: state.schema.filter((s) => s.space !== db.space && !s.system).map((s) => ({ id: s.space, label: s.space })),
+        onPick: async (o) => {
+          await api('POST', `/tables/${db.id}/move`, { space: o.id });
+          await loadSchema();
+          toast(`Moved ${db.name} to ${o.id}`);
+        },
+      }),
+    },
+    duplicate: db.system ? null : {
+      label: 'Duplicate',
+      run: async () => {
+        try {
+          const copy = await api('POST', `/tables/${db.id}/duplicate`);
+          await loadSchema();
+          location.hash = `#/table/${copy.id}`;
+          toast(`Duplicated ${db.name} as ${copy.name}`);
+        } catch (err) { toast(err.message, true); }
+      },
+    },
+    share: { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
+    'share-page': {
+      label: 'New share page…',
+      run: () => modal('New share page', [
+        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control' }),
+      ], async (fd) => {
+        const where = filterWhere(db);
+        await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
+        toast('Share page saved — find it on the workspace page');
+      }, 'Save'),
+    },
+    forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => formsDialog(db) } : null,
+    'create-link': db.system ? null : { label: 'Copy create link', run: () => copyText(weavePrefill.link(prefillBase(db), filterSeed(db)), 'Create link copied') },
+    export: globalThis.menuCore.exportSection({ name: db.name, serves: ['csv'], href: () => `${WS_PREFIX}/api/tables/${db.id}/export.csv` }),
+    delete: db.system ? null : {
+      label: 'Delete table', hold: true, holdingLabel: 'Hold to delete table…',
+      run: async () => {
+        try {
+          await api('DELETE', `/tables/${db.id}`);
+          await loadSchema();
+          if (state.route?.dbId === db.id) location.hash = `#/space/${db.spaceId}`;
+          toast(`Deleted ${db.name}`);
+          onDeleted?.();
+        } catch (err) { toast(err.message, true); }
+      },
+    },
+  }),
+  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null } = {}) => ({
+    duplicate: db && !db.system ? {
+      label: 'Duplicate',
+      run: async () => {
+        try {
+          const copy = await duplicateEntity(db, entity.id);
+          await loadSchema();
+          toast(`Duplicated ${entity.name || `#${entity.publicId}`}`, false, { label: 'Open', run: () => openEntity(copy.id) });
+        } catch (err) { toast(err.message, true); }
+      },
+    } : null,
+    share: { label: 'Share…', run: () => shareDialog('entity', entity.id, entity.name || `#${entity.publicId}`) },
+    export: globalThis.menuCore.exportSection({ name: entity.name || 'entity', serves: ['md', 'html', 'pdf'], href: (ext) => `${WS_PREFIX}/e/${entity.id}/entity.${ext}` }),
+    delete: {
+      label: 'Move to trash', danger: true,
+      run: async () => {
+        try {
+          await api('DELETE', `/entities/${entity.id}`);
+          await loadSchema();
+          if (inPeek) onClose?.(); else location.hash = `#/table/${entity.dbId}`;
+          toast('Moved to trash', false, {
+            label: 'Undo',
+            run: async () => {
+              await api('POST', `/entities/${entity.id}/restore`);
+              if (!inPeek) location.hash = `#/entity/${entity.id}`;
+              toast('Restored');
+            },
+          });
+        } catch (err) { toast(err.message, true); }
+      },
+    },
+  }),
+  doc: (f, { entity }) => ({
+    export: globalThis.menuCore.exportSection({
+      name: `${entity.name || 'document'}-${f.name}`, serves: ['md', 'mmd', 'html', 'pdf'],
+      href: (ext) => `${WS_PREFIX}/e/${entity.id}/doc/${encodeURIComponent(f.name)}.${ext}`,
+    }),
+  }),
+  space: (space) => ({
+    delete: space.system ? null : {
+      label: space.tables.length ? `Delete space + ${space.tables.length} table${space.tables.length > 1 ? 's' : ''}` : 'Delete space',
+      hold: true, holdingLabel: 'Hold to delete space…',
+      run: async () => {
+        try {
+          await api('DELETE', `/spaces/${space.spaceId}`);
+          await loadSchema();
+          if (state.route?.page === 'space' && state.route.spaceId === space.spaceId) {
+            location.hash = wsHomeHref().replace(/^[^#]*/, '') || '#/';
+            showHome();
+          }
+          toast(`Deleted ${space.space}`);
+        } catch (err) { toast(err.message, true); }
+      },
+    },
+  }),
+  'share-page': (v) => ({
+    delete: {
+      label: 'Delete view', hold: true, holdingLabel: 'Hold to delete…',
+      run: async () => {
+        await api('DELETE', `/views/${v.id}`);
+        toast('View deleted');
+        showHome();
+      },
+    },
+  }),
+  workspace: (w, { current = false, after = null } = {}) => ({
+    'link-preview': typeof w.linkPreview === 'boolean' ? {
+      label: 'Link preview before sign-in', switch: w.linkPreview,
+      run: () => toggleLinkPreview(w, w.linkPreview, after),
+    } : null,
+    delete: w.deletable ? { label: 'Delete workspace…', danger: true, run: () => confirmDeleteWorkspace(w, { current }) } : null,
+  }),
+  field: (f, { db }) => ({
+    settings: f.system ? null : { label: 'Field settings…', icon: FIELD_MENU_ICONS.edit, run: () => editFieldDialog(db, f) },
+    insert: f.system ? null : { label: 'Insert field…', icon: FIELD_MENU_ICONS.insert, run: () => addFieldDialog(db) },
+    delete: f.role !== 'name' && !f.system ? {
+      label: 'Delete field', hold: true, holdingLabel: 'Hold to delete…', icon: FIELD_MENU_ICONS.delete, hint: 'hold',
+      run: async () => {
+        try {
+          await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
+          await loadSchema();
+          showDatabase(db.id);
+        } catch (err) { toast(err.message, true); }
+      },
+    } : null,
+  }),
+};
 
 function hasInlineMarkup(text) {
   return globalThis.WeaveEditorLib.inlineTokens(text, inlineIconAccept).some((t) => t.mark);
@@ -3904,7 +4071,7 @@ function tableSortButton(ref) {
       } catch (err) { toast(err.message, true); } finally { release(); }
     };
     const now = db.sort?.[0] ?? null;
-    const fields = db.fields.filter((f) => f.type !== 'view' && f.type !== 'document');
+    const fields = [...db.fields.filter((f) => f.type !== 'view' && f.type !== 'document'), ...Object.values(fieldDialogCore.SYSTEM_SORT)];
     const rows = fields.map((f) => el('button', {
       class: 'chip-pop-row table-sort-field', type: 'button', 'aria-pressed': String(now?.field === f.name),
       onclick: () => write([{ field: f.name, dir: now?.field === f.name ? now.dir : 'asc' }]),
@@ -4258,38 +4425,6 @@ function tableChrome(db, trashCount) {
     const want = tableSearchText(next) ? tableSearch.text : '';
     if (input.value.trim() !== want.trim()) input.value = want;
   };
-  const tableActions = [
-    { label: 'Column stats…', section: 'settings', run: () => columnStatsPanel(ref.db) },
-    { label: 'Export CSV', section: 'settings', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
-    state.canManageForms && !db.system ? { label: 'Forms…', section: 'share', run: () => formsDialog(ref.db) } : null,
-    db.system ? null : { label: 'Copy create link', section: 'share', run: () => copyText(weavePrefill.link(prefillBase(ref.db), filterSeed(ref.db)), 'Create link copied') },
-    { label: 'Share…', section: 'organize', run: () => shareDialog('table', db.id, db.name) },
-    {
-      label: 'New share page…', section: 'organize',
-      run: () => modal('New share page', [
-        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control' }),
-      ], async (fd) => {
-        const where = filterWhere(ref.db);
-        await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
-        toast('Share page saved — find it on the workspace page');
-      }, 'Save'),
-    },
-    {
-      label: `Row term (${db.term.singular})…`, section: 'share',
-      run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
-    },
-    {
-      label: 'Delete table', hold: true, holdingLabel: 'Hold to delete table…', section: 'delete',
-      run: async () => {
-        try {
-          await api('DELETE', `/tables/${db.id}`);
-          await loadSchema();
-          location.hash = `#/space/${db.spaceId}`;
-          toast(`Deleted ${db.name}`);
-        } catch (err) { toast(err.message, true); }
-      },
-    },
-  ];
   chrome.header = viewHeader({
     crumbs: [
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
@@ -4331,12 +4466,20 @@ function tableChrome(db, trashCount) {
           ? phoneRowPopover(eye, ref.db) : fieldVisibilityPopover(eye, ref.db, ref.trashCount)));
         return eye;
       })(),
+      (() => {
+        const stats = tableControlButton('table-stats-btn', 'Stats', 'chart-column');
+        stats.setAttribute('aria-label', 'Column stats');
+        stats.title = 'Column stats';
+        stats.addEventListener('click', () => { tools.shut(); columnStatsPanel(ref.db); });
+        return stats;
+      })(),
       filterBtn,
       groupBtn,
       sortBtn,
-      dotsMenu(tableActions, { title: 'Table actions', align: 'right', labelled: true, onRun: () => tools.shut() }),
+      kindDots('table', () => ref.db, () => ({}), { title: 'Table actions', labelled: true, onRun: () => tools.shut() }),
     ],
   });
+  kindContext(chrome.header, 'table', () => ref.db, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a, .table-tools-btn` });
   const tools = tableToolsButton(chrome.header, ref);
   chrome.header.querySelector('.crumb-row').append(tools);
   return chrome;
@@ -5125,7 +5268,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const sysValue = (n, item) => el('span', { class: 'wv-cb-text' }, SYSTEM_COLS[n]?.(item) ?? '');
   const sysCell = (n, item) => el('td', { class: 'cell-computed sys-cell', dataset: { sys: n } }, cellBox(sysValue(n, item)));
   const colCount = cols.length + 3;
-  let sortKey = db.sort?.[0]?.field ?? null, sortDir = db.sort?.[0]?.dir === 'desc' ? -1 : 1;
+  const sortKey = db.sort?.[0]?.field ?? null, sortDir = db.sort?.[0]?.dir === 'desc' ? -1 : 1;
   const wrap = el('div', { class: 'card table-wrap' });
   let fitFrame = 0;
   const refit = () => {
@@ -5309,14 +5452,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     fields: setField,
     link: linkTo,
     more,
-    dup: () => runOnSelection('Duplicated', async (id) => {
-      const row = await api('GET', `/entities/${id}`);
-      const values = { ...row.fields };
-      for (const f of db.fields) {
-        if (READONLY_FIELD_TYPES.includes(f.type) || f.type === 'document') delete values[f.name];
-      }
-      await api('POST', `/tables/${db.id}/entities`, { values });
-    }),
+    dup: () => runOnSelection('Duplicated', (id) => duplicateEntity(db, id)),
     trash: trashChosen,
   };
 
@@ -6047,19 +6183,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           loadedNote)));
     }
 
-    const sortBy = (key) => (dir) => {
-      if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
-      sortKey = dir ? key : null; sortDir = dir || 1;
-      const saved = gridConfigWrite(db, { sort: dir ? [{ field: key, dir: dir > 0 ? 'asc' : 'desc' }] : [] });
-      if (pager) saved.then(() => keepScroll(() => showDatabase(db.id, state.route.view)));
-      else draw();
-    };
     const sortMark = (key) => (sortKey === key ? iconEl(sortDir > 0 ? '↑' : '↓', 'wv-icon wv-icon-xs') : null);
-    const systemMenu = (key, label) => {
-      const sys = fieldDialogCore.SYSTEM_SORT[key];
-      return sys ? fieldMenuButton(db, { ...sys, name: label, system: true },
-        { sorted: sortKey === key ? sortDir : 0, onSort: sortBy(key) }) : null;
-    };
     const sysHead = (n, movable) => el('th', {
       class: movable ? 'col-head sys-head' : 'sys-head', title: `${n} — system field, read-only`, dataset: { col: n },
       ...(movable ? {
@@ -6070,7 +6194,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       } : {}),
     },
       el('span', { class: 'col-label' }, n, el('span', { class: 'field-mark' }, '·'), sortMark(n)),
-      systemMenu(n, n),
       movable ? columnResizeGrip(db, { name: n, type: 'date' }, grid) : null);
 
     table = el('table', {
@@ -6090,7 +6213,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
                   ? new Set() : L.selectAll(loaded));
               },
             }))),
-        el('th', { class: 'pid-head' }, '#', sortMark('Public Id'), systemMenu('Public Id', '#')),
+        el('th', { class: 'pid-head' }, '#', sortMark('Public Id')),
         ...cols.map((c) => (isSysCol(c) ? sysHead(c, true) : el('th', {
           class: 'col-head',
           tabindex: '0',
@@ -6104,15 +6227,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           el('span', { class: 'col-label' },
             fieldNameLabel(colField(db, c), c, db),
             sortMark(c)),
-          fieldMenuButton(db, colField(db, c), {
-            sorted: sortKey === c ? sortDir : 0,
-            onSort: sortBy(c),
-          }),
+          fieldMenuButton(db, colField(db, c)),
           columnResizeGrip(db, colField(db, c), grid)))),
         ...sysTail.map((n) => sysHead(n, false)),
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db))),
       showsRollups(db) ? renderFooter(db, cols) : null),
       tbody);
+    for (const th of table.querySelectorAll('thead th.col-head:not(.sys-head)')) kindContext(th, 'field', () => colField(db, th.dataset.col), () => ({ db }));
     const kept = wrap.scrollTop;
     wrap.replaceChildren(table, puck, layoutSheet);
     paintLayout();
@@ -6815,32 +6936,16 @@ function sortLabelsFor(db, f) {
   return fieldDialogCore.sortLabels(f, { targetType });
 }
 
-function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
+function fieldMenuButton(db, f) {
+  if (!menuFor('field', f, { db }).length) return null;
   const btn = el('button', {
     class: 'field-menu', type: 'button',
-    title: f.system ? `Sort by ${f.name}` : `Configure ${f.name}`,
-    'aria-label': f.system ? `Sort by ${f.name}` : `Configure field ${f.name}`, 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    title: `Configure ${f.name}`,
+    'aria-label': `Configure field ${f.name}`, 'aria-haspopup': 'menu', 'aria-expanded': 'false',
   }, iconEl('lucide:ellipsis-vertical', 'wv-icon'));
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const words = onSort ? sortLabelsFor(db, f) : null;
-    menu([
-      f.system ? null : { label: 'Edit field…', icon: FIELD_MENU_ICONS.edit, section: 'settings', run: () => editFieldDialog(db, f) },
-      f.system ? null : { label: 'Insert field…', icon: FIELD_MENU_ICONS.insert, section: 'settings', run: () => addFieldDialog(db) },
-      onSort ? { label: words.asc, icon: FIELD_MENU_ICONS.asc, section: 'organize', checked: sorted > 0, run: () => onSort(1) } : null,
-      onSort ? { label: words.desc, icon: FIELD_MENU_ICONS.desc, section: 'organize', checked: sorted < 0, run: () => onSort(-1) } : null,
-      onSort && sorted ? { label: 'Clear sort', icon: FIELD_MENU_ICONS.clear, section: 'organize', run: () => onSort(0) } : null,
-      f.role !== 'name' && !f.system ? {
-        label: 'Delete field', hold: true, holdingLabel: 'Hold to delete…', icon: FIELD_MENU_ICONS.delete, hint: 'hold', section: 'delete',
-        run: async () => {
-          try {
-            await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
-            await loadSchema();
-            showDatabase(db.id);
-          } catch (err) { toast(err.message, true); }
-        },
-      } : null,
-    ], { anchor: btn, head: { title: f.name, kind: f.system ? 'system' : fieldDialogCore.typeLabel(f.type) } });
+    menu(menuFor('field', f, { db, anchor: btn }), { anchor: btn, head: kindHead('field', f) });
   });
   return btn;
 }
@@ -8689,26 +8794,11 @@ async function showSpace(spaceId) {
       actions: space.system ? [] : [
         el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('space', spaceId, space.space) }, 'Share…'),
         ...(space.template ? [useTemplateButton(space)] : []),
-        dotsMenu([
-          {
-            label: space.tables.length
-              ? `Delete space + ${space.tables.length} table${space.tables.length > 1 ? 's' : ''}`
-              : 'Delete space',
-            hold: true, holdingLabel: 'Hold to delete space…', section: 'delete',
-            run: async () => {
-              try {
-                await api('DELETE', `/spaces/${spaceId}`);
-                await loadSchema();
-                location.hash = wsHomeHref().replace(/^[^#]*/, '') || '#/';
-                showHome();
-                toast(`Deleted ${space.space}`);
-              } catch (err) { toast(err.message, true); }
-            },
-          },
-        ], { title: 'Space actions', align: 'right' }),
+        kindDots('space', space, () => ({}), { title: 'Space actions' }),
       ],
     }),
   );
+  kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
   const tiles = await spaceStatTiles(space);
   if (tiles) main.append(tiles);
   main.append(spaceTablesCard(space));
@@ -10189,38 +10279,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         entity.activity.length > recent.length ? `All ${entity.activity.length} →` : 'Open table →')),
     actBody);
 
-  const entBase = `${WS_PREFIX}/e/${id}/entity`;
-  const dlBtn = dotsMenu([
-    inPeek ? { label: 'Activity', section: 'settings', run: () => activityPanel.toggle(id, null, mount) } : null,
-    inPeek ? { phone: true, label: 'Copy link', section: 'settings', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') } : null,
-    inPeek ? { phone: true, label: 'Show or hide fields', section: 'settings', run: () => fieldVisibilityPopover(dlBtn.firstElementChild, db, 0, { redraw: refresh, rowsSection: false }) } : null,
-    ...['md', 'html', 'pdf'].map((ext) => ({
-      label: `Download .${ext}`, href: `${entBase}.${ext}`, section: 'share',
-      download: `${(entity.name || 'entity')}.${ext}`,
-    })),
-    { label: 'Share…', section: 'share', run: () => shareDialog('entity', id, entity.name || `#${entity.publicId}`) },
-    {
-      label: 'Move to trash', danger: true, section: 'delete',
-      run: async () => {
-        try {
-          await api('DELETE', `/entities/${id}`);
-          await loadSchema();
-          if (inPeek) onClose?.(); else location.hash = `#/table/${entity.dbId}`;
-          toast('Moved to trash', false, {
-            label: 'Undo',
-            run: async () => {
-              await api('POST', `/entities/${id}/restore`);
-              if (!inPeek) location.hash = `#/entity/${id}`;
-              toast('Restored');
-            },
-          });
-        } catch (err) { toast(err.message, true); }
-      },
-    },
-  ], { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions`, align: 'right' });
+  const recordCtx = () => ({ db, inPeek, onClose });
+  const dlBtn = kindDots('record', entity, recordCtx, { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions` });
 
   const sideOpen = (db.systemFields ?? []).includes('Activity');
-  const activityBtn = inPeek ? null : el('button', {
+  const activityBtn = el('button', {
     class: 'btn btn-sm activity-btn', type: 'button', title: 'Activity', 'aria-label': 'Activity',
     'aria-pressed': String(activityPanel.openFor === id), onclick: () => activityPanel.toggle(id, null, mount),
   }, iconEl('lucide:history', 'wv-icon'));
@@ -10239,7 +10302,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     }, iconEl('✕')),
   ] : [];
   mount.append(
-    stickViewHeader(el('div', { class: 'view-header' },
+    kindContext(stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb crumb-row' },
         ...(inPeek ? (dockControls?.nav ?? []) : [navMenuButton(), ...navArrows(pageGo)]),
         crumbPath(inPeek
@@ -10249,7 +10312,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           foldFrom: inPeek ? 1 : 4,
         }),
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
-      el('div', { class: 'wv-toolbar entity-head' }, nameInput))),
+      el('div', { class: 'wv-toolbar entity-head' }, nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
   );
   const nextFab = nextStateButton(entity, db, refresh);
   if (nextFab) mount.append(nextFab);
@@ -10272,12 +10335,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const host = el('div', { class: 'doc-editor' });
     const status = el('span', { class: 'doc-status', title: 'Saved automatically' });
 
-    const dl = dotsMenu(
-      ['md', 'mmd', 'pdf', 'html'].map((ext) => ({
-        label: `Download .${ext}`, href: `${fmtBase}.${ext}`, section: 'organize',
-        download: `${entity.name || 'document'}-${f.name}.${ext}`,
-      })),
-      { title: `${f.name} downloads`, extraClass: 'doc-dl' });
+    const dl = kindDots('doc', f, () => ({ entity }), { title: `${f.name} downloads`, align: 'left', extraClass: 'doc-dl' });
 
     const body = el('div', { class: 'doc-section-body' }, host);
     const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
@@ -10323,7 +10381,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       },
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
-      el('div', { class: 'doc-section-head' },
+      kindContext(el('div', { class: 'doc-section-head' },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
@@ -10333,7 +10391,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this document', 'aria-label': 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
         }, iconEl('⧉')),
-        status, dl),
+        status, dl), 'doc', f, () => ({ entity })),
       body);
 
     if (docSectionCollapse(id, f.name)) {
@@ -10566,14 +10624,17 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         location.hash = `#/entity/${made.id}`;
       } catch (err) { toast(err.message, true); }
     };
-    const menu = dotsMenu([
-      { label: 'Download .html', section: 'organize', href: deckUrl, download: `${entity.name || label}.html` },
-      { label: 'Open the composed model (.json)', section: 'organize', href: `${WS_PREFIX}/e/${id}/deck.json` },
+    const deckBtn = (cls, title, icon, attrs) => el(attrs.href ? 'a' : 'button', {
+      ...(attrs.href ? {} : { type: 'button' }), class: `doc-anchor deck-btn ${cls}`, title, 'aria-label': title, ...attrs,
+    }, lucideEl(icon));
+    const deckButtons = [
+      deckBtn('deck-download', `Download ${label.toLowerCase()} .html`, 'download', { href: deckUrl, download: `${entity.name || label}.html` }),
+      deckBtn('deck-model', 'Open the composed model .json', 'braces', { href: `${WS_PREFIX}/e/${id}/deck.json`, target: '_blank', rel: 'noopener' }),
       ...(deckRole === 'slide' ? [
-        { label: 'New version', section: 'share', run: () => newVersion(false) },
-        { label: 'New version, promoted into its decks', section: 'share', run: () => newVersion(true) },
+        deckBtn('deck-new-version', 'New version', 'file-plus', { onclick: () => newVersion(false) }),
+        deckBtn('deck-promote', 'New version, promoted into its decks', 'layers', { onclick: () => newVersion(true) }),
       ] : []),
-    ], { title: `${label} actions`, extraClass: 'doc-dl' });
+    ];
     const section = el('section', { class: 'doc-section deck-section' },
       el('div', { class: 'doc-section-head' },
         caret,
@@ -10584,7 +10645,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this deck', 'aria-label': 'Copy link to this deck',
           onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
         }, iconEl('⧉')),
-        menu),
+        ...deckButtons),
       body);
     left.prepend(section);
     if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
@@ -11421,11 +11482,11 @@ async function showView(id) {
   let v;
   try { v = await api('GET', `/views/${id}`); } catch (err) { toast(`Couldn't open that view: ${err.message}`, true); return showHome(); }
   syncDocTitle(v.name);
-  main.replaceChildren(el('div', { class: 'wv-toolbar' },
+  main.replaceChildren(kindContext(el('div', { class: 'wv-toolbar share-page-head' },
     el('h1', {}, v.name),
     el('span', { style: 'flex:1' }),
     el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('view', id, v.name) }, 'Share…'),
-    dotsMenu([{ label: 'Delete view', hold: true, holdingLabel: 'Hold to delete…', section: 'delete', run: async () => { await api('DELETE', `/views/${id}`); toast('View deleted'); showHome(); } }], { align: 'right' })));
+    kindDots('share-page', v, () => ({}), { title: 'Share page actions' })), 'share-page', v));
   for (const b of v.blocks) {
     const cols = Object.keys(b.items[0]?.fields ?? {});
     main.append(el('div', { class: 'card panel' },
@@ -11449,7 +11510,8 @@ async function showHome() {
   const [wsRead, listRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces')]);
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
-  const deletable = !!wsRow?.deletable;
+  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, deletable: !!wsRow?.deletable };
+  const wsCtx = () => ({ current: true, after: () => showHome() });
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -11462,22 +11524,8 @@ async function showHome() {
       },
       description: ws.description,
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
-      actions: [dotsMenu([
-        {
-          label: `Link preview before sign-in: ${ws.linkPreview ? 'on' : 'off'}`, section: 'organize',
-          run: async () => {
-            try {
-              const r = await api('PATCH', '/workspace', { linkPreview: !ws.linkPreview });
-              toast(`Link preview before sign-in is ${r.linkPreview ? 'on' : 'off'}`);
-              showHome();
-            } catch (err) { toast(err.message, true); }
-          },
-        },
-        ...(deletable ? [{
-          label: 'Delete workspace…', danger: true, section: 'delete',
-          run: () => confirmDeleteWorkspace(wsRow, { current: true }),
-        }] : []),
-      ], { title: 'Workspace actions', align: 'right' })],
+      lead: wsLogoButton(here, !!ws.logo),
+      actions: [kindDots('workspace', here, wsCtx, { title: 'Workspace actions' })],
     }),
     ...(mine.length ? [] : [emptyWorkspace()]),
     el('div', { class: 'card list-rows system-tables' },
@@ -11485,15 +11533,16 @@ async function showHome() {
         el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
         el('span', { class: 'spacer' }),
         el('span', { class: 'pid' }, 'every event in this workspace'))));
+  kindContext(main.querySelector('.view-header'), 'workspace', here, wsCtx, { skip: `${OWN_CONTEXT}, .crumb-path a, .ws-logo` });
   try {
     const views = await api('GET', '/views');
     if (views.length) {
       main.append(el('div', { class: 'card list-rows' },
-        ...views.map((v) => el('div', { class: 'list-row', dataset: { href: `#/view/${v.id}` }, onclick: () => { location.hash = `#/view/${v.id}`; } },
+        ...views.map((v) => kindContext(el('div', { class: 'list-row', dataset: { href: `#/view/${v.id}` }, onclick: () => { location.hash = `#/view/${v.id}`; } },
           el('span', {}, v.name),
           v.shared ? el('span', { class: 'k k-sys' }, 'shared') : null,
           el('span', { class: 'spacer' }),
-          el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)))));
+          el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)), 'share-page', v))));
     }
   } catch {}
   if (mine.length) {
@@ -12487,14 +12536,16 @@ async function buildWsRail() {
           ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
           : w.name.slice(0, 1).toUpperCase());
         if (w.held) return chip;
-        const wsMenu = (e) => {
+        const wsMenu = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          menu([
-            { label: 'Update logo…', section: 'organize', run: () => uploadWorkspaceLogo(w) },
-            w.logo ? { label: 'Remove logo', section: 'organize', run: () => removeWorkspaceLogo(w) } : null,
-            w.deletable ? { label: 'Delete workspace…', danger: true, section: 'delete', run: () => confirmDeleteWorkspace(w, { current: w.name === current }) } : null,
-          ], { ...(e.clientX || e.clientY ? { point: { x: e.clientX, y: e.clientY } } : { anchor: chip }), trigger: chip, className: 'ws-ctx', label: `${w.name} workspace` });
+          const at = e.clientX || e.clientY ? { point: { x: e.clientX, y: e.clientY } } : { anchor: chip };
+          if (openMenu?.trigger === chip) { openMenu.close(); return; }
+          const record = await wsApi(w, 'GET', '/workspace').catch(() => null);
+          const o = { ...w, title: record?.title ?? w.name, linkPreview: record ? !!record.linkPreview : undefined };
+          const items = menuFor('workspace', o, { current: w.name === current, after: () => { if (w.name === current && state.route?.page === 'home') showHome(); } });
+          if (!items.length) return;
+          menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', o), label: `${w.name} workspace` });
         };
         chip.addEventListener('contextmenu', wsMenu);
         if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) wsMenu(e); });
@@ -12556,7 +12607,21 @@ async function wsApi(w, method, path, body) {
   if (!res.ok) throw new Error(data.error ?? `${res.status}`);
   return data;
 }
-function uploadWorkspaceLogo(w) {
+function wsLogoButton(w, hasLogo) {
+  const after = () => { buildWsRail(); if (state.route?.page === 'home') showHome(); };
+  const pick = el('button', {
+    type: 'button', class: `ws-logo-pick${hasLogo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id ?? w.name)}`}`,
+    title: hasLogo ? 'Change the workspace logo' : 'Add a workspace logo', 'aria-label': hasLogo ? 'Change the workspace logo' : 'Add a workspace logo',
+    onclick: () => uploadWorkspaceLogo(w, after),
+  }, hasLogo ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo?t=${Date.now()}`, alt: '' }) : String(w.name ?? 'w').slice(0, 1).toUpperCase());
+  const clear = hasLogo ? el('button', {
+    type: 'button', class: 'ws-logo-clear', title: 'Remove logo', 'aria-label': 'Remove logo',
+    onclick: () => removeWorkspaceLogo(w, after),
+  }, lucideEl('x')) : null;
+  return el('span', { class: 'ws-logo' }, pick, clear);
+}
+
+function uploadWorkspaceLogo(w, after = buildWsRail) {
   const input = el('input', { type: 'file', accept: 'image/*', style: 'display:none' });
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
@@ -12566,17 +12631,17 @@ function uploadWorkspaceLogo(w) {
     try {
       await wsApi(w, 'PUT', '/workspace/logo', { name: file.name, mime: file.type || 'image/png', contentBase64 });
       toast(`${w.name} logo updated`);
-      buildWsRail();
+      after();
     } catch (err) { toast(err.message, true); }
   });
   document.body.append(input);
   input.click();
 }
-async function removeWorkspaceLogo(w) {
+async function removeWorkspaceLogo(w, after = buildWsRail) {
   try {
     await wsApi(w, 'DELETE', '/workspace/logo');
     toast(`${w.name} logo removed`);
-    buildWsRail();
+    after();
   } catch (err) { toast(err.message, true); }
 }
 

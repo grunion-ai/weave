@@ -42,23 +42,24 @@ if (s) {
 
   for (const [engine, make] of engines) {
     for (const theme of ['light', 'dark']) {
-      test(`on a phone the row header drops Expand, moves copy link and fields into the row menu, and every control is 44px on one line (${engine}, ${theme}, Issue #734)`, async () => {
+      test(`on a phone the row header drops Expand and keeps Activity, the eye and the copy link as 44px controls on one line (${engine}, ${theme}, Issue #734, Feature #296)`, async () => {
         const page = await open(make, theme);
         try {
           const h = await header(page);
           assert.equal(h.theme, theme);
           assert.equal(h.expand, false, 'no Expand on a full-screen row');
-          assert.equal(h.copy, false, 'Copy permalink moved off the header');
-          assert.equal(h.eye, false, 'Show or hide fields moved off the header');
+          assert.equal(h.copy, true, 'the header permalink copy shows on a phone');
+          assert.equal(h.eye, true, 'Show or hide fields is a header button on a phone');
           const controls = h.controls.filter((c) => c.kind === 'control');
-          assert.deepEqual(controls.map((c) => c.label), ['Row actions', 'Close']);
+          assert.deepEqual(controls.map((c) => c.label), ['Activity', 'Show or hide fields', 'Row actions', 'Close']);
           for (const c of controls) assert.ok(c.w >= 44 && c.h >= 44, `${c.label} is ${c.w}x${c.h}`);
           assert.equal(new Set(h.controls.map((c) => Math.round(c.top + c.h / 2))).size <= 2, true, 'the header keeps one line');
           assert.equal(h.scrollWidth, 0, 'no sideways scroll');
           await page.click('#dock .crumb-row .dots-btn');
-          const items = await page.locator('.wv-menu .wv-menu-row').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
-          assert.ok(items.includes('Copy link') && items.includes('Show or hide fields'), `the row menu holds them: ${items}`);
-          await page.click('.wv-menu .wv-menu-row:has-text("Show or hide fields")');
+          const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
+          assert.deepEqual(items, ['Duplicate', 'Share…', 'Markdown', 'HTML', 'PDF', 'Move to trash'], 'the row menu is the plain record definition, with no view rows');
+          await page.keyboard.press('Escape');
+          await page.click('#dock .crumb-row .eye-btn');
           await page.waitForSelector('.chip-pop .eye-row, .chip-pop input[type="checkbox"]');
         } finally { await page.close(); }
       });
@@ -71,9 +72,10 @@ if (s) {
       const h = await header(page);
       assert.equal(h.expand, true);
       assert.equal(h.eye, true);
+      assert.equal(h.copy, true);
       await page.click('#dock .crumb-row .dots-btn');
-      const items = await page.locator('.wv-menu .wv-menu-row').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
-      assert.equal(items.includes('Copy link') || items.includes('Show or hide fields'), false, `${items}`);
+      const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
+      assert.deepEqual(items, ['Duplicate', 'Share…', 'Markdown', 'HTML', 'PDF', 'Move to trash'], 'the same record definition as on a phone');
     } finally { await page.close(); }
   });
 }

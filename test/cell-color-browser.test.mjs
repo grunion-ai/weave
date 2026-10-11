@@ -47,7 +47,7 @@ if (s) {
     await th.scrollIntoViewIfNeeded();
     await th.hover();
     await th.locator('.field-menu').click();
-    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
+    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Field settings' }).click();
     await page.waitForSelector('.tray-form');
   }
   const paint = (page, sel, prop) => page.$eval(sel, (n, p) => getComputedStyle(n)[p], prop);

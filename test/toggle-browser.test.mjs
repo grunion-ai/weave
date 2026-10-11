@@ -87,7 +87,7 @@ if (s) {
       const th = page.locator('.wv-grid thead th.col-head', { hasText: 'Active' }).first();
       await th.hover();
       await th.locator('.field-menu').click();
-      await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
+      await page.locator('.chip-pop .wv-menu-row', { hasText: 'Field settings' }).click();
       const on = page.locator('.tray-form input[data-toggle-label="on"]');
       const off = page.locator('.tray-form input[data-toggle-label="off"]');
       await on.waitFor();

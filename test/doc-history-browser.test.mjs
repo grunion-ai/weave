@@ -179,14 +179,12 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('beside a docked record the ⋮ menu opens the panel to the dock\'s left, and Escape closes the panel, not the dock', async () => {
+  test('beside a docked record the Activity button opens the panel to the dock\'s left, and Escape closes the panel, not the dock (Feature #296)', async () => {
     const page = await open();
     try {
       await page.click('#main button[title="Collapse (⌘⇧E)"]');
-      await page.waitForSelector('#dock:not([hidden]) .crumb-actions .dots-btn');
-      assert.equal(await page.locator('#dock .activity-btn').count(), 0, 'the dock keeps its crumb width: Activity is in its ⋮ menu');
-      await page.click('#dock .crumb-actions .dots-btn');
-      await page.click('.wv-menu .wv-menu-row:has(.wv-menu-label:text-is("Activity"))');
+      await page.waitForSelector('#dock:not([hidden]) .crumb-actions .activity-btn');
+      await page.click('#dock .crumb-actions .activity-btn');
       await page.waitForSelector('.wv-activity .wv-act-row');
       const [panel, dock] = await Promise.all(['.wv-activity', '#dock'].map((sel) => page.locator(sel).evaluate((n) => n.getBoundingClientRect().toJSON())));
       assert.ok(panel.right <= dock.left, `the panel ends before the dock starts (${panel.right} <= ${dock.left})`);

@@ -120,7 +120,7 @@ test('the customization guide covers what a reader can change', () => {
   for (const topic of [
     'lucide:', 'noun', 'dock', 'saved view', 'audit',
     'rest as values', '⇧Return',
-    'default width', '60%', 'Alt+Shift', 'Created At', 'costume', 'relation map', 'automation', 'update logo', 'remove logo', 'delete workspace', 'trash',
+    'default width', '60%', 'Alt+Shift', 'Created At', 'costume', 'relation map', 'automation', 'click the logo', 'remove logo', 'link preview before sign-in', 'delete workspace', 'trash',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the customization guide never mentions ${topic}`);
   }

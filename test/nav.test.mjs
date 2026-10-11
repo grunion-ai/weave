@@ -32,50 +32,53 @@ test('the sidebar has no relation-map row; the map lives on the workspace and sp
   assert.equal((APP.match(/relationMapCard\('Relation map'/g) ?? []).length, 2, 'workspace page and space page each draw the map');
 });
 
+const TABLE_MENU = APP.slice(APP.indexOf('  table: (db, {'), APP.indexOf('  record: (entity, {'));
+
 test('a table row carries the kebab instead of a count, and registry tables carry neither', () => {
   const nav = fnBodyOf('renderNav');
   const row = nav.slice(nav.indexOf("class: 'nav-db'"), nav.indexOf('nav.append(row)'));
   assert.ok(!/class: 'count'/.test(row), 'the entity count is gone from the row');
   assert.ok(!/entityCount/.test(row), 'and nothing else on the row reads it');
-  assert.match(row, /if \(!db\.system\) row\.append\(navTableMenu\(db, space, row\)\)/,
-    'the kebab hangs on user tables only — Workspace/Tables and friends take none of its verbs');
+  assert.match(row, /if \(!db\.system\) \{\s*row\.append\(navTableMenu\(db\)\);\s*kindContext\(row, 'table', db\);/,
+    'the kebab and the right-click hang on user tables only — Workspace/Tables and friends take none of its verbs');
 });
 
-test('the kebab menu wires every verb to its route', () => {
+test('the nav kebab opens the one table definition (Feature #296)', () => {
   const menu = fnBodyOf('navTableMenu');
+  assert.match(menu, /kindDots\('table', db, /, 'the nav row, the header ⋮ and the right-click share one definition');
   const verbs = [
-    ['Rename table…', /api\('PATCH', `\/tables\/\$\{db\.id\}`, \{ name \}\)/],
-    ['Change icon…', /api\('PATCH', `\/tables\/\$\{db\.id\}`, \{ icon: o\.id \|\| '' \}\)/],
     ['Move to space…', /api\('POST', `\/tables\/\$\{db\.id\}\/move`, \{ space: o\.id \}\)/],
-    ['Duplicate table', /api\('POST', `\/tables\/\$\{db\.id\}\/duplicate`\)/],
+    ['Duplicate', /api\('POST', `\/tables\/\$\{db\.id\}\/duplicate`\)/],
   ];
   for (const [label, call] of verbs) {
-    assert.ok(menu.includes(`label: '${label}'`), `menu lists ${label}`);
-    assert.match(menu, call, `${label} reaches its route`);
+    assert.ok(TABLE_MENU.includes(`label: '${label}'`), `the table menu lists ${label}`);
+    assert.match(TABLE_MENU, call, `${label} reaches its route`);
   }
-  assert.match(menu, /label: 'Delete table', hold: true/, 'delete is the house hold-to-confirm, not a plain button');
-  assert.match(menu, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
-  assert.match(menu, /await loadSchema\(\)/, 'every verb re-reads the schema so the nav redraws');
-  assert.match(menu, /location\.hash = `#\/table\/\$\{copy\.id\}`/, 'duplicate opens the copy');
-  assert.match(menu, /if \(state\.route\?\.dbId === db\.id\) location\.hash = `#\/space\/\$\{space\.spaceId\}`/,
+  assert.doesNotMatch(TABLE_MENU, /Rename table…|Change icon…|Row term/, 'title, icon and row term edit in place, not from the menu');
+  assert.match(TABLE_MENU, /label: 'Delete table', hold: true/, 'delete is the house hold-to-confirm, not a plain button');
+  assert.match(TABLE_MENU, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
+  assert.match(TABLE_MENU, /await loadSchema\(\)/, 'every verb re-reads the schema so the nav redraws');
+  assert.match(TABLE_MENU, /location\.hash = `#\/table\/\$\{copy\.id\}`/, 'duplicate opens the copy');
+  assert.match(TABLE_MENU, /if \(state\.route\?\.dbId === db\.id\) location\.hash = `#\/space\/\$\{db\.spaceId\}`/,
     'deleting the open table lands on its space, not a dead route');
 });
 
 test('the move picker offers other user spaces only', () => {
-  const menu = fnBodyOf('navTableMenu');
-  assert.match(menu, /state\.schema\.filter\(\(s\) => s\.space !== space\.space && !s\.system\)/);
+  assert.match(TABLE_MENU, /state\.schema\.filter\(\(s\) => s\.space !== db\.space && !s\.system\)/);
 });
 
 test('the kebab sits inside the row link without following it', () => {
   const menu = fnBodyOf('navTableMenu');
-  assert.match(menu, /align: 'right', extraClass: 'nav-db-menu'/, 'right-aligned so the panel stays inside the sidebar');
+  assert.match(menu, /extraClass: 'nav-db-menu'/);
+  assert.match(fnBodyOf('kindDots'), /align = 'right'/, 'right-aligned so the panel stays inside the sidebar');
   assert.match(menu, /wrap\.addEventListener\('click', \(e\) => e\.preventDefault\(\), true\)/,
     'capture-phase preventDefault: the dots button stops propagation, so bubble would never see the click');
 });
 
-test('an abandoned rename puts the row back', () => {
-  const menu = fnBodyOf('navTableMenu');
-  const rename = menu.slice(menu.indexOf("label: 'Rename table…'"), menu.indexOf("label: 'Change icon…'"));
+test('a double-click renames the nav row in place, and an abandoned rename puts the row back', () => {
+  assert.match(APP, /addEventListener\('dblclick', \(e\) => \{\s*const row = e\.target\.closest\?\.\('#nav \.nav-db\[data-db\]'\)/, 'the nav listens for a double-click on a table row');
+  const rename = fnBodyOf('renameNavTable');
+  assert.match(rename, /api\('PATCH', `\/tables\/\$\{db\.id\}`, \{ name \}\)/);
   assert.match(rename, /row\.style\.display = 'none'/, 'the row hides behind the input');
   assert.match(rename, /input\.addEventListener\('blur', \(\) => \{ if \(!input\.disabled && input\.isConnected\) \{ input\.remove\(\); renderNav\(\); \} \}\)/,
     'a blur that is not a commit removes the input and redraws the nav (the shared input only cancels when EMPTY, and a rename starts full)');
