@@ -6,6 +6,7 @@ import { renderDocumentPage } from './markdown.js';
 export const SHARE_KINDS = ['entity', 'table', 'space', 'view', 'workspace'];
 export const SHARE_MODES = ['read', 'comment', 'edit', 'manage'];
 export const SHARE_VISIBILITIES = ['public', 'private'];
+export const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RUNG = { read: 0, comment: 1, edit: 2, manage: 3 };
 const TOKEN = /^wv[sv]_[A-Za-z0-9_-]{16,}$/;
 
@@ -95,7 +96,7 @@ export function mint(weave, { scope, mode = 'read', visibility = 'public', label
   if (!SHARE_MODES.includes(mode)) throw invalid(`A share's mode is one of ${SHARE_MODES.join(', ')}; got ${JSON.stringify(mode)}`);
   if (mode === 'comment') throw new WeaveError('Comment links wait for comments by share; mint read, edit or manage for now', 'forbidden');
   if (!SHARE_VISIBILITIES.includes(visibility)) throw invalid(`A share's visibility is public or private; got ${JSON.stringify(visibility)}`);
-  let expires = null;
+  let expires = new Date(nowMs(weave) + SHARE_TTL_MS).toISOString();
   if (expiresAt != null && expiresAt !== '') {
     const at = Date.parse(expiresAt);
     if (Number.isNaN(at) || at <= nowMs(weave)) throw invalid(`expiresAt is a date in the future; got ${JSON.stringify(expiresAt)}`);
@@ -136,6 +137,23 @@ export function revoke(weave, id, { any = true } = {}) {
   if (g.revokedAt) return { grant: publicGrant(weave, g), changed: false };
   g.revokedAt = new Date().toISOString();
   return { grant: publicGrant(weave, g), changed: true };
+}
+
+export function renew(weave, id) {
+  const g = own(weave.state.meta.shares, id);
+  if (!g || g.revokedAt) throw gone('Share', id);
+  g.expiresAt = new Date(nowMs(weave) + SHARE_TTL_MS).toISOString();
+  return publicGrant(weave, g);
+}
+
+export function expireLegacy(state, now = Date.now()) {
+  let changed = false;
+  for (const g of Object.values(state.meta?.shares ?? {})) {
+    if (g.expiresAt != null) continue;
+    g.expiresAt = new Date(now + SHARE_TTL_MS).toISOString();
+    changed = true;
+  }
+  return changed;
 }
 
 export const auditDetail = (g) => ({ kind: g.scope.kind, scope: g.title ?? g.scope.id, mode: g.mode, visibility: g.visibility, ...(g.label ? { label: g.label } : {}) });

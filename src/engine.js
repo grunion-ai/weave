@@ -1024,6 +1024,7 @@ export class Weave {
     }
     if (this.#scrubIdentityEmails()) changed = true;
     if (Shares.liftViewShares(s)) changed = true;
+    if (Shares.expireLegacy(s)) changed = true;
     if (this.#settlePositions()) changed = true;
     if (changed) this.save();
   }
@@ -1931,6 +1932,13 @@ export class Weave {
       this.#audit('share-revoked', Shares.auditDetail(grant));
     }
     return grant;
+  }
+
+  renewShare(id) {
+    const g = Shares.renew(this, id);
+    this.save();
+    this.#audit('share-renewed', Shares.auditDetail(g));
+    return g;
   }
 
   shareByToken(token) {
