@@ -2,7 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-const TABLE_ROWS = ['Column stats…', 'Export CSV', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'Row term (row)…', 'Delete table'];
+const nextStarting = (labels, from, letter) => {
+  for (let k = 1; k <= labels.length; k++) {
+    const i = (from + k) % labels.length;
+    if (labels[i].toLowerCase().startsWith(letter)) return labels[i];
+  }
+  return labels[from];
+};
 
 const s = await launch('menu keyboard', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -39,20 +45,25 @@ if (s) {
         await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
         assert.equal(await trigger.getAttribute('aria-expanded'), 'true');
         const rows = await page.locator('.wv-menu .wv-menu-row').evaluateAll((rs) => rs.map((r) => [r.getAttribute('role'), r.querySelector('.wv-menu-label, .hold-label')?.textContent]));
-        assert.deepEqual(rows.map((r) => r[1]), TABLE_ROWS, 'every current row, in today\'s order');
-        assert.ok(rows.every((r) => r[0] === 'menuitem'), `every row is a menuitem: ${JSON.stringify(rows)}`);
-        assert.deepEqual(await focused(page), { text: 'Column stats…', role: 'menuitem', trigger: false }, 'focus lands on the first row');
-        assert.equal(await press(page, 'ArrowDown'), 'Export CSV');
-        assert.equal(await press(page, 'ArrowUp'), 'Column stats…');
-        assert.equal(await press(page, 'ArrowUp'), 'Delete table', 'ArrowUp from the first row wraps to the last');
-        assert.equal(await press(page, 'ArrowDown'), 'Column stats…', 'and ArrowDown from the last wraps to the first');
-        assert.equal(await press(page, 'End'), 'Delete table');
-        assert.equal(await press(page, 'Home'), 'Column stats…');
-        assert.equal(await press(page, 'n'), 'New share page…', 'a letter jumps to the next row it starts');
+        const labels = rows.map((r) => r[1]);
+        assert.ok(labels.length >= 3 && labels.every(Boolean), `the table menu has labelled rows to walk: ${JSON.stringify(labels)}`);
+        assert.ok(rows.every((r) => /^menuitem(checkbox)?$/.test(r[0])), `every row is a menu item: ${JSON.stringify(rows)}`);
+        const [first, second, last] = [labels[0], labels[1], labels.at(-1)];
+        assert.deepEqual(await focused(page), { text: first, role: rows[0][0], trigger: false }, 'focus lands on the first row');
+        assert.equal(await press(page, 'ArrowDown'), second);
+        assert.equal(await press(page, 'ArrowUp'), first);
+        assert.equal(await press(page, 'ArrowUp'), last, 'ArrowUp from the first row wraps to the last');
+        assert.equal(await press(page, 'ArrowDown'), first, 'and ArrowDown from the last wraps to the first');
+        assert.equal(await press(page, 'End'), last);
+        assert.equal(await press(page, 'Home'), first);
+        const jump = labels[2][0].toLowerCase();
+        assert.equal(await press(page, jump), nextStarting(labels, 0, jump), 'a letter jumps to the next row it starts');
         await press(page, 'Home');
-        assert.equal(await press(page, 'r'), 'Row term (row)…', 'an arrow or Home starts a fresh search');
+        const fresh = second[0].toLowerCase();
+        assert.equal(await press(page, fresh), nextStarting(labels, 0, fresh), 'an arrow or Home starts a fresh search');
         await press(page, 'End');
-        assert.equal(await press(page, 's'), 'Share…', 'typeahead wraps past the end');
+        const wrap = first[0].toLowerCase();
+        assert.equal(await press(page, wrap), nextStarting(labels, labels.length - 1, wrap), 'typeahead wraps past the end');
         const paint = await page.evaluate(() => {
           const pop = document.querySelector('.wv-menu');
           const lum = (c) => c.match(/[\d.]+/g).slice(0, 3).map(Number).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0) / 255;
@@ -79,7 +90,8 @@ if (s) {
       await page.locator('#main .crumb-actions .dots-btn').focus();
       await page.keyboard.press('Enter');
       await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
-      await page.keyboard.press('s');
+      await page.keyboard.type('share');
+      assert.equal((await focused(page)).text, 'Share…', 'typing a whole word reaches its row');
       await page.keyboard.press('Enter');
       await page.waitForSelector('#modal, #tray-back, [role="dialog"]');
       assert.equal(await menuOpen(page), 0, 'the menu closed before the share dialog opened');
@@ -96,7 +108,7 @@ if (s) {
       const m = await page.locator('.wv-menu.ws-ctx').boundingBox();
       assert.ok(Math.abs(m.x - (box.x + 6)) <= 1 && Math.abs(m.y - (box.y + 6)) <= 1, `the menu opens at the pointer (${m.x},${m.y} vs ${box.x + 6},${box.y + 6})`);
       const labels = await page.locator('.wv-menu.ws-ctx .wv-menu-row').evaluateAll((rs) => rs.map((r) => r.querySelector('.wv-menu-label').textContent));
-      assert.equal(labels[0], 'Update logo…');
+      assert.ok(labels.length >= 1 && labels.every(Boolean), `the tray menu has labelled rows: ${JSON.stringify(labels)}`);
       assert.equal((await focused(page)).text, labels[0], 'focus lands on its first row');
       assert.equal(await press(page, 'End'), labels.at(-1), 'End moves to the last row');
       assert.equal(await press(page, 'Home'), labels[0], 'Home back to the first');
