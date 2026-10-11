@@ -1,0 +1,1 @@
+- The loader now leaves on the woven mark instead of waiting out its 2 s cycle: on finish it fast-forwards the rope to the next woven pose at 3x, holds 120 ms and fades over 160 ms, so a page that finished mid-cycle is visible within about half a second of its last response instead of up to 1.9 s later. The grid loader exits the same way. (Issue #392)

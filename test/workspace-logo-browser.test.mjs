@@ -29,7 +29,7 @@ if (s) {
     return page;
   }
   const chip = (page, name) => page.locator(`#ws-list .ws-icon[title^="${name} "]`);
-  const menuItems = (page) => page.locator('.ws-ctx .dropdown-item').allTextContents();
+  const menuItems = (page) => page.locator('.ws-ctx .wv-menu-row').allTextContents();
   const closeMenu = async (page) => { await page.keyboard.press('Escape'); assert.equal(await page.locator('.ws-ctx').count(), 0); };
 
   test('every chip offers Update logo…; Remove logo only where a logo exists; never "Set logo"', async () => {
@@ -52,7 +52,7 @@ if (s) {
     const before = { main: logoOf(main), scratch: logoOf(scratch) };
     await chip(page, 'scratch').click({ button: 'right' });
     const chooser = page.waitForEvent('filechooser');
-    await page.locator('.ws-ctx .dropdown-item', { hasText: 'Update logo…' }).click();
+    await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Update logo…' }).click();
     await (await chooser).setFiles({ name: 'green.svg', mimeType: 'image/svg+xml', buffer: svg('green') });
     await page.waitForSelector('.wv-toast:not(.err)');
     await page.waitForFunction(() => document.querySelector('#ws-list .ws-icon[title^="scratch "] img'));
@@ -63,7 +63,7 @@ if (s) {
     assert.match(src, new RegExp(`^/w/${scratch.state.meta.id}/api/workspace/logo`), `the chip reads its own workspace's logo: ${src}`);
     await chip(page, 'blank').click({ button: 'right' });
     const chooser2 = page.waitForEvent('filechooser');
-    await page.locator('.ws-ctx .dropdown-item', { hasText: 'Update logo…' }).click();
+    await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Update logo…' }).click();
     await (await chooser2).setFiles({ name: 'gold.svg', mimeType: 'image/svg+xml', buffer: svg('gold') });
     await page.waitForSelector('#ws-list .ws-icon[title^="blank "] img');
     assert.match(logoOf(blank), /gold/);
@@ -74,7 +74,7 @@ if (s) {
   test('Remove logo clears that workspace\'s logo and the chip falls back to its letter', async () => {
     const page = await open();
     await chip(page, 'blank').click({ button: 'right' });
-    await page.locator('.ws-ctx .dropdown-item', { hasText: 'Remove logo' }).click();
+    await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Remove logo' }).click();
     await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="blank "] img'));
     assert.equal(logoOf(blank), null, 'the server no longer holds a logo');
     assert.equal((await chip(page, 'blank').textContent()).trim(), 'B');

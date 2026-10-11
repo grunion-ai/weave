@@ -37,7 +37,7 @@ if (s) {
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
     await page.click('#dock .dots-btn');
-    await page.click('#dock .dl-menu:not(.hidden) .dropdown-item:has-text("Activity")');
+    await page.click('.wv-menu .wv-menu-row:has-text("Activity")');
     await page.waitForSelector('aside.wv-activity .wv-act-list');
     return page;
   };
@@ -59,7 +59,7 @@ if (s) {
           assert.equal(await eventually(() => page.locator('aside.wv-activity').count(), 0), 0, 'Back closes the sheet');
           assert.equal(await page.locator('#dock:not([hidden]) textarea.name-edit').count(), 1, 'and leaves the row open');
           await page.click('#dock .dots-btn');
-          await page.click('#dock .dl-menu:not(.hidden) .dropdown-item:has-text("Activity")');
+          await page.click('.wv-menu .wv-menu-row:has-text("Activity")');
           await page.waitForSelector('aside.wv-activity');
           const before = await page.evaluate(() => history.length);
           await page.click('aside.wv-activity .wv-act-close');
@@ -78,7 +78,7 @@ if (s) {
       await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await page.click('#dock .dots-btn');
-      await page.click('#dock .dl-menu:not(.hidden) .dropdown-item:has-text("Activity")');
+      await page.click('.wv-menu .wv-menu-row:has-text("Activity")');
       await page.waitForSelector('aside.wv-activity');
       const p = await sheet(page);
       assert.equal(Math.round(p.right - p.left), 328);

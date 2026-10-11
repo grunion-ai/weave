@@ -24,7 +24,7 @@ if (s) {
   };
   const fromMenu = async (page, scope) => {
     await page.locator(`${scope} .dots-btn`).first().click();
-    await page.locator('.dl-menu:not(.hidden) .dropdown-item', { hasText: 'Share…' }).click();
+    await page.locator('.wv-menu .wv-menu-row', { hasText: 'Share…' }).click();
   };
   const dialog = (page) => page.locator('#modal');
   const reset = () => { for (const g of weave.listShares()) weave.revokeShare(g.id); };
