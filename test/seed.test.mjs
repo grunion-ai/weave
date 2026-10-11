@@ -171,3 +171,52 @@ test('seedWeaver gives every space and table a lucide: icon that exists in publi
   assert.equal(icon('Feature'), 'lucide:star');
   assert.equal(icon('Release'), 'lucide:rocket');
 });
+
+const WRECKAGE = [
+  ['an #ERR', (s) => s.includes('#ERR')],
+  ['raw markup', (s) => /<[A-Za-z/!?]/.test(s)],
+  ['only punctuation and whitespace', (s) => s.trim() !== '' && !/[\p{L}\p{N}]/u.test(s)],
+];
+
+function wreckedCells(w) {
+  const bad = [];
+  for (const table of ['People', 'Field Types']) {
+    const db = w.findTable(`Showcase/${table}`);
+    for (const e of w.listEntities(db.id)) {
+      const row = w.readEntity(e.id);
+      for (const [field, value] of Object.entries(row.fields)) {
+        if (typeof value !== 'string') continue;
+        for (const [rule, wrecked] of WRECKAGE) {
+          if (wrecked(value)) bad.push(`${table} › ${row.name} › ${field} is ${rule}: ${JSON.stringify(value)}`);
+        }
+      }
+    }
+  }
+  return bad;
+}
+
+test('every cell the shipped showcase draws reads as a value, never as wreckage (Issue #580)', () => {
+  assert.deepEqual(wreckedCells(seedFieldShowcase(new Weave())), []);
+});
+
+test('the showcase Due dates sit ahead of today, so Days left counts down (Issue #580)', () => {
+  const w = seedFieldShowcase(new Weave());
+  const ft = w.findTable('Showcase/Field Types');
+  const rows = w.listEntities(ft.id).map((e) => w.readEntity(e.id));
+  const dated = rows.filter((r) => r.raw.Due);
+  assert.ok(dated.length >= 3, `three rows carry a Due date (${dated.length})`);
+  for (const r of dated) {
+    const left = r.fields['Days left'];
+    assert.ok(typeof left === 'number' && left > 0, `${r.name}: Days left reads ${JSON.stringify(left)}`);
+  }
+  for (const r of rows.filter((r) => !r.raw.Due)) {
+    assert.equal(r.fields['Days left'], '', `${r.name}: no Due date leaves Days left empty`);
+  }
+  const bracketed = dated.filter((r) => r.raw.Start);
+  assert.ok(bracketed.length >= 2, `two rows run from a Start to a Due (${bracketed.length})`);
+  for (const r of bracketed) {
+    assert.ok(Date.parse(r.raw.Start) < Date.parse(r.raw.Due), `${r.name}: Start precedes Due`);
+    assert.ok(Date.parse(r.raw.Published) <= Date.now(), `${r.name}: Published is already past`);
+    assert.deepEqual(r.raw.Window, { start: r.raw.Start, end: r.raw.Due }, `${r.name}: Window brackets Start and Due`);
+  }
+});
