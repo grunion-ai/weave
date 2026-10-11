@@ -1926,11 +1926,11 @@ function fieldRoute(f, db) {
 function fieldNameLabel(f, text = f?.name, db = null) {
   if (f?.type === 'relation') {
     const route = fieldRoute(f, db);
-    return route ? [text, el('sup', { class: 'field-mark', title: route }, globalThis.weaveChipView.ROUTE_GLYPH)] : [text];
+    return route ? [text, el('span', { class: 'field-mark', title: route }, globalThis.weaveChipView.ROUTE_GLYPH)] : [text];
   }
   const kind = COMPUTED_NAME_MARKS[f?.type];
   if (!kind) return [text];
-  return [text, el('sup', {
+  return [text, el('span', {
     class: 'field-mark',
     title: fieldRoute(f, db) ?? `${kind} — computed from other values, not editable`,
   }, computedMark(f.type))];
@@ -5745,7 +5745,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         onkeydown: (e) => headKey(e, n),
       } : {}),
     },
-      el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·'), sortMark(n)),
+      el('span', { class: 'col-label' }, n, el('span', { class: 'field-mark' }, '·'), sortMark(n)),
       systemMenu(n, n),
       movable ? columnResizeGrip(db, { name: n, type: 'date' }, grid) : null);
 
