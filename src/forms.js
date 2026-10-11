@@ -173,8 +173,9 @@ export function listForms(w) {
   return out;
 }
 
-function normalizeDefinition(w, db, name, fields, hidden) {
+function normalizeDefinition(w, db, name, fields, hidden, kind = 'Row') {
   if (!Array.isArray(fields) || !isMap(hidden)) throw new WeaveError('Fields must be a list and Hidden must be an object', 'invalid');
+  if (kind !== 'Row') return { fields, hidden };
   fields = fields.map((entry) => {
     const config = typeof entry === 'string' ? { field: entry } : entry;
     const f = config && w.findField(db, config.id ?? config.field);
@@ -206,7 +207,8 @@ export function normalizeFormValues(reg, forms, values, row = null) {
   const name = patch.Name ?? 'Form';
   const fields = parseJson(patch.Fields ?? old('Fields'), [], 'Fields', name);
   const hidden = parseJson(patch.Hidden ?? old('Hidden'), {}, 'Hidden', name);
-  const normalized = normalizeDefinition(owner, table, name, fields, hidden);
+  const kind = patch.Kind ?? (row ? reg.readEntity(row.id).fields.Kind : 'Row');
+  const normalized = normalizeDefinition(owner, table, name, fields, hidden, FORM_KINDS.includes(kind) ? kind : 'Row');
   if (row && hasOwn(patch, 'Fields')) {
     const previous = parseJson(old('Fields'), [], 'Fields', name);
     for (const field of normalized.fields) {
@@ -226,7 +228,7 @@ export function createForm(w, { name, description = '', table, fields = [], hidd
   const tablesT = sysTable(reg, 'tables');
   const tablesRow = tablesT && reg.listEntities(tablesT.id).find((e) => e.sysId === db.id);
   if (!tablesRow) throw new WeaveError(`${w.qualifiedName(db)} has no Workspace/Tables row to point a form at`, 'not-found');
-  ({ fields, hidden } = normalizeDefinition(w, db, name, fields, hidden));
+  ({ fields, hidden } = normalizeDefinition(w, db, name, fields, hidden, kind));
   const row = reg.createEntity(formsT.id, {
     name,
     values: { Description: description, Table: tablesRow.id, Fields: JSON.stringify(fields), Hidden: JSON.stringify(hidden), Enabled: !!enabled, Floor: floor, Kind: kind },
