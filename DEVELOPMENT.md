@@ -2,7 +2,7 @@
 
 GitHub is the canonical repository. Pull requests replace the Gerrit review queue.
 Agents work in isolated branches and run targeted checks locally. A ready pull
-request lands on main after a fast `Dev gate` and deploys to dev.weave.grunion.ai
+request lands on main after a fast `Dev gate` and deploys to weave-dev.grunion.ai
 within a minute. The full test inventory runs on main and informs promotion to
 production, which needs an approved release.
 
@@ -18,7 +18,7 @@ production, which needs an approved release.
 4. Self-review, then arm auto-merge: `gh pr merge --auto --squash`. The only
    required check is `Dev gate` (syntax plus a boot health check, under a
    minute). The branch does not have to be up to date with main.
-5. Every main push swaps dev.weave.grunion.ai to that commit. The dev supervisor
+5. Every main push swaps weave-dev.grunion.ai to that commit. The dev supervisor
    boots the new commit beside the serving one, moves traffic only after its
    health check passes, and keeps the old worker serving when it fails. A failed
    commit is skipped until main moves. Roll back a bad change by landing its
