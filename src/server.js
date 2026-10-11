@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
-import { createRequestHandler, decodePath } from './routes.js';
+import { createRequestHandler, decodePath, MAX_BODY_BYTES } from './routes.js';
 import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
@@ -137,7 +137,7 @@ async function readBody(req, { requireJson = false } = {}) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 10 * 1024 * 1024) throw new WeaveError('Body too large', 'invalid');
+    if (size > MAX_BODY_BYTES) throw new WeaveError('Body too large', 'invalid');
     chunks.push(chunk);
   }
   const raw = Buffer.concat(chunks).toString('utf8');

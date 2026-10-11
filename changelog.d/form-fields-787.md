@@ -1,0 +1,1 @@
+- Dialog name fields drop a class that had no style and an inline width that `.form-control` already sets. The bug note is now a standard small form field: its side padding moves from 7 to 8 px, its corner radius from 8 to 4 px and its minimum height from 40 to 32 px (Issue #787).
