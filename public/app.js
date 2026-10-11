@@ -11463,8 +11463,13 @@ function wireKeySheet() {
 
 const LOADER_CYCLE_MS = 2000;
 const LOADER_SHOW_AFTER_MS = 500;
+const LOADER_POSE_FROM = 0.45;
+const LOADER_POSE_TO = 0.62;
+const LOADER_EXIT_RATE = 3;
+const LOADER_HOLD_MS = 120;
+const LOADER_FADE_MS = 160;
 const SKELETON_SHOW_AFTER_MS = 150;
-const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, ready: false };
+const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, exit: null, ready: false };
 
 async function initPageLoader() {
   const host = $('#page-loader');
@@ -11482,6 +11487,7 @@ function showPageLoader() {
   loading.shownAt = Date.now();
   host.hidden = false;
   host.setAttribute('aria-hidden', 'false');
+  keepLoader(host, loading);
 }
 
 function hidePageLoader() {
@@ -11491,12 +11497,59 @@ function hidePageLoader() {
   host.hidden = true;
   host.setAttribute('aria-hidden', 'true');
   loading.shownAt = 0;
+  loading.exit = null;
+}
+
+function ropeAnimations(node) {
+  const all = node && node.getAnimations ? node.getAnimations({ subtree: true }) : [];
+  return all.filter((a) => String(a.animationName ?? '').startsWith('rope-'));
+}
+
+function settleLoader(node, state, hide) {
+  const token = state.exit = {};
+  if (!node) {
+    state.exit = null;
+    hide();
+    return;
+  }
+  const fade = () => {
+    if (state.exit !== token) return;
+    node.classList.add('loader-out');
+    state.hideTimer = setTimeout(hide, LOADER_HOLD_MS + LOADER_FADE_MS);
+  };
+  const rope = ropeAnimations(node);
+  const at = rope.length ? Number(rope[0].currentTime) : NaN;
+  if (!Number.isFinite(at)) {
+    fade();
+    return;
+  }
+  const phase = (at % LOADER_CYCLE_MS) / LOADER_CYCLE_MS;
+  const ahead = phase >= LOADER_POSE_FROM && phase <= LOADER_POSE_TO
+    ? 0
+    : ((LOADER_POSE_FROM - phase + 1) % 1) * LOADER_CYCLE_MS;
+  for (const a of rope) {
+    a.playbackRate = LOADER_EXIT_RATE;
+    a.effect.updateTiming({ iterations: (at + ahead) / LOADER_CYCLE_MS, fill: 'forwards' });
+  }
+  rope[0].finished.then(fade, () => {});
+}
+
+function keepLoader(node, state) {
+  state.exit = null;
+  if (!node) return;
+  node.classList.remove('loader-out');
+  for (const a of ropeAnimations(node)) {
+    a.playbackRate = 1;
+    a.effect.updateTiming({ iterations: Infinity, fill: 'none' });
+    a.play();
+  }
 }
 
 async function withPageLoader(work) {
   loading.depth += 1;
   clearTimeout(loading.hideTimer);
   loading.hideTimer = null;
+  if (loading.exit) keepLoader($('#page-loader'), loading);
   if (!loading.shownAt && !loading.showTimer) {
     loading.showTimer = setTimeout(() => {
       loading.showTimer = null;
@@ -11518,12 +11571,11 @@ async function withPageLoader(work) {
       hidePageLoader();
       return;
     }
-    const elapsed = Date.now() - loading.shownAt;
-    loading.hideTimer = setTimeout(hidePageLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
+    settleLoader($('#page-loader'), loading, hidePageLoader);
   }
 }
 
-const gridWait = { holds: new Set(), showTimer: 0, shownAt: 0, hideTimer: 0 };
+const gridWait = { holds: new Set(), showTimer: 0, shownAt: 0, hideTimer: 0, exit: null };
 function gridHold() {
   const token = {};
   gridWait.holds.add(token);
@@ -11538,19 +11590,23 @@ function paintGridWait() {
   }
   if (busy) {
     clearTimeout(gridWait.hideTimer); gridWait.hideTimer = 0;
+    if (gridWait.exit) keepLoader(gridLoaderNode(), gridWait);
     if (!gridWait.shownAt && !gridWait.showTimer) {
       gridWait.showTimer = setTimeout(() => { gridWait.showTimer = 0; showGridLoader(); }, LOADER_SHOW_AFTER_MS);
     } else if (gridWait.shownAt) placeGridLoader();
     return;
   }
   if (gridWait.showTimer) { clearTimeout(gridWait.showTimer); gridWait.showTimer = 0; return; }
-  if (!gridWait.shownAt || gridWait.hideTimer) return;
-  const elapsed = Date.now() - gridWait.shownAt;
-  gridWait.hideTimer = setTimeout(hideGridLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
+  if (!gridWait.shownAt || gridWait.hideTimer || gridWait.exit) return;
+  settleLoader(gridLoaderNode(), gridWait, hideGridLoader);
+}
+
+function gridLoaderNode() {
+  return $('#main')?.querySelector(':scope > .grid-loader') ?? null;
 }
 function placeGridLoader() {
   const main = $('#main');
-  const node = main?.querySelector(':scope > .grid-loader');
+  const node = gridLoaderNode();
   const wrap = main?.querySelector(':scope > .table-wrap');
   if (!node || !wrap) return;
   const m = main.getBoundingClientRect(), w = wrap.getBoundingClientRect();
@@ -11564,7 +11620,7 @@ function showGridLoader() {
   const main = $('#main');
   const source = $('#page-loader');
   if (!main?.querySelector(':scope > .table-wrap') || !loading.ready || !source) return;
-  let node = main.querySelector(':scope > .grid-loader');
+  let node = gridLoaderNode();
   if (!node) {
     node = el('div', { class: 'grid-loader', 'aria-hidden': 'true' });
     for (const mark of source.querySelectorAll(':scope > span')) node.append(mark.cloneNode(true));
@@ -11572,11 +11628,12 @@ function showGridLoader() {
   }
   node.hidden = false;
   gridWait.shownAt = Date.now();
+  keepLoader(node, gridWait);
   placeGridLoader();
 }
 function hideGridLoader() {
-  gridWait.hideTimer = 0; gridWait.shownAt = 0;
-  const node = $('#main')?.querySelector(':scope > .grid-loader');
+  gridWait.hideTimer = 0; gridWait.shownAt = 0; gridWait.exit = null;
+  const node = gridLoaderNode();
   if (node) node.hidden = true;
 }
 function resetGridWait() {

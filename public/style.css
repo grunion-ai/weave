@@ -1153,15 +1153,20 @@ body.wv-activity-open #main { margin-right: 344px; }
   animation: loader-in .18s ease both;
 }
 #page-loader.boot { animation: loader-in .18s ease 500ms both; }
+#page-loader.loader-out { animation: loader-out 160ms linear 120ms both; }
+#main > .grid-loader.loader-out { animation: loader-out 160ms linear 120ms both; }
 #page-loader .mark-light, #page-loader .mark-dark { position: relative; width: 96px; height: 96px; }
 #page-loader svg { width: 100%; height: 100%; display: block; }
 #page-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-light { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-dark { display: block; }
 @keyframes loader-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes loader-out { from { opacity: 1; } to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   #page-loader { animation: none; }
   #page-loader.boot { animation: loader-in 0s linear 500ms both; }
+  #page-loader.loader-out { animation: loader-out 0s linear 120ms both; }
+  #main > .grid-loader.loader-out { animation: loader-out 0s linear 120ms both; }
 }
 #main > .table-wrap[aria-busy="true"] { opacity: .5; transition: opacity .12s ease; }
 #main > .grid-loader[hidden] { display: none; }
