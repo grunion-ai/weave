@@ -129,19 +129,26 @@ export function securityHeaders(headers, { https = false, frameAncestors = [] } 
   };
 }
 
-async function readBody(req, { requireJson = false } = {}) {
-  if (requireJson && !/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) {
+async function readBody(req, { requireJson = false, form = false } = {}) {
+  const encoded = form && /^application\/x-www-form-urlencoded\s*(;|$)/i.test(req.headers['content-type'] ?? '');
+  const maxSize = form ? 64 * 1024 : 10 * 1024 * 1024;
+  if (Number(req.headers['content-length']) > maxSize) throw new WeaveError('Body too large', form ? 'too-large' : 'invalid');
+  if (requireJson && !encoded && !/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) {
     throw new WeaveError('A request with an Origin must send its body as application/json', 'invalid');
   }
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 10 * 1024 * 1024) throw new WeaveError('Body too large', 'invalid');
+    if (size > maxSize) throw new WeaveError('Body too large', form ? 'too-large' : 'invalid');
     chunks.push(chunk);
   }
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw) return {};
+  if (encoded) {
+    const params = new URLSearchParams(raw);
+    return Object.fromEntries([...new Set(params.keys())].map((key) => [key, params.getAll(key).length > 1 ? params.getAll(key) : params.get(key)]));
+  }
   try {
     return JSON.parse(raw);
   } catch {
@@ -450,7 +457,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         path,
         searchParams: url.searchParams,
         header: (name) => req.headers[name.toLowerCase()],
-        readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined }),
+        readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined, form: req.method === 'POST' && /^(?:\/w\/[^/]+)?\/(?:f\/[^/]+|api\/forms\/[^/]+\/submit)$/.test(path) }),
         remote: req.socket?.remoteAddress ?? null,
       });
       const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });

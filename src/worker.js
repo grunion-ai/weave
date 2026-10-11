@@ -41,6 +41,7 @@ export class WeaveWorkspace {
       version: this.env.WEAVE_VERSION || 'dev',
       uptime: () => (Date.now() - this.#bootedAt) / 1000,
       serveStatic: null,
+      anonymousForms: ['1', 'true'].includes(String(this.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()),
     });
   }
 
@@ -48,14 +49,48 @@ export class WeaveWorkspace {
     const url = new URL(request.url);
     this.#boot(request.headers.get('x-weave-workspace') || this.env.DEFAULT_WORKSPACE || 'weave');
     try {
+      const path = decodePath(url.pathname);
+      const from = request.headers.get('origin');
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) && (request.headers.get('sec-fetch-site') === 'cross-site' || (from !== null && from.toLowerCase() !== url.origin.toLowerCase()))) throw new WeaveError('Cross-site write refused', 'forbidden');
+      const form = request.method === 'POST' && /^(?:\/w\/[^/]+)?\/(?:f\/[^/]+|api\/forms\/[^/]+\/submit)$/.test(path);
       const outcome = await this.#handle({
         method: request.method,
-        path: decodePath(url.pathname),
+        path,
+        remote: request.headers.get('cf-connecting-ip'),
         searchParams: url.searchParams,
         header: (name) => request.headers.get(name) ?? undefined,
         readBody: async () => {
-          const raw = await request.text();
+          const type = request.headers.get('content-type') ?? '';
+          const encoded = form && /^application\/x-www-form-urlencoded\s*(;|$)/i.test(type);
+          if (from !== null && !encoded && !/^application\/json\s*(;|$)/i.test(type)) throw new WeaveError('A request with an Origin must send its body as application/json', 'invalid');
+          const maxSize = form ? 64 * 1024 : 10 * 1024 * 1024;
+          if (Number(request.headers.get('content-length')) > maxSize) throw new WeaveError('Body too large', form ? 'too-large' : 'invalid');
+          const chunks = [];
+          let size = 0;
+          const reader = request.body?.getReader();
+          if (reader) {
+            try {
+              for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                size += value.byteLength;
+                if (size > maxSize) {
+                  await reader.cancel();
+                  throw new WeaveError('Body too large', form ? 'too-large' : 'invalid');
+                }
+                chunks.push(value);
+              }
+            } finally { reader.releaseLock(); }
+          }
+          const bytes = new Uint8Array(size);
+          let offset = 0;
+          for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+          const raw = new TextDecoder().decode(bytes);
           if (!raw) return {};
+          if (encoded) {
+            const params = new URLSearchParams(raw);
+            return Object.fromEntries([...new Set(params.keys())].map(key => [key, params.getAll(key).length > 1 ? params.getAll(key) : params.get(key)]));
+          }
           try { return JSON.parse(raw); }
           catch { throw new WeaveError('Invalid JSON body', 'invalid'); }
         },

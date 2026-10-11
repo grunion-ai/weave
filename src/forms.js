@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { WeaveError } from './store.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS, BUG_CATEGORIES } from './bugreport.js';
 
@@ -116,10 +117,10 @@ function toForm(reg, row) {
   const hiddenMap = parseJson(f.Hidden, {}, 'Hidden', name);
   if (!Array.isArray(shown) || !isMap(hiddenMap)) throw new WeaveError(`The form '${name}' needs Fields as a JSON list and Hidden as a JSON object`, 'invalid');
   const fields = shown.map((entry) => {
-    const ref = typeof entry === 'string' ? entry : entry?.field;
+    const ref = typeof entry === 'string' ? entry : entry?.id ?? entry?.field;
     const field = ref == null ? null : owner.findField(table, String(ref));
     if (!field && kind === 'Row') throw new WeaveError(`The form '${name}' shows '${ref}', which ${owner.qualifiedName(table)} does not have`, 'invalid');
-    const out = { field: field?.name ?? String(ref), label: String(entry?.label ?? field?.name ?? ref), type: field?.type ?? 'text' };
+    const out = { id: field?.id ?? String(ref), key: String(entry?.key ?? field?.id ?? ref), aliases: entry?.aliases ?? [], required: entry?.required === true, field: field?.name ?? String(ref), label: String(entry?.label ?? field?.name ?? ref), type: field?.type ?? 'text' };
     if (entry?.input) out.input = String(entry.input);
     if (entry?.default !== undefined) out.default = entry.default;
     if (field && ['select', 'multiselect', 'workflow'].includes(field.type)) out.options = optionNames(field);
@@ -136,11 +137,12 @@ function toForm(reg, row) {
     workspace: owner.state.meta.name,
     table: owner.qualifiedName(table),
     fields,
-    hidden: Object.keys(hiddenMap),
+    hidden: Object.keys(hiddenMap).map(ref => owner.findField(table, ref)?.name ?? ref),
   };
   Object.defineProperty(form, 'owner', { value: owner, enumerable: false });
   Object.defineProperty(form, 'tableId', { value: table.id, enumerable: false });
   Object.defineProperty(form, 'hiddenMap', { value: hiddenMap, enumerable: false });
+  fieldLookup(form);
   return form;
 }
 
@@ -171,6 +173,51 @@ export function listForms(w) {
   return out;
 }
 
+function normalizeDefinition(w, db, name, fields, hidden) {
+  if (!Array.isArray(fields) || !isMap(hidden)) throw new WeaveError('Fields must be a list and Hidden must be an object', 'invalid');
+  fields = fields.map((entry) => {
+    const config = typeof entry === 'string' ? { field: entry } : entry;
+    const f = config && w.findField(db, config.id ?? config.field);
+    if (!f) throw new WeaveError(`Unknown form field '${config?.field}'`, 'invalid');
+    if (config.key != null && typeof config.key !== 'string') throw new WeaveError('Field key must be text', 'invalid');
+    if (config.aliases != null && (!Array.isArray(config.aliases) || config.aliases.some(a => typeof a !== 'string'))) throw new WeaveError('Field aliases must be a list of strings', 'invalid');
+    return { ...config, id: f.id, key: config.key ?? f.id, aliases: [...new Set([f.name, ...(config.aliases ?? [])])] };
+  });
+  hidden = Object.fromEntries(Object.entries(hidden).map(([ref, value]) => {
+    const f = w.findField(db, ref);
+    if (!f) throw new WeaveError(`Unknown hidden field '${ref}'`, 'invalid');
+    return [f.id, value];
+  }));
+  fieldLookup({ name, fields: fields.map(f => ({ ...f, field: w.findField(db, f.id).name, label: f.label ?? w.findField(db, f.id).name })), hidden: Object.keys(hidden), owner: w, tableId: db.id });
+  return { fields, hidden };
+}
+
+export function normalizeFormValues(reg, forms, values, row = null) {
+  const patch = Object.fromEntries(Object.entries(values).map(([key, value]) => [reg.findField(forms, key)?.name ?? key, value]));
+  if (row && !['Table', 'Fields', 'Hidden'].some(key => hasOwn(patch, key))) return values;
+  const old = key => row?.values[reg.findField(forms, key)?.id];
+  const tableRef = [].concat(patch.Table ?? old('Table') ?? [])[0];
+  if (!tableRef) return values;
+  const tables = sysTable(reg, 'tables');
+  const tableRow = tables && reg.findEntity(tables.id, tableRef.id ?? tableRef);
+  const owner = tableRow && ownerOfTable(reg, tableRow.sysId);
+  const table = owner?.state.tables[tableRow.sysId];
+  if (!table || table.deletedAt) throw new WeaveError('The form needs a live Table', 'invalid');
+  const name = patch.Name ?? 'Form';
+  const fields = parseJson(patch.Fields ?? old('Fields'), [], 'Fields', name);
+  const hidden = parseJson(patch.Hidden ?? old('Hidden'), {}, 'Hidden', name);
+  const normalized = normalizeDefinition(owner, table, name, fields, hidden);
+  if (row && hasOwn(patch, 'Fields')) {
+    const previous = parseJson(old('Fields'), [], 'Fields', name);
+    for (const field of normalized.fields) {
+      const prior = previous.find(entry => (entry.id ?? owner.findField(table, entry.field ?? entry)?.id) === field.id);
+      if (prior) field.aliases = [...new Set([...field.aliases, ...(prior.aliases ?? []), prior.key].filter(Boolean))];
+    }
+    fieldLookup({ name, fields: normalized.fields.map(f => ({ ...f, field: owner.findField(table, f.id).name, label: f.label ?? owner.findField(table, f.id).name })), hidden: Object.keys(normalized.hidden), owner, tableId: table.id });
+  }
+  return { ...patch, Fields: JSON.stringify(normalized.fields), Hidden: JSON.stringify(normalized.hidden) };
+}
+
 export function createForm(w, { name, description = '', table, fields = [], hidden = {}, enabled = true, floor = 'Observer', kind = 'Row' } = {}) {
   if (!name) throw new WeaveError('A form needs a name', 'invalid');
   const reg = registryOf(w);
@@ -179,6 +226,7 @@ export function createForm(w, { name, description = '', table, fields = [], hidd
   const tablesT = sysTable(reg, 'tables');
   const tablesRow = tablesT && reg.listEntities(tablesT.id).find((e) => e.sysId === db.id);
   if (!tablesRow) throw new WeaveError(`${w.qualifiedName(db)} has no Workspace/Tables row to point a form at`, 'not-found');
+  ({ fields, hidden } = normalizeDefinition(w, db, name, fields, hidden));
   const row = reg.createEntity(formsT.id, {
     name,
     values: { Description: description, Table: tablesRow.id, Fields: JSON.stringify(fields), Hidden: JSON.stringify(hidden), Enabled: !!enabled, Floor: floor, Kind: kind },
@@ -208,22 +256,93 @@ export function formAdmits(form, { role = null, anonymous = false } = {}) {
   return form.floor === 'Anonymous' && !!anonymous;
 }
 
-function pickValues(form, given) {
-  const hidden = new Map(form.hidden.map((n) => [n.toLowerCase(), n]));
+const folded = value => String(value).trim().toLowerCase();
+const reserved = new Set(['__proto__', 'prototype', 'constructor']);
+
+function fieldLookup(form) {
   const shown = new Map();
   for (const f of form.fields) {
-    shown.set(f.field.toLowerCase(), f);
-    shown.set(f.label.toLowerCase(), f);
+    if (!Array.isArray(f.aliases)) throw new WeaveError('Field aliases must be a list', 'invalid');
+    for (const name of [f.id, f.key, f.field, f.label, ...f.aliases]) {
+      const key = folded(name);
+      if (!key || reserved.has(key)) throw new WeaveError(`Invalid form key '${name}'`, 'invalid');
+      if (shown.has(key) && shown.get(key).id !== f.id) throw new WeaveError(`Ambiguous form key '${name}'`, 'invalid');
+      shown.set(key, f);
+    }
   }
-  const picked = {};
+  const hidden = new Map();
+  for (const name of form.hidden) {
+    const f = form.owner?.findField(form.owner.state.tables[form.tableId], name);
+    for (const key of [name, f?.id, f?.name].filter(Boolean)) hidden.set(folded(key), name);
+  }
+  return { shown, hidden };
+}
+
+function typedValue(f, value) {
+  if (value == null || value === '') return value;
+  const bad = () => { throw new WeaveError(`'${f.label}' needs a valid ${f.type} value`, 'invalid'); };
+  if (['number', 'rating'].includes(f.type)) {
+    if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(Number(value))) bad();
+    return Number(value);
+  }
+  if (['checkbox', 'toggle'].includes(f.type)) {
+    if ([true, 'true', '1', 'on'].includes(value)) return true;
+    if ([false, 'false', '0', 'off'].includes(value)) return false;
+    bad();
+  }
+  if (f.type === 'multiselect') {
+    const values = Array.isArray(value) ? value : [value];
+    if (values.some(v => !f.options?.includes(v))) bad();
+    return [...new Set(values)].sort();
+  }
+  if (['select', 'workflow'].includes(f.type) && !f.options?.includes(value)) bad();
+  if (['text', 'document', 'email', 'url', 'date', 'select', 'workflow'].includes(f.type) && typeof value !== 'string') bad();
+  if (f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) bad();
+  if (f.type === 'url') {
+    try { if (!['http:', 'https:'].includes(new URL(value).protocol)) bad(); } catch { bad(); }
+  }
+  if (f.type === 'date' && !Number.isFinite(Date.parse(value))) bad();
+  return value;
+}
+
+function pickValues(form, given) {
+  const { shown, hidden } = fieldLookup(form);
+  const picked = Object.create(null);
   for (const [key, value] of Object.entries(given)) {
-    const k = String(key).trim().toLowerCase();
+    const k = folded(key);
+    if (reserved.has(k)) throw new WeaveError(`Invalid form key '${key}'`, 'invalid');
     if (hidden.has(k)) throw new WeaveError(`'${hidden.get(k)}' is filled by the server; the form '${form.name}' cannot set it`, 'forbidden');
     const f = form.kind === 'Row' ? shown.get(k) : null;
-    if (!f) throw new WeaveError(`'${key}' is not on the form '${form.name}' (it shows ${form.fields.map((x) => x.label).join(', ') || 'nothing'})`, 'invalid');
-    picked[f.field] = value;
+    if (!f) throw new WeaveError(`'${key}' is not on the form '${form.name}'`, 'invalid');
+    if (hasOwn(picked, f.id)) throw new WeaveError(`'${f.label}' was supplied more than once`, 'invalid');
+    picked[f.id] = typedValue(f, value);
   }
   return picked;
+}
+
+export function prefillForm(form, searchParams = new URLSearchParams()) {
+  const copy = Object.defineProperties({}, Object.getOwnPropertyDescriptors(form));
+  copy.fields = form.fields.map(f => ({ ...f }));
+  copy.warnings = [];
+  const params = searchParams instanceof URLSearchParams ? searchParams : new URLSearchParams(searchParams);
+  const values = Object.create(null);
+  for (const key of new Set(params.keys())) {
+    if (/^utm_/i.test(key)) continue;
+    const name = key.replace(/^prefill_/i, '');
+    const all = params.getAll(key);
+    try {
+      const { shown } = fieldLookup(form);
+      const f = shown.get(folded(name));
+      if (all.length > 1 && f?.type !== 'multiselect') throw new WeaveError(`'${name}' was supplied more than once`, 'invalid');
+      const picked = pickValues(form, Object.fromEntries([[name, f?.type === 'multiselect' ? all : all[0]]]));
+      for (const [id, value] of Object.entries(picked)) {
+        if (hasOwn(values, id)) throw new WeaveError(`'${name}' was supplied more than once`, 'invalid');
+        values[id] = value;
+      }
+    } catch (err) { copy.warnings.push(err.message); }
+  }
+  for (const f of copy.fields) if (hasOwn(values, f.id)) f.default = values[f.id];
+  return copy;
 }
 
 function bugRow(form, input, server) {
@@ -262,8 +381,9 @@ function plainRow(form, picked, actor, server) {
   const tokens = { $actor: actor, $now: now, $version: server.version ?? null, $workspace: server.workspace ?? form.workspace, $form: form.name };
   const wanted = {};
   for (const f of form.fields) {
-    if (hasOwn(picked, f.field)) wanted[f.field] = picked[f.field];
-    else if (f.default !== undefined) wanted[f.field] = f.default;
+    if (hasOwn(picked, f.id)) wanted[f.field] = picked[f.id];
+    else if (f.default !== undefined) wanted[f.field] = typedValue(f, f.default);
+    if (f.required && (wanted[f.field] == null || wanted[f.field] === '' || (Array.isArray(wanted[f.field]) && !wanted[f.field].length))) throw new WeaveError(`'${f.label}' is required`, 'invalid');
   }
   for (const [n, token] of Object.entries(form.hiddenMap)) {
     wanted[n] = typeof token === 'string' && token.startsWith('$') ? (tokens[token] ?? null) : token;
@@ -282,25 +402,74 @@ function plainRow(form, picked, actor, server) {
   return { input: { ...(name != null ? { name } : {}), values, ...(Object.keys(docs).length ? { docs } : {}) }, extra: {} };
 }
 
-export function submitForm(w, ref, input = {}, { actor = null, server = {} } = {}) {
+export function submitForm(w, ref, input = {}, options = {}) {
+  const owner = getForm(w, ref).owner;
+  let before;
+  try {
+    return owner.store.batch(() => {
+      owner.maybeRefresh();
+      if (registryOf(w) !== owner) registryOf(w).maybeRefresh();
+      before = structuredClone(owner.state);
+      return submitResolved(w, ref, input, options);
+    });
+  } catch (err) {
+    if (before) owner.state = before;
+    throw err;
+  }
+}
+
+function submitResolved(w, ref, input = {}, { actor = null, server = {}, idempotencyKey = null, scope = '', dedupScope = scope, dedupWindowMs = 60000 } = {}) {
   const form = getForm(w, ref);
   if (!form.enabled) throw new WeaveError(`The form '${form.name}' is turned off`, 'forbidden');
-  const body = isMap(input) ? input : {};
-  const picked = pickValues(form, isMap(body.values) ? body.values : {});
+  if (!isMap(input) || (input.values != null && !isMap(input.values))) throw new WeaveError('Form values must be an object', 'invalid');
+  if (idempotencyKey != null && (typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || idempotencyKey.length > 200)) throw new WeaveError('Idempotency key must contain 1 to 200 characters', 'invalid');
   const owner = form.owner;
   const who = actor ?? owner.actor;
-  const { input: row, extra } = form.kind === 'Bug report' ? bugRow(form, body, server) : plainRow(form, picked, who, server);
+  const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const group = hash([form.id, who, scope]);
+  const dedupGroup = hash([form.id, who, dedupScope]);
+  const key = idempotencyKey == null ? null : hash(idempotencyKey);
+  const now = Date.now();
+  const receipts = (owner.state.meta.formReceipts ?? []).filter(r => now - r.at < 86400000);
+  const retry = key && receipts.find(r => r.group === group && r.key === key);
+  const stable = value => Array.isArray(value) ? value.map(stable) : isMap(value) ? Object.fromEntries(Object.keys(value).sort().map(k => [k, stable(value[k])])) : value;
+  const rawDigest = hash(stable(input));
+  if (retry?.rawDigest === rawDigest) return { ...retry.receipt, replayed: true };
+  const picked = pickValues(form, input.values ?? {});
+  const digest = hash(stable(form.kind === 'Row' ? picked : input));
+  if (retry) {
+    if (retry.digest !== digest) throw new WeaveError('This idempotency key was already used with different values', 'conflict');
+    return { ...retry.receipt, replayed: true };
+  }
+  const ensureCapacity = () => { if (receipts.length >= 10000) throw new WeaveError('Form receipt capacity reached; retry after receipts expire', 'rate-limited'); };
+  const duplicate = dedupWindowMs > 0 && (who !== 'anonymous' || dedupScope) && receipts.find(r => (r.dedupGroup ?? r.group) === dedupGroup && r.digest === digest && now - r.at < Math.min(dedupWindowMs, 86400000));
+  if (duplicate) {
+    if (key) {
+      ensureCapacity();
+      owner.state.meta.formReceipts = [...receipts, { ...duplicate, group, key, rawDigest, at: now }];
+      owner.save();
+    }
+    return { ...duplicate.receipt, replayed: true, duplicate: true };
+  }
+  ensureCapacity();
+  const { input: row, extra } = form.kind === 'Bug report' ? bugRow(form, input, server) : plainRow(form, picked, who, server);
   const was = owner.actor;
   owner.actor = who;
-  let e;
-  try { e = owner.createEntity(form.tableId, row); } finally { owner.actor = was; }
-  const ws = owner.state.meta.name;
-  return { id: e.id, publicId: e.publicId, form: form.id, workspace: ws, table: form.table, ...extra, url: `/w/${ws}/#/entity/${e.id}` };
+  try {
+    return owner.store.batch(() => {
+      const e = owner.createEntity(form.tableId, row);
+      const ws = owner.state.meta.name;
+      const receipt = { id: e.id, publicId: e.publicId, form: form.id, workspace: ws, table: form.table, ...extra, url: `/w/${ws}/#/entity/${e.id}` };
+      owner.state.meta.formReceipts = [...receipts, { group, dedupGroup, key, digest, rawDigest, at: now, receipt }];
+      owner.save();
+      return receipt;
+    });
+  } finally { owner.actor = was; }
 }
 
 function control(f) {
   const id = `f-${esc(f.field).replace(/[^A-Za-z0-9_-]/g, '_')}`;
-  const data = `data-field="${esc(f.field)}" data-type="${esc(f.type)}"`;
+  const data = `data-field="${esc(f.key)}" data-type="${esc(f.type)}"${f.required && !['checkbox', 'toggle'].includes(f.type) ? ' required aria-required="true"' : ''}`;
   const label = `<label class="form-label" for="${id}">${esc(f.label)}</label>`;
   const dflt = f.default;
   if (f.type === 'select' || f.type === 'workflow') {
@@ -317,7 +486,7 @@ function control(f) {
   }
   if (f.type === 'document') return `${label}<textarea class="form-control" rows="5" id="${id}" ${data}>${esc(dflt ?? '')}</textarea>`;
   const type = { number: 'number', rating: 'number', date: 'date', email: 'email', url: 'url' }[f.type] ?? 'text';
-  return `${label}<input class="form-control" type="${type}" id="${id}" ${data} value="${esc(dflt ?? '')}">`;
+  return `${label}<input class="form-control" type="${type}"${f.type === 'number' ? ' step="any"' : ''} id="${id}" ${data} value="${esc(dflt ?? '')}">`;
 }
 
 function bugControls(form) {
@@ -329,7 +498,8 @@ function bugControls(form) {
   ].join('');
 }
 
-export function renderFormPage(form, { mount = '' } = {}) {
+export function renderFormPage(form, { mount = '', searchParams = new URLSearchParams() } = {}) {
+  form = prefillForm(form, searchParams);
   const bug = form.kind === 'Bug report';
   const body = bug ? bugControls(form) : form.fields.map((f) => `<div class="mb-3">${control(f)}</div>`).join('');
   return `<!doctype html>
@@ -349,6 +519,7 @@ ${bug ? '<script src="/bug-core.js"></script>\n' : ''}<script src="/form.js"></s
 <div class="card-body">
 <h1 class="card-title h2 mb-2">${esc(form.name)}</h1>
 ${form.description ? `<p class="text-secondary mb-4">${esc(form.description)}</p>` : ''}${form.enabled ? '' : '<div class="alert alert-warning" role="alert">This form is turned off.</div>'}
+${form.warnings.length ? `<div class="alert alert-warning" role="alert">${form.warnings.map(esc).join('<br>')}</div>` : ''}
 ${body}
 <div class="alert alert-danger d-none" role="alert" id="wv-form-error"></div>
 <div class="form-footer"><button class="btn btn-primary w-100" type="submit"${form.enabled ? '' : ' disabled'}>Send</button></div>
