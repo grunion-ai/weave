@@ -20,7 +20,7 @@ const s = await launch('outside taps dismiss overlays', (weave) => {
 });
 
 const touchAway = (page) => page.evaluate(() => {
-  const busy = 'a, button, input, textarea, select, label, [contenteditable], [role="button"], .vditor, tr.entity-row, .chip-pop, .picker-pop, #bug-panel, .crumb-actions, .dl-menu, .phone-bar, .bug-fab';
+  const busy = 'a, button, input, textarea, select, label, [contenteditable], [role="button"], .vditor, tr.entity-row, .chip-pop, .picker-pop, #bug-panel, .crumb-actions, .phone-bar, .bug-fab';
   window.awayClicks = 0;
   addEventListener('click', () => { window.awayClicks++; }, true);
   for (let y = 8; y < innerHeight - 20; y += 8) {
@@ -54,7 +54,7 @@ if (s) {
     { name: 'the filter popover', at: () => table, show: '.table-filter-popover', open: async (p) => { await p.click('#main .table-tools-btn'); await p.click('#main .crumb-actions .table-filter-btn'); } },
     { name: 'the view popover', at: () => table, show: '.table-view-popover', open: async (p) => { await p.click('#main .table-tools-btn'); await p.click('#main .crumb-actions .table-view-btn'); } },
     { name: 'the bug panel', at: () => table, show: '#bug-panel', open: async (p) => { await p.click('.bug-fab'); } },
-    { name: 'the row menu', at: () => docked, show: '#dock .dl-menu:not(.hidden)', open: async (p) => { await p.click('#dock .dots-btn'); } },
+    { name: 'the row menu', at: () => docked, show: '.wv-menu[role="menu"]', open: async (p) => { await p.click('#dock .dots-btn'); } },
     { name: 'the picker sheet', at: () => docked, show: '.picker-pop', open: async (p) => { await p.click('#dock .chip-trigger[title="Area"]'); } },
   ];
 
@@ -92,12 +92,12 @@ if (s) {
       await page.waitForTimeout(150);
       assert.equal(await page.locator('.table-filter-popover').count(), 0, 'the button shuts its own popover');
       await page.click('#main .crumb-actions .dots-btn');
-      assert.ok(await shown(page, '#main .dl-menu:not(.hidden)'), 'the table menu opens');
+      assert.ok(await shown(page, '.wv-menu[role="menu"]'), 'the table menu opens');
       await page.click('#main .crumb-actions .dots-btn');
-      assert.equal(await shown(page, '#main .dl-menu:not(.hidden)'), false, 'and its button shuts it');
+      assert.equal(await shown(page, '.wv-menu[role="menu"]'), false, 'and its button shuts it');
       await page.click('#main .crumb-actions .dots-btn');
       await page.mouse.click(640, 800);
-      assert.equal(await shown(page, '#main .dl-menu:not(.hidden)'), false, 'a click away shuts it');
+      assert.equal(await shown(page, '.wv-menu[role="menu"]'), false, 'a click away shuts it');
     } finally { await page.close(); }
   });
 }

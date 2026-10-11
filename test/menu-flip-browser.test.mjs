@@ -32,18 +32,22 @@ if (s) {
 
   const openAndMeasure = (page, i) => page.evaluate(async (idx) => {
     const round = (n) => Math.round(n * 10) / 10;
-    const wrap = document.querySelectorAll('.dl-wrap')[idx];
-    wrap.querySelector('.dots-btn').click();
-    const menu = wrap.querySelector('.dl-menu');
+    const btn = document.querySelectorAll('.dl-wrap')[idx].querySelector('.dots-btn');
+    btn.click();
+    const menu = document.querySelector('.chip-pop.wv-menu');
+    if (!menu) return { hidden: true, title: btn.title };
     await Promise.all(menu.getAnimations().map((a) => a.finished.catch(() => {})));
     const r = menu.getBoundingClientRect();
-    return {
-      hidden: menu.classList.contains('hidden'),
+    const b = btn.getBoundingClientRect();
+    const out = {
+      hidden: false,
       right: round(r.right), left: round(r.left), width: round(r.width),
-      flipped: menu.classList.contains('dl-menu-right'),
+      flipped: Math.abs(r.right - b.right) < 1 && Math.abs(r.left - b.left) >= 1,
       clientWidth: document.documentElement.clientWidth,
-      title: wrap.querySelector('.dots-btn').title,
+      title: btn.title,
     };
+    menu.close();
+    return out;
   }, i);
 
   const count = (page) => page.locator('.dl-wrap').count();

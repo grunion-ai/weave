@@ -43,7 +43,7 @@ if (s) {
     const tools = head.querySelector('.table-tools-btn');
     const shown = (n) => !!n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== 'hidden';
     const sheet = head.querySelector('.crumb-actions');
-    const group = sheet.querySelector('.tools-group');
+    const menu = document.querySelector('.chip-pop.wv-menu[role="menu"]');
     return {
       theme: document.documentElement.dataset.bsTheme,
       tools: shown(tools) ? box(tools) : null,
@@ -52,12 +52,14 @@ if (s) {
       controls: Object.fromEntries(controls.map((q) => { const n = head.querySelector(`.crumb-actions ${q}`); return [q, shown(n) ? box(n) : null]; })),
       marked: head.querySelector('.crumb-actions .table-filter-btn')?.dataset.mark ?? null,
       sheet: shown(sheet) ? box(sheet) : null,
-      group: shown(group) ? {
-        head: group.querySelector('.tools-group-head')?.textContent,
-        rows: [...group.querySelectorAll('.tools-row')].map((r) => ({ text: r.textContent.trim(), h: Math.round(r.getBoundingClientRect().height), color: getComputedStyle(r).color, inside: box(r).bottom <= box(sheet).bottom + 0.5 && box(r).top >= box(sheet).top - 0.5 })),
+      kebab: (() => { const k = head.querySelector('.crumb-actions .dots-btn'); return shown(k) ? { ...box(k), text: k.innerText.trim(), expanded: k.getAttribute('aria-expanded') } : null; })(),
+      menu: shown(menu) ? {
+        box: box(menu),
+        sheet: menu.classList.contains('wv-menu-sheet'),
+        rows: [...menu.querySelectorAll('.wv-menu-row')].map((r) => ({ text: r.textContent.trim(), h: Math.round(r.getBoundingClientRect().height), color: getComputedStyle(r).color, inside: box(r).bottom <= box(menu).bottom + 0.5 && box(r).top >= box(menu).top - 0.5 })),
       } : null,
       danger: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--tblr-danger)'; sheet.append(probe); const c = getComputedStyle(probe).color; probe.remove(); return c; })(),
-      menus: [...document.querySelectorAll('.dl-menu:not(.hidden)')].filter(shown).length,
+      menus: document.querySelectorAll('.chip-pop.wv-menu').length,
       sortValue: head.querySelector('.crumb-actions .table-sort-value')?.textContent ?? null,
       scrollWidth: document.documentElement.scrollWidth,
       vw: document.documentElement.clientWidth,
@@ -99,25 +101,37 @@ if (s) {
         } finally { await page.close(); }
       });
 
-      test(`on a phone the table sheet lists the table actions as its own rows, with no kebab, no second search and a Sort control (${engine}, ${theme}, Issue #723)`, async () => {
+      test(`on a phone the table sheet ends in a Table actions row that opens the table menu as a bottom sheet of 44px rows (${engine}, ${theme}, Issue #723, Feature #296)`, async () => {
         const page = await open(b, { profile, theme });
         try {
           await page.click('#main .table-tools-btn');
           await settled(page.locator('#main .crumb-actions'));
-          const seen = await read(page, [...SHEET, ...FOLDED]);
-          for (const q of FOLDED) assert.equal(seen.controls[q], null, `${q} is not in the sheet`);
+          let seen = await read(page, [...SHEET, ...FOLDED]);
+          assert.equal(seen.controls['.table-search'], null, 'no second search in the sheet');
           assert.equal(seen.sortValue, 'None', 'the Sort row says the table is unsorted');
-          assert.ok(seen.group, 'a Table group shows in the sheet');
-          assert.equal(seen.group.head, 'Table');
-          assert.deepEqual(seen.group.rows.map((r) => r.text), ['Column stats…', 'Export CSV', 'Share…', 'New share page…', 'Row term (row)…', 'Delete table'], 'every table action is a row, Delete table last');
-          for (const r of seen.group.rows) {
+          assert.ok(seen.kebab, 'the table menu trigger shows in the sheet');
+          assert.equal(seen.kebab.text, 'Table actions', 'as a labelled row');
+          assert.ok(seen.kebab.height >= 44, `a ${seen.kebab.height}px target`);
+          assert.equal(seen.menus, 0, 'no menu opens until it is tapped');
+          await page.click('#main .crumb-actions .dots-btn');
+          await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
+          await settled(page.locator('.chip-pop.wv-menu'));
+          seen = await read(page, [...SHEET, ...FOLDED]);
+          assert.ok(seen.menu?.sheet, 'the same menu, drawn as a sheet');
+          assert.ok(Math.abs(seen.menu.box.bottom - (await page.evaluate(() => innerHeight))) <= 1, 'pinned to the bottom edge');
+          assert.ok(seen.menu.box.left <= 0.5 && seen.menu.box.right >= seen.vw - 0.5, 'and full width');
+          assert.equal(seen.kebab.expanded, 'true', 'the trigger says its menu is open');
+          assert.deepEqual(seen.menu.rows.map((r) => r.text), ['Column stats…', 'Export CSV', 'Share…', 'New share page…', 'Row term (row)…', 'Delete table'], 'every table action is a row, Delete table last');
+          for (const r of seen.menu.rows) {
             assert.ok(r.h >= 44, `${r.text} is a ${r.h}px row`);
             assert.ok(r.inside, `${r.text} sits inside the sheet`);
           }
-          const del = seen.group.rows.at(-1).color;
+          const del = seen.menu.rows.at(-1).color;
           assert.equal(rgb(del), rgb(seen.danger), 'Delete table is red');
-          assert.notEqual(rgb(seen.group.rows[0].color), rgb(del), 'and the others are not');
-          assert.equal(seen.menus, 0, 'no second menu opens outside the sheet');
+          assert.notEqual(rgb(seen.menu.rows[0].color), rgb(del), 'and the others are not');
+          await page.keyboard.press('Escape');
+          await page.waitForSelector('.chip-pop.wv-menu', { state: 'detached' });
+          assert.ok((await read(page, SHEET)).sheet, 'Escape closes the menu and leaves the toolbar sheet');
           await page.click('#main .crumb-actions .table-sort-btn');
           await page.waitForSelector('.table-sort-popover .table-sort-field');
           await page.click('.table-sort-popover .table-sort-field:has-text("Severity")');
@@ -162,7 +176,7 @@ if (s) {
       assert.equal(seen.tools, null);
       for (const q of DESKTOP) assert.ok(seen.controls[q] && seen.controls[q].height < 40, `${q} shows inline at its desktop size`);
       assert.equal(seen.controls['.table-sort-btn'], null, 'the Sort row is a phone control');
-      assert.equal(seen.group, null, 'the table actions stay in the kebab menu');
+      assert.equal(seen.kebab?.text, '', 'the kebab keeps its icon-only face on a desktop');
     } finally { await page.close(); }
   });
 }

@@ -53,7 +53,7 @@ test('the kebab menu wires every verb to its route', () => {
     assert.ok(menu.includes(`label: '${label}'`), `menu lists ${label}`);
     assert.match(menu, call, `${label} reaches its route`);
   }
-  assert.match(menu, /hold: 'Delete table'/, 'delete is the house hold-to-confirm, not a plain button');
+  assert.match(menu, /label: 'Delete table', hold: true/, 'delete is the house hold-to-confirm, not a plain button');
   assert.match(menu, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
   assert.match(menu, /await loadSchema\(\)/, 'every verb re-reads the schema so the nav redraws');
   assert.match(menu, /location\.hash = `#\/table\/\$\{copy\.id\}`/, 'duplicate opens the copy');
@@ -85,7 +85,7 @@ test('the kebab is hidden until hover, the active row, keyboard focus, or an ope
   const base = rulesFor('.nav-db .nav-db-menu');
   assert.equal(base.opacity, '0');
   assert.equal(base['margin-left'], 'auto', 'it takes the right edge the count used to hold');
-  for (const sel of ['.nav-db:hover .nav-db-menu', '.nav-db.active .nav-db-menu', '.nav-db .nav-db-menu:focus-within', '.nav-db .nav-db-menu:has(.dl-menu:not(.hidden))']) {
+  for (const sel of ['.nav-db:hover .nav-db-menu', '.nav-db.active .nav-db-menu', '.nav-db .nav-db-menu:focus-within', '.nav-db .nav-db-menu:has(.dots-btn[aria-expanded="true"])']) {
     assert.equal(rulesFor(sel).opacity, '1', `${sel} reveals it`);
   }
   assert.deepEqual(rulesFor('.nav-db .count'), {}, 'the count rule is gone with the count');
@@ -96,9 +96,9 @@ test('the kebab paints in both themes by inheriting the house menu tokens', () =
     const r = rulesFor(sel);
     for (const k of Object.keys(r)) assert.ok(!/color|background/.test(k), `${sel} must not hard-code ${k}`);
   }
-  assert.match(rulesFor('.dl-menu').background ?? '', /var\(--tblr-bg-surface\)/);
-  assert.match(rulesFor('.dl-menu .dropdown-item').color ?? '', /var\(--tblr-body-color\)/);
-  assert.match(rulesFor('.dl-menu').border ?? '', /var\(--tblr-border-color\)/);
+  assert.match(rulesFor('.chip-pop').background ?? '', /var\(--tblr-bg-surface\)/);
+  assert.match(rulesFor('.chip-pop-row').color ?? '', /var\(--tblr-body-color\)/);
+  assert.match(rulesFor('.chip-pop').border ?? '', /var\(--tblr-border-color\)/);
 });
 
 let db, entity;

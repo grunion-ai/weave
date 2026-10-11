@@ -56,9 +56,9 @@ if (s) {
           assert.equal(new Set(h.controls.map((c) => Math.round(c.top + c.h / 2))).size <= 2, true, 'the header keeps one line');
           assert.equal(h.scrollWidth, 0, 'no sideways scroll');
           await page.click('#dock .crumb-row .dots-btn');
-          const items = await page.locator('#dock .dl-menu:not(.hidden) .dropdown-item').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
+          const items = await page.locator('.wv-menu .wv-menu-row').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
           assert.ok(items.includes('Copy link') && items.includes('Show or hide fields'), `the row menu holds them: ${items}`);
-          await page.click('#dock .dl-menu:not(.hidden) .dropdown-item:has-text("Show or hide fields")');
+          await page.click('.wv-menu .wv-menu-row:has-text("Show or hide fields")');
           await page.waitForSelector('.chip-pop .eye-row, .chip-pop input[type="checkbox"]');
         } finally { await page.close(); }
       });
@@ -72,7 +72,7 @@ if (s) {
       assert.equal(h.expand, true);
       assert.equal(h.eye, true);
       await page.click('#dock .crumb-row .dots-btn');
-      const items = await page.locator('#dock .dl-menu:not(.hidden) .dropdown-item').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
+      const items = await page.locator('.wv-menu .wv-menu-row').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
       assert.equal(items.includes('Copy link') || items.includes('Show or hide fields'), false, `${items}`);
     } finally { await page.close(); }
   });

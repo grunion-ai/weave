@@ -1,0 +1,1 @@
+- Typing "- ", "* ", "+ ", "1. ", "1) ", "- [ ] " or "- [x] " at the start of an empty line in a document turns it into a list or task item on the space, not on Return. Backspace right after gives the typed marker back, and nothing converts inside code blocks or table cells (Issue #750).
