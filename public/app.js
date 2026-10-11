@@ -1620,7 +1620,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     currentId,
     clearId,
   });
-  const input = el('input', { class: 'picker-search', placeholder, type: 'text' });
+  const input = el('input', { class: 'search-bare picker-search', placeholder, type: 'text' });
   const chips = el('span', { class: 'picker-chips' });
   const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
   const box = el('div', { class: 'picker-box' }, chips, input, readout);
@@ -3432,7 +3432,7 @@ function openTableSearch(root = document) {
 }
 function tableSearchBox(db) {
   const input = el('input', {
-    class: 'form-control form-control-sm table-search-input', type: 'search',
+    class: 'search-bare table-search-input', type: 'search',
     placeholder: `Search ${db.term.plural}`, 'aria-label': `Search ${db.term.plural}`,
     value: tableSearchText(db) ? tableSearch.text : '',
   });
@@ -11226,7 +11226,7 @@ function openCommandK({
   };
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
-    id: 'cmdk-input', autocomplete: 'off', spellcheck: 'false',
+    id: 'cmdk-input', class: 'search-bare', autocomplete: 'off', spellcheck: 'false',
     role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'cmdk-results', 'aria-autocomplete': 'list',
     placeholder: placeholder ?? (here ? `Search ${here}` : 'Search'),
   });
