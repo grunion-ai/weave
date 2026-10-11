@@ -11,6 +11,7 @@ export const REPO_API = 'https://api.github.com/repos/grunion-ai/weave';
 const IMAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const INTERVAL = 10 * 60 * 1000;
 const OK_MARK = '.weave-release-ok';
+const COMMIT_MARK = '.weave-release-commit';
 const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const HOP = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
 const GITHUB = { accept: 'application/vnd.github+json', 'user-agent': 'weave' };
@@ -72,9 +73,14 @@ export async function startSupervisor({
   const emit = (e) => { onEvent(e); hook(e); };
 
   function spawnWorker(rel, { defer }) {
+    let commit = rel.release === 'image' ? env.RAILWAY_GIT_COMMIT_SHA : '';
+    if (rel.release !== 'image' && existsSync(join(rel.dir, COMMIT_MARK))) {
+      const saved = readFileSync(join(rel.dir, COMMIT_MARK), 'utf8').trim();
+      if (/^[a-f0-9]{40}$/.test(saved)) commit = saved;
+    }
     const child = spawn(process.execPath, [join(rel.dir, 'bin', 'weave.js'), 'serve', '--port', '0', '--host', host, '--data', dataPath], {
       cwd: rel.dir,
-      env: { ...env, ...(defer ? { WEAVE_DEFER_MIGRATIONS: '1' } : {}) },
+      env: { ...env, RAILWAY_GIT_COMMIT_SHA: commit, ...(defer ? { WEAVE_DEFER_MIGRATIONS: '1' } : {}) },
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     });
     const w = { ...rel, child, port: null, inflight: 0, idle: null, settling: defer, queue: [], since: null };
@@ -176,6 +182,7 @@ export async function startSupervisor({
     const part = join(releasesDir, `${tag}.part`);
     rmSync(part, { recursive: true, force: true });
     unpackRelease(Buffer.from(await r.arrayBuffer()), part);
+    writeFileSync(join(part, COMMIT_MARK), sha);
     const inside = versionOf(part);
     if (inside !== version) throw new Refusal(`the ${tag} tarball's package.json says ${inside}`);
     const dir = join(releasesDir, tag);

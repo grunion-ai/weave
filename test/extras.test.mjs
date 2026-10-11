@@ -142,7 +142,7 @@ test('webhook automation fires on state change', async () => {
   }
 });
 
-test('npm test and CI shards use the same runner the docs name', async () => {
+test('local and cloud runners share the test command while main verifies evidence', async () => {
   const { readFileSync } = await import('node:fs');
   const root = new URL('../', import.meta.url);
   const CI = readFileSync(new URL('.github/workflows/test.yml', root), 'utf8');
@@ -150,7 +150,7 @@ test('npm test and CI shards use the same runner the docs name', async () => {
   const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
   const shard = readFileSync(new URL('scripts/ci-test.mjs', root), 'utf8');
   assert.equal(pkg.scripts.test, 'node scripts/test.mjs');
-  assert.match(CI, /node scripts\/ci-test.mjs run/);
+  assert.match(CI, /node scripts\/cloud-ci-evidence.mjs/);
   assert.match(shard, /spawnSync\(process.execPath, \['scripts\/test.mjs'/);
 
   for (const doc of ['README.md', 'CONTRIBUTING.md', 'AGENTS.md', '.github/PULL_REQUEST_TEMPLATE.md']) {

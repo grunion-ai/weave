@@ -1,39 +1,54 @@
 # Weave development
 
 GitHub is the canonical repository. Pull requests replace the Gerrit review queue.
-Agents work in isolated branches, run targeted checks locally, and let hosted CI
-run the full required test inventory before merging.
+Agents work in isolated branches. Railway deploys development candidates promptly
+and runs the full required test inventory before promotion. Local checks are optional.
 
 ## Daily flow
 
 1. Query the weave Development tracker before work and add the regression test
    before the fix. Keep one concern per worktree and coordinate file ownership.
-2. Run relevant local tests with explicit filenames. Read the complete diff,
+2. Run relevant targeted checks locally or in the cloud. Read the complete diff,
    including lifecycle, undo, CLI, API and MCP parity. Check both themes for UI
    changes and update the Handbook where behavior changes.
 3. Push the feature branch to origin and open a GitHub pull request. Record the
    tracker reference, changes and test evidence. Never push directly to main.
-4. Require the `CI gate` check on the exact current PR merge candidate. Branch
+4. Require the `Cloud CI` status on the exact current PR integration candidate. Branch
    protection requires the branch to be up to date with main. If main advances,
    update the branch and wait for fresh checks; an earlier green SHA cannot land.
 5. The shipping agent self-reviews and squash-merges after all required checks
    pass, then verifies main CI and delivery. Do not bypass branch protection.
    Migrated draft PRs stay drafts until their individual review and checks finish.
 
-## Verification
+## Cloud development and verification
 
-The `tests` workflow owns full landing verification. Its final `CI gate` succeeds
-only after every required job succeeds. Browser dependencies are installed in CI;
-a missing browser or skipped required browser suite fails the gate. Parallel CI
-jobs have isolated runners and test data. Superseded branch runs are canceled.
+A dedicated Railway controller watches the trusted development branch. Each new
+candidate deploys to the isolated development service before advisory checks run.
+The controller deploys the exact Git SHA through its scoped Railway API; native
+GitHub integration is not required. Development uses separate data and credentials,
+plain `serve`, and no production release auto-update. Health exposes the full
+`commit` identity; a version number alone does not identify a development push.
+New pushes supersede earlier candidates and cancel their remaining checks.
 
-Local workers use `npm test -- --targeted <file...>` and leave full verification
-to CI. Never invoke bare `node --test`; empty selections must fail before Node
-starts. The shared test manager serializes local browser work across worktrees.
-Use `npm test -- --status` to inspect the queue and cancel only your own job.
-Browser assertions use `styleOf` or `settled` from `test/lib/browser.mjs`, never
-fixed sleeps. `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
-Retries remain visible in test output; repeated flakiness gets a tracker issue.
+Promotion runs the complete test inventory once on Railway against the exact
+integration of the PR head and current main. `Cloud CI` is the required PR status.
+Drafts remain unapproved until explicitly selected for promotion. The controller
+records base, head, merge commit, tree, test manifest, toolchain, execution counts,
+skips, retries and log digest before posting success. Changed heads or bases need
+fresh evidence. Missing browser prerequisites and unexpected skips fail the gate.
+
+After merge, GitHub's short `tests` workflow runs `CI gate`. It fetches evidence
+from the configured HTTPS origin, checks the merged PR through GitHub's API, and
+requires the same base, head, tree, full test inventory and approved toolchain.
+The suite does not repeat on hosted Actions. Missing or mismatched evidence fails
+closed without polling. Repository variables restricted to maintainers `CLOUD_CI_ORIGIN`,
+`CLOUD_CI_IMAGE` and `CLOUD_CI_REVISION` identify the trusted controller deployment.
+
+Local hardware is optional. Local workers may use `npm test -- --targeted <file...>`
+for feedback; the cloud promotion gate owns full verification. Never invoke bare
+`node --test`; empty selections must stop. Local browser work still uses the shared
+test manager. Browser assertions use `styleOf` or `settled`, not fixed sleeps.
+Retries stay visible and recurring flaky checks get tracker issues.
 
 ## Releasing
 
@@ -124,7 +139,7 @@ callers also lease this queue. Use the CLI for predictable whole-job admission.
 | Batch targeted regressions | `npm test -- --targeted test/formula.test.mjs test/service.test.mjs` |
 | Inspect affected selection | `npm test -- --affected --base=HEAD --plan` |
 | Run affected selection | `npm test -- --affected --base=HEAD` |
-| Full landing verification | GitHub Actions `tests` runs every required suite; `CI gate` reports the result |
+| Full landing verification | Railway runs every required suite; `Cloud CI` protects promotion |
 | Queue and browser status | `npm test -- --status` |
 | Cancel one queued or active job | `npm test -- --cancel=<id>` |
 | Stop owned jobs and browser | `npm test -- --stop` |

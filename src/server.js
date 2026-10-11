@@ -20,7 +20,8 @@ const gitOut = (...a) => {
   const r = spawnSync('git', ['-C', ROOT, ...a], { encoding: 'utf8', timeout: 4000 });
   return r.status === 0 ? r.stdout.trim() : null;
 };
-const BUILD = { head: gitOut('rev-parse', 'HEAD'), remote: gitOut('remote')?.split('\n')[0] || null, latest: null, contains: null, checkedAt: 0, disk: null, diskCheckedAt: 0 };
+export const immutableBuildHead = (git, railway) => [git, railway].find(value => /^[a-f0-9]{40}$/.test(value ?? '')) ?? null;
+const BUILD = { head: immutableBuildHead(gitOut('rev-parse', 'HEAD'), process.env.RAILWAY_GIT_COMMIT_SHA), remote: gitOut('remote')?.split('\n')[0] || null, latest: null, contains: null, checkedAt: 0, disk: null, diskCheckedAt: 0 };
 function refreshLatest() {
   BUILD.checkedAt = Date.now();
   if (!BUILD.remote) return;
@@ -47,6 +48,7 @@ export function describeBuild({ head, disk = null, latest = null, contains = nul
   if (!head) return null;
   return {
     sha: head.slice(0, 7),
+    commit: head,
     ...(disk ? { diskSha: disk.slice(0, 7), stale: disk !== head } : {}),
     ...(latest ? { latestSha: latest.slice(0, 7), behind: latest !== head && contains !== true } : {}),
   };

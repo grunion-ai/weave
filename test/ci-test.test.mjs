@@ -68,14 +68,13 @@ test('CI reporter records executed files, timings and missing prerequisite skips
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('the required gate uses merge commits and always validates shards; draft reviews stay unmergeable', async () => {
+test('main CI verifies cloud evidence without repeating the hosted test suite', async () => {
   const { readFileSync } = await import('node:fs');
   const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
-  assert.match(workflow, /types: \[opened, synchronize, reopened, ready_for_review\]/);
-  assert.match(workflow, /if: github.event_name != 'pull_request' \|\| !github.event.pull_request.draft/);
-  assert.match(workflow, /name: CI gate\n    if: always\(\)\n    needs: \[plan, test\]/);
+  assert.match(workflow, /push:\n    branches: \[main\]/);
+  assert.match(workflow, /name: CI gate/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
-  assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
-  assert.match(workflow, /max-parallel: 6/);
-  assert.match(workflow, /install --with-deps chromium webkit/);
+  assert.match(workflow, /node scripts\/cloud-ci-evidence.mjs/);
+  assert.doesNotMatch(workflow, /pull_request:|repository_dispatch:|strategy:|npm test|ci-test.mjs run|install --with-deps/);
+  assert.match(workflow, /CLOUD_CI_ORIGIN: \$\{\{ vars.CLOUD_CI_ORIGIN \}\}/);
 });

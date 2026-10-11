@@ -103,7 +103,7 @@ test('WEAVE_AUTO_UPDATE is opt-in: unset, "0" or "off" leave supervise as plain 
 test('a swap under a request loop answers every request, and the old worker exits', async () => {
   const dataPath = dataDir('swap');
   const gh = fakeGitHub();
-  const { sup, base, events } = await supervise(dataPath, gh);
+  const { sup, base, events } = await supervise(dataPath, gh, { env: { ...ENV, RAILWAY_GIT_COMMIT_SHA: 'b'.repeat(40) } });
   try {
     const first = await health(base);
     assert.equal(first.version, IMAGE_VERSION);
@@ -144,6 +144,7 @@ test('a swap under a request loop answers every request, and the old worker exit
     assert.deepEqual(versions, [IMAGE_VERSION, NEXT], 'the loop saw the old version, then the new one, never back');
     const after = await health(base);
     assert.equal(after.version, NEXT);
+    assert.equal(after.commit, SHA);
     assert.equal(after.supervisor.release, `v${NEXT}`);
     assert.equal(after.supervisor.dir, join(dataPath, '..', 'releases', `v${NEXT}`));
     assert.equal(after.supervisor.lastSwap.ok, true);
@@ -159,10 +160,11 @@ test('a swap under a request loop answers every request, and the old worker exit
     await sup.close();
   }
   const gh2 = fakeGitHub({ version: NEXT });
-  const again = await supervise(dataPath, gh2);
+  const again = await supervise(dataPath, gh2, { env: { ...ENV, RAILWAY_GIT_COMMIT_SHA: 'c'.repeat(40) } });
   try {
     const h = await health(again.base);
     assert.equal(h.version, NEXT);
+    assert.equal(h.commit, SHA);
     assert.equal(h.supervisor.release, `v${NEXT}`);
     assert.deepEqual(gh2.calls, [], 'boot reads the volume, not GitHub');
   } finally {

@@ -599,11 +599,11 @@ For agents changing weave itself: where the code lives and the rules every chang
 
 ### Rules for changing this repo
 
-1. **Tests first.** Run `npm test -- --targeted <file...>` for changed behavior
-   before committing.
+1. **Tests first.** Run targeted regression checks for changed behavior locally
+   or in the cloud before promotion.
    New engine or server behavior lands with tests in the same change. Open a
-   GitHub PR, self-review and require `CI gate` on the up-to-date merge candidate.
-   Hosted CI owns full verification; local workers keep checks targeted. Never
+   GitHub PR, self-review and require `Cloud CI` on the up-to-date integration candidate.
+   Railway owns full verification; local workers keep checks targeted. Never
    bypass branch protection or push main directly. See DEVELOPMENT.md.
 2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
    is `node:sqlite`, built into Node. Third-party browser code is vendored and

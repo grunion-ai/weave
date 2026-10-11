@@ -1,0 +1,1 @@
+- Cloud development exposes its exact commit, and main verifies complete Railway promotion evidence before release without repeating the test suite on hosted Actions (Feature #305).
