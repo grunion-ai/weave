@@ -1032,11 +1032,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'DELETE') {
           return out(200, weave.revokeShare(decodeURIComponent(m[1]), { any: role !== 'editor' }));
         }
-        if (route === 'GET /api/views') return out(200, weave.listViews());
+        if (route === 'GET /api/views') return out(200, weave.listViews({ trash: ['1', 'true'].includes(rx.searchParams.get('trash') ?? '') }));
         if (route === 'POST /api/views') return out(201, weave.createView(body ?? {}));
         if ((m = path.match(/^\/api\/views\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.resolveView(m[1]));
-          if (rx.method === 'DELETE') return out(200, weave.deleteView(m[1]));
+          if (rx.method === 'DELETE') return out(200, weave.deleteView(m[1], { hard: ['1', 'true'].includes(rx.searchParams.get('hard') ?? '') }));
+        }
+        if ((m = path.match(/^\/api\/views\/([^/]+)\/restore$/)) && rx.method === 'POST') {
+          return out(200, weave.restoreView(m[1]));
         }
         if ((m = path.match(/^\/api\/views\/([^/]+)\/share$/)) && rx.method === 'POST') {
           return out(201, weave.shareView(m[1]));
@@ -1215,7 +1218,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const entry = last && last.seq > seq && last.detail.fieldId === field.id ? last : null;
             return out(200, { ...guided(weave, 'field', field, body?.type == null ? body?.config : {}), activity: entry?.id ?? null, lossy: !!entry?.detail.lossy });
           }
-          if (rx.method === 'DELETE') { weave.deleteField(m[1], m[2]); return out(200, { ok: true }); }
+          if (rx.method === 'DELETE') {
+            weave.deleteField(m[1], m[2], { hard: ['1', 'true'].includes(rx.searchParams.get('hard') ?? '') });
+            return out(200, { ok: true });
+          }
+        }
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)\/restore$/)) && rx.method === 'POST') {
+          return out(200, weave.restoreField(m[1], decodeURIComponent(m[2])));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)\/rollback$/)) && rx.method === 'POST') {
           return out(200, weave.rollbackFieldConfig(body?.activity, { table: m[1], field: m[2], via: body?.via }));
@@ -1256,7 +1265,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (path === '/api/trash' && rx.method === 'GET') {
           const items = weave.listTrash();
-          return out(200, { total: items.length, items });
+          return out(200, { total: items.length, items, views: weave.listViews({ trash: true }) });
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/trash$/)) && rx.method === 'GET') {
           const items = weave.listTrash(m[1]);
