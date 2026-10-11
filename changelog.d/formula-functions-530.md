@@ -1,0 +1,1 @@
+- A formula that calls `constructor`, `__proto__` or `prototype` reads `Unknown function`, as any other unknown name does, instead of resolving the inherited object member (Issue #530)
