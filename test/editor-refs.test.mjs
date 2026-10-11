@@ -8,7 +8,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
+const CSS = [readFileSync(join(ROOT, 'public/chip.css'), 'utf8'), readFileSync(join(ROOT, 'public/style.css'), 'utf8')].join('\n');
 const INDEX = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
 
 test('findRefSpans finds bare and labeled references with exact offsets', () => {
@@ -83,14 +83,16 @@ test('teardown clears every decoration registry with the editors', () => {
 
 test('the layer is click-transparent except for the chips themselves', () => {
   assert.match(CSS, /\.doc-ref-layer\s*\{[^}]*pointer-events:\s*none/);
-  assert.match(CSS, /\.doc-ref-chip[^{]*\{[^}]*pointer-events:\s*auto/);
+  assert.match(CSS, /\.doc-ref-slot[^{]*\{[^}]*pointer-events:\s*auto/);
 });
 
-test('editor chips are the pointer chip the rendered document draws (Issue #97)', () => {
-  assert.match(APP, /class: `mention mention-\$\{hit\.kind\} doc-ref-chip`/);
-  assert.match(APP, /el\('span', \{ class: 'k k-rel doc-ref-label' \}, el\('span', \{ class: 'k-label' \}/);
-  assert.match(CSS, /\.k-rel > \.mention-entity::before \{ content: "#"; \}/);
-  assert.match(CSS, /\.doc-ref-layer \.mention-entity \.doc-ref-label::before \{ content: "#"; \}/);
+test('the editor chip is the one renderer’s markup, sized to its label (Issue #679)', () => {
+  const draw = APP.match(/const slot = el\('span', \{\s*class: 'doc-ref-slot wv-prose',[^]*?st\.layer\.append\(slot\);/)[0];
+  assert.match(draw, /class: 'doc-ref-slot wv-prose'/, 'the slot is prose ground, not a second costume');
+  assert.match(draw, /slot\.innerHTML = hit\.html/, 'the chip comes from the rendered document, byte for byte');
+  assert.ok(!/width:\$\{r\.width\}px/.test(draw), 'the chip is no longer cut to the width of its literal');
+  assert.match(APP, /lib\.aliasRefSpans\(md/, 'a bare reference is stored aliased, so the literal reserves the room');
+  assert.match(CSS, /\.k-rel:not\(\.has-id\) > \.mention-entity::before \{ content: "#"; \}/);
   assert.doesNotMatch(CSS, /a\.mention[^{]*\{[^}]*rgba\(var\(--tblr-primary-rgb\), \.08\)/, 'no tinted-link costume');
-  assert.doesNotMatch(CSS, /\.doc-ref-chip[^{]*\{[^}]*box-shadow:\s*inset/, 'no tint painted over the chip');
+  assert.doesNotMatch(CSS, /\.doc-ref-slot[^{]*\{[^}]*box-shadow:\s*inset/, 'no tint painted over the chip');
 });

@@ -1,0 +1,66 @@
+name: dev
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Dev gate
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    concurrency:
+      group: dev-gate-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24.12.0"
+      - name: Syntax
+        run: find bin src scripts -name '*.js' -o -name '*.mjs' | xargs -n 50 node --check
+      - name: Boot
+        run: |
+          node bin/weave.js serve --port 4401 --host 127.0.0.1 --data "$RUNNER_TEMP/dev.db" &
+          for _ in $(seq 60); do
+            if curl -fsS http://127.0.0.1:4401/api/health | grep -q '"ok": *true'; then exit 0; fi
+            sleep 0.5
+          done
+          exit 1
+
+  deploy:
+    name: Deploy dev
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: dev-deploy
+      cancel-in-progress: true
+    environment:
+      name: dev
+      url: https://weave-dev.grunion.ai
+    steps:
+      - name: Swap dev to this commit
+        env:
+          DEV_DEPLOY_TOKEN: ${{ secrets.DEV_DEPLOY_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          for _ in 1 2 3; do
+            body=$(curl -sS --max-time 300 -X POST -H "Authorization: Bearer $DEV_DEPLOY_TOKEN" https://weave-dev.grunion.ai/_supervisor/check) || body=''
+            echo "$body"
+            commit=$(curl -fsS https://weave-dev.grunion.ai/api/health | jq -r '.supervisor.commit')
+            if [ "$commit" = "$SHA" ]; then exit 0; fi
+            if [ "$(jq -r '.action // empty' <<<"$body")" = skipped ]; then exit 1; fi
+            sleep 5
+          done
+          echo "dev serves $commit, expected $SHA"
+          exit 1

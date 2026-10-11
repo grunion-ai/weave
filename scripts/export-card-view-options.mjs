@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { chipCss } from './export-chip-card-anatomy.mjs';
+import { chipCss, cssRules, scoped } from './export-chip-card-anatomy.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'mockups', 'card-view-options.html');
@@ -10,10 +10,10 @@ const OUT = join(ROOT, 'docs', 'mockups', 'card-view-options.html');
 const PICKER_SELECTORS = /^(\.picker-|\.chip-pop|\.date-pick-btn|\.date-text)/;
 export function pickerCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8')) {
   const out = [];
-  for (const [, sels, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  for (const { at, sels, body } of cssRules(css)) {
     const keep = sels.split(',').map((x) => x.trim()).filter((x) => PICKER_SELECTORS.test(x));
     if (!keep.length || !body.trim()) continue;
-    out.push(`${keep.join(', ')} { ${body.replace(/\s+/g, ' ').trim()}${body.trim().endsWith(';') ? '' : ';'} }`);
+    out.push(scoped(at, `${keep.join(', ')} { ${body.replace(/\s+/g, ' ').trim()}${body.trim().endsWith(';') ? '' : ';'} }`));
   }
   return out.join('\n');
 }
@@ -47,9 +47,9 @@ const EXTRA = {
 const stateChip = (s) => `<span class="k k-state cat-${s.category} hue-${s.hue}"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>${s.name}</span>`;
 const selectChip = (f) => `<span class="k k-select hue-${f.hue}">${f.value}</span>`;
 const multiChips = (f) => f.values.map((v) => `<span class="k k-multi hue-${v.hue}">${v.value}</span>`).join(' ');
-const relChip = (f) => `<span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">${f.value}<span class="k-home">${f.home}</span></a></span></span>`;
+const relChip = (f) => `<span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention">${f.value}</a><span class="k-home">${f.home}</span></span></span>`;
 const dateChip = (f) => `<span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>${f.value}</span>`;
-const personChip = (f) => `<span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-${f.hue}">${f.initials}</span>${f.value}<span class="k-home">${f.home}</span></a></span></span>`;
+const personChip = (f) => `<span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false" class="mention"><span class="av hue-${f.hue}">${f.initials}</span>${f.value}</a><span class="k-home">${f.home}</span></span></span>`;
 const chip = (f) => ({ select: selectChip, multi: multiChips, relation: relChip, date: dateChip, person: personChip })[f.kind](f);
 const more = (n) => (n > 0 ? `<span class="k k-more">+${n}</span>` : '');
 const labelled = (f) => `<span class="wv-cf"><span class="wv-cf-l">${f.label}</span>${chip(f)}</span>`;

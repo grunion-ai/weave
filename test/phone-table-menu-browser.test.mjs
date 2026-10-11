@@ -94,7 +94,7 @@ if (s) {
           await page.keyboard.press('Escape');
           assert.equal((await read(page, SHEET)).sheet, null, 'Esc shuts the sheet');
           await page.click('#main .table-tools-btn');
-          await page.mouse.click(Math.round(seen.vw / 2), 600);
+          await page.mouse.click(Math.round(seen.vw / 2), Math.round(seen.sheet.bottom) + 40);
           assert.equal((await read(page, SHEET)).sheet, null, 'a tap outside shuts it');
         } finally { await page.close(); }
       });
@@ -109,7 +109,7 @@ if (s) {
           assert.equal(seen.sortValue, 'None', 'the Sort row says the table is unsorted');
           assert.ok(seen.group, 'a Table group shows in the sheet');
           assert.equal(seen.group.head, 'Table');
-          assert.deepEqual(seen.group.rows.map((r) => r.text), ['Column stats…', 'Export CSV', 'New share page…', 'Row term (row)…', 'Delete table'], 'every table action is a row, Delete table last');
+          assert.deepEqual(seen.group.rows.map((r) => r.text), ['Column stats…', 'Export CSV', 'Share…', 'New share page…', 'Row term (row)…', 'Delete table'], 'every table action is a row, Delete table last');
           for (const r of seen.group.rows) {
             assert.ok(r.h >= 44, `${r.text} is a ${r.h}px row`);
             assert.ok(r.inside, `${r.text} sits inside the sheet`);

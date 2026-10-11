@@ -29,7 +29,7 @@ if (s) {
       const h1 = getComputedStyle(document.querySelector('#main h1'));
       return { size: cs.fontSize, weight: cs.fontWeight, h1Margin: h1.marginBottom };
     });
-    assert.deepEqual(look, { size: '19px', weight: '700', h1Margin: '0px' }, 'the <h1> keeps the old look');
+    assert.deepEqual(look, { size: '20px', weight: '700', h1Margin: '0px' }, 'the <h1> sits on the type scale (Issue #383)');
     await page.close();
   });
 
@@ -40,7 +40,7 @@ if (s) {
     const ws = await wsName(page);
     await page.click(`tr[data-eid="${acme.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
-    await titleIs(page, `Acme Working Capital · ${ws}`);
+    await titleIs(page, `Deals #1 · Acme Working Capital · ${ws}`);
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
     await page.waitForSelector('#dock', { state: 'hidden' });
@@ -52,7 +52,7 @@ if (s) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
     const ws = await wsName(page);
-    await titleIs(page, `Acme Working Capital · ${ws}`);
+    await titleIs(page, `Deals #1 · Acme Working Capital · ${ws}`);
     await page.evaluate((id) => { location.hash = `#/space/${id}`; }, space.id);
     await titleIs(page, `Sales · ${ws}`);
     await page.evaluate(() => { location.hash = '#/'; });

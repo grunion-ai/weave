@@ -60,7 +60,7 @@ if (s) {
             hasChip: !!k,
             href: k?.querySelector('a')?.getAttribute('href') ?? null,
             visible: k ? getComputedStyle(k).borderTopColor !== 'rgba(0, 0, 0, 0)' : false,
-            state: k?.querySelector('.wv-seg-state')?.textContent ?? null,
+            state: k?.querySelector('.wv-chip-mark')?.textContent ?? null,
           };
         });
         assert.equal(chip.hasChip, true, 'the view value renders as the chip it describes');

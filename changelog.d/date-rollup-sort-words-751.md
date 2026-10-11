@@ -1,1 +1,0 @@
-- A rollup that takes the min or max of a date, and a lookup of a date, now sort as **Oldest to newest** and **Newest to oldest** in a column's ⋮ menu, the same as a plain date column, instead of Ascending and Descending (Issue #751).

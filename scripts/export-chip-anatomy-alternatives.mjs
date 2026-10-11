@@ -22,7 +22,7 @@ const multiChips = () => ROW.tags.map((t) => `<span class="k k-multi hue-${t.hue
 const live = (...chips) => `<span class="mention-fields wv-live">${chips.join('')}</span>`;
 const caret = (open = true) => `<button type="button" class="mention-caret hit-caret" aria-expanded="${open}" title="${open ? 'Hide fields' : 'Show fields'}">›</button>`;
 const home = () => `<span class="k-home">${ROW.home}</span>`;
-const pointer = ({ id = true, badge = true, cls = '' } = {}) => `<a href="#" onclick="return false" class="hit-link${cls}">${id ? `${ROW.id} ` : ''}<span class="k-label">${ROW.name}</span>${badge ? home() : ''}</a>`;
+const pointer = ({ id = true, badge = true, cls = '' } = {}) => `<a href="#" onclick="return false" class="mention hit-link${cls}">${id ? `${ROW.id} ` : ''}<span class="k-label">${ROW.name}</span></a>${badge ? home() : ''}`;
 const x = () => `<span class="x hit-x" title="Unlink">×</span>`;
 
 const OPTIONS = [
@@ -165,7 +165,7 @@ blockquote { margin: 0 0 22px; padding: 8px 14px; border-left: 3px solid var(--l
 /* ---- what every option shares on top of the shipped chip ---- */
 .wv-alt .k-rel > a::after { content: none; }                       /* ruling: drop 7 — the chip IS the link */
 .wv-alt .k-rel > a { padding: 1px 8px; }                            /* the ↗'s left slot closes, the padding evens out */
-.wv-alt .k-rel .k-home { margin-left: 5px; }
+.wv-alt .k-rel .k-home { margin-left: 5px; font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); opacity: .55; }
 .wv-alt, .wv-alt .k-rel, .wv-alt .k-rel > a, .wv-alt .k-label { max-width: none; overflow: visible; flex: none; } /* the specimen shows its whole name; truncation (Issue #201) is the cell's business */
 .wv-alt .mention-caret { transform: none; }                          /* Issue #193: the retract caret faces the text */
 .wv-alt.open .mention-caret { transform: rotate(180deg); }
