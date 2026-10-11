@@ -29,7 +29,10 @@ export function validate(manifest, results, commit) {
     const result = results.find(r => r.id === shard.id);
     if (!result || result.commit !== commit || result.manifest !== digest(manifest) || result.code !== 0) throw new Error(`Invalid shard ${shard.id}`);
     if (JSON.stringify(result.files) !== JSON.stringify(shard.files)) throw new Error(`Selection mismatch ${shard.id}`);
-    if (result.skips.some(reason => reason !== 'semgrep not installed')) throw new Error(`Skipped coverage ${shard.id}`);
+    if (result.skips.some(({ file, reason }) => !shard.files.includes(file) || !(
+      (file === 'test/security/security-scan.test.mjs' && reason === 'semgrep not installed') ||
+      (file === 'test/ws-rail-inset-browser.test.mjs' && reason.startsWith('overlay scrollbars here: no gutter to measure ('))
+    ))) throw new Error(`Skipped coverage ${shard.id}`);
     const actual = new Map(result.summaries.map(s => [s.file, s]));
     if (actual.size !== shard.files.length) throw new Error(`Executed coverage mismatch ${shard.id}`);
     for (const file of shard.files) {

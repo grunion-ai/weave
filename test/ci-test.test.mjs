@@ -26,17 +26,26 @@ test('aggregation requires exact commit, manifest, every shard and executed file
     r => { r[0].summaries[0].counts.tests = 0; },
     r => { r[0].summaries[0].success = false; },
     r => { r[0].files = []; },
-    r => { r[0].skips = ['playwright not installed']; },
+    r => { r[0].skips = [{ file: r[0].files[0], reason: 'playwright not installed' }]; },
   ]) {
     const results = evidence(); mutate(results);
     assert.throws(() => validate(manifest, results, 'abc'));
   }
 });
 
-test('semgrep belongs to the security gate and is the sole allowed skip', () => {
-  const results = evidence();
-  results[0].skips = ['semgrep not installed'];
-  assert.equal(validate(manifest, results, 'abc').files, 4);
+test('only exact security and overlay-scrollbar capability skips are allowed', () => {
+  for (const [file, reason] of [
+    ['test/security/security-scan.test.mjs', 'semgrep not installed'],
+    ['test/ws-rail-inset-browser.test.mjs', 'overlay scrollbars here: no gutter to measure ({})'],
+  ]) {
+    const manifest = [{ id: 'unit-1', lane: 'unit', files: [file] }];
+    const results = [{ id: 'unit-1', files: [file], commit: 'abc', manifest: digest(manifest), code: 0, summaries: [{ file, success: true, counts: { tests: 1 } }], skips: [{ file, reason }] }];
+    assert.equal(validate(manifest, results, 'abc').files, 1);
+    results[0].skips[0].reason = 'webkit cannot launch here';
+    assert.throws(() => validate(manifest, results, 'abc'), /Skipped coverage/);
+    results[0].skips[0] = { file: 'test/other.test.mjs', reason };
+    assert.throws(() => validate(manifest, results, 'abc'), /Skipped coverage/);
+  }
 });
 
 test('CI reporter records executed files, timings and missing prerequisite skips', async () => {
@@ -55,7 +64,7 @@ test('CI reporter records executed files, timings and missing prerequisite skips
     assert.equal(events.filter(e => e.type === 'summary').length, 1);
     assert.equal(events.find(e => e.type === 'summary').data.counts.tests, 2);
     assert.ok(events.find(e => e.type === 'summary').data.duration_ms >= 0);
-    assert.deepEqual(events.filter(e => e.type === 'skip').map(e => e.data), ['playwright not installed']);
+    assert.deepEqual(events.filter(e => e.type === 'skip').map(e => e.data.reason), ['playwright not installed']);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
