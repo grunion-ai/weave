@@ -25,6 +25,8 @@
       empty: 'No workspace opens for this sign-in yet.',
       create: 'Create workspace',
       signOut: 'Use a different account',
+      inviteLead: 'Invited as {role}',
+      accept: 'Accept invite',
     },
     api: {
       slug_taken: 'The name {slug} belongs to another workspace. Try the name of the person, team, project or mascot the workspace is for.',

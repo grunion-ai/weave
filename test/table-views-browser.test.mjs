@@ -79,7 +79,7 @@ if (s) {
     try {
       const patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes(`/tables/${jobs.id}/views/`));
       await page.click('.table-filter-btn');
-      await page.click('.filter-strip .filter-chip:text-is("Done")');
+      await page.click('.filter-strip .filter-chip-label:text-is("Done")');
       await patched;
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
       assert.deepEqual(weave.tableView(`${jobs.id}/Mine`).filters, { Status: ['Done'] }, 'saved into Mine');
@@ -102,7 +102,7 @@ if (s) {
       assert.ok((await heads(page)).includes('Owner'), 'every field');
       assert.deepEqual(await tabs(page), [{ name: 'Standard', active: false }], 'no tab is lit: the raw table has none');
       await page.click('.table-filter-btn');
-      await page.click('.filter-strip .filter-chip:text-is("Done")');
+      await page.click('.filter-strip .filter-chip-label:text-is("Done")');
       await page.waitForFunction(() => /read-only/.test(document.body.textContent));
       const note = await page.evaluate(() => [...document.querySelectorAll('.toast, .wv-toast, [role=alert], [role=status]')].map((t) => t.textContent).join(' ') || document.body.textContent);
       assert.match(note, /Add view|\+/, 'it points at Add view, not at a Save as view item that is gone');

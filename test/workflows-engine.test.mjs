@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'node:http';
 import { Weave } from '../src/engine.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
+process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 
 const wf = (w) => w.getTable('Workspace/Workflows');
 const read = (w, id) => w.readEntity(id);
