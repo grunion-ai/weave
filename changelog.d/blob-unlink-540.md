@@ -1,0 +1,1 @@
+- Deleting an attachment, a workspace logo or a purged row removes its bytes from `files/` once nothing else in the workspace names them; a trashed row keeps its files for a restore (Issue #540)
