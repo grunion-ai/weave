@@ -197,3 +197,33 @@ and add the fingerprint to `test/flicker-fixed.json` with the Issue number in
 the same change. `test/flicker-gate-browser.test.mjs` walks every journey in
 the gate and fails when a listed fingerprint comes back, so a fixed flicker
 stays fixed. A journey whose selectors rot fails the gate too.
+
+## Cut-off loop
+
+Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page
+function that reports text cut by an overflow hidden or clip box (`clipped`), a
+truncated `text-overflow: ellipsis` box (`ellipsis`), a `-webkit-line-clamp` box
+holding more lines than it shows (`line-clamp`), and an input or textarea whose
+value or placeholder runs past its box (`field-value`, `field-placeholder`).
+Text inside an overflow auto or scroll container, visually hidden text and
+invisible elements are not cut-offs. A finding's fingerprint is its kind plus its
+selector with every number folded to `#`, and `|phone` for the phone cell.
+
+```bash
+node scripts/cutoff-sweep.mjs                       # both cells, writes cutoff-out/findings.json
+node scripts/cutoff-sweep.mjs --cell phone --overlay field-editor,new-field   # reproduce one
+node scripts/cutoff-sweep.mjs --lower               # after a fix: lower this platform's baseline
+```
+
+The sweep walks the flicker journeys and opens every dialog and popover listed in
+`test/lib/overlays.mjs`, at desktop 1440x900 in Chromium and phone 390x844 in
+WebKit, on the messy seed. `test/cutoff-gate-browser.test.mjs` runs the same
+sweep in the gate against `test/cutoff-baseline.json`, which holds today's counts
+per platform, since system fonts differ between macOS and the Linux CI runner.
+The gate fails on a fingerprint the baseline does not hold, or more instances
+than it holds, and fails when a fingerprint disappears or drops in count until
+the change lowers the baseline. `test/cutoff-core.test.mjs` refuses a baseline
+that grows past its committed version or past the base a pull request merges
+into. **Fixing one:** fix the cut-off, run the sweep with `--lower`, and commit
+the lowered counts in the same change. A red gate prints the Linux counts it
+measured; copy them into the `linux` section.
