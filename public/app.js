@@ -200,7 +200,7 @@ addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !toastsUp.length) return;
   const at = document.activeElement;
   const inStack = at?.closest?.('#wv-toasts');
-  const claimed = document.querySelector('#modal-back, #tray-back, #bug-panel, .chip-pop, .dl-menu:not(.hidden), [role="menu"], [role="dialog"]');
+  const claimed = document.querySelector('#modal-back, #tray-back, #bug-panel, .chip-pop, [role="menu"], [role="dialog"]');
   if (inStack || ((!at || at === document.body) && !claimed)) dropToast(toastsUp.at(-1));
 }, true);
 
@@ -353,7 +353,8 @@ document.addEventListener('click', (e) => {
   const m = a.getAttribute('href').match(/^#\/entity\/([^/?]+)$/);
   if (!m) return;
   e.preventDefault();
-  openEntity(m[1], { drill: !!a.closest('#dock') || (state.route?.page === 'entity' && !!a.closest('#main')) });
+  const from = a.closest('.wv-menu')?.owner ?? a;
+  openEntity(m[1], { drill: !!from.closest?.('#dock') || (state.route?.page === 'entity' && !!from.closest?.('#main')) });
 }, true);
 
 function nativeClick(e) {
@@ -718,7 +719,7 @@ function inlineNameInput(placeholder, onCommit) {
 function navTableMenu(db, space, row) {
   const wrap = dotsMenu([
     {
-      label: 'Rename table…',
+      label: 'Rename table…', section: 'settings',
       run: () => {
         const input = inlineNameInput('Table name…', async (name) => {
           await api('PATCH', `/tables/${db.id}`, { name });
@@ -731,7 +732,7 @@ function navTableMenu(db, space, row) {
       },
     },
     {
-      label: 'Change icon…',
+      label: 'Change icon…', section: 'settings',
       run: () => searchPicker({
         anchor: wrap, title: 'Icon', placeholder: 'Search by name or category…',
         options: iconCatalogue(), grid: true, currentId: db.icon ?? '',
@@ -741,9 +742,8 @@ function navTableMenu(db, space, row) {
         },
       }),
     },
-    'divider',
     {
-      label: 'Move to space…',
+      label: 'Move to space…', section: 'organize',
       run: () => searchPicker({
         anchor: wrap, title: `Move ${db.name} to…`, placeholder: 'Space…',
         options: state.schema.filter((s) => s.space !== space.space && !s.system)
@@ -756,7 +756,7 @@ function navTableMenu(db, space, row) {
       }),
     },
     {
-      label: 'Duplicate table',
+      label: 'Duplicate table', section: 'organize',
       run: async () => {
         const copy = await api('POST', `/tables/${db.id}/duplicate`);
         await loadSchema();
@@ -764,9 +764,8 @@ function navTableMenu(db, space, row) {
         toast(`Duplicated ${db.name} as ${copy.name}`);
       },
     },
-    'divider',
     {
-      hold: 'Delete table', holdingLabel: 'Hold to delete table…',
+      label: 'Delete table', hold: true, holdingLabel: 'Hold to delete table…', section: 'delete',
       run: async () => {
         await api('DELETE', `/tables/${db.id}`);
         await loadSchema();
@@ -930,30 +929,10 @@ function fitCrumbs(path, foldFrom) {
 const CRUMB_MORE_PX = 40;
 
 function crumbFoldMenu(btn, hidden) {
-  const row = btn.closest('.crumb-row');
-  const open = row.querySelector('.crumb-fold-menu');
-  if (open) { open.remove(); return; }
-  const r = btn.getBoundingClientRect();
-  const menu = el('div', { class: 'chip-pop crumb-fold-menu', role: 'menu', style: `top:${r.bottom + 4}px;left:${r.left}px` },
-    ...hidden.map((c) => el('a', {
-      class: 'chip-pop-row crumb-fold-row', role: 'menuitem', href: c.kind === 'ws' ? wsHomeHref() : c.href, title: c.title ?? c.label,
-    }, ...crumbInner(c))));
-  let off = () => {};
-  const close = () => {
-    menu.remove();
-    btn.setAttribute('aria-expanded', 'false');
-    off();
-    removeEventListener('keydown', esc, true);
-  };
-  const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
-  menu.addEventListener('click', (e) => { if (e.target.closest('a')) setTimeout(close); });
-  row.append(menu);
-  const over = menu.getBoundingClientRect().right - (innerWidth - 8);
-  if (over > 0) menu.style.left = `${Math.max(8, r.left - over)}px`;
-  btn.setAttribute('aria-expanded', 'true');
-  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t), swallow: (t) => btn.contains(t), close });
-  addEventListener('keydown', esc, true);
-  menu.querySelector('a')?.focus();
+  menu(hidden.map((c) => ({
+    label: c.label || c.title || (c.publicId != null ? `#${c.publicId}` : 'Untitled'), title: c.title ?? c.label, section: 'organize', className: 'crumb-fold-row',
+    href: c.kind === 'ws' ? wsHomeHref() : c.href, nodes: crumbInner(c),
+  })), { anchor: btn, className: 'crumb-fold-menu', label: btn.getAttribute('aria-label') });
 }
 
 function crumbOfHref(c) {
@@ -1247,41 +1226,12 @@ function closeAccountMenu() {
 }
 
 function accountMenu(btn) {
-  if (document.querySelector('.nav-account-menu')) { closeAccountMenu(); return; }
-  const r = btn.getBoundingClientRect();
   const ws = accountWorkspaceName();
-  const row = (label, icon, prefixes) => el('button', {
-    type: 'button', class: 'chip-pop-row wv-menu-row', role: 'menuitem',
-    onclick: () => { close(); signOutOf(prefixes); },
-  }, lucideEl(icon, 'wv-icon'), label);
   const everywhere = [WS_PREFIX, ...(state.wsList ?? []).filter((w) => w.name !== state.wsCurrent).map((w) => `/w/${encodeURIComponent(w.name)}`)];
-  const menu = el('div', {
-    class: 'chip-pop nav-account-menu', role: 'menu', 'aria-label': 'Account',
-    style: `left:${Math.round(r.left)}px;bottom:${Math.round(innerHeight - r.top + 4)}px;min-width:${Math.round(r.width)}px`,
-  }, row(`Sign out of ${ws}`, 'log-out', [WS_PREFIX]), row('Sign out everywhere', 'log-out', everywhere));
-  const rows = [...menu.querySelectorAll('[role="menuitem"]')];
-  let off = () => {};
-  const close = () => {
-    menu.remove();
-    btn.setAttribute('aria-expanded', 'false');
-    off();
-    removeEventListener('keydown', keys, true);
-  };
-  const keys = (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); return; }
-    if (e.key === 'Tab') { close(); return; }
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const i = rows.indexOf(document.activeElement);
-      rows[(i + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length].focus();
-    }
-  };
-  menu.close = close;
-  document.body.append(menu);
-  btn.setAttribute('aria-expanded', 'true');
-  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t) || btn.contains(t), close });
-  addEventListener('keydown', keys, true);
-  rows[0].focus();
+  menu([
+    { label: `Sign out of ${ws}`, icon: 'lucide:log-out', section: 'organize', run: () => signOutOf([WS_PREFIX]) },
+    { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutOf(everywhere) },
+  ], { anchor: btn, className: 'nav-account-menu', label: 'Account', minWidth: btn.getBoundingClientRect().width });
 }
 
 async function signOutOf(prefixes) {
@@ -2294,50 +2244,120 @@ function menuBounds(node) {
   return viewport;
 }
 
-function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } = {}) {
-  const menu = el('div', { class: `dl-menu hidden${align === 'right' ? ' dl-menu-right' : ''}` });
-  const close = () => menu.classList.add('hidden');
-  for (const it of items.filter(Boolean)) {
-    if (it === 'divider') { menu.append(el('div', { class: 'dropdown-divider' })); continue; }
-    if (it.href) {
-      menu.append(el('a', { class: 'dropdown-item', href: it.href, download: it.download, onclick: close }, it.label));
-      continue;
-    }
-    if (it.hold) {
-      menu.append(holdToConfirm(it.hold, async () => { close(); await it.run(); },
-        { holdingLabel: it.holdingLabel ?? 'Hold to confirm…' }));
-      continue;
-    }
-    menu.append(el('button', {
-      class: 'dropdown-item' + (it.danger ? ' text-danger' : '') + (it.phone ? ' phone-only' : ''), type: 'button',
-      onclick: async () => { close(); await it.run(); },
-    }, it.label));
+const MENU_SHEET = matchMedia('(max-width: 600px)');
+let openMenu = null;
+
+function menuRow(it, done) {
+  const checkable = typeof it.checked === 'boolean';
+  const cls = ['chip-pop-row', 'wv-menu-row', it.danger || it.hold ? 'wv-menu-danger' : '', it.checked ? 'is-current' : '', it.className ?? ''].filter(Boolean).join(' ');
+  const attrs = { role: checkable ? 'menuitemcheckbox' : 'menuitem', tabindex: '-1', ...(checkable ? { 'aria-checked': String(it.checked) } : {}) };
+  if (it.hold) {
+    const btn = holdToConfirm(it.label, async () => { done(); await it.run(); },
+      { holdingLabel: it.holdingLabel ?? 'Hold to confirm…', rowClass: cls, icon: it.icon ?? null, hint: it.hint ?? null });
+    for (const [k, v] of Object.entries(attrs)) btn.setAttribute(k, v);
+    return btn;
   }
-  const place = () => {
-    const a = wrap.getBoundingClientRect();
-    const bounds = menuBounds(wrap);
-    const side = menuSide({
-      anchorLeft: a.left, anchorRight: a.right, width: menu.offsetWidth,
-      boundsLeft: bounds.left, boundsRight: bounds.right, prefer: align,
-    });
-    menu.classList.toggle('dl-menu-right', side === 'right');
+  const body = it.nodes ?? [
+    it.icon ? iconEl(it.icon, 'wv-icon wv-menu-icon') : null,
+    el('span', { class: 'wv-menu-label' }, it.label),
+    it.hint ? el('span', { class: 'wv-menu-hint' }, it.hint) : null,
+    it.switch != null ? el('span', { class: `switch${it.switch ? ' on' : ''}`, 'aria-hidden': 'true' }) : null,
+    it.checked ? el('span', { class: 'chip-pop-check' }, iconEl('✓', 'wv-icon')) : null,
+  ];
+  if (it.href) {
+    return el('a', { ...attrs, class: cls, href: it.href, download: it.download, title: it.title, onclick: () => setTimeout(() => done()) }, ...body);
+  }
+  return el('button', { ...attrs, class: cls, type: 'button', title: it.title, onclick: async () => { done(); await it.run(); } }, ...body);
+}
+
+function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, head = null, align = 'left', label = null, className = '', minWidth = 0, trigger = anchor, onRun = null } = {}) {
+  if (openMenu && !openMenu.pop.isConnected) openMenu.close();
+  if (openMenu && trigger && openMenu.trigger === trigger) { openMenu.close(); return null; }
+  openMenu?.close();
+  for (const p of document.querySelectorAll('.chip-pop')) p.remove();
+  const sections = globalThis.menuCore.plan(items, { sheet });
+  const pop = el('div', {
+    class: ['chip-pop', 'wv-menu', sheet ? 'wv-menu-sheet' : '', className].filter(Boolean).join(' '),
+    role: 'menu', 'aria-label': label ?? head?.title ?? trigger?.title ?? 'Actions',
+  });
+  let off = () => {};
+  const close = ({ focus = false } = {}) => {
+    if (openMenu?.pop !== pop) return;
+    openMenu = null;
+    pop.remove();
+    off();
+    removeEventListener('hashchange', drop);
+    trigger?.setAttribute?.('aria-expanded', 'false');
+    if (focus && trigger?.isConnected) trigger.focus({ preventScroll: true });
   };
-  const wrap = el('span', { class: `dl-wrap ${extraClass}`.trim() },
-    el('button', {
-      class: 'btn btn-sm btn-ghost-secondary dots-btn', title, type: 'button',
-      onclick: (e) => {
-        e.stopPropagation();
-        const opening = menu.classList.contains('hidden');
-        for (const m of document.querySelectorAll('.dl-menu')) m.classList.add('hidden');
-        if (!opening) return;
-        menu.classList.remove('hidden');
-        place();
-        menu.off?.();
-        menu.off = dismissOutside({ open: () => !menu.classList.contains('hidden'), inside: (t) => wrap.contains(t), close });
-      },
-    }, iconEl('lucide:ellipsis-vertical', 'wv-icon')),
-    menu);
-  return wrap;
+  const drop = () => close();
+  const done = () => { close({ focus: pop.contains(document.activeElement) }); onRun?.(); };
+  if (head) {
+    pop.append(el('div', { class: 'wv-menu-head' },
+      el('span', { class: 'wv-menu-title', title: head.title }, head.title),
+      head.kind ? el('span', { class: 'wv-menu-kind' }, head.kind) : null));
+  }
+  sections.forEach((s, i) => {
+    if (i) pop.append(el('div', { class: 'wv-menu-sep', role: 'separator' }));
+    if (s.label) pop.append(el('div', { class: 'wv-menu-section', role: 'presentation' }, s.label));
+    for (const it of s.items) pop.append(menuRow(it, done));
+  });
+  if (minWidth) pop.style.minWidth = `${Math.round(minWidth)}px`;
+  document.body.append(pop);
+  openMenu = { pop, trigger, close };
+  pop.close = close;
+  pop.owner = trigger;
+  if (!sheet) {
+    const w = pop.offsetWidth;
+    const h = pop.offsetHeight;
+    const fitX = (x) => Math.max(8, Math.min(x, innerWidth - w - 8));
+    let left;
+    let top;
+    if (point) {
+      left = fitX(point.x);
+      top = point.y + h > innerHeight - 8 ? Math.max(8, point.y - h) : point.y;
+    } else {
+      const a = anchor.getBoundingClientRect();
+      const bounds = menuBounds(anchor);
+      const side = menuSide({ anchorLeft: a.left, anchorRight: a.right, width: w, boundsLeft: bounds.left, boundsRight: bounds.right, prefer: align });
+      left = fitX(side === 'right' ? a.right - w : a.left);
+      const up = a.bottom + 4 + h > innerHeight - 8 && a.top - 4 - h >= 8;
+      top = up ? a.top - h - 4 : a.bottom + 4;
+      pop.style.transformOrigin = `${up ? 'bottom' : 'top'} ${side}`;
+    }
+    pop.style.left = `${Math.round(left)}px`;
+    pop.style.top = `${Math.round(top)}px`;
+  }
+  trigger?.setAttribute?.('aria-expanded', 'true');
+  off = dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!trigger?.contains?.(t), close: () => close() });
+  addEventListener('hashchange', drop);
+
+  const rows = () => [...pop.querySelectorAll('.wv-menu-row')].filter((r) => r.getClientRects().length);
+  const at = (i) => rows()[i]?.focus({ preventScroll: true });
+  let typed = '';
+  let typedAt = 0;
+  pop.addEventListener('keydown', (e) => {
+    const list = rows();
+    const i = list.indexOf(document.activeElement);
+    const next = globalThis.menuCore.move(list.length, i, e.key);
+    if (next != null) { e.preventDefault(); typed = ''; at(next); return; }
+    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); close({ focus: true }); return; }
+    if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey || (e.key === ' ' && !typed)) return;
+    typed = (e.timeStamp - typedAt > 600 ? '' : typed) + e.key;
+    typedAt = e.timeStamp;
+    const hit = globalThis.menuCore.typeahead(list.map((r) => r.querySelector('.wv-menu-label, .hold-label')?.textContent ?? r.textContent.trim()), i, typed);
+    if (hit >= 0) { e.preventDefault(); at(hit); }
+  });
+  at(0);
+  return pop;
+}
+
+function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '', labelled = false, onRun = null } = {}) {
+  const btn = el('button', {
+    class: 'btn btn-sm btn-ghost-secondary dots-btn', title, type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    onclick: (e) => { e.stopPropagation(); menu(items, { anchor: btn, align, label: title, onRun }); },
+  }, iconEl('lucide:ellipsis-vertical', 'wv-icon'), labelled ? el('span', { class: 'dots-label' }, title) : null);
+  return el('span', { class: `dl-wrap ${extraClass}`.trim() }, btn);
 }
 
 function hasInlineMarkup(text) {
@@ -3790,16 +3810,6 @@ function tableSortButton(ref) {
   });
   return btn;
 }
-function tableSheetGroup(title, items) {
-  const rows = [];
-  for (const it of items.filter(Boolean)) {
-    if (it === 'divider') continue;
-    if (it.href) rows.push(el('a', { class: 'tools-row', href: it.href, download: it.download }, it.label));
-    else if (it.hold) rows.push(holdToConfirm(it.hold, () => it.run(), { holdingLabel: it.holdingLabel ?? 'Hold to confirm…', rowClass: 'tools-row tools-row-danger' }));
-    else rows.push(el('button', { class: 'tools-row', type: 'button', onclick: () => it.run() }, it.label));
-  }
-  return el('div', { class: 'tools-group', role: 'group', 'aria-label': title }, el('div', { class: 'tools-group-head' }, title), ...rows);
-}
 const RO = () => globalThis.WeaveReorder;
 function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
   return RO().sortable(down, {
@@ -3943,12 +3953,11 @@ function tableChrome(db, trashCount) {
     if (input.value.trim() !== want.trim()) input.value = want;
   };
   const tableActions = [
-    { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
-    { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
-    'divider',
-    { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
+    { label: 'Column stats…', section: 'settings', run: () => columnStatsPanel(ref.db) },
+    { label: 'Export CSV', section: 'settings', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
+    { label: 'Share…', section: 'organize', run: () => shareDialog('table', db.id, db.name) },
     {
-      label: 'New share page…',
+      label: 'New share page…', section: 'organize',
       run: () => modal('New share page', [
         el('input', { name: 'name', placeholder: 'Page name', class: 'form-control' }),
       ], async (fd) => {
@@ -3957,14 +3966,12 @@ function tableChrome(db, trashCount) {
         toast('Share page saved — find it on the workspace page');
       }, 'Save'),
     },
-    'divider',
     {
-      label: `Row term (${db.term.singular})…`,
+      label: `Row term (${db.term.singular})…`, section: 'share',
       run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
     },
-    'divider',
     {
-      hold: 'Delete table', holdingLabel: 'Hold to delete table…',
+      label: 'Delete table', hold: true, holdingLabel: 'Hold to delete table…', section: 'delete',
       run: async () => {
         try {
           await api('DELETE', `/tables/${db.id}`);
@@ -4018,8 +4025,7 @@ function tableChrome(db, trashCount) {
       filterBtn,
       groupBtn,
       sortBtn,
-      dotsMenu(tableActions, { title: 'Table actions', align: 'right' }),
-      tableSheetGroup('Table', tableActions),
+      dotsMenu(tableActions, { title: 'Table actions', align: 'right', labelled: true, onRun: () => tools.shut() }),
     ],
   });
   const tools = tableToolsButton(chrome.header, ref);
@@ -4049,11 +4055,10 @@ function tableToolsButton(header, ref) {
     removeEventListener('keydown', esc, true);
   };
   const esc = (e) => {
-    if (e.key !== 'Escape' || document.querySelector('.chip-pop, .picker-pop, #modal-back, #cmdk-back') || sheet()?.querySelector('.dl-menu:not(.hidden)')) return;
+    if (e.key !== 'Escape' || document.querySelector('.chip-pop, .picker-pop, #modal-back, #cmdk-back')) return;
     shut();
     btn.focus({ preventScroll: true });
   };
-  header.addEventListener('click', (e) => { if (e.target.closest('.tools-group .tools-row:not(.hold-btn)')) shut(); });
   btn.addEventListener('click', () => {
     if (row().classList.contains('tools-open')) return shut();
     const r = btn.getBoundingClientRect();
@@ -4068,6 +4073,7 @@ function tableToolsButton(header, ref) {
     });
     addEventListener('keydown', esc, true);
   });
+  btn.shut = shut;
   return btn;
 }
 
@@ -6393,15 +6399,6 @@ const FIELD_MENU_ICONS = {
   delete: 'lucide:trash-2',
 };
 
-function fieldMenuRow(icon, label, run, { current = false } = {}) {
-  const row = el('button', {
-    class: `chip-pop-row wv-menu-row${current ? ' is-current' : ''}`, type: 'button',
-    onclick: () => { document.querySelector('.chip-pop')?.remove(); run(); },
-  }, iconEl(icon, 'wv-icon wv-menu-icon'), el('span', { class: 'wv-menu-label' }, label));
-  if (current) row.append(el('span', { class: 'chip-pop-check' }, iconEl('✓', 'wv-icon')));
-  return row;
-}
-
 function lookupTargetOf(db, f) {
   if (f?.type !== 'lookup' || !f.via || !f.targetField) return null;
   const rel = db?.fields?.find((x) => x.type === 'relation' && x.name === f.via);
@@ -6423,44 +6420,28 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
   const btn = el('button', {
     class: 'field-menu', type: 'button',
     title: f.system ? `Sort by ${f.name}` : `Configure ${f.name}`,
-    'aria-label': f.system ? `Sort by ${f.name}` : `Configure field ${f.name}`,
+    'aria-label': f.system ? `Sort by ${f.name}` : `Configure field ${f.name}`, 'aria-haspopup': 'menu', 'aria-expanded': 'false',
   }, iconEl('lucide:ellipsis-vertical', 'wv-icon'));
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const row = fieldMenuRow;
-    const rows = [
-      el('div', { class: 'wv-menu-head' },
-        el('span', { class: 'wv-menu-title', title: f.name }, f.name),
-        el('span', { class: 'wv-menu-kind' }, f.system ? 'system' : fieldDialogCore.typeLabel(f.type))),
-    ];
-    if (!f.system) {
-      rows.push(row(FIELD_MENU_ICONS.edit, 'Edit field…', () => editFieldDialog(db, f)),
-        row(FIELD_MENU_ICONS.insert, 'Insert field…', () => addFieldDialog(db)));
-    }
-    if (onSort) {
-      const words = sortLabelsFor(db, f);
-      if (!f.system) rows.push(el('div', { class: 'wv-menu-sep' }));
-      rows.push(row(FIELD_MENU_ICONS.asc, words.asc, () => onSort(1), { current: sorted > 0 }),
-        row(FIELD_MENU_ICONS.desc, words.desc, () => onSort(-1), { current: sorted < 0 }));
-      if (sorted) rows.push(row(FIELD_MENU_ICONS.clear, 'Clear sort', () => onSort(0)));
-    }
-    if (f.role !== 'name' && !f.system) {
-      rows.push(el('div', { class: 'wv-menu-sep' }));
-      rows.push(holdToConfirm('Delete field', async () => {
-        document.querySelector('.chip-pop')?.remove();
-        try {
-          await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
-          await loadSchema();
-          showDatabase(db.id);
-        } catch (err) { toast(err.message, true); }
-      }, {
-        holdingLabel: 'Hold to delete…',
-        rowClass: 'chip-pop-row wv-menu-row wv-menu-danger',
-        icon: FIELD_MENU_ICONS.delete,
-        hint: 'hold',
-      }));
-    }
-    showPopover(btn, rows);
+    const words = onSort ? sortLabelsFor(db, f) : null;
+    menu([
+      f.system ? null : { label: 'Edit field…', icon: FIELD_MENU_ICONS.edit, section: 'settings', run: () => editFieldDialog(db, f) },
+      f.system ? null : { label: 'Insert field…', icon: FIELD_MENU_ICONS.insert, section: 'settings', run: () => addFieldDialog(db) },
+      onSort ? { label: words.asc, icon: FIELD_MENU_ICONS.asc, section: 'organize', checked: sorted > 0, run: () => onSort(1) } : null,
+      onSort ? { label: words.desc, icon: FIELD_MENU_ICONS.desc, section: 'organize', checked: sorted < 0, run: () => onSort(-1) } : null,
+      onSort && sorted ? { label: 'Clear sort', icon: FIELD_MENU_ICONS.clear, section: 'organize', run: () => onSort(0) } : null,
+      f.role !== 'name' && !f.system ? {
+        label: 'Delete field', hold: true, holdingLabel: 'Hold to delete…', icon: FIELD_MENU_ICONS.delete, hint: 'hold', section: 'delete',
+        run: async () => {
+          try {
+            await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
+            await loadSchema();
+            showDatabase(db.id);
+          } catch (err) { toast(err.message, true); }
+        },
+      } : null,
+    ], { anchor: btn, head: { title: f.name, kind: f.system ? 'system' : fieldDialogCore.typeLabel(f.type) } });
   });
   return btn;
 }
@@ -8311,10 +8292,10 @@ async function showSpace(spaceId) {
         ...(space.template ? [useTemplateButton(space)] : []),
         dotsMenu([
           {
-            hold: space.tables.length
+            label: space.tables.length
               ? `Delete space + ${space.tables.length} table${space.tables.length > 1 ? 's' : ''}`
               : 'Delete space',
-            holdingLabel: 'Hold to delete space…',
+            hold: true, holdingLabel: 'Hold to delete space…', section: 'delete',
             run: async () => {
               try {
                 await api('DELETE', `/spaces/${spaceId}`);
@@ -8813,6 +8794,84 @@ function attachTableKeys(host) {
   }, { capture: true });
 }
 
+const LIST_MARKER = /^(?:([-*+])(?: \[([ xX])\])?|(\d{1,9})([.)]))$/;
+const TASK_BOX = /^\[([ xX])\]$/;
+
+function attachListMarkers(host) {
+  let undo = null;
+  const rootOf = () => host.querySelector('.vditor-ir .vditor-reset');
+  const textOf = (node) => (node.textContent ?? '').replace(/\u200b/g, '');
+  const caretAtEnd = (block, range) => {
+    const before = document.createRange();
+    before.setStart(block, 0);
+    before.setEnd(range.endContainer, range.endOffset);
+    return before.toString().replace(/\u200b/g, '') === textOf(block);
+  };
+  const putCaret = (node, offset) => {
+    const r = document.createRange();
+    r.setStart(node, offset);
+    r.collapse(true);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  };
+  const fireInput = (root) => root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ' ' }));
+  const itemHtml = (marker, box) => box === undefined
+    ? `<li data-marker="${marker}"></li>`
+    : `<li data-marker="${marker}" class="vditor-task"><input${box.trim() ? ' checked=""' : ''} type="checkbox"> </li>`;
+  host.addEventListener('beforeinput', (e) => {
+    if (e.inputType !== 'insertText' || e.data !== ' ' || e.isComposing) return;
+    const root = rootOf();
+    const range = getSelection()?.rangeCount ? getSelection().getRangeAt(0) : null;
+    if (!root || !range || range.toString() !== '' || !root.contains(range.endContainer)) return;
+    const at = range.endContainer.nodeType === 3 ? range.endContainer.parentElement : range.endContainer;
+    const block = at.closest('p, li');
+    if (!block || !caretAtEnd(block, range)) return;
+    const text = textOf(block);
+    let li, typed = text;
+    if (block.tagName === 'P' && block.parentElement === root && LIST_MARKER.test(text)) {
+      const [, bullet, box, num, delim] = text.match(LIST_MARKER);
+      const marker = bullet ?? `${num}${delim}`;
+      const tag = bullet ? 'ul' : 'ol';
+      const start = num && Number(num) !== 1 ? ` start="${Number(num)}"` : '';
+      block.insertAdjacentHTML('afterend', `<${tag} data-tight="true"${start} data-marker="${marker}" data-block="0">${itemHtml(marker, box)}</${tag}>`);
+      li = block.nextElementSibling.firstElementChild;
+      block.remove();
+    } else if (block.tagName === 'LI' && block.parentElement?.tagName === 'UL' && !block.classList.contains('vditor-task')
+      && !block.querySelector('ul, ol') && TASK_BOX.test(text)) {
+      const marker = block.getAttribute('data-marker') ?? '-';
+      typed = `${marker} ${text}`;
+      block.insertAdjacentHTML('afterend', itemHtml(marker, text.match(TASK_BOX)[1]));
+      li = block.nextElementSibling;
+      block.remove();
+    } else return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    undo = `${typed} `;
+    putCaret(li, li.childNodes.length);
+    fireInput(root);
+  }, { capture: true });
+  host.addEventListener('keydown', (e) => {
+    const armed = undo;
+    undo = null;
+    if (!armed || e.key !== 'Backspace' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing) return;
+    const root = rootOf();
+    const range = getSelection()?.rangeCount ? getSelection().getRangeAt(0) : null;
+    const li = range?.endContainer && (range.endContainer.nodeType === 3 ? range.endContainer.parentElement : range.endContainer).closest('li');
+    const list = li?.parentElement;
+    if (!root || !li || range.toString() !== '' || list.parentElement !== root || textOf(li).trim() !== '' || list.children.length !== 1) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const p = document.createElement('p');
+    p.setAttribute('data-block', '0');
+    p.textContent = armed;
+    list.replaceWith(p);
+    putCaret(p.firstChild, armed.length);
+    fireInput(root);
+  }, { capture: true });
+  host.addEventListener('mousedown', () => { undo = null; }, { capture: true });
+}
+
 const tbIcon = (name) => (window.LUCIDE_MOVING?.[name] ?? '').replace(/ data-mi="[^"]*"/g, '');
 const WV_TB_ICONS = {
   headings: tbIcon('heading'), bold: tbIcon('bold'), italic: tbIcon('italic'), strike: tbIcon('strikethrough'),
@@ -8867,6 +8926,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachCodeAuto(host);
   attachCodeRawToggle(host);
   attachTableKeys(host);
+  attachListMarkers(host);
   attachHintClamp(host);
   const editor = new Vditor(host, {
     mode: 'ir',
@@ -9732,18 +9792,16 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 
   const entBase = `${WS_PREFIX}/e/${id}/entity`;
   const dlBtn = dotsMenu([
-    inPeek ? { label: 'Activity', run: () => activityPanel.toggle(id, null, mount) } : null,
-    inPeek ? { phone: true, label: 'Copy link', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') } : null,
-    inPeek ? { phone: true, label: 'Show or hide fields', run: () => fieldVisibilityPopover(dlBtn.firstElementChild, db, 0, { redraw: refresh, rowsSection: false }) } : null,
-    inPeek ? 'divider' : null,
+    inPeek ? { label: 'Activity', section: 'settings', run: () => activityPanel.toggle(id, null, mount) } : null,
+    inPeek ? { phone: true, label: 'Copy link', section: 'settings', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') } : null,
+    inPeek ? { phone: true, label: 'Show or hide fields', section: 'settings', run: () => fieldVisibilityPopover(dlBtn.firstElementChild, db, 0, { redraw: refresh, rowsSection: false }) } : null,
     ...['md', 'html', 'pdf'].map((ext) => ({
-      label: `Download .${ext}`, href: `${entBase}.${ext}`,
+      label: `Download .${ext}`, href: `${entBase}.${ext}`, section: 'share',
       download: `${(entity.name || 'entity')}.${ext}`,
     })),
-    { label: 'Share…', run: () => shareDialog('entity', id, entity.name || `#${entity.publicId}`) },
-    'divider',
+    { label: 'Share…', section: 'share', run: () => shareDialog('entity', id, entity.name || `#${entity.publicId}`) },
     {
-      label: 'Move to trash', danger: true,
+      label: 'Move to trash', danger: true, section: 'delete',
       run: async () => {
         try {
           await api('DELETE', `/entities/${id}`);
@@ -9817,7 +9875,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 
     const dl = dotsMenu(
       ['md', 'mmd', 'pdf', 'html'].map((ext) => ({
-        label: `Download .${ext}`, href: `${fmtBase}.${ext}`,
+        label: `Download .${ext}`, href: `${fmtBase}.${ext}`, section: 'organize',
         download: `${entity.name || 'document'}-${f.name}.${ext}`,
       })),
       { title: `${f.name} downloads`, extraClass: 'doc-dl' });
@@ -9945,7 +10003,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const blocks = new Map();
 
   const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
-  const HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .picker-wrap, .permalink-copy, .dl-menu, .attach-box';
+  const HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .picker-wrap, .permalink-copy, .attach-box';
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
     for (const h of handles.filter(Boolean)) {
@@ -10110,12 +10168,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       } catch (err) { toast(err.message, true); }
     };
     const menu = dotsMenu([
-      { label: 'Download .html', href: deckUrl, download: `${entity.name || label}.html` },
-      { label: 'Open the composed model (.json)', href: `${WS_PREFIX}/e/${id}/deck.json` },
+      { label: 'Download .html', section: 'organize', href: deckUrl, download: `${entity.name || label}.html` },
+      { label: 'Open the composed model (.json)', section: 'organize', href: `${WS_PREFIX}/e/${id}/deck.json` },
       ...(deckRole === 'slide' ? [
-        'divider',
-        { label: 'New version', run: () => newVersion(false) },
-        { label: 'New version, promoted into its decks', run: () => newVersion(true) },
+        { label: 'New version', section: 'share', run: () => newVersion(false) },
+        { label: 'New version, promoted into its decks', section: 'share', run: () => newVersion(true) },
       ] : []),
     ], { title: `${label} actions`, extraClass: 'doc-dl' });
     const section = el('section', { class: 'doc-section deck-section' },
@@ -10969,7 +11026,7 @@ async function showView(id) {
     el('h1', {}, v.name),
     el('span', { style: 'flex:1' }),
     el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('view', id, v.name) }, 'Share…'),
-    dotsMenu([{ hold: 'Delete view', holdingLabel: 'Hold to delete…', run: async () => { await api('DELETE', `/views/${id}`); toast('View deleted'); showHome(); } }], { align: 'right' })));
+    dotsMenu([{ label: 'Delete view', hold: true, holdingLabel: 'Hold to delete…', section: 'delete', run: async () => { await api('DELETE', `/views/${id}`); toast('View deleted'); showHome(); } }], { align: 'right' })));
   for (const b of v.blocks) {
     const cols = Object.keys(b.items[0]?.fields ?? {});
     main.append(el('div', { class: 'card panel' },
@@ -11008,7 +11065,7 @@ async function showHome() {
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
       actions: [dotsMenu([
         {
-          label: `Link preview before sign-in: ${ws.linkPreview ? 'on' : 'off'}`,
+          label: `Link preview before sign-in: ${ws.linkPreview ? 'on' : 'off'}`, section: 'organize',
           run: async () => {
             try {
               const r = await api('PATCH', '/workspace', { linkPreview: !ws.linkPreview });
@@ -11018,7 +11075,7 @@ async function showHome() {
           },
         },
         ...(deletable ? [{
-          label: 'Delete workspace…', danger: true,
+          label: 'Delete workspace…', danger: true, section: 'delete',
           run: () => confirmDeleteWorkspace(wsRow, { current: true }),
         }] : []),
       ], { title: 'Workspace actions', align: 'right' })],
@@ -11523,8 +11580,13 @@ function wireKeySheet() {
 
 const LOADER_CYCLE_MS = 2000;
 const LOADER_SHOW_AFTER_MS = 500;
+const LOADER_POSE_FROM = 0.45;
+const LOADER_POSE_TO = 0.62;
+const LOADER_EXIT_RATE = 3;
+const LOADER_HOLD_MS = 120;
+const LOADER_FADE_MS = 160;
 const SKELETON_SHOW_AFTER_MS = 150;
-const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, ready: false };
+const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, exit: null, ready: false };
 
 async function initPageLoader() {
   const host = $('#page-loader');
@@ -11542,6 +11604,7 @@ function showPageLoader() {
   loading.shownAt = Date.now();
   host.hidden = false;
   host.setAttribute('aria-hidden', 'false');
+  keepLoader(host, loading);
 }
 
 function hidePageLoader() {
@@ -11551,12 +11614,59 @@ function hidePageLoader() {
   host.hidden = true;
   host.setAttribute('aria-hidden', 'true');
   loading.shownAt = 0;
+  loading.exit = null;
+}
+
+function ropeAnimations(node) {
+  const all = node && node.getAnimations ? node.getAnimations({ subtree: true }) : [];
+  return all.filter((a) => String(a.animationName ?? '').startsWith('rope-'));
+}
+
+function settleLoader(node, state, hide) {
+  const token = state.exit = {};
+  if (!node) {
+    state.exit = null;
+    hide();
+    return;
+  }
+  const fade = () => {
+    if (state.exit !== token) return;
+    node.classList.add('loader-out');
+    state.hideTimer = setTimeout(hide, LOADER_HOLD_MS + LOADER_FADE_MS);
+  };
+  const rope = ropeAnimations(node);
+  const at = rope.length ? Number(rope[0].currentTime) : NaN;
+  if (!Number.isFinite(at)) {
+    fade();
+    return;
+  }
+  const phase = (at % LOADER_CYCLE_MS) / LOADER_CYCLE_MS;
+  const ahead = phase >= LOADER_POSE_FROM && phase <= LOADER_POSE_TO
+    ? 0
+    : ((LOADER_POSE_FROM - phase + 1) % 1) * LOADER_CYCLE_MS;
+  for (const a of rope) {
+    a.playbackRate = LOADER_EXIT_RATE;
+    a.effect.updateTiming({ iterations: (at + ahead) / LOADER_CYCLE_MS, fill: 'forwards' });
+  }
+  rope[0].finished.then(fade, () => {});
+}
+
+function keepLoader(node, state) {
+  state.exit = null;
+  if (!node) return;
+  node.classList.remove('loader-out');
+  for (const a of ropeAnimations(node)) {
+    a.playbackRate = 1;
+    a.effect.updateTiming({ iterations: Infinity, fill: 'none' });
+    a.play();
+  }
 }
 
 async function withPageLoader(work) {
   loading.depth += 1;
   clearTimeout(loading.hideTimer);
   loading.hideTimer = null;
+  if (loading.exit) keepLoader($('#page-loader'), loading);
   if (!loading.shownAt && !loading.showTimer) {
     loading.showTimer = setTimeout(() => {
       loading.showTimer = null;
@@ -11578,12 +11688,11 @@ async function withPageLoader(work) {
       hidePageLoader();
       return;
     }
-    const elapsed = Date.now() - loading.shownAt;
-    loading.hideTimer = setTimeout(hidePageLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
+    settleLoader($('#page-loader'), loading, hidePageLoader);
   }
 }
 
-const gridWait = { holds: new Set(), showTimer: 0, shownAt: 0, hideTimer: 0 };
+const gridWait = { holds: new Set(), showTimer: 0, shownAt: 0, hideTimer: 0, exit: null };
 function gridHold() {
   const token = {};
   gridWait.holds.add(token);
@@ -11598,19 +11707,23 @@ function paintGridWait() {
   }
   if (busy) {
     clearTimeout(gridWait.hideTimer); gridWait.hideTimer = 0;
+    if (gridWait.exit) keepLoader(gridLoaderNode(), gridWait);
     if (!gridWait.shownAt && !gridWait.showTimer) {
       gridWait.showTimer = setTimeout(() => { gridWait.showTimer = 0; showGridLoader(); }, LOADER_SHOW_AFTER_MS);
     } else if (gridWait.shownAt) placeGridLoader();
     return;
   }
   if (gridWait.showTimer) { clearTimeout(gridWait.showTimer); gridWait.showTimer = 0; return; }
-  if (!gridWait.shownAt || gridWait.hideTimer) return;
-  const elapsed = Date.now() - gridWait.shownAt;
-  gridWait.hideTimer = setTimeout(hideGridLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
+  if (!gridWait.shownAt || gridWait.hideTimer || gridWait.exit) return;
+  settleLoader(gridLoaderNode(), gridWait, hideGridLoader);
+}
+
+function gridLoaderNode() {
+  return $('#main')?.querySelector(':scope > .grid-loader') ?? null;
 }
 function placeGridLoader() {
   const main = $('#main');
-  const node = main?.querySelector(':scope > .grid-loader');
+  const node = gridLoaderNode();
   const wrap = main?.querySelector(':scope > .table-wrap');
   if (!node || !wrap) return;
   const m = main.getBoundingClientRect(), w = wrap.getBoundingClientRect();
@@ -11624,7 +11737,7 @@ function showGridLoader() {
   const main = $('#main');
   const source = $('#page-loader');
   if (!main?.querySelector(':scope > .table-wrap') || !loading.ready || !source) return;
-  let node = main.querySelector(':scope > .grid-loader');
+  let node = gridLoaderNode();
   if (!node) {
     node = el('div', { class: 'grid-loader', 'aria-hidden': 'true' });
     for (const mark of source.querySelectorAll(':scope > span')) node.append(mark.cloneNode(true));
@@ -11632,11 +11745,12 @@ function showGridLoader() {
   }
   node.hidden = false;
   gridWait.shownAt = Date.now();
+  keepLoader(node, gridWait);
   placeGridLoader();
 }
 function hideGridLoader() {
-  gridWait.hideTimer = 0; gridWait.shownAt = 0;
-  const node = $('#main')?.querySelector(':scope > .grid-loader');
+  gridWait.hideTimer = 0; gridWait.shownAt = 0; gridWait.exit = null;
+  const node = gridLoaderNode();
   if (node) node.hidden = true;
 }
 function resetGridWait() {
@@ -11969,46 +12083,22 @@ async function buildWsRail() {
         }, w.logo
           ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
           : w.name.slice(0, 1).toUpperCase());
-        const openMenu = (e) => {
+        const wsMenu = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          contextMenu(e, [
-            { label: 'Update logo…', run: () => uploadWorkspaceLogo(w) },
-            w.logo ? { label: 'Remove logo', run: () => removeWorkspaceLogo(w) } : null,
-            w.deletable ? { label: 'Delete workspace…', danger: true, run: () => confirmDeleteWorkspace(w, { current: w.name === current }) } : null,
-          ].filter(Boolean), 'ws-ctx');
+          menu([
+            { label: 'Update logo…', section: 'organize', run: () => uploadWorkspaceLogo(w) },
+            w.logo ? { label: 'Remove logo', section: 'organize', run: () => removeWorkspaceLogo(w) } : null,
+            w.deletable ? { label: 'Delete workspace…', danger: true, section: 'delete', run: () => confirmDeleteWorkspace(w, { current: w.name === current }) } : null,
+          ], { ...(e.clientX || e.clientY ? { point: { x: e.clientX, y: e.clientY } } : { anchor: chip }), trigger: chip, className: 'ws-ctx', label: `${w.name} workspace` });
         };
-        chip.addEventListener('contextmenu', openMenu);
-        if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) openMenu(e); });
+        chip.addEventListener('contextmenu', wsMenu);
+        if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) wsMenu(e); });
         return chip;
       }));
     refreshWsMarks();
   } catch {}
   refreshAccountChip();
-}
-
-function contextMenu(e, items, extraClass = '') {
-  contextMenu.close?.();
-  const menu = el('div', { class: `dl-menu wv-ctx ${extraClass}`, style: `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:120` });
-  let off = () => {};
-  const close = () => { menu.remove(); off(); removeEventListener('keydown', esc); contextMenu.close = null; };
-  const esc = (ev) => { if (ev.key === 'Escape') close(); };
-  for (const it of items) {
-    if (it === 'divider') { menu.append(el('div', { class: 'dropdown-divider' })); continue; }
-    if (it.hold) {
-      menu.append(holdToConfirm(it.hold, async () => { close(); await it.run(); }, { holdingLabel: it.holdingLabel ?? 'Hold to confirm…' }));
-      continue;
-    }
-    menu.append(el('button', {
-      class: 'dropdown-item' + (it.danger ? ' text-danger' : ''), type: 'button',
-      onclick: async () => { close(); await it.run(); },
-    }, it.label));
-  }
-  document.body.append(menu);
-  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t), close });
-  addEventListener('keydown', esc);
-  contextMenu.close = close;
-  return menu;
 }
 
 function confirmDeleteWorkspace(w, { current = false } = {}) {
@@ -12143,7 +12233,8 @@ function wireNavCollapse() {
     if (e.target.closest('a,button,input,textarea,select,label')) return;
     apply(false);
   });
-  sidebar.addEventListener('mouseleave', () => {
+  sidebar.addEventListener('mouseleave', (e) => {
+    if (e.relatedTarget?.closest?.('.wv-menu')) return;
     if (app.classList.contains('nav-peek') && !narrowShell.matches) app.classList.remove('nav-peek');
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') app.classList.remove('nav-peek'); });

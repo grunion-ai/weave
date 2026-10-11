@@ -18,7 +18,7 @@ if (s) {
       const row = page.locator('.nav-db', { hasText: name });
       await row.hover();
       await row.locator('.dots-btn').click();
-      const hold = row.locator('.hold-btn');
+      const hold = page.locator('.wv-menu .hold-btn');
       await hold.hover();
       if (ms < 900) {
         await hold.evaluate((btn) => new MutationObserver(() => {
@@ -62,7 +62,7 @@ if (s) {
       const row = page.locator('.nav-db', { hasText: 'DriftOff' });
       await row.hover();
       await row.locator('.dots-btn').click();
-      await row.locator('.hold-btn').hover();
+      await page.locator('.wv-menu .hold-btn').hover();
       await page.mouse.down();
       await page.waitForTimeout(400);
       await page.mouse.move(600, 300, { steps: 4 });

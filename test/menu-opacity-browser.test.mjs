@@ -36,9 +36,9 @@ if (s) {
       await page.waitForTimeout(250);
       assert.equal(await opacityOf(page, '.doc-section .doc-dl > .dots-btn'), '0.7', 'the trigger fades in on hover');
       await page.click('.doc-section .doc-dl > .dots-btn');
-      await page.waitForSelector('.doc-section .doc-dl .dl-menu:not(.hidden)');
+      await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
       await page.waitForTimeout(250);
-      const chain = await page.$eval('.doc-section .doc-dl .dl-menu', (menu) => {
+      const chain = await page.locator('.chip-pop.wv-menu[role="menu"]').first().evaluate((menu) => {
         const out = [];
         for (let n = menu; n; n = n.parentElement) out.push(Number(getComputedStyle(n).opacity));
         return out;

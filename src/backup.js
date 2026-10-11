@@ -149,7 +149,7 @@ export function decryptFile(src, dst, passphrase) {
     const tag = Buffer.alloc(16);
     readSync(s, tag, 0, 16, size - 16);
     const salt = head.subarray(MAGIC.length, MAGIC.length + 16), iv = head.subarray(MAGIC.length + 16);
-    const decipher = createDecipheriv('aes-256-gcm', scryptSync(String(passphrase), salt, 32), iv);
+    const decipher = createDecipheriv('aes-256-gcm', scryptSync(String(passphrase), salt, 32), iv, { authTagLength: 16 });
     decipher.setAuthTag(tag);
     d = openSync(dst, 'w');
     pump(s, d, (c) => decipher.update(c), { start: headLen, end: size - 16 });
