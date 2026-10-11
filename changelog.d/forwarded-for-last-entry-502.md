@@ -1,0 +1,1 @@
+- Behind `WEAVE_TRUST_PROXY=1` the sign-in and slug rate limits key on the last `X-Forwarded-For` entry, the one the proxy appended, so a client cannot pick its own key; the Worker keys on `CF-Connecting-IP` (Issue #502)

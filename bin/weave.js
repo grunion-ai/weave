@@ -236,7 +236,7 @@ Refs: entities accept "Table#publicId" (e.g. Task#3), a UUID, or a name with --d
 Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json
 Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (public origin the provider
      redirects back to and the session cookie binds to, e.g. https://weave.example.com — required when auth
-     is on and the host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
+     is on and the host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by the last X-Forwarded-For entry behind Railway/Fly/a proxy),
      WEAVE_AUTO_UPDATE=1 (supervise: install each newer release from grunion-ai/weave main in place),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
      others get 421), WEAVE_BASE_DOMAIN (e.g. weave.example.com: each workspace also answers at <slug>.<base>,
