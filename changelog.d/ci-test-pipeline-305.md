@@ -1,0 +1,1 @@
+- Run full Linux verification in six bounded test shards on the proposed merge commit. The required CI gate checks every executed test file, rejects missing browser coverage, and retains per-file timings. Keep platform compatibility checks on scheduled and manual runs. (Feature #305)
