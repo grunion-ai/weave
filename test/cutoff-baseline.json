@@ -29,7 +29,7 @@
     "ellipsis|span.ms-box > span.k.k-rel > a.mention.mention-entity > span.k-label": 126,
     "ellipsis|span.ms-box > span.k.k-rel > a.mention.mention-entity > span.k-label|phone": 1,
     "ellipsis|td > div.wv-cb > span.url-dressed > a.url-link": 66,
-    "field-placeholder|div.entity-values > div.fieldrow.wv-reorder-handle > span.date-cell > input.form-control.form-control-sm|phone": 2,
+    "field-placeholder|div.entity-values > div.fieldrow.wv-reorder-handle > span.date-cell > input.form-control.form-control-sm|phone": 1,
     "field-placeholder|form.tray-form > div.tray-body > div.dlg-sec.full > textarea.form-control.field-desc|phone": 2,
     "field-placeholder|td > div.wv-cb > span.date-cell > input.form-control.form-control-sm": 245,
     "field-value|td.clipped > div.wv-cb > span.date-cell.range-cell > input.form-control.form-control-sm": 126,
