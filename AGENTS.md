@@ -602,7 +602,7 @@ For agents changing weave itself: where the code lives and the rules every chang
 1. **Tests first.** Run `npm test -- --targeted <file...>` for changed behavior
    before committing.
    New engine or server behavior lands with tests in the same change. Open a
-   GitHub PR, self-review and require `CI gate` on the up-to-date merge candidate.
+   GitHub PR, self-review and arm `gh pr merge --auto --squash`; `Dev gate` is the required check.
    Hosted CI owns full verification; local workers keep checks targeted. Never
    bypass branch protection or push main directly. See DEVELOPMENT.md.
 2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage

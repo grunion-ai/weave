@@ -238,6 +238,8 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      redirects back to and the session cookie binds to, e.g. https://weave.example.com — required when auth
      is on and the host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by the last X-Forwarded-For entry behind Railway/Fly/a proxy),
      WEAVE_AUTO_UPDATE=1 (supervise: install each newer release from grunion-ai/weave main in place),
+     WEAVE_TRACK=main (supervise: follow every main commit instead of releases),
+     WEAVE_DEPLOY_TOKEN (supervise: 32+ character bearer token for POST /_supervisor/check),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
      others get 421), WEAVE_BASE_DOMAIN (e.g. weave.example.com: each workspace also answers at <slug>.<base>,
      sign-in finishes at WEAVE_ORIGIN and hands a one-time code back to the workspace host), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
@@ -261,7 +263,7 @@ async function main() {
       const sup = await startSupervisor({ port, host, dataPath });
       for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => sup.close().finally(() => process.exit(0)));
       const s = sup.status();
-      console.log(`weave supervise: serving ${s.release} (${s.dir}) at http://${host}:${sup.port}; checking for a newer release every 10 minutes`);
+      console.log(`weave supervise: serving ${s.release} (${s.dir}) at http://${host}:${sup.port}; ${process.env.WEAVE_TRACK === 'main' ? 'following main' : 'checking for a newer release'} every 10 minutes`);
       return;
     }
   }
@@ -367,7 +369,7 @@ async function main() {
           process.send({ weave: 'migrated' });
         });
       }
-      process.send({ weave: 'listening', port: actual });
+      process.send({ weave: 'listening', port: actual, version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
     }
     return;
   }

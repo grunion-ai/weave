@@ -332,3 +332,130 @@ test('unpackRelease strips the top directory and refuses an entry that climbs ou
   assert.throws(() => unpackRelease(gzipSync(readFileSync(tar)), join(dir, 'out2')), /escapes/);
   assert.ok(!existsSync(join(dir, 'evil.js')));
 });
+
+function fakeMain({ heads, tarball = () => releaseTarball(NEXT) }) {
+  const calls = [];
+  const tgz = new Map();
+  const fetch = async (url) => {
+    url = String(url);
+    calls.push(url);
+    if (url === `${REPO_API}/commits/main`) return Response.json({ sha: heads.main });
+    const sha = /\/tarball\/([0-9a-f]{40})$/.exec(url)?.[1];
+    if (sha) return new Response(tgz.get(sha) ?? tgz.set(sha, tarball(sha)).get(sha));
+    return new Response('not found', { status: 404 });
+  };
+  return { fetch, calls };
+}
+
+const TRACK = { ...ENV, WEAVE_TRACK: 'main' };
+const MAIN_A = 'b'.repeat(40);
+const MAIN_B = 'c'.repeat(40);
+
+test('tracking main swaps to each new main commit, keyed by commit, without a release', async () => {
+  const dataPath = dataDir('track-main');
+  const heads = { main: MAIN_A };
+  const gh = fakeMain({ heads });
+  const { sup, base } = await supervise(dataPath, gh, { env: TRACK });
+  try {
+    const first = await sup.check();
+    assert.equal(first.action, 'swapped');
+    let h = await health(base);
+    assert.equal(h.supervisor.commit, MAIN_A);
+    assert.equal(h.supervisor.release, `c${MAIN_A}`);
+    assert.ok(!gh.calls.some((u) => u.includes('/compare/') || u.includes('/releases')), 'no release or compare lookup');
+    assert.equal((await sup.check()).action, 'current', 'the same commit is not installed twice');
+    heads.main = MAIN_B;
+    assert.equal((await sup.check()).action, 'swapped');
+    h = await health(base);
+    assert.equal(h.supervisor.commit, MAIN_B);
+    assert.deepEqual(readdirSync(join(dataPath, '..', 'releases')).filter((n) => n.startsWith('c')).sort(), [`c${MAIN_A}`, `c${MAIN_B}`]);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a main commit that fails its health check rolls back to the serving worker and is skipped until main moves', async () => {
+  const dataPath = dataDir('track-unhealthy');
+  const heads = { main: MAIN_A };
+  const gh = fakeMain({ heads, tarball: (sha) => (sha === MAIN_A ? releaseTarball(NEXT, { bin: 'process.exit(3);\n' }) : releaseTarball(NEXT)) });
+  const { sup, base } = await supervise(dataPath, gh, { env: TRACK });
+  try {
+    const before = await health(base);
+    const failed = await sup.check();
+    assert.equal(failed.action, 'failed');
+    const after = await health(base);
+    assert.equal(after.supervisor.pid, before.supervisor.pid, 'the old worker keeps serving');
+    assert.deepEqual(after.supervisor.failed, [MAIN_A]);
+    assert.equal((await sup.check()).action, 'skipped');
+    heads.main = MAIN_B;
+    assert.equal((await sup.check()).action, 'swapped', 'the next main commit deploys');
+    assert.equal((await health(base)).supervisor.commit, MAIN_B);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a deploy hook with the right token checks main at once; any other caller is refused', async () => {
+  const dataPath = dataDir('track-hook');
+  const gh = fakeMain({ heads: { main: MAIN_A } });
+  const { sup, base } = await supervise(dataPath, gh, { env: { ...TRACK, WEAVE_DEPLOY_TOKEN: 'k'.repeat(32) } });
+  try {
+    const hook = (auth) => fetch(`${base}/_supervisor/check`, { method: 'POST', headers: auth ? { authorization: auth } : {} });
+    assert.equal((await hook()).status, 401);
+    assert.equal((await hook(`Bearer ${'x'.repeat(32)}`)).status, 401);
+    assert.ok(!gh.calls.some((u) => u.includes('/commits/main')), 'a refused caller triggers nothing');
+    const ok = await hook(`Bearer ${'k'.repeat(32)}`);
+    assert.equal(ok.status, 200);
+    const body = await ok.json();
+    assert.equal(body.action, 'swapped');
+    assert.equal(body.commit, MAIN_A);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('without a deploy token the hook path is not special', async () => {
+  const dataPath = dataDir('track-nohook');
+  const gh = fakeMain({ heads: { main: MAIN_A } });
+  const { sup, base } = await supervise(dataPath, gh, { env: TRACK });
+  try {
+    const r = await fetch(`${base}/_supervisor/check`, { method: 'POST', headers: { authorization: 'Bearer ' } });
+    assert.notEqual(r.status, 200);
+    assert.ok(!gh.calls.some((u) => u.includes('/commits/main')));
+  } finally {
+    await sup.close();
+  }
+});
+
+function walledBin(reported) {
+  return `import { createServer } from 'node:http';
+const s = createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end(JSON.stringify({ ok: true, name: 'weave' })); });
+s.listen(0, '127.0.0.1', () => process.send({ weave: 'listening', port: s.address().port, version: ${JSON.stringify(reported)} }));
+process.on('message', (m) => { if (m?.weave === 'migrate') process.send({ weave: 'migrated' }); });
+`;
+}
+
+test('a walled worker that hides its version from anonymous health is verified by the version it reports over IPC', async () => {
+  const dataPath = dataDir('walled');
+  const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: walledBin(NEXT) }) });
+  const { sup } = await supervise(dataPath, gh);
+  try {
+    const result = await sup.check();
+    assert.equal(result.action, 'swapped', result.reason);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a worker that reports a different version over IPC is refused', async () => {
+  const dataPath = dataDir('walled-wrong');
+  const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: walledBin('0.0.1') }) });
+  const { sup, base } = await supervise(dataPath, gh);
+  try {
+    const result = await sup.check();
+    assert.equal(result.action, 'failed');
+    assert.equal((await health(base)).version, IMAGE_VERSION);
+  } finally {
+    await sup.close();
+  }
+});
