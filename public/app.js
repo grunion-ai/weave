@@ -3899,7 +3899,7 @@ function tableChrome(db, trashCount) {
     {
       label: 'New share page…',
       run: () => modal('New share page', [
-        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control full' }),
+        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control' }),
       ], async (fd) => {
         const where = filterWhere(ref.db);
         await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
@@ -8326,7 +8326,7 @@ async function useTemplateDialog(space) {
     el('label', { class: 'form-label wv-start-label' }, 'Workspace'),
     pickerSelect({ name: 'workspace', title: 'Workspace', options: others.map((w) => ({ id: w.name, label: w.name })), value: others[0].name }),
     el('label', { class: 'form-label wv-start-label' }, 'Name'),
-    el('input', { name: 'name', class: 'form-control full', style: 'width:100%', value: space.space, required: '' }),
+    el('input', { name: 'name', class: 'form-control', value: space.space, required: '' }),
     el('div', { class: 'form-hint' }, 'Copies the tables, fields and views. Rows stay here.'),
     said,
   ] : [el('p', { class: 'use-template-none' }, 'There is no other workspace to build in. Create one first, from the workspace rail.')];
@@ -9864,7 +9864,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), el('span', { class: 'when' }, new Date(c.createdAt).toLocaleString())),
       el('div', {}, c.text)));
   }
-  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…', style: 'width:100%' });
+  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…' });
   commentInput.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter' && commentInput.value.trim()) {
       try {
@@ -10344,7 +10344,7 @@ function quickCreate(db) {
     return;
   }
   modal(`New ${db.term.singular}`, [
-    el('input', { name: 'name', placeholder: 'Name', class: 'form-control full', style: 'width:100%' }),
+    el('input', { name: 'name', placeholder: 'Name', class: 'form-control' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
     await loadSchema();
@@ -10356,7 +10356,7 @@ function newTableDialog(reg, after) {
   const spaces = state.schema.filter((s) => !s.system);
   if (!spaces.length) return toast('Create a space first — a table lives in one', true);
   modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
     pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space }),
   ], async (fd) => {
     const made = await api('POST', `/tables/${reg.id}/entities`, { name: fd.get('name'), values: { Space: fd.get('space') } });
@@ -10371,9 +10371,9 @@ function startTableDialog({ spaceId = null } = {}) {
   const fixed = spaceId ? spaces.find((s) => s.spaceId === spaceId) : null;
   const spaceInput = fixed ? null
     : spaces.length ? pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space })
-      : el('input', { name: 'space', value: 'General', class: 'form-control full', style: 'width:100%', required: '' });
+      : el('input', { name: 'space', value: 'General', class: 'form-control', required: '' });
   modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
     ...(spaceInput ? [
       el('label', { class: 'form-label wv-start-label' }, 'Space'),
       spaceInput,
@@ -11942,7 +11942,7 @@ function confirmDeleteWorkspace(w, { current = false } = {}) {
     el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
       `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from Trash in the sidebar. Type `,
       el('code', {}, w.name), ' to confirm.'),
-    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off', style: 'width:100%' }),
+    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off' }),
   ], async (fd) => {
     if (fd.get('confirm') !== w.name) throw new Error(`Type ${w.name} exactly to delete it`);
     await api('DELETE', `/workspaces/${w.id}`);
@@ -12223,7 +12223,7 @@ function openBugPanel(fab) {
 
   const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: keyHint('Send (⌘Return)') }, 'Send');
   const note = el('textarea', {
-    class: 'form-control bug-note', rows: '2', maxlength: '600',
+    class: 'form-control form-control-sm bug-note', rows: '2', maxlength: '600',
     placeholder: 'What went wrong?',
   });
   note.value = bugDraft.note;
