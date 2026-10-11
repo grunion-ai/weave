@@ -55,11 +55,12 @@ test('the nav kebab opens the one table definition (Feature #296)', () => {
     assert.match(TABLE_MENU, call, `${label} reaches its route`);
   }
   assert.doesNotMatch(TABLE_MENU, /Rename table…|Change icon…|Row term/, 'title, icon and row term edit in place, not from the menu');
-  assert.match(TABLE_MENU, /label: 'Delete table', hold: true/, 'delete is the house hold-to-confirm, not a plain button');
+  assert.match(TABLE_MENU, /delete: db\.system \? null : trashRow\(\{/, 'delete is the one trash row with Undo, not a hold (Feature #296)');
   assert.match(TABLE_MENU, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
+  assert.match(TABLE_MENU, /api\('POST', `\/tables\/\$\{db\.id\}\/restore`\)/, 'Undo restores the table');
   assert.match(TABLE_MENU, /await loadSchema\(\)/, 'every verb re-reads the schema so the nav redraws');
   assert.match(TABLE_MENU, /location\.hash = `#\/table\/\$\{copy\.id\}`/, 'duplicate opens the copy');
-  assert.match(TABLE_MENU, /if \(state\.route\?\.dbId === db\.id\) location\.hash = `#\/space\/\$\{db\.spaceId\}`/,
+  assert.match(TABLE_MENU, /const open = state\.route\?\.dbId === db\.id;\s*if \(open\) location\.hash = `#\/space\/\$\{db\.spaceId\}`/,
     'deleting the open table lands on its space, not a dead route');
 });
 

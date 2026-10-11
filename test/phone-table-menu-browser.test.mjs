@@ -121,13 +121,13 @@ if (s) {
           assert.ok(Math.abs(seen.menu.box.bottom - (await page.evaluate(() => innerHeight))) <= 1, 'pinned to the bottom edge');
           assert.ok(seen.menu.box.left <= 0.5 && seen.menu.box.right >= seen.vw - 0.5, 'and full width');
           assert.equal(seen.kebab.expanded, 'true', 'the trigger says its menu is open');
-          assert.deepEqual(seen.menu.rows.map((r) => r.text), ['Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV.csv', 'Delete table'], 'the table definition as rows, Delete table last (Feature #296)');
+          assert.deepEqual(seen.menu.rows.map((r) => r.text), ['Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV.csv', 'Move to trash'], 'the table definition as rows, Move to trash last (Feature #296)');
           for (const r of seen.menu.rows) {
             assert.ok(r.h >= 44, `${r.text} is a ${r.h}px row`);
             assert.ok(r.inside, `${r.text} sits inside the sheet`);
           }
           const del = seen.menu.rows.at(-1).color;
-          assert.equal(rgb(del), rgb(seen.danger), 'Delete table is red');
+          assert.equal(rgb(del), rgb(seen.danger), 'Move to trash is red');
           assert.notEqual(rgb(seen.menu.rows[0].color), rgb(del), 'and the others are not');
           await page.keyboard.press('Escape');
           await page.waitForSelector('.chip-pop.wv-menu', { state: 'detached' });

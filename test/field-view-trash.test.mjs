@@ -166,6 +166,24 @@ test('a deleted share page goes to the trash: hidden, unshared while there, rest
   assert.ok(w.listAudit().some((x) => x.action === 'view-restored'));
 });
 
+test('a restored share page takes back its place in the list, through an export too', () => {
+  const { w } = buildWorkspace();
+  for (const name of ['One', 'Two', 'Three', 'Four']) w.createView({ name, blocks: [{ table: 'Product/Task' }] });
+  const id = (name) => w.listViews().find((x) => x.name === name).id;
+  const two = id('Two');
+  w.deleteView(two);
+  w.restoreView(two);
+  assert.deepEqual(w.listViews().map((x) => x.name), ['One', 'Two', 'Three', 'Four'], 'Two is second again, not last');
+  assert.equal(w.listViews()[1].position, undefined, 'the live page carries no trash bookkeeping');
+
+  const first = id('One');
+  w.deleteView(first);
+  const reopened = new Weave();
+  reopened.importJSON(w.exportJSON());
+  reopened.restoreView(first);
+  assert.deepEqual(reopened.listViews().map((x) => x.name), ['One', 'Two', 'Three', 'Four'], 'the place survives an export');
+});
+
 test('purging a share page removes it for good, from the trash or directly', () => {
   const { w } = buildWorkspace();
   const v = w.createView({ name: 'Focus', blocks: [{ table: 'Product/Task' }] });

@@ -330,9 +330,11 @@ test('the space menu holds no per-table export', () => {
   assert.doesNotMatch(APP, /space\.tables\.map\(\(d\) => \(\{[\s\S]{0,80}export\.csv/);
 });
 
-test('deleting a table or a space is behind a hold', () => {
-  assert.ok(APP.includes("label: 'Delete table', hold: true"));
-  assert.match(APP, /label: space\.tables\.length[\s\S]{0,160}hold: true/, 'the space menu names how many tables go with it');
+test('deleting a table or a space is one click to the trash, with Undo (Feature #296, D6)', () => {
+  const rows = APP.slice(APP.indexOf('const MENU_ROWS = {'), APP.indexOf('\n};\n', APP.indexOf('const MENU_ROWS = {')));
+  assert.match(rows, /delete: db\.system \? null : trashRow\(\{\s*remove: \(\) => api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
+  assert.match(rows, /delete: space\.system \? null : trashRow\(\{\s*remove: \(\) => api\('DELETE', `\/spaces\/\$\{space\.spaceId\}`\)/);
+  assert.doesNotMatch(rows, /Delete table|Delete space|hold: true/, 'neither holds');
 });
 
 test('header menus hang off the right edge and fill their rows', () => {
@@ -433,10 +435,11 @@ test('the field menu edits a field rather than dropping and rebuilding it', () =
   assert.match(dlg, /fdc\.editPatchConfig\(existing, def, state\)/, 'the dialog builds its PATCH through the tested core');
 });
 
-test('deleting a field from the header is guarded and never offered for Name', () => {
+test('deleting a field from the header moves it to the trash and is never offered for Name', () => {
   const menu = FIELD_ROWS;
-  assert.match(menu, /label: 'Delete field', hold: true/, 'destructive rows are hold-to-confirm, like the schema page');
-  assert.match(fnBody('menuRow'), /if \(it\.hold\) \{\n\s+const btn = holdToConfirm\(/, 'and a hold row is the house holdToConfirm');
+  assert.match(menu, /\.\.\.trashRow\(\{/, 'the field delete is the one trash row, Undo restores it (Issue #768, Feature #296)');
+  assert.doesNotMatch(menu, /hold: true|Delete field/, 'a recoverable delete never demands a hold');
+  assert.match(fnBody('menuRow'), /if \(it\.hold\) \{\n\s+const btn = holdToConfirm\(/, 'the builder keeps the house hold for permanent delete');
   assert.match(menu, /f\.role !== 'name'/, 'the name-role field must not offer a delete row (by role — it can be renamed, Feature #168)');
 });
 
@@ -484,8 +487,10 @@ test('the menu names the column it belongs to', () => {
   assert.equal(rulesFor('.wv-menu-title')['text-overflow'], 'ellipsis', 'a long field name must not stretch the panel');
 });
 
-test('the hold gesture is advertised before it is pressed', () => {
-  assert.match(FIELD_ROWS, /hint: 'hold'/);
+test('the hold gesture is advertised before it is pressed, and only permanent delete holds (Feature #296, D6)', () => {
+  assert.doesNotMatch(FIELD_ROWS, /hint: 'hold'|hold: true/, 'the field delete is recoverable, so it does not hold');
+  assert.match(fnBody('menuRow'), /holdToConfirm\([\s\S]{0,200}hint: it\.hint \?\? null/, 'a permanent-delete hold row still carries its hint into the house hold');
+  assert.match(fnBody('holdToConfirm'), /hold-hint/, 'which draws it');
   const hint = rulesFor('.hold-hint');
   assert.ok(hint['border-radius'], 'the hint is a chip, in the chip idiom');
   assert.equal(rulesFor('.hold-btn.holding .hold-hint').opacity, '0',

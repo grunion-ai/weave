@@ -1860,8 +1860,9 @@ export class Weave {
       return { id: trashed.id, deleted: true };
     }
     const v = this.getView(id);
+    const position = Object.keys(this.state.meta.views).indexOf(v.id);
     delete this.state.meta.views[v.id];
-    if (!hard) (this.state.meta.trashedViews ??= {})[v.id] = { ...v, deletedAt: nowISO() };
+    if (!hard) (this.state.meta.trashedViews ??= {})[v.id] = { ...v, deletedAt: nowISO(), position };
     this.save();
     this.#audit(hard ? 'view-deleted' : 'view-trashed', { name: v.name });
     return { id: v.id, deleted: true };
@@ -1873,10 +1874,17 @@ export class Weave {
       if (own(this.state.meta.views, id)) return this.state.meta.views[id];
       throw new WeaveError(`View '${id}' not found in the trash`, 'not-found');
     }
-    const { deletedAt, ...live } = v;
+    const { deletedAt, position, ...live } = v;
     delete this.state.meta.trashedViews[v.id];
     if (!Object.keys(this.state.meta.trashedViews).length) delete this.state.meta.trashedViews;
-    (this.state.meta.views ??= {})[v.id] = live;
+    const views = (this.state.meta.views ??= {});
+    const behind = Object.keys(views).slice(position ?? Infinity);
+    views[v.id] = live;
+    for (const key of behind) {
+      const moved = views[key];
+      delete views[key];
+      views[key] = moved;
+    }
     this.save();
     this.#audit('view-restored', { name: v.name });
     return live;

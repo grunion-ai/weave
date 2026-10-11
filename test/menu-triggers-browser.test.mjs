@@ -14,12 +14,13 @@ const s = await launch('menu triggers', (weave) => {
 });
 
 const ROWS = {
-  table: ['Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Delete table'],
+  table: ['Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Move to trash'],
   record: ['Duplicate', 'Share…', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
   doc: ['Markdown', 'Mermaid', 'HTML', 'PDF'],
-  space: ['Delete space + 1 table'],
-  'share-page': ['Delete view'],
-  field: ['Field settings…', 'Insert field…', 'Delete field'],
+  space: ['Move to trash'],
+  'share-page': ['Move to trash'],
+  workspace: ['Link preview before sign-in'],
+  field: ['Field settings…', 'Insert field…', 'Move to trash'],
 };
 
 if (s) {
@@ -91,6 +92,7 @@ if (s) {
       triggers: {
         'header ⋮': via('#main .view-header .crumb-actions .dots-btn'),
         'header right-click': via('#main .view-header .view-desc', 'right'),
+        'nav row ⋮': via(`#nav .nav-space-row:has(a.nav-space[href="#/space/${spaceId}"]) .nav-space-menu .dots-btn`),
         'nav row right-click': via(`#nav .nav-space-row a.nav-space[href="#/space/${spaceId}"]`, 'right'),
       },
     },

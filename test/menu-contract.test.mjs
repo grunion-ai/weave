@@ -40,6 +40,43 @@ test('rows that left the menus stay out of app.js menus (Feature #296)', () => {
   assert.doesNotMatch(fnBody('fieldMenuButton'), /onSort|sortLabelsFor/, 'the column menu holds no sort rows');
 });
 
+test('every delete row is the one trash row: one click, "Moved to trash", Undo through the restore route (Feature #296, D6)', () => {
+  const kinds = globalThis.menuCore.kinds().filter((k) => globalThis.menuCore.definition(k).delete);
+  assert.deepEqual(kinds, ['table', 'record', 'space', 'share-page', 'field']);
+  assert.doesNotMatch(ROWS_SRC, /hold: true|holdingLabel/, 'no kind holds to delete');
+  const deletes = ROWS_SRC.match(/^    delete: /gm) ?? [];
+  assert.equal(deletes.length, kinds.length, 'one delete row per kind');
+  assert.equal((ROWS_SRC.match(/trashRow\(\{/g) ?? []).length, kinds.length, 'and every one is built by trashRow');
+  for (const [route, restore] of [
+    ["api('DELETE', `/tables/${db.id}`)", "api('POST', `/tables/${db.id}/restore`)"],
+    ["api('DELETE', `/entities/${entity.id}`)", "api('POST', `/entities/${entity.id}/restore`)"],
+    ["api('DELETE', `/spaces/${space.spaceId}`)", "api('POST', `/spaces/${space.spaceId}/restore`)"],
+    ["api('DELETE', `/views/${v.id}`)", "api('POST', `/views/${v.id}/restore`)"],
+    ["api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`)", "api('POST', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}/restore`)"],
+  ]) {
+    assert.ok(ROWS_SRC.includes(route), `the registry trashes through ${route}`);
+    assert.ok(ROWS_SRC.includes(restore), `and Undo restores through ${restore}`);
+  }
+  assert.doesNotMatch(ROWS_SRC, /\?hard=1/, 'no menu row purges');
+  const row = fnBody('trashRow');
+  assert.match(row, /label: 'Move to trash', danger: true/);
+  assert.match(row, /toast\(TRASHED, false, \{\s*label: 'Undo'/, 'the toast says Moved to trash and carries Undo');
+  assert.doesNotMatch(row, /hold/, 'one click, no hold');
+  assert.match(APP, /const TRASHED = 'Moved to trash';/);
+});
+
+test('the multi-select trash speaks the record menu\'s words (Feature #296, D6)', () => {
+  const body = APP.slice(APP.indexOf('const trashChosen = async'), APP.indexOf('const runBulk = async'));
+  assert.match(body, /runOnSelection\(TRASHED, /, 'the toolbar trash toasts the same verb');
+  assert.match(body, /label: 'Undo'/, 'and offers the same Undo');
+});
+
+test('workspace delete has left the interface; its routes stay (Feature #297)', () => {
+  assert.equal(APP.includes('Delete workspace'), false, 'no Delete workspace row or dialog');
+  assert.equal(APP.includes('confirmDeleteWorkspace'), false, 'no dialog entry point');
+  assert.match(APP, /api\('POST', `\/workspaces\/\$\{w\.id\}\/restore`\)/, 'the Trash page still restores a trashed workspace');
+});
+
 test('no menu row is a Bootstrap dropdown-item; only the menu-less hold button keeps that default', () => {
   assert.equal((APP.match(/dropdown-item/g) ?? []).length, 1, 'one dropdown-item left in app.js');
   assert.match(fnBody('holdToConfirm'), /rowClass = 'dropdown-item'/, 'and it is the hold button default for the Trash page and the field dialog');

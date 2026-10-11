@@ -34,12 +34,13 @@ if (s) {
       await page.close();
     });
 
-    test(`${theme}: a user space offers only Delete space + N tables`, async () => {
+    test(`${theme}: a user space offers only Move to trash, one click with no hold (Feature #296, D6)`, async () => {
       const { page, items } = await openMenu(user.id, theme);
       assert.ok(!items.some((t) => /Export .*\.csv/.test(t)), `no per-table export: ${items}`);
       assert.equal(await page.locator('.wv-menu .wv-menu-sep').count(), 0, 'no divider');
-      assert.equal(await page.locator('.wv-menu .hold-btn').count(), 1, 'hold-to-delete present');
-      assert.match(await page.locator('.wv-menu .hold-btn').textContent(), /Delete space \+ 1 table/);
+      assert.deepEqual(items.map((t) => t.trim()), ['Move to trash'], 'one row');
+      assert.equal(await page.locator('.wv-menu .hold-btn').count(), 0, 'no hold-to-delete');
+      assert.equal(await page.locator('.wv-menu .wv-menu-row.wv-menu-danger').count(), 1, 'the row reads as destructive');
       await page.close();
     });
   }

@@ -1055,7 +1055,8 @@ function renderNav() {
           await api('POST', '/tables', { space: space.space, name });
           await loadSchema();
         })),
-      }, iconEl('+', 'wv-icon')));
+      }, iconEl('+', 'wv-icon')),
+      kindDots('space', space, () => ({}), { title: `${space.space} actions`, extraClass: 'nav-space-menu', head: true }));
     kindContext(spaceRow, 'space', space);
     nav.append(spaceRow);
     if (isFolded) continue;
@@ -2410,8 +2411,34 @@ async function toggleLinkPreview(w, on, after) {
   } catch (err) { toast(err.message, true); }
 }
 
+const TRASHED = 'Moved to trash';
+
+function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
+  return {
+    label: 'Move to trash', danger: true,
+    run: async () => {
+      try {
+        await remove();
+        await loadSchema();
+        const where = await after();
+        toast(TRASHED, false, {
+          label: 'Undo',
+          run: async () => {
+            try {
+              await restore();
+              await loadSchema();
+              await undone(where);
+              toast('Restored');
+            } catch (err) { toast(err.message, true); }
+          },
+        });
+      } catch (err) { toast(err.message, true); }
+    },
+  };
+}
+
 const MENU_ROWS = {
-  table: (db, { anchor = null, onDeleted = null } = {}) => ({
+  table: (db, { anchor = null } = {}) => ({
     move: db.system ? null : {
       label: 'Move to space…',
       run: () => searchPicker({
@@ -2449,18 +2476,16 @@ const MENU_ROWS = {
     forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => formsDialog(db) } : null,
     'create-link': db.system ? null : { label: 'Copy create link', run: () => copyText(weavePrefill.link(prefillBase(db), filterSeed(db)), 'Create link copied') },
     export: globalThis.menuCore.exportSection({ name: db.name, serves: ['csv'], href: () => `${WS_PREFIX}/api/tables/${db.id}/export.csv` }),
-    delete: db.system ? null : {
-      label: 'Delete table', hold: true, holdingLabel: 'Hold to delete table…',
-      run: async () => {
-        try {
-          await api('DELETE', `/tables/${db.id}`);
-          await loadSchema();
-          if (state.route?.dbId === db.id) location.hash = `#/space/${db.spaceId}`;
-          toast(`Deleted ${db.name}`);
-          onDeleted?.();
-        } catch (err) { toast(err.message, true); }
+    delete: db.system ? null : trashRow({
+      remove: () => api('DELETE', `/tables/${db.id}`),
+      restore: () => api('POST', `/tables/${db.id}/restore`),
+      after: () => {
+        const open = state.route?.dbId === db.id;
+        if (open) location.hash = `#/space/${db.spaceId}`;
+        return open;
       },
-    },
+      undone: (open) => { if (open) location.hash = `#/table/${db.id}`; },
+    }),
   }),
   record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null } = {}) => ({
     duplicate: db && !db.system ? {
@@ -2475,24 +2500,15 @@ const MENU_ROWS = {
     } : null,
     share: { label: 'Share…', run: () => shareDialog('entity', entity.id, entity.name || `#${entity.publicId}`) },
     export: globalThis.menuCore.exportSection({ name: entity.name || 'entity', serves: ['md', 'html', 'pdf'], href: (ext) => `${WS_PREFIX}/e/${entity.id}/entity.${ext}` }),
-    delete: {
-      label: 'Move to trash', danger: true,
-      run: async () => {
-        try {
-          await api('DELETE', `/entities/${entity.id}`);
-          await loadSchema();
-          if (inPeek) onClose?.(); else location.hash = `#/table/${entity.dbId}`;
-          toast('Moved to trash', false, {
-            label: 'Undo',
-            run: async () => {
-              await api('POST', `/entities/${entity.id}/restore`);
-              if (!inPeek) location.hash = `#/entity/${entity.id}`;
-              toast('Restored');
-            },
-          });
-        } catch (err) { toast(err.message, true); }
+    delete: trashRow({
+      remove: () => api('DELETE', `/entities/${entity.id}`),
+      restore: () => api('POST', `/entities/${entity.id}/restore`),
+      after: () => { if (inPeek) onClose?.(); else location.hash = `#/table/${entity.dbId}`; },
+      undone: () => {
+        if (inPeek) return refreshView();
+        location.hash = `#/entity/${entity.id}`;
       },
-    },
+    }),
   }),
   doc: (f, { entity }) => ({
     export: globalThis.menuCore.exportSection({
@@ -2501,51 +2517,53 @@ const MENU_ROWS = {
     }),
   }),
   space: (space) => ({
-    delete: space.system ? null : {
-      label: space.tables.length ? `Delete space + ${space.tables.length} table${space.tables.length > 1 ? 's' : ''}` : 'Delete space',
-      hold: true, holdingLabel: 'Hold to delete space…',
-      run: async () => {
-        try {
-          await api('DELETE', `/spaces/${space.spaceId}`);
-          await loadSchema();
-          if (state.route?.page === 'space' && state.route.spaceId === space.spaceId) {
-            location.hash = wsHomeHref().replace(/^[^#]*/, '') || '#/';
-            showHome();
-          }
-          toast(`Deleted ${space.space}`);
-        } catch (err) { toast(err.message, true); }
+    delete: space.system ? null : trashRow({
+      remove: () => api('DELETE', `/spaces/${space.spaceId}`),
+      restore: () => api('POST', `/spaces/${space.spaceId}/restore`),
+      after: () => {
+        const open = state.route?.page === 'space' && state.route.spaceId === space.spaceId;
+        if (open) {
+          location.hash = wsHomeHref().replace(/^[^#]*/, '') || '#/';
+          showHome();
+        }
+        return open;
       },
-    },
+      undone: (open) => { if (open) location.hash = `#/space/${space.spaceId}`; },
+    }),
   }),
   'share-page': (v) => ({
-    delete: {
-      label: 'Delete view', hold: true, holdingLabel: 'Hold to delete…',
-      run: async () => {
-        await api('DELETE', `/views/${v.id}`);
-        toast('View deleted');
-        showHome();
+    delete: trashRow({
+      remove: () => api('DELETE', `/views/${v.id}`),
+      restore: () => api('POST', `/views/${v.id}/restore`),
+      after: () => {
+        const open = state.route?.page === 'view' && state.route.id === v.id;
+        if (open) location.hash = wsHomeHref().replace(/^[^#]*/, '') || '#/';
+        if (open || state.route?.page === 'home') showHome();
+        return open;
       },
-    },
+      undone: (open) => {
+        if (open) location.hash = `#/view/${v.id}`;
+        else if (state.route?.page === 'home') showHome();
+      },
+    }),
   }),
-  workspace: (w, { current = false, after = null } = {}) => ({
+  workspace: (w, { after = null } = {}) => ({
     'link-preview': typeof w.linkPreview === 'boolean' ? {
       label: 'Link preview before sign-in', switch: w.linkPreview,
       run: () => toggleLinkPreview(w, w.linkPreview, after),
     } : null,
-    delete: w.deletable ? { label: 'Delete workspace…', danger: true, run: () => confirmDeleteWorkspace(w, { current }) } : null,
   }),
   field: (f, { db }) => ({
     settings: f.system ? null : { label: 'Field settings…', icon: FIELD_MENU_ICONS.edit, run: () => editFieldDialog(db, f) },
     insert: f.system ? null : { label: 'Insert field…', icon: FIELD_MENU_ICONS.insert, run: () => addFieldDialog(db) },
     delete: f.role !== 'name' && !f.system ? {
-      label: 'Delete field', hold: true, holdingLabel: 'Hold to delete…', icon: FIELD_MENU_ICONS.delete, hint: 'hold',
-      run: async () => {
-        try {
-          await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
-          await loadSchema();
-          showDatabase(db.id);
-        } catch (err) { toast(err.message, true); }
-      },
+      ...trashRow({
+        remove: () => api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`),
+        restore: () => api('POST', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}/restore`),
+        after: () => showDatabase(db.id),
+        undone: () => { if (state.route?.dbId === db.id) return showDatabase(db.id); },
+      }),
+      icon: FIELD_MENU_ICONS.delete,
     } : null,
   }),
 };
@@ -5358,7 +5376,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const keep = (id) => !ids.has(id);
     const next = drawn.slice(last + 1).find(keep) ?? drawn.slice(0, last).reverse().find(keep) ?? null;
     const gesture = { kind: 'delete', ids: [] };
-    await runOnSelection('Moved to trash', (id) => api('DELETE', `/entities/${id}`), (done) => {
+    await runOnSelection(TRASHED, (id) => api('DELETE', `/entities/${id}`), (done) => {
       gesture.ids = done;
       lastGesture = gesture;
       return { label: 'Undo', run: () => undoGesture(gesture) };
@@ -11510,8 +11528,8 @@ async function showHome() {
   const [wsRead, listRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces')]);
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
-  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, deletable: !!wsRow?.deletable };
-  const wsCtx = () => ({ current: true, after: () => showHome() });
+  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview };
+  const wsCtx = () => ({ after: () => showHome() });
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -12543,7 +12561,7 @@ async function buildWsRail() {
           if (openMenu?.trigger === chip) { openMenu.close(); return; }
           const record = await wsApi(w, 'GET', '/workspace').catch(() => null);
           const o = { ...w, title: record?.title ?? w.name, linkPreview: record ? !!record.linkPreview : undefined };
-          const items = menuFor('workspace', o, { current: w.name === current, after: () => { if (w.name === current && state.route?.page === 'home') showHome(); } });
+          const items = menuFor('workspace', o, { after: () => { if (w.name === current && state.route?.page === 'home') showHome(); } });
           if (!items.length) return;
           menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', o), label: `${w.name} workspace` });
         };
@@ -12554,24 +12572,6 @@ async function buildWsRail() {
     refreshWsMarks();
   } catch {}
   refreshAccountChip();
-}
-
-function confirmDeleteWorkspace(w, { current = false } = {}) {
-  modal(`Delete workspace ${w.name}`, [
-    el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
-      `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from Trash in the sidebar. Type `,
-      el('code', {}, w.name), ' to confirm.'),
-    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off' }),
-  ], async (fd) => {
-    if (fd.get('confirm') !== w.name) throw new Error(`Type ${w.name} exactly to delete it`);
-    await api('DELETE', `/workspaces/${w.id}`);
-    if (current) { location.href = '/'; return; }
-    toast(`Workspace ${w.name} moved to the trash`, false, {
-      label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); },
-    });
-    buildWsRail();
-  }, 'Delete');
-  document.querySelector('#modal button[type="submit"]')?.classList.replace('btn-primary', 'btn-danger');
 }
 
 async function trashedWorkspaces() {
