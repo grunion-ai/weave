@@ -157,7 +157,7 @@ export const ACTIVITY_CAP = 500;
 const FIELD_CONFIG_ACTIONS = { 'field-config-updated': 'field-config-updated', 'field-config-undo': 'undo' };
 const SCHEMA_AUDIT_ACTIONS = ['space-created', 'space-updated', 'space-trashed', 'space-deleted', 'space-restored', 'space-from-template',
   'table-created', 'table-updated', 'table-moved', 'table-duplicated', 'table-trashed', 'table-deleted', 'table-restored',
-  'field-added', 'field-updated', 'field-config-updated', 'field-config-undo', 'field-migrated', 'field-deleted', 'relation-added'];
+  'field-added', 'field-updated', 'field-config-updated', 'field-config-undo', 'field-migrated', 'field-trashed', 'field-deleted', 'field-restored', 'relation-added'];
 const UNTAGGED_SCHEMA_ACTIONS = new Set(SCHEMA_AUDIT_ACTIONS.filter((a) => a !== 'field-updated' && a !== 'table-updated'));
 const ONTOLOGY_TYPES = { number: 'num', daterange: 'dates', checkbox: 'check', document: 'doc', attachments: 'files', select: 'one', multiselect: 'many', workflow: 'flow' };
 const ONTOLOGY_LEGEND = 'one/many/flow[..] are select/multiselect/workflow; a -> T (b) is a relation to T, T* many, b its inverse; a = .. is a lookup, rollup or formula. Every table also has Name, Description, Chip and Card.';
@@ -377,7 +377,7 @@ export const ONTOLOGY = {
       key: 'field', name: 'Field', isEntity: true, registry: 'Workspace/Fields', storedIn: 'table.fields',
       contains: 'nothing', identity: 'uuid; name unique within its table',
       definition: 'One typed, named slot on a table. A field is not itself a row of data, but it has a row in the Fields registry — carrying its type and its definition — so the schema is editable as data.',
-      api: ['addField', 'addRelation', 'updateField', 'deleteField', 'materializeField'],
+      api: ['addField', 'addRelation', 'updateField', 'deleteField', 'restoreField', 'materializeField'],
     },
     {
       key: 'row', name: 'Row', isEntity: true, registry: null, storedIn: 'state.entities',
@@ -427,7 +427,7 @@ export const ONTOLOGY = {
       key: 'saved-view', name: 'Saved view', storedIn: 'state.meta.views',
       definition: 'A saved arrangement of one or more table blocks, each with its own filter and layout; optionally published read-only through a share token. Not to be confused with the entity view, which every entity has by existing.',
       identity: 'uuid; a share token when shared',
-      api: ['createView', 'listViews', 'getView', 'deleteView', 'resolveView', 'shareView', 'unshareView'],
+      api: ['createView', 'listViews', 'getView', 'deleteView', 'restoreView', 'resolveView', 'shareView', 'unshareView'],
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.entities',
@@ -1194,6 +1194,7 @@ export class Weave {
         if (f.type === 'select') seg.option = named(seg.value);
         else seg.options = (Array.isArray(shown) ? shown : []).map((x) => named(x?.name ?? x));
       }
+      if (f.type === 'formula' || f.type === 'rollup' || f.type === 'lookup') seg.type = f.type;
       const nd = typeof resolved === 'number' ? this.#numberDisplay(db, f) : null;
       if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f), color: nd.color };
       const rated = Array.isArray(resolved) ? resolved.some((v) => typeof v === 'number') : typeof resolved === 'number';
@@ -1687,6 +1688,7 @@ export class Weave {
       if (auto.dbId === db.id) delete this.state.automations[id];
     }
     for (const f of Object.values(db.fields)) this.#dropFieldRow(f.id);
+    for (const t of Object.values(db.trashedFields ?? {})) for (const snap of [t.field, ...t.dependents]) this.#dropFieldRow(snap.field.id);
     for (const v of db.tableViews ?? []) this.#dropSysRow('views', v.id);
     const spacesT = this.#sysTable('spaces');
     if (spacesT) {
@@ -1769,7 +1771,12 @@ export class Weave {
     return v;
   }
 
-  listViews() {
+  listViews({ trash = false } = {}) {
+    if (trash) {
+      return Object.values(this.state.meta.trashedViews ?? {})
+        .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
+        .map((v) => structuredClone(v));
+    }
     return Object.values(this.state.meta.views ?? {}).map((v) => ({ ...v, shared: this.listShares({ kind: 'view', id: v.id }).length > 0 }));
   }
 
@@ -1779,12 +1786,37 @@ export class Weave {
     return v;
   }
 
-  deleteView(id) {
+  deleteView(id, { hard = false } = {}) {
+    const trashed = own(this.state.meta.trashedViews, id);
+    if (trashed) {
+      if (!hard) return { id: trashed.id, deleted: true };
+      delete this.state.meta.trashedViews[trashed.id];
+      if (!Object.keys(this.state.meta.trashedViews).length) delete this.state.meta.trashedViews;
+      this.save();
+      this.#audit('view-deleted', { name: trashed.name });
+      return { id: trashed.id, deleted: true };
+    }
     const v = this.getView(id);
     delete this.state.meta.views[v.id];
+    if (!hard) (this.state.meta.trashedViews ??= {})[v.id] = { ...v, deletedAt: nowISO() };
     this.save();
-    this.#audit('view-deleted', { name: v.name });
+    this.#audit(hard ? 'view-deleted' : 'view-trashed', { name: v.name });
     return { id: v.id, deleted: true };
+  }
+
+  restoreView(id) {
+    const v = own(this.state.meta.trashedViews, id);
+    if (!v) {
+      if (own(this.state.meta.views, id)) return this.state.meta.views[id];
+      throw new WeaveError(`View '${id}' not found in the trash`, 'not-found');
+    }
+    const { deletedAt, ...live } = v;
+    delete this.state.meta.trashedViews[v.id];
+    if (!Object.keys(this.state.meta.trashedViews).length) delete this.state.meta.trashedViews;
+    (this.state.meta.views ??= {})[v.id] = live;
+    this.save();
+    this.#audit('view-restored', { name: v.name });
+    return live;
   }
 
   resolveView(id) {
@@ -4307,15 +4339,16 @@ export class Weave {
     }
 
     if (db.system === 'fields') {
-      if (!hard) throw new WeaveError('Deleting a column is not recoverable — pass hard to confirm', 'invalid');
       const hit = this.#fieldAnywhere(e.sysId);
       const owner = hit?.table;
       if (owner && owner.nameFieldId === e.sysId) {
         throw new WeaveError('Cannot delete the Name field', 'invalid');
       }
-      if (owner) hit.owner.deleteField(owner.id, e.sysId);
-      else this.#metaSync(() => this.deleteEntity(e.id, { hard: true }));
-      return { id: e.id, purged: true };
+      const binned = owner ? null : this.#trashedFieldAnywhere(e.sysId);
+      if (owner) hit.owner.deleteField(owner.id, e.sysId, { hard });
+      else if (binned) binned.owner.deleteField(binned.table.id, e.sysId, { hard });
+      else this.#metaSync(() => this.deleteEntity(e.id, { hard }));
+      return hard ? { id: e.id, purged: true } : this.readEntity(e.id);
     }
     const owner = this.#ownerOf(e);
     if (db.system === 'spaces') owner.deleteSpace(e.sysId, { hard });
@@ -4991,8 +5024,13 @@ export class Weave {
     return { rows: snapshot, counts };
   }
 
-  deleteField(dbRef, fieldRef) {
+  deleteField(dbRef, fieldRef, { hard = false } = {}) {
     const db = this.getTable(dbRef);
+    const binned = this.findField(db, fieldRef) ? null : this.#trashedField(db, fieldRef);
+    if (binned) {
+      if (hard) this.#purgeTrashedField(db, binned);
+      return { id: binned.field.field.id, name: binned.field.field.name, db: this.qualifiedName(db), deleted: true };
+    }
     const field = this.getField(db.id, fieldRef);
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
     if (field.type === 'view') throw new WeaveError(`Cannot delete '${field.name}': every row has a ${field.config.shape} by existing — hide it instead`, 'invalid');
@@ -5001,6 +5039,7 @@ export class Weave {
     if (readers.length) {
       throw new WeaveError(`Cannot delete '${field.name}': ${readers.join(', ')} read${readers.length === 1 ? 's' : ''} it — delete ${readers.length === 1 ? 'that field' : 'those fields'} first`, 'invalid');
     }
+    const entry = hard || db.system ? null : this.#fieldTrashEntry(db, field);
     const touched = this.#spacesTouching(db, field);
     for (const shape of VIEW_SHAPES) {
       const v = this.viewField(db, shape);
@@ -5020,7 +5059,12 @@ export class Weave {
       }
     }
     this.#removeFieldRaw(db, field.id);
-    this.#dropFieldRow(field.id);
+    if (entry) {
+      (db.trashedFields ??= {})[field.id] = entry;
+      this.#trashSysRow('fields', field.id);
+    } else {
+      this.#dropFieldRow(field.id);
+    }
     if (field.type === 'relation' && field.config.inverseFieldId) this.#dropFieldRow(field.config.inverseFieldId);
     this.#syncTableRow(db);
     if (field.type === 'relation' && field.config.targetDb) {
@@ -5028,8 +5072,149 @@ export class Weave {
       if (far) this.#syncTableRow(far);
     }
     this.save();
-    if (!db.system) this.#audit('field-deleted', { table: db.name, name: field.name }, touched);
+    if (!db.system) this.#audit(entry ? 'field-trashed' : 'field-deleted', { table: db.name, name: field.name }, touched);
     return { id: field.id, name: field.name, db: this.qualifiedName(db), deleted: true };
+  }
+
+  restoreField(dbRef, fieldRef) {
+    const db = this.getTable(dbRef);
+    const binned = this.#trashedField(db, fieldRef);
+    if (!binned) throw new WeaveError(`Field '${fieldRef}' not found in the trash of '${db.name}'`, 'not-found');
+    const sp = this.state.spaces[db.spaceId];
+    if (db.deletedAt || sp?.deletedAt) throw new WeaveError(`Table '${db.name}' is in the trash — restore the table first`, 'invalid');
+    const main = binned.field.field;
+    const clash = (table, name) => Object.values(table.fields).find((f) => f.name.toLowerCase() === name.toLowerCase());
+    if (clash(db, main.name)) throw new WeaveError(`A live field already holds the name '${db.name}.${main.name}' — rename it first`, 'conflict');
+    for (const dep of binned.dependents) {
+      if (clash(db, dep.field.name)) throw new WeaveError(`A live field already holds the name '${db.name}.${dep.field.name}' — rename it first`, 'conflict');
+    }
+    let far = null;
+    if (binned.inverse) {
+      far = this.state.tables[binned.inverse.dbId];
+      if (!far) throw new WeaveError(`'${main.name}' points at a table that is gone — purge it instead`, 'conflict');
+      if (clash(far, binned.inverse.field.name)) {
+        throw new WeaveError(`A live field already holds the name '${far.name}.${binned.inverse.field.name}' — rename it first`, 'conflict');
+      }
+    }
+    const placements = [[db, binned.field], ...binned.dependents.map((d) => [db, d]), ...(far ? [[far, binned.inverse]] : [])]
+      .sort((x, y) => x[1].position - y[1].position);
+    for (const [table, snap] of placements) this.#reinstateField(table, snap);
+    delete db.trashedFields[main.id];
+    if (!Object.keys(db.trashedFields).length) delete db.trashedFields;
+    this.#restoreSysRow('fields', main.id);
+    for (const [table, snap] of placements) this.#syncFieldRow(table, table.fields[snap.field.id]);
+    this.#syncTableRow(db);
+    if (far && far.id !== db.id) this.#syncTableRow(far);
+    this.save();
+    if (!db.system) this.#audit('field-restored', { table: db.name, name: main.name }, this.#spacesTouching(db, db.fields[main.id]));
+    return db.fields[main.id];
+  }
+
+  #trashedField(db, ref) {
+    if (ref && typeof ref === 'object') ref = ref.id;
+    const bin = db.trashedFields ?? {};
+    if (own(bin, ref)) return bin[ref];
+    return Object.values(bin)
+      .filter((t) => t.field.field.name.toLowerCase() === String(ref).toLowerCase())
+      .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))[0] ?? null;
+  }
+
+  #trashedFieldAnywhere(fieldId) {
+    for (const w of this.#engines()) {
+      const table = Object.values(w.state.tables).find((t) => own(t.trashedFields ?? {}, fieldId));
+      if (table) return { owner: w, table };
+    }
+    return null;
+  }
+
+  #purgeTrashedField(db, binned) {
+    const main = binned.field.field;
+    delete db.trashedFields[main.id];
+    if (!Object.keys(db.trashedFields).length) delete db.trashedFields;
+    this.#dropFieldRow(main.id);
+    for (const dep of binned.dependents) this.#dropFieldRow(dep.field.id);
+    this.save();
+    if (!db.system) this.#audit('field-deleted', { table: db.name, name: main.name }, db.spaceId);
+  }
+
+  #fieldTrashEntry(db, field) {
+    const entry = { deletedAt: nowISO(), field: this.#fieldSnapshot(db, field), inverse: null, dependents: [] };
+    if (field.type === 'relation' && field.config.inverseFieldId) {
+      const far = this.state.tables[field.config.targetDb];
+      const inv = far?.fields[field.config.inverseFieldId];
+      if (inv) entry.inverse = { dbId: far.id, ...this.#fieldSnapshot(far, inv) };
+    }
+    for (const f of Object.values(db.fields)) {
+      if ((f.type === 'lookup' || f.type === 'rollup') && f.config.relationField === field.id) entry.dependents.push(this.#fieldSnapshot(db, f));
+    }
+    return entry;
+  }
+
+  #fieldSnapshot(db, field) {
+    const snap = { field: structuredClone(field), position: db.fieldOrder.indexOf(field.id), values: {}, docs: {}, shapes: [], views: [] };
+    if (db.descriptionFieldId === field.id) snap.description = true;
+    for (const shape of VIEW_SHAPES) {
+      const at = this.viewField(db, shape)?.config.fields?.indexOf(field.id) ?? -1;
+      if (at >= 0) snap.shapes.push({ shape, index: at });
+    }
+    for (const v of db.tableViews ?? []) {
+      const index = v.fields.indexOf(field.id);
+      const place = { id: v.id, index };
+      if (index >= 0 && index < (v.frozen ?? 0)) place.frozen = true;
+      if (v.widths?.[field.id] != null) place.width = v.widths[field.id];
+      if (v.parked?.[field.id] != null) place.parked = v.parked[field.id];
+      if (v.filters?.[field.name] != null) place.filter = v.filters[field.name];
+      const sorts = (v.sort ?? []).map((s, i) => [i, s]).filter(([, s]) => s.field === field.name);
+      if (sorts.length) place.sort = sorts;
+      if (Object.keys(place).length > 2 || index >= 0) snap.views.push(place);
+    }
+    for (const e of this.listEntities(db.id)) {
+      if (e.values[field.id] != null) snap.values[e.id] = structuredClone(e.values[field.id]);
+      if (e.docs?.[field.id] != null) snap.docs[e.id] = e.docs[field.id];
+    }
+    return snap;
+  }
+
+  #reinstateField(db, snap) {
+    const f = structuredClone(snap.field);
+    db.fields[f.id] = f;
+    if (!db.fieldOrder.includes(f.id)) db.fieldOrder.splice(Math.max(0, Math.min(snap.position, db.fieldOrder.length)), 0, f.id);
+    if (snap.description && db.descriptionFieldId == null) db.descriptionFieldId = f.id;
+    for (const { shape, index } of snap.shapes) {
+      const vf = this.viewField(db, shape);
+      if (Array.isArray(vf?.config.fields) && !vf.config.fields.includes(f.id)) vf.config.fields.splice(Math.min(index, vf.config.fields.length), 0, f.id);
+    }
+    for (const place of snap.views) {
+      const v = (db.tableViews ?? []).find((x) => x.id === place.id);
+      if (!v) continue;
+      if (place.index >= 0 && !v.fields.includes(f.id)) v.fields.splice(Math.min(place.index, v.fields.length), 0, f.id);
+      if (place.frozen) v.frozen = (v.frozen ?? 0) + 1;
+      if (place.width != null) (v.widths ??= {})[f.id] = place.width;
+      if (place.parked != null) (v.parked ??= {})[f.id] = place.parked;
+      if (place.filter != null) (v.filters ??= {})[f.name] = place.filter;
+      for (const [i, s] of place.sort ?? []) {
+        v.sort ??= [];
+        if (!v.sort.some((x) => x.field === s.field)) v.sort.splice(Math.min(i, v.sort.length), 0, s);
+      }
+    }
+    const exists = (id) => !!own(this.state.entities, id);
+    for (const [id, value] of Object.entries(snap.values)) {
+      const e = own(this.state.entities, id);
+      if (!e) continue;
+      if (f.type === 'relation') {
+        const ids = (Array.isArray(value) ? value : [value]).filter(exists);
+        e.values[f.id] = f.config.many ? ids : (ids[0] ?? null);
+      } else {
+        e.values[f.id] = value;
+      }
+      this.#mark(e);
+    }
+    for (const [id, doc] of Object.entries(snap.docs)) {
+      const e = own(this.state.entities, id);
+      if (!e) continue;
+      (e.docs ??= {})[f.id] = doc;
+      this.#mark(e);
+    }
   }
 
   #targetFieldReaders(fieldId) {
@@ -5655,6 +5840,11 @@ export class Weave {
     const e = this.getEntity(id);
     {
       const db = this.state.tables[e.dbId];
+      const binned = db?.system === 'fields' && e.deletedAt && !this.#inMetaSync ? this.#trashedFieldAnywhere(e.sysId) : null;
+      if (binned) {
+        binned.owner.restoreField(binned.table.id, e.sysId);
+        return this.readEntity(id);
+      }
       if (db?.system && !this.#inMetaSync && ['spaces', 'tables'].includes(db.system)) {
         const owner = this.#ownerOf(e);
         if (db.system === 'spaces') owner.restoreSpace(e.sysId);
@@ -7597,7 +7787,7 @@ export class Weave {
       delete a.tokenHash;
       for (const i of a.identities ?? []) delete i.verifiedEmail;
     }
-    for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
+    for (const v of [...Object.values(out.meta.views ?? {}), ...Object.values(out.meta.trashedViews ?? {})]) delete v.shareToken;
     Shares.redactTokens(out);
     delete out.meta.sessions;
     delete out.meta.invites;
