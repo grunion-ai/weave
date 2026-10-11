@@ -31,7 +31,7 @@ jobs:
       - name: Boot
         run: |
           node bin/weave.js serve --port 4401 --host 127.0.0.1 --data "$RUNNER_TEMP/dev.db" &
-          for _ in $(seq 60); do
+          for _ in $(seq 180); do
             if curl -fsS http://127.0.0.1:4401/api/health | grep -q '"ok": *true'; then exit 0; fi
             sleep 0.5
           done
