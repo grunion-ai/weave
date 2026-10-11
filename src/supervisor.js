@@ -1,5 +1,6 @@
 import { createServer, request } from 'node:http';
 import { spawn } from 'node:child_process';
+import { timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,7 @@ export const REPO_API = 'https://api.github.com/repos/grunion-ai/weave';
 const IMAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const INTERVAL = 10 * 60 * 1000;
 const OK_MARK = '.weave-release-ok';
+const COMMIT = /^[0-9a-f]{40}$/;
 const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const HOP = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
 const GITHUB = { accept: 'application/vnd.github+json', 'user-agent': 'weave' };
@@ -35,7 +37,9 @@ export function unpackRelease(tgz, dir) {
   }
 }
 
-function bootRelease({ releasesDir, imageDir, failed }) {
+function bootRelease({ releasesDir, imageDir, failed, commit }) {
+  const tracked = commit && join(releasesDir, `c${commit}`);
+  if (tracked && !failed[commit] && existsSync(join(tracked, OK_MARK)) && versionOf(tracked)) return { dir: tracked, version: versionOf(tracked), release: `c${commit}`, commit };
   let best = { dir: imageDir, version: versionOf(imageDir), release: 'image' };
   for (const name of existsSync(releasesDir) ? readdirSync(releasesDir) : []) {
     const version = /^v(\d+\.\d+\.\d+)$/.exec(name)?.[1];
@@ -52,6 +56,8 @@ export async function startSupervisor({
   onWorkerDied = () => process.exit(1),
 } = {}) {
   const releasesDir = join(dirname(resolve(dataPath)), 'releases');
+  const track = env.WEAVE_TRACK === 'main';
+  const deployToken = String(env.WEAVE_DEPLOY_TOKEN ?? '').length >= 32 ? env.WEAVE_DEPLOY_TOKEN : null;
   const stateFile = join(releasesDir, 'state.json');
   let state = { failed: {}, lastSwap: null, attempting: null };
   try { state = { ...state, ...JSON.parse(readFileSync(stateFile, 'utf8')) }; } catch {}
@@ -116,6 +122,7 @@ export async function startSupervisor({
       dir: current.dir,
       pid: current.child.pid,
       since: current.since,
+      commit: current.commit ?? null,
       lastSwap: state.lastSwap,
       failed: Object.keys(state.failed),
     };
@@ -153,7 +160,17 @@ export async function startSupervisor({
     req.pipe(up);
   }
 
+  function deployHook(req, res) {
+    const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
+    if (req.method !== 'POST') return send(405, { error: 'POST only' });
+    const given = Buffer.from(String(req.headers.authorization ?? ''));
+    const want = Buffer.from(`Bearer ${deployToken}`);
+    if (given.length !== want.length || !timingSafeEqual(given, want)) return send(401, { error: 'unauthorized' });
+    check().then((r) => send(200, { ...r, commit: current.commit ?? null }), (err) => send(502, { error: err.message }));
+  }
+
   const server = createServer((req, res) => {
+    if (deployToken && req.url === '/_supervisor/check') return deployHook(req, res);
     const w = current;
     if (w.settling && (!READS.has(req.method) || req.url.startsWith('/api/auth/'))) w.queue.push(() => forward(req, res, w));
     else forward(req, res, w);
@@ -165,45 +182,63 @@ export async function startSupervisor({
     return r.json();
   }
 
-  async function download(version) {
-    const tag = `v${version}`;
-    const cmp = await github(`${REPO_API}/compare/${tag}...main`);
-    if (cmp.status !== 'ahead' && cmp.status !== 'identical') throw new Refusal(`${tag} is not on grunion-ai/weave main (compare: ${cmp.status ?? 'no status'})`);
-    const sha = cmp.base_commit?.sha;
-    if (!/^[0-9a-f]{40}$/.test(sha ?? '')) throw new Error(`GitHub named no commit for ${tag}`);
+  async function unpackCommit(name, sha) {
     const r = await fetch(`${REPO_API}/tarball/${sha}`, { headers: GITHUB, signal: AbortSignal.timeout(120_000) });
-    if (!r.ok) throw new Error(`the ${tag} tarball answered HTTP ${r.status}`);
-    const part = join(releasesDir, `${tag}.part`);
+    if (!r.ok) throw new Error(`the ${name} tarball answered HTTP ${r.status}`);
+    const part = join(releasesDir, `${name}.part`);
     rmSync(part, { recursive: true, force: true });
     unpackRelease(Buffer.from(await r.arrayBuffer()), part);
-    const inside = versionOf(part);
-    if (inside !== version) throw new Refusal(`the ${tag} tarball's package.json says ${inside}`);
-    const dir = join(releasesDir, tag);
+    return part;
+  }
+
+  function settle(part, name) {
+    const dir = join(releasesDir, name);
     rmSync(dir, { recursive: true, force: true });
     renameSync(part, dir);
     return dir;
   }
 
-  async function swapTo(version) {
+  async function download(version) {
+    const tag = `v${version}`;
+    const cmp = await github(`${REPO_API}/compare/${tag}...main`);
+    if (cmp.status !== 'ahead' && cmp.status !== 'identical') throw new Refusal(`${tag} is not on grunion-ai/weave main (compare: ${cmp.status ?? 'no status'})`);
+    const sha = cmp.base_commit?.sha;
+    if (!COMMIT.test(sha ?? '')) throw new Error(`GitHub named no commit for ${tag}`);
+    const part = await unpackCommit(tag, sha);
+    const inside = versionOf(part);
+    if (inside !== version) throw new Refusal(`the ${tag} tarball's package.json says ${inside}`);
+    return { dir: settle(part, tag), version, release: tag };
+  }
+
+  async function downloadCommit(sha) {
+    const name = `c${sha}`;
+    const part = await unpackCommit(name, sha);
+    const version = versionOf(part);
+    if (!version) throw new Refusal(`the ${name} tarball names no package.json version`);
+    return { dir: settle(part, name), version, release: name, commit: sha };
+  }
+
+  async function swapTo(key, to, prepare) {
     const at = new Date().toISOString();
-    const to = `v${version}`;
     const from = current.release;
     const record = (ok, reason) => { state.lastSwap = { at, from, to, ok, ...(reason ? { reason } : {}) }; save(); };
+    let version = key;
     try {
-      const dir = await download(version);
-      state.attempting = version;
+      const rel = await prepare();
+      version = rel.version;
+      state.attempting = key;
       save();
-      pending = spawnWorker({ dir, version, release: to }, { defer: true });
+      pending = spawnWorker(rel, { defer: true });
       await waitHealthy(pending);
     } catch (err) {
       if (pending) { pending.child.kill('SIGKILL'); await pending.exited; pending = null; }
       state.attempting = null;
       const verdict = err instanceof Refusal;
-      if (verdict) state.failed[version] = { at, reason: err.message };
+      if (verdict) state.failed[key] = { at, reason: err.message };
       record(false, err.message);
       log.warn(`weave supervise: ${to} not installed: ${err.message}${verdict ? '' : ' (tried again next check)'}`);
-      emit({ type: 'failed', version, reason: err.message });
-      return { action: 'failed', version, reason: err.message, retry: !verdict };
+      emit({ type: 'failed', version: key, reason: err.message });
+      return { action: 'failed', version: key, reason: err.message, retry: !verdict };
     }
     const next = pending;
     const old = current;
@@ -227,21 +262,29 @@ export async function startSupervisor({
     emit({ type: 'migrated', version });
     writeFileSync(join(next.dir, OK_MARK), at);
     state.attempting = null;
+    if (next.commit) state.commit = next.commit;
     record(true);
     for (const name of readdirSync(releasesDir)) {
       const dir = join(releasesDir, name);
-      if (/^v\d/.test(name) && dir !== next.dir && dir !== old.dir) rmSync(dir, { recursive: true, force: true });
+      if (/^(v\d|c[0-9a-f]{40}$)/.test(name) && dir !== next.dir && dir !== old.dir) rmSync(dir, { recursive: true, force: true });
     }
     log.log(`weave supervise: ${from} -> ${to}`);
-    return { action: 'swapped', from, to };
+    return { action: 'swapped', from, to, ...(next.commit ? { commit: next.commit } : {}) };
   }
 
   async function tick() {
+    if (track) {
+      const sha = (await github(`${REPO_API}/commits/main`)).sha;
+      if (!COMMIT.test(sha ?? '')) throw new Error('GitHub named no commit for main');
+      if (sha === current.commit) return { action: 'current', commit: sha };
+      if (state.failed[sha]) return { action: 'skipped', version: sha, reason: state.failed[sha].reason };
+      return swapTo(sha, `c${sha}`, () => downloadCommit(sha));
+    }
     await release.refresh();
     const latest = release.status()?.latestRelease;
     if (!latest || !newerVersion(latest, current.version)) return { action: 'current', latest: latest ?? null };
     if (state.failed[latest]) return { action: 'skipped', version: latest, reason: state.failed[latest].reason };
-    return swapTo(latest);
+    return swapTo(latest, `v${latest}`, () => download(latest));
   }
 
   function check({ onEvent: once } = {}) {
@@ -253,7 +296,7 @@ export async function startSupervisor({
     return swapping;
   }
 
-  let boot = bootRelease({ releasesDir, imageDir, failed: state.failed });
+  let boot = bootRelease({ releasesDir, imageDir, failed: state.failed, commit: track ? state.commit : null });
   let first = spawnWorker(boot, { defer: false });
   try {
     await waitHealthy(first);
@@ -261,7 +304,7 @@ export async function startSupervisor({
     first.child.kill('SIGKILL');
     await first.exited;
     if (boot.release === 'image') throw err;
-    state.failed[boot.version] = { at: new Date().toISOString(), reason: `failed at boot: ${err.message}` };
+    state.failed[boot.commit ?? boot.version] = { at: new Date().toISOString(), reason: `failed at boot: ${err.message}` };
     save();
     log.warn(`weave supervise: ${boot.release} failed at boot (${err.message}); serving the image`);
     boot = { dir: imageDir, version: versionOf(imageDir), release: 'image' };

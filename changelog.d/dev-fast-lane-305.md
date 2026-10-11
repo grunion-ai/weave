@@ -1,0 +1,1 @@
+- dev.weave.grunion.ai follows main: ready pull requests land after a sub-minute Dev gate, the supervisor swaps dev to each main commit with health-checked rollback, and production releases wait for an approved run (Feature #305)

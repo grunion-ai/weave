@@ -68,11 +68,10 @@ test('CI reporter records executed files, timings and missing prerequisite skips
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('the required gate uses merge commits and always validates shards; draft reviews stay unmergeable', async () => {
+test('the full suite runs on main pushes only and always validates shards', async () => {
   const { readFileSync } = await import('node:fs');
   const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
-  assert.match(workflow, /types: \[opened, synchronize, reopened, ready_for_review\]/);
-  assert.match(workflow, /if: github.event_name != 'pull_request' \|\| !github.event.pull_request.draft/);
+  assert.doesNotMatch(workflow, /pull_request|merge_group/);
   assert.match(workflow, /name: CI gate\n    if: always\(\)\n    needs: \[plan, test\]/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
