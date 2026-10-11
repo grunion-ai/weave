@@ -27,8 +27,8 @@ if (app) for (const theme of ['light', 'dark']) for (const width of [390, 1280])
       await page.goto(`${base}/#/db/${table.id}`);
       await page.locator('.table-tools-btn').waitFor({ state: 'attached' });
       if (width < 600) await page.getByRole('button', { name: 'View, filters, fields and row height', exact: true }).click();
-      else await page.getByRole('button', { name: 'Table actions', exact: true }).click();
-      await page.getByRole('button', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
+      await page.getByRole('button', { name: 'Table actions', exact: true }).filter({ visible: true }).click();
+      await page.getByRole('menuitem', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
       await page.getByRole('button', { name: 'Create form', exact: true }).click();
       assert.equal(await page.getByLabel('Audience', { exact: true }).count(), 0);
       assert.equal(await page.getByText('Anyone in this open workspace', { exact: true }).isVisible(), true);
@@ -80,7 +80,7 @@ if (app) test('editing preserves hidden fields and aliases, and observers have n
     await page.context().addCookies([{ name: 'wv_session', value: weave.createSession(architect.account.id).token, url: base }]);
     await page.goto(`${base}/#/db/${table.id}`);
     await page.getByRole('button', { name: 'Table actions', exact: true }).click();
-    await page.getByRole('button', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
+    await page.getByRole('menuitem', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
     await page.locator(`[data-form-id="${preserved.id}"]`).getByRole('button', { name: 'Edit', exact: true }).click();
     assert.equal(await page.getByLabel('Include Reporter', { exact: true }).count(), 0);
     const summary = page.locator('[data-form-field]').filter({ has: page.getByText('Name', { exact: true }) }).locator('summary');
@@ -109,6 +109,6 @@ if (app) test('editing preserves hidden fields and aliases, and observers have n
     const viewer = await context.newPage();
     await viewer.goto(`${base}/#/db/${table.id}`);
     await viewer.getByRole('button', { name: 'Table actions', exact: true }).click();
-    assert.equal(await viewer.getByRole('button', { name: 'Forms…', exact: true }).count(), 0);
+    assert.equal(await viewer.getByRole('menuitem', { name: 'Forms…', exact: true }).count(), 0);
   } finally { await context.close(); }
 });
