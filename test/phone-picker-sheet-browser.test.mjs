@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, settled } from './lib/browser.mjs';
+import { launch, settled, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const MANY = Array.from({ length: 12 }, (_, i) => `Area ${i + 1}`);
 
@@ -18,8 +18,8 @@ const s = await launch('phone picker sheets', (weave) => {
 
 if (s) {
   const { base, browser, docked } = s;
-  const open = async ({ width = 390, theme = 'light' } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+  const open = async ({ width, theme = 'light' } = {}) => {
+    const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(await phoneBrowser());
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${docked}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#dock:not([hidden]) .chip-trigger[title="Status"]');
@@ -35,7 +35,7 @@ if (s) {
       rows: [...p.querySelectorAll('.picker-row')].map((n) => Math.round(n.getBoundingClientRect().height)),
       typing: document.activeElement === input,
       boxShown: !!input && input.getClientRects().length > 0,
-      vh: innerHeight,
+      vw: innerWidth, vh: innerHeight,
     };
   }); };
 
@@ -47,7 +47,7 @@ if (s) {
         await page.waitForSelector('.picker-pop .picker-row');
         const p = await pop(page);
         assert.equal(p.theme, theme);
-        assert.deepEqual([p.left, p.right, p.bottom], [0, 390, p.vh], 'the sheet spans the bottom of the screen');
+        assert.deepEqual([p.left, p.right, p.bottom], [0, p.vw, p.vh], 'the sheet spans the bottom of the screen');
         assert.ok(p.rows.length >= 3 && p.rows.every((h) => h >= 56), `every option is 56px: ${p.rows}`);
         assert.equal(p.typing, false, 'the text box does not take focus, so no keyboard');
         assert.equal(p.boxShown, false, 'and a short list shows no text box');
@@ -64,7 +64,7 @@ if (s) {
       await page.click('#dock .chip-trigger[title="Area"]');
       await page.waitForSelector('.picker-pop .picker-row');
       const p = await pop(page);
-      assert.deepEqual([p.left, p.right, p.bottom], [0, 390, p.vh], 'it is a bottom sheet too');
+      assert.deepEqual([p.left, p.right, p.bottom], [0, p.vw, p.vh], 'it is a bottom sheet too');
       assert.ok(p.typing && p.boxShown, 'with the search box focused for 12 options');
       assert.ok(p.top >= 60, `the sheet leaves the top of the screen clear (${p.top})`);
     } finally { await page.close(); }

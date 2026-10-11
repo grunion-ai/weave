@@ -179,8 +179,8 @@ test('an entity permalink answers 200 with the shell and the exact preview head'
     assert.match(r.headers.get('content-type'), /text\/html/);
     const html = r.text;
     assert.equal(titleOf(html), 'Issue #1 · Totals <drift> & "rounding" · Acme Docs');
-    assert.equal(metaOf(html, 'og:title'), 'Issue #1 · Totals <drift> & "rounding"');
-    assert.equal(metaOf(html, 'og:description'), 'Acme Docs › Development › Issue\nStatus Fixed · Severity Medium · Symptom Wrong data');
+    assert.equal(metaOf(html, 'og:title'), 'Totals <drift> & "rounding"', 'a sent preview titles itself with the name alone');
+    assert.equal(metaOf(html, 'og:description'), 'Acme Docs › Development › Issue #1\nStatus Fixed · Severity Medium · Symptom Wrong data');
     assert.equal(metaOf(html, 'description'), metaOf(html, 'og:description'));
     assert.equal(metaOf(html, 'og:site_name'), 'Acme Docs');
     assert.equal(metaOf(html, 'og:url'), `${s.base}/w/acme-docs/e/${s.row.id}`);
@@ -204,9 +204,21 @@ test('a Table#n ref previews the same row under its canonical uuid address', asy
   try {
     const r = await s.get('/w/acme-docs/e/Issue%231');
     assert.equal(r.status, 200);
-    assert.equal(metaOf(r.text, 'og:title'), 'Issue #1 · Totals <drift> & "rounding"');
+    assert.equal(metaOf(r.text, 'og:title'), 'Totals <drift> & "rounding"');
     assert.equal(metaOf(r.text, 'og:url'), `${s.base}/w/acme-docs/e/${s.row.id}`);
     assert.equal(routeOf(r.text), `/w/acme-docs/#/entity/${s.row.id}`);
+  } finally { s.srv.close(); }
+});
+
+test('an unnamed row previews as its table and id, and the tab keeps both beside the name', async () => {
+  const s = await previewServer();
+  try {
+    s.w.updateEntity(s.row.id, { Name: '' });
+    const html = (await s.get(`/w/acme-docs/e/${s.row.id}`)).text;
+    assert.equal(metaOf(html, 'og:title'), 'Issue #1');
+    assert.equal(titleOf(html), 'Issue #1 · Acme Docs');
+    s.w.updateEntity(s.row.id, { Name: 'Totals' });
+    assert.equal(titleOf((await s.get(`/w/acme-docs/e/${s.row.id}`)).text), 'Issue #1 · Totals · Acme Docs', 'the tab carries table, id and name');
   } finally { s.srv.close(); }
 });
 
@@ -216,7 +228,7 @@ test('a long name is cut near 80 characters in og:title', async () => {
     s.w.updateEntity(s.row.id, { Name: 'word '.repeat(40).trim() });
     const t = metaOf((await s.get(`/w/acme-docs/e/${s.row.id}`)).text, 'og:title');
     assert.ok(t.length <= 80, `${t.length} characters`);
-    assert.ok(t.startsWith('Issue #1 · word word') && t.endsWith('…'));
+    assert.ok(t.startsWith('word word') && t.endsWith('…'));
   } finally { s.srv.close(); }
 });
 
@@ -327,8 +339,8 @@ test('the wall: with the setting on an anonymous permalink gets the head only, t
     const r = await s.get(`/w/acme-docs/e/${s.row.id}`);
     assert.equal(r.status, 200);
     assert.equal(r.headers.get('cache-control'), 'no-store');
-    assert.equal(metaOf(r.text, 'og:title'), 'Issue #1 · Totals <drift> & "rounding"');
-    assert.equal(metaOf(r.text, 'og:description'), 'Acme Docs › Development › Issue\nStatus Fixed · Severity Medium · Symptom Wrong data');
+    assert.equal(metaOf(r.text, 'og:title'), 'Totals <drift> & "rounding"');
+    assert.equal(metaOf(r.text, 'og:description'), 'Acme Docs › Development › Issue #1\nStatus Fixed · Severity Medium · Symptom Wrong data');
     assert.equal(metaOf(r.text, 'twitter:data1'), 'Fixed');
     assert.equal(routeOf(r.text), `/w/acme-docs/auth?next=${encodeURIComponent(`/w/acme-docs/e/${s.row.id}`)}`);
     assert.match(r.text, /data-sign-in/);

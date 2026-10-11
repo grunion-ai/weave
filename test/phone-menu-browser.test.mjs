@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const s = await launch('phone full-screen menu', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -14,8 +14,8 @@ const s = await launch('phone full-screen menu', (weave) => {
 
 if (s) {
   const { base, browser, hash } = s;
-  const open = async ({ width = 390, theme = 'light' } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+  const open = async ({ width, theme = 'light' } = {}) => {
+    const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(await phoneBrowser());
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main .nav-menu', { state: 'attached' });
@@ -34,6 +34,8 @@ if (s) {
       health: rect('#sidebar .nav-health'),
       rows: [...document.querySelectorAll('#sidebar a.nav-db')].map((a) => Math.round(a.getBoundingClientRect().height)),
       scrollWidth: document.documentElement.scrollWidth,
+      vw: innerWidth, vh: innerHeight,
+      inner: document.querySelector('#sidebar').clientWidth,
     };
   });
 
@@ -46,17 +48,17 @@ if (s) {
         const m = await menu(page);
         assert.equal(m.theme, theme);
         assert.ok(m.open, 'the menu button opens the menu');
-        assert.deepEqual([m.sidebar.left, m.sidebar.top, m.sidebar.width], [0, 0, 390], 'the menu spans the screen from the top-left corner');
-        assert.equal(m.rail.bottom, 844, 'the workspace bar sits on the bottom edge');
-        assert.equal(m.rail.width, 390, 'and runs the full width');
+        assert.deepEqual([m.sidebar.left, m.sidebar.top, m.sidebar.width], [0, 0, m.vw], 'the menu spans the screen from the top-left corner');
+        assert.equal(m.rail.bottom, m.vh, 'the workspace bar sits on the bottom edge');
+        assert.equal(m.rail.width, m.vw, 'and runs the full width');
         assert.equal(m.railRow, 'row', 'its workspaces, theme and help lie in a row');
         assert.ok(m.sidebar.bottom <= m.rail.top + 1, `the menu ends above the bar (${m.sidebar.bottom} vs ${m.rail.top})`);
         assert.ok(m.close.width >= 44 && m.close.height >= 44, `the close button is ${m.close.width}x${m.close.height}`);
-        assert.ok(m.close.right >= 390 - 24 && m.close.top <= 24, `the close button sits top right (${m.close.right}, ${m.close.top})`);
+        assert.ok(m.close.right >= m.sidebar.left + m.inner - 24 && m.close.top <= 24, `the close button sits top right (${m.close.right}, ${m.close.top})`);
         assert.ok(m.rows.length >= 3 && m.rows.every((h) => h >= 44), `every table row is 44px: ${m.rows}`);
         assert.ok(m.stats.bottom <= m.rail.top + 1 && m.stats.bottom >= m.rail.top - 4, `the records, size and version sit at the foot of the menu (${m.stats.bottom} vs ${m.rail.top})`);
         assert.ok(m.health.height > 0, 'the version chip shows');
-        assert.ok(m.scrollWidth <= 390, `the open menu does not widen the page (${m.scrollWidth})`);
+        assert.ok(m.scrollWidth <= m.vw, `the open menu does not widen the page (${m.scrollWidth})`);
         await page.click('#nav-collapse');
         assert.equal((await menu(page)).open, false, 'the close button shuts it');
       } finally { await page.close(); }

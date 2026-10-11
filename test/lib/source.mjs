@@ -8,7 +8,8 @@ export const read = (file) => readFileSync(join(ROOT, file), 'utf8');
 
 export const APP = read('public/app.js');
 export const HTML = read('public/index.html');
-export const CSS = read('public/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+export const CHIP_CSS = read('public/chip.css');
+export const CSS = [CHIP_CSS, read('public/style.css')].join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
 
 export function rulesFor(selector, css = CSS) {
   const out = {};
@@ -22,7 +23,8 @@ export function rulesFor(selector, css = CSS) {
   return out;
 }
 
-export const px = (v) => Number.parseFloat(String(v));
+const STEP = Object.fromEntries([...CSS.matchAll(/--fs-([a-z0-9]+):\s*([\d.]+px)/g)].map((m) => [m[1], m[2]]));
+export const px = (v) => Number.parseFloat(String(v).trim().replace(/^var\(--fs-([a-z0-9]+)\)/, (m, k) => STEP[k] ?? m));
 
 export function fnBody(name, src = APP) {
   const at = src.indexOf(`function ${name}(`);

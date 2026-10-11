@@ -23,6 +23,9 @@ const svgEl = (tag, attrs = {}, ...children) => {
 };
 
 const chevron = () => iconEl('lucide:chevron-right', 'wv-icon');
+const disclosure = (cls, open, attrs = {}) => el('button', { class: `${cls} wv-disclosure`, type: 'button', 'aria-expanded': String(open), ...attrs }, chevron());
+const setDisclosure = (btn, open) => btn.setAttribute('aria-expanded', String(open));
+const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden': 'true' }, chevron());
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
 
@@ -60,7 +63,20 @@ function fileBase64(file) {
   });
 }
 
+const warmGets = new Map();
+const WARM_MS = 5000;
+function warmGet(path, ready = null) {
+  const p = ready ?? api('GET', path);
+  p.catch(() => {});
+  warmGets.set(path, { at: Date.now(), p });
+  return p;
+}
 async function api(method, path, body, { signal } = {}) {
+  if (method === 'GET' && warmGets.has(path)) {
+    const hit = warmGets.get(path);
+    warmGets.delete(path);
+    if (Date.now() - hit.at < WARM_MS) return hit.p;
+  }
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
@@ -72,7 +88,7 @@ async function api(method, path, body, { signal } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
-  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code });
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
@@ -266,30 +282,44 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   document.querySelector('#tray-back')?.remove();
   document.querySelector('#modal-back')?.remove();
-  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const opener = document.activeElement;
+  const close = () => {
+    const at = document.activeElement;
+    const held = !at || at === document.body || back.contains(at);
+    back.remove();
+    if (held && opener?.isConnected) opener.focus();
+  };
+  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) close(); } });
   const form = el('form', { class: 'tray-form' },
     el('div', { class: 'tray-body' }, ...bodyNodes),
     el('div', { class: 'tray-actions' },
-      el('button', { class: 'btn', type: 'button', onclick: () => back.remove() }, 'Cancel'),
+      el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
       el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       await onSubmit(new FormData(form));
-      back.remove();
+      close();
     } catch (err) {
-      toast(err.message, true);
+      if (!err.shown) toast(err.message, true);
     }
   });
-  back.append(el('div', { id: 'tray' },
-    el('div', { class: 'tray-head' }, el('h2', {}, title),
-      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, iconEl('✕'))),
+  back.append(el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },
+    el('div', { class: 'tray-head' }, el('h2', { id: 'tray-title' }, title),
+      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: close }, iconEl('✕'))),
     form));
   document.body.append(back);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape' && !document.querySelector('.chip-pop')) { back.remove(); removeEventListener('keydown', esc); }
-  });
+  const esc = (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.chip-pop')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  };
+  back.addEventListener('keydown', esc);
+  addEventListener('keydown', function stray(e) {
+    if (!back.isConnected) return removeEventListener('keydown', stray, true);
+    if (e.target === document.body && !document.querySelector('#modal-back, #cmdk-back')) esc(e);
+  }, true);
   const first = form.querySelector('input:not([type=hidden]),select,textarea');
   if (first) first.focus();
   return back;
@@ -300,7 +330,11 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
 
 async function openEntity(id, { drill = false } = {}) {
   let entity;
+  const here = allTables().find((d) => d.id === state.route?.dbId);
+  const docs = (here?.fields ?? []).filter((f) => f.type === 'document').map((f) => `/doc/revisions?field=${encodeURIComponent(f.name)}&limit=2`);
+  for (const tail of ['/references', '/references-from', ...docs]) warmGet(`/entities/${id}${tail}`);
   try { entity = await api('GET', `/entities/${id}`); } catch (err) { return toast(err.message, true); }
+  warmGet(`/entities/${id}`, Promise.resolve(entity));
   const db = allTables().find((d) => d.id === entity.dbId);
   if (!db) { location.hash = `#/entity/${id}`; return; }
   if (state.route?.page !== 'db') {
@@ -504,6 +538,9 @@ function tableHop(db) {
 }
 
 const dockCoversScreen = matchMedia('(max-width: 600px)');
+const touchOnly = matchMedia('(hover: none) and (pointer: coarse)');
+const SHORTCUT_CLAUSE = /\s*(?:\([^()]*(?:⌘|Ctrl)[^()]*\)|— ⌘-click for a new tab|<[^<>]*(?:⌘|Ctrl)[^<>]*>)/g;
+const keyHint = (text) => (touchOnly.matches ? text.replace(SHORTCUT_CLAUSE, '') : text);
 
 function dockSyncUrl({ step = false } = {}) {
   const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+(?:\/view\/[^/?]+)?/);
@@ -562,11 +599,11 @@ async function drawDock() {
     pose: [
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
-        title: 'Expand (⌘⇧E)', 'aria-label': 'Expand to the full page',
+        title: keyHint('Expand (⌘⇧E)'), 'aria-label': 'Expand to the full page',
         onclick: () => dockExpand(),
       }, poseGlyph(false)),
       el('button', {
-        class: 'btn btn-sm btn-ghost-secondary', type: 'button',
+        class: 'btn btn-sm btn-ghost-secondary dock-close', type: 'button',
         title: 'Close (Esc)', 'aria-label': 'Close',
         onclick: () => dockDismiss(),
       }, iconEl('✕')),
@@ -759,7 +796,9 @@ function lucideEl(name, cls = 'wv-icon') {
   span.innerHTML = window.LUCIDE_MOVING[name];
   return span;
 }
+const canHover = matchMedia('(hover: hover)');
 document.addEventListener('mouseover', (e) => {
+  if (!canHover.matches) return;
   const host = e.target.closest?.('.mi');
   if (host && !(e.relatedTarget && host.contains(e.relatedTarget))) playIcon(host);
 });
@@ -899,19 +938,20 @@ function crumbFoldMenu(btn, hidden) {
     ...hidden.map((c) => el('a', {
       class: 'chip-pop-row crumb-fold-row', role: 'menuitem', href: c.kind === 'ws' ? wsHomeHref() : c.href, title: c.title ?? c.label,
     }, ...crumbInner(c))));
+  let off = () => {};
   const close = () => {
     menu.remove();
     btn.setAttribute('aria-expanded', 'false');
-    removeEventListener('click', away, true);
+    off();
     removeEventListener('keydown', esc, true);
   };
-  const away = (e) => { if (!menu.contains(e.target) || e.target.closest('a')) setTimeout(close); };
   const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
+  menu.addEventListener('click', (e) => { if (e.target.closest('a')) setTimeout(close); });
   row.append(menu);
   const over = menu.getBoundingClientRect().right - (innerWidth - 8);
   if (over > 0) menu.style.left = `${Math.max(8, r.left - over)}px`;
   btn.setAttribute('aria-expanded', 'true');
-  addEventListener('click', away, true);
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t), swallow: (t) => btn.contains(t), close });
   addEventListener('keydown', esc, true);
   menu.querySelector('a')?.focus();
 }
@@ -941,12 +981,19 @@ function fillWsMark(span) {
     span.replaceChildren(el('img', { src: chip.querySelector('img').src, alt: '' }));
   } else {
     const name = $('#ws-name')?.textContent || 'w';
-    span.replaceChildren(el('span', { class: 'crumb-ws-letter' }, name.slice(0, 1).toUpperCase()));
+    const id = state.wsList?.find((w) => w.name === state.wsCurrent)?.id ?? name;
+    span.replaceChildren(el('span', { class: `crumb-ws-letter ws-letter hue-${chipCore.hueForName(id)}` }, name.slice(0, 1).toUpperCase()));
   }
   return span;
 }
 function refreshWsMarks() {
   for (const span of document.querySelectorAll('.crumb-ws-mark')) fillWsMark(span);
+}
+
+function titleEdit(tag, modifier, value, attrs) {
+  const node = el(tag, { ...attrs, class: `title-edit ${modifier}` });
+  node.value = value;
+  return node;
 }
 
 function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page' }) {
@@ -962,15 +1009,13 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
 
   syncDocTitle(title);
-  const titleInput = el('input', { class: 'view-title', value: title, 'aria-label': 'Title', title: onRename ? 'Click to rename' : '' });
+  const titleInput = titleEdit('input', 'view-title', title, { 'aria-label': 'Title', title: onRename ? 'Click to rename' : '', readonly: onRename ? undefined : '' });
   if (onRename) {
     titleInput.addEventListener('change', async () => {
       const name = titleInput.value.trim();
       if (!name || name === title) { titleInput.value = title; return; }
       try { await onRename(name); syncDocTitle(name); toast('Renamed'); } catch (err) { titleInput.value = title; toast(err.message, true); }
     });
-  } else {
-    titleInput.readOnly = true;
   }
   box.append(el('div', { class: 'wv-toolbar view-title-row' },
     onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null),
@@ -984,7 +1029,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         descBox.replaceChildren(el('span', { class: 'view-desc-empty' }, 'Add description…'));
         return;
       }
-      const body = el('div', { class: 'view-desc-body clamped' });
+      const body = el('div', { class: 'view-desc-body wv-prose clamped' });
       try {
         const { html } = await api('POST', '/markdown', { md });
         body.innerHTML = html;
@@ -1065,12 +1110,10 @@ function renderNav() {
           }
         },
       }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
-      el('button', {
-        class: 'nav-caret' + (isFolded ? '' : ' open'),
-        title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`, type: 'button',
-        'aria-expanded': String(!isFolded),
+      disclosure('nav-caret', !isFolded, {
+        title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`,
         onclick: () => toggleFold(space.spaceId),
-      }, chevron()),
+      }),
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
         title: `New table in ${space.space}`, type: 'button',
@@ -1217,13 +1260,13 @@ function accountMenu(btn) {
     style: `left:${Math.round(r.left)}px;bottom:${Math.round(innerHeight - r.top + 4)}px;min-width:${Math.round(r.width)}px`,
   }, row(`Sign out of ${ws}`, 'log-out', [WS_PREFIX]), row('Sign out everywhere', 'log-out', everywhere));
   const rows = [...menu.querySelectorAll('[role="menuitem"]')];
+  let off = () => {};
   const close = () => {
     menu.remove();
     btn.setAttribute('aria-expanded', 'false');
-    removeEventListener('click', away, true);
+    off();
     removeEventListener('keydown', keys, true);
   };
-  const away = (e) => { if (!menu.contains(e.target) && !btn.contains(e.target)) close(); };
   const keys = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); return; }
     if (e.key === 'Tab') { close(); return; }
@@ -1236,7 +1279,7 @@ function accountMenu(btn) {
   menu.close = close;
   document.body.append(menu);
   btn.setAttribute('aria-expanded', 'true');
-  addEventListener('click', away, true);
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t) || btn.contains(t), close });
   addEventListener('keydown', keys, true);
   rows[0].focus();
 }
@@ -1292,16 +1335,6 @@ function stateChipClass(fieldSchema, stateName) {
 }
 
 const PERSON_TABLE = /^(people|persons?|members?|users?|contacts?|owners?|team|staff|employees?)$/i;
-function relationIsPerson(f) {
-  const table = String(f?.targetDb ?? '').split('/').pop() ?? '';
-  return PERSON_TABLE.test(table.trim());
-}
-function personAvatar(f, target) {
-  if (!relationIsPerson(f)) return null;
-  const name = target?.name ?? '';
-  if (!name) return el('span', { class: 'av unknown' }, '?');
-  return el('span', { class: `av hue-${chipCore.hueForName(name)}` }, chipCore.initialsFor(name));
-}
 
 function deckRoleOf(db) {
   if (!db?.fields) return null;
@@ -1446,6 +1479,25 @@ function renderMermaidIn(container) {
   mermaidLoading.then(() => window.mermaid?.run({ nodes }));
 }
 
+function dismissOutside({ inside, close, open = () => true, swallow = () => false }) {
+  const away = (e) => {
+    if (!open()) return off();
+    if (inside(e.target)) return;
+    off();
+    if (swallow(e.target)) swallowClick();
+    close(e);
+  };
+  const off = () => removeEventListener('pointerdown', away, true);
+  addEventListener('pointerdown', away, true);
+  return off;
+}
+function swallowClick(ms = 600) {
+  const eat = (e) => { e.preventDefault(); e.stopImmediatePropagation(); off(); };
+  const off = () => { clearTimeout(timer); removeEventListener('click', eat, true); };
+  const timer = setTimeout(off, ms);
+  addEventListener('click', eat, true);
+}
+
 function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) {
   document.querySelector('.chip-pop')?.remove();
   const pop = el('div', { class: 'chip-pop' }, ...rows);
@@ -1453,14 +1505,7 @@ function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) 
   const r = trigger.getBoundingClientRect();
   pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
   pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (!pop.isConnected) return;
-    pop.remove();
-    if (owns(ev.target)) ev.stopPropagation();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: owns, close: () => pop.remove() });
 
   const opts = [...pop.querySelectorAll('.chip-pop-row')];
   const focusAt = (i) => opts[((i % opts.length) + opts.length) % opts.length].focus();
@@ -1579,7 +1624,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     currentId,
     clearId,
   });
-  const input = el('input', { class: 'picker-search', placeholder, type: 'text' });
+  const input = el('input', { class: 'search-bare picker-search', placeholder, type: 'text' });
   const chips = el('span', { class: 'picker-chips' });
   const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
   const box = el('div', { class: 'picker-box' }, chips, input, readout);
@@ -1650,7 +1695,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       el('div', { class: 'picker-cells picker-terms' }, ...items.map((o) => el('button', {
         class: 'picker-cell picker-term' + (o.id === currentId ? ' on' : ''), type: 'button', title: o.label,
         onclick: async () => { await pick(o); },
-      }, o.label))),
+      }, o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label) : o.label))),
     ]));
     const q = st.query.trim();
     const exact = q && options.some((o) => o.label.toLowerCase() === q.toLowerCase() || o.id === q.toLowerCase());
@@ -1711,14 +1756,10 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   });
   document.body.append(pop);
   pop.cellFrom = anchor?.closest?.('tr[data-eid] > td') ?? null;
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (pop.isConnected && anchor?.contains?.(ev.target)) ev.stopPropagation();
-    if (multi && pop.isConnected) { commit(); return; }
-    pop.remove();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({
+    open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!anchor?.contains?.(t),
+    close: () => (multi ? commit() : pop.remove()),
+  });
   if (!quiet) input.focus();
   drawChips();
   draw();
@@ -1751,12 +1792,7 @@ function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', 
   input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); pop.remove(); anchor?.focus?.(); } });
   document.body.append(pop);
   anchorPop(pop, anchor);
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    pop.remove();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), close: () => pop.remove() });
   input.focus();
   return pop;
 }
@@ -1865,22 +1901,44 @@ const KEYSTORE_LABELS = {
 };
 
 function computedMark(type) {
-  return { formula: 'ƒ', rollup: 'Σ', lookup: 'lucide:arrow-up-right', document: 'lucide:file-text', field: 'lucide:sliders-horizontal' }[type] ?? '·';
+  return globalThis.weaveChipView.COMPUTED_GLYPHS[type] ?? '·';
 }
-const computedMarkNode = (type) => { const m = computedMark(type); return iconEl(m, 'ico wv-icon') ?? m; };
 
 const COMPUTED_NAME_MARKS = { formula: 'formula', rollup: 'rollup', lookup: 'lookup' };
 function fieldDescription(f) {
   return f && f.type !== 'view' && typeof f.description === 'string' ? f.description : '';
 }
 
-function fieldNameLabel(f, text = f?.name) {
+function qualifiedTableName(id) {
+  const t = id ? allTables().find((d) => d.id === id) : null;
+  return t ? `${t.space}/${t.name}` : null;
+}
+
+function fieldRoute(f, db) {
+  if (f?.type === 'relation') {
+    const to = f.targetDb ?? f.targetDbs?.join(' or ');
+    return to ? `→ ${to}${f.many ? ', many' : ''}` : null;
+  }
+  if (f?.type !== 'lookup' && f?.type !== 'rollup') return null;
+  const rel = f.via ? db?.fields?.find((x) => x.type === 'relation' && x.name === f.via) : null;
+  const table = rel?.targetDb ?? qualifiedTableName(f.viaTableId ?? rel?.targetDbId);
+  const what = f.type === 'lookup'
+    ? `${computedMark('lookup')} ${f.targetField ?? 'Name'}`
+    : `Σ ${f.aggregate ?? 'count'}${f.targetField ? ` of ${f.targetField}` : ''}`;
+  return `${what}${f.via ? ` via ${f.via}` : ''}${table ? ` → ${table}` : ''}`;
+}
+
+function fieldNameLabel(f, text = f?.name, db = null) {
+  if (f?.type === 'relation') {
+    const route = fieldRoute(f, db);
+    return route ? [text, el('span', { class: 'field-mark', title: route }, globalThis.weaveChipView.ROUTE_GLYPH)] : [text];
+  }
   const kind = COMPUTED_NAME_MARKS[f?.type];
   if (!kind) return [text];
-  return [text, el('sup', {
+  return [text, el('span', {
     class: 'field-mark',
-    title: `${kind} — computed from other values, not editable`,
-  }, computedMarkNode(f.type))];
+    title: fieldRoute(f, db) ?? `${kind} — computed from other values, not editable`,
+  }, computedMark(f.type))];
 }
 
 function openCellPicker(cell) {
@@ -2124,7 +2182,28 @@ function checkRowPitch(grid) {
   console.warn(`weave: a ${grid.dataset.density} row painted ${got}px, not its ${want}px token; tallest cell: ${tallest?.type} (${tallest?.h}px${tallest?.boxed ? '' : ', no clip box'})`);
 }
 
+const PHONE_MORE_W = 44;
+function fitPhoneChipLines(grid) {
+  const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
+  for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
+    const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
+    for (const td of cells) { td.classList.remove('list-hide'); delete td.dataset.more; }
+    if (!phone) continue;
+    const shown = cells.filter((td) => td.getClientRects().length);
+    if (!shown.length) continue;
+    const top = shown[0].getBoundingClientRect().top;
+    const edge = tr.getBoundingClientRect().right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
+    let n = shown.length;
+    const fits = () => {
+      const r = shown[n - 1].getBoundingClientRect();
+      return r.top - top < 1 && (n === shown.length || r.right + PHONE_MORE_W <= edge);
+    };
+    while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
+    if (n < shown.length) shown[n - 1].dataset.more = `+${shown.length - n}`;
+  }
+}
 function markClippedCells(grid) {
+  fitPhoneChipLines(grid);
   fitChips(grid);
   const cutOff = new Set();
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
@@ -2230,7 +2309,7 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
       continue;
     }
     menu.append(el('button', {
-      class: 'dropdown-item' + (it.danger ? ' text-danger' : ''), type: 'button',
+      class: 'dropdown-item' + (it.danger ? ' text-danger' : '') + (it.phone ? ' phone-only' : ''), type: 'button',
       onclick: async () => { close(); await it.run(); },
     }, it.label));
   }
@@ -2253,11 +2332,8 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
         if (!opening) return;
         menu.classList.remove('hidden');
         place();
-        addEventListener('click', function away(ev) {
-          if (wrap.contains(ev.target)) return;
-          close();
-          removeEventListener('click', away);
-        });
+        menu.off?.();
+        menu.off = dismissOutside({ open: () => !menu.classList.contains('hidden'), inside: (t) => wrap.contains(t), close });
       },
     }, iconEl('lucide:ellipsis-vertical', 'wv-icon')),
     menu);
@@ -2394,76 +2470,101 @@ function sparkEl(style, values, color = 'ink') {
   box.innerHTML = svg;
   return box;
 }
-function segmentValueEl(seg) {
-  if (seg.spark) return sparkEl(seg.spark.style, seg.spark.values, seg.spark.color) ?? seg.value;
-  if (seg.rating) {
-    return seg.rating.values
-      ? ratingListEl(seg.rating, seg.rating.values, { label: seg.label })
-      : ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}`, color: seg.rating.color });
-  }
-  return seg.meter && cellGraphics.isGraphic(seg.meter.display)
-    ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value, null, seg.meter.color)
-    : seg.value;
+const chipView = globalThis.weaveChipView;
+function chipElFrom(html) {
+  const box = el('span');
+  box.innerHTML = html;
+  return box.firstElementChild;
 }
 function viewSegmentEl(seg) {
-  if (seg.kind === 'state') {
-    const cat = chipCore.categoryOrDefault(seg.category);
-    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(seg, cat)} wv-seg-state` }, seg.value);
-  }
-  return el('span', { class: 'mention-f' }, el('span', { class: 'mention-f-label' }, seg.label), segmentValueEl(seg));
+  return chipElFrom(chipView.segHtml(seg));
 }
-function viewChipEl(v, { lead = null, tail = null, extra = null, href = null } = {}) {
-  const segs = viewCore.viewSegments(v);
-  const a = el('a', { href: href ?? `#/entity/${v.id}`, title: String(v?.name ?? ''), onclick: (e) => e.stopPropagation() },
-    lead, el('span', { class: 'k-label' }, viewCore.viewTitle(v)), tail,
-    segs.length ? el('span', { class: 'mention-fields' }, ...segs.map(viewSegmentEl)) : '');
-  const chip = el('span', { class: 'k k-rel' + (segs.length ? ' has-segs' : '') }, a,
-    segs.length ? el('button', {
-      type: 'button', class: 'mention-caret', 'aria-expanded': 'false', title: 'Show fields',
-      onclick: (e) => { e.preventDefault(); e.stopPropagation(); toggleMentionCaret(e.currentTarget); },
-    }, '›') : '');
-  if (extra) chip.append(extra);
-  return el('span', { class: 'mention-wrap' }, chip);
+function viewChipEl(v, { home = null, href = null, removable = false, broken = false, kind = 'entity', onRemove = null } = {}) {
+  const chip = chipElFrom(chipView.chipHtml(v, {
+    kind, href: href ?? `#/entity/${v.id}`, home, broken, removable: removable || !!onRemove,
+  }));
+  chip.querySelector(':scope > a')?.addEventListener('click', (e) => e.stopPropagation());
+  const x = chip.querySelector(':scope > .x');
+  if (x && onRemove) x.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onRemove(); });
+  return chip;
 }
 function viewCardEl(v, { compact = false } = {}) {
-  const segs = viewCore.viewSegments(v);
-  const state = segs.find((x) => x.kind === 'state');
-  const head = el('div', { class: 'wv-card-head' },
-    el('a', { class: 'wv-card-title', href: `#/entity/${v.id}`, onclick: (e) => e.stopPropagation() },
-      v.link ? el('span', { class: 'wv-card-id' }, `#${v.publicId}`) : '',
-      v.name || (v.link ? '' : `#${v.publicId}`)),
-    state ? viewSegmentEl(state) : '');
-  const card = el('div', { class: 'wv-card' + (compact ? ' compact' : ''), dataset: { eid: v.id } }, head);
-  if (v.description) card.append(el('div', { class: 'wv-card-desc' }, v.description));
-  const fields = segs.filter((x) => x.kind === 'field');
-  if (fields.length) {
-    card.append(el('dl', { class: 'wv-card-fields' },
-      ...fields.flatMap((f) => [el('dt', {}, f.label), el('dd', { dataset: { field: f.label } }, segmentValueEl(f))])));
-  }
+  const card = chipElFrom(chipView.cardHtml(v, { compact }));
+  card.querySelector('.wv-card-title')?.addEventListener('click', (e) => e.stopPropagation());
   return card;
 }
 function viewCell(v, f, { compact = false } = {}) {
   if (!v || typeof v !== 'object') return el('span', { class: 'k k-empty' }, '—');
   return f.shape === 'card' || v.shape === 'card' ? viewCardEl(v, { compact }) : viewChipEl(v);
 }
-function relationChipEl(f, s, { extra = null } = {}) {
+function relationChipEl(f, s, { onRemove = null } = {}) {
   const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [] };
   return viewChipEl(v, {
-    lead: personAvatar(f, s),
-    tail: f.targetDbIds && s.db ? el('span', { class: 'k-home' }, s.db.split('/').pop()) : null,
-    extra,
+    home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
+    onRemove,
   });
 }
 function toggleMentionCaret(caret) {
-  const open = caret.closest('.mention-wrap').classList.toggle('open');
-  caret.setAttribute('aria-expanded', String(open));
+  const open = caret.closest('.k-rel')?.classList.toggle('open');
+  caret.setAttribute('aria-expanded', String(!!open));
 }
 document.addEventListener('click', (ev) => {
-  const caret = ev.target.closest('.mention-caret');
-  if (!caret || !caret.closest('#app, .modal, .cell-pop')) return;
+  const seg = ev.target.closest('[data-seg="state"], [data-seg="multiselect"]');
+  const chip = seg?.closest('.k-rel[data-eid], .wv-card[data-eid]');
+  if (!chip) return;
   ev.preventDefault();
-  toggleMentionCaret(caret);
+  ev.stopPropagation();
+  editChipSegment(seg, chip.dataset.eid, seg.dataset.seg, seg.dataset.field);
 });
+function statePicker(anchor, f, current, onPick) {
+  const options = [{ id: '—', label: 'No state', group: 'None', cls: 'k k-select hue-slate', chip: true }];
+  for (const c of chipCore.CATEGORIES) {
+    for (const s of f.states ?? []) {
+      if (chipCore.categoryOrDefault(s.category) !== c.id) continue;
+      options.push({ id: s.name, label: s.name, group: c.label, cls: stateChipClass(f, s.name), chip: true });
+    }
+  }
+  searchPicker({
+    anchor, title: f.name, placeholder: 'Search states…', groups: true, options, currentId: current,
+    onPick: (o) => onPick(o.id === '—' ? null : o.id),
+  });
+}
+async function editChipSegment(trigger, eid, seg, fieldName) {
+  try {
+    const e = await api('GET', `/entities/${eid}`);
+    const db = allTables().find((d) => d.qualified === e.db) ?? allTables().find((d) => d.name === e.db);
+    const want = seg === 'state' ? 'workflow' : 'multiselect';
+    const f = db?.fields.find((x) => x.name === fieldName && x.type === want)
+      ?? db?.fields.find((x) => x.type === want);
+    if (!f) return toast(`${fieldName} is no longer a ${want} field of ${e.db}`, true);
+    const repaint = (next) => {
+      const drawn = chipElFrom(chipView.segHtml(next));
+      trigger.className = drawn.className;
+      trigger.replaceChildren(...drawn.childNodes);
+    };
+    if (seg === 'state') {
+      return statePicker(trigger, f, e.fields?.[f.name] ?? null, async (name) => {
+        await api('POST', `/entities/${eid}/state`, { field: f.name, state: name });
+        const st = (f.states ?? []).find((s) => s.name === name);
+        repaint({ kind: 'state', label: f.name, value: st?.name ?? '—', category: st?.category, ...(st?.hue ? { hue: st.hue } : {}) });
+      });
+    }
+    const chosen = (names) => names.map((name) => ({ id: name, label: name, cls: `k k-multi ${optionHue(f, name)}`, chip: true }));
+    searchPicker({
+      anchor: trigger, title: f.name, options: chosen(f.options ?? []),
+      multi: {
+        selected: chosen(Array.isArray(e.fields?.[f.name]) ? e.fields[f.name] : []),
+        onCommit: async (names) => {
+          await api('PATCH', `/entities/${eid}`, { values: { [f.name]: names } });
+          repaint({
+            kind: 'field', type: 'multiselect', label: f.name, value: names.join(', '),
+            options: names.map((name) => ({ name, hue: (f.optionsFull ?? []).find((o) => o.name === name)?.hue })),
+          });
+        },
+      },
+    });
+  } catch (err) { toast(err.message, true); }
+}
 
 function toggleSwitch(f, val, patch) {
   const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': f.name });
@@ -2652,11 +2753,9 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
         ? ratingListEl(f.rating, rawVal, { label: f.name }) : null)
       ?? numberGraphicFor(f, item, text);
     const rich = f.display === 'sparkline' || !!f.rating || cellGraphics.isGraphic(f.display);
-    const box = el('span', { class: 'computed k k-computed' + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
-      rich ? null : el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
+    const derived = COMPUTED_NAME_MARKS[f.type] && !rich ? ' k-derived' : '';
+    return el('span', { class: 'computed k k-computed' + derived + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
       graphic ?? (text || '—'));
-    if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
-    return box;
   }
   if (f.type === 'rating') {
     const box = ratingEl(f.max, f.icon, item.raw?.[f.name] ?? null, { onSet: (v) => patch(v, (x) => box.paint(x)), color: f.color });
@@ -2736,16 +2835,13 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
     const hidden = all.length - current.length;
     for (const s of current) {
-      const x = compact ? null : el('span', {
-        class: 'x',
-        onclick: async () => {
-          try {
-            await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
-            await saved();
-          } catch (err) { toast(err.message, true); }
-        },
-      }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
-      box.append(relationChipEl(f, s, { extra: x }), ' ');
+      const onRemove = compact ? null : async () => {
+        try {
+          await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
+          await saved();
+        } catch (err) { toast(err.message, true); }
+      };
+      box.append(relationChipEl(f, s, { onRemove }), ' ');
     }
     if (hidden > 0) {
       box.append(el('span', {
@@ -2772,7 +2868,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'field') {
     const def = item.raw?.[f.name] ?? null;
     const chip = el('span', { class: 'computed k k-computed' + (def == null ? ' is-empty' : ''), title: compact ? `field definition — edit on the ${db?.term?.singular ?? WeaveTerm.DEFAULT.singular} page` : 'field definition — click to edit' },
-      el('span', { class: 'computed-mark' }, computedMarkNode('field')),
+      el('span', { class: 'computed-mark' }, iconEl('lucide:sliders-horizontal', 'ico wv-icon')),
       def == null ? '—' : String(val));
     if (compact) return chip;
     chip.style.cursor = 'pointer';
@@ -2948,7 +3044,7 @@ async function showTrash(dbId) {
   if (dbId && !db) return showHome();
   state.route = { page: 'trash', dbId };
   renderNav();
-  let { items } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
+  let { items, views = [] } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
   if (!db) items = items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views');
   const main = $('#main');
   main.replaceChildren();
@@ -2962,17 +3058,18 @@ async function showTrash(dbId) {
   }));
 
   const wsTrashed = db ? [] : await trashedWorkspaces();
-  if (!items.length && !wsTrashed.length) {
+  if (!items.length && !views.length && !wsTrashed.length) {
     main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
     return;
   }
   const rows = el('tbody');
+  const purgeAt = (path) => api('DELETE', `${path}?hard=1`);
   for (const item of items) {
     rows.append(el('tr', {},
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
       el('td', {}, item.name || el('span', { class: 'view-desc-empty' }, 'Untitled')),
       ...(db ? [] : [el('td', { class: 'trash-table' }, item.db)]),
-      el('td', { class: 'trash-when' }, new Date(item.deletedAt).toLocaleString()),
+      el('td', { class: 'trash-when' }, whenEl(item.deletedAt)),
       el('td', { class: 'trash-acts' },
         el('button', {
           class: 'btn btn-sm', type: 'button',
@@ -2987,14 +3084,31 @@ async function showTrash(dbId) {
         }, 'Restore'),
         holdToConfirm('Delete forever', async () => {
           try {
-            await api('DELETE', `/entities/${item.id}?hard=1`);
+            await purgeAt(`/entities/${item.id}`);
             toast('Purged');
             await loadSchema();
             showTrash(dbId);
           } catch (err) { toast(err.message, true); }
         }, { holdingLabel: 'Hold to purge…' }))));
   }
-  if (items.length) main.append(el('div', { class: 'card table-wrap' },
+  for (const v of views) {
+    const act = (run, done) => async () => {
+      try {
+        await run();
+        toast(done);
+        showTrash(dbId);
+      } catch (err) { toast(err.message, true); }
+    };
+    rows.append(el('tr', {},
+      el('td', { class: 'pid-cell' }),
+      el('td', {}, v.name),
+      el('td', { class: 'trash-table' }, 'Share page'),
+      el('td', { class: 'trash-when' }, whenEl(v.deletedAt)),
+      el('td', { class: 'trash-acts' },
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'),
+        holdToConfirm('Delete forever', act(() => purgeAt(`/views/${v.id}`), 'Purged'), { holdingLabel: 'Hold to purge…' }))));
+  }
+  if (items.length || views.length) main.append(el('div', { class: 'card table-wrap' },
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
@@ -3039,7 +3153,7 @@ function systemDefault(db, view = null) {
   const table = allTables().find((d) => d.id === db.id) || db;
   return {
     fields: [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n] && n !== 'Activity')],
-    filters: {}, sort: [],
+    filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
     layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null,
@@ -3082,7 +3196,6 @@ function viewStrip(db) {
       let made;
       try {
         made = await api('PATCH', at(name), { from: e.from, ...(e.from === 'blank' ? systemDefault(db) : {}), ...(e.position != null ? { position: e.position } : {}) });
-        if (e.from === 'blank') { stopTableSearchTimer(); tableSearch = { ...tableSearch, text: '', focus: false, only: null }; }
       } catch (err) { toast(err.message, true); redraw(); return; }
       await loadSchema();
       const hash = `#/table/${db.id}/view/${made.id}`;
@@ -3127,9 +3240,9 @@ function viewStrip(db) {
         act('view-dup-btn', 'copy', 'Duplicate', () => edit({ mode: 'dup', after: v.id, from: v.id, position: i + 1, name: nextViewName(db, v.name) })),
         del),
       el('span', { class: 'view-check', 'aria-hidden': 'true' }, active ? '✓' : ''));
+    RO().guard(grip);
     grip.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      e.preventDefault();
       startRowDrag(strip, row, e, (target, after) => {
         const rest = views.filter((x) => x.id !== v.id);
         const to = target === v.id ? i : rest.findIndex((x) => x.id === target) + (after ? 1 : 0);
@@ -3273,8 +3386,8 @@ function filterStrip(db, onChange) {
         clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
       } });
       const chip = st.hue
-        ? el('label', { class: `filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), st.name)
-        : el('label', { class: `filter-chip cat-${st.category}` }, box, st.name);
+        ? el('label', { class: `filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), el('span', { class: 'filter-chip-label' }, st.name))
+        : el('label', { class: `filter-chip cat-${st.category}` }, box, el('span', { class: 'filter-chip-label' }, st.name));
       chips.push({ chip, field: f.name, name: st.name }); values.append(chip);
     }
     row.append(values); scroll.append(row);
@@ -3285,9 +3398,22 @@ function filterStrip(db, onChange) {
 }
 
 const TABLE_SEARCH_DEBOUNCE = 150;
-let tableSearch = { dbId: null, text: '', open: false, focus: false, only: null };
+let tableSearch = { dbId: null, viewId: null, text: '', open: false, focus: false, only: null };
 let tableSearchTimer = 0;
 let tableSearchRelease = null;
+let tableSearchWrites = Promise.resolve();
+let tableSearchLocal = false;
+function saveTableSearch(dbId, text) {
+  const { viewId } = tableSearch;
+  const view = (allTables().find((d) => d.id === dbId)?.views ?? []).find((v) => v.id === viewId);
+  const want = String(text ?? '').trim();
+  if (!view || tableSearchLocal || want === (view.search ?? '')) return tableSearchWrites;
+  if (want) view.search = want; else delete view.search;
+  tableSearchWrites = tableSearchWrites
+    .then(() => api('PATCH', `/tables/${dbId}/views/${encodeURIComponent(viewId)}`, { search: want }))
+    .catch((err) => { if (err.status === 401 || err.status === 403) tableSearchLocal = true; else toast(err.message, true); });
+  return tableSearchWrites;
+}
 function stopTableSearchTimer() {
   clearTimeout(tableSearchTimer); tableSearchTimer = 0;
   tableSearchRelease?.(); tableSearchRelease = null;
@@ -3296,6 +3422,7 @@ const tableSearchText = (db) => (tableSearch.dbId === db.id ? tableSearch.text.t
 function setTableSearch(db, text, { open = tableSearch.open, focus = false } = {}) {
   clearTimeout(tableSearchTimer); tableSearchTimer = 0;
   tableSearch = { ...tableSearch, dbId: db.id, text, open, focus };
+  saveTableSearch(db.id, text);
   return showDatabase(db.id, state.route.view).finally(() => {
     if (!tableSearchTimer) { tableSearchRelease?.(); tableSearchRelease = null; }
   });
@@ -3309,7 +3436,7 @@ function openTableSearch(root = document) {
 }
 function tableSearchBox(db) {
   const input = el('input', {
-    class: 'form-control form-control-sm table-search-input', type: 'search',
+    class: 'search-bare table-search-input', type: 'search',
     placeholder: `Search ${db.term.plural}`, 'aria-label': `Search ${db.term.plural}`,
     value: tableSearchText(db) ? tableSearch.text : '',
   });
@@ -3348,7 +3475,10 @@ async function showDatabase(dbId, view) {
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
   if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
   const db = viewed(table, pickTableView(table, view));
-  if (tableSearch.dbId !== dbId) { stopTableSearchTimer(); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
+  if (tableSearch.dbId !== dbId || tableSearch.viewId !== db.view.id) {
+    stopTableSearchTimer();
+    tableSearch = { dbId, viewId: db.view.id, text: db.view.search ?? '', open: false, focus: false, only: null };
+  }
   const search = tableSearch.text.trim();
   const again = tableChromeOn(dbId);
   state.route = { page: 'db', dbId, view: db.view.id };
@@ -3472,13 +3602,13 @@ function tableControlPopover(anchor, db, className, rows) {
     pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
     pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
   };
-  const outside = (e) => { if (!pop.contains(e.target) && !e.target.closest(selector)) pop.remove(); };
+  let off = () => {};
   const remove = pop.remove.bind(pop);
   pop.remove = () => {
     if (!pop.isConnected) return;
     pop.beforeClose?.();
     trigger().setAttribute('aria-expanded', 'false');
-    document.removeEventListener('click', outside, true);
+    off();
     window.removeEventListener('resize', position);
     remove();
   };
@@ -3503,7 +3633,7 @@ function tableControlPopover(anchor, db, className, rows) {
   document.body.append(pop);
   trigger().setAttribute('aria-expanded', 'true');
   position();
-  document.addEventListener('click', outside, true);
+  off = dismissOutside({ inside: (t) => pop.contains(t) || !!t.closest?.(selector), close: () => pop.remove() });
   window.addEventListener('resize', position);
   pop.querySelector('.view-tab.active .view-name,.seg-opt.on,.eye-row:not(label),.eye-row > input,.filter-chip:not(label),.filter-chip > input,.chip-pop-row:not(label)')?.focus({ preventScroll: true });
   return pop;
@@ -3537,7 +3667,7 @@ function tableViewButton(ref) {
         await eyeWrites;
         stopTableSearchTimer();
         tableSearch = { ...tableSearch, text: '', focus: false, only: null };
-        const patch = raw ? systemDefault(db, current.view) : { filters: {}, sort: [] };
+        const patch = raw ? systemDefault(db, current.view) : { filters: {}, sort: [], search: '' };
         await gridConfigWrite(current, null, patch);
         await showDatabase(db.id, current.view?.id);
         document.querySelector('.table-view-btn')?.focus({ preventScroll: true });
@@ -3623,55 +3753,69 @@ function tableFilterButton(ref) {
   });
   return btn;
 }
-function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
-  const html = document.documentElement;
-  let started = false, line = null, at = null, raf = 0, lastY = down.clientY;
-  html.classList.add('wv-grabbing');
-  const place = (y) => {
-    const all = [...list.querySelectorAll(rows)];
-    if (!all.length) return;
-    let target = all[all.length - 1], after = true;
-    for (const r of all) { const b = r.getBoundingClientRect(); if (y < b.top + b.height / 2) { target = r; after = false; break; } }
-    if (!line) { line = el('div', { class: 'drop-line', 'aria-hidden': 'true' }); list.append(line); }
-    line.style.top = `${(after ? target.offsetTop + target.offsetHeight : target.offsetTop) - 1}px`;
-    at = { target: key(target), after };
+function tableSortButton(ref) {
+  const btn = tableControlButton('table-sort-btn', 'Sort', 'arrow-down', true);
+  const value = el('span', { class: 'table-sort-value' });
+  btn.querySelector('.table-control-label').after(value);
+  const fieldOf = (name) => ref.db.fields.find((f) => f.name === name) ?? fieldDialogCore.SYSTEM_SORT[name] ?? { name, type: 'text' };
+  const words = (name, dir) => sortLabelsFor(ref.db, fieldOf(name))[dir === 'desc' ? 'desc' : 'asc'];
+  btn.label = () => {
+    const s = ref.db.sort?.[0];
+    value.textContent = s ? `${s.field}, ${words(s.field, s.dir)}` : 'None';
+    btn.setAttribute('aria-label', s ? `Sort: ${s.field}, ${words(s.field, s.dir)}` : 'Sort: none');
   };
-  const scroll = () => {
-    cancelAnimationFrame(raf);
-    const b = list.getBoundingClientRect();
-    const v = lastY < b.top + 24 ? -6 : lastY > b.bottom - 24 ? 6 : 0;
-    if (!v || list.scrollHeight <= list.clientHeight) return;
-    list.style.scrollSnapType = 'none';
-    list.scrollTop += v; place(lastY);
-    raf = requestAnimationFrame(scroll);
-  };
-  const onMove = (e) => {
-    if (e.pointerId !== down.pointerId) return;
-    lastY = e.clientY;
-    if (!started) {
-      if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < 4) return;
-      started = true; row.dragged = true; row.classList.add('dragging');
-    }
-    place(e.clientY); scroll();
-  };
-  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); } };
-  function end(ok) {
-    document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointerup', onUp);
-    document.removeEventListener('pointercancel', onCancel);
-    document.removeEventListener('keydown', onKey, true);
-    cancelAnimationFrame(raf);
-    html.classList.remove('wv-grabbing');
-    line?.remove(); row.classList.remove('dragging'); list.style.scrollSnapType = '';
-    if (started) setTimeout(() => { row.dragged = false; });
-    if (ok && started && at) drop(at.target, at.after);
+  btn.label();
+  btn.addEventListener('click', () => {
+    const db = ref.db;
+    let pop;
+    const write = async (sort) => {
+      pop?.remove();
+      const release = gridHold();
+      try {
+        if (await gridConfigWrite(db, { sort })) await keepScroll(() => showDatabase(db.id, db.view?.id));
+      } catch (err) { toast(err.message, true); } finally { release(); }
+    };
+    const now = db.sort?.[0] ?? null;
+    const fields = db.fields.filter((f) => f.type !== 'view' && f.type !== 'document');
+    const rows = fields.map((f) => el('button', {
+      class: 'chip-pop-row table-sort-field', type: 'button', 'aria-pressed': String(now?.field === f.name),
+      onclick: () => write([{ field: f.name, dir: now?.field === f.name ? now.dir : 'asc' }]),
+    }, el('span', { class: 'table-sort-name' }, f.name), now?.field === f.name ? lucideEl('check', 'wv-icon chip-pop-check') : null));
+    const dir = now ? segCtl([
+      { id: 'asc', label: words(now.field, 'asc') },
+      { id: 'desc', label: words(now.field, 'desc') },
+    ], now.dir === 'desc' ? 'desc' : 'asc', (d) => write([{ field: now.field, dir: d }])) : null;
+    const clear = now ? el('button', { class: 'chip-pop-row table-sort-clear', type: 'button', onclick: () => write([]) }, lucideEl('x'), 'Clear sort') : null;
+    pop = tableControlPopover(btn, db, 'table-sort-popover', [tableControlHeader('Sort', () => pop?.remove()), dir, el('div', { class: 'table-sort-list' }, ...rows), clear]);
+  });
+  return btn;
+}
+function tableSheetGroup(title, items) {
+  const rows = [];
+  for (const it of items.filter(Boolean)) {
+    if (it === 'divider') continue;
+    if (it.href) rows.push(el('a', { class: 'tools-row', href: it.href, download: it.download }, it.label));
+    else if (it.hold) rows.push(holdToConfirm(it.hold, () => it.run(), { holdingLabel: it.holdingLabel ?? 'Hold to confirm…', rowClass: 'tools-row tools-row-danger' }));
+    else rows.push(el('button', { class: 'tools-row', type: 'button', onclick: () => it.run() }, it.label));
   }
-  const onUp = (e) => { if (e.pointerId === down.pointerId) end(true); };
-  const onCancel = (e) => { if (e.pointerId === down.pointerId) end(false); };
-  document.addEventListener('pointermove', onMove);
-  document.addEventListener('pointerup', onUp);
-  document.addEventListener('pointercancel', onCancel);
-  document.addEventListener('keydown', onKey, true);
+  return el('div', { class: 'tools-group', role: 'group', 'aria-label': title }, el('div', { class: 'tools-group-head' }, title), ...rows);
+}
+const RO = () => globalThis.WeaveReorder;
+function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
+  return RO().sortable(down, {
+    source: row,
+    items: () => [...list.querySelectorAll(rows)],
+    zone: () => list.closest('.chip-pop') ?? list,
+    lock: true,
+    onDrop: () => {
+      row.dragged = true;
+      setTimeout(() => { row.dragged = false; });
+      const all = [...list.querySelectorAll(rows)].filter((n) => !RO().lifting(n));
+      const i = all.indexOf(row);
+      if (all[i + 1]) drop(key(all[i + 1]), false);
+      else if (all[i - 1]) drop(key(all[i - 1]), true);
+    },
+  });
 }
 function tableFieldsPopover(anchor, db, trashCount) {
   let pop;
@@ -3729,9 +3873,9 @@ function tableFieldsPopover(anchor, db, trashCount) {
     const toggle = el('label', { class: 'chip-pop-row eye-row' }, box, el('span', { class: 'eye-label' }, name));
     const handle = el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
     const row = el('div', { class: 'table-field-row', dataset: { field: name } }, toggle, handle);
+    RO().guard(row);
     row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target === box || db.view?.blank) return;
-      e.preventDefault();
       startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
     });
     row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
@@ -3789,14 +3933,48 @@ function tableChrome(db, trashCount) {
   const densityBtn = tableDensityButton(ref);
   const filterBtn = tableFilterButton(ref);
   const groupBtn = tableGroupButton(ref);
+  const sortBtn = tableSortButton(ref);
   const search = tableSearchBox(db);
   chrome.set = (next, count) => {
     ref.db = next; ref.trashCount = count;
-    viewBtn.label(); densityBtn.label(); filterBtn.label(); groupBtn.label(); tools.label();
+    viewBtn.label(); densityBtn.label(); filterBtn.label(); groupBtn.label(); sortBtn.label(); tools.label();
     const input = search.querySelector('.table-search-input');
     const want = tableSearchText(next) ? tableSearch.text : '';
     if (input.value.trim() !== want.trim()) input.value = want;
   };
+  const tableActions = [
+    { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
+    { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
+    'divider',
+    { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
+    {
+      label: 'New share page…',
+      run: () => modal('New share page', [
+        el('input', { name: 'name', placeholder: 'Page name', class: 'form-control' }),
+      ], async (fd) => {
+        const where = filterWhere(ref.db);
+        await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
+        toast('Share page saved — find it on the workspace page');
+      }, 'Save'),
+    },
+    'divider',
+    {
+      label: `Row term (${db.term.singular})…`,
+      run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
+    },
+    'divider',
+    {
+      hold: 'Delete table', holdingLabel: 'Hold to delete table…',
+      run: async () => {
+        try {
+          await api('DELETE', `/tables/${db.id}`);
+          await loadSchema();
+          location.hash = `#/space/${db.spaceId}`;
+          toast(`Deleted ${db.name}`);
+        } catch (err) { toast(err.message, true); }
+      },
+    },
+  ];
   chrome.header = viewHeader({
     crumbs: [
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
@@ -3839,38 +4017,9 @@ function tableChrome(db, trashCount) {
       })(),
       filterBtn,
       groupBtn,
-      dotsMenu([
-        { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
-        { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
-        'divider',
-        {
-          label: 'New share page…',
-          run: () => modal('New share page', [
-            el('input', { name: 'name', placeholder: 'Page name', class: 'form-control full' }),
-          ], async (fd) => {
-            const where = filterWhere(ref.db);
-            await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
-            toast('Share page saved — find it on the workspace page');
-          }, 'Save'),
-        },
-        'divider',
-        {
-          label: `Row term (${db.term.singular})…`,
-          run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
-        },
-        'divider',
-        {
-          hold: 'Delete table', holdingLabel: 'Hold to delete table…',
-          run: async () => {
-            try {
-              await api('DELETE', `/tables/${db.id}`);
-              await loadSchema();
-              location.hash = `#/space/${db.spaceId}`;
-              toast(`Deleted ${db.name}`);
-            } catch (err) { toast(err.message, true); }
-          },
-        },
-      ], { title: 'Table actions', align: 'right' }),
+      sortBtn,
+      dotsMenu(tableActions, { title: 'Table actions', align: 'right' }),
+      tableSheetGroup('Table', tableActions),
     ],
   });
   const tools = tableToolsButton(chrome.header, ref);
@@ -3892,29 +4041,31 @@ function tableToolsButton(header, ref) {
     count.hidden = !n;
   };
   btn.label();
+  let off = () => {};
   const shut = () => {
     row()?.classList.remove('tools-open');
     btn.setAttribute('aria-expanded', 'false');
-    removeEventListener('click', away, true);
+    off();
     removeEventListener('keydown', esc, true);
-  };
-  const away = (e) => {
-    if (!btn.isConnected) return shut();
-    if (btn.contains(e.target) || sheet()?.contains(e.target) || e.target.closest?.('.chip-pop, .picker-pop, #modal-back, #cmdk-back')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    shut();
   };
   const esc = (e) => {
     if (e.key !== 'Escape' || document.querySelector('.chip-pop, .picker-pop, #modal-back, #cmdk-back') || sheet()?.querySelector('.dl-menu:not(.hidden)')) return;
     shut();
     btn.focus({ preventScroll: true });
   };
+  header.addEventListener('click', (e) => { if (e.target.closest('.tools-group .tools-row:not(.hold-btn)')) shut(); });
   btn.addEventListener('click', () => {
     if (row().classList.contains('tools-open')) return shut();
+    const r = btn.getBoundingClientRect();
+    row().style.setProperty('--tools-top', `${r.bottom + 8}px`);
+    row().style.setProperty('--tools-right', `${document.documentElement.clientWidth - r.right}px`);
     row().classList.add('tools-open');
     btn.setAttribute('aria-expanded', 'true');
-    addEventListener('click', away, true);
+    off = dismissOutside({
+      open: () => btn.isConnected || (shut(), false),
+      inside: (t) => btn.contains(t) || !!sheet()?.contains(t) || !!t.closest?.('.chip-pop, .picker-pop, #modal-back, #cmdk-back'),
+      swallow: () => true, close: shut,
+    });
     addEventListener('keydown', esc, true);
   });
   return btn;
@@ -4024,9 +4175,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     if (e.isComposing || e.altKey) return;
     const td = e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
     if (!td || e.target !== td) return;
-    const slash = e.key === '/' && !e.metaKey && !e.ctrlKey;
-    const find = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f';
-    if (!slash && !find) return;
+    if (e.key !== '/' || e.metaKey || e.ctrlKey) return;
     e.preventDefault(); e.stopPropagation();
     openTableSearch(main);
   }, true);
@@ -4347,56 +4496,40 @@ function renderList(main, db, items, ctx) {
 
   function listDrag(down, line) {
     if (down.button !== 0) return;
-    down.preventDefault();
-    const html = document.documentElement;
-    const marker = el('div', { class: 'drop-line list-drop', 'aria-hidden': 'true' });
-    let started = false;
-    let drop = null;
-    const place = (e) => {
-      const hit = document.elementFromPoint(e.clientX, e.clientY);
-      const row = hit?.closest?.('.list-row');
-      const target = row && row !== line && !line.wvItem.children.some(function inside(c) { return c.row.id === row.dataset.eid || c.children.some(inside); }) ? row : null;
-      const sec = (target ?? hit?.closest?.('.list-add, .list-group-head'))?.closest('.list-group:not(.list-completed)');
-      const dx = e.clientX - down.clientX;
-      const mode = s.nest && dx > 40 ? 'nest' : s.nest && dx < -40 ? 'unnest' : 'move';
-      if (!target && !sec) { drop = null; marker.remove(); return; }
-      const box = (target ?? sec).getBoundingClientRect();
-      const after = target ? e.clientY > box.top + box.height / 2 : true;
-      drop = { target, sec, after, mode };
-      const host = list.getBoundingClientRect();
-      if (!marker.isConnected) list.append(marker);
-      const depth = Number(target?.dataset.depth ?? 0) + (mode === 'nest' ? 1 : 0);
-      marker.style.top = `${(after ? box.bottom : box.top) - host.top - 1}px`;
-      marker.style.left = `${8 + depth * 20}px`;
+    const inside = (row) => line.wvItem.children.some(function walk(c) { return c.row.id === row.dataset.eid || c.children.some(walk); });
+    const depth0 = line.style.getPropertyValue('--depth');
+    const modeOf = (p, start) => {
+      const dx = p.x - start.x;
+      return s.nest && dx > 40 ? 'nest' : s.nest && dx < -40 ? 'unnest' : 'move';
     };
-    const move = (e) => {
-      if (e.pointerId !== down.pointerId) return;
-      if (!started) {
-        if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < 4) return;
-        started = true;
-        line.classList.add('dragging');
-        html.classList.add('wv-grabbing');
-      }
-      place(e);
+    const resolve = ({ node, before, point, start }) => {
+      const mode = modeOf(point, start);
+      const target = node.classList.contains('list-row') ? node : null;
+      const sec = node.closest('.list-group:not(.list-completed)');
+      if (!target && !sec) return null;
+      let above = target?.previousElementSibling;
+      while (above && (above === line || inside(above) || !above.classList.contains('list-row'))) above = above.previousElementSibling;
+      return { target, sec, after: target ? !before : true, mode, above };
     };
-    const end = (ok) => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', up);
-      document.removeEventListener('pointercancel', cancel);
-      document.removeEventListener('keydown', esc, true);
-      html.classList.remove('wv-grabbing');
-      line.classList.remove('dragging');
-      marker.remove();
-      if (ok && started && drop) commit(drop);
-    };
-    const up = (e) => { if (e.pointerId === down.pointerId) end(true); };
-    const cancel = (e) => { if (e.pointerId === down.pointerId) end(false); };
-    const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); } };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', up);
-    document.addEventListener('pointercancel', cancel);
-    document.addEventListener('keydown', esc, true);
-    const commit = ({ target, sec, after, mode }) => {
+    RO().guard(down.currentTarget);
+    RO().sortable(down, {
+      source: line,
+      items: () => [...list.querySelectorAll('.list-row, .list-add')],
+      members: () => [line, ...[...list.querySelectorAll('.list-row')].filter((r) => r !== line && inside(r))],
+      tail: (n) => n.classList.contains('list-add'),
+      zone: () => list,
+      onPlace: (placed) => {
+        const mode = modeOf(placed.point, placed.start);
+        const base = Number(placed.node.dataset.depth ?? 0);
+        line.style.setProperty('--depth', String(Math.max(0, base + (mode === 'nest' ? 1 : mode === 'unnest' ? -1 : 0))));
+      },
+      onCancel: () => line.style.setProperty('--depth', depth0),
+      onDrop: (placed) => {
+        const drop = resolve(placed);
+        if (drop) commit(drop);
+      },
+    });
+    const commit = ({ target, sec, after, mode, above }) => {
       const item = line.wvItem.row.item;
       const from = line.wvPath;
       const to = target?.wvPath ?? sec?.wvPath ?? [];
@@ -4407,7 +4540,7 @@ function renderList(main, db, items, ctx) {
         const own = line.wvItem.row.parent;
         let parent = own;
         if (mode === 'nest' && target) {
-          const anchor = after ? target : target.previousElementSibling?.closest?.('.list-row');
+          const anchor = after ? target : above;
           parent = anchor && anchor !== line ? anchor.dataset.eid : own;
         } else if (mode === 'unnest') {
           parent = own && known.has(own) ? parentOf(known.get(own)) : null;
@@ -4462,9 +4595,9 @@ function groupPopoverRows(db, close, save) {
       grip, el('span', { class: 'group-level-n' }, String(i + 1)), fieldSel, heading, orderSel, grainSel,
       el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary group-remove', type: 'button', 'aria-label': `Remove ${l.field}`, title: 'Remove level',
         onclick: () => writeLevels(levels.filter((_, k) => k !== i)) }, lucideEl('x')));
+    RO().guard(grip);
     grip.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      e.preventDefault();
       startRowDrag(box, row, e, (target, after) => {
         const rest = levels.filter((x) => x.field !== l.field);
         const at = rest.findIndex((x) => x.field === target);
@@ -4921,7 +5054,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         el('a', {
           class: 'open-link',
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
-          title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
+          title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : keyHint(`Open ${db.term.singular} beside the table — ⌘-click for a new tab`),
         }, `#${item.publicId} ↗`),
         el('span', { class: 'list-name' }, item.name ?? ''))),
       ...cols.map((c) => {
@@ -4963,6 +5096,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let lead = 0;
   let pidWidth = 0;
   let grabbed = null;
+  let colShift = null;
   const nudgeTimers = new Map();
   const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 160, 'Modified By': 160, Activity: 88 };
   const canFreezeHere = () => !!db.view && !db.view.blank;
@@ -5023,7 +5157,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       out.push(`${cell(k)}{border-right:1px solid transparent}`,
         `.table-wrap.wv-scrolled-x ${cell(k)}{border-right-color:var(--tblr-border-color)}`);
     }
-    if (grabbed && cols.includes(grabbed)) out.push(`${cell(at + cols.indexOf(grabbed) + 1)}{opacity:.4}`);
+    if (grabbed && cols.includes(grabbed)) out.push(`${cell(at + cols.indexOf(grabbed) + 1)}{opacity:var(--wv-source-opacity)}`);
+    if (colShift) cols.forEach((c, i) => { if (colShift.get(c)) out.push(`${cell(at + i + 1)}{translate:${colShift.get(c)}px 0}`); });
     return out.join('\n');
   };
   const paintLayout = () => {
@@ -5033,8 +5168,18 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const css = layoutCss();
     if (layoutSheet.textContent !== css) layoutSheet.textContent = css;
   };
+  const sizePidColumn = () => {
+    const cell = listRows() ? table.querySelector('tbody tr.entity-row > td.pid-cell > .wv-cb') : null;
+    if (!cell) return table.style.removeProperty('--wv-pid-w');
+    const top = ordered().reduce((n, x) => Math.max(n, x?.publicId ?? 0), db.maxPublicId ?? 0);
+    const probe = el('a', { class: 'open-link pid-probe', 'aria-hidden': 'true' }, `#${'0'.repeat(String(top).length)} ↗`);
+    cell.append(probe);
+    table.style.setProperty('--wv-pid-w', `${Math.ceil(probe.getBoundingClientRect().width)}px`);
+    probe.remove();
+  };
   const settle = () => {
     if (!table?.isConnected) return;
+    sizePidColumn();
     const head = table.tHead.rows[0];
     for (const th of head.querySelectorAll('th.col-head, th.sys-head')) {
       const label = th.querySelector('.col-label');
@@ -5052,7 +5197,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const input = td?.querySelector('input.date-text');
       if (!input) continue;
       const was = input.value;
-      input.value = weaveDateCore.formatDate(f.time ? '2026-09-30T23:45' : '2026-09-30', { ...f, viewerZone: LOCAL_ZONE });
+      const view = { ...f, viewerZone: LOCAL_ZONE };
+      const samples = [...Array.from({ length: 12 }, (_, m) => `2026-${String(m + 1).padStart(2, '0')}-28`), '2026-09-30']
+        .flatMap((d) => (f.time ? ['10:48', '22:48', '23:45'].map((t) => `${d}T${t}`) : [d]))
+        .map((d) => weaveDateCore.formatDate(d, view));
+      input.value = samples.reduce((a, b) => (textWidth(b, input) > textWidth(a, input) ? b : a));
       const probe = cellFitProbe(td);
       input.value = was;
       const measure = el('div', { class: 'wv-measure' }, probe);
@@ -5183,10 +5332,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     setTimeout(() => { for (const [cell] of moving) cell.style.transition = ''; }, 240);
   };
 
-  const applyOrder = async (next, shownFrozen, moved) => {
+  const applyOrder = async (next, shownFrozen, moved, seen = null) => {
     const at = leadCount();
     const nextFrozen = Math.min(next.length, Math.max(0, storedFrozen() + shownFrozen - frozenShown));
-    const before = new Map(cols.map((c) => [c, headOf(c)?.getBoundingClientRect().left ?? 0]));
+    const before = seen ?? new Map(cols.map((c) => [c, headOf(c)?.getBoundingClientRect().left ?? 0]));
     const prev = cols;
     const prevFrozen = storedFrozen();
     const reordered = next.some((c, i) => c !== prev[i]);
@@ -5236,106 +5385,115 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
   };
 
-  const columnDrag = (c) => {
-    const head = table.tHead.rows[0];
-    const pidHead = head.querySelector('th.pid-head');
+  const columnDrag = (c, th, grip) => {
+    const R = RO();
+    const pidHead = table.tHead.rows[0].querySelector('th.pid-head');
     const order = [...cols];
     const fz = frozenShown;
-    const ghost = el('div', { class: 'wv-col-ghost', 'aria-hidden': 'true' }, c);
+    const from = order.indexOf(c);
+    const lift = R.liftOf(th, { host: wrap, make: (h) => el('div', { class: 'wv-col-lift' }, h.querySelector('.col-label')?.cloneNode(true) ?? c) });
     const tag = el('span', { class: 'wv-col-insert-tag', hidden: '' });
-    const line = el('div', { class: 'wv-col-insert', hidden: '' }, tag);
-    document.body.append(ghost);
-    wrap.append(line);
+    const slot = el('div', { class: 'wv-reorder-slot wv-col-slot', 'aria-hidden': 'true' }, tag);
+    wrap.append(slot);
     document.body.classList.add('wv-col-dragging');
+    table.classList.add('wv-col-sliding', 'wv-reorder-host');
     grabbed = c;
+    colShift = new Map();
     paintLayout();
-    let plan = null, px = 0, raf = 0;
-    const boxes = () => order.map((n) => {
-      const r = headOf(n).getBoundingClientRect();
-      return { name: n, left: r.left, right: r.right };
-    });
+    const sl0 = wrap.scrollLeft;
+    const start = order.map((n) => { const r = headOf(n).getBoundingClientRect(); return { name: n, left: r.left, right: r.right, width: r.width }; });
+    const widths = start.map((b) => b.width);
+    const boxes = () => {
+      const dx = wrap.scrollLeft - sl0;
+      return start.map((b, i) => (i < fz ? { ...b } : { ...b, left: b.left - dx, right: b.right - dx }));
+    };
     const leadRight = () => pidHead?.getBoundingClientRect().right ?? wrap.getBoundingClientRect().left;
+    const seam = () => (fz ? start[fz - 1].right : leadRight());
+    let plan = null, px = 0, py = 0, gapX = start[from].left;
     const aim = () => {
       const b = boxes();
-      const seam = fz ? b[fz - 1].right : leadRight();
-      const mine = order.indexOf(c) < fz;
+      const mine = from < fz;
       const capOk = canFreezeHere() && (mine || CR.canFreeze({ lead, widths: order.slice(0, fz).map(widthOf), add: widthOf(c), viewport: wrap.clientWidth }));
-      const t = CR.target({ cols: b, frozen: fz, lead: leadRight(), seam, x: px, dragged: c, capOk });
+      const t = CR.target({ cols: b, frozen: fz, lead: leadRight(), seam: seam(), x: px, dragged: c, capOk });
       plan = CR.plan({ order, frozen: fz, dragged: c, gap: t.gap, side: t.side });
-      line.hidden = plan.noop;
-      if (plan.noop) return;
+      const to = plan.order.indexOf(c);
+      const shift = R.columnShift({ widths, from, to });
+      gapX = R.gapStart({ lefts: b.map((x) => x.left), widths, from, to });
+      colShift = new Map(order.map((n, i) => [n, i === from ? gapX - b[from].left : shift[i]]));
+      paintLayout();
       const wr = wrap.getBoundingClientRect();
-      line.style.left = `${t.x - wr.left - wrap.clientLeft + wrap.scrollLeft}px`;
-      line.style.top = `${table.offsetTop}px`;
-      line.style.height = `${table.offsetHeight}px`;
+      slot.style.left = `${gapX - wr.left - wrap.clientLeft + wrap.scrollLeft}px`;
+      slot.style.top = `${table.offsetTop}px`;
+      slot.style.width = `${widths[from]}px`;
+      slot.style.height = `${table.offsetHeight}px`;
       tag.hidden = !plan.tag;
       tag.textContent = plan.tag ?? '';
     };
-    const EDGE = 48;
-    const tick = () => {
-      raf = 0;
-      if (wrap.scrollWidth <= wrap.clientWidth + 1) return;
-      const wr = wrap.getBoundingClientRect();
-      const lo = fz ? boxes()[fz - 1].right : leadRight();
-      let dx = 0;
-      if (px > wr.right - EDGE) dx = Math.ceil((px - (wr.right - EDGE)) / 3);
-      else if (px >= lo && px < lo + EDGE) dx = -Math.ceil((lo + EDGE - px) / 3);
-      if (!dx) return;
-      const was = wrap.scrollLeft;
-      wrap.scrollLeft += dx;
-      if (wrap.scrollLeft === was) return;
-      aim();
-      raf = requestAnimationFrame(tick);
+    const auto = R.autoScroll({ scroller: wrap, axis: 'x', point: () => ({ x: px, y: py }), onScroll: aim, bounds: (r) => [Math.max(r.left, seam()), r.right] });
+    const outside = (p) => {
+      const r = wrap.getBoundingClientRect();
+      return p.y < r.top - 48 || p.y > r.bottom + 48;
+    };
+    const unslide = () => {
+      colShift = null;
+      paintLayout();
+      setTimeout(() => table.classList.remove('wv-col-sliding'), 240);
     };
     return {
       update(x, y) {
-        px = x;
-        ghost.style.transform = `translate(${Math.round(x + 12)}px, ${Math.round(y + 14)}px)`;
+        px = x; py = y;
+        lift.follow(x - grip.x, 0);
         aim();
-        if (!raf) raf = requestAnimationFrame(tick);
+        auto.kick();
       },
-      finish(drop) {
-        cancelAnimationFrame(raf);
-        ghost.remove(); line.remove();
+      finish(drop, p) {
+        auto.stop();
         document.body.classList.remove('wv-col-dragging');
-        grabbed = null;
-        paintLayout();
-        if (drop && plan && !plan.noop) applyOrder(plan.order, plan.frozen, c);
+        table.classList.remove('wv-reorder-host');
+        const home = !drop || !plan || plan.noop || (p && outside(p));
+        const done = () => { slot.remove(); grabbed = null; paintLayout(); };
+        if (home) {
+          unslide();
+          lift.settle({ left: start[from].left - (wrap.scrollLeft - sl0) * (from < fz ? 0 : 1), top: th.getBoundingClientRect().top }).then(done);
+          if (R.reduced()) done();
+          return;
+        }
+        const seen = new Map(cols.map((n) => [n, headOf(n)?.getBoundingClientRect().left ?? 0]));
+        table.classList.remove('wv-col-sliding');
+        colShift = null;
+        applyOrder(plan.order, plan.frozen, c, seen);
+        const landed = headOf(c)?.getBoundingClientRect();
+        lift.settle(landed ? { left: landed.left, top: landed.top } : null).then(done);
+        if (R.reduced()) done();
       },
     };
   };
   const headPointerDown = (e, c) => {
     if (e.button !== 0 || e.target.closest('.field-menu, .col-resize')) return;
     const th = e.currentTarget;
-    const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+    RO().guard(th);
     let drag = null;
-    const move = (ev) => {
-      if (ev.pointerId !== id) return;
-      if (!drag) {
-        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
-        if (blocked()) return end(false);
-        try { th.setPointerCapture(id); } catch {}
-        drag = columnDrag(c);
-      }
-      clearSelection();
-      drag.update(ev.clientX, ev.clientY);
-    };
-    const end = (drop) => {
-      document.removeEventListener('pointermove', move, true);
-      document.removeEventListener('pointerup', up, true);
-      document.removeEventListener('pointercancel', cancel, true);
+    const end = (drop, p) => {
       if (!drag) return;
       th.dataset.gesture = '1';
       document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true });
       const d = drag;
       drag = null;
-      d.finish(drop);
+      d.finish(drop, p);
     };
-    const up = (ev) => { if (ev.pointerId === id) end(true); };
-    const cancel = (ev) => { if (ev.pointerId === id) end(false); };
-    document.addEventListener('pointermove', move, true);
-    document.addEventListener('pointerup', up, true);
-    document.addEventListener('pointercancel', cancel, true);
+    RO().press(e, {
+      keepDefault: true,
+      canLift: () => !blocked(),
+      lift: (p, at) => {
+        try { th.setPointerCapture(e.pointerId); } catch {}
+        clearSelection();
+        drag = columnDrag(c, th, at);
+        drag.update(p.x, p.y);
+      },
+      move: (p) => { clearSelection(); drag?.update(p.x, p.y); },
+      drop: (p) => end(true, p),
+      cancel: () => end(false),
+    });
   };
   const headKey = (e, c) => {
     const th = e.currentTarget;
@@ -5592,7 +5750,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         onkeydown: (e) => headKey(e, n),
       } : {}),
     },
-      el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·'), sortMark(n)),
+      el('span', { class: 'col-label' }, n, el('span', { class: 'field-mark' }, '·'), sortMark(n)),
       systemMenu(n, n),
       movable ? columnResizeGrip(db, { name: n, type: 'date' }, grid) : null);
 
@@ -5625,7 +5783,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           onkeydown: (e) => headKey(e, c),
         },
           el('span', { class: 'col-label' },
-            fieldNameLabel(colField(db, c), c),
+            fieldNameLabel(colField(db, c), c, db),
             sortMark(c)),
           fieldMenuButton(db, colField(db, c), {
             sorted: sortKey === c ? sortDir : 0,
@@ -5962,8 +6120,16 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('mouseleave', dropCellPop);
   wrap.addEventListener('mousedown', dropCellPop, true);
   wrap.addEventListener('focusin', dropCellPop);
-  const listRow = (e) => (listRows() && !nativeClick(e) && !e.target?.closest?.('.swipe-cell') ? e.target?.closest?.('tbody tr.entity-row') : null);
-  const swipe = rowSwipe(wrap, db, () => listRows(), itemOf, onSaved);
+  const listRow = (e) => (listRows() && !nativeClick(e) ? e.target?.closest?.('tbody tr.entity-row') : null);
+  let press = null;
+  wrap.addEventListener('pointerdown', (e) => {
+    press = listRows() && e.pointerType !== 'mouse' ? { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId, tap: false } : null;
+  }, true);
+  wrap.addEventListener('pointerup', (e) => {
+    if (!press || e.pointerId !== press.id) return;
+    press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= TAP_SLOP && e.timeStamp - press.t <= TAP_MS;
+  }, true);
+  wrap.addEventListener('pointercancel', () => { press = null; }, true);
   wrap.addEventListener('mousedown', (e) => {
     if (!listRow(e)) return;
     e.preventDefault();
@@ -5974,7 +6140,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!tr) return;
     e.preventDefault();
     e.stopPropagation();
-    if (swipe.swallows()) return;
+    const touched = press;
+    press = null;
+    if (touched && !touched.tap) return;
     if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
     else openEntity(tr.dataset.eid);
   }, true);
@@ -5986,93 +6154,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 }
 
 
-function rowSwipe(wrap, db, active, itemOf, onSaved) {
-  const flow = db.system ? null : db.fields.find((f) => f.type === 'workflow');
-  let drag = null, open = null, quietUntil = 0;
-  const swallows = () => Date.now() < quietUntil;
-  const place = (tr, x) => tr.style.setProperty('--swipe-x', `${Math.min(0, x)}px`);
-  const close = (tr = open) => {
-    if (!tr) return;
-    tr.classList.remove('swipe-open', 'swiping');
-    tr.style.removeProperty('--swipe-x');
-    tr.querySelector(':scope > td.swipe-cell')?.remove();
-    if (open === tr) open = null;
-    removeEventListener('pointerdown', away, true);
-  };
-  const away = (e) => {
-    if (open?.querySelector('.swipe-cell')?.contains(e.target)) return;
-    quietUntil = Date.now() + 600;
-    close();
-  };
-  const move = async (item, to, from) => {
-    await api('POST', `/entities/${item.id}/state`, { field: flow.name, state: to });
-    await onSaved?.();
-    return from;
-  };
-  const cellFor = (tr, item) => {
-    const was = item.fields?.[flow.name] ?? null;
-    const states = flow.states ?? [];
-    const after = states.slice(states.findIndex((st) => st.name === was) + 1).slice(0, 3);
-    if (!after.length) return null;
-    return el('td', { class: 'swipe-cell' }, ...after.map((st) => el('button', {
-      class: `swipe-act cat-${stateCategory(flow, st.name)}`, type: 'button',
-      onclick: async () => {
-        close(tr);
-        try {
-          await move(item, st.name, was);
-          toast(`#${item.publicId} moved to ${st.name}`, false, {
-            label: 'Undo', run: () => move(item, was, st.name).catch((err) => toast(err.message, true)),
-          });
-        } catch (err) { toast(err.message, true); }
-      },
-    }, lucideEl(stateCategory(flow, st.name) === 'done' ? 'check' : 'clock'), el('span', {}, st.name))));
-  };
-  wrap.addEventListener('pointerdown', (e) => {
-    if (!flow || !active() || e.button !== 0 || e.target.closest('.swipe-cell')) return;
-    const tr = e.target.closest('tbody tr.entity-row');
-    const item = tr && itemOf(tr.dataset.eid);
-    if (!item || item.deleted) return;
-    drag = { tr, item, x: e.clientX, y: e.clientY, id: e.pointerId, base: open === tr ? -tr.querySelector('.swipe-cell').offsetWidth : 0, on: false };
-  }, true);
-  wrap.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!drag.on) {
-      if (Math.abs(dy) > SWIPE_SLOP && Math.abs(dy) > Math.abs(dx)) { drag = null; quietUntil = Date.now() + 600; return; }
-      if (Math.abs(dx) <= SWIPE_SLOP) return;
-      if (open && open !== drag.tr) close();
-      if (!drag.tr.querySelector(':scope > td.swipe-cell')) {
-        const cell = cellFor(drag.tr, drag.item);
-        if (!cell) { drag = null; quietUntil = Date.now() + 600; return; }
-        drag.tr.append(cell);
-      }
-      drag.on = true;
-      drag.tr.classList.add('swiping');
-      drag.tr.setPointerCapture?.(e.pointerId);
-    }
-    place(drag.tr, drag.base + dx);
-  }, true);
-  const end = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const { tr, on, base, x } = drag;
-    drag = null;
-    if (!on) return;
-    quietUntil = Date.now() + 600;
-    tr.classList.remove('swiping');
-    const width = tr.querySelector(':scope > td.swipe-cell')?.scrollWidth ?? 0;
-    if (base + e.clientX - x < -SWIPE_OPEN && width) {
-      tr.classList.add('swipe-open');
-      place(tr, -width);
-      open = tr;
-      addEventListener('pointerdown', away, true);
-    } else close(tr);
-  };
-  wrap.addEventListener('pointerup', end, true);
-  wrap.addEventListener('pointercancel', end, true);
-  return { swallows };
-}
-const SWIPE_SLOP = 10;
-const SWIPE_OPEN = 60;
+const TAP_SLOP = 10;
+const TAP_MS = 300;
 
 const SYSTEM_COLS = {
   'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
@@ -6107,13 +6190,14 @@ function actorChipEl(actor, { link = true } = {}) {
 function commentAuthorEl(author) {
   if (/^workflow:/.test(author ?? '')) return actorChipEl(author);
   if (author === 'automation') return el('span', { class: 'k k-actor-wf is-inline' }, iconEl('lucide:workflow', 'wv-icon wv-icon-xs'), el('span', { class: 'k-label' }, 'Automation'));
+  if (weaveActor.parseActor(author).via) return actorChipEl(author, { link: false });
   return author;
 }
 function commentAuthorText(author) {
   const a = weaveActor.parseActor(author);
   if (a.kind === 'workflow') return workflowRow(a.workflowId).name ?? 'an automation';
   if (author === 'automation') return 'an automation';
-  return author ?? 'someone';
+  return author ? weaveActor.actorText(author) : 'someone';
 }
 
 const workflowRows = new Map();
@@ -6654,8 +6738,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
     body.replaceChildren();
     if (view === 'days') {
       body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, `${dc.MONTHS_LONG[m - 1]} ▾`),
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, `${y} ▾`) : el('span'),
+        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, dc.MONTHS_LONG[m - 1], lucideEl('chevron-down', 'wv-icon wv-icon-xs')),
+        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, String(y), lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span'),
         el('span', { class: 'date-pop-spacer' }),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '↑'),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '↓')));
@@ -6696,7 +6780,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
         } }, 'Now')));
     } else if (view === 'months') {
       body.append(el('div', { class: 'date-pop-head' },
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, `${y}${hasD ? '' : ' ▾'}`) : el('span', { class: 'date-pop-title' }, 'Month'),
+        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, String(y), hasD ? null : lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span', { class: 'date-pop-title' }, 'Month'),
         el('span', { class: 'date-pop-spacer' }),
         ...(hasY ? [
           el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
@@ -6742,14 +6826,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
   pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
-  const close = (ev) => {
-    if (pop.contains(ev.target)) return;
-    removeEventListener('click', close, true);
-    if (!pop.isConnected) return;
-    pop.remove();
-    if (anchor.contains(ev.target)) ev.stopPropagation();
-  };
-  addEventListener('click', close, true);
+  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => anchor.contains(t), close: () => pop.remove() });
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
   smarts[0].querySelector('.date-smart').focus();
   return pop;
@@ -6894,6 +6971,22 @@ function termSection(state, onChange) {
     preview);
 }
 
+function optRowGrip(wrap, list, i, commit) {
+  const grip = RO().guard(el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')));
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const row = grip.closest('.opt-row');
+    RO().sortable(e, {
+      source: row,
+      items: () => [...wrap.querySelectorAll(':scope > .opt-row')],
+      zone: () => wrap,
+      lock: true,
+      onDrop: () => commit(fieldDialogCore.moveItem(list(), i, [...wrap.querySelectorAll(':scope > .opt-row')].filter((n) => !RO().lifting(n)).indexOf(row))),
+    });
+  });
+  return grip;
+}
+
 function optionListEditor(state, onChange) {
   const wrap = el('div', { class: 'opt-list' });
   const draw = () => {
@@ -6902,6 +6995,7 @@ function optionListEditor(state, onChange) {
         const hue = o.hue ?? chipCore.hueFromHex(o.color);
         const preview = optionPreview({ ...o, hue });
         return el('div', { class: 'opt-row' },
+          optRowGrip(wrap, () => state.options, i, (next) => { state.options = next; draw(); onChange(); }),
           iconButton(o.icon || null, (id) => { o.icon = id ?? ''; draw(); onChange(); }),
           el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; preview.rename(o.name); onChange(); } }),
           (() => {
@@ -6970,25 +7064,12 @@ function choiceDefaultControl(state, t) {
 function stateListEditor(state, onChange) {
   const fdc = fieldDialogCore;
   const wrap = el('div', { class: 'opt-list' });
-  let dragFrom = null;
   const draw = () => {
     wrap.replaceChildren(
       ...state.states.map((s, i) => {
         const preview = statePreview(s);
-        const row = el('div', {
-          class: 'opt-row', draggable: 'true',
-          ondragstart: (e) => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); },
-          ondragend: () => row.classList.remove('dragging'),
-          ondragover: (e) => { e.preventDefault(); row.classList.add('drop-target'); },
-          ondragleave: () => row.classList.remove('drop-target'),
-          ondrop: (e) => {
-            e.preventDefault(); row.classList.remove('drop-target');
-            if (dragFrom == null || dragFrom === i) return;
-            state.states = fdc.moveItem(state.states, dragFrom, i);
-            dragFrom = null; draw(); onChange();
-          },
-        },
-        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+        const row = el('div', { class: 'opt-row' },
+        optRowGrip(wrap, () => state.states, i, (next) => { state.states = next; draw(); onChange(); }),
         iconButton(s.icon || null, (id) => { s.icon = id ?? ''; draw(); onChange(); }),
         el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; preview.rename(s.name); onChange(); } }),
         (() => {
@@ -7875,40 +7956,6 @@ function editFieldDialog(db, f) {
   fieldDialog(db, f, () => keepScroll(() => showDatabase(db.id)));
 }
 
-function slotDrag(list, { itemSel, held, label, onDrop }) {
-  let slot = null;
-  const clear = () => { slot?.remove(); slot = null; };
-  list.addEventListener('dragover', (e) => {
-    const me = held();
-    if (!me) return;
-    e.preventDefault(); e.stopPropagation();
-    if (!slot) slot = el('div', { class: 'drop-slot' }, label(me));
-    const items = [...list.children].filter((n) => n !== me && n !== slot && n.matches(itemSel));
-    const left = (n) => n.getBoundingClientRect().left;
-    let nearest = null, best = Infinity;
-    for (const n of items) { const d = Math.abs(left(n) + 20 - e.clientX); if (d < best) { best = d; nearest = n; } }
-    const inCol = nearest ? items.filter((n) => Math.abs(left(n) - left(nearest)) < 40) : [];
-    let anchor = null;
-    for (const n of inCol) {
-      const r = n.getBoundingClientRect();
-      if (e.clientY < r.top + r.height / 2) { anchor = n; break; }
-    }
-    if (!anchor && inCol.length) anchor = inCol[inCol.length - 1].nextElementSibling;
-    if (anchor === me) anchor = me.nextElementSibling;
-    if (anchor === slot || (anchor === null && list.lastElementChild === slot)) return;
-    if (anchor) list.insertBefore(slot, anchor); else list.append(slot);
-  });
-  list.addEventListener('drop', (e) => {
-    const me = held();
-    if (!me || !slot) return;
-    e.preventDefault(); e.stopPropagation();
-    const at = slot; slot = null;
-    at.replaceWith(me);
-    onDrop(me);
-  });
-  return { clear };
-}
-
 async function reorderBlocks(db, body, onFail) {
   const bodyOrder = [...body.children].map((n) => n.dataset.block).filter(Boolean);
   try {
@@ -8260,6 +8307,7 @@ async function showSpace(spaceId) {
         await loadSchema();
       },
       actions: space.system ? [] : [
+        el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('space', spaceId, space.space) }, 'Share…'),
         ...(space.template ? [useTemplateButton(space)] : []),
         dotsMenu([
           {
@@ -8327,7 +8375,7 @@ async function useTemplateDialog(space) {
     el('label', { class: 'form-label wv-start-label' }, 'Workspace'),
     pickerSelect({ name: 'workspace', title: 'Workspace', options: others.map((w) => ({ id: w.name, label: w.name })), value: others[0].name }),
     el('label', { class: 'form-label wv-start-label' }, 'Name'),
-    el('input', { name: 'name', class: 'form-control full', style: 'width:100%', value: space.space, required: '' }),
+    el('input', { name: 'name', class: 'form-control', value: space.space, required: '' }),
     el('div', { class: 'form-hint' }, 'Copies the tables, fields and views. Rows stay here.'),
     said,
   ] : [el('p', { class: 'use-template-none' }, 'There is no other workspace to build in. Create one first, from the workspace rail.')];
@@ -8773,6 +8821,16 @@ const WV_TB_ICONS = {
   outdent: tbIcon('list-indent-decrease'), indent: tbIcon('list-indent-increase'),
   quote: tbIcon('quote'), code: tbIcon('braces'), table: tbIcon('table'), line: tbIcon('minus'),
   undo: tbIcon('undo'), redo: tbIcon('redo'), upload: tbIcon('upload'),
+  'wv-insert': tbIcon('plus'), 'wv-done': tbIcon('chevron-down'),
+};
+const WV_TB_WRITING = {
+  'wv-insert': { tip: 'Insert', click: (e, vd) => {
+    const r = getSelection()?.rangeCount ? getSelection().getRangeAt(0) : null;
+    const before = r ? r.startContainer.textContent.slice(0, r.startOffset) : '';
+    document.execCommand('insertText', false, before && !/\s$/.test(before) ? ' /' : '/');
+    vd.hint.render(vd);
+  } },
+  'wv-done': { tip: 'Hide keyboard', click: () => { document.activeElement?.blur(); getSelection()?.removeAllRanges(); } },
 };
 
 function guardMathRender() {
@@ -8780,6 +8838,18 @@ function guardMathRender() {
   const live = globalThis.WeaveEditorLib.liveMathElements;
   if (adapter && adapter.getElements !== live) adapter.getElements = live;
 }
+function skipCaretOnlyUndo(vditor) {
+  const undo = vditor?.undo;
+  if (!undo?.addToUndoStack || !undo.addCaret) return;
+  const add = undo.addToUndoStack.bind(undo);
+  const bare = (html) => String(html ?? '').replace(/<wbr>/g, '').replace(/ vditor-ir__node--expand/g, '');
+  undo.addToUndoStack = (v) => {
+    const mode = undo[v.currentMode];
+    if (mode?.undoStack?.length && bare(undo.addCaret(v, true)) === bare(mode.lastText)) return;
+    add(v);
+  };
+}
+
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   guardMathRender();
   const t = vditorTheme();
@@ -8813,8 +8883,8 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       'headings', 'bold', 'italic', 'strike', 'inline-code', 'link', '|',
       'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'code', 'table', 'line', '|',
-      'undo', 'redo', 'upload',
-    ].map((n) => (n === '|' ? n : { name: n, icon: WV_TB_ICONS[n] })),
+      'undo', 'redo', 'upload', 'wv-insert', 'wv-done',
+    ].map((n) => (n === '|' ? n : { name: n, icon: WV_TB_ICONS[n], ...WV_TB_WRITING[n] })),
     toolbarConfig: { hide: false, pin: false },
     upload: {
       multiple: true,
@@ -8833,6 +8903,9 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       const md = editor.getValue();
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
       handed = stored(editor.getValue());
+      editor.clearStack();
+      skipCaretOnlyUndo(editor.vditor);
+      aliasBareRefs(editor, onInput);
       scheduleDecorFor(host);
       host.addEventListener('keyup', rememberSelection);
       host.addEventListener('mouseup', rememberSelection);
@@ -8879,6 +8952,7 @@ const docBubbles = new Set();
 function attachToolbarBubble(host) {
   const st = { host };
   st.place = () => placeToolbarBubble(st);
+  for (const ev of ['focusin', 'focusout']) host.addEventListener(ev, () => queueMicrotask(st.place));
   docBubbles.add(st);
   st.place();
 }
@@ -8891,10 +8965,13 @@ function placeToolbarBubble(st) {
   const sel = getSelection();
   const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
   const inBar = bar.contains(document.activeElement) || bar.matches(':hover');
-  const on = (range && !range.collapsed && root.contains(range.startContainer)
-    && root.contains(range.endContainer)) || (inBar && bar.classList.contains('wv-show'));
-  bar.classList.toggle('wv-show', !!on);
   const docked = dockCoversScreen.matches;
+  const inRoot = range && root.contains(range.startContainer) && root.contains(range.endContainer);
+  const picked = inRoot && !range.collapsed;
+  const caret = docked && !picked && root.contains(document.activeElement);
+  const on = picked || caret || (inBar && bar.classList.contains('wv-show'));
+  bar.classList.toggle('wv-show', !!on);
+  bar.classList.toggle('wv-bar-caret', !!caret);
   bar.classList.toggle('wv-bar-dock', docked);
   if (docked) {
     const keyboard = keyboardInset();
@@ -9158,12 +9235,16 @@ async function refreshRefChips(st) {
     const rects = range.getClientRects();
     if (rects.length !== 1) continue;
     const r = rects[0];
-    st.layer.append(el('a', {
-      class: `mention mention-${hit.kind} doc-ref-chip`,
-      href: hit.href,
-      title: hit.title,
-      style: `left:${r.left - base.left}px; top:${r.top - base.top - 2}px; width:${r.width}px; height:${r.height + 4}px;`,
-    }, el('span', { class: 'k k-rel doc-ref-label' }, el('span', { class: 'k-label' }, s.label ?? hit.label))));
+    const slot = el('span', {
+      class: 'doc-ref-slot wv-prose',
+      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; max-width:${Math.max(0, base.width - (r.left - base.left))}px;`,
+    });
+    slot.innerHTML = hit.html;
+    if (s.label) {
+      const label = slot.querySelector('.k-label');
+      if (label) label.textContent = s.label;
+    }
+    st.layer.append(slot);
   }
 }
 
@@ -9288,11 +9369,9 @@ function refreshHeadingFolds(st) {
     const key = headKey(blocks[i]);
     const isFolded = folded.has(key);
     const r = blocks[i].getBoundingClientRect();
-    carets.push(el('button', {
-      class: 'doc-fold' + (isFolded ? ' folded' : ''),
-      type: 'button',
+    carets.push(disclosure('doc-fold' + (isFolded ? ' folded' : ''), !isFolded, {
       title: isFolded ? 'Unfold section' : 'Fold section',
-      style: `top:${r.top - base.top}px; height:${r.height}px;`,
+      style: `top:${r.top - base.top + r.height / 2}px;`,
       onclick: () => {
         const next = docFoldState(st.entityId, st.field);
         next.has(key) ? next.delete(key) : next.add(key);
@@ -9305,6 +9384,19 @@ function refreshHeadingFolds(st) {
   st.layer.replaceChildren(...carets);
 }
 
+async function aliasBareRefs(editor, onInput) {
+  const lib = globalThis.WeaveEditorLib;
+  const md = editor.getValue();
+  const bare = lib.findRefSpans(md).filter((s) => s.label == null).map((s) => s.ref);
+  if (!bare.length) return;
+  await resolveRefs(bare);
+  const next = lib.aliasRefSpans(md, (ref) => refResolveCache.get(ref)?.label ?? null);
+  if (next === md) return;
+  editor.setValue(next);
+  editor.clearStack();
+  onInput(next);
+}
+
 async function resolveRefs(refs) {
   const missing = [...new Set(refs)].filter((r) => !refResolveCache.has(r));
   if (!missing.length) return;
@@ -9314,14 +9406,16 @@ async function resolveRefs(refs) {
     box.innerHTML = html;
     const paras = [...box.children];
     missing.forEach((ref, i) => {
-      const a = paras[i]?.querySelector('a.mention');
+      const chip = paras[i]?.querySelector('.k-rel');
+      const a = chip?.querySelector('a.mention');
       if (!a) return refResolveCache.set(ref, null);
-      let href = a.getAttribute('href');
-      const ent = href.match(/\/e\/([^/]+)\/doc\.html$/);
-      if (ent) href = `#/entity/${ent[1]}`;
+      const ent = a.getAttribute('href').match(/\/e\/([^/]+)\/doc\.html$/);
+      if (ent) a.setAttribute('href', `#/entity/${ent[1]}`);
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
-      a.querySelector('.mention-fields')?.remove();
-      refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });
+      refResolveCache.set(ref, {
+        href: a.getAttribute('href'), html: chip.outerHTML, kind,
+        label: a.dataset.name ?? a.textContent, title: a.title || a.textContent,
+      });
     });
   } catch {}
 }
@@ -9460,13 +9554,9 @@ async function flushDocSave(entityId, field) {
   await p.write();
 }
 
-function relTime(iso) {
-  const sec = (Date.now() - Date.parse(iso)) / 1000;
-  if (sec < 45) return 'just now';
-  if (sec < 3600) return `${Math.round(sec / 60)} min ago`;
-  if (sec < 86400) return `${Math.round(sec / 3600)} h ago`;
-  if (sec < 7 * 86400) return `${Math.round(sec / 86400)} d ago`;
-  return new Date(iso).toLocaleDateString();
+function whenEl(iso, cls = null) {
+  const w = weaveDateCore.relativeOrShort(iso);
+  return el('time', { ...(cls ? { class: cls } : {}), datetime: iso, title: w.title }, w.text);
 }
 
 function flushDocSaves() {
@@ -9558,8 +9648,12 @@ async function showEntity(id) {
 }
 
 function nextStateButton(entity, db, refresh) {
-  const f = db?.fields.find((x) => x.type === 'workflow');
-  if (!f) return null;
+  const flows = (db?.fields ?? []).filter((x) => x.type === 'workflow');
+  const buttons = flows.map((f) => nextStateFor(entity, f, flows.length > 1, refresh)).filter(Boolean);
+  if (!buttons.length) return null;
+  return flows.length === 1 ? buttons[0] : el('div', { class: 'next-state-stack' }, ...buttons);
+}
+function nextStateFor(entity, f, named, refresh) {
   const was = entity.fields?.[f.name] ?? null;
   const states = f.states ?? [];
   const next = states[states.findIndex((st) => st.name === was) + 1];
@@ -9569,17 +9663,18 @@ function nextStateButton(entity, db, refresh) {
     await refresh?.();
     $('#main > .table-wrap')?.wvRefresh?.();
   };
+  const label = named ? `Move ${f.name} to ${next.name}` : `Move to ${next.name}`;
   return el('button', {
-    class: 'btn next-state-fab', type: 'button',
+    class: 'btn next-state-fab', type: 'button', dataset: { field: f.name },
     onclick: async (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
       try {
         await move(next.name);
-        toast(`Moved to ${next.name}`, false, { label: 'Undo', run: () => move(was).catch((err) => toast(err.message, true)) });
+        toast(named ? `Moved ${f.name} to ${next.name}` : `Moved to ${next.name}`, false, { label: 'Undo', run: () => move(was).catch((err) => toast(err.message, true)) });
       } catch (err) { btn.disabled = false; toast(err.message, true); }
     },
-  }, `Move to ${next.name}`);
+  }, label);
 }
 
 function pageGo(next) {
@@ -9602,13 +9697,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
-  const nameInput = el('textarea', {
-    class: 'name-edit' + (computed ? ' computed' : ''), rows: '1', 'aria-label': 'Name',
+  const nameInput = titleEdit('textarea', 'name-edit' + (computed ? ' computed' : ''), entity.name, {
+    rows: '1', 'aria-label': 'Name',
     readonly: computed ? '' : undefined,
     title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
     onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
   });
-  nameInput.value = entity.name;
   if (!CSS.supports('field-sizing', 'content')) {
     const fit = () => { nameInput.style.height = 'auto'; nameInput.style.height = `${nameInput.scrollHeight}px`; };
     nameInput.addEventListener('input', fit);
@@ -9626,7 +9720,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     ...recent.map((a, n) => el('a', {
       class: 'activity-item', href: `#/activity/${id}:${firstIndex - n}`,
       title: 'Open this event',
-    }, `${new Date(a.ts).toLocaleString()} — `, actorChipEl(a.actor, { link: false }), ` ${activitySummary(a)}`)),
+    }, whenEl(a.ts), ' — ', actorChipEl(a.actor, { link: false }), ` ${activitySummary(a)}`)),
     recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'),
     entity.activityDropped ? el('span', { class: 'activity-dropped' }, droppedText(entity.activityDropped)) : null);
   const actPanel = el('div', { class: 'card panel' },
@@ -9639,11 +9733,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const entBase = `${WS_PREFIX}/e/${id}/entity`;
   const dlBtn = dotsMenu([
     inPeek ? { label: 'Activity', run: () => activityPanel.toggle(id, null, mount) } : null,
+    inPeek ? { phone: true, label: 'Copy link', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') } : null,
+    inPeek ? { phone: true, label: 'Show or hide fields', run: () => fieldVisibilityPopover(dlBtn.firstElementChild, db, 0, { redraw: refresh, rowsSection: false }) } : null,
     inPeek ? 'divider' : null,
     ...['md', 'html', 'pdf'].map((ext) => ({
       label: `Download .${ext}`, href: `${entBase}.${ext}`,
       download: `${(entity.name || 'entity')}.${ext}`,
     })),
+    { label: 'Share…', run: () => shareDialog('entity', id, entity.name || `#${entity.publicId}`) },
     'divider',
     {
       label: 'Move to trash', danger: true,
@@ -9675,7 +9772,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const poseControls = inPeek ? (dockControls?.pose ?? []) : db ? [
     el('button', {
       class: 'btn btn-sm pose-btn', type: 'button',
-      title: 'Collapse (⌘⇧E)', 'aria-label': 'Collapse — dock beside the table',
+      title: keyHint('Collapse (⌘⇧E)'), 'aria-label': 'Collapse — dock beside the table',
       onclick: () => collapseToSplit(entity),
     }, poseGlyph(true)),
     el('button', {
@@ -9739,8 +9836,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     let showingSource = false;
     let mounted = false;
     const fieldQ = `field=${encodeURIComponent(f.name)}`;
-    const histBtn = el('span', {
-      class: 'doc-anchor doc-history-btn', title: 'History', 'aria-label': `${f.name} history`, hidden: '',
+    const histBtn = el('button', {
+      type: 'button', class: 'doc-anchor doc-history-btn', title: 'History', 'aria-label': `${f.name} history`, hidden: '',
       onclick: () => activityPanel.toggle(id, f.name, mount),
     }, iconEl('lucide:history', 'wv-icon'));
     const checkHistory = () => api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=2`)
@@ -9759,23 +9856,24 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     }, iconEl('lucide:code-xml', 'wv-icon')) : null;
     if (appFrame) { host.classList.add('hidden'); body.prepend(appFrame); }
     if (isDiagram) drawDiagram();
-    const caret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse section',
+    const caret = disclosure('doc-caret', true, {
+      title: 'Collapse section',
       onclick: () => {
         const open = body.classList.toggle('hidden');
         caret.classList.toggle('closed', open);
+        setDisclosure(caret, !open);
         docSectionCollapse(id, f.name, open);
       },
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
-      el('div', { class: 'doc-section-head', draggable: 'true' },
+      el('div', { class: 'doc-section-head' },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
         sourceToggle,
         histBtn,
-        el('span', {
-          class: 'doc-anchor permalink-copy', title: 'Copy link to this document',
+        el('button', {
+          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this document', 'aria-label': 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
         }, iconEl('⧉')),
         status, dl),
@@ -9784,6 +9882,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     if (docSectionCollapse(id, f.name)) {
       body.classList.add('hidden');
       caret.classList.add('closed');
+      setDisclosure(caret, false);
     }
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
@@ -9819,10 +9918,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     commentsBody);
   for (const c of entity.comments) {
     commentsBody.append(el('div', { class: 'comment' },
-      el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), el('span', { class: 'when' }, new Date(c.createdAt).toLocaleString())),
+      el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), whenEl(c.createdAt, 'when')),
       el('div', {}, c.text)));
   }
-  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…', style: 'width:100%' });
+  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…' });
   commentInput.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter' && commentInput.value.trim()) {
       try {
@@ -9837,8 +9936,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   left.classList.add('entity-body');
   const fields = el('div', { class: 'entity-fields' });
   const values = el('div', { class: 'entity-values' });
-  let dragFrom = null;
-  let blockFrom = null;
   const hidden = new Set(db.hiddenFields ?? []);
   const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
   const coverF = shown.find((x) => x.type === 'attachments' && x.preview === 'cover');
@@ -9847,45 +9944,41 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   if (coverFile) left.prepend(entityCoverEl(coverFile, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' }));
   const blocks = new Map();
 
-  const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .picker-wrap, .permalink-copy, .dl-menu, .attach-box';
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
     for (const h of handles.filter(Boolean)) {
-      h.setAttribute('draggable', 'true');
-      h.addEventListener('dragstart', (e) => {
-        blockFrom = key; e.dataTransfer.effectAllowed = 'move'; e.stopPropagation();
-        node.classList.add('dragging');
+      RO().guard(h);
+      h.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
+        e.stopPropagation();
+        RO().sortable(e, {
+          source: node,
+          items: () => [...left.children].filter((n) => n.matches('[data-block]')),
+          onDrop: () => reorderBlocks(db, left, refresh),
+        });
       });
-      h.addEventListener('dragend', () => { blockFrom = null; node.classList.remove('dragging'); blockSlot.clear(); });
     }
     blocks.set(key, node);
     return node;
   };
-  const blockSlot = slotDrag(left, {
-    itemSel: '[data-block]',
-    held: () => blockFrom ? blocks.get(blockFrom) : null,
-    label: (n) => n.dataset.block === VALUES_BLOCK ? 'Fields' : n.dataset.block,
-    onDrop: () => reorderBlocks(db, left, refresh),
-  });
-
-  const rowSlot = slotDrag(values, {
-    itemSel: '.fieldrow',
-    held: () => dragFrom ? values.querySelector(`[data-field="${CSS.escape(dragFrom)}"]`) : null,
-    label: (n) => n.dataset.field,
-    onDrop: (me) => {
-      const from = me.dataset.field;
-      const next = me.nextElementSibling, prev = me.previousElementSibling;
-      if (next?.dataset.field) reorderField(db, from, next.dataset.field, { after: false, onFail: refresh });
-      else if (prev?.dataset.field) reorderField(db, from, prev.dataset.field, { after: true, onFail: refresh });
-    },
-  });
-  const dragRow = (node, handle, f) => {
+  const dragRow = (node, f) => {
     node.dataset.field = f.name;
-    handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
-    handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); rowSlot.clear(); });
-    for (const stop of node.querySelectorAll('input, select, textarea, .picker-wrap')) {
-      stop.addEventListener('mousedown', (ev) => ev.stopPropagation());
-    }
+    RO().guard(node);
+    node.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
+      RO().sortable(e, {
+        source: node,
+        items: () => [...values.querySelectorAll(':scope > .fieldrow:not(.fieldrow-system)')],
+        zone: () => values,
+        onDrop: () => {
+          const next = node.nextElementSibling, prev = node.previousElementSibling;
+          if (next?.dataset.field && !next.classList.contains('fieldrow-system')) reorderField(db, f.name, next.dataset.field, { after: false, onFail: refresh });
+          else if (prev?.dataset.field) reorderField(db, f.name, prev.dataset.field, { after: true, onFail: refresh });
+        },
+      });
+    });
     return node;
   };
   for (const f of shown) {
@@ -9898,15 +9991,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const node = el('div', { class: 'fieldrow' },
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       el('label', { class: 'fieldrow-label', title: fieldDescription(f) ? `${fieldDescription(f)}\n\nEdit field` : 'Edit field', onclick: () => editFieldDialog(db, f) },
-        fieldNameLabel(f), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
+        fieldNameLabel(f, f.name, db), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
       labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }));
     if (f.type === 'attachments') {
       node.classList.add('attach-block');
       wireBlock(f.name, node, [node.querySelector('.opt-grip')]);
       continue;
     }
-    node.setAttribute('draggable', 'true');
-    values.append(dragRow(node, node, f));
+    values.append(dragRow(node, f));
   }
   for (const n of (db.systemFields ?? [])) {
     if (n === 'Activity' || !SYSTEM_COLS[n]) continue;
@@ -9930,9 +10022,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       values.classList.toggle('hidden', closed);
       summary.classList.toggle('hidden', !closed);
       fieldsCaret.classList.toggle('closed', closed);
+      setDisclosure(fieldsCaret, !closed);
     };
-    const fieldsCaret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse fields',
+    const fieldsCaret = disclosure('doc-caret', true, {
+      title: 'Collapse fields',
       onclick: (e) => {
         e.stopPropagation();
         const closed = !values.classList.contains('hidden');
@@ -10000,11 +10093,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
     const frame = el('iframe', { class: 'deck-frame', src: deckUrl, allowfullscreen: '', allow: 'fullscreen', title: label });
     const body = el('div', { class: 'doc-section-body' }, frame);
-    const caret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse section',
+    const caret = disclosure('doc-caret', true, {
+      title: 'Collapse section',
       onclick: () => {
         const open = body.classList.toggle('hidden');
         caret.classList.toggle('closed', open);
+        setDisclosure(caret, !open);
         docSectionCollapse(id, label, open);
       },
     });
@@ -10030,14 +10124,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         el('span', { class: 'doc-section-name' }, label),
         el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, iconEl('⟳')),
         el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, iconEl('⛶')),
-        el('span', {
-          class: 'doc-anchor permalink-copy', title: 'Copy link to this deck',
+        el('button', {
+          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this deck', 'aria-label': 'Copy link to this deck',
           onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
         }, iconEl('⧉')),
         menu),
       body);
     left.prepend(section);
-    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); }
+    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
   }
   right.append(commentsPanel, actPanel);
   activityPanel.mounted(id, mount);
@@ -10047,6 +10141,7 @@ const activityPanel = (() => {
   const H = () => window.weaveHistoryCore;
   let st = null;
   let panel = null;
+  let sheetBack = null;
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
@@ -10129,7 +10224,7 @@ const activityPanel = (() => {
     if (!others.length) return null;
     const p = pickerSelect({
       name: 'compare', title: 'Compare with', value: st.from ?? prev?.id ?? others[0].id,
-      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${x.actor ?? ''}` })),
+      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${weaveActor.actorText(x.actor)}` })),
     });
     p.classList.add('wv-act-cmp');
     p.input.addEventListener('change', () => { st.from = prev && p.input.value === prev.id ? null : p.input.value; render(); });
@@ -10154,7 +10249,7 @@ const activityPanel = (() => {
       what = [el('span', { class: 'name' }, it.field),
         it.restoredFrom != null ? el('span', {
           class: 'wv-act-src',
-          title: it.source ? `Restored the version from ${new Date(it.source.at).toLocaleString()}${it.source.actor ? ` by ${it.source.actor}` : ''}` : 'Restored a version no longer kept',
+          title: it.source ? `Restored the version from ${weaveDateCore.relativeOrShort(it.source.at).title}${it.source.actor ? ` by ${weaveActor.actorText(it.source.actor)}` : ''}` : 'Restored a version no longer kept',
         }, it.source ? `restored from ${stamp(it.source.at)}` : 'restored from an earlier version') : null,
         it.delta ? el('span', { class: `wv-act-delta ${it.delta > 0 ? 'pos' : 'neg'}` }, it.delta > 0 ? `+${it.delta}` : `−${-it.delta}`) : null];
       if (it.current) who += ' · current'; else if (it.undo) who += ' · undo';
@@ -10202,7 +10297,7 @@ const activityPanel = (() => {
     if (panel) panel.replaceWith(next); else document.body.append(next);
     panel = next;
     const dock = st.mount?.closest?.('#dock');
-    if (dock) panel.style.right = `${innerWidth - dock.getBoundingClientRect().left + 8}px`;
+    if (dock && !dockCoversScreen.matches) panel.style.right = `${innerWidth - dock.getBoundingClientRect().left + 8}px`;
     list.scrollTop = keep;
     const s = list.querySelector('.wv-act-row.sel');
     if (s) {
@@ -10260,9 +10355,19 @@ const activityPanel = (() => {
     const first = H().filterFeed(st.items, st.filter)[0];
     st.sel = first?.id ?? null;
     document.body.classList.toggle('wv-activity-open', !!st.mount?.closest?.('#main'));
+    if (dockCoversScreen.matches && !sheetBack) {
+      sheetBack = () => close({ back: true });
+      history.pushState({ ...(history.state ?? {}), wvSheet: 'activity' }, '', location.href);
+      addEventListener('popstate', sheetBack);
+    }
     render();
   }
-  function close() {
+  function close({ back = false } = {}) {
+    if (sheetBack) {
+      removeEventListener('popstate', sheetBack);
+      sheetBack = null;
+      if (!back && history.state?.wvSheet === 'activity') history.back();
+    }
     panel?.remove(); panel = null;
     clearViews();
     document.body.classList.remove('wv-activity-open');
@@ -10282,7 +10387,7 @@ const activityPanel = (() => {
     renderView();
   }
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop')) return;
+    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
     e.stopPropagation();
     close();
   }, true);
@@ -10298,7 +10403,7 @@ function quickCreate(db) {
     return;
   }
   modal(`New ${db.term.singular}`, [
-    el('input', { name: 'name', placeholder: 'Name', class: 'form-control full', style: 'width:100%' }),
+    el('input', { name: 'name', placeholder: 'Name', class: 'form-control' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
     await loadSchema();
@@ -10310,7 +10415,7 @@ function newTableDialog(reg, after) {
   const spaces = state.schema.filter((s) => !s.system);
   if (!spaces.length) return toast('Create a space first — a table lives in one', true);
   modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
     pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space }),
   ], async (fd) => {
     const made = await api('POST', `/tables/${reg.id}/entities`, { name: fd.get('name'), values: { Space: fd.get('space') } });
@@ -10325,9 +10430,9 @@ function startTableDialog({ spaceId = null } = {}) {
   const fixed = spaceId ? spaces.find((s) => s.spaceId === spaceId) : null;
   const spaceInput = fixed ? null
     : spaces.length ? pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space })
-      : el('input', { name: 'space', value: 'General', class: 'form-control full', style: 'width:100%', required: '' });
+      : el('input', { name: 'space', value: 'General', class: 'form-control', required: '' });
   modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
     ...(spaceInput ? [
       el('label', { class: 'form-label wv-start-label' }, 'Space'),
       spaceInput,
@@ -10476,7 +10581,7 @@ async function schemaDisclosure(parent, draw) {
   let open = false;
   try { open = localStorage.getItem(SCHEMA_OPEN_KEY) === '1'; } catch {}
   const body = el('div', { class: 'wv-schema-body' });
-  const box = el('details', { class: 'wv-schema' }, el('summary', {}, 'Schema'), body);
+  const box = el('details', { class: 'wv-schema' }, el('summary', {}, summaryChevron(), 'Schema'), body);
   let drawn = null;
   const fill = () => (drawn ??= Promise.resolve(draw(body)).catch((err) => toast(err.message, true)));
   box.addEventListener('toggle', () => {
@@ -10541,6 +10646,7 @@ async function relatedGrid(entity, f, onSaved) {
       el('td', { class: 'pid-cell' },
         el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: `Open ${target.term.singular}` }, `#${item.publicId} ↗`)),
       ...cols.map((c) => el('td', {
+        dataset: { ftype: c.type },
         class: (isNumCell(c, item) ? 'num' : '')
           + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),
       }, labeledEditorFor(c, item, target, onSaved, { compact: true }))),
@@ -10616,7 +10722,7 @@ function activitySummary(a) {
     case 'doc-updated':
     case 'doc-appended': {
       if (d.restoredFrom != null) {
-        return `${d.field ?? 'Description'} restored to the version from ${d.restoredAt ? new Date(d.restoredAt).toLocaleString() : 'an earlier revision'}${d.restoredBy ? ` by ${d.restoredBy}` : ''}`;
+        return `${d.field ?? 'Description'} restored to the version from ${d.restoredAt ? weaveDateCore.relativeOrShort(d.restoredAt).title : 'an earlier revision'}${d.restoredBy ? ` by ${d.restoredBy}` : ''}`;
       }
       const size = d.delta == null ? '' : ` ${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)} chars`;
       const where = d.line ? ` at line ${d.line}` : '';
@@ -10654,7 +10760,7 @@ async function showActivity(param) {
     dataset: { href: `#/activity/${a.id}` },
     onclick: () => { location.hash = `#/activity/${a.id}`; },
   },
-    el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
+    el('td', { class: 'activity-when', title: a.ts }, weaveDateCore.relativeOrShort(a.ts).text),
     el('td', {}, el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
     el('td', {}, actorChipEl(a.actor)),
     el('td', {}, activitySummary(a)),
@@ -10765,7 +10871,7 @@ async function showActivityDetail(id) {
     row('Record', recordChip(a)),
     row('Table', a.db ? el('a', { href: `#/table/${a.dbId}` }, a.db) : '—'),
     row('Event', el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
-    row('When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())),
+    row('When', whenEl(a.ts)),
     row('Actor', actorChipEl(a.actor) || '—'),
     ...(field
       ? [row('Field', d.field),
@@ -10799,6 +10905,58 @@ async function showActivityDetail(id) {
       fieldsBody));
 }
 
+const SHARE_MODES = [['read', 'Read'], ['comment', 'Comment (soon)'], ['edit', 'Edit rows'], ['manage', 'Add and delete rows']];
+const SHARE_MODE_LABEL = Object.fromEntries(SHARE_MODES);
+
+function shareDialog(kind, id, name) {
+  const rows = el('div', { class: 'share-list', 'aria-live': 'polite' });
+  const fill = async () => {
+    let grants;
+    try { grants = await api('GET', `/shares?kind=${kind}&id=${encodeURIComponent(id)}`); } catch (err) {
+      rows.replaceChildren(el('span', { class: 'share-hint' }, err.message));
+      return;
+    }
+    if (!grants.length) { rows.replaceChildren(el('span', { class: 'share-hint' }, 'No links yet.')); return; }
+    rows.replaceChildren(...grants.map((g) => {
+      const full = location.origin + WS_PREFIX + g.url;
+      return el('div', { class: 'share-row' },
+        el('div', { class: 'share-row-head' },
+          el('span', { class: 'share-chip' }, SHARE_MODE_LABEL[g.mode] ?? g.mode),
+          el('span', { class: 'share-chip' }, g.visibility === 'private' ? 'Signed-in only' : 'Anyone with the link'),
+          g.label ? el('span', { class: 'share-label' }, g.label) : null),
+        el('code', { class: 'share-url' }, full),
+        el('div', { class: 'share-row-actions' },
+          el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(full, 'Link copied') }, 'Copy'),
+          el('button', {
+            class: 'btn btn-sm share-revoke', type: 'button',
+            onclick: async () => {
+              try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
+            },
+          }, 'Revoke')));
+    }));
+  };
+  modal(`Share ${name}`, [
+    el('span', { class: 'form-label', id: 'share-mode' }, 'Access'),
+    el('div', { class: 'share-modes', role: 'radiogroup', 'aria-labelledby': 'share-mode' },
+      ...SHARE_MODES.map(([value, label]) => el('label', { class: `share-mode${value === 'comment' ? ' is-off' : ''}` },
+        el('input', { type: 'radio', name: 'mode', value, checked: value === 'read' ? '' : null, disabled: value === 'comment' ? '' : null }),
+        el('span', {}, label)))),
+    el('label', { class: 'form-check share-private' },
+      el('input', { type: 'checkbox', name: 'private', class: 'form-check-input' }),
+      el('span', { class: 'form-check-label' }, 'Signed-in members only')),
+    el('label', { class: 'form-label', for: 'share-label' }, 'Label'),
+    el('input', { id: 'share-label', name: 'label', class: 'form-control', placeholder: 'Who the link is for' }),
+    el('span', { class: 'share-hint' }, 'Pages open read-only. Edit and add-delete reach the API and MCP through the link\'s token.'),
+    el('h3', { class: 'share-list-title' }, 'Links'),
+    rows,
+  ], async (fd) => {
+    const g = await api('POST', '/shares', { scope: { kind, id }, mode: fd.get('mode'), visibility: fd.get('private') ? 'private' : 'public', label: fd.get('label') || '' });
+    await copyText(location.origin + WS_PREFIX + g.url, 'Link copied');
+    setTimeout(() => shareDialog(kind, id, name));
+  }, 'Create link');
+  fill();
+}
+
 async function showView(id) {
   state.route = { page: 'view', id };
   syncDocTitle(null);
@@ -10807,24 +10965,10 @@ async function showView(id) {
   let v;
   try { v = await api('GET', `/views/${id}`); } catch (err) { toast(`Couldn't open that view: ${err.message}`, true); return showHome(); }
   syncDocTitle(v.name);
-  const meta = (await api('GET', '/views')).find((x) => x.id === id);
   main.replaceChildren(el('div', { class: 'wv-toolbar' },
     el('h1', {}, v.name),
     el('span', { style: 'flex:1' }),
-    el('button', {
-      class: 'btn btn-sm', onclick: async () => {
-        if (meta?.shared) { await api('DELETE', `/views/${id}/share`); toast('Share link revoked'); return showView(id); }
-        const { url } = await api('POST', `/views/${id}/share`);
-        const full = location.origin + WS_PREFIX + url;
-        await navigator.clipboard?.writeText(full).catch(() => {});
-        modal('Share link', [
-          el('div', { class: 'share-box' },
-            el('code', { class: 'share-url' }, full),
-            el('span', { class: 'share-hint' }, 'Copied to the clipboard. Anyone with this link sees this view, read-only, until you revoke it.')),
-        ], async () => {}, 'Done');
-        showView(id);
-      },
-    }, meta?.shared ? 'Revoke share' : 'Share…'),
+    el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('view', id, v.name) }, 'Share…'),
     dotsMenu([{ hold: 'Delete view', holdingLabel: 'Hold to delete…', run: async () => { await api('DELETE', `/views/${id}`); toast('View deleted'); showHome(); } }], { align: 'right' })));
   for (const b of v.blocks) {
     const cols = Object.keys(b.items[0]?.fields ?? {});
@@ -10931,7 +11075,7 @@ async function membersSection(parent) {
   const [acc, inv] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites')]);
   if (acc.status !== 'fulfilled' || inv.status !== 'fulfilled') return;
   const body = el('div', { class: 'wv-members' });
-  const box = el('details', { class: 'wv-members-box' }, el('summary', {}, 'Members'), body);
+  const box = el('details', { class: 'wv-members-box' }, el('summary', {}, summaryChevron(), 'Members'), body);
   const day = (iso) => String(iso ?? '').slice(0, 10);
   const draw = (accounts, invites, link = null) => {
     const email = el('input', { class: 'form-control', type: 'email', placeholder: 'name@company.com', 'aria-label': 'Email to invite', required: '' });
@@ -10961,7 +11105,9 @@ async function membersSection(parent) {
       el('div', { class: 'wv-members-sub' }, 'Accounts'),
       accounts.length ? el('div', { class: 'card list-rows' },
         ...accounts.map((a) => el('div', { class: 'list-row' },
-          el('span', {}, a.name), el('span', { class: 'spacer' }),
+          el('span', {}, a.name),
+          ...[...new Set((a.identities ?? []).map((i) => i.verifiedEmail).filter(Boolean))].map((mail) => el('span', { class: 'pid wv-member-email' }, mail)),
+          el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, ROLE_LABELS[a.role] ?? a.role))))
         : el('div', { class: 'wv-members-empty' }, 'None'),
       el('div', { class: 'wv-members-sub' }, 'Pending invites'),
@@ -11092,7 +11238,7 @@ function openCommandK({
   };
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
-    id: 'cmdk-input', autocomplete: 'off', spellcheck: 'false',
+    id: 'cmdk-input', class: 'search-bare', autocomplete: 'off', spellcheck: 'false',
     role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'cmdk-results', 'aria-autocomplete': 'list',
     placeholder: placeholder ?? (here ? `Search ${here}` : 'Search'),
   });
@@ -11342,7 +11488,7 @@ const KEY_SHEET_ANYWHERE = [
   { keys: '⌘Return', does: 'send a problem report from its note' },
 ];
 const KEY_SHEET_TABLE = [
-  { keys: '/ or ⌘F', does: 'search this table' },
+  { keys: '/', does: 'search this table' },
   { keys: '⌘C / ⌘V', does: 'copy or paste the cell or the range' },
 ];
 
@@ -11392,7 +11538,7 @@ async function initPageLoader() {
 
 function showPageLoader() {
   const host = $('#page-loader');
-  if (!host || !loading.ready) return;
+  if (!host) return;
   loading.shownAt = Date.now();
   host.hidden = false;
   host.setAttribute('aria-hidden', 'false');
@@ -11401,6 +11547,7 @@ function showPageLoader() {
 function hidePageLoader() {
   const host = $('#page-loader');
   if (!host) return;
+  host.classList.remove('boot');
   host.hidden = true;
   host.setAttribute('aria-hidden', 'true');
   loading.shownAt = 0;
@@ -11424,9 +11571,13 @@ async function withPageLoader(work) {
     if (loading.showTimer) {
       clearTimeout(loading.showTimer);
       loading.showTimer = null;
+      hidePageLoader();
       return;
     }
-    if (!loading.shownAt) return;
+    if (!loading.shownAt) {
+      hidePageLoader();
+      return;
+    }
     const elapsed = Date.now() - loading.shownAt;
     loading.hideTimer = setTimeout(hidePageLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
   }
@@ -11541,7 +11692,9 @@ function cancelSkeleton() {
 function syncDocTitle(pageName) {
   if (pageName !== undefined) state.pageName = pageName;
   const top = dock?.state.chain[dock.state.chain.length - 1];
-  document.title = weaveBreadcrumbs.docTitle(top?.name || state.pageName, $('#ws-name')?.textContent);
+  const row = top ?? (state.route?.page === 'entity' && state.route.entity ? { ...state.route.entity, name: state.pageName } : null);
+  const name = row ? weaveBreadcrumbs.rowTitle(row) : state.pageName;
+  document.title = weaveBreadcrumbs.docTitle(name || state.pageName, $('#ws-name')?.textContent);
 }
 
 function renderRoute() {
@@ -11612,10 +11765,121 @@ function installPhoneBar() {
   const search = el('button', { class: 'phone-search', type: 'button', onclick: () => openCommandK() }, lucideEl('search'), label);
   const add = el('button', {
     class: 'phone-new', type: 'button', hidden: '',
-    onclick: () => { if (state.route?.page === 'db') state.inlineAdd?.(); },
+    onclick: () => {
+      const db = state.route?.page === 'db' ? allTables().find((d) => d.id === state.route.dbId) : null;
+      if (db?.system) state.inlineAdd?.();
+      else if (db) newRowSheet(db);
+    },
   }, lucideEl('plus'));
   document.body.append(el('div', { class: 'phone-bar' }, search, add));
   syncPhoneBar.parts = { label, search, add };
+}
+const NEW_ROW_CHOICES = 3;
+const NEW_ROW_OPTIONS = 6;
+function rowNoun(db) {
+  if (db?.term?.set || db?.system) return db.term?.singular ?? WeaveTerm.DEFAULT.singular;
+  return WeaveTerm.singularize(db?.name) || WeaveTerm.DEFAULT.singular;
+}
+function newRowSheet(start) {
+  const pickTable = !start;
+  let db = start ?? allTables().find((t) => !t.system);
+  if (!db) return null;
+  document.querySelector('.new-row-sheet')?.closeSheet?.();
+  const back = el('div', { class: 'new-row-back', 'aria-hidden': 'true' });
+  const sheet = el('div', { class: 'new-row-sheet', role: 'dialog', 'aria-modal': 'true' });
+  let picked = {};
+  let off = () => {};
+  const close = () => { off(); removeEventListener('keydown', esc, true); sheet.remove(); back.remove(); };
+  const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+  sheet.closeSheet = close;
+  const phone = dockCoversScreen.matches;
+  const name = phone
+    ? el('input', { class: 'new-row-name', type: 'text', enterkeyhint: 'done', 'aria-label': 'Name' })
+    : el('textarea', { class: 'new-row-name', rows: '2', 'aria-label': 'Name' });
+  const create = el('button', { class: 'new-row-create', type: 'button', disabled: '' }, 'Create');
+  if (phone) name.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    create.click();
+  });
+  const more = el('button', { class: 'new-row-more', type: 'button', disabled: '' }, 'All fields');
+  name.addEventListener('input', () => { create.disabled = more.disabled = !name.value.trim(); });
+  const choiceFields = () => {
+    const hidden = new Set(db.hiddenFields ?? []);
+    return db.fields.filter((f) => (f.type === 'select' || f.type === 'multiselect') && !hidden.has(f.name) && (f.options ?? []).length && f.options.length <= NEW_ROW_OPTIONS).slice(0, NEW_ROW_CHOICES);
+  };
+  const choiceEl = (f) => {
+    const many = f.type === 'multiselect';
+    const seg = !many && f.options.length <= 3;
+    const box = el('div', { class: seg ? 'new-row-seg' : 'new-row-chips', role: 'group', 'aria-label': f.name });
+    const paint = () => {
+      for (const b of box.children) {
+        const on = many ? (picked[f.name] ?? []).includes(b.dataset.opt) : picked[f.name] === b.dataset.opt;
+        b.setAttribute('aria-pressed', String(on));
+      }
+    };
+    for (const opt of f.options) {
+      box.append(el('button', {
+        class: `new-row-opt ${optionHue(f, opt)}`, type: 'button', dataset: { opt },
+        onclick: () => {
+          if (many) {
+            const now = new Set(picked[f.name] ?? []);
+            if (now.has(opt)) now.delete(opt); else now.add(opt);
+            picked[f.name] = [...now];
+          } else picked[f.name] = picked[f.name] === opt ? undefined : opt;
+          paint();
+        },
+      }, opt));
+    }
+    paint();
+    return el('div', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, f.name), box);
+  };
+  const tableChip = pickTable ? el('button', { class: 'new-row-table', type: 'button', 'aria-haspopup': 'dialog' }) : null;
+  const title = el('h2', { class: 'new-row-title' });
+  const fieldsBox = el('div', { class: 'new-row-fields' });
+  const draw = () => {
+    const term = rowNoun(db);
+    title.textContent = `New ${term}`;
+    sheet.setAttribute('aria-label', `New ${term}`);
+    name.placeholder = `Name this ${term}`;
+    tableChip?.replaceChildren(iconEl(db.icon, 'wv-icon') ?? '', el('span', {}, db.name), lucideEl('chevron-down'));
+    tableChip?.setAttribute('aria-label', `Table: ${db.name}`);
+    fieldsBox.replaceChildren(...choiceFields().map(choiceEl));
+  };
+  tableChip?.addEventListener('click', () => searchPicker({
+    anchor: tableChip, title: 'New row in', placeholder: 'Search tables…',
+    options: allTables().filter((t) => !t.system).map((t) => ({ id: t.id, label: t.name, sub: t.space })),
+    currentId: db.id,
+    onPick: (o) => { db = allTables().find((t) => t.id === o.id) ?? db; picked = {}; draw(); },
+  }));
+  const write = async (then) => {
+    const text = name.value.trim();
+    if (!text) return;
+    create.disabled = more.disabled = true;
+    const values = { ...filterSeed(db) };
+    for (const [k, v] of Object.entries(picked)) if (v !== undefined && !(Array.isArray(v) && !v.length)) values[k] = v;
+    try {
+      const made = await api('POST', `/tables/${db.id}/entities`, { name: text, ...(Object.keys(values).length ? { values } : {}) });
+      close();
+      await loadSchema();
+      if (state.route?.page === 'db' && state.route.dbId === db.id) await showDatabase(db.id, state.route.view);
+      await then(made);
+    } catch (err) { create.disabled = more.disabled = false; toast(err.message, true); }
+  };
+  create.addEventListener('click', () => write((made) => openEntity(made.id)));
+  more.addEventListener('click', () => write((made) => { location.hash = `#/entity/${made.id}`; }));
+  sheet.append(
+    el('div', { class: 'new-row-grip', 'aria-hidden': 'true' }),
+    el('div', { class: 'new-row-head' }, title, tableChip),
+    el('label', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, 'Name'), name),
+    fieldsBox,
+    el('div', { class: 'new-row-actions' }, more, create));
+  draw();
+  document.body.append(back, sheet);
+  off = dismissOutside({ inside: (t) => sheet.contains(t) || !!t.closest?.('.picker-pop, .chip-pop'), close, swallow: () => true, open: () => sheet.isConnected });
+  addEventListener('keydown', esc, true);
+  name.focus({ preventScroll: true });
+  return sheet;
 }
 function syncPhoneBar() {
   const parts = syncPhoneBar.parts;
@@ -11625,7 +11889,7 @@ function syncPhoneBar() {
   parts.label.textContent = text;
   parts.search.setAttribute('aria-label', text);
   parts.add.hidden = !db;
-  const noun = db?.term?.singular ?? 'row';
+  const noun = rowNoun(db);
   parts.add.title = `New ${noun}`;
   parts.add.setAttribute('aria-label', `New ${noun}`);
 }
@@ -11656,8 +11920,7 @@ document.addEventListener('click', (ev) => {
   if (!caret) return;
   ev.preventDefault();
   ev.stopPropagation();
-  const open = caret.closest('.mention-wrap')?.classList.toggle('open');
-  caret.setAttribute('aria-expanded', String(!!open));
+  toggleMentionCaret(caret);
 });
 
 document.addEventListener('keydown', (e) => {
@@ -11700,7 +11963,7 @@ async function buildWsRail() {
       ...list.filter((w) => w.name !== 'weave').map((w) => {
         const prefix = w.default ? '' : `/w/${w.id}`;
         const chip = el('a', {
-          class: 'ws-icon' + (w.name === current ? ' active' : ''),
+          class: 'ws-icon' + (w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : ''),
           href: w.default ? '/' : (w.url ?? `/w/${w.id}/`),
           title: `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
         }, w.logo
@@ -11727,8 +11990,8 @@ async function buildWsRail() {
 function contextMenu(e, items, extraClass = '') {
   contextMenu.close?.();
   const menu = el('div', { class: `dl-menu wv-ctx ${extraClass}`, style: `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:120` });
-  const close = () => { menu.remove(); removeEventListener('click', away); removeEventListener('keydown', esc); contextMenu.close = null; };
-  const away = (ev) => { if (!menu.contains(ev.target)) close(); };
+  let off = () => {};
+  const close = () => { menu.remove(); off(); removeEventListener('keydown', esc); contextMenu.close = null; };
   const esc = (ev) => { if (ev.key === 'Escape') close(); };
   for (const it of items) {
     if (it === 'divider') { menu.append(el('div', { class: 'dropdown-divider' })); continue; }
@@ -11742,7 +12005,7 @@ function contextMenu(e, items, extraClass = '') {
     }, it.label));
   }
   document.body.append(menu);
-  addEventListener('click', away);
+  off = dismissOutside({ open: () => menu.isConnected, inside: (t) => menu.contains(t), close });
   addEventListener('keydown', esc);
   contextMenu.close = close;
   return menu;
@@ -11753,7 +12016,7 @@ function confirmDeleteWorkspace(w, { current = false } = {}) {
     el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
       `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from Trash in the sidebar. Type `,
       el('code', {}, w.name), ' to confirm.'),
-    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off', style: 'width:100%' }),
+    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off' }),
   ], async (fd) => {
     if (fd.get('confirm') !== w.name) throw new Error(`Type ${w.name} exactly to delete it`);
     await api('DELETE', `/workspaces/${w.id}`);
@@ -11770,10 +12033,12 @@ async function trashedWorkspaces() {
   try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; }
 }
 function trashedWorkspacesCard(trashed, redraw) {
-  return el('div', { class: 'card panel trash-workspaces', style: 'margin-top:12px' },
+  return el('div', { class: 'card list-rows trash-workspaces', style: 'margin-top:12px' },
     el('h3', { class: 'card-title' }, 'Workspaces'),
-    ...trashed.map((w) => el('div', { class: 'wv-toolbar', style: 'margin-bottom:6px;gap:8px' },
-      el('span', { style: 'flex:1' }, w.name, ' ', el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`)),
+    ...trashed.map((w) => el('div', { class: 'list-row' },
+      el('span', { class: 'list-row-name' }, w.name),
+      el('span', { class: 'text-secondary' }, 'deleted ', whenEl(w.deletedAt)),
+      el('span', { class: 'spacer' }),
       el('button', {
         class: 'btn btn-sm', type: 'button',
         onclick: async () => {
@@ -11825,12 +12090,24 @@ function wireWsNew() {
   const btn = $('#ws-new');
   if (!btn) return;
   btn.replaceChildren(iconEl('+', 'wv-icon'));
-  btn.addEventListener('click', () => {
-    modal('New workspace', [el('input', { name: 'name', class: 'form-control', placeholder: 'Workspace name (e.g. dos)' })],
-      async (fd) => {
-        const created = await api('POST', '/workspaces', { name: fd.get('name') });
+  btn.addEventListener('click', async () => {
+    const me = await api('GET', '/auth/me').catch((err) => {
+      if (err.status !== 401) toast(err.message, true);
+      return null;
+    });
+    const accountName = me?.account?.name ?? null;
+    const slugs = WeaveSlugForm.mount({ accountName, check: (slug) => api('GET', `/workspaces/slug?slug=${encodeURIComponent(slug)}`) });
+    modal('New workspace', [slugs.node], async () => {
+      try {
+        const created = await api('POST', '/workspaces', slugs.value());
         location.href = created.url;
-      });
+      } catch (err) {
+        if (slugs.refused(err.code)) err.shown = true;
+        throw err;
+      }
+    }, WeaveSlugs.COPY.submit);
+    const done = document.querySelector('#modal button[type="submit"]');
+    if (done) slugs.bindSubmit(done);
   });
 }
 
@@ -12020,9 +12297,9 @@ function openBugPanel(fab) {
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
-  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: 'Send (⌘Return)' }, 'Send');
+  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: keyHint('Send (⌘Return)') }, 'Send');
   const note = el('textarea', {
-    class: 'form-control bug-note', rows: '2', maxlength: '600',
+    class: 'form-control form-control-sm bug-note', rows: '2', maxlength: '600',
     placeholder: 'What went wrong?',
   });
   note.value = bugDraft.note;
@@ -12106,14 +12383,11 @@ function openBugPanel(fab) {
   panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
   panel.style.bottom = (innerHeight - r.top + 6) + 'px';
 
-  const away = (ev) => {
-    if (!panel.isConnected) return removeEventListener('click', away, true);
-    if (panel.contains(ev.target) || fab.contains(ev.target)) return;
-    if (bugCore.canSubmit(picked, note.value)) return;
-    closeBugPanel();
-    removeEventListener('click', away, true);
-  };
-  addEventListener('click', away, true);
+  dismissOutside({
+    open: () => panel.isConnected,
+    inside: (t) => panel.contains(t) || fab.contains(t) || bugCore.canSubmit(picked, note.value),
+    close: closeBugPanel,
+  });
   addEventListener('keydown', function esc(ev) {
     if (!panel.isConnected) return removeEventListener('keydown', esc);
     if (ev.key === 'Escape') { closeBugPanel(); fab.focus(); removeEventListener('keydown', esc); }

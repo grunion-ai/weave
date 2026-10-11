@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const s = await launch('phone bottom bar', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -12,8 +12,8 @@ const s = await launch('phone bottom bar', (weave) => {
 
 if (s) {
   const { base, browser, tableId, table, docked } = s;
-  const open = async (hash, { width = 390, theme = 'light' } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+  const open = async (hash, { width, theme = 'light' } = {}) => {
+    const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(await phoneBrowser());
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.bug-fab', { state: 'attached' });
@@ -73,12 +73,14 @@ if (s) {
     });
   }
 
-  test('on a phone New runs the table\'s add-row action (Feature #268)', async () => {
+  test('on a phone New opens the new-row sheet and adds nothing until Create (Feature #268, Issue #739)', async () => {
     const page = await open(table);
     try {
       const before = await rowCount(page);
       await page.click('.phone-bar .phone-new');
-      assert.equal(await eventually(() => rowCount(page), before + 1), before + 1, 'one row is added');
+      await page.waitForSelector('.new-row-sheet');
+      await page.waitForTimeout(300);
+      assert.equal(await rowCount(page), before, 'the tap writes no row');
     } finally { await page.close(); }
   });
 

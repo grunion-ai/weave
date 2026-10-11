@@ -9,24 +9,29 @@ export const answering = (at, { input = -Infinity, frames = [], budget = ANSWER_
   return frames.filter((t) => t > input && t < landed).length < budget;
 };
 
-export const GATED = ['transient', 'blank', 'revert', 'shift'];
+export const GATED = ['transient', 'blank', 'revert', 'shift', 'cut'];
 
-export const fingerprint = (journey, e) => `${journey}|${e.kind}|${String(e.sel).split(' > ').slice(-2).join(' > ')}`;
+export const DESKTOP = 'desktop';
+
+export const fingerprint = (journey, e) => `${journey}|${e.kind}|${String(e.sel).split(' > ').slice(-2).join(' > ')}${e.cell && e.cell !== DESKTOP ? `|${e.cell}` : ''}`;
 
 function probe({ maxMs: MAX, answerFrames: FRAMES }) {
   const out = window.__flicker = [];
   const now = () => performance.now();
   const push = (e) => out.push({ ...e, at: Date.now() });
   const word = (s) => !/\d{3,}|[0-9a-f]{8}/i.test(s);
+  const step = (el) => {
+    let p = el.localName;
+    if (el.id && word(el.id)) p += `#${el.id}`;
+    const cls = [...el.classList].filter(word).slice(0, 2);
+    if (cls.length) p += `.${cls.join('.')}`;
+    return p;
+  };
   const sel = (n) => {
     const parts = [];
     for (let el = n; el && el.nodeType === 1 && parts.length < 3; el = el.parentElement) {
       if (el === document.body || el === document.documentElement) break;
-      let p = el.localName;
-      if (el.id && word(el.id)) p += `#${el.id}`;
-      const cls = [...el.classList].filter(word).slice(0, 2);
-      if (cls.length) p += `.${cls.join('.')}`;
-      parts.unshift(p);
+      parts.unshift(step(el));
       if (el.id && word(el.id)) break;
     }
     return parts.join(' > ') || '?';
@@ -36,6 +41,18 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
     const r = n.getBoundingClientRect();
     if (r.width < 2 || r.height < 2 || r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
     return n.checkVisibility ? n.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : true;
+  };
+  const SHOWS = /^(img|svg|canvas|video|input|textarea|select|button|hr|iframe)$/;
+  const inked = (n) => {
+    if (n.textContent.trim()) return true;
+    const all = [n, ...n.querySelectorAll('*')];
+    if (all.length > 200) return true;
+    return all.some((el) => {
+      if (SHOWS.test(el.localName)) return true;
+      const cs = getComputedStyle(el);
+      return cs.backgroundImage !== 'none' || !/^(transparent|rgba\(.*,\s*0\))$/.test(cs.backgroundColor) || cs.boxShadow !== 'none'
+        || ['Top', 'Right', 'Bottom', 'Left'].some((side) => cs[`border${side}Style`] !== 'none' && parseFloat(cs[`border${side}Width`]) > 0);
+    });
   };
   let input = -Infinity;
   const inputs = window.__flickerInputs = [];
@@ -50,6 +67,8 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
   const born = new Map();
   const emptied = new Map();
   const attrs = new Map();
+  const cuts = [];
+  const SLIDES = /^(transform|translate|left|right|inset|width|margin-left|margin-right)$/;
   const tokens = (a, b) => {
     const A = new Set(String(a ?? '').split(/\s+/).filter(Boolean));
     const B = new Set(String(b ?? '').split(/\s+/).filter(Boolean));
@@ -69,6 +88,9 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
         if (e && r.target.firstElementChild) {
           emptied.delete(r.target);
           if (e.painted && t - e.t < MAX && !answering(t)) push({ kind: 'blank', sel: e.sel, ms: Math.round(t - e.t) });
+        }
+        if (r.target.nodeType === 1 && r.target !== document.body && r.target !== document.documentElement) {
+          for (const n of r.removedNodes) if (n.nodeType === 1 && !n.isConnected) cuts.push({ parent: r.target, t, part: step(n) });
         }
         if (r.removedNodes.length && r.target.nodeType === 1 && !r.target.firstElementChild && !emptied.has(r.target)) {
           emptied.set(r.target, { t, painted: false, sel: null });
@@ -116,11 +138,18 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
     const t = now();
     for (const [n, b] of born) {
       if (t - b.t > MAX) born.delete(n);
-      else if (!b.painted && seen(n)) { b.painted = true; b.sel = sel(n); b.parent = n.parentElement; b.parentSel = sel(n.parentElement); }
+      else if (!b.painted && seen(n) && inked(n)) { b.painted = true; b.sel = sel(n); b.parent = n.parentElement; b.parentSel = sel(n.parentElement); }
     }
     for (const [n, e] of emptied) {
       if (t - e.t > MAX || n.firstElementChild) emptied.delete(n);
       else if (!e.painted && seen(n)) { e.painted = true; e.sel = sel(n); }
+    }
+    for (const c of cuts.splice(0)) {
+      if (t - c.t > MAX || !c.parent.isConnected || !seen(c.parent)) continue;
+      const left = c.parent.getAnimations({ subtree: true })
+        .filter((a) => a.playState === 'running' && SLIDES.test(a.transitionProperty ?? ''))
+        .map((a) => { const k = a.effect.getComputedTiming(); return k.endTime - k.localTime; });
+      if (left.length) push({ kind: 'cut', sel: `${sel(c.parent)} > ${c.part}`, ms: Math.round(Math.max(...left)) });
     }
     for (const [n, m] of attrs) {
       for (const [name, e] of m) {
@@ -251,7 +280,7 @@ export function confirm(runs, { min = 2 } = {}) {
       for (const e of events) {
         const fp = fingerprint(journey, e);
         let a = agg.get(fp);
-        if (!a) agg.set(fp, (a = { fp, journey, kind: e.kind, sel: e.sel, runs: 0, ms: 0, value: 0, detail: e.detail ?? '' }));
+        if (!a) agg.set(fp, (a = { fp, journey, cell: e.cell ?? DESKTOP, kind: e.kind, sel: e.sel, runs: 0, ms: 0, value: 0, detail: e.detail ?? '' }));
         a.ms = Math.max(a.ms, e.ms ?? 0);
         a.value = Math.max(a.value, e.value ?? 0);
         if (!once.has(fp)) { once.add(fp); a.runs++; }

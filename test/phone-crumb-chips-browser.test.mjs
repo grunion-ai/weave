@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const s = await launch('phone crumb chips', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -11,8 +11,8 @@ const s = await launch('phone crumb chips', (weave) => {
 
 if (s) {
   const { base, browser, table, docked } = s;
-  const open = async (hash, { width = 390, theme = 'light' } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+  const open = async (hash, { width, theme = 'light' } = {}) => {
+    const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(await phoneBrowser());
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.crumb-row .crumb-cur');
@@ -30,7 +30,7 @@ if (s) {
       };
     });
     const menu = root.querySelector('.nav-menu')?.getBoundingClientRect();
-    return { theme: document.documentElement.dataset.bsTheme, chips, menu: menu && [Math.round(menu.width), Math.round(menu.height)], scrollWidth: document.documentElement.scrollWidth };
+    return { theme: document.documentElement.dataset.bsTheme, chips, menu: menu && [Math.round(menu.width), Math.round(menu.height)], scrollWidth: document.documentElement.scrollWidth, vw: innerWidth };
   }, scope);
   const transparent = (c) => c === 'rgba(0, 0, 0, 0)' || c === 'transparent';
 
@@ -54,7 +54,7 @@ if (s) {
           assert.ok(cur[0].weight >= 700, `the current crumb is bold (${cur[0].weight})`);
           assert.ok(seen.chips.filter((c) => !c.current).every((c) => c.weight < cur[0].weight), 'and bolder than the rest');
           if (scope === '#main') assert.deepEqual(seen.menu, [44, 44], 'the menu button is a 44px circle');
-          assert.ok(seen.scrollWidth <= 390, `the page does not scroll sideways (${seen.scrollWidth})`);
+          assert.ok(seen.scrollWidth <= seen.vw, `the page does not scroll sideways (${seen.scrollWidth})`);
         } finally { await page.close(); }
       });
     }

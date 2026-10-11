@@ -118,7 +118,8 @@ test('document endpoints serve MD, HTML, PDF natively', async () => {
   const htmlText = await html.text();
   assert.match(htmlText, /<h1>Design notes<\/h1>/);
   assert.match(htmlText, /class="mention mention-entity"/);
-  assert.match(htmlText, /Task#2 — Build/);
+  assert.match(htmlText, /<span class="k-label">Build<\/span>/, 'the chip names the row');
+  assert.match(htmlText, /<span class="k-home">Task<\/span>/, 'and its home table, as the Chip view draws it everywhere else');
 
   const pdf = await fetch(`${base}/e/${taskId}/doc.pdf`);
   assert.equal(pdf.headers.get('content-type'), 'application/pdf');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phoneProfile } from './lib/browser.mjs';
 
 const PASSCODE = '11243947';
 const prior = process.env.WEAVE_APPLET_PASSCODE;
@@ -26,7 +26,7 @@ const s = await launch('applet autosave', (weave) => {
 });
 
 if (s) {
-  const { browser, base, weave } = s;
+  const { base, weave } = s;
   const stored = () => weave.readEntity(task.id).doc ?? '';
   const settle = async (want, ms = 5000) => {
     for (let t = 0; t < ms && stored() !== want; t += 50) await new Promise((r) => setTimeout(r, 50));
@@ -34,7 +34,7 @@ if (s) {
   };
 
   const phone = async (colorScheme = 'light') => {
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, colorScheme });
+    const ctx = await (await phoneBrowser()).newContext({ ...phoneProfile().page, colorScheme });
     await ctx.request.post(`${base}/t/unlock`, { data: { passcode: PASSCODE } });
     const page = await ctx.newPage();
     await page.goto(`${base}/t`, { waitUntil: 'networkidle' });

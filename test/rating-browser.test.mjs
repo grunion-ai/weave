@@ -397,7 +397,7 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${deal.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      await page.locator('td[data-field="Vendor"] .mention-wrap .mention-caret').first().click();
+      await page.locator('td[data-field="Vendor"] .k-rel .mention-caret').first().click();
       await page.waitForSelector('td[data-field="Vendor"] .mention-f .wv-rating');
       assert.equal(await page.getAttribute('td[data-field="Vendor"] .mention-f .wv-rating', 'aria-label'), '3 of 5');
     } finally { await page.close(); }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let notes, id;
 const s = await launch('doc toolbar phone', (weave) => {
@@ -40,7 +40,7 @@ if (s) {
 
   for (const colorScheme of ['light', 'dark']) {
     test(`on a phone the formatting bar is one row of 44px buttons along the bottom, clear of the text, in ${colorScheme} (Issue #693)`, async () => {
-      const page = await browser.newPage({ viewport: { width: 390, height: 844 }, colorScheme });
+      const page = await phonePage(await phoneBrowser(), { colorScheme });
       try {
         await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
         await selectWord(page);
@@ -56,7 +56,7 @@ if (s) {
   }
 
   test('on a phone the formatting bar follows the keyboard when the page pans under it (Issue #706)', async () => {
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const page = await phonePage(await phoneBrowser());
     try {
       await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
       await selectWord(page);
@@ -73,9 +73,9 @@ if (s) {
         fake.offsetTop = 120;
         real.dispatchEvent(new Event('scroll'));
         await tick();
-        return { keyboardUp, panned: bar.style.bottom, want: `${innerHeight - 400 - 120}px` };
+        return { keyboardUp, panned: bar.style.bottom, up: `${innerHeight - 400}px`, want: `${innerHeight - 400 - 120}px` };
       });
-      assert.equal(bottoms.keyboardUp, '444px');
+      assert.equal(bottoms.keyboardUp, bottoms.up);
       assert.equal(bottoms.panned, bottoms.want, 'the bar sits on the keyboard after the pan');
     } finally { await page.close(); }
   });

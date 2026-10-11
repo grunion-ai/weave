@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, styleOf } from './lib/browser.mjs';
+import { launch, styleOf, PHONE, phoneBrowser, phonePage, phoneProfile, touchScroll } from './lib/browser.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 const ROWS = 2000;
@@ -23,8 +23,8 @@ const s = await launch('pane scroll shell', (weave) => {
 if (s) {
   const { base, browser, big, first } = s;
 
-  const open = async (hash, { width = 1440, height = 900, theme = 'light', dockWidth = null, ready = '#main .wv-grid tbody tr[data-i]' } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height } });
+  const open = async (hash, { width = 1440, height = 900, theme = 'light', dockWidth = null, ready = '#main .wv-grid tbody tr[data-i]', phone = false } = {}) => {
+    const page = phone ? await phonePage(await phoneBrowser()) : await browser.newPage({ viewport: { width, height } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     if (dockWidth) await page.addInitScript((w) => localStorage.setItem('wv-dock-width', w), String(dockWidth));
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
@@ -50,6 +50,7 @@ if (s) {
     await page.mouse.wheel(0, dy);
     await page.waitForTimeout(350);
   };
+  const swipeOver = async (page, q, dy = 600) => touchScroll(page, await centreOf(page, q), dy);
   const onlyMoved = (before, after, pane) => {
     assert.equal(after.doc, 0, `the document never scrolls (wheel over ${pane}): ${JSON.stringify(after)}`);
     assert.ok(after[pane] > before[pane] + 50, `a wheel over ${pane} scrolls ${pane}: ${before[pane]} -> ${after[pane]}`);
@@ -113,7 +114,7 @@ if (s) {
     assert.equal(await chain(), 'contain', 'the in-flow nav contains its chain');
     await page.evaluate(() => document.querySelector('#app').classList.add('nav-collapsed', 'nav-peek'));
     assert.equal(await chain(), 'contain', 'the nav-peek overlay contains its chain');
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize(phoneProfile().page.viewport);
     assert.equal(await chain(), 'contain', 'the phone drawer contains its chain');
     await page.close();
   });
@@ -173,10 +174,10 @@ if (s) {
     await page.close();
   });
 
-  test('phone 390x844: the main panel, the full-screen dock and the nav drawer each scroll alone', async () => {
-    let page = await open(`#/entity/${first.id}`, { width: 390, height: 844, ready: '#main .doc-section .vditor-reset p' });
+  test(`${PHONE}: the main panel, the full-screen dock and the nav drawer each scroll alone`, async () => {
+    let page = await open(`#/entity/${first.id}`, { phone: true, ready: '#main .doc-section .vditor-reset p' });
     let before = await tops(page);
-    await wheelOver(page, '#main');
+    await swipeOver(page, '#main');
     let after = await tops(page);
     assert.equal(after.doc, 0, 'the document never scrolls on a phone');
     assert.ok(after.main > before.main + 50, `the main panel scrolls: ${before.main} -> ${after.main}`);
@@ -184,25 +185,25 @@ if (s) {
     await page.click('#main .nav-menu');
     await page.waitForTimeout(250);
     before = await tops(page);
-    await wheelOver(page, '#sidebar');
+    await swipeOver(page, '#sidebar');
     after = await tops(page);
     assert.equal(after.doc, 0);
     assert.ok(after.sidebar > before.sidebar + 50, `the drawer nav scrolls: ${before.sidebar} -> ${after.sidebar}`);
     assert.equal(after.main, before.main, 'the page under the drawer holds');
     await page.close();
 
-    page = await open(`#/table/${big.id}?e=${first.id}`, { width: 390, height: 844 });
+    page = await open(`#/table/${big.id}?e=${first.id}`, { phone: true });
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
     await page.waitForTimeout(300);
-    const sheet = await page.evaluate(() => { const r = document.querySelector('#dock').getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; });
-    assert.deepEqual(sheet.map(Math.round), [0, 0, 390, 844], `the phone dock covers the screen: ${sheet}`);
+    const sheet = await page.evaluate(() => { const r = document.querySelector('#dock').getBoundingClientRect(); return [r.left, r.top, r.width, r.height, innerWidth, innerHeight]; });
+    assert.deepEqual(sheet.map(Math.round).slice(0, 4), [0, 0, ...sheet.slice(4)], `the phone dock covers the screen: ${sheet}`);
     before = await tops(page);
-    await wheelOver(page, '#dock');
+    await swipeOver(page, '#dock');
     after = await tops(page);
     assert.equal(after.doc, 0);
     assert.ok(after.dock > before.dock + 50, `the sheet scrolls: ${before.dock} -> ${after.dock}`);
     assert.equal(after.main, before.main, 'the table under the sheet holds');
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, 'no sideways scroll');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0, 'no sideways scroll');
     await page.close();
   });
 }

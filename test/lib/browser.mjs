@@ -63,12 +63,26 @@ export const chromium = browserType && new Proxy(browserType, {
 
 const engineFor = (engine) => (!engine || pw[engine] === browserType ? chromium : pw[engine]);
 
+export const PHONE = 'iPhone 15';
+export function phoneProfile() {
+  if (!pw) return null;
+  const { defaultBrowserType, ...page } = pw.devices[PHONE];
+  return { engine: defaultBrowserType, page };
+}
+export const phonePage = (browser, options = {}) => browser.newPage({ ...phoneProfile().page, ...options });
+export const phoneBrowser = () => engineOf(phoneProfile().engine);
+export const touchScroll = (page, { x, y }, dy) => page.evaluate(([px, py, d]) => {
+  let n = document.elementFromPoint(px, py);
+  while (n && n !== document.documentElement && !(n.scrollHeight > n.clientHeight && /auto|scroll/.test(getComputedStyle(n).overflowY))) n = n.parentElement;
+  (n && n !== document.documentElement ? n : document.scrollingElement).scrollBy({ top: d, behavior: 'instant' });
+}, [x, y, dy]);
+
 export async function launch(name, seed = () => {}, options = {}) {
   if (!chromium) {
     test(`${name} (browser)`, { skip: 'playwright not installed' }, () => {});
     return null;
   }
-  const browser = await engineFor(options.engine).launch();
+  const browser = await engineFor(options.phone ? phoneProfile().engine : options.engine).launch();
   if (THROTTLE) throttle(browser);
   const weave = new Weave();
   let server;

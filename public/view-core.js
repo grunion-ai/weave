@@ -9,7 +9,7 @@
     for (const f of v?.fields ?? []) {
       if (f.value == null || f.value === '') continue;
       const extra = {};
-      for (const k of ['meter', 'rating', 'spark']) if (f[k]) extra[k] = f[k];
+      for (const k of ['meter', 'rating', 'spark', 'type', 'option', 'options']) if (f[k]) extra[k] = f[k];
       out.push({ kind: 'field', label: f.label, value: String(f.value), ...extra });
     }
     return out;

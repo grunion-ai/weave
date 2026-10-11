@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch } from './lib/browser.mjs';
+import { launch, PHONE, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const other = new Weave();
 other.state.meta.name = 'taken';
@@ -16,9 +16,9 @@ async function reset() {
   delete s.weave.state.meta.onboardedAt;
 }
 
-async function open({ theme = 'light', viewport = null } = {}) {
+async function open({ theme = 'light', phone = false } = {}) {
   await reset();
-  const page = await s.browser.newPage(viewport ? { viewport } : {});
+  const page = phone ? await phonePage(await phoneBrowser()) : await s.browser.newPage();
   await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
   await page.goto(`${s.base}/#/`);
   await page.waitForSelector('.wv-onboard[data-step="1"]');
@@ -189,8 +189,8 @@ if (s) {
     await page.close();
   });
 
-  test('375 px: every step fits the phone, no sideways scroll', async () => {
-    const page = await open({ viewport: { width: 375, height: 812 } });
+  test(`${PHONE}: every step fits the phone, no sideways scroll`, async () => {
+    const page = await open({ phone: true });
     for (const n of [1, 2, 3]) {
       if (n > 1) { await page.click('.wv-onboard .btn-primary'); await step(page, n); }
       const fit = await page.evaluate(() => {
@@ -198,9 +198,9 @@ if (s) {
         return { scroll: document.documentElement.scrollWidth, width: document.documentElement.clientWidth, left: b.left, right: b.right };
       });
       assert.ok(fit.scroll <= fit.width, `step ${n}: no horizontal scroll (${fit.scroll} > ${fit.width})`);
-      assert.ok(fit.left >= 0 && fit.right <= 375, `step ${n}: the dialog sits inside the screen`);
+      assert.ok(fit.left >= 0 && fit.right <= fit.width, `step ${n}: the dialog sits inside the screen`);
       const btn = await page.locator('.wv-onboard .btn-primary').boundingBox();
-      assert.ok(btn.x >= 0 && btn.x + btn.width <= 375, `step ${n}: the primary button is on screen`);
+      assert.ok(btn.x >= 0 && btn.x + btn.width <= fit.width, `step ${n}: the primary button is on screen`);
     }
     await landsHome(page, () => page.click('.wv-onboard-skip'));
     await page.close();

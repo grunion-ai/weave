@@ -153,7 +153,8 @@ if (s) {
       assert.equal(valueOf(ids.wifi, 'Priority'), 'P1');
       assert.deepEqual(await rowsIn(page, 'Japan › P1'), ['Wifi', 'Passport', 'Rail pass']);
       const pid = (id) => weave.readEntity(id).publicId;
-      assert.equal(view().order.indexOf(pid(ids.wifi)) < view().order.indexOf(pid(ids.pass)), true, 'the order is saved in the view');
+      const saved = await eventually(() => Boolean(view().order) && view().order.indexOf(pid(ids.wifi)) < view().order.indexOf(pid(ids.pass)), true);
+      assert.equal(saved, true, 'the order is saved in the view');
     } finally { await page.close(); }
   });
 

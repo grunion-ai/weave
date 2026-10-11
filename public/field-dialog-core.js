@@ -91,19 +91,26 @@
     plain: ['Ascending', 'Descending'],
   };
   const TEXT_LIKE = ['text', 'url', 'email', 'key'];
+  const DATE_LIKE = ['date', 'daterange'];
   const NUMBER_AGGREGATES = ['count', 'sum', 'avg', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
   function sortReading(f, targetType) {
     const type = f?.type;
-    if (type === 'date' || type === 'daterange') return 'date';
+    if (DATE_LIKE.includes(type)) return 'date';
     if (type === 'number' || type === 'rating') return 'number';
     if (type === 'select' || type === 'workflow') return type;
     if (TEXT_LIKE.includes(type)) return 'text';
     if (type === 'rollup') {
       if (NUMBER_AGGREGATES.includes(f.aggregate)) return 'number';
       if (f.aggregate === 'join') return 'text';
-      return (f.aggregate === 'min' || f.aggregate === 'max') && targetType === 'number' ? 'number' : 'plain';
+      if (f.aggregate !== 'min' && f.aggregate !== 'max') return 'plain';
+      if (targetType === 'number') return 'number';
+      return DATE_LIKE.includes(targetType) ? 'date' : 'plain';
     }
-    if (type === 'lookup') return targetType === 'number' ? 'number' : TEXT_LIKE.includes(targetType) || targetType === 'select' || targetType === 'workflow' ? 'text' : 'plain';
+    if (type === 'lookup') {
+      if (targetType === 'number') return 'number';
+      if (DATE_LIKE.includes(targetType)) return 'date';
+      return TEXT_LIKE.includes(targetType) || targetType === 'select' || targetType === 'workflow' ? 'text' : 'plain';
+    }
     if (type === 'formula') return ['format', 'unit', 'currency', 'decimals'].some((k) => f[k] != null) ? 'number' : 'plain';
     return 'plain';
   }
