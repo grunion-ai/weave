@@ -11,6 +11,7 @@
   --tblr-secondary-rgb: 95, 100, 116;
   --wv-control-border: #858a97;
   --wv-pill-hover: rgba(12, 27, 51, .06);
+  --wv-computed-bg: rgba(0, 5, 20, .035);
   --wv-pill-active: rgba(12, 27, 51, .12);
   --wv-panel-shadow: 0 1px 3px rgba(12, 27, 51, .08);
   --wv-head-shadow: rgba(12, 27, 51, .14);
@@ -38,6 +39,7 @@
   --wv-canvas: #0c1b33;
   --wv-canvas-muted: #9aa0ae;
   --wv-pill-hover: rgba(224, 220, 212, .07);
+  --wv-computed-bg: rgba(255, 255, 255, .045);
   --wv-pill-active: rgba(224, 220, 212, .14);
   --wv-panel-shadow: 0 1px 3px rgba(0, 0, 0, .35);
   --wv-head-shadow: rgba(0, 0, 0, .45);
@@ -355,6 +357,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid tbody .ms-box.chip-trigger { max-width: 100%; }
 .wv-grid tbody .ms-box > .k { flex-shrink: 0; }
 .wv-grid td.cell-computed { background: none; color: var(--tblr-secondary); cursor: default; }
+.wv-grid td.cell-computed:where([data-ftype="formula"], [data-ftype="rollup"], [data-ftype="lookup"]) { background: var(--wv-computed-bg); }
 .wv-grid .inline-edit:hover { border-color: transparent; background: none; }
 .wv-grid .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
 .wv-grid tbody td[tabindex]:focus { outline: none; box-shadow: inset 0 0 0 2px var(--tblr-primary); border-radius: 4px; }
@@ -576,8 +579,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .btn.tiny { padding: 1px 7px; font-size: var(--fs-secondary); }
 .open-link { color: var(--tblr-secondary); text-decoration: none; font-size: var(--fs-secondary); white-space: nowrap; }
 .open-link:hover { color: var(--tblr-primary); }
-.computed .wv-tag { font-size: var(--fs-meta); color: var(--tblr-secondary); margin-left: 6px; }
 .fieldrow .computed { color: var(--tblr-body-color); }
+.fieldrow .k-computed.k-derived { background: var(--wv-computed-bg); border: 0; border-radius: 4px; padding: 1px 8px; cursor: default; }
 .fieldrow-system .fieldrow-value { color: var(--tblr-secondary); font-size: var(--fs-grid); }
 .fieldrow-system .opt-grip { visibility: hidden; }
 
