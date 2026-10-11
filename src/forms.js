@@ -403,7 +403,7 @@ function bugRow(form, input, server) {
       note: input.note,
       events,
       client: isMap(input.client) ? input.client : {},
-      server: { version: server.version ?? 'unknown', startedAt: server.startedAt ?? null, uptime: server.uptime ?? 0, workspace: server.workspace ?? form.workspace },
+      server: { version: server.version ?? 'unknown', startedAt: server.startedAt ?? null, uptime: server.uptime ?? 0, workspace: server.workspace ?? form.workspace, instance: server.instance ?? null, forwardFailure: server.forwardFailure ?? null },
     });
   } catch (err) {
     throw new WeaveError(err.message, 'invalid');

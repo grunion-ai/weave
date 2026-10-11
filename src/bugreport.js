@@ -123,6 +123,7 @@ export function renderBugReport({ categories = [], note = '', events = [], clien
   const facts = [
     ['Page', client.url],
     ['Route', client.route],
+    ['Instance', server.instance],
     ['Workspace', server.workspace],
     ['Build', server.version ? `v${server.version}, started ${server.startedAt ?? '?'}${uptimeWords(server.uptime)}` : null],
     ['Viewport', client.viewport ? `${client.viewport.w} × ${client.viewport.h}` : null],
@@ -150,6 +151,7 @@ export function renderBugReport({ categories = [], note = '', events = [], clien
     '',
     text ? quote(text) : '_The reporter added no note._',
     '',
+    ...(server.forwardFailure ? [`Forward to ${server.forwardFailure.url} failed: ${redact(String(server.forwardFailure.reason))}. Filed on this instance instead.`, ''] : []),
     '## Where',
     '',
     '| | |',
@@ -175,4 +177,33 @@ export function renderBugReport({ categories = [], note = '', events = [], clien
   ].join('\n');
 
   return { title, severity: severityFor(cats), symptoms, markdown: md };
+}
+
+export const FORWARD_TIMEOUT_MS = 10000;
+
+export function bugForwardTarget(env = process.env) {
+  if (env.WEAVE_TRACKER_CANONICAL === '1') return null;
+  const url = String(env.WEAVE_BUG_FORWARD_URL ?? '').trim().replace(/\/+$/, '');
+  const token = String(env.WEAVE_BUG_FORWARD_TOKEN ?? '').trim();
+  return url && token ? { url, token } : null;
+}
+
+export async function forwardBugReport(target, body, instance, { fetchImpl = fetch, timeoutMs = FORWARD_TIMEOUT_MS } = {}) {
+  let res;
+  try {
+    res = await fetchImpl(`${target.url}/api/bug-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${target.token}` },
+      body: JSON.stringify({ ...body, instance }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    const timedOut = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+    return { ok: false, reason: timedOut ? `no answer within ${timeoutMs / 1000} s` : String(err?.cause?.code ?? err?.cause?.message ?? err?.message ?? err) };
+  }
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (!res.ok) return { ok: false, reason: `answered ${res.status}${data?.error ? ` (${String(data.error).slice(0, 200)})` : ''}` };
+  if (!data || typeof data !== 'object') return { ok: false, reason: `answered ${res.status} with no report` };
+  return { ok: true, data };
 }

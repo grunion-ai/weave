@@ -55,6 +55,31 @@ node scripts/changelog-fold.mjs
 node scripts/architecture.mjs
 ```
 
+### Canonical tracker
+
+The `weave` docs workspace on production, https://weave.grunion.ai/w/weave, is
+the one canonical tracker for Development/Issue, Feature and Release rows. Every
+other server holds a read copy that boot syncs from `docs/development.json`.
+
+- The canonical server sets `WEAVE_TRACKER_CANONICAL=1`. Boot then skips the
+  manifest sync and logs one line saying so, so edits made on the tracker are
+  never overwritten by an older build's manifest. A canonical server never
+  forwards bug reports.
+- Every other Grunion server sets `WEAVE_BUG_FORWARD_URL` to the workspace base
+  (`https://weave.grunion.ai/w/weave`) and `WEAVE_BUG_FORWARD_TOKEN` to a bearer
+  token for it. `POST /api/bug-report` then posts the report to
+  `<url>/api/bug-report` with the instance's origin (`WEAVE_ORIGIN`, or the
+  request host) as `instance`, which the canonical report shows as its Instance
+  row. A forwarded report answers 201 with the canonical row and `forwardedTo`.
+  A network error, a 10 s timeout or a non-2xx answer files the report locally
+  as before, notes "Forward to <url> failed: <reason>" in it, and answers with
+  `forward: "failed"` and `forwardError`. With either variable unset nothing is
+  forwarded.
+- Export reads the canonical tracker over HTTP:
+  `node scripts/export-development.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN`.
+  The file mode (`node scripts/export-development.mjs [path/to/weave.db]`) still
+  works, and `--out <path>` writes somewhere other than `docs/development.json`.
+
 Land the version, exported manifest, folded changelog and architecture map in one
 PR. Between releases every change adds its own
 `changelog.d/<short-slug>-<Issue or Feature number>.md`; only a version bump edits

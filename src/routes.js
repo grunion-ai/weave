@@ -11,6 +11,7 @@ import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
+import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import '../public/starter-core.js';
 import '../public/prefill-core.js';
@@ -1324,13 +1325,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'POST /api/bug-report') {
           const docs = hub.get('weave') ?? hub.get('weaver');
           const issues = docs && (() => { try { return docs.getTable('Development/Issue'); } catch { return null; } })();
-          if (!issues) {
-            return out(501, { error: 'No Development/Issue table to file into — this instance has no weave docs workspace', code: 'unsupported' });
+          if (issues && role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
+          const target = bugForwardTarget();
+          let forwardFailure = null;
+          if (target) {
+            const sent = await forwardBugReport(target, body && typeof body === 'object' && !Array.isArray(body) ? body : {}, origin || process.env.WEAVE_ORIGIN || String(rx.header('host') ?? 'unknown'));
+            if (sent.ok) return out(201, { ...sent.data, forwardedTo: target.url });
+            forwardFailure = { url: target.url, reason: sent.reason };
           }
-          if (role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
+          const failed = forwardFailure ? { forward: 'failed', forwardError: forwardFailure.reason } : {};
+          if (!issues) {
+            return out(501, { error: 'No Development/Issue table to file into — this instance has no weave docs workspace', code: 'unsupported', ...failed });
+          }
           docs.maybeRefresh();
           const form = ensureBugForm(docs);
-          return out(201, submitForm(docs, form.id, body ?? {}, { actor: role == null ? 'bug-report' : weave.actor, server: stamp() }));
+          const instance = role != null && typeof body?.instance === 'string' && body.instance.trim() ? body.instance.trim().slice(0, 200) : null;
+          const filed = submitForm(docs, form.id, body ?? {}, { actor: role == null ? 'bug-report' : weave.actor, server: { ...stamp(), instance, forwardFailure } });
+          return out(201, { ...filed, ...failed });
         }
 
         if (path === '/api/workspace/logo') {
