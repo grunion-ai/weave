@@ -115,7 +115,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a live sort is the popover check, and the menu opens on it', async () => {
+  test('a live sort is the popover check, and focus still opens on the first row (Issue #763)', async () => {
     const page = await grid();
     try {
       const sortRow = (pop, label) => pop.locator('.wv-menu-row').filter({ has: page.getByText(label, { exact: true }) });
@@ -128,7 +128,10 @@ if (s) {
       assert.equal(await sortRow(pop, 'Reverse option order')
         .locator('.chip-pop-check').count(), 0, 'and only it does');
       assert.equal((await asc.locator('.wv-menu-label').textContent()).trim(), 'Option order');
-      assert.match(await page.evaluate(() => document.activeElement?.textContent ?? ''), /^Option order/);
+      assert.equal(await asc.getAttribute('role'), 'menuitemcheckbox', 'a checkable row says so');
+      assert.equal(await asc.getAttribute('aria-checked'), 'true');
+      assert.match(await page.evaluate(() => document.activeElement?.textContent ?? ''), /^Edit field…/,
+        'the menu button pattern: focus lands on the first row, whatever is checked');
       assert.equal(await pop.locator('.wv-menu-row', { hasText: 'Clear sort' }).count(), 1);
     } finally { await page.close(); }
   });
