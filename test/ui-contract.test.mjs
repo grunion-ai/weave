@@ -1016,7 +1016,8 @@ test('every selector speaks the one dialect: search bar first, list under it', (
   const box = rulesFor('.picker-box');
   assert.equal(box['width'], '100%');
   assert.ok(box['border'], 'the box is the field');
-  assert.equal(rulesFor('.picker-search')['border'], '0', 'the input inside it draws nothing');
+  assert.ok(picker.includes("class: 'search-bare picker-search'"), 'the input inside it wears the bare search skin');
+  assert.equal(rulesFor('.search-bare')['border'], '0', 'the input inside it draws nothing');
   const list = rulesFor('.picker-list');
   assert.ok(list['max-height'], 'the list is small and scrolls');
 });
