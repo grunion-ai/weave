@@ -18,9 +18,9 @@
   };
 
   const ROW = {
-    workspace: (r) => make('li', {}, make('a', { href: r.open }, r.title, r.title !== r.name ? make('small', {}, r.name) : null)),
-    invite: (r) => make('li', { class: 'invite' },
-      make('span', {}, r.title, make('small', {}, fill(COPY.start.inviteLead, { role: r.role }))),
+    workspace: (r, several) => make('li', {}, make('a', { href: r.open }, r.title, r.title !== r.name ? make('small', {}, r.name) : null, several ? make('small', {}, r.login) : null)),
+    invite: (r, several) => make('li', { class: 'invite' },
+      make('span', {}, r.title, make('small', {}, fill(COPY.start.inviteLead, { role: r.role }) + (several ? ` · ${r.login}` : ''))),
       make('button', { type: 'button', class: 'btn', onclick: async (e) => {
         e.target.disabled = true;
         try {
@@ -61,12 +61,18 @@
         make('a', { class: 'btn btn-primary', href: '/api/auth/oidc/start?start=1' }, fill(COPY.start.signIn, { provider: me.provider })));
       return;
     }
-    const rows = me.rows.map((r) => ROW[r.kind]?.(r)).filter(Boolean);
-    main.replaceChildren(
+    const several = (me.logins ?? []).length > 1;
+    const rows = me.rows.map((r) => ROW[r.kind]?.(r, several)).filter(Boolean);
+    const signOut = make('button', { type: 'button', class: 'btn-link', onclick: async () => {
+      await getJson('/api/start/signout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+      render(await getJson('/api/start'));
+    } }, COPY.start.signOut);
+    main.replaceChildren(...[
       make('h1', {}, COPY.start.listTitle),
       make('div', { class: 'card' }, rows.length ? make('ul', { class: 'rows' }, ...rows) : make('p', { class: 'muted' }, COPY.start.empty)),
       me.canCreate ? make('div', { class: 'actions' }, make('button', { type: 'button', class: 'btn btn-primary', onclick: () => createForm(me) }, COPY.start.create)) : null,
-      make('div', { class: 'foot' }, make('a', { href: '/api/auth/oidc/start?start=1&fresh=1' }, COPY.start.signOut)));
+      make('div', { class: 'foot' }, make('a', { href: '/api/auth/oidc/start?start=1&fresh=1' }, COPY.start.addLogin), ' · ', signOut),
+    ].filter(Boolean));
   }
 
   getJson('/api/start').then(render).catch((err) => { main.textContent = err.message; });
