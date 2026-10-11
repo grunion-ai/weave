@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: "24.12.0"
       - name: Syntax
-        run: find bin src scripts -name '*.js' -o -name '*.mjs' | xargs -n 50 node --check
+        run: find bin src scripts \( -name '*.js' -o -name '*.mjs' \) -exec node --check {} \;
       - name: Boot
         run: |
           node bin/weave.js serve --port 4401 --host 127.0.0.1 --data "$RUNNER_TEMP/dev.db" &
