@@ -1,5 +1,5 @@
 import { Weave, WeaveError, fileHeaders, logoType, inviteUrl } from './engine.js';
-import { handleApplet } from './applet.js';
+import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
@@ -23,6 +23,11 @@ export function statusFor(err) {
 }
 
 const STARTED_AT = new Date().toISOString();
+
+export const MAX_BODY_BYTES = 10 * 1024 * 1024;
+export const MAX_ROWS = 500;
+const rowCap = () => Math.max(1, Number(globalThis.process?.env?.WEAVE_MAX_ROWS) || MAX_ROWS);
+const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
 
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
@@ -213,7 +218,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
 
     if (path === '/t' || (path.startsWith('/t/') && !UUID_RE.test(path.slice(3)))) {
-      const appletBody = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody().catch(() => ({})) : {};
+      const wantsBody = ['POST', 'PUT', 'PATCH'].includes(rx.method) && appletOn();
+      if (wantsBody && Number(rx.header('content-length') ?? 0) > MAX_BODY_BYTES) return out(413, { error: 'Body too large', code: 'too-large' });
+      const appletBody = wantsBody ? await rx.readBody().catch(() => ({})) : {};
       try {
         const hit = handleApplet({
           weave,
@@ -1035,7 +1042,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/audit') {
           return out(200, weave.listAudit({
-            limit: Number(rx.searchParams.get('limit') ?? 100),
+            limit: boundedLimit(rx.searchParams.get('limit'), 100),
             offset: Number(rx.searchParams.get('offset') ?? 0),
           }));
         }
@@ -1049,7 +1056,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, Array.isArray(body) ? replies : replies[0]);
         }
         if (route === 'GET /api/undo') {
-          return out(200, weave.listUndo({ limit: Number(rx.searchParams.get('limit') ?? 20) }));
+          return out(200, weave.listUndo({ limit: boundedLimit(rx.searchParams.get('limit'), 20) }));
         }
         if (route === 'POST /api/bulk') {
           const { ids, op, ...params } = body ?? {};
@@ -1223,13 +1230,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(201, weave.readEntity(e.id, { viewerZone }));
           }
           if (rx.method === 'GET') {
-            const limit = rx.searchParams.has('limit') ? Number(rx.searchParams.get('limit')) : null;
+            const limit = boundedLimit(rx.searchParams.get('limit'));
             const offset = Number(rx.searchParams.get('offset') ?? 0);
             return out(200, weave.query(m[1], { limit, offset, viewerZone }));
           }
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && rx.method === 'POST') {
-          return out(200, weave.query(m[1], { ...body, viewerZone }));
+          return out(200, weave.query(m[1], { ...body, limit: boundedLimit(body?.limit), viewerZone }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/formula-check$/)) && rx.method === 'POST') {
           return out(200, weave.checkFormula(m[1], body?.expression, { entity: body?.entity ?? null, excludeField: body?.excludeField ?? null, scan: Boolean(body?.scan) }));
@@ -1307,7 +1314,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions$/)) && rx.method === 'GET') {
           const fieldRef = rx.searchParams.get('field') ?? null;
-          return out(200, weave.listDocRevisions(m[1], fieldRef, { limit: rx.searchParams.get('limit') ?? 50 }));
+          return out(200, weave.listDocRevisions(m[1], fieldRef, { limit: boundedLimit(rx.searchParams.get('limit'), 50) }));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions\/([^/]+)$/)) && rx.method === 'GET') {
           return out(200, weave.getDocRevision(m[1], rx.searchParams.get('field') ?? null, m[2]));
@@ -1368,7 +1375,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             tableRef: rx.searchParams.get('table'),
             kinds: rx.searchParams.getAll('kind'),
             since: rx.searchParams.get('since'),
-            limit: rx.searchParams.has('limit') ? Number(rx.searchParams.get('limit')) : null,
+            limit: boundedLimit(rx.searchParams.get('limit')),
             offset: Number(rx.searchParams.get('offset') ?? 0),
           }));
         }
@@ -1378,7 +1385,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if (route === 'GET /api/search') {
           const q = rx.searchParams.get('q') ?? '';
-          const limit = Number(rx.searchParams.get('limit') ?? 25);
+          const limit = boundedLimit(rx.searchParams.get('limit'), 25);
           const tables = rx.searchParams.get('tables');
           if (tables != null) {
             return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));

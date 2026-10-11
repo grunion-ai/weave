@@ -47,6 +47,8 @@ services:
       # With command ["node", "bin/weave.js", "supervise"], 1 installs each newer
       # release from grunion-ai/weave main in place (Handbook → "Deploy: Railway").
       # WEAVE_AUTO_UPDATE: "1"
+      # The most rows one API call returns when it names a limit (Handbook → "Environment reference").
+      # WEAVE_MAX_ROWS: "500"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 30s
