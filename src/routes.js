@@ -20,7 +20,7 @@ export const decodePath = (pathname) => decodeURIComponent(pathname.replace(/%2f
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
-  return { 'not-found': 404, conflict: 409, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415 }[err.code] ?? 400;
+  return { 'not-found': 404, conflict: 409, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415, 'too-large': 413, 'rate-limited': 429 }[err.code] ?? 400;
 }
 
 const STARTED_AT = new Date().toISOString();
@@ -122,6 +122,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   const apexOrigin = origin ?? `${scheme}//${baseDomain}`;
   const rates = { options: new Map(), failed: new Map(), slugs: new Map() };
   const starts = new Map();
+  const formRates = new Map();
+  const formLimited = (keys) => {
+    const now = Date.now();
+    for (const [key, value] of formRates) if (value.until <= now) formRates.delete(key);
+    let retry = 0;
+    for (const [key, max] of keys) {
+      let hit = formRates.get(key);
+      if (!hit) {
+        if (formRates.size >= 10000) return 60;
+        hit = { until: now + 60000, n: 0 };
+        formRates.set(key, hit);
+      }
+      hit.n += 1;
+      if (hit.n > max) retry = Math.max(retry, Math.ceil((hit.until - now) / 1000));
+    }
+    return retry;
+  };
   const prune = (map) => { const now = Date.now(); for (const [k, v] of map) if (v.expiresAt <= now) map.delete(k); };
   const handOff = async (engine, accountId, next, host) => {
     const code = newChallenge();
@@ -504,6 +521,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return wall();
     }
+    const requestActor = role ? weave.actor : 'anonymous';
     const guarded = () => !!(weave.listAccounts().length || hub.get(hub.defaultName).listAccounts().length);
     const cap = role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
     if (cap && cap !== 'architect') {
@@ -678,6 +696,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (hit) return hit;
       }
 
+      const formClient = () => {
+        const current = cookies.wv_form_client;
+        if (/^[A-Za-z0-9_-]{43}$/.test(current ?? '')) return current;
+        const token = newChallenge();
+        jar.push(`wv_form_client=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${secureFlag(rx)}`);
+        return token;
+      };
       const formFor = (ref) => {
         let form;
         try { form = getForm(weave, decodeURIComponent(ref)); } catch (err) {
@@ -689,7 +714,33 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if ((m = path.match(/^\/f\/([^/]+)$/)) && ['GET', 'HEAD'].includes(rx.method)) {
         const { form, admitted } = formFor(m[1]);
         if (!admitted) return wall();
-        return out(200, renderFormPage(form, { mount: wsPrefix }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        formClient();
+        return out(200, renderFormPage(form, { mount: wsPrefix, searchParams: rx.searchParams }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
+
+      if ((m = path.match(/^\/api\/forms\/([^/]+)\/submit$/)) && rx.method === 'POST') {
+        const { form, admitted } = formFor(m[1]);
+        if (!admitted) return deny(401, 'Sign in to submit this form');
+        const ip = clientIp(rx);
+        const key = `${form.owner.state.meta.id}:${form.id}`;
+        const retry = formLimited([['server', limits.formServer ?? 1000], [`form:${key}`, limits.formTotal ?? 120], [`sender:${key}:${ip}`, limits.formSender ?? 20]]);
+        if (retry) return out(429, { error: 'Too many submissions. Try again later.', code: 'rate-limited' }, { 'Retry-After': String(retry) });
+        const signedIn = roleOn(form.owner) != null;
+        const actor = !signedIn ? 'anonymous' : form.owner === weave ? requestActor : (authz && /^Bearer /i.test(authz) ? form.owner.verifyToken(authz.slice(7).trim()) ?? docsToken(form.owner, authz.slice(7).trim()) : sessionOn(form.owner))?.name ?? requestActor;
+        const body = await rx.readBody();
+        const idempotencyKey = rx.header('idempotency-key') ?? body?.idempotencyKey;
+        const knownClient = /^[A-Za-z0-9_-]{43}$/.test(cookies.wv_form_client ?? '');
+        const client = formClient();
+        if (!signedIn && idempotencyKey != null && !/^[A-Za-z0-9_-]{32,200}$/.test(idempotencyKey)) throw new WeaveError('Anonymous Idempotency-Key must contain 32 to 200 letters, digits, hyphens or underscores', 'invalid');
+        const input = form.kind === 'Row' && body && typeof body === 'object' && !Array.isArray(body) && !Object.hasOwn(body, 'values') ? { values: Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'idempotencyKey')) } : body;
+        const result = submitForm(weave, form.id, input ?? {}, {
+          actor,
+          server: { version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name },
+          idempotencyKey,
+          scope: signedIn ? '' : idempotencyKey != null ? `key:${await digest(idempotencyKey)}` : `client:${client}`,
+          dedupScope: signedIn ? '' : knownClient ? `client:${client}` : null,
+        });
+        return out(result.replayed ? 200 : 201, result);
       }
 
       if (path === '/auth') {
@@ -1181,12 +1232,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, form);
         }
         const stamp = () => ({ version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name });
-        if ((m = path.match(/^\/api\/forms\/([^/]+)\/submit$/)) && rx.method === 'POST') {
-          const { form, admitted } = formFor(m[1]);
-          if (!admitted) return deny(401, 'Sign in to submit this form');
-          const signedIn = roleOn(form.owner) != null || !form.owner.state.meta.requireAuth;
-          return out(201, submitForm(weave, form.id, body ?? {}, { actor: signedIn ? weave.actor : 'anonymous', server: stamp() }));
-        }
         if (route === 'POST /api/workspace/leave') {
           refuseOnDocs(weave, 'left');
           const me = session && session.engine === weave && !session.visitor ? session : role ? weave.verifyToken(authz?.slice(7).trim() ?? '') : null;
@@ -1512,7 +1557,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     } catch (err) {
       const status = statusFor(err);
       const json = errorBody(err, 'internal');
-      return status === 404 ? notFound(json) : out(status, json);
+      return status === 404 ? notFound(json) : out(status, json, status === 429 ? { 'Retry-After': '60' } : {});
     }
   };
 

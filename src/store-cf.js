@@ -30,6 +30,7 @@ export class CFStore {
   #sql = null;
   #txn = null;
   #cache = null;
+  #batch = false;
 
   constructor(storage) {
     this.#sql = storage.sql;
@@ -77,8 +78,16 @@ export class CFStore {
     return state;
   }
 
+  batch(fn) {
+    if (this.#batch) return fn();
+    this.#batch = true;
+    try { return this.#txn(fn); }
+    catch (err) { this.#loadState(); throw err; }
+    finally { this.#batch = false; }
+  }
+
   save(state, { dirty = null, all = false } = {}) {
-    this.#txn(() => {
+    this.batch(() => {
       const { spaces, tables, entities, automations, ...rest } = state;
       const metaJson = JSON.stringify(rest);
       if (metaJson !== this.#cache.meta) {
