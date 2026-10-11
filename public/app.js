@@ -11776,18 +11776,32 @@ function installPhoneBar() {
 }
 const NEW_ROW_CHOICES = 3;
 const NEW_ROW_OPTIONS = 6;
+function rowNoun(db) {
+  if (db?.term?.set || db?.system) return db.term?.singular ?? WeaveTerm.DEFAULT.singular;
+  return WeaveTerm.singularize(db?.name) || WeaveTerm.DEFAULT.singular;
+}
 function newRowSheet(start) {
+  const pickTable = !start;
+  let db = start ?? allTables().find((t) => !t.system);
+  if (!db) return null;
   document.querySelector('.new-row-sheet')?.closeSheet?.();
   const back = el('div', { class: 'new-row-back', 'aria-hidden': 'true' });
   const sheet = el('div', { class: 'new-row-sheet', role: 'dialog', 'aria-modal': 'true' });
-  let db = start;
   let picked = {};
   let off = () => {};
   const close = () => { off(); removeEventListener('keydown', esc, true); sheet.remove(); back.remove(); };
   const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
   sheet.closeSheet = close;
-  const name = el('textarea', { class: 'new-row-name', rows: '2', 'aria-label': 'Name' });
+  const phone = dockCoversScreen.matches;
+  const name = phone
+    ? el('input', { class: 'new-row-name', type: 'text', enterkeyhint: 'done', 'aria-label': 'Name' })
+    : el('textarea', { class: 'new-row-name', rows: '2', 'aria-label': 'Name' });
   const create = el('button', { class: 'new-row-create', type: 'button', disabled: '' }, 'Create');
+  if (phone) name.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    create.click();
+  });
   const more = el('button', { class: 'new-row-more', type: 'button', disabled: '' }, 'All fields');
   name.addEventListener('input', () => { create.disabled = more.disabled = !name.value.trim(); });
   const choiceFields = () => {
@@ -11820,19 +11834,19 @@ function newRowSheet(start) {
     paint();
     return el('div', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, f.name), box);
   };
-  const tableChip = el('button', { class: 'new-row-table', type: 'button', 'aria-haspopup': 'dialog' });
+  const tableChip = pickTable ? el('button', { class: 'new-row-table', type: 'button', 'aria-haspopup': 'dialog' }) : null;
   const title = el('h2', { class: 'new-row-title' });
   const fieldsBox = el('div', { class: 'new-row-fields' });
   const draw = () => {
-    const term = db.term?.singular ?? 'row';
+    const term = rowNoun(db);
     title.textContent = `New ${term}`;
     sheet.setAttribute('aria-label', `New ${term}`);
     name.placeholder = `Name this ${term}`;
-    tableChip.replaceChildren(iconEl(db.icon, 'wv-icon') ?? '', el('span', {}, db.name), lucideEl('chevron-down'));
-    tableChip.setAttribute('aria-label', `Table: ${db.name}`);
+    tableChip?.replaceChildren(iconEl(db.icon, 'wv-icon') ?? '', el('span', {}, db.name), lucideEl('chevron-down'));
+    tableChip?.setAttribute('aria-label', `Table: ${db.name}`);
     fieldsBox.replaceChildren(...choiceFields().map(choiceEl));
   };
-  tableChip.addEventListener('click', () => searchPicker({
+  tableChip?.addEventListener('click', () => searchPicker({
     anchor: tableChip, title: 'New row in', placeholder: 'Search tables…',
     options: allTables().filter((t) => !t.system).map((t) => ({ id: t.id, label: t.name, sub: t.space })),
     currentId: db.id,
@@ -11875,7 +11889,7 @@ function syncPhoneBar() {
   parts.label.textContent = text;
   parts.search.setAttribute('aria-label', text);
   parts.add.hidden = !db;
-  const noun = db?.term?.singular ?? 'row';
+  const noun = rowNoun(db);
   parts.add.title = `New ${noun}`;
   parts.add.setAttribute('aria-label', `New ${noun}`);
 }

@@ -30,6 +30,15 @@ test('pluralize covers the English rules the list needs, plus person → people'
   assert.equal(T.pluralize(' Deal '), 'deals', 'trimmed and lowercased');
 });
 
+test('singularize turns a table name into its row noun, undoing pluralize (Issue #792)', () => {
+  for (const [name, want] of [['Task', 'task'], ['Tasks', 'task'], ['Issues', 'issue'], ['Companies', 'company'], ['Days', 'day'], ['Boxes', 'box'], ['Batches', 'batch'], ['Wishes', 'wish'], ['Addresses', 'address'], ['People', 'person'], ['Status', 'status'], ['Analysis', 'analysis'], ['Address', 'address'], ['Shopping Lists', 'shopping list'], [' Note ', 'note']]) {
+    assert.equal(T.singularize(name), want, name);
+  }
+  for (const noun of ['deal', 'company', 'box', 'batch', 'person', 'day', 'address']) assert.equal(T.singularize(T.pluralize(noun)), noun, `round trip ${noun}`);
+  assert.equal(T.singularize(''), '');
+  assert.equal(T.singularize(null), '');
+});
+
 test('normalize stores lowercase, trims, derives the plural, and rejects junk', () => {
   assert.deepEqual(T.normalize({ singular: ' Deal ' }), { singular: 'deal', plural: 'deals' });
   assert.deepEqual(T.normalize({ singular: 'Person', plural: 'Folks' }), { singular: 'person', plural: 'folks' });
