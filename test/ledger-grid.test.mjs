@@ -118,10 +118,11 @@ test('a table view remembers the density it was last read at (Feature #239)', ()
 test('every value surface in the grid is set at one size, and it is the chip size', () => {
   const root = rulesFor(':root');
   assert.equal(root['--wv-grid-font'], 'var(--wv-chip-font)', 'the grid size IS the chip size');
-  for (const sel of ['.wv-grid tbody td', '.wv-grid tbody .inline-edit', '.wv-grid .num-dressed',
-    '.wv-grid .text-dressed', '.wv-grid td.sys-cell']) {
+  for (const sel of ['.wv-grid tbody td', '.wv-grid .num-dressed', '.wv-grid .text-dressed', '.wv-grid td.sys-cell']) {
     assert.equal(rulesFor(sel)['font-size'], 'var(--wv-grid-font)', `${sel} reads the grid token`);
   }
+  assert.equal(rulesFor('.inline-edit')['--wv-inline-fs'], 'var(--wv-grid-font)', 'an inline edit sits at the grid token by default');
+  assert.equal(rulesFor('.wv-grid tbody .inline-edit')['font-size'], undefined, 'and the grid keeps that default');
   assert.equal(root['--wv-grid-line'], '20px', 'a whole-pixel line, so a row height is a whole pixel');
   for (const sel of ['.wv-grid tbody td', '.wv-grid tbody .inline-edit']) {
     assert.equal(rulesFor(sel)['line-height'], 'var(--wv-grid-line)', `${sel} reads the line token`);
