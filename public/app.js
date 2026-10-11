@@ -8838,6 +8838,18 @@ function guardMathRender() {
   const live = globalThis.WeaveEditorLib.liveMathElements;
   if (adapter && adapter.getElements !== live) adapter.getElements = live;
 }
+function skipCaretOnlyUndo(vditor) {
+  const undo = vditor?.undo;
+  if (!undo?.addToUndoStack || !undo.addCaret) return;
+  const add = undo.addToUndoStack.bind(undo);
+  const bare = (html) => String(html ?? '').replace(/<wbr>/g, '').replace(/ vditor-ir__node--expand/g, '');
+  undo.addToUndoStack = (v) => {
+    const mode = undo[v.currentMode];
+    if (mode?.undoStack?.length && bare(undo.addCaret(v, true)) === bare(mode.lastText)) return;
+    add(v);
+  };
+}
+
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   guardMathRender();
   const t = vditorTheme();
@@ -8892,6 +8904,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
       handed = stored(editor.getValue());
       editor.clearStack();
+      skipCaretOnlyUndo(editor.vditor);
       aliasBareRefs(editor, onInput);
       scheduleDecorFor(host);
       host.addEventListener('keyup', rememberSelection);
