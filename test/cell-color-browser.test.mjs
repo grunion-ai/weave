@@ -110,7 +110,7 @@ if (s) {
       assert.equal(await acc.locator('.wv-grid thead th.col-head', { hasText: 'Line ink' }).first().locator('.field-mark').count(), 1, 'the header keeps its ƒ');
       await acc.waitForSelector(`${cell(acme.id, 'Avg fit')} .wv-rating`);
       assert.equal(await acc.locator(`${cell(acme.id, 'Avg fit')} .computed-mark`).count(), 0, 'no Σ beside a rollup\'s stars');
-      assert.equal(await acc.locator(`${cell(acme.id, 'Plain count')} .computed-mark`).count(), 1, 'a plain rollup keeps its Σ');
+      assert.equal(await acc.locator(`${cell(acme.id, 'Plain count')} .computed-mark`).count(), 0, 'a plain rollup leaves its Σ to the header too');
       assert.equal(await acc.locator('.wv-grid thead th.col-head', { hasText: 'Avg fit' }).first().locator('.field-mark').count(), 1);
     } finally { await acc.close(); }
   });

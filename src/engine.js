@@ -1194,6 +1194,7 @@ export class Weave {
         if (f.type === 'select') seg.option = named(seg.value);
         else seg.options = (Array.isArray(shown) ? shown : []).map((x) => named(x?.name ?? x));
       }
+      if (f.type === 'formula' || f.type === 'rollup' || f.type === 'lookup') seg.type = f.type;
       const nd = typeof resolved === 'number' ? this.#numberDisplay(db, f) : null;
       if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f), color: nd.color };
       const rated = Array.isArray(resolved) ? resolved.some((v) => typeof v === 'number') : typeof resolved === 'number';

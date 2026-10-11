@@ -1,6 +1,8 @@
 (function (root) {
   const KIND_GLYPH = { entity: '#', table: '▦', space: '◇', workspace: '⬡' };
   const CARET = '›';
+  const COMPUTED_GLYPHS = { formula: 'ƒ', rollup: 'Σ', lookup: '↳' };
+  const ROUTE_GLYPH = '→';
 
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const attr = (name, value) => (value == null || value === '' ? '' : ` ${name}="${esc(value)}"`);
@@ -92,8 +94,11 @@
         + seg.options.map((o) => `<span class="k k-multi hue-${hueOf(o)}">${iconHtml(o.icon)}${esc(o.name)}</span>`).join('')
         + '</button>';
     }
+    const mark = COMPUTED_GLYPHS[seg.type];
     return `<span class="mention-f" data-seg="field"${attr('data-field', seg.label)}>`
-      + `<span class="mention-f-label">${esc(seg.label)}</span>${valueHtml(seg)}</span>`;
+      + `<span class="mention-f-label">${esc(seg.label)}`
+      + (mark ? `<sup class="field-mark"${attr('title', `${seg.type} — computed from other values, not editable`)}>${mark}</sup>` : '')
+      + `</span>${valueHtml(seg)}</span>`;
   }
 
   function chipHtml(v, { kind = 'entity', href = null, home = null, removable = false, broken = false, label = null } = {}) {
@@ -138,5 +143,5 @@
       + '</div>';
   }
 
-  root.weaveChipView = { KIND_GLYPH, CARET, chipHtml, cardHtml, segHtml, valueHtml, stateClass, iconHtml, esc };
+  root.weaveChipView = { KIND_GLYPH, CARET, COMPUTED_GLYPHS, ROUTE_GLYPH, chipHtml, cardHtml, segHtml, valueHtml, stateClass, iconHtml, esc };
 })(typeof window !== 'undefined' ? window : globalThis);
