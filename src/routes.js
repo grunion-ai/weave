@@ -465,7 +465,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return wall();
     }
     const requestActor = role ? weave.actor : 'anonymous';
-    if (role && role !== 'architect') {
+    const guarded = () => !!(weave.listAccounts().length || hub.get(hub.defaultName).listAccounts().length);
+    const cap = role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
+    if (cap && cap !== 'architect') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
@@ -493,14 +495,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return !!ref?.system;
         } catch { return false; }
       })();
-      const observer = role !== 'editor';
+      const observer = cap !== 'editor';
       const cm = observer && !read && path.match(/^\/api\/entities\/([^/]+)\/comments(?:\/([^/]+?))?$/);
       const ownComment = cm && (cm[2] == null ? m2 === 'POST' : m2 === 'DELETE' && (() => {
         try { return weave.getEntity(cm[1]).comments.find((c) => c.id === cm[2])?.author === weave.actor; } catch { return false; }
       })());
       const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/(?:f\/[^/]+|api\/forms\/[^/]+\/submit)$/.test(path));
-      if (observer && !read && !ownComment && !submits) return deny(403, 'An observer may read and comment, nothing else');
-      if (role === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
+      if (observer && !read && !ownComment && !submits) {
+        return role ? deny(403, 'An observer may read and comment, nothing else') : deny(401, 'This workspace has accounts: send a token or sign in to write');
+      }
+      if (cap === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
     }
     const roleOn = (w) => {
       if (w === weave) return role;
@@ -933,6 +937,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const w = hub.restore(m[1]);
           return out(200, { name: w.state.meta.name, deletedAt: null });
         }
+        if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'PATCH') {
+          if (body?.position == null) throw new WeaveError('position is required: 0 is the first place in the rail', 'invalid');
+          hub.get(hub.defaultName).moveWorkspace(decodeURIComponent(m[1]), body.position);
+          return out(200, hub.list().filter((x) => canOpen(hub.get(x.name))));
+        }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
           if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
           const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
@@ -1216,7 +1225,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/tables') {
           const space = rx.searchParams.get('space');
           const dbs = weave.listTables(space ? weave.getSpace(space).id : null);
-          return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId })));
+          return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId, position: db.position })));
         }
         if (route === 'POST /api/tables') return out(201, guided(weave, 'table', weave.createTable(body)));
         if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
@@ -1243,7 +1252,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/move$/)) && rx.method === 'POST') {
           if (typeof body.space !== 'string' || !body.space.trim()) throw new WeaveError('space is required: the destination space', 'invalid');
-          return out(200, weave.moveTable(m[1], body.space));
+          return out(200, weave.moveTable(m[1], body.space, { position: body.position ?? null }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/duplicate$/)) && rx.method === 'POST') {
           return out(201, weave.duplicateTable(m[1]));

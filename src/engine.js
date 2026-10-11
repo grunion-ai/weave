@@ -6,6 +6,7 @@ import '../public/icon-registry.js';
 import '../public/mark-icons.js';
 import '../public/editor-lib.js';
 import '../public/list-core.js';
+import '../public/phone-row.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -32,6 +33,7 @@ function iconValue(v) {
 
 const Term = globalThis.WeaveTerm;
 const ListCore = globalThis.weaveListCore;
+const PhoneRow = globalThis.weavePhoneRow;
 const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow', forms: 'form' };
 
 const CSV_FORMULA_START = /^'*[=+\-@\t\r]/;
@@ -81,6 +83,13 @@ const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
+const byPosition = (list) => list.map((x, i) => [x, i])
+  .sort(([a, i], [b, j]) => (Number.isInteger(a.position) ? a.position : Infinity) - (Number.isInteger(b.position) ? b.position : Infinity) || i - j)
+  .map(([x]) => x);
+const checkPosition = (position) => {
+  if (!(Number.isInteger(position) && position >= 0)) throw new WeaveError('position is a whole number: 0 is the first place', 'invalid');
+  return position;
+};
 function refuseReserved(kind, name) {
   if (RESERVED_NAMES.has(String(name).trim())) throw new WeaveError(`'${String(name).trim()}' is reserved and cannot name a ${kind}`, 'invalid');
 }
@@ -919,7 +928,7 @@ export class Weave {
     };
     this.#migrate();
     if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
-    if (this.#landBlobs()) this.save();
+    if (this.#settlePositions() | this.#landBlobs()) this.save();
     HELD?.add(this);
   }
 
@@ -1015,8 +1024,42 @@ export class Weave {
     }
     if (this.#scrubIdentityEmails()) changed = true;
     if (Shares.liftViewShares(s)) changed = true;
+    if (this.#settlePositions()) changed = true;
     if (changed) this.save();
   }
+
+  #settlePositions() {
+    let changed = false;
+    const settle = (list) => {
+      let top = Math.max(-1, ...list.map((x) => (Number.isInteger(x.position) ? x.position : -1)));
+      for (const x of list) {
+        if (Number.isInteger(x.position)) continue;
+        x.position = ++top;
+        changed = true;
+      }
+    };
+    settle(Object.values(this.state.spaces ?? {}));
+    const bySpace = new Map();
+    for (const t of Object.values(this.state.tables ?? {})) {
+      if (!bySpace.has(t.spaceId)) bySpace.set(t.spaceId, []);
+      bySpace.get(t.spaceId).push(t);
+    }
+    for (const list of bySpace.values()) settle(list);
+    return changed;
+  }
+
+  #place(all, item, position) {
+    checkPosition(position);
+    const rest = all.filter((x) => x !== item);
+    const live = rest.filter((x) => !x.deletedAt);
+    const anchor = live[position];
+    const at = anchor ? rest.indexOf(anchor) : live.length ? rest.indexOf(live[live.length - 1]) + 1 : rest.length;
+    rest.splice(at, 0, item);
+    rest.forEach((x, i) => { x.position = i; });
+  }
+
+  #spacesInOrder() { return byPosition(Object.values(this.state.spaces)); }
+  #tablesOfSpace(spaceId) { return byPosition(Object.values(this.state.tables).filter((d) => d.spaceId === spaceId)); }
 
   #reconcileFieldOrder(db) {
     const fields = db.fields ?? {};
@@ -1344,6 +1387,7 @@ export class Weave {
     if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
     const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), ...(template === true ? { template: true } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
+    this.#settlePositions();
     this.save();
     this.#syncSpaceRow(space);
     if (!space.system) this.#audit('space-created', { name: space.name }, space.id);
@@ -1351,7 +1395,7 @@ export class Weave {
   }
 
   listSpaces({ includeDeleted = false } = {}) {
-    const all = Object.values(this.state.spaces);
+    const all = this.#spacesInOrder();
     return includeDeleted ? all : all.filter((s) => !s.deletedAt);
   }
 
@@ -1371,12 +1415,14 @@ export class Weave {
   updateSpace(ref, patch) {
     const s = this.getSpace(ref);
     if (patch.name != null) refuseReserved('space', patch.name);
+    if (patch.position != null) checkPosition(patch.position);
     if (patch.template != null && typeof patch.template !== 'boolean') throw new WeaveError(`A space's template is true or false, got ${JSON.stringify(patch.template)}`, 'invalid');
     this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) }, s.id);
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
     if (patch.icon != null) { const v = iconValue(patch.icon); if (v) s.icon = v; else delete s.icon; }
     if (patch.template != null) { if (patch.template) s.template = true; else delete s.template; }
+    if (patch.position != null) this.#place(this.#spacesInOrder(), s, patch.position);
     this.#syncSpaceRow(s);
     this.save();
     return s;
@@ -1443,6 +1489,7 @@ export class Weave {
     this.#ensureTableViews(db);
     this.#ensureSystemColumnsInViews(db);
     this.state.tables[db.id] = db;
+    this.#settlePositions();
     this.save();
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
@@ -1451,9 +1498,11 @@ export class Weave {
   }
 
   listTables(spaceId = null, { includeDeleted = false } = {}) {
-    let all = Object.values(this.state.tables);
+    let all = byPosition(Object.values(this.state.tables));
     if (!includeDeleted) all = all.filter((d) => !d.deletedAt && !this.state.spaces[d.spaceId]?.deletedAt);
-    return spaceId ? all.filter((d) => d.spaceId === spaceId) : all;
+    if (spaceId) return all.filter((d) => d.spaceId === spaceId);
+    const rank = new Map(this.#spacesInOrder().map((sp, i) => [sp.id, i]));
+    return all.map((d, i) => [d, i]).sort(([a, i], [b, j]) => (rank.get(a.spaceId) ?? Infinity) - (rank.get(b.spaceId) ?? Infinity) || i - j).map(([d]) => d);
   }
 
   userTables() {
@@ -1488,7 +1537,8 @@ export class Weave {
   updateTable(ref, patch) {
     const db = this.getTable(ref);
     if (patch.name != null) refuseReserved('table', patch.name);
-    const shape = (t) => JSON.stringify([t.name, t.description ?? '', t.fieldOrder]);
+    const shape = (t) => JSON.stringify([t.name, t.description ?? '', t.fieldOrder, t.position]);
+    if (patch.position != null) checkPosition(patch.position);
     const was = shape(db);
     if (patch.name != null && db.system && patch.name !== db.name) throw new WeaveError(`Table '${db.name}' is part of the system registry and cannot be renamed`, 'invalid');
     if (patch.name != null) db.name = patch.name;
@@ -1539,6 +1589,7 @@ export class Weave {
       }
       db.fieldOrder = ids;
     }
+    if (patch.position != null) this.#place(this.#tablesOfSpace(db.spaceId), db, patch.position);
     this.#syncTableRow(db);
     this.save();
     if (!db.system && shape(db) !== was) this.#audit('table-updated', { name: db.name, patch: Object.keys(patch) }, this.#spacesTouching(db));
@@ -1546,14 +1597,18 @@ export class Weave {
     return db;
   }
 
-  moveTable(ref, spaceRef) {
+  moveTable(ref, spaceRef, { position = null } = {}) {
+    if (position != null) checkPosition(position);
     const db = this.getTable(ref);
     if (db.system) throw new WeaveError(`Table '${db.name}' is part of the system registry`, 'invalid');
     if (db.deletedAt) throw new WeaveError(`Table '${db.name}' is in the trash — restore it first`, 'conflict');
     const sp = this.getSpace(spaceRef);
     if (sp.system) throw new WeaveError(`Space '${sp.name}' is the workspace's own system space and cannot hold your tables`, 'invalid');
     if (sp.deletedAt) throw new WeaveError(`Space '${sp.name}' is in the trash — restore it first`, 'conflict');
-    if (sp.id === db.spaceId) return db;
+    if (sp.id === db.spaceId) {
+      if (position == null) return db;
+      return this.updateTable(db.id, { position });
+    }
     const clash = Object.values(this.state.tables).find((d) => d.id !== db.id
       && d.spaceId === sp.id && d.name.toLowerCase() === db.name.toLowerCase());
     if (clash?.deletedAt) throw new WeaveError(`Table '${sp.name}/${db.name}' is in the trash — restore or purge it first`, 'conflict');
@@ -1561,6 +1616,9 @@ export class Weave {
     const from = this.state.spaces[db.spaceId]?.name;
     const left = db.spaceId;
     db.spaceId = sp.id;
+    delete db.position;
+    if (position != null) this.#place(this.#tablesOfSpace(sp.id), db, position);
+    else this.#settlePositions();
     this.save();
     this.#syncTableRow(db);
     this.#audit('table-moved', { name: db.name, from, to: sp.name }, [left, ...this.#spacesTouching(db)]);
@@ -1641,6 +1699,7 @@ export class Weave {
     if (src.bodyOrder) db.bodyOrder = src.bodyOrder.map((k) => (k === VALUES_BLOCK ? k : mapId(k)));
     for (const k of Object.keys(db)) if (db[k] === undefined) delete db[k];
     this.state.tables[db.id] = db;
+    this.#settlePositions();
     this.save();
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
@@ -1948,7 +2007,40 @@ export class Weave {
     if (Array.isArray(v.collapsed)) out.collapsed = [...v.collapsed];
     const order = (v.order ?? []).map((id) => own(this.state.entities, id)).filter((e) => e && !e.deletedAt && e.dbId === db.id).map((e) => e.publicId);
     if (order.length) out.order = order;
+    if (v.phoneRow) out.phoneRow = PhoneRow.compact(this.#phoneRowNamed(db, v.phoneRow));
     return out;
+  }
+
+  #phoneRowNamed(db, p) {
+    return { lead: db.fields[p.lead]?.name ?? null, chips: p.chips.map((id) => db.fields[id]?.name).filter(Boolean), labels: !!p.labels, wrap: !!p.wrap };
+  }
+
+  #writePhoneRow(db, next, patch) {
+    if (patch === null) { delete next.phoneRow; return; }
+    const keys = PhoneRow.KEYS.join(', ');
+    if (typeof patch !== 'object' || Array.isArray(patch)) throw new WeaveError(`phoneRow is {${keys}}: the phone list row's lead field, its chip fields in order, and two switches. null clears it`, 'invalid');
+    const stray = Object.keys(patch).filter((k) => !PhoneRow.KEYS.includes(k));
+    if (stray.length) throw new WeaveError(`phoneRow takes ${keys} — not ${stray.join(', ')}`, 'invalid');
+    const shown = next.fields.map((id) => viewEntryName(db, id)).filter(Boolean);
+    const fields = db.fieldOrder.map((id) => db.fields[id]).filter(Boolean).map((f) => ({ name: f.name, type: f.type, role: f.id === db.nameFieldId ? 'name' : null }));
+    const cur = PhoneRow.resolve(fields, shown, next.phoneRow ? this.#phoneRowNamed(db, next.phoneRow) : null);
+    const pick = (ref) => {
+      const f = this.#listField(db, ref);
+      if (f.id === db.nameFieldId) throw new WeaveError(`'${f.name}' is the row's name: line one always shows it, so it is never a lead or a chip`, 'invalid');
+      return f.id;
+    };
+    for (const k of ['labels', 'wrap']) {
+      if (patch[k] !== undefined && typeof patch[k] !== 'boolean') throw new WeaveError(`phoneRow.${k} is true or false — got ${JSON.stringify(patch[k])}`, 'invalid');
+    }
+    if (patch.chips !== undefined && !Array.isArray(patch.chips)) throw new WeaveError('phoneRow.chips is the list of fields on the chip line, in order', 'invalid');
+    const lead = patch.lead === undefined ? (cur.lead == null ? null : pick(cur.lead)) : patch.lead == null || patch.lead === '' ? null : pick(patch.lead);
+    const chips = (patch.chips ?? cur.chips).map(pick);
+    if (new Set(chips).size !== chips.length) throw new WeaveError('phoneRow.chips names each field once', 'invalid');
+    if (patch.lead !== undefined && patch.chips === undefined) { const k = chips.indexOf(lead); if (k >= 0) chips.splice(k, 1); }
+    if (lead != null && chips.includes(lead)) throw new WeaveError(`'${db.fields[lead].name}' is either the lead or a chip, not both`, 'invalid');
+    next.phoneRow = { lead, chips };
+    if (patch.labels ?? cur.labels) next.phoneRow.labels = true;
+    if (patch.wrap ?? cur.wrap) next.phoneRow.wrap = true;
   }
 
   #listField(db, ref) {
@@ -2034,7 +2126,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order', 'phoneRow'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -2141,6 +2233,7 @@ export class Weave {
       if (patch.rollups === null) delete next.rollups; else next.rollups = patch.rollups;
     }
     this.#writeListKeys(db, next, patch);
+    if (patch.phoneRow !== undefined) this.#writePhoneRow(db, next, patch.phoneRow);
     if ((next.frozen ?? 0) > next.fields.length) next.frozen = next.fields.length;
     if (!next.frozen) delete next.frozen;
     if (next.parked && !Object.keys(next.parked).length) delete next.parked;
@@ -2897,6 +2990,8 @@ export class Weave {
       if (vDoc.layout) out.layout = vDoc.layout;
       if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
       for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
+      const pr = vDoc.phoneRow;
+      if (pr && typeof pr === 'object') out.phoneRow = PhoneRow.compact({ lead: pr.lead != null && has(pr.lead) ? pr.lead : null, chips: (pr.chips ?? []).filter(has), labels: pr.labels, wrap: pr.wrap });
       for (const k of ['filters', 'sort', 'widths']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
       return out;
     };
@@ -2927,6 +3022,9 @@ export class Weave {
       if ((vDoc.layout ?? 'table') !== (have?.layout ?? 'table')) patch.layout = vDoc.layout ?? 'table';
       if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
       for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
+      if (JSON.stringify(vDoc.phoneRow ?? null) !== JSON.stringify(have?.phoneRow ?? null)) {
+        patch.phoneRow = vDoc.phoneRow ? { lead: vDoc.phoneRow.lead ?? null, chips: vDoc.phoneRow.chips ?? [], labels: !!vDoc.phoneRow.labels, wrap: !!vDoc.phoneRow.wrap } : null;
+      }
       if (!Object.keys(patch).length) continue;
       act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
     }
@@ -2940,6 +3038,32 @@ export class Weave {
       strip.splice(k, 0, String(raw.name).toLowerCase());
       act('update-view', `${q}/${raw.name}`, () => this.tableView(`${db.id}/${raw.name}`, { position: k }));
     });
+  }
+
+  workspaceOrder() {
+    const reg = this.#reg;
+    const t = reg.#sysTable('workspaces');
+    if (!t) throw new WeaveError('This file holds no workspace registry: order workspaces on the hub root', 'invalid');
+    const rank = new Map((reg.state.meta.workspaceOrder ?? []).map((id, i) => [id, i]));
+    return reg.listEntities(t.id).filter((r) => r.sysId)
+      .map((r, i) => ({ id: r.sysId, name: reg.entityName(r), i }))
+      .sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.i - b.i)
+      .map(({ id, name }, position) => ({ id, name, position }));
+  }
+
+  moveWorkspace(ref, position) {
+    checkPosition(position);
+    const order = this.workspaceOrder();
+    const key = String(ref ?? '').toLowerCase();
+    const hit = order.find((w) => w.id === ref) ?? order.find((w) => w.name.toLowerCase() === key);
+    if (!hit) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
+    const ids = order.map((w) => w.id).filter((id) => id !== hit.id);
+    ids.splice(Math.min(position, ids.length), 0, hit.id);
+    const reg = this.#reg;
+    reg.state.meta.workspaceOrder = ids;
+    reg.save();
+    reg.#audit('workspace-moved', { name: hit.name, position: ids.indexOf(hit.id) });
+    return reg.workspaceOrder();
   }
 
   getWorkspace() {
@@ -2995,7 +3119,7 @@ export class Weave {
 
   #open(entry, name) {
     try {
-      const d = createDecipheriv('aes-256-gcm', this.#keystoreKey(), Buffer.from(entry.iv, 'base64'));
+      const d = createDecipheriv('aes-256-gcm', this.#keystoreKey(), Buffer.from(entry.iv, 'base64'), { authTagLength: 16 });
       d.setAuthTag(Buffer.from(entry.tag, 'base64'));
       return Buffer.concat([d.update(Buffer.from(entry.ct, 'base64')), d.final()]).toString('utf8');
     } catch {
@@ -3575,6 +3699,7 @@ export class Weave {
       for (const t of Object.values(this.state.tables)) if (t.spaceId === sp.id) t.deletedAt = null;
     }
     this.#ensureMetaTables();
+    this.#settlePositions();
     this.save();
     return this;
   }

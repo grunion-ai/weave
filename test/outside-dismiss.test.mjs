@@ -20,8 +20,17 @@ test('no overlay dismisses itself from a hand-rolled click listener (Issue #726)
   const rolled = [...APP.matchAll(/addEventListener\('click', (?:function )?(away|close|outside)\b/g)].map((m) => m[0]);
   assert.deepEqual(rolled, [], 'a click listener never reaches iOS for a touch on empty space');
   const uses = (APP.match(/dismissOutside\(\{/g) ?? []).length;
-  assert.ok(uses >= 11, `menus, popovers, pickers, sheets and the bug panel all use it (${uses})`);
-  for (const fn of ['showPopover', 'searchPicker', 'valuePop', 'dotsMenu', 'tableControlPopover', 'tableToolsButton', 'contextMenu', 'crumbFoldMenu', 'accountMenu', 'openBugPanel']) {
+  assert.ok(uses >= 8, `the menu builder, popovers, pickers, sheets and the bug panel all use it (${uses})`);
+  for (const fn of ['showPopover', 'searchPicker', 'valuePop', 'menu', 'tableControlPopover', 'tableToolsButton', 'openBugPanel']) {
     assert.match(body(fn), /dismissOutside\(\{/, `${fn} closes through dismissOutside`);
   }
+});
+
+test('every action menu shares the builder\'s one dismiss path, none rolls its own (Issue #663)', () => {
+  for (const fn of ['dotsMenu', 'crumbFoldMenu', 'accountMenu']) {
+    const src = body(fn);
+    assert.match(src, /\bmenu\(/, `${fn} opens through menu()`);
+    assert.doesNotMatch(src, /dismissOutside|addEventListener\('keydown'/, `${fn} has no private dismiss or key handler`);
+  }
+  assert.equal(APP.includes('function contextMenu('), false, 'the right-click menu is the same builder, opened at the pointer');
 });

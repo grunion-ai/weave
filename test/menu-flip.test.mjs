@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { liftFunction, APP } from './lib/source.mjs';
+import { liftFunction, fnBody } from './lib/source.mjs';
 
 const menuSide = liftFunction('menuSide');
 
@@ -47,14 +47,12 @@ test('the decision leaves a small gutter rather than touching the bound', () => 
   assert.equal(menuSide({ ...flush, prefer: 'left' }), 'right', '1100 + 180 = 1280 is flush, and flush is not fit');
 });
 
-test('dotsMenu places the panel every time it opens, not once when it is built', () => {
-  const src = APP;
-  const at = src.indexOf('function dotsMenu(');
-  const body = src.slice(at, src.indexOf('\n}\n', at));
-  assert.match(body, /menu\.classList\.remove\('hidden'\)[\s\S]{0,200}place\(\)/,
-    'the placement runs inside the open, after the panel is visible and measurable');
-  assert.match(body, /menuSide\(/, 'dotsMenu asks menuSide which way to hang');
-  assert.match(body, /classList\.toggle\('dl-menu-right'/,
+test('menu places the panel every time it opens, not once when it is built', () => {
+  const body = fnBody('menu');
+  assert.match(body, /document\.body\.append\(pop\)[\s\S]*menuSide\(/,
+    'the placement runs inside the open, after the panel is in the page and measurable');
+  assert.match(body, /menuBounds\(anchor\)/, 'the bounds come from the trigger, so a peek or a scroller clips like before');
+  assert.match(body, /side === 'right' \? a\.right - w : a\.left/,
     'the side is set both ways — a menu that flipped once must be able to flip back');
 });
 

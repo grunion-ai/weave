@@ -21,8 +21,8 @@ if (s) {
     const page = await openSpace(spaceId, theme);
     await page.waitForSelector('.view-header .dots-btn');
     await page.click('.view-header .dots-btn');
-    await page.waitForSelector('.view-header .dl-menu:not(.hidden)');
-    const items = await page.locator('.view-header .dl-menu .dropdown-item').allTextContents();
+    await page.waitForSelector('.wv-menu[role="menu"]');
+    const items = await page.locator('.wv-menu .wv-menu-row').allTextContents();
     return { page, items };
   }
 
@@ -30,16 +30,16 @@ if (s) {
     test(`${theme}: the Workspace space renders no ⋮ menu`, async () => {
       const page = await openSpace(sys.id, theme);
       assert.equal(await page.locator('.view-header .dots-btn').count(), 0, 'no ⋮ on the system space');
-      assert.equal(await page.locator('.view-header .dl-menu').count(), 0, 'no empty menu panel');
+      assert.equal(await page.locator('.wv-menu').count(), 0, 'no empty menu panel');
       await page.close();
     });
 
     test(`${theme}: a user space offers only Delete space + N tables`, async () => {
       const { page, items } = await openMenu(user.id, theme);
       assert.ok(!items.some((t) => /Export .*\.csv/.test(t)), `no per-table export: ${items}`);
-      assert.equal(await page.locator('.view-header .dl-menu .dropdown-divider').count(), 0, 'no divider');
-      assert.equal(await page.locator('.view-header .dl-menu .hold-btn').count(), 1, 'hold-to-delete present');
-      assert.match(await page.locator('.view-header .dl-menu .hold-btn').textContent(), /Delete space \+ 1 table/);
+      assert.equal(await page.locator('.wv-menu .wv-menu-sep').count(), 0, 'no divider');
+      assert.equal(await page.locator('.wv-menu .hold-btn').count(), 1, 'hold-to-delete present');
+      assert.match(await page.locator('.wv-menu .hold-btn').textContent(), /Delete space \+ 1 table/);
       await page.close();
     });
   }
