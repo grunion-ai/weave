@@ -1,8 +1,8 @@
 # Workspace state never ships in an image — it lives on the /data volume.
-*.db
-*.db-wal
-*.db-shm
-files/
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/files/
 demo-workspace.json
 uno.json
 weave.json
@@ -10,7 +10,7 @@ weaver.json
 test.json
 
 # Local tooling and VCS
-node_modules
+**/node_modules
 .jj
 .git
 .github
@@ -27,9 +27,9 @@ test/
 docs/screenshots
 docs/mockups
 brand/
-*.orig
-.*-probe.mjs
-.*-shot.mjs
-.DS_Store
-*.tmp
-update-check.json
+**/*.orig
+**/.*-probe.mjs
+**/.*-shot.mjs
+**/.DS_Store
+**/*.tmp
+**/update-check.json

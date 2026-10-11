@@ -312,7 +312,7 @@ test('the description clamp is five description line-heights, toggled by a contr
 test('one dotsMenu implementation serves entity, table and space', () => {
   assert.match(APP, /function dotsMenu\(/);
   assert.equal((APP.match(/dots-btn/g) ?? []).length, 1, 'only dotsMenu may build the ⋮ button');
-  assert.equal((APP.match(/class: `dl-menu hidden/g) ?? []).length, 1, 'only dotsMenu may build the panel');
+  assert.match(fnBody('dotsMenu'), /\bmenu\(items, \{ anchor: btn/, 'the ⋮ opens the one menu builder');
   for (const t of ["title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions`", "title: 'Table actions'", "title: 'Space actions'"]) {
     assert.ok(APP.includes(t), `${t} must be a dotsMenu call`);
   }
@@ -331,24 +331,21 @@ test('the space menu holds no per-table export', () => {
 });
 
 test('deleting a table or a space is behind a hold', () => {
-  assert.ok(APP.includes("hold: 'Delete table'"));
-  assert.match(APP, /hold: space\.tables\.length/, 'the space menu names how many tables go with it');
+  assert.ok(APP.includes("label: 'Delete table', hold: true"));
+  assert.match(APP, /label: space\.tables\.length[\s\S]{0,160}hold: true/, 'the space menu names how many tables go with it');
 });
 
 test('header menus hang off the right edge and fill their rows', () => {
   assert.match(APP, /align: 'right'/);
-  const right = rulesFor('.dl-menu-right');
-  assert.equal(right.left, 'auto');
-  assert.equal(right.right, '0');
-  assert.equal(rulesFor('.dl-menu .hold-btn').width, '100%',
+  assert.match(fnBody('menu'), /side === 'right' \? a\.right - w : a\.left/, 'a right-aligned menu ends at its trigger\'s right edge');
+  assert.equal(rulesFor('.chip-pop-row.wv-menu-row').width, '100%',
     'a hold item must fill the menu row like any other item');
 });
 
 test('only one overflow menu is open at a time', () => {
-  const fn = APP.slice(APP.indexOf('function dotsMenu'));
-  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
-  assert.match(body, /querySelectorAll\('\.dl-menu'\)/, 'opening one must close the others');
-  assert.match(body, /dismissOutside\(\{ open: \(\) => !menu\.classList\.contains\('hidden'\), inside: \(t\) => wrap\.contains\(t\), close \}\)/, 'a tap or click away must close it (Issue #726)');
+  const body = fnBody('menu');
+  assert.match(body, /openMenu\?\.close\(\)/, 'opening one must close the others');
+  assert.match(body, /dismissOutside\(\{ open: \(\) => pop\.isConnected, inside: \(t\) => pop\.contains\(t\)/, 'a tap or click away must close it (Issue #726)');
 });
 
 test('comments and activity make up the side column; fields lead the body', () => {
@@ -421,9 +418,9 @@ test('every column header carries a field menu; a header click edits, sorting li
   assert.match(head, /systemMenu\('Public Id', '#'\)/, 'the # header mounts a sort menu');
   assert.match(head, /systemMenu\(n, n\)/, 'each system header mounts one too');
   const menu = fnBody('fieldMenuButton');
-  assert.match(menu, /showPopover\(/, 'the menu reuses the chip popover, not a new overlay');
+  assert.match(menu, /\bmenu\(\[/, 'the column menu is drawn by the one menu builder, not a new overlay');
   assert.match(menu, /stopPropagation/, 'opening the menu must not also open the editor');
-  assert.match(menu, /const words = sortLabelsFor\(db, f\)/, 'the sort rows take their words from the field');
+  assert.match(menu, /const words = onSort \? sortLabelsFor\(db, f\) : null/, 'the sort rows take their words from the field');
   assert.match(menu, /words\.asc/, 'ascending is in the menu');
   assert.match(menu, /words\.desc/, 'descending is in the menu');
 });
@@ -437,12 +434,13 @@ test('the field menu edits a field rather than dropping and rebuilding it', () =
 
 test('deleting a field from the header is guarded and never offered for Name', () => {
   const menu = fnBody('fieldMenuButton');
-  assert.match(menu, /holdToConfirm\(/, 'destructive rows are hold-to-confirm, like the schema page');
+  assert.match(menu, /label: 'Delete field', hold: true/, 'destructive rows are hold-to-confirm, like the schema page');
+  assert.match(fnBody('menuRow'), /if \(it\.hold\) \{\n\s+const btn = holdToConfirm\(/, 'and a hold row is the house holdToConfirm');
   assert.match(menu, /f\.role !== 'name'/, 'the name-role field must not offer a delete row (by role — it can be renamed, Feature #168)');
 });
 
 test('the field menu draws its icons, it never types them into a label', () => {
-  const menu = fnBody('fieldMenuButton') + fnBody('fieldMenuRow');
+  const menu = fnBody('fieldMenuButton') + fnBody('menuRow');
   assert.match(menu, /iconEl\(/, 'every mark resolves through the one icon path');
   for (const typed of ['✎ Edit', '+ Insert', '↑ Sort', '↓ Sort']) {
     assert.ok(!menu.includes(typed), `'${typed}' is a glyph pasted into a label — draw it instead`);
@@ -451,14 +449,15 @@ test('the field menu draws its icons, it never types them into a label', () => {
 });
 
 test('every row of the field menu is the same row, destructive included', () => {
-  const menu = fnBody('fieldMenuButton');
-  assert.match(menu, /rowClass: 'chip-pop-row wv-menu-row wv-menu-danger'/,
-    'the hold row must carry the popover row class so ↑↓ reaches it');
+  const row = fnBody('menuRow');
+  assert.match(row, /\['chip-pop-row', 'wv-menu-row', it\.danger \|\| it\.hold \? 'wv-menu-danger'/,
+    'the hold row must carry the menu row class so ↑↓ reaches it');
+  assert.match(row, /holdToConfirm\([\s\S]{0,200}rowClass: cls/, 'a hold row is built with that same class');
   const hold = fnBody('holdToConfirm');
   assert.match(hold, /rowClass = 'dropdown-item'/, 'and the menu-less call sites keep their old row');
-  const walk = fnBody('showPopover');
-  assert.match(walk, /querySelectorAll\('\.chip-pop-row'\)/,
-    'the walk is over .chip-pop-row — that is why the delete row has to be one');
+  const walk = fnBody('menu');
+  assert.match(walk, /querySelectorAll\('\.wv-menu-row'\)/,
+    'the walk is over .wv-menu-row — that is why the delete row has to be one');
   const rowCss = rulesFor('.chip-pop-row.wv-menu-row');
   assert.ok(rowCss.padding && rowCss.gap, 'one metric declared once, for all of them');
   assert.equal(rulesFor('.wv-menu-icon').flex, '0 0 var(--wv-icon-md)',
@@ -466,17 +465,19 @@ test('every row of the field menu is the same row, destructive included', () => 
 });
 
 test('sort state is the popover check, not a character prefixed to the label', () => {
-  const menu = fnBody('fieldMenuButton') + fnBody('fieldMenuRow');
+  const menu = fnBody('fieldMenuButton') + fnBody('menuRow');
   assert.ok(!menu.includes("'✓ '"), 'no check pasted onto the front of a label');
   assert.match(menu, /chip-pop-check/, 'the popover already has a current-value cue');
-  assert.match(menu, /current: sorted > 0/, 'ascending is marked when it is the live sort');
-  assert.match(menu, /current: sorted < 0/, 'and descending too');
+  assert.match(menu, /checked: sorted > 0/, 'ascending is marked when it is the live sort');
+  assert.match(menu, /checked: sorted < 0/, 'and descending too');
+  assert.match(fnBody('menuRow'), /'menuitemcheckbox'/, 'a checkable row is a menuitemcheckbox');
   assert.match(fnBody('showPopover'), /findIndex\(\(o\) => o\.querySelector\('\.chip-pop-check'\)\)/);
 });
 
 test('the menu names the column it belongs to', () => {
   const menu = fnBody('fieldMenuButton');
-  assert.match(menu, /wv-menu-head/, 'a title line opens the panel');
+  assert.match(menu, /head: \{ title: f\.name/, 'a title line opens the panel');
+  assert.match(fnBody('menu'), /class: 'wv-menu-head'/, 'drawn by the builder');
   assert.match(menu, /fieldDialogCore\.typeLabel\(f\.type\)/, 'naming the type as well as the name');
   const head = rulesFor('.wv-menu-head');
   assert.match(head['border-bottom'] ?? '', /var\(--tblr-border-color\)/, 'it is a header, so it is ruled off');

@@ -105,7 +105,7 @@ if (s) {
     const page = await open(`/table/${sessions.id}`);
     await page.waitForSelector('thead tr.wv-foot');
     await page.locator('.crumb-actions .dots-btn').last().click();
-    await page.locator('.dl-menu .dropdown-item', { hasText: 'Column stats…' }).first().click();
+    await page.locator('.wv-menu .wv-menu-row', { hasText: 'Column stats…' }).first().click();
     await page.waitForSelector('#modal.wv-stats tr[data-col="Cost"]');
     const cost = await page.locator('#modal.wv-stats tr[data-col="Cost"]').first().evaluate((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent));
     assert.equal(cost[0], 'Cost');
