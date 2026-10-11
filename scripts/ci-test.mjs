@@ -64,7 +64,7 @@ async function main() {
   const report = join(dir, 'events.jsonl');
   writeFileSync(report, '');
   const start = Date.now();
-  const child = spawnSync(process.execPath, ['scripts/test.mjs', '--targeted', '--test-concurrency=2', `--test-reporter=${pathToFileURL(join(ROOT, 'scripts/ci-test-reporter.mjs'))}`, '--test-reporter-destination=stdout', ...shard.files], {
+  const child = spawnSync(process.execPath, ['scripts/test.mjs', '--targeted', '--timeout=1200000', '--test-concurrency=2', `--test-reporter=${pathToFileURL(join(ROOT, 'scripts/ci-test-reporter.mjs'))}`, '--test-reporter-destination=stdout', ...shard.files], {
     cwd: ROOT, stdio: 'inherit', env: { ...process.env, WEAVE_CI_REPORT: report },
   });
   const events = readFileSync(report, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));

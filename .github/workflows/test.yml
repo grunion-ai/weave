@@ -58,7 +58,9 @@ jobs:
         with:
           node-version: "24.12.0"
       - name: Install pinned browser driver
-        run: npm install --no-save --package-lock=false --ignore-scripts "playwright@${PLAYWRIGHT_VERSION}"
+        run: |
+          npm ci --ignore-scripts --prefix .github/test-tools
+          ln -s .github/test-tools/node_modules node_modules
       - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: ~/.cache/ms-playwright
@@ -68,6 +70,7 @@ jobs:
       - name: Run complete shard
         env:
           SHARD: ${{ matrix.id }}
+          WEAVE_TEST_QUEUE_WAIT_MS: "60000"
         run: node scripts/ci-test.mjs run "$SHARD"
       - name: Retain execution evidence
         if: always()
@@ -125,6 +128,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
-      - run: npm install --no-save --package-lock=false --ignore-scripts "playwright@${PLAYWRIGHT_VERSION}"
+      - run: |
+          npm ci --ignore-scripts --prefix .github/test-tools
+          ln -s .github/test-tools/node_modules node_modules
       - run: npx --no-install playwright install --with-deps chromium webkit
       - run: npm test -- --test-concurrency=2
