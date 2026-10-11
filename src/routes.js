@@ -9,7 +9,7 @@ const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
-import { renderAuthPage, renderRefusalPage } from './auth-page.js';
+import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import '../public/starter-core.js';
@@ -28,6 +28,13 @@ export const clientAddress = ({ forwarded, remote, trustProxy }) => {
   const hop = trustProxy ? String(forwarded ?? '').split(',').pop().trim() : '';
   return hop || remote || 'unknown';
 };
+
+export function errorBody(err, code = 'internal') {
+  if (err instanceof WeaveError) return { error: err.message, code: err.code ?? code };
+  const id = crypto.randomUUID().slice(0, 8);
+  if (typeof console !== 'undefined') console.error(`weave: request ${id} failed:`, err);
+  return { error: `Internal error (request ${id})`, code: 'internal', id };
+}
 
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
@@ -226,7 +233,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         });
         if (hit) return hit;
       } catch (err) {
-        const json = { error: err.message, code: err.code ?? 'error' };
+        const json = errorBody(err, 'error');
         return err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(statusFor(err), json);
       }
     }
@@ -614,8 +621,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!origin && String(rx.header('host') ?? '').split(':')[0] === '127.0.0.1') {
             return { status: 302, headers: { Location: `${originFor(rx)}${wsPrefix}/auth${q ? '?' + q : ''}`, 'Cache-Control': 'no-store' }, body: '' };
           }
-          const n = String(rx.searchParams?.get('next') ?? '');
-          const next = /^\/(?![/\\])/.test(n) ? `?next=${encodeURIComponent(n)}` : '';
+          const n = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), null);
+          const next = n ? `?next=${encodeURIComponent(n)}` : '';
           return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
         }
         return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -661,8 +668,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (limited('options', ip)) return tooMany();
               const handoff = rx.searchParams?.get('handoff') || null;
               if (handoff && (!baseDomain || hub.bySlug(handoff) !== weave)) return refusal(400, 'This sign-in link is not valid', 'Start again from the sign-in page of the workspace you want.');
-              const n = String(rx.searchParams?.get('next') ?? '');
-              const next = /^\/(?![/\\])/.test(n) ? n : handoff ? '/' : `${wsPrefix}/`;
+              const next = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), handoff ? '/' : `${wsPrefix}/`);
               const invite = rx.searchParams?.get('invite') || null;
               if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
               let trip;
@@ -1410,8 +1416,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return notFound('Not found');
     } catch (err) {
       const status = statusFor(err);
-      if (status === 500 && typeof console !== 'undefined') console.error(err);
-      const json = { error: err.message, code: err.code ?? 'internal' };
+      const json = errorBody(err, 'internal');
       return status === 404 ? notFound(json) : out(status, json);
     }
   };
