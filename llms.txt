@@ -3,24 +3,25 @@
 > An open-source, self-hosted alternative to Airtable, Fibery, Notion databases,
 > and ClickUp, in which AI agents are first-class users. Connected tables,
 > bidirectional relations, workflow states, lookups, rollups, formulas,
-> automations, and per-entity markdown documents — one SQLite file, zero runtime
+> automations, and per-entity markdown documents. One SQLite file, zero runtime
 > dependencies, no build step, MIT licensed.
 
 weave runs as a single Node process over a single `.db` file. Everything the web
 UI can do is also available over a REST API, a scriptable CLI, and a built-in
-Model Context Protocol (MCP) server backed by the same engine — including every
-configuration choice: field types and their options, colors, icons, column
-widths and order, hidden columns, saved views, automations. `weave_vocabulary`
+Model Context Protocol (MCP) server backed by the same engine. That covers every
+configuration choice: field types and their options, colors, icons, column widths
+and order, hidden columns, saved views, automations. `weave_vocabulary`
 (`GET /api/vocabulary`, `weave vocabulary`) returns every value those settings
 accept and what each looks like on screen, so an agent configures a workspace
-without a human and without guessing. There is no
-cloud, no signup, and no telemetry. A hosted instance signs people in through
-one OpenID Connect provider and agents through `wv_` tokens; with a provider
-configured, `/mcp` is an OAuth 2.1 protected resource, so
-`claude mcp add --transport http weave https://<host>/mcp` signs an agent in
-through the browser.
+without a human and without guessing. There is no cloud, no signup, and no
+telemetry. A hosted instance signs people in through one OpenID Connect provider
+and agents through `wv_` tokens; with a provider configured, `/mcp` is an
+OAuth 2.1 protected resource, so `claude mcp add --transport http weave https://<host>/mcp`
+signs an agent in through the browser. A local install binds loopback.
+Authentication is off until an architect runs `weave workspace require-auth`
+on a workspace.
 
-Requires Node ≥ 22.16 (Node 24 LTS recommended). Install is `git clone` — there
+Requires Node ≥ 22.16 (Node 24 LTS recommended). Install is `git clone`. There
 is nothing to build and nothing to install from npm.
 
 ## Docs
@@ -32,10 +33,10 @@ is nothing to build and nothing to install from npm.
 - [Architecture map](https://github.com/grunion-ai/weave/tree/main/docs/architecture): interactive runtime map rendered by archify, each node linked to its source at a pinned commit
 - [Feature parity matrix](https://github.com/grunion-ai/weave/blob/main/docs/PARITY.md): weave against Fibery's core work-platform feature set, feature by feature
 - [weave vs Airtable](https://github.com/grunion-ai/weave/blob/main/docs/comparison/airtable.md): how Airtable concepts map onto weave, and what is missing
-- [weave vs Fibery](https://github.com/grunion-ai/weave/blob/main/docs/comparison/fibery.md): how Fibery concepts map onto weave, and what is missing
-- [Open-source alternatives compared](https://github.com/grunion-ai/weave/blob/main/docs/comparison/alternatives.md): weave against NocoDB, Baserow, Grist, and Teable
+- [weave vs Fibery](https://github.com/grunion-ai/weave/blob/main/docs/comparison/fibery.md): the same mapping for Fibery
+- [Open-source alternatives compared](https://github.com/grunion-ai/weave/blob/main/docs/comparison/alternatives.md): NocoDB, Baserow, Grist and Teable, side by side with weave, feature by feature
 - [CONTRIBUTING](https://github.com/grunion-ai/weave/blob/main/CONTRIBUTING.md): setup, the zero-dependency and no-build-step rules, PR expectations
-- [SECURITY](https://github.com/grunion-ai/weave/blob/main/SECURITY.md): threat model, what is in scope, private reporting
+- [SECURITY](https://github.com/grunion-ai/weave/blob/main/SECURITY.md): the threat model (roles, `wv_` tokens, provider sign-in, the `requireAuth` switch, the request checks), what is in scope, private reporting
 
 ## Optional
 

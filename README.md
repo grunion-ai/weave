@@ -265,27 +265,27 @@ form is not yet accepted.
 
 ## Self-hosting
 
-A server install is the local install plus a door. The container is the same
+A hosted install is the local install plus a door. The container is the same
 on every target and the Handbook carries the guides (open **Handbook → Guide**
 on any instance, including the one you just started):
 
-- **Self-host weave: choose your door** — the two authentication surfaces
+- **Self-host weave: choose your door**: the two authentication surfaces
   (an edge gate, an identity provider) and the rule: the surface is the
   operator's choice. The built-in passkey door was removed after 0.4.52.
-- **Door A: an edge gate** — Cloudflare Access, Tailscale, Caddy, oauth2-proxy,
+- **Door A: an edge gate**: Cloudflare Access, Tailscale, Caddy, oauth2-proxy,
   Authelia: one config block and one check each.
 - **Door C: sign in with a provider**: one OpenID Connect provider (Clerk,
   Auth0, Keycloak, Authentik, Google). `weave account link <name>` mints a
   one-time invite link that opens an account to it; signing in creates none,
   and weave keeps one verified email per sign-in identity, nothing else. `WEAVE_ORIGIN`
   names the origin the provider sends people back to. Agents keep `wv_` tokens.
-- **Deploy: Railway** — project from GitHub, volume at `/data`, variables,
+- **Deploy: Railway**: project from GitHub, volume at `/data`, variables,
   custom domain, one replica.
-- **Deploy: Fly.io, Render, a VPS, Docker** — one section each, same shape;
+- **Deploy: Fly.io, Render, a VPS, Docker**: one section each, same shape;
   the service unit lives here.
-- **Backup and restore** — `weave backup` (one sealed tar of every workspace,
-  attachments and keystore), `weave restore`, the nightly switch, retention.
-- **Environment reference** — every variable, its default, and what breaks
+- **Backup and restore**: `weave backup` (one sealed tar of every workspace, attachments
+  and keystore), `weave restore`, the nightly switch, retention.
+- **Environment reference**: every variable, its default, and what breaks
   when it is wrong.
 
 Quick start with Docker, using the `Dockerfile` and `compose.yaml` in the repo:
@@ -295,8 +295,9 @@ docker compose up -d        # http://127.0.0.1:4400, data in the weave-data volu
 ```
 
 `railway.json` and `fly.toml` are the platform manifests for the same image.
-Whatever the target, put a door in front before the port is reachable from
-anywhere but your own machine.
+Whatever the target, put a door in front and run `weave workspace require-auth`
+before the port is reachable from anywhere but your own machine. The threat
+model behind that rule is in [SECURITY.md](SECURITY.md).
 
 ## What weave is not
 
@@ -383,23 +384,24 @@ README screenshots are regenerated with `node scripts/screenshots.mjs`.
 
 ## Security
 
-weave ships with authentication off. Until a workspace runs
-`weave workspace require-auth`, anyone who reaches the port can do everything
-an architect can in it. The server binds `127.0.0.1`, so a local install stays
-private to your machine.
-
-Before anyone else can reach a self-hosted install, put a door in front of it
-(see [Self-hosting](#self-hosting)) and turn on `require-auth`. Every page and
-API route then refuses a caller without a `wv_` token or a signed-in session.
-Never expose the port directly.
+Authentication is off until an architect runs `weave workspace require-auth`
+on a workspace. Until then, anyone who reaches the port does everything an
+architect can in it. A local install binds `127.0.0.1`, so it stays private to
+your machine. The container binds `0.0.0.0` for the platform's proxy, so before
+anyone else can reach a hosted install, put a door in front of it (see
+[Self-hosting](#self-hosting)) and run `require-auth`. Every page and API route
+then refuses a caller without a `wv_` token or a signed-in session.
 
 Roles stop at the workspace. An observer reads and comments, an editor writes
 rows, and an architect changes structure, accounts and keys.
 
-Documents may contain raw HTML, which renders same-origin — treat access to a
-shared workspace the way you'd treat write access to a repo.
+A document of kind `html` renders on the application's origin, so script an
+editor places in one runs for whoever opens it. We are reviewing that
+limitation. Until it changes, grant editor access the way you grant write
+access to a repository.
 
-To report a vulnerability, see [SECURITY.md](SECURITY.md).
+The threat model, the scope and private reporting are in
+[SECURITY.md](SECURITY.md).
 
 ## License
 
