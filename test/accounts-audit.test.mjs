@@ -39,7 +39,7 @@ test('structural changes land in the audit log with their actor', () => {
   assert.ok(actions.includes('space-created'));
   assert.ok(actions.includes('table-created'));
   assert.ok(actions.includes('field-added'));
-  assert.ok(actions.includes('field-deleted'));
+  assert.ok(actions.includes('field-trashed'));
   assert.ok(log.every((r) => r.actor === 'ada'));
   const fieldAdd = log.find((r) => r.action === 'field-added');
   assert.equal(fieldAdd.detail.table, 'Task');
