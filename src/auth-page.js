@@ -2,13 +2,13 @@ import { escapeHtml as esc } from './markdown.js';
 
 const CSS = `
 :root{
-  --ground:#f3f1ec; --surface:#fafaf8; --line:#e6e3dc; --ink:#24292e; --body:#374151; --muted:#6b7280;
+  --ground:#eceff3; --surface:#ffffff; --line:#d9dee6; --ink:#24292e; --body:#374151; --muted:#6b7280;
   --accent:#3a5bc7; --accent-ink:#fff; --bad:#ce2c31; --bad-soft:rgba(229,72,77,.12); --ok:#218358; --ok-soft:rgba(46,160,67,.14);
   --app:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root{
-  --ground:#0c1b33; --surface:#132444; --line:#24375e; --ink:#e0dcd4; --body:#cfd3dd; --muted:#9099ad;
+  --ground:#0f1115; --surface:#181b21; --line:#2a2f38; --ink:#e0dcd4; --body:#cfd3dd; --muted:#9099ad;
   --accent:#9eb1ff; --accent-ink:#0c1b33; --bad:#ff9ea1; --bad-soft:rgba(229,72,77,.18); --ok:#71d083; --ok-soft:rgba(70,180,110,.16);
 }}
 *{box-sizing:border-box}

@@ -211,8 +211,8 @@ const HEAD = (mount, title, extra) => `<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Tasks">
-<meta name="theme-color" content="#f3f1ec" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0c1b33" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eceff3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
 <meta name="robots" content="noindex, nofollow">
 <link rel="apple-touch-icon" href="${mount}/icon.png">
 <title>${esc(title)}</title>
@@ -221,8 +221,8 @@ const HEAD = (mount, title, extra) => `<!doctype html>
 
 const CSS = `
 :root{
-  --ground:#f3f1ec; --surface:#fafaf8; --sunk:#efece5;
-  --line:#e6e3dc; --line-soft:#edeae3;
+  --ground:#eceff3; --surface:#ffffff; --sunk:#e2e6ec;
+  --line:#d9dee6; --line-soft:#e6eaf0;
   --ink:#24292e; --body:#374151; --muted:#6b7280; --faint:#9aa0a6;
   --accent:#3a5bc7; --accent-soft:rgba(71,105,235,.12); --accent-line:rgba(71,105,235,.35);
   --ok:#218358; --ok-soft:rgba(46,160,67,.14);
@@ -235,8 +235,8 @@ const CSS = `
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root{
-  --ground:#0c1b33; --surface:#132444; --sunk:#0f1e39;
-  --line:#24375e; --line-soft:#1b2c4f;
+  --ground:#0f1115; --surface:#181b21; --sunk:#222731;
+  --line:#2a2f38; --line-soft:#222731;
   --ink:#e0dcd4; --body:#cfd3dd; --muted:#9099ad; --faint:#71798d;
   --accent:#9eb1ff; --accent-soft:rgba(99,140,245,.18); --accent-line:rgba(99,140,245,.45);
   --ok:#71d083; --ok-soft:rgba(70,180,110,.16);
