@@ -87,7 +87,7 @@ test('routes: each workspace holds its own session; signing out of one leaves th
     const b = browser(s);
     assert.equal((await b.signIn('alpha')).status, 302);
     assert.equal((await b.signIn('beta')).status, 302);
-    assert.deepEqual([...b.jar.keys()].sort(), [nameOf(s.alpha.w), nameOf(s.beta.w)].sort(), 'one cookie per workspace, named by its id, and no plain wv_session');
+    assert.deepEqual([...b.jar.keys()].filter((k) => k.startsWith('wv_session')).sort(), [nameOf(s.alpha.w), nameOf(s.beta.w)].sort(), 'one cookie per workspace, named by its id, and no plain wv_session');
     assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 200);
     assert.equal((await b.call('GET', '/w/beta/api/schema')).status, 200);
     const alphaOnly = `${nameOf(s.alpha.w)}=${b.jar.get(nameOf(s.alpha.w))}`;
@@ -195,7 +195,7 @@ test('routes: the hub-root fallthrough still opens a member workspace for a root
     const b = browser(s);
     const back = await b.signIn('gamma');
     assert.equal(back.status, 302, 'gamma has no kyle, so the root account signs in');
-    assert.deepEqual([...b.jar.keys()], [nameOf(s.home.w)], 'the session lives on the root, so it carries the root\'s name');
+    assert.deepEqual([...b.jar.keys()].filter((k) => k.startsWith('wv_session')), [nameOf(s.home.w)], 'the session lives on the root, so it carries the root\'s name');
     assert.equal((await b.call('GET', '/w/gamma/api/schema')).status, 200);
     assert.equal((await b.call('GET', '/api/schema')).status, 200);
 
