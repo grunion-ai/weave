@@ -11,6 +11,8 @@ const app = await launch('Native form management', w => {
   w.addField(table.id, { name: 'Reporter', type: 'text' });
   w.addField(table.id, { name: 'Notes', type: 'document' });
   w.addField(table.id, { name: 'Period', type: 'date' });
+  w.addField(table.id, { name: 'Tags', type: 'multiselect', config: { options: ['One', 'Two', 'Three'] } });
+  w.addField(table.id, { name: 'Urgent', type: 'checkbox' });
   const preserved = createForm(w, { name: 'Existing intake', table: table.id, fields: [{ field: 'Name', key: 'title', aliases: ['old_title'], required: true }, { field: 'Notes', default: 'First line\nSecond line' }, { field: 'Period', default: '2026-10' }], hidden: { Reporter: '$actor' } });
   const observer = w.createAccount({ name: 'viewer', role: 'observer' });
   const architect = w.createAccount({ name: 'builder', role: 'architect' });
@@ -111,4 +113,39 @@ if (app) test('editing preserves hidden fields and aliases, and observers have n
     await viewer.getByRole('button', { name: 'Table actions', exact: true }).click();
     assert.equal(await viewer.getByRole('menuitem', { name: 'Forms…', exact: true }).count(), 0);
   } finally { await context.close(); }
+});
+
+if (app) test('a choice default is picked through the picker: several for a multiselect, Yes or No for a checkbox', async () => {
+  const { browser, base, table, weave, architect } = app;
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  try {
+    await page.context().addCookies([{ name: 'wv_session', value: weave.createSession(architect.account.id).token, url: base }]);
+    await page.goto(`${base}/#/db/${table.id}`);
+    await page.getByRole('button', { name: 'Table actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
+    await page.getByRole('button', { name: 'Create form', exact: true }).click();
+    await page.getByLabel('Form name', { exact: true }).fill('Picked defaults');
+    assert.equal(await page.locator('#modal select').count(), 0, 'no native select in the form editor');
+    const row = (name) => page.locator('[data-form-field]').filter({ has: page.getByText(name, { exact: true }) });
+    const pickRow = (label) => page.locator('.picker-pop .picker-row', { has: page.getByText(label, { exact: true }) }).click();
+    await row('Tags').locator('summary').click();
+    await row('Tags').getByLabel('Include Tags', { exact: true }).check();
+    await row('Tags').getByLabel('Use a default', { exact: true }).check();
+    await row('Tags').locator('.picker-face').click();
+    await pickRow('Three');
+    await pickRow('One');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !document.querySelector('.picker-pop'));
+    assert.equal((await row('Tags').locator('.picker-face').innerText()).trim(), 'Three, One');
+    await row('Urgent').locator('summary').click();
+    await row('Urgent').getByLabel('Include Urgent', { exact: true }).check();
+    await row('Urgent').getByLabel('Use a default', { exact: true }).check();
+    await row('Urgent').locator('.picker-face').click();
+    await pickRow('Yes');
+    await page.getByRole('button', { name: 'Save form', exact: true }).click();
+    await page.getByRole('heading', { name: 'Forms', exact: true }).waitFor();
+    const form = getForm(weave, listForms(weave).find(f => f.name === 'Picked defaults').id);
+    assert.deepEqual(form.fields.find(f => f.field === 'Tags').default, ['Three', 'One']);
+    assert.equal(form.fields.find(f => f.field === 'Urgent').default, true);
+  } finally { await page.close(); }
 });

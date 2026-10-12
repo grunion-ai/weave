@@ -9,6 +9,7 @@ const s = await launch('prefill-links', (weave) => {
   const topics = weave.createTable({ space: 'Library', name: 'Topics' });
   weave.addField(saves, { name: 'Link', type: 'url' });
   weave.addField(saves, { name: 'Source', type: 'select', config: { options: ['Squirrel', 'Manual'] } });
+  weave.addField(saves, { name: 'Tags', type: 'multiselect', config: { options: ['ai', 'ops', 'read'] } });
   weave.addRelation(saves, { name: 'Topic', targetDb: topics, cardinality: 'many-to-one', inverseName: 'Saves' });
   reading = weave.createEntity(topics, { name: 'Reading' });
 });
@@ -20,15 +21,20 @@ if (s) {
     window.__copied = [];
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied.push(t); } } });
   });
+  const face = (page, name) => page.locator(`#tray .picker-wrap:has([name="${name}"]) .picker-face`);
+  const pickRow = (page, label) => page.locator('.picker-pop .picker-row', { has: page.getByText(label, { exact: true }) }).click();
 
   test('a prefill link opens the new-row form filled in, names the unknown field, and creates nothing until Save', async () => {
     const page = await browser.newPage();
-    const q = new URLSearchParams([['Name', 'A good read'], ['Link', 'https://x.example/a?b=c'], ['Source', 'squirrel'], ['Topic', 'reading'], ['Bogus', '1']]);
+    const q = new URLSearchParams([['Name', 'A good read'], ['Link', 'https://x.example/a?b=c'], ['Source', 'squirrel'], ['Tags', 'ai'], ['Tags', 'read'], ['Topic', 'reading'], ['Bogus', '1']]);
     await page.goto(`${base}/t/${saves.id}/new?${q}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#tray .wv-prefill [name="Name"]');
     assert.equal(await page.inputValue('#tray [name="Name"]'), 'A good read');
     assert.equal(await page.inputValue('#tray [name="Link"]'), 'https://x.example/a?b=c');
-    assert.equal(await page.inputValue('#tray select[name="Source"]'), 'Squirrel');
+    assert.equal(await page.locator('#tray select').count(), 0, 'every choice is a picker, never a native select');
+    assert.equal(await page.inputValue('#tray [name="Source"]'), 'Squirrel');
+    assert.equal((await face(page, 'Source').innerText()).trim(), 'Squirrel');
+    assert.equal((await face(page, 'Tags').innerText()).trim(), 'ai, read');
     assert.equal(await page.inputValue('#tray [name="Topic"]'), 'Reading');
     assert.match(await page.textContent('#tray .wv-prefill-rows[data-field="Topic"]'), /Reading/);
     assert.match(await page.textContent('#tray .wv-prefill-notice'), /Bogus/);
@@ -41,6 +47,7 @@ if (s) {
     assert.equal(made.Name, 'A good read');
     assert.equal(made.Link, 'https://x.example/a?b=c');
     assert.equal(made.Source, 'Squirrel');
+    assert.deepEqual(made.Tags, ['ai', 'read']);
     assert.equal(made.Topic?.id ?? made.Topic?.[0]?.id, reading.id);
     weave.deleteEntity(rows()[0].id);
     await page.close();
@@ -53,7 +60,7 @@ if (s) {
     const notice = await page.textContent('#tray .wv-prefill-notice');
     assert.match(notice, /'Pigeon' is not an option of 'Source'/);
     assert.match(notice, /'Nowhere'/);
-    assert.equal(await page.inputValue('#tray select[name="Source"]'), '');
+    assert.equal(await page.inputValue('#tray [name="Source"]'), '');
     await page.click('#tray .tray-actions .btn:not(.btn-primary)');
     await page.waitForFunction(() => !document.querySelector('#tray'));
     assert.equal(rows().length, 0);
@@ -72,12 +79,21 @@ if (s) {
     await page.evaluate((id) => { location.hash = `#/table/${id}/new?Name=Draft`; }, saves.id);
     await page.waitForSelector('#tray .wv-prefill [name="Name"]');
     await page.fill('#tray [name="Link"]', 'https://y.example/');
-    await page.selectOption('#tray select[name="Source"]', 'Manual');
+    await face(page, 'Source').click();
+    await pickRow(page, 'Manual');
+    assert.equal((await face(page, 'Source').innerText()).trim(), 'Manual');
+    await face(page, 'Tags').click();
+    await pickRow(page, 'ops');
+    await pickRow(page, 'ai');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !document.querySelector('.picker-pop'));
+    assert.equal((await face(page, 'Tags').innerText()).trim(), 'ops, ai');
     await page.click('#tray .wv-prefill-copy');
     await page.waitForFunction(() => window.__copied.length === 2);
     const copied = new URL(await page.evaluate(() => window.__copied[1]));
     assert.equal(copied.origin + copied.pathname, `${base}/t/${saves.id}/new`);
-    assert.deepEqual(Object.fromEntries(copied.searchParams), { Name: 'Draft', Link: 'https://y.example/', Source: 'Manual' });
+    assert.deepEqual(Object.fromEntries(copied.searchParams), { Name: 'Draft', Link: 'https://y.example/', Source: 'Manual', Tags: 'ai' });
+    assert.deepEqual(copied.searchParams.getAll('Tags'), ['ops', 'ai']);
     assert.equal(rows().length, 0);
     await page.close();
   });
