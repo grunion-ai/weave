@@ -2018,6 +2018,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #dock .crumb-row { flex-wrap: nowrap; }
   #dock .crumb-row > .crumb-path { flex: 1 1 0; min-width: 0; }
   #dock .crumb-row .crumb-actions { flex: none; gap: 6px; margin-left: auto; }
+  #dock .crumb-row .crumb-copy { margin-inline-end: 4px; }
 }
 .phone-bar { display: none; }
 @media (max-width: 600px) {
@@ -2251,8 +2252,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .crumb-copy::after, .crumb-more::after, .dots-btn::after, .date-pick-btn::after, .view-desc-more::after, .entity-fields .fieldrow button.k::after, .doc-anchor.permalink-copy::after {
     content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
   .crumb-item::after { content: ''; position: absolute; left: 0; top: 50%; width: 100%; height: max(100%, 44px); transform: translateY(-50%); }
-  .crumb-slot:not(.crumb-slot-cur), .crumb-slot > a.crumb-item { overflow: visible; }
+  .crumb-path, .crumb-slot:not(.crumb-slot-cur), .crumb-slot > a.crumb-item { overflow: visible; }
   .icon-btn { min-width: 44px; min-height: 44px; }
+  .ws-logo-pick { width: 44px; height: 44px; }
   .view-title { min-height: 44px; }
   #sidebar .ws-wordmark { min-height: 44px; }
   .wv-schema > summary, .wv-members-box > summary { min-height: 44px; }
