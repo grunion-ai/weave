@@ -37,6 +37,26 @@ export function unpackRelease(tgz, dir) {
   }
 }
 
+export function pruneReleases(releasesDir, { serving, failed = {}, log = console } = {}) {
+  let names;
+  try { names = readdirSync(releasesDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch { return []; }
+  const servedAt = (name) => { try { return readFileSync(join(releasesDir, name, OK_MARK), 'utf8'); } catch { return null; } };
+  const rollback = names.map((name) => ({ name, at: servedAt(name) }))
+    .filter((r) => r.at && join(releasesDir, r.name) !== serving && !failed[r.name.slice(1)])
+    .sort((a, b) => b.at.localeCompare(a.at))[0]?.name;
+  const removed = [];
+  for (const name of names) {
+    if (name === rollback || join(releasesDir, name) === serving) continue;
+    try {
+      rmSync(join(releasesDir, name), { recursive: true, force: true });
+      removed.push(name);
+    } catch (err) {
+      log.warn(`weave supervise: could not remove releases/${name}: ${err.message}`);
+    }
+  }
+  return removed;
+}
+
 function bootRelease({ releasesDir, imageDir, failed, commit }) {
   const tracked = commit && join(releasesDir, `c${commit}`);
   if (tracked && !failed[commit] && existsSync(join(tracked, OK_MARK)) && versionOf(tracked)) return { dir: tracked, version: versionOf(tracked), release: `c${commit}`, commit };
@@ -76,6 +96,7 @@ export async function startSupervisor({
   let swapping = null;
   let hook = () => {};
   const emit = (e) => { onEvent(e); hook(e); };
+  const prune = (serving) => pruneReleases(releasesDir, { serving, failed: state.failed, log });
 
   function spawnWorker(rel, { defer }) {
     const child = spawn(process.execPath, [join(rel.dir, 'bin', 'weave.js'), 'serve', '--port', '0', '--host', host, '--data', dataPath], {
@@ -237,6 +258,7 @@ export async function startSupervisor({
       const verdict = err instanceof Refusal;
       if (verdict) state.failed[key] = { at, reason: err.message };
       record(false, err.message);
+      prune(current.dir);
       log.warn(`weave supervise: ${to} not installed: ${err.message}${verdict ? '' : ' (tried again next check)'}`);
       emit({ type: 'failed', version: key, reason: err.message });
       return { action: 'failed', version: key, reason: err.message, retry: !verdict };
@@ -265,10 +287,7 @@ export async function startSupervisor({
     state.attempting = null;
     if (next.commit) state.commit = next.commit;
     record(true);
-    for (const name of readdirSync(releasesDir)) {
-      const dir = join(releasesDir, name);
-      if (/^(v\d|c[0-9a-f]{40}$)/.test(name) && dir !== next.dir && dir !== old.dir) rmSync(dir, { recursive: true, force: true });
-    }
+    prune(next.dir);
     log.log(`weave supervise: ${from} -> ${to}`);
     return { action: 'swapped', from, to, ...(next.commit ? { commit: next.commit } : {}) };
   }
@@ -314,6 +333,7 @@ export async function startSupervisor({
   }
   first.since = new Date().toISOString();
   current = first;
+  prune(current.dir);
   await new Promise((r, j) => { server.once('error', j); server.listen(port, host, r); });
   const timer = interval > 0 ? setInterval(() => check().catch((err) => log.warn(`weave supervise: check failed: ${err.message}`)), interval) : null;
   if (timer) check().catch(() => {});

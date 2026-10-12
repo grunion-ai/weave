@@ -23,7 +23,10 @@ production, which needs an approved release.
    health check passes, and keeps the old worker serving when it fails. A failed
    commit is skipped until main moves. Roll back a bad change by landing its
    revert. The dev service runs `weave supervise` with `WEAVE_AUTO_UPDATE=1`,
-   `WEAVE_TRACK=main` (follow main commits into `releases/c<sha>/`) and
+   `WEAVE_TRACK=main` (follow main commits into `releases/c<sha>/`; after every
+   swap, failed health check and boot the supervisor deletes every folder under
+   `releases/` except the serving commit and the most recently served good one,
+   kept for rollback, and never touches `releases/state.json`) and
    `WEAVE_DEPLOY_TOKEN` (32+ characters; `POST /_supervisor/check` with that
    bearer token checks main at once, which the `Deploy dev` job calls). Migrated draft PRs stay drafts until their own review finishes.
 
@@ -101,6 +104,11 @@ a conflicting tag fails and is never moved.
 
 The hosted supervisor at https://weave.grunion.ai polls GitHub releases every ten
 minutes. It downloads the tag's immutable SHA, checks health, and swaps workers.
+With `WEAVE_AUTO_UPDATE=1` it unpacks each release into `releases/v<version>/`
+beside `WEAVE_DATA` and keeps two folders at most: the serving release and the
+most recently served good one. A release that fails its health check is deleted
+along with every older folder. While the image serves, only the newest good
+folder stays. A folder it cannot remove is logged and never blocks a swap.
 The release job polls health for at most 90 attempts, with ten-second intervals and
 five-second request timeouts. Success requires the exact package version and
 `supervisor.release` tag. A rejected update or timeout fails the workflow visibly.

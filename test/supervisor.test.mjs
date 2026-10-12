@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, existsSync, statSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, existsSync, statSync, copyFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -10,7 +10,7 @@ import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
 import { packTar } from '../src/backup.js';
 import { Weave, deferMigrations, runDeferredMigrations } from '../src/engine.js';
-import { startSupervisor, autoUpdateFromEnv, unpackRelease, REPO_API } from '../src/supervisor.js';
+import { startSupervisor, autoUpdateFromEnv, unpackRelease, pruneReleases, REPO_API } from '../src/supervisor.js';
 import { RELEASES_URL } from '../src/update-check.js';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -85,6 +85,15 @@ async function supervise(dataPath, gh, extra = {}) {
 }
 
 const health = async (base) => (await fetch(`${base}/api/health`)).json();
+const releasesOf = (dataPath) => readdirSync(join(dataPath, '..', 'releases')).sort();
+
+function plantRelease(releasesDir, name, { version = name.slice(1), served = null } = {}) {
+  const dir = join(releasesDir, name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'weave', version }));
+  if (served) writeFileSync(join(dir, '.weave-release-ok'), served);
+  return dir;
+}
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 test('WEAVE_AUTO_UPDATE is opt-in: unset, "0" or "off" leave supervise as plain serve', async () => {
@@ -280,6 +289,7 @@ test('a release whose health check fails leaves the old worker serving, and is n
     const again = await sup.check();
     assert.equal(again.action, 'skipped', 'the same release is not tried twice');
     assert.equal(tarballs(), 1, 'and not downloaded again');
+    assert.deepEqual(releasesOf(dataPath), ['state.json'], 'the failed release folder is gone; state.json still names it failed');
   } finally {
     await sup.close();
   }
@@ -333,6 +343,64 @@ test('unpackRelease strips the top directory and refuses an entry that climbs ou
   assert.ok(!existsSync(join(dir, 'evil.js')));
 });
 
+function plantedReleases() {
+  const dir = join(mkdtempSync(join(scratch, 'prune-')), 'releases');
+  plantRelease(dir, 'v0.0.1', { served: '2026-10-01T00:00:00.000Z' });
+  plantRelease(dir, 'v0.0.2', { served: '2026-10-02T00:00:00.000Z' });
+  plantRelease(dir, 'v0.0.3', { served: '2026-10-03T00:00:00.000Z' });
+  plantRelease(dir, 'v0.0.4');
+  plantRelease(dir, 'v0.0.5.part', { version: '0.0.5' });
+  plantRelease(dir, `c${SHA}`, { version: '0.0.6', served: '2026-09-30T00:00:00.000Z' });
+  writeFileSync(join(dir, 'state.json'), '{}');
+  return dir;
+}
+
+test('pruning keeps the serving folder and the most recently served good one, and never state.json', () => {
+  const dir = plantedReleases();
+  const removed = pruneReleases(dir, { serving: join(dir, `c${SHA}`), failed: { '0.0.3': {} } });
+  assert.deepEqual(readdirSync(dir).sort(), [`c${SHA}`, 'state.json', 'v0.0.2']);
+  assert.deepEqual(removed.sort(), ['v0.0.1', 'v0.0.3', 'v0.0.4', 'v0.0.5.part']);
+});
+
+test('pruning while the image serves keeps only the newest good folder', () => {
+  const dir = plantedReleases();
+  pruneReleases(dir, { serving: ROOT, failed: { '0.0.3': {} } });
+  assert.deepEqual(readdirSync(dir).sort(), ['state.json', 'v0.0.2']);
+  const bare = join(mkdtempSync(join(scratch, 'prune-')), 'releases');
+  plantRelease(bare, 'v0.0.7');
+  pruneReleases(bare, { serving: ROOT, failed: {} });
+  assert.deepEqual(readdirSync(bare), [], 'no good folder: nothing is kept');
+  assert.deepEqual(pruneReleases(join(scratch, 'no-such-releases'), { serving: ROOT, failed: {} }), []);
+});
+
+test('a folder pruning cannot remove is logged, and pruning does not throw', { skip: process.getuid?.() === 0 && 'root ignores directory permissions' }, () => {
+  const dir = plantedReleases();
+  const warnings = [];
+  chmodSync(dir, 0o555);
+  try {
+    assert.doesNotThrow(() => pruneReleases(dir, { serving: join(dir, `c${SHA}`), failed: {}, log: { warn: (m) => warnings.push(m) } }));
+  } finally {
+    chmodSync(dir, 0o755);
+  }
+  assert.ok(warnings.some((m) => /v0\.0\.1/.test(m)), warnings.join('\n'));
+});
+
+test('a boot that serves the image keeps only the newest good release folder', async () => {
+  const dataPath = dataDir('boot-prune');
+  const dir = join(dataPath, '..', 'releases');
+  plantRelease(dir, 'v0.0.1', { served: '2026-10-01T00:00:00.000Z' });
+  plantRelease(dir, 'v0.0.2', { served: '2026-10-02T00:00:00.000Z' });
+  plantRelease(dir, 'v0.0.3', { served: '2026-10-03T00:00:00.000Z' });
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ failed: { '0.0.3': { at: '2026-10-03T00:00:00.000Z', reason: 'unhealthy' } } }));
+  const { sup, base } = await supervise(dataPath, fakeGitHub());
+  try {
+    assert.equal((await health(base)).supervisor.release, 'image');
+    assert.deepEqual(releasesOf(dataPath), ['state.json', 'v0.0.2']);
+  } finally {
+    await sup.close();
+  }
+});
+
 function fakeMain({ heads, tarball = () => releaseTarball(NEXT) }) {
   const calls = [];
   const tgz = new Map();
@@ -350,6 +418,7 @@ function fakeMain({ heads, tarball = () => releaseTarball(NEXT) }) {
 const TRACK = { ...ENV, WEAVE_TRACK: 'main' };
 const MAIN_A = 'b'.repeat(40);
 const MAIN_B = 'c'.repeat(40);
+const MAIN_C = 'd'.repeat(40);
 
 test('tracking main swaps to each new main commit, keyed by commit, without a release', async () => {
   const dataPath = dataDir('track-main');
@@ -369,6 +438,9 @@ test('tracking main swaps to each new main commit, keyed by commit, without a re
     h = await health(base);
     assert.equal(h.supervisor.commit, MAIN_B);
     assert.deepEqual(readdirSync(join(dataPath, '..', 'releases')).filter((n) => n.startsWith('c')).sort(), [`c${MAIN_A}`, `c${MAIN_B}`]);
+    heads.main = MAIN_C;
+    assert.equal((await sup.check()).action, 'swapped');
+    assert.deepEqual(releasesOf(dataPath), [`c${MAIN_B}`, `c${MAIN_C}`, 'state.json'], 'the oldest commit folder is pruned on the next swap');
   } finally {
     await sup.close();
   }
@@ -387,9 +459,27 @@ test('a main commit that fails its health check rolls back to the serving worker
     assert.equal(after.supervisor.pid, before.supervisor.pid, 'the old worker keeps serving');
     assert.deepEqual(after.supervisor.failed, [MAIN_A]);
     assert.equal((await sup.check()).action, 'skipped');
+    assert.deepEqual(releasesOf(dataPath), ['state.json'], 'the failed commit folder is gone');
     heads.main = MAIN_B;
     assert.equal((await sup.check()).action, 'swapped', 'the next main commit deploys');
     assert.equal((await health(base)).supervisor.commit, MAIN_B);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a failed main commit is pruned, keeping the serving folder and the previous good one for rollback', async () => {
+  const dataPath = dataDir('track-fail-prune');
+  const heads = { main: MAIN_A };
+  const gh = fakeMain({ heads, tarball: (sha) => (sha === MAIN_C ? releaseTarball(NEXT, { bin: 'process.exit(3);\n' }) : releaseTarball(NEXT)) });
+  const { sup } = await supervise(dataPath, gh, { env: TRACK });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    heads.main = MAIN_B;
+    assert.equal((await sup.check()).action, 'swapped');
+    heads.main = MAIN_C;
+    assert.equal((await sup.check()).action, 'failed');
+    assert.deepEqual(releasesOf(dataPath), [`c${MAIN_A}`, `c${MAIN_B}`, 'state.json']);
   } finally {
     await sup.close();
   }
