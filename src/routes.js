@@ -116,7 +116,7 @@ const START_TTL_MS = 30 * 60 * 1000;
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const challenges = new Map();
   const handoffs = new Map();
   const scheme = origin ? new URL(origin).protocol : 'http:';
@@ -807,6 +807,31 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (legalPage) {
         const [title, markdown] = path === '/privacy' ? ['Privacy policy', PRIVACY] : ['Terms of Service', TERMS];
         return out(200, renderDocumentPage({ title, subtitle: 'weave', markdown }), { 'Content-Type': 'text/html; charset=utf-8' });
+      }
+
+      if (path === '/api/backups' || (m = path.match(/^\/api\/backups\/([^/]+)$/))) {
+        const archive = path === '/api/backups' ? null : m[1];
+        const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
+        const account = bearer.startsWith('wv_') ? weave.verifyToken(bearer) : null;
+        if (!account) return deny(401, 'Backups need the account token: send Authorization: Bearer wv_…');
+        const claimed = rx.header('x-weave-account');
+        let named = claimed;
+        try { named = claimed == null ? null : decodeURIComponent(claimed); } catch {}
+        if (named != null && named !== account.name) return deny(403, `This token belongs to the account ${account.name}, not ${named}`);
+        if (!cloudBackups) return out(400, { error: 'This deployment keeps no backups: it has no bucket configured.', code: 'invalid' });
+        if (rx.method === 'GET' && !archive) {
+          const backups = await cloudBackups.list(account.id);
+          return out(200, { account: account.name, quota: cloudBackups.quota, used: backups.reduce((n, b) => n + b.bytes, 0), backups });
+        }
+        if (rx.method === 'GET') {
+          const bytes = await cloudBackups.get(account.id, archive);
+          return out(200, new Uint8Array(bytes), { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${archive}"`, 'Cache-Control': 'no-store' });
+        }
+        if (rx.method === 'PUT' && archive) {
+          if (!rx.readBytes) return out(400, { error: 'This deployment cannot take an archive upload.', code: 'invalid' });
+          return out(201, await cloudBackups.put(account.id, archive, await rx.readBytes(cloudBackups.quota)));
+        }
+        return out(405, { error: 'Backups answer GET /api/backups, GET /api/backups/<name> and PUT /api/backups/<name>', code: 'method-not-allowed' }, { Allow: 'GET, PUT' });
       }
 
       if (path.startsWith('/api/')) {

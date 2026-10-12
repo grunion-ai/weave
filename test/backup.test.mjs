@@ -371,7 +371,7 @@ test('the scheduler chains one timer per day on a fake clock, records the result
   const s = scheduleNightly({ run, dest: 's3://b/p', now: () => clock, setTimer, audit: (e) => audit.push(e), log: () => {} });
   assert.equal(s.status().nextAt, '2026-09-12T04:00:00.000Z');
   assert.equal(timers[0].ms, 3 * 3600 * 1000);
-  assert.deepEqual(s.status(), { lastAt: null, lastStatus: null, nextAt: '2026-09-12T04:00:00.000Z', dest: 's3://b/p' });
+  assert.deepEqual(s.status(), { lastAt: null, lastStatus: null, nextAt: '2026-09-12T04:00:00.000Z', dest: 's3://b/p', kind: 's3' });
 
   clock = timers[0].at; await timers[0].fn();
   assert.equal(runs.length, 1);

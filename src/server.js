@@ -11,6 +11,7 @@ import { createRequestHandler, decodePath, MAX_BODY_BYTES } from './routes.js';
 import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
+import { cloudStore } from './backup.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 export const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
@@ -127,6 +128,18 @@ export function securityHeaders(headers, { https = false, frameAncestors = [] } 
     } : {}),
     ...(https ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}),
   };
+}
+
+async function readBytes(req, max) {
+  if (Number(req.headers['content-length']) > max) throw new WeaveError(`Body too large: ${max} bytes at most`, 'too-large');
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > max) throw new WeaveError(`Body too large: ${max} bytes at most`, 'too-large');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 async function readBody(req, { requireJson = false, form = false } = {}) {
@@ -394,7 +407,7 @@ const VENDOR_CACHE = 'public, max-age=3600';
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv() } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
   const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
 
@@ -438,6 +451,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     uptime: () => process.uptime(),
     build,
     backup,
+    cloudBackups,
     serveStatic,
     origin,
     trustProxy,
@@ -470,6 +484,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         searchParams: url.searchParams,
         header: (name) => req.headers[name.toLowerCase()],
         readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined, form: req.method === 'POST' && /^(?:\/w\/[^/]+)?\/api\/forms\/[^/]+\/submit$/.test(path) }),
+        readBytes: (max) => readBytes(req, max),
         remote: req.socket?.remoteAddress ?? null,
       });
       const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
@@ -484,10 +499,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain } = {}) {
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain } = {}) {
   const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length || baseDomain ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

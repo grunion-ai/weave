@@ -99,14 +99,18 @@ Service (macOS launchd — auto-start on login, restart on crash)
                                       (serve does it once per build; check = report drift)
 
 Backup and restore (Feature #222 phase 3, #209 — --data names the data dir or any file in it)
-  backup [--out dir|file.tar] [--dest s3://bucket/prefix] [--workspace name]
+  backup [--out dir|file.tar] [--dest s3://bucket/prefix|weave://host/account] [--workspace name]
          [--passphrase-env NAME] [--now]
                                       VACUUM INTO every .db + files/ + keystore.json into one
                                       tar; AES-256-GCM when a passphrase or key file exists
-                                      (keystore.key never leaves); SigV4 upload; 30 kept
+                                      (keystore.key never leaves); SigV4 upload; 30 kept.
+                                      weave:// sends the sealed archive to a weave cloud
+                                      account with WEAVE_BACKUP_TOKEN (ciphertext only)
   restore <archive|s3://…|https://…> --data <dir> [--passphrase-env NAME] [--force]
+  restore --from weave://host/account[/archive] --data <dir>
                                       Verify the manifest, unpack beside --data; refuses a
-                                      db a server holds open. (restore <ref> is the entity verb)
+                                      db a server holds open. --from pulls the newest (or the
+                                      named) cloud archive. (restore <ref> is the entity verb)
   serve with WEAVE_BACKUP_DEST set runs backup daily at 04:00 UTC — audit rows
   backup-completed / backup-failed, last result on /api/health as "backup"
 
@@ -497,11 +501,11 @@ async function main() {
     if (r.uploaded) lines.push(`  uploaded ${r.uploaded}${r.pruned.length ? `; pruned ${r.pruned.length} past the newest 30` : ''}`);
     return out(lines.join('\n'));
   }
-  const looksLikeArchive = (a) => typeof a === 'string' && (/^(s3|https?):\/\//.test(a) || /\.tar(\.enc)?$/.test(a) || (a.includes('/') && existsSync(a)));
-  if (command === 'restore' && looksLikeArchive(args[0])) {
+  const looksLikeArchive = (a) => typeof a === 'string' && (/^(s3|https?|weave):\/\//.test(a) || /\.tar(\.enc)?$/.test(a) || (a.includes('/') && existsSync(a)));
+  if (command === 'restore' && (flagStr('from') || looksLikeArchive(args[0]))) {
     const { restore } = await import('../src/backup.js');
     const r = await restore({
-      source: args[0],
+      source: flagStr('from') ?? args[0],
       dataDir: dataDirOf(dataPath),
       passphraseEnv: flagStr('passphrase-env'),
       force: Boolean(flags.force),
