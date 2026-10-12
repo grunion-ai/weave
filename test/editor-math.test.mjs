@@ -37,7 +37,7 @@ test('the editor pins the KaTeX engine explicitly', () => {
 test('the README says what math can and cannot do', () => {
   assert.match(README, /KaTeX/, 'the engine is named');
   assert.match(README, /graphviz|Graphviz/i, 'the excluded engines are named');
-  assert.match(README, /katex[^\n]*0\.16/i, 'KaTeX joins the vendored-and-pinned credits');
+  assert.match(README, /katex[^\n]*0\.18\.11/i, 'KaTeX joins the vendored-and-pinned credits');
 });
 
 
