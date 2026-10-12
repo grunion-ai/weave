@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 process.env.WEAVE_KEYSTORE ??= join(mkdtempSync(join(tmpdir(), 'weave-sec-')), 'keystore.json');
@@ -9,7 +9,8 @@ const { startServer } = await import('../../src/server.js');
 
 const BACKUP = { lastAt: '2026-10-09T04:00:00.000Z', lastStatus: 'failed', lastError: 'AccessDenied at s3://acme-backups/weave', nextAt: '2026-10-10T04:00:00.000Z', dest: 's3://acme-backups/weave' };
 const BUILD = { sha: 'abc1234', diskSha: 'abc1234', stale: false, releaseDir: '/data/releases/0.4.88', supervisorPid: 4242 };
-const SECRET_KEYS = ['version', 'workspace', 'startedAt', 'uptime', 'sha', 'diskSha', 'releaseDir', 'supervisorPid', 'entities', 'sizeBytes', 'backup'];
+const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+const SECRET_KEYS = ['workspace', 'startedAt', 'uptime', 'sha', 'diskSha', 'releaseDir', 'supervisorPid', 'entities', 'sizeBytes', 'backup'];
 
 async function serve({ walled = true } = {}) {
   const w = new Weave();
@@ -26,12 +27,12 @@ async function serve({ walled = true } = {}) {
   return { health, architect, observer, stop: () => server.close() };
 }
 
-test('an anonymous caller learns that the instance is up and nothing else', async () => {
+test('an anonymous caller learns that the instance is up and which version it runs, and nothing else', async () => {
   const { health, stop } = await serve();
   try {
     const { status, body } = await health(null);
     assert.equal(status, 200);
-    assert.deepEqual(body, { ok: true, name: 'weave' });
+    assert.deepEqual(body, { ok: true, name: 'weave', version: VERSION });
   } finally { stop(); }
 });
 
@@ -41,6 +42,7 @@ test("the Railway probe sends no credentials and still gets its 200", async () =
     const { status, body } = await health(null, 'healthcheck.railway.app');
     assert.equal(status, 200);
     assert.equal(body.ok, true);
+    assert.equal(body.version, VERSION);
   } finally { stop(); }
 });
 
@@ -49,7 +51,7 @@ test('a signed-in architect gets the full body: build, sizes, backup', async () 
   try {
     const { status, body } = await health(architect);
     assert.equal(status, 200);
-    for (const k of SECRET_KEYS) assert.ok(k in body, `the architect body carries ${k}`);
+    for (const k of ['version', ...SECRET_KEYS]) assert.ok(k in body, `the architect body carries ${k}`);
     assert.deepEqual(body.backup, BACKUP);
     assert.equal(body.sha, 'abc1234');
   } finally { stop(); }
@@ -63,10 +65,10 @@ test('a signed-in observer gets the version the sidebar chip shows and no more',
   } finally { stop(); }
 });
 
-test('an open workspace with accounts keeps the same rule: anonymous means status only', async () => {
+test('an open workspace with accounts keeps the same rule: anonymous means status and version only', async () => {
   const { health, stop } = await serve({ walled: false });
   try {
-    assert.deepEqual((await health(null)).body, { ok: true, name: 'weave' });
+    assert.deepEqual((await health(null)).body, { ok: true, name: 'weave', version: VERSION });
   } finally { stop(); }
 });
 
