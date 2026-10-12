@@ -33,6 +33,30 @@ width 3.5 on a 48-unit grid. The under-strand is cut with SVG masks
 | Cream (dark-surface mono / app-icon lead) | `#e0dcd4` |
 | Ice (app-icon second strand) | `#bcd3ff` |
 
+## Surfaces (2026-10-12)
+
+Canvas and panel colours for every weave surface: the app, the applet, the
+auth page, mockups, decks and any future design. Cool slate replaced the Kami
+paper-and-navy set on 2026-10-12 (Kyle's pick, option A of three). The strands
+above never change with the surface: light pairs blue + ink, dark pairs blue +
+sky, on any of these backgrounds.
+
+| Surface | Light | Dark |
+| --- | --- | --- |
+| Canvas (page, rail, sidebar) | `#eceff3` | `#0f1115` |
+| Panel (content, cards, inputs) | `#ffffff` | `#181b21` |
+| Sunk (secondary surface, code on panel) | `#e2e6ec` | `#222731` |
+| Divider | `#d9dee6` | `#2a2f38` |
+| Pill tint (hover / active) | `rgba(15,23,42,.06)` / `.12` | `rgba(230,232,236,.07)` / `.14` |
+
+Text, link, primary and status colours stay as they were. The app reads these
+from `public/style.css` (`--wv-canvas`, `--tblr-bg-surface`,
+`--tblr-bg-surface-secondary`, `--tblr-border-color`); the applet and the
+auth page carry the same hexes inline. `test/surface-palette.test.mjs` keeps
+this table and the three files in agreement, and refuses the retired Kami
+surface hexes (`#f3f1ec`, `#fafaf8`, `#0c1b33` as a background, `#132444`,
+`#1a2d54`) in app code.
+
 ## Assets
 
 `node brand/build-logos.mjs` writes every SVG. The four files the app serves go
