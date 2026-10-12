@@ -17,7 +17,10 @@ import '../public/starter-core.js';
 import '../public/prefill-core.js';
 const { WeaveStarters, WeaveSlugs, weavePrefill } = globalThis;
 
-export const decodePath = (pathname) => decodeURIComponent(pathname.replace(/%2f/gi, '%252F'));
+export const decodePath = (pathname) => {
+  try { return decodeURIComponent(pathname.replace(/%2f/gi, '%252F')); }
+  catch { throw new WeaveError('Malformed percent-escape in the path', 'invalid'); }
+};
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;

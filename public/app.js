@@ -9211,9 +9211,9 @@ function attachListMarkers(host) {
     sel.addRange(r);
   };
   const fireInput = (root) => root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ' ' }));
-  const itemHtml = (marker, box) => box === undefined
-    ? `<li data-marker="${marker}"></li>`
-    : `<li data-marker="${marker}" class="vditor-task"><input${box.trim() ? ' checked=""' : ''} type="checkbox"> </li>`;
+  const itemEl = (marker, box) => box === undefined
+    ? el('li', { dataset: { marker } })
+    : el('li', { dataset: { marker }, class: 'vditor-task' }, el('input', { checked: box.trim() ? '' : null, type: 'checkbox' }), ' ');
   host.addEventListener('beforeinput', (e) => {
     if (e.inputType !== 'insertText' || e.data !== ' ' || e.isComposing) return;
     const root = rootOf();
@@ -9228,15 +9228,15 @@ function attachListMarkers(host) {
       const [, bullet, box, num, delim] = text.match(LIST_MARKER);
       const marker = bullet ?? `${num}${delim}`;
       const tag = bullet ? 'ul' : 'ol';
-      const start = num && Number(num) !== 1 ? ` start="${Number(num)}"` : '';
-      block.insertAdjacentHTML('afterend', `<${tag} data-tight="true"${start} data-marker="${marker}" data-block="0">${itemHtml(marker, box)}</${tag}>`);
+      const start = num && Number(num) !== 1 ? String(Number(num)) : null;
+      block.after(el(tag, { 'data-tight': 'true', start, dataset: { marker, block: '0' } }, itemEl(marker, box)));
       li = block.nextElementSibling.firstElementChild;
       block.remove();
     } else if (block.tagName === 'LI' && block.parentElement?.tagName === 'UL' && !block.classList.contains('vditor-task')
       && !block.querySelector('ul, ol') && TASK_BOX.test(text)) {
       const marker = block.getAttribute('data-marker') ?? '-';
       typed = `${marker} ${text}`;
-      block.insertAdjacentHTML('afterend', itemHtml(marker, text.match(TASK_BOX)[1]));
+      block.after(itemEl(marker, text.match(TASK_BOX)[1]));
       li = block.nextElementSibling;
       block.remove();
     } else return;
@@ -9694,7 +9694,7 @@ async function refreshRefChips(st) {
       class: 'doc-ref-slot wv-prose',
       style: `left:${r.left - base.left}px; top:${r.top - base.top}px; max-width:${Math.max(0, base.width - (r.left - base.left))}px;`,
     });
-    slot.innerHTML = hit.html;
+    slot.append(hit.chip.cloneNode(true));
     if (s.label) {
       const label = slot.querySelector('.k-label');
       if (label) label.textContent = s.label;
@@ -9868,7 +9868,7 @@ async function resolveRefs(refs) {
       if (ent) a.setAttribute('href', `#/entity/${ent[1]}`);
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
       refResolveCache.set(ref, {
-        href: a.getAttribute('href'), html: chip.outerHTML, kind,
+        href: a.getAttribute('href'), chip, kind,
         label: a.dataset.name ?? a.textContent, title: a.title || a.textContent,
       });
     });
