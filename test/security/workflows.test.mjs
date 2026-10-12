@@ -25,10 +25,19 @@ test('workflow write permissions are confined to guarded release delivery', () =
     assert.match(src, /^permissions:\n  contents: read\n/m, `${f}: top-level permissions block`);
     if (f !== 'release.yml') assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
     else {
-      const publish = src.slice(src.indexOf('  publish:'));
+      const job = (name) => src.slice(src.indexOf(`  ${name}:\n`)).split(/\n(?=  \S)/)[0];
+      const publish = job('publish');
       assert.doesNotMatch(src.slice(0, src.indexOf('  publish:')), /(write|admin)\s*$/m);
       assert.match(publish, /permissions:\n      contents: write\n      actions: read/);
-      assert.equal((src.match(/: write/g) ?? []).length, 1);
+      assert.match(job('image'), /permissions:\n      contents: read\n      packages: write\n/);
+      assert.match(job('registry'), /permissions:\n      contents: read\n      id-token: write\n/);
+      assert.deepEqual(src.match(/^ +\S+: write$/gm).map((l) => l.trim()), ['contents: write', 'packages: write', 'id-token: write']);
+      for (const name of ['image', 'registry']) {
+        assert.match(job(name), /if: needs.guard.outputs.current == 'true'/, `${name} runs only for the current release`);
+        assert.match(job(name), /ref: \$\{\{ needs.guard.outputs.sha \}\}/, `${name} builds the tested SHA`);
+      }
+      assert.match(job('image'), /needs: \[guard, publish\]/);
+      assert.match(job('registry'), /needs: \[guard, image\]/);
       assert.match(publish, /needs: guard/);
       assert.match(publish, /environment:\n      name: production\n/);
       assert.match(publish, /if: needs.guard.outputs.current == 'true'/);
@@ -71,7 +80,9 @@ test('release validates main CI before checking out the tested SHA with write cr
   assert.doesNotMatch(src, /workflow_run:/);
   assert.match(src, /github.ref == 'refs\/heads\/main'/);
   assert.match(src, /node scripts\/github-release\.mjs --guard/);
-  assert.equal((src.match(/persist-credentials: false/g) ?? []).length, 2);
+  const checkouts = (src.match(/uses: actions\/checkout@/g) ?? []).length;
+  assert.equal(checkouts, 4);
+  assert.equal((src.match(/persist-credentials: false/g) ?? []).length, checkouts, 'every checkout drops its credentials');
   assert.doesNotMatch(src, /pull_request_target|download-artifact/);
 });
 

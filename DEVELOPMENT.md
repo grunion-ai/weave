@@ -55,6 +55,11 @@ node scripts/changelog-fold.mjs
 node scripts/architecture.mjs
 ```
 
+The fold also stamps the version into `server.json`. After the approved `publish`
+job tags the release, `release.yml` pushes `ghcr.io/grunion-ai/weave:<version>` and
+`:latest`, then publishes `server.json` to the Official MCP Registry with a pinned
+`mcp-publisher` signed in through GitHub OIDC.
+
 ### Canonical tracker
 
 The `weave` docs workspace on production, https://weave.grunion.ai/w/weave, is
