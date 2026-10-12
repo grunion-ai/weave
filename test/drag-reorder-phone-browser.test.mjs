@@ -7,7 +7,7 @@ let ids;
 const s = await launch(`drag to reorder, ${PHONE} (Feature #282)`, (weave) => { ids = seedReorder(weave); });
 if (s) {
   const { base, weave } = s;
-  const all = surfaces({ weave, base, ids });
+  const all = surfaces({ weave, base, ids }).filter((x) => x.only !== 'desktop');
   const page = async (options = {}) => {
     const p = await phonePage(await phoneBrowser(), options);
     await p.addInitScript(() => {
@@ -29,19 +29,19 @@ if (s) {
   }
 
   test(`a touch that moves before the long press is a scroll, not a drag (${PHONE}, Feature #282)`, async () => {
-    const fields = all.find((x) => x.name === 'Fields popover');
-    fields.reset();
+    const sheet = all.find((x) => x.name === 'Phone row sheet');
+    sheet.reset();
     const p = await page();
     try {
-      await fields.open(p);
+      await sheet.open(p);
       const hand = pointer(p, { touch: true });
-      const at = await centre(fields.handle(p, 'Amount'));
+      const at = await centre(sheet.handle(p, 'Amount'));
       await hand.press(at);
       await hand.to({ x: at.x, y: at.y - 40 }, 3);
       await p.waitForTimeout(400);
       assert.equal(await p.locator('.wv-reorder-lift, .wv-reorder-slot').count(), 0, 'no lift once the finger travels first');
       await hand.release();
-      assert.deepEqual(await fields.keys(p), ['Name', 'Owner', 'Stage', 'Amount']);
+      assert.deepEqual(await sheet.keys(p), ['Owner', 'Stage', 'Amount']);
     } finally { await p.close(); }
   });
 }

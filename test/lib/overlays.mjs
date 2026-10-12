@@ -63,18 +63,15 @@ export const OVERLAYS = [
   },
   { name: 'view', surface: 'table', cells: BOTH, root: '.table-view-popover', open: toolsThen('#main .table-view-btn') },
   { name: 'density', surface: 'table', cells: BOTH, root: '.table-density-popover', open: toolsThen('#main .table-density-btn') },
-  { name: 'fields', surface: 'table', cells: BOTH, root: '.table-fields-popover', open: toolsThen('#main .eye-btn') },
+  { name: 'fields', surface: 'table', cells: DESKTOP, root: '.table-fields-popover', open: toolsThen('#main .eye-btn') },
+  { name: 'phone-row', surface: 'table', cells: PHONE, root: '.phone-row-popover', open: toolsThen('#main .eye-btn') },
   { name: 'filters', surface: 'table', cells: BOTH, root: '.table-filter-popover', open: toolsThen('#main .table-filter-btn') },
   { name: 'table-menu', surface: 'table', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Table actions"]', cell) },
   { name: 'share-table', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('Share…') },
   { name: 'share-page', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('New share page') },
   {
-    name: 'name-field-editor', surface: 'table', cells: BOTH, root: '#tray-back',
+    name: 'name-field-editor', surface: 'table', cells: DESKTOP, root: '#tray-back',
     async open(page, ctx, cell) {
-      if (cell === 'phone') {
-        await press(page, '#main .wv-grid thead th.col-head[data-col="Name"]', cell);
-        return;
-      }
       await press(page, '.field-menu[title="Configure Name"]', cell);
       await press(page, '.chip-pop .chip-pop-row >> text=Field settings', cell);
     },
@@ -88,19 +85,12 @@ export const OVERLAYS = [
       await press(page, '.chip-pop .chip-pop-row >> text=Field settings', cell);
     },
   },
-  {
-    name: 'new-field', surface: 'table', cells: BOTH, root: '#tray-back',
-    async open(page, ctx, cell) {
-      if (cell === 'phone') {
-        await toolsThen('#main .eye-btn')(page, ctx, cell);
-        await press(page, '.table-fields-popover .fields-add', cell);
-      } else await press(page, '#main .add-field-btn', cell);
-    },
-  },
+  { name: 'new-field', surface: 'table', cells: DESKTOP, root: '#tray-back', open: (page, ctx, cell) => press(page, '#main .add-field-btn', cell) },
   { name: 'status-picker', surface: 'table', cells: DESKTOP, root: '.picker-pop', open: (page, ctx, cell) => press(page, `${ROW} .chip-trigger[title="Status"]`, cell) },
   { name: 'link-picker', surface: 'table', cells: DESKTOP, root: '#cmdk-back', open: (page, ctx, cell) => press(page, `${ROW} button >> text=+ link`, cell) },
   { name: 'activity', surface: 'entity', cells: DESKTOP, root: 'aside.wv-activity', open: (page, ctx, cell) => press(page, '#main .activity-btn', cell) },
   { name: 'entity-fields', surface: 'entity', cells: DESKTOP, root: '.chip-pop', open: (page, ctx, cell) => press(page, '#main .eye-btn', cell) },
+  { name: 'entity-field-editor', surface: 'entity', cells: PHONE, root: '#tray-back', open: (page, ctx, cell) => press(page, '#dock .fieldrow[data-field="Status"] .fieldrow-label', cell) },
   { name: 'row-actions', surface: 'entity', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, `${scope(cell)} .dots-btn[title="Row actions"]`, cell) },
   { name: 'share-row', surface: 'entity', cells: BOTH, root: '#modal-back', open: (page, ctx, cell) => menu(page, cell, `${scope(cell)} .dots-btn[title="Row actions"]`, 'Share…') },
   { name: 'doc-downloads', surface: 'entity', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
