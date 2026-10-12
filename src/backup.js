@@ -231,6 +231,12 @@ export async function backup({
   if (!existsSync(dataDir) || !statSync(dataDir).isDirectory()) throw new WeaveError(`Data directory not found: ${dataDir}`, 'not-found');
   dest = dest || env.WEAVE_BACKUP_DEST || null;
   const passphrase = resolvePassphrase({ env, dataDir, passphraseEnv });
+  const toCloud = destKind(dest) === 'weave';
+  if (toCloud) {
+    cloud.parse(dest);
+    cloud.token(env);
+    if (!passphrase) throw new WeaveError('weave:// keeps encrypted archives only: set WEAVE_BACKUP_PASSPHRASE (or WEAVE_KEYSTORE_PASSPHRASE, or --passphrase-env NAME), or keep keystore.key beside the data', 'invalid');
+  }
   const c = classify(readdirSync(dataDir, { withFileTypes: true }));
   const dbs = workspace ? c.databases.filter((n) => n === `${workspace}.db`) : c.databases;
   if (!dbs.length) throw new WeaveError(workspace ? `No workspace '${workspace}' in ${dataDir}` : `No .db files in ${dataDir}`, 'not-found');
@@ -279,7 +285,11 @@ export async function backup({
     else copyFileSync(tarPath, outPath);
     result.bytes = statSync(outPath).size;
 
-    if (dest) {
+    if (toCloud) {
+      const sent = await cloud.client({ dest, env, fetchImpl }).put(archive, readFileSync(outPath));
+      result.uploaded = `${dest.replace(/\/+$/, '')}/${archive}`;
+      result.pruned = sent.pruned ?? [];
+    } else if (dest) {
       const { bucket, prefix } = s3.parse(dest);
       const client = s3.client({ env, fetchImpl, now });
       const key = prefix ? `${prefix}/${archive}` : archive;
@@ -319,7 +329,16 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
   const scratch = mkdtempSync(join(tmpdir(), 'weave-restore-'));
   try {
     let local = join(scratch, 'source');
-    if (/^s3:\/\//.test(source)) {
+    if (destKind(source) === 'weave') {
+      const c = cloud.client({ dest: source, env, fetchImpl });
+      let name = c.name;
+      if (!name) {
+        const { backups } = await c.list();
+        if (!backups.length) throw new WeaveError(`${source} holds no backups yet`, 'not-found');
+        name = backups.at(-1).name;
+      }
+      writeFileSync(local, await c.get(name));
+    } else if (/^s3:\/\//.test(source)) {
       const { bucket, prefix: key } = s3.parse(source);
       writeFileSync(local, await s3.client({ env, fetchImpl }).get(bucket, key));
     } else if (/^https?:\/\//.test(source)) {
@@ -426,6 +445,14 @@ export const s3 = {
   },
   client({ env = process.env, fetchImpl = fetch, now = null } = {}) {
     const c = s3.credentials(env);
+    const objects = async (bucket, prefix) => {
+      const xml = await (await call('GET', bucket, '', { query: `?list-type=2&prefix=${uriEncode(prefix)}` })).text();
+      return [...xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)].map(([, c]) => ({
+        key: unxml(c.match(/<Key>([^<]*)<\/Key>/)?.[1] ?? ''),
+        bytes: Number(c.match(/<Size>(\d+)<\/Size>/)?.[1] ?? 0),
+        at: c.match(/<LastModified>([^<]*)<\/LastModified>/)?.[1] ?? null,
+      }));
+    };
     const call = async (method, bucket, key, { query = '', body = '' } = {}) => {
       const url = s3.url({ bucket, key, endpoint: c.endpoint, region: c.region }) + query;
       const headers = signV4({ method, url, body, keyId: c.keyId, secret: c.secret, region: c.region, now: now ? now() : new Date() });
@@ -437,10 +464,8 @@ export const s3 = {
       put: (bucket, key, body) => call('PUT', bucket, key, { body }),
       get: async (bucket, key) => Buffer.from(await (await call('GET', bucket, key)).arrayBuffer()),
       delete: (bucket, key) => call('DELETE', bucket, key),
-      list: async (bucket, prefix) => {
-        const xml = await (await call('GET', bucket, '', { query: `?list-type=2&prefix=${uriEncode(prefix)}` })).text();
-        return [...xml.matchAll(/<Key>([^<]*)<\/Key>/g)].map((m) => unxml(m[1]));
-      },
+      list: async (bucket, prefix) => (await objects(bucket, prefix)).map((o) => o.key),
+      objects,
     };
   },
 };
@@ -481,8 +506,93 @@ export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = 
   };
   arm();
   return {
-    status: () => ({ lastAt: state.lastAt, lastStatus: state.lastStatus, ...(state.lastError ? { lastError: state.lastError } : {}), nextAt: state.nextAt, dest }),
+    status: () => ({ lastAt: state.lastAt, lastStatus: state.lastStatus, ...(state.lastError ? { lastError: state.lastError } : {}), nextAt: state.nextAt, dest, kind: destKind(dest) }),
     stop() { stopped = true; if (timer) clearTimer(timer); },
     fire,
+  };
+}
+
+export const destKind = (dest) => (/^weave:\/\//.test(String(dest ?? '')) ? 'weave' : /^s3:\/\//.test(String(dest ?? '')) ? 's3' : null);
+
+const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+const ARCHIVE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+export const CLOUD_QUOTA_BYTES = 5 * 1024 ** 3;
+
+export const cloud = {
+  parse(dest) {
+    const m = String(dest ?? '').match(/^weave:\/\/([^/]+)\/([^/]+)(?:\/([^/]+))?\/?$/);
+    if (!m) throw new WeaveError(`The destination must be weave://host/account[/archive], got '${dest}'`, 'invalid');
+    const host = m[1].toLowerCase();
+    return { host, origin: `${LOOPBACK.test(host) ? 'http' : 'https'}://${host}`, account: decodeURIComponent(m[2]), name: m[3] ? decodeURIComponent(m[3]) : null };
+  },
+  token(env = process.env) {
+    const token = String(env.WEAVE_BACKUP_TOKEN ?? '').trim();
+    if (!token) throw new WeaveError('weave:// needs WEAVE_BACKUP_TOKEN: a wv_ token minted on the cloud account', 'invalid');
+    if (!token.startsWith('wv_')) throw new WeaveError('WEAVE_BACKUP_TOKEN must be a wv_ account token', 'invalid');
+    return token;
+  },
+  client({ dest, env = process.env, fetchImpl = fetch }) {
+    const d = cloud.parse(dest);
+    const token = cloud.token(env);
+    const call = async (method, name = null, body = undefined) => {
+      const url = `${d.origin}/api/backups${name ? `/${encodeURIComponent(name)}` : ''}`;
+      const headers = { Authorization: `Bearer ${token}`, 'X-Weave-Account': encodeURIComponent(d.account), ...(body ? { 'Content-Type': 'application/octet-stream' } : {}) };
+      const res = await fetchImpl(url, { method, headers, body });
+      if (!res.ok) {
+        let reason = '';
+        try { reason = (await res.json()).error ?? ''; } catch {}
+        throw new WeaveError(`${method} ${url} → ${res.status}${reason ? `: ${reason}` : ''}`, { 404: 'not-found', 403: 'forbidden', 413: 'too-large' }[res.status] ?? 'invalid');
+      }
+      return res;
+    };
+    return {
+      ...d,
+      put: async (name, body) => (await call('PUT', name, body)).json(),
+      list: async () => (await call('GET')).json(),
+      get: async (name) => Buffer.from(await (await call('GET', name)).arrayBuffer()),
+    };
+  },
+};
+
+export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } = {}) {
+  const bucket = String(env.WEAVE_BACKUP_BUCKET ?? '').trim();
+  if (!bucket) return null;
+  const quota = Number(env.WEAVE_BACKUP_QUOTA_BYTES) > 0 ? Math.floor(Number(env.WEAVE_BACKUP_QUOTA_BYTES)) : CLOUD_QUOTA_BYTES;
+  const client = () => s3.client({ env, fetchImpl, now });
+  const base = (account) => `${account}/`;
+  const named = (name) => {
+    if (!ARCHIVE_NAME.test(String(name ?? ''))) throw new WeaveError(`'${name}' is not an archive name: letters, digits, dot, dash and underscore, 200 at most`, 'invalid');
+    return name;
+  };
+  const oldestFirst = (a, b) => (a.at === b.at ? (a.name < b.name ? -1 : 1) : (a.at ?? '') < (b.at ?? '') ? -1 : 1);
+  const list = async (account) => (await client().objects(bucket, base(account)))
+    .map((o) => ({ name: o.key.slice(base(account).length), bytes: o.bytes, at: o.at }))
+    .filter((o) => o.name && !o.name.includes('/'))
+    .sort(oldestFirst);
+  return {
+    quota,
+    list,
+    async put(account, name, body) {
+      named(name);
+      if (!body?.length) throw new WeaveError('The archive is empty', 'invalid');
+      if (!body.subarray(0, MAGIC.length).equals(MAGIC)) throw new WeaveError('weave cloud keeps encrypted archives only: this body is not one. Back up with WEAVE_BACKUP_PASSPHRASE set', 'invalid');
+      if (body.length > quota) throw new WeaveError(`The archive is ${body.length} bytes, past this account's quota of ${quota} bytes`, 'too-large');
+      const c = client();
+      await c.put(bucket, base(account) + name, body);
+      const others = (await list(account)).filter((o) => o.name !== name);
+      const kept = [...others, { name, bytes: body.length, at: null }];
+      const pruned = [];
+      let used = kept.reduce((n, o) => n + o.bytes, 0);
+      while (kept.length > 1 && (kept.length > RETAIN || used > quota)) {
+        const gone = kept.shift();
+        await c.delete(bucket, base(account) + gone.name);
+        used -= gone.bytes;
+        pruned.push(gone.name);
+      }
+      return { name, bytes: body.length, used, quota, kept: kept.length, pruned };
+    },
+    async get(account, name) {
+      return client().get(bucket, base(account) + named(name));
+    },
   };
 }

@@ -2028,6 +2028,61 @@ A nightly archive means a day of loss in the worst case. Litestream replicates t
 \`weave backup --out /tmp/check --data <your data dir>\` prints one line per workspace with its entity count and ends with the orphan count; \`tar -tf\` on a plain archive (or the restored one) lists \`manifest.json\` last. Restore that archive into an empty directory, \`weave serve\` on it, and read \`/api/health\`: the \`entities\` figure matches the line the backup printed, and \`curl -o - /api/files/<id>\` on an attachment you know matches the original byte for byte. With the nightly on, tomorrow's \`/api/health\` carries \`backup.lastStatus: "completed"\` and the bucket holds one more archive than it did today.`,
   },
   {
+    name: "Backup to weave cloud",
+    audience: 'Human',
+    order: 18.5,
+    doc: `# Backup to weave cloud
+A self-hosted weave can send its nightly archive to an account on a weave cloud deployment such as weave.grunion.ai. The archive is sealed on your machine with the passphrase you already use for **Backup and restore**, so the cloud stores ciphertext only and cannot read a row of it. The cloud runs the same code as your instance; nothing else needs installing.
+
+## Send archives to the cloud
+1. On the cloud deployment, mint a token for your account: \`weave account create <name> --role editor\` prints a \`wv_\` token once. Keep it with your other secrets.
+2. On your instance, set three variables and restart \`weave serve\`:
+
+| Variable | Value |
+| --- | --- |
+| \`WEAVE_BACKUP_DEST\` | \`weave://<host>/<account>\`, for example \`weave://weave.grunion.ai/alice\` |
+| \`WEAVE_BACKUP_TOKEN\` | the \`wv_\` token from step 1 |
+| \`WEAVE_BACKUP_PASSPHRASE\` | the passphrase that seals the archive (or \`WEAVE_KEYSTORE_PASSPHRASE\`, or \`keystore.key\` beside the data) |
+
+The nightly run at 04:00 UTC then builds the archive, seals it and sends it with \`PUT /api/backups/<archive>\`. \`/api/health\` shows the run under \`backup\`, with \`kind: "weave"\` beside the destination. A one-off run is \`weave backup --dest weave://weave.grunion.ai/alice\`. A destination with no passphrase is refused before anything is built, because the cloud keeps encrypted archives only.
+
+The host is reached over https; \`localhost\`, \`127.0.0.1\` and \`[::1]\` use http, for testing against a local server.
+
+## Quota and retention
+Each account keeps at most thirty archives and at most its byte quota, 5 GiB unless the deployment sets \`WEAVE_BACKUP_QUOTA_BYTES\`. After each upload the cloud deletes the oldest archives until both limits hold, and it never deletes the archive it just stored. An archive larger than the whole quota is refused with \`413\` and evicts nothing.
+
+## Restore from the cloud
+\`weave restore --from weave://weave.grunion.ai/alice --data <dir>\` pulls the newest archive, checks every entry against its manifest and unpacks it, the same as a restore from a file. Name an archive to take an older one: \`weave restore --from weave://weave.grunion.ai/alice/<archive> --data <dir>\`. The restore needs \`WEAVE_BACKUP_TOKEN\` and the passphrase the archive was sealed with.
+
+## The doors
+Every door needs \`Authorization: Bearer wv_…\` from an account on the deployment, and stores under that account only.
+
+| Door | Answers |
+| --- | --- |
+| \`GET /api/backups\` | the account, its quota, the bytes used, and each archive with its size and time, oldest first |
+| \`GET /api/backups/<archive>\` | the archive bytes |
+| \`PUT /api/backups/<archive>\` | stores the body, prunes, and answers \`201\` with what it kept and pruned |
+
+No token, or a token the deployment does not know, answers \`401\`. When the client names an account (the \`<account>\` in \`weave://\`, sent as \`X-Weave-Account\`) and the token belongs to a different one, the door answers \`403\`. Another account's archive is not found (\`404\`). A body that is not a sealed archive answers \`400\`.
+
+## Running the cloud side
+A deployment keeps backups once it has a bucket. It reads six variables:
+
+| Variable | Meaning |
+| --- | --- |
+| \`WEAVE_BACKUP_BUCKET\` | the bucket name; unset, every door answers \`400\` with "This deployment keeps no backups: it has no bucket configured." |
+| \`WEAVE_BACKUP_KEY_ID\` | the bucket access key id |
+| \`WEAVE_BACKUP_SECRET\` | the bucket secret key |
+| \`WEAVE_BACKUP_ENDPOINT\` | the S3 endpoint, for R2 \`https://<account-id>.r2.cloudflarestorage.com\` |
+| \`WEAVE_BACKUP_REGION\` | the signing region; \`auto\` when an endpoint is set and this is not |
+| \`WEAVE_BACKUP_QUOTA_BYTES\` | the per-account quota in bytes; 5 GiB when unset |
+
+Archives land in the bucket as \`<account id>/<archive>\`.
+
+## How you know it worked
+\`curl -s -H "Authorization: Bearer $WEAVE_BACKUP_TOKEN" https://weave.grunion.ai/api/backups\` lists the archive the last run sent, and \`weave restore --from weave://weave.grunion.ai/<account> --data /tmp/check\` unpacks it with every sha256 check passed.`,
+  },
+  {
     name: "Environment reference",
     audience: 'Human',
     order: 19,
@@ -2044,7 +2099,7 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_KEYSTORE_PASSPHRASE\` | every verb | unset | Unset, a random key is written to a \`chmod 600\` file beside the keystore, so a copy of the volume carries the key. Set, the key is derived from the passphrase and nothing lands. Change it and every stored secret becomes unreadable; keep it in a password manager. |
 | \`WEAVE_ORIGIN\` | \`weave serve\` | unset (loopback: \`http://localhost:<port>\`) | The public origin, scheme and host, no path. The identity provider sends sign-ins back to \`<origin>/api/auth/oidc/callback\`, and the \`wv_session\` cookie is \`Secure\` when it is https. Unset off loopback with \`requireAuth\` on, \`serve\` refuses to start; wrong, the provider refuses the redirect URI or sends the browser to the wrong host. |
 | \`WEAVE_TRUST_PROXY\` | \`weave serve\` | unset | Set to \`1\` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from the last \`X-Forwarded-For\` entry, the one the proxy appended. Unset behind a proxy, every visitor shares the proxy's address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header. |
-| \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`. Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit row and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
+| \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`, or \`weave://host/account\` for a weave cloud account (the **Backup to weave cloud** guide). Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit row and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
 | \`WEAVE_OIDC_ISSUER\` | \`weave serve\`, \`weave account link\` | unset | The issuer URL of one OpenID Connect provider, \`https\` off loopback. Set with \`WEAVE_OIDC_CLIENT_ID\`, \`/auth\` sends a signed-out browser to the provider (the **Door C: sign in with a provider** guide). Set without it, \`serve\` stops at startup and names the missing variable. A URL the provider does not call its own issuer fails every sign-in with a page that says so. |
 | \`WEAVE_MCP_ORIGINS\` | \`weave serve\` | unset | Other public origins the MCP door answers on, comma separated, each scheme and host only: \`https://mcp.weave.example.com\`. The protected-resource metadata names the one the request arrived on, else \`WEAVE_ORIGIN\`; each host is also served. Unset, a second domain on the same service gets \`421\`; wrong, the agent's client refuses the metadata because it names another URL (the **Door C: sign in with a provider** guide). |
 | \`WEAVE_BASE_DOMAIN\` | \`weave serve\` | unset | The domain workspaces get their own hosts under: \`weave.example.com\` serves each workspace at \`<slug>.weave.example.com\`, host name only. Sign-in still finishes at \`WEAVE_ORIGIN\`. Unset, a workspace host gets \`421\`; wrong, the wildcard certificate does not cover the hosts browsers ask for (the **Door C: sign in with a provider** guide, section Workspace hosts). |
