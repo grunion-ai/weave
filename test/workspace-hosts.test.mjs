@@ -189,7 +189,9 @@ test('central sign-in: a slug host signs in at the apex and gets back a single-u
     const back = s.idp.approve(authorize, { sub: 'user_kyle' });
     const callback = await follow(s, back.href, { cookie: trip });
     assert.equal(callback.status, 302);
-    assert.equal(callback.headers['set-cookie'], undefined, 'the apex sets no session for a slug host');
+    const apexCookies = [callback.headers['set-cookie'] ?? []].flat();
+    assert.deepEqual(apexCookies.filter((c) => c.startsWith('wv_session')), [], 'the apex sets no session for a slug host');
+    assert.deepEqual(apexCookies.map((c) => c.split('=')[0]).sort(), ['wv_rail', 'wv_start'], 'only the start and rail cookies that find my workspaces keeps');
     const handoff = new URL(callback.headers.location);
     assert.equal(handoff.host, 'acme.weave.test');
     assert.equal(handoff.pathname, '/api/auth/handoff');

@@ -427,7 +427,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       ];
       const names = live.filter(([, w]) => opener(w) && !isDocsWorkspace(w)).map(([name]) => name.toLowerCase());
       const creator = logins.find((me) => mayAdminister(hubRoot, rootOf(me)?.role)) ?? null;
-      const accountName = (creator && rootOf(creator).name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@')) ?? null;
+      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@')) ?? null;
       return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, creator, canCreate: !!creator, accountName, hubRoot };
     };
     const heldStart = async () => {
@@ -937,7 +937,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const names = new Set(everywhere
               ? [...Object.keys(cookies).filter((n) => n === LEGACY_COOKIE || n.startsWith(`${LEGACY_COOKIE}_`)), ...ending.map((hit) => hit.cookie)]
               : [session?.cookie ?? cookieName(weave), ...(session?.legacy ? [LEGACY_COOKIE] : [])]);
-            return out(200, { ok: true }, { 'Set-Cookie': [...names].map((n) => clearCookie(n, rx)), 'Cache-Control': 'no-store' });
+            const held = everywhere ? await heldStart() : null;
+            if (held) starts.delete(held.key);
+            const startEnds = everywhere ? [clearCookie('wv_start', rx), clearRail()] : [];
+            return out(200, { ok: true }, { 'Set-Cookie': [...[...names].map((n) => clearCookie(n, rx)), ...startEnds], 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/auth/me') {
             const account = who();

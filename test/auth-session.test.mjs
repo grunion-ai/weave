@@ -79,7 +79,9 @@ test('routes: a provider sign-in sets a session cookie that opens the wall; logo
     assert.equal(door.headers.get('location'), '/api/auth/oidc/start');
     const kyle = await s.signIn(KYLE);
     assert.equal(kyle.res.status, 302);
-    assert.match(kyle.res.headers.get('set-cookie'), new RegExp(`^wv_session_${s.w.state.meta.id}=[A-Za-z0-9_-]+; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000$`), 'no Secure on http');
+    const set = kyle.res.headers.getSetCookie();
+    assert.ok(set.every((c) => !/;\s*Secure/i.test(c)), 'no cookie carries Secure on http');
+    assert.match(set.find((c) => c.startsWith('wv_session_')) ?? '', new RegExp(`^wv_session_${s.w.state.meta.id}=[A-Za-z0-9_-]+; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000$`), 'the session cookie keeps its exact shape');
     assert.equal((await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie })).status, 200);
     assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 200);
     const me = await (await s.call('GET', '/api/auth/me', { cookie: kyle.cookie })).json();
