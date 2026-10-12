@@ -427,9 +427,9 @@ test('without a deploy token the hook path is not special', async () => {
   }
 });
 
-function walledBin(reported) {
+function walledBin(reported, body = { ok: true, name: 'weave' }) {
   return `import { createServer } from 'node:http';
-const s = createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end(JSON.stringify({ ok: true, name: 'weave' })); });
+const s = createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end(${JSON.stringify(JSON.stringify(body))}); });
 s.listen(0, '127.0.0.1', () => process.send({ weave: 'listening', port: s.address().port, version: ${JSON.stringify(reported)} }));
 process.on('message', (m) => { if (m?.weave === 'migrate') process.send({ weave: 'migrated' }); });
 `;
@@ -455,6 +455,38 @@ test('a worker that reports a different version over IPC is refused', async () =
     const result = await sup.check();
     assert.equal(result.action, 'failed');
     assert.equal((await health(base)).version, IMAGE_VERSION);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a candidate whose anonymous health names its version is accepted without an IPC report, the probe the v0.4.88 image supervisor runs', async () => {
+  const dataPath = dataDir('anon-version');
+  const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: walledBin(undefined, { ok: true, name: 'weave', version: NEXT }) }) });
+  const { sup } = await supervise(dataPath, gh);
+  try {
+    const result = await sup.check();
+    assert.equal(result.action, 'swapped', result.reason);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a walled workspace swaps to a real release, and anonymous health then names the new version', async () => {
+  const dataPath = dataDir('walled-real');
+  const w = new Weave({ path: dataPath });
+  w.createAccount({ name: 'root', role: 'architect' });
+  w.setRequireAuth(true);
+  w.save();
+  w.store.close();
+  const gh = fakeGitHub();
+  const { sup, base } = await supervise(dataPath, gh);
+  try {
+    const result = await sup.check();
+    assert.equal(result.action, 'swapped', result.reason);
+    const body = await health(base);
+    assert.equal(body.version, NEXT);
+    assert.equal(body.workspace, undefined);
   } finally {
     await sup.close();
   }
