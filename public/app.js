@@ -1708,23 +1708,32 @@ function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', 
   return pop;
 }
 
-function pickerSelect({ name, options, value = null, placeholder = 'Choose…', title = '' }) {
-  const input = el('input', { type: 'hidden', name, value: value ?? '' });
-  const face = el('button', { class: 'form-select picker-face', type: 'button' },
-    options.find((o) => o.id === value)?.label ?? placeholder);
+function pickerSelect({ name, options, value = null, placeholder = 'Choose…', title = '', multi = false }) {
+  const input = el('input', { type: 'hidden', name, value: multi ? '' : value ?? '', multiple: multi ? '' : null });
+  if (multi) input.values = options.map((o) => o.id).filter((id) => (value ?? []).includes(id));
+  const labelOf = (id) => options.find((o) => o.id === id)?.label ?? id;
+  const faceText = () => (multi
+    ? input.values.map(labelOf).join(', ') || placeholder
+    : options.find((o) => o.id === input.value)?.label ?? placeholder);
+  const face = el('button', { class: 'form-select picker-face', type: 'button' }, faceText());
+  const changed = () => {
+    face.textContent = faceText();
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
   face.addEventListener('click', (e) => {
     e.stopPropagation();
     searchPicker({
       anchor: face, title, options, currentId: input.value || null,
-      onPick: (o) => {
-        input.value = o.id;
-        face.textContent = o.label;
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-      },
+      multi: multi ? {
+        selected: input.values.map((id) => ({ id, label: labelOf(id) })),
+        onCommit: (ids) => { input.values = ids; changed(); },
+      } : null,
+      onPick: (o) => { input.value = o.id; changed(); },
     });
   });
   const wrap = el('span', { class: 'picker-wrap' }, input, face);
   wrap.input = input;
+  wrap.face = face;
   return wrap;
 }
 
@@ -3519,14 +3528,12 @@ function prefillControl(f, value) {
   if (f.type === 'select' || f.type === 'multiselect' || f.type === 'workflow') {
     const multi = f.type === 'multiselect';
     const names = f.type === 'workflow' ? (f.states ?? []).map((st) => st.name) : (f.options ?? []);
-    const sel = el('select', { name, class: 'form-select', ...(multi ? { multiple: '' } : {}) },
-      multi ? null : el('option', { value: '' }, ''),
-      names.map((n) => el('option', { value: n }, n)));
     const want = value ?? (f.type === 'workflow' ? f.states?.find((st) => st.default)?.name : null);
-    const picked = new Set((Array.isArray(want) ? want : [want]).filter((v) => v != null));
-    for (const o of sel.options) o.selected = picked.has(o.value);
-    if (!multi && !names.some((n) => picked.has(n))) sel.value = '';
-    return sel;
+    const picked = names.filter((n) => (Array.isArray(want) ? want : [want]).includes(n));
+    const options = names.map((n) => ({ id: n, label: n }));
+    return multi
+      ? pickerSelect({ name, title: name, multi, options, value: picked, placeholder: 'None' })
+      : pickerSelect({ name, title: name, options: [{ id: '', label: 'None' }, ...options], value: picked[0] ?? '', placeholder: 'None' });
   }
   if (f.type === 'checkbox' || f.type === 'toggle') {
     const v = String(value ?? '').trim().toLowerCase();
@@ -3547,7 +3554,7 @@ function prefillValues(form, fields) {
     if (!node) continue;
     if (node.type === 'checkbox') { if (node.checked) values[f.name] = true; continue; }
     if (node.multiple) {
-      const picked = [...node.selectedOptions].map((o) => o.value);
+      const picked = [...node.values];
       if (picked.length) values[f.name] = picked;
       continue;
     }
@@ -4336,8 +4343,7 @@ function formEditor(db, data, current = null) {
   const label = (text, input) => el('label', { class: 'form-builder-label' }, el('span', {}, text), input);
   const name = el('input', { class: 'form-control', required: '', value: current?.name ?? `${db.name} form` });
   const description = el('textarea', { class: 'form-control', rows: '2' }, current?.description ?? '');
-  const floor = el('select', { class: 'form-select' }, el('option', { value: 'Observer' }, 'Signed-in members'), el('option', { value: 'Anonymous', disabled: !data.anonymousAllowed && current?.floor !== 'Anonymous' ? '' : null }, 'Anyone with link'));
-  floor.value = current?.floor ?? 'Observer';
+  const floor = pickerSelect({ title: 'Audience', value: current?.floor ?? 'Observer', options: [{ id: 'Observer', label: 'Signed-in members' }, ...(data.anonymousAllowed || current?.floor === 'Anonymous' ? [{ id: 'Anonymous', label: 'Anyone with link' }] : [])] });
   const enabled = el('input', { type: 'checkbox', class: 'form-check-input' });
   enabled.checked = current?.enabled ?? true;
   const supported = new Set(['text', 'document', 'email', 'url', 'number', 'rating', 'date', 'select', 'multiselect', 'workflow', 'checkbox', 'toggle']);
@@ -4360,15 +4366,16 @@ function formEditor(db, data, current = null) {
     hasDefault.checked = Object.hasOwn(previous ?? {}, 'default');
     const choices = previous?.options ?? (field.options ?? field.states ?? []).map(o => typeof o === 'string' ? o : o.name);
     const type = { number: 'number', rating: 'number', date: 'date', email: 'email', url: 'url' }[field.type] ?? 'text';
-    const value = ['select', 'workflow', 'multiselect'].includes(field.type)
-      ? el('select', { class: 'form-select', multiple: field.type === 'multiselect' ? '' : null }, ...choices.map(option => el('option', { value: option }, option)))
-      : ['checkbox', 'toggle'].includes(field.type) ? el('select', { class: 'form-select' }, el('option', { value: 'true' }, 'Yes'), el('option', { value: 'false' }, 'No'))
-        : ['text', 'document'].includes(field.type) ? el('textarea', { class: 'form-control', rows: '3' })
-          : el('input', { class: 'form-control', type: field.type === 'date' && previous?.default && !/^\d{4}-\d{2}-\d{2}$/.test(previous.default) ? 'text' : type, step: type === 'number' ? 'any' : null });
-    if (field.type === 'multiselect') for (const option of value.options) option.selected = (previous?.default ?? []).includes(option.value);
-    else value.value = previous?.default ?? '';
+    const picks = ['select', 'workflow', 'multiselect'].includes(field.type) ? choices.map(option => ({ id: option, label: option }))
+      : ['checkbox', 'toggle'].includes(field.type) ? [{ id: 'true', label: 'Yes' }, { id: 'false', label: 'No' }] : null;
+    const multi = field.type === 'multiselect';
+    const value = picks ? pickerSelect({ title: field.name, options: picks, multi, value: multi ? previous?.default ?? [] : previous?.default != null ? String(previous.default) : null })
+      : ['text', 'document'].includes(field.type) ? el('textarea', { class: 'form-control', rows: '3' })
+        : el('input', { class: 'form-control', type: field.type === 'date' && previous?.default && !/^\d{4}-\d{2}-\d{2}$/.test(previous.default) ? 'text' : type, step: type === 'number' ? 'any' : null });
+    const control = value.input ?? value;
+    if (!picks) value.value = previous?.default ?? '';
     let defaultEdited = false;
-    value.addEventListener('input', () => defaultEdited = true);
+    for (const kind of ['input', 'change']) control.addEventListener(kind, () => defaultEdited = true);
     hasDefault.addEventListener('change', () => defaultEdited = true);
     const row = el('details', { class: 'form-builder-field', dataset: { formField: field.id } });
     const move = direction => {
@@ -4386,7 +4393,7 @@ function formEditor(db, data, current = null) {
     const sync = () => {
       row.querySelector('summary .text-muted').textContent = included.checked ? 'Included' : 'Available';
       for (const input of [text, key, required, hasDefault]) input.disabled = !included.checked || !editable;
-      value.disabled = !included.checked || !hasDefault.checked || !editable;
+      (value.face ?? value).disabled = !included.checked || !hasDefault.checked || !editable;
       text.required = key.required = included.checked && editable;
     };
     included.addEventListener('change', sync);
@@ -4401,11 +4408,11 @@ function formEditor(db, data, current = null) {
       if (hasDefault.checked) {
         if (!defaultEdited && Object.hasOwn(previous ?? {}, 'default')) out.default = previous.default;
         else if (['number', 'rating'].includes(field.type)) {
-          if (!value.value.trim() || !Number.isFinite(Number(value.value))) throw new Error(`${field.name} needs a numeric default`);
-          out.default = Number(value.value);
-        } else if (['checkbox', 'toggle'].includes(field.type)) out.default = value.value === 'true';
-        else if (field.type === 'multiselect') out.default = [...value.selectedOptions].map(option => option.value);
-        else out.default = value.value;
+          if (!control.value.trim() || !Number.isFinite(Number(control.value))) throw new Error(`${field.name} needs a numeric default`);
+          out.default = Number(control.value);
+        } else if (['checkbox', 'toggle'].includes(field.type)) out.default = control.value === 'true';
+        else if (multi) out.default = [...control.values];
+        else out.default = control.value;
       }
       return out;
     });
@@ -4421,7 +4428,7 @@ function formEditor(db, data, current = null) {
     try {
       const entries = [...fields.children].map(row => rows.get(row.dataset.formField)()).filter(Boolean);
       if (!entries.length) throw new Error('Include at least one field');
-      await api(current ? 'PATCH' : 'POST', current ? `/forms/${current.id}` : '/forms', { name: name.value.trim(), description: description.value, ...(current ? {} : { table: db.id }), fields: entries, enabled: enabled.checked, floor: floor.value });
+      await api(current ? 'PATCH' : 'POST', current ? `/forms/${current.id}` : '/forms', { name: name.value.trim(), description: description.value, ...(current ? {} : { table: db.id }), fields: entries, enabled: enabled.checked, floor: floor.input.value });
       await formsDialog(db);
     } catch (err) { submit.disabled = false; message.textContent = err.message; err.shown = true; throw err; }
   }, 'Save form');
