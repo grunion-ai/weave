@@ -1,1 +1,0 @@
-- **The core MCP tool list fits its budget again** (Issue #857): stored positions (#36) and the forms tool pushed the default `tools/list` to 15,478 bytes, past its 15,400-byte cap. The `weave_call` one-line summaries and the `weave_workspace` logo clause are shorter; no tool loses an argument or a capability.

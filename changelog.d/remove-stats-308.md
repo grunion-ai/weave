@@ -1,1 +1,0 @@
-- The table toolbar no longer has a **Stats** button, and the statistics dialog it opened is gone (Feature #308). The Σ rollup row, the space rollup tiles and the sidebar stats line stay. Agents and scripts still read every column summarised through `weave stats`, `weave_stats` and `GET /api/tables/:ref/stats`.

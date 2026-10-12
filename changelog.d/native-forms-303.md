@@ -1,3 +1,0 @@
-- Forms are managed inside a table through its Forms action: choose fields, labels, required values and defaults, then open, copy, edit or pause the same permalink. The editor preserves server-filled values and follows the existing Workspace/Forms registry (Feature #303).
-- Native form management has HTTP, CLI and MCP equivalents, with architect checks on the workspace and its registry and privileged access to hidden configuration, including accountless workspaces with sign-in required (Feature #303, Issue #815).
-- Form field sections are keyboard-accessible, and unrelated edits retain multiline and partial-date defaults (Issues #816, #817).

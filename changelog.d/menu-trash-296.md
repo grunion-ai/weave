@@ -1,3 +1,0 @@
-- Every menu deletes in one click: tables, spaces, records, share pages and fields show **Move to trash**, and the **Moved to trash** toast's **Undo** puts the object back where it was. Tables and spaces no longer ask for a hold, and fields and share pages no longer delete for good. The selection bar's trash uses the same words and Undo. A space's sidebar row gains the ⋮ every other row has (Feature #296).
-- **Delete workspace…** has left the workspace menu and its confirm dialog is gone until Settings takes it; `DELETE /api/workspaces/:id` and the Trash page's Restore stay (Feature #297).
-- A share page restored from the trash takes back its old place on the workspace page instead of landing last (Issue #855).
