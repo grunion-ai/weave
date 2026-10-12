@@ -304,7 +304,7 @@ if (s) {
       await page.keyboard.press('Escape');
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
       assert.deepEqual(await order(page), want, 'the redraw kept the moved column');
-      const rows = await page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => [...r.children].filter((c) => c.dataset.field).map((c) => c.dataset.field)));
+      const rows = await page.locator('.wv-grid tbody tr.entity-row').evaluateAll((rs) => rs.map((r) => [...r.children].filter((c) => c.dataset.field).map((c) => c.dataset.field)));
       for (const r of rows) assert.deepEqual(r, want, 'and so did every row');
     } finally { await page.close(); }
   });
