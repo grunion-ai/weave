@@ -136,3 +136,10 @@ test('worker forms accept URLencoded submissions, preserve retries and enforce t
 test('receipt capacity errors map to HTTP 429', () => {
   assert.equal(statusFor(new WeaveError('Capacity reached', 'rate-limited')), 429);
 });
+test('worker DO: a malformed percent-escape in the path answers 400, not 500 (Issue #869)', async () => {
+  const dobj = makeDO(shimStorage());
+  const bad = await call(dobj, 'GET', '/api/tables/%E0%A4%A');
+  assert.equal(bad.status, 400);
+  assert.equal(bad.data.code, 'invalid');
+  assert.match(bad.data.error, /percent-escape/);
+});

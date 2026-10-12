@@ -89,7 +89,7 @@ test('the layer is click-transparent except for the chips themselves', () => {
 test('the editor chip is the one renderer’s markup, sized to its label (Issue #679)', () => {
   const draw = APP.match(/const slot = el\('span', \{\s*class: 'doc-ref-slot wv-prose',[^]*?st\.layer\.append\(slot\);/)[0];
   assert.match(draw, /class: 'doc-ref-slot wv-prose'/, 'the slot is prose ground, not a second costume');
-  assert.match(draw, /slot\.innerHTML = hit\.html/, 'the chip comes from the rendered document, byte for byte');
+  assert.match(draw, /slot\.append\(hit\.chip\.cloneNode\(true\)\)/, 'the chip is the rendered document\'s own node, cloned, never re-parsed from a string');
   assert.ok(!/width:\$\{r\.width\}px/.test(draw), 'the chip is no longer cut to the width of its literal');
   assert.match(APP, /lib\.aliasRefSpans\(md/, 'a bare reference is stored aliased, so the literal reserves the room');
   assert.match(CSS, /\.k-rel:not\(\.has-id\) > \.mention-entity::before \{ content: "#"; \}/);

@@ -59,6 +59,7 @@
   const ratingClick = (current, n) => (Number(current) === n ? 0 : n);
 
   const SPARK_CAP = 60;
+  const SPARK_STYLES = ['line', 'column', 'winloss'];
   const SPARK_W = 80, SPARK_H = 18, PAD = 2;
   const WL_BLOCK = 5, DOT_R = 2;
   const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -77,7 +78,8 @@
     if (!nums.length) return 'no values';
     return `${nums.length} value${nums.length === 1 ? '' : 's'}, last ${fmt(nums[nums.length - 1])}, low ${fmt(Math.min(...nums))}, high ${fmt(Math.max(...nums))}`;
   }
-  function sparkSvg(style, values, { cap = SPARK_CAP } = {}) {
+  function sparkSvg(asked, values, { cap = SPARK_CAP } = {}) {
+    const style = SPARK_STYLES.includes(asked) ? asked : 'line';
     const pts = sparkPoints(values, cap).shown;
     const nums = pts.filter(isNum);
     if (!nums.length) return '';
@@ -123,5 +125,5 @@
       + `<circle class="cg-dot" cx="${r2(x(last))}" cy="${r2(y(pts[last]))}" r="${DOT_R}"/></svg>`;
   }
 
-  root.weaveCellGraphics = { DISPLAYS, COLORS, colorOf, colorClass, ratingHue, BAR_TRACK, RING_PX, SPARK_W, SPARK_H, isGraphic, share, meterSvg, meterTitle, ratingParts, ratingClick, SPARK_CAP, sparkPoints, sparkTitle, sparkLabel, sparkSvg };
+  root.weaveCellGraphics = { DISPLAYS, COLORS, colorOf, colorClass, ratingHue, BAR_TRACK, RING_PX, SPARK_W, SPARK_H, isGraphic, share, meterSvg, meterTitle, ratingParts, ratingClick, SPARK_CAP, SPARK_STYLES, sparkPoints, sparkTitle, sparkLabel, sparkSvg };
 })(globalThis);

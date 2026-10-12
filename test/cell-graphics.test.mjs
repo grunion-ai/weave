@@ -182,3 +182,10 @@ test('sparkline columns have 1.5px corners, win/loss are small blocks clear of t
   assert.match(line, /stroke-width="1.5"/);
   assert.match(line, /<circle class="cg-dot"[^>]*r="2"/);
 });
+test('a sparkline style outside the engine list draws a line and never reaches the markup (Issue #869)', () => {
+  const engine = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
+  assert.deepEqual(cg.SPARK_STYLES, JSON.parse(engine.match(/SPARKLINE_STYLES = (\[[^\]]*\])/)[1].replace(/'/g, '"')));
+  const svg = cg.sparkSvg('"><img src=x onerror=alert(1)>', [1, 3, 2]);
+  assert.match(svg, /^<svg class="cg cg-spark cg-spark-line"/);
+  assert.doesNotMatch(svg, /<img|onerror/);
+});
