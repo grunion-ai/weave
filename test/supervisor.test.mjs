@@ -268,6 +268,23 @@ test('settling a deferred open writes only what it changed, not every row', () =
   db.close();
 });
 
+test('the image worker names the commit Railway built it from; anything but a full SHA names none', async () => {
+  const built = 'd'.repeat(40);
+  for (const [given, named] of [[built, built], ['main', null], [built.slice(0, 7), null], [undefined, null]]) {
+    const dataPath = dataDir(`image-commit-${named ? 'sha' : String(given)}`);
+    const env = { ...ENV, ...(given ? { RAILWAY_GIT_COMMIT_SHA: given } : {}) };
+    if (!given) delete env.RAILWAY_GIT_COMMIT_SHA;
+    const { sup, base } = await supervise(dataPath, fakeGitHub(), { env });
+    try {
+      const h = await health(base);
+      assert.equal(h.supervisor.release, 'image');
+      assert.equal(h.supervisor.commit, named, `RAILWAY_GIT_COMMIT_SHA=${given}`);
+    } finally {
+      await sup.close();
+    }
+  }
+});
+
 test('a release whose health check fails leaves the old worker serving, and is not retried', async () => {
   const dataPath = dataDir('unhealthy');
   const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: 'process.exit(3);\n' }) });
