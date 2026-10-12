@@ -16,8 +16,8 @@ the same engine over that file.
 
 ### Primer
 
-The MCP server sends this text as its `initialize.instructions`, so an MCP
-client reads it before its first call.
+The MCP server sends this text as `initialize.instructions`, so a client
+reads it before its first call.
 
 <!-- primer:start (generated from src/mcp-primer.md by scripts/agent-docs.mjs; edit that file, then run the script) -->
 ```text
@@ -167,7 +167,7 @@ fields, documents and comments; every hit carries its id and permalink.
 
 ### Pitfalls
 
-Each error below is the text weave returns, followed by the fix.
+Each error is the text weave returns; the fix follows.
 
 | Error | Fix |
 | --- | --- |

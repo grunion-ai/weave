@@ -137,8 +137,8 @@ carries the schema tools.
 
 Seventeen tools by default, the ones a workspace build uses, `weave_build` among
 them, plus `weave_call`,
-which reaches the other forty-seven. `weave mcp --tools all` (or
-`WEAVE_MCP_TOOLS=all`) lists all 64. The same undo the UI has, and
+which reaches the other forty-eight. `weave mcp --tools all` (or
+`WEAVE_MCP_TOOLS=all`) lists all 65. The same undo the UI has, and
 `weave_vocabulary` so an agent reads the allowed values instead of guessing. Full map:
 [Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
 
@@ -229,7 +229,7 @@ set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave
 `weave_views`, `weave_automations`, `weave_activity` and the rest) in one line
 each; `weave_call {name: "help", args: {tool}}` returns a tool's full schema.
 Add `--tools all` to the `mcp` args, or set `WEAVE_MCP_TOOLS=all`, to list all
-64 directly. An agent designs a schema,
+65 directly. An agent designs a schema,
 fills it, and configures how it reads — icons, option colors, column widths and
 order, hidden columns, saved views — without a human opening the UI.
 
