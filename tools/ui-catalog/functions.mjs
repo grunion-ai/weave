@@ -15,6 +15,7 @@ export const FUNCTIONS = [
     { cat: 'button', sig: /next-state/ },
     { cat: 'chip', sig: /Select chip|State chip|Multi-select chip|Option dot/ },
     { cat: 'button', sig: /picker-face|new-row-opt|form-select/ },
+    { sig: /cell-pop-layer/ },
     { cat: 'tabs', sig: /new-row-seg/ },
     { cat: 'toggle', sig: /wv-toggle|switch/ },
   ] },
@@ -97,17 +98,19 @@ export const FUNCTIONS = [
     { sig: /ws-icon|ws-rail|nav-account|workspace/ },
     { land: /Workspace rail/ },
   ] },
-  { id: 'set-icon', title: 'Set an icon', blurb: 'The icon button beside a page title, with no icon set and with one set, and the icon picker it opens.', match: [
-    { sig: /icon-btn/ },
+  { id: 'set-icon', title: 'Set an icon', blurb: 'The icon button beside a page title, with no icon set and with one set, the icon picker it opens and the workspace logo.', match: [
+    { sig: /icon-btn|ws-logo-pick/ },
     { cat: 'picker', text: /^ICON\b|\bICON\b/ },
   ] },
   { id: 'rename', title: 'Rename', blurb: 'Title and name editors on pages and records.', match: [
     { sig: /Title edit|view-title|name-edit/ },
   ] },
-  { id: 'invite', title: 'Invite someone and share', blurb: 'The Members box, its invite field and link, the Share button and the Share dialog.', match: [
+  { id: 'invite', title: 'Invite someone and share', blurb: 'The Members box, its invite field and link, the Share button, the Share dialog and the Forms dialog.', match: [
     { sig: /share|member|invite/ },
     { land: /Members box/ },
     { cat: ['button', 'menu', 'dialog', 'input'], text: /invite|^share\b/i },
+    { cat: 'dialog', text: /^forms\b/i },
+    { cat: 'button', text: /^open$/i },
   ] },
   { id: 'read-notification', title: 'Read a notification', blurb: 'Toasts in every kind weave sends: info, success with Undo, error, automation, repeated and long.', match: [
     { cat: 'toast' },
@@ -135,10 +138,6 @@ export const FUNCTIONS = [
     { cat: 'cell', sig: /(^|\s|> )(td|th)\b|\bnum\b/ },
     { cat: 'card', sig: /table-wrap|list-rows|space-tables|system-tables|^div\.card$|card$/ },
     { cat: 'chip', sig: /ID chip|Badge|List chip|List group chip|Card state/ },
-  ] },
-  { id: 'read-stats', title: 'Read statistics', blurb: 'The statistics dialog and its cards.', match: [
-    { sig: /stats/ },
-    { text: /statistics/i },
   ] },
   { id: 'see-relations', title: 'See how tables relate', blurb: 'The relation map on the home page.', match: [
     { sig: /home-map|relation-map|relmap|auto-pill/ },

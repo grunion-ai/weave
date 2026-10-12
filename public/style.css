@@ -1625,7 +1625,7 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 .crumb-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
 .crumb-row > .crumb-actions { margin-bottom: 0; }
 @media (min-width: 601px) {
-  .crumb-actions :is(.table-stats-btn, .table-sort-btn) .table-control-label { display: none; }
+  .crumb-actions .table-sort-btn .table-control-label { display: none; }
   #dock .crumb-row > .crumb-actions { gap: 2px; }
   #dock .crumb-row > .crumb-actions > :is(.activity-btn, .eye-btn, .pose-btn, .dock-close) { padding: 4px 5px; }
 }
@@ -1769,29 +1769,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .wv-stat-value { font-size: var(--fs-h2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .wv-stat-label { font-size: var(--fs-secondary); color: var(--tblr-secondary); }
 .wv-stat-agg { font-size: var(--fs-meta); color: var(--tblr-secondary); opacity: .8; }
-#modal.wv-stats { width: 960px; max-width: 94vw; }
-.wv-stats-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.wv-stats-head h2 { margin: 0; }
-.wv-stats-ctl, .wv-stats-ctl-row { display: flex; align-items: center; gap: 8px; }
-.wv-stats-ctl-row .picker-wrap { width: auto; }
-.wv-stats-ctl-row .picker-face { min-width: 120px; }
-.wv-stats h3 { font-size: var(--fs-secondary); text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-secondary); margin: 14px 0 6px; }
-.wv-stats-rows { font-weight: 600; }
-.wv-stats-table th, .wv-stats-table td { font-size: var(--fs-grid); }
-.wv-stats-table td.num, .wv-stats-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.wv-hist { display: flex; align-items: flex-end; gap: 1px; height: 22px; width: 90px; }
-.wv-hist-bar { flex: 1; background: var(--tblr-primary); opacity: .55; border-radius: 1px 1px 0 0; min-height: 1px; }
-@media (hover: hover) { .wv-hist-bar:hover { opacity: 1; } }
-.wv-stats-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
-.wv-stats-card { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 8px 10px; }
-.wv-stats-card-title { font-weight: 600; font-size: var(--fs-grid); margin-bottom: 4px; }
-.wv-dist { display: flex; flex-direction: column; gap: 3px; }
-.wv-dist-row { display: grid; grid-template-columns: minmax(70px, 38%) 1fr auto; gap: 8px; align-items: center; font-size: var(--fs-secondary); }
-.wv-dist-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wv-dist-label.empty { color: var(--tblr-secondary); font-style: italic; }
-.wv-dist-bar { height: 8px; background: var(--tblr-bg-surface-secondary); border-radius: 4px; overflow: hidden; }
-.wv-dist-fill { display: block; height: 100%; background: var(--tblr-primary); opacity: .6; }
-.wv-dist-n { color: var(--tblr-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 
 .wv-color-pick { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1832,8 +1809,8 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .crumb-actions .table-search-btn { border: 0; background: none; }
 .crumb-actions .table-search-input { display: block; width: 140px; min-width: 0; padding-left: 2px; }
 .crumb-actions .table-search:focus-within { outline: 2px solid rgba(var(--tblr-primary-rgb), .45); outline-offset: 1px; }
-.crumb-actions :is(.table-view-btn,.table-density-btn,.eye-btn,.table-stats-btn,.table-filter-btn,.table-sort-btn) { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-.crumb-actions :is(.table-view-btn,.table-density-btn,.eye-btn,.table-stats-btn,.table-filter-btn,.table-sort-btn) > svg { width: 15px; height: 15px; }
+.crumb-actions :is(.table-view-btn,.table-density-btn,.eye-btn,.table-filter-btn,.table-sort-btn) { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.crumb-actions :is(.table-view-btn,.table-density-btn,.eye-btn,.table-filter-btn,.table-sort-btn) > svg { width: 15px; height: 15px; }
 .crumb-actions [aria-expanded="true"] { background: var(--tblr-primary-lt); border-color: var(--tblr-primary); color: var(--tblr-primary); }
 .table-control-label { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 .table-control-popover { width: 340px; max-width: calc(100vw - 16px); padding: 8px; gap: 0; }

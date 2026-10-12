@@ -101,33 +101,6 @@ if (s) {
     await page.close();
   });
 
-  test('the Stats toolbar button summarises every column and groups on a chip column (Feature #296)', async () => {
-    const page = await open(`/table/${sessions.id}`);
-    await page.waitForSelector('thead tr.wv-foot');
-    await page.click('#main .crumb-actions .table-stats-btn');
-    await page.waitForSelector('#modal.wv-stats tr[data-col="Cost"]');
-    const cost = await page.locator('#modal.wv-stats tr[data-col="Cost"]').first().evaluate((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent));
-    assert.equal(cost[0], 'Cost');
-    assert.ok(cost.includes('$14.00') && cost.includes('$2.50'), `sum and median: ${cost}`);
-    assert.ok(await page.$('#modal.wv-stats .wv-hist-bar'), 'a histogram');
-    assert.ok(await page.$('#modal.wv-stats .wv-stats-card[data-col="Kind"] .wv-dist-row'), 'a distribution for the chip column');
-    assert.match(await page.$eval('#modal.wv-stats .wv-stats-card[data-col="Started"]', (n) => n.textContent), /Aug 30, 2026 → Sep 3, 2026 · 4 days/);
-    await page.click('#modal.wv-stats .wv-stats-by .picker-face');
-    await page.locator('.chip-pop .chip-pop-row', { hasText: 'Kind' }).first().click();
-    await page.waitForSelector('#modal.wv-stats h3:has-text("By Kind")');
-    const rows = await page.$$eval('#modal.wv-stats h3:has-text("By Kind") + .table-wrap tbody tr', (trs) => trs.map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent)));
-    assert.deepEqual(rows, [['interactive', '2', '$4.00'], ['scheduled', '2', '$10.00']]);
-    const held = await page.evaluate(() => {
-      const m = document.querySelector('#modal.wv-stats');
-      return { role: m.getAttribute('role'), label: document.getElementById(m.getAttribute('aria-labelledby'))?.textContent, appInert: document.querySelector('#app').inert };
-    });
-    assert.deepEqual(held, { role: 'dialog', label: 'Sessions · statistics', appInert: true });
-    await page.keyboard.press('Escape');
-    await page.waitForSelector('#modal-back', { state: 'detached' });
-    assert.equal(await page.evaluate(() => document.querySelector('#app').inert), false, 'Escape frees the table');
-    await page.close();
-  });
-
   test('the Σ row is pinned right under the field headers and no tfoot paints it (Issue #233)', async () => {
     for (let i = 0; i < 40; i++) weave.createEntity('Sessions', { name: `row ${i}`, values: { Cost: 1 } });
     const page = await open(`/table/${sessions.id}`, 1480);
