@@ -63,10 +63,19 @@ test('the nav pins Workflows, Activity and Trash, in that order, under the space
   const nav = fnBodyOf('renderNav');
   const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("$('#sidebar').append(system"));
   const at = (s) => group.indexOf(s);
-  assert.ok(at("'#/activity'") > -1 && at("'#/trash'") > -1 && at('#/table/${wf.id}') > -1, 'the three routes');
-  assert.ok(at('#/table/${wf.id}') < at("'#/activity'") && at("'#/activity'") < at("'#/trash'"), 'Workflows, Activity, Trash (Issue #561)');
+  assert.ok(at("'#/activity'") > -1 && at("'#/trash'") > -1 && at("'Workflows'") > -1, 'the three routes');
+  assert.ok(at("'Workflows'") < at("'#/activity'") && at("'#/activity'") < at("'#/trash'"), 'Workflows, Activity, Trash (Issue #561)');
   assert.doesNotMatch(group, /navTableMenu|draggable|grip/, 'no kebab, no grip: fixed rows');
   assert.match(nav, /db\.system === 'workflows'\) continue/, 'Workflows leaves the Workspace space list: one place in the nav');
+});
+
+test('the Workflows row always shows, resolved through the registry a member reads from the root (Issue #872)', () => {
+  const nav = fnBodyOf('renderNav');
+  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("$('#sidebar').append(system"));
+  assert.doesNotMatch(group, /wf \? \[/, 'no condition wraps the Workflows row');
+  assert.match(nav, /registryTable\('workflows'\)/, 'a member workspace finds Workflows in state.registry');
+  assert.match(nav, /`\/#\/table\/\$\{wf\.id\}`/, 'a root registry table links through the root');
+  assert.match(nav, /: '\/'/, 'nothing resolved still links the root registry');
 });
 
 test('the pinned group sits outside the scrolling list, above the stats strip', () => {

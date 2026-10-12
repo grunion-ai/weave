@@ -1,15 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
-let wfId;
+let wfId, member;
 const s = await launch('system tables nav', (weave) => {
   weave.createSpace({ name: 'Work' });
   const t = weave.createTable({ space: 'Work', name: 'Tasks' });
   const e = weave.createEntity(t.id, { Name: 'binned' });
   weave.deleteEntity(e.id);
   wfId = weave.getTable('Workspace/Workflows').id;
-});
+  member = new Weave();
+  member.updateWorkspace({ name: 'member' });
+  member.createSpace({ name: 'Notes' });
+  member.createTable({ space: 'Notes', name: 'Ideas' });
+}, { server: () => ({ workspaces: { member } }) });
 
 if (s) {
   const { base, browser } = s;
@@ -42,6 +47,15 @@ if (s) {
     await page.click('#sidebar .nav-system a[href^="#/table/"]');
     await page.waitForSelector('#main input.view-title');
     assert.equal(await page.locator('#main input.view-title').first().evaluate((i) => i.readOnly), true, 'Workflows cannot be renamed from its page');
+    await page.close();
+  });
+
+  test('browser: a member workspace served by the hub still pins Workflows, Activity and Trash (Issue #872)', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/w/${member.state.meta.id}/#/`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#sidebar .nav-system a');
+    const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
+    assert.deepEqual(rows, [['Workflows', `/#/table/${wfId}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
     await page.close();
   });
 
