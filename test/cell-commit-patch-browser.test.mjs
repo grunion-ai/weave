@@ -156,8 +156,10 @@ if (s) {
       await landed;
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
-      await page.click('.wv-grid thead button[aria-label="Configure field Name"]');
-      await page.locator('.chip-pop .wv-menu-row', { hasText: 'A to Z' }).first().click();
+      await page.click('#main .table-sort-btn');
+      await page.locator('.table-sort-popover .table-sort-field').filter({ has: page.locator('.table-sort-name', { hasText: /^Name$/ }) }).click();
+      await page.waitForFunction(() => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.startsWith('Sort: Name,'));
+      await page.waitForLoadState('networkidle');
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row')[0]?.querySelector('td[data-field="Name"] input')?.value === 'a row', null, { timeout: 5000 });
       assert.equal(
         await page.inputValue(`tr[data-eid="${smallIds[0]}"] td[data-field="Note"] input`),
