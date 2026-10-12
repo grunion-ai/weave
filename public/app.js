@@ -4076,6 +4076,7 @@ function tableSortButton(ref) {
     const s = ref.db.sort?.[0];
     value.textContent = s ? `${s.field}, ${words(s.field, s.dir)}` : 'None';
     btn.setAttribute('aria-label', s ? `Sort: ${s.field}, ${words(s.field, s.dir)}` : 'Sort: none');
+    btn.title = btn.getAttribute('aria-label');
   };
   btn.label();
   btn.addEventListener('click', () => {

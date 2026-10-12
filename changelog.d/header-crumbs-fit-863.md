@@ -1,0 +1,1 @@
+- **Header crumbs stay whole beside the new toolbar buttons** (Issue #863): on a desktop the Stats and Sort buttons that #69 added to the table toolbar draw as icon buttons (their names stay as tooltips and in the phone tools sheet), and the dock header packs its icon buttons tighter, so the table crumbs at 1440px and the current crumb in a 550px dock are no longer cut off.
