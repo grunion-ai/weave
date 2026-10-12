@@ -70,7 +70,7 @@ if (s) {
         await page.waitForURL(`${base}/start`);
         await page.waitForSelector('.rows li a');
         await page.locator('.rows li a').first().click();
-        await page.waitForSelector('#ws-new');
+        await page.waitForSelector('#ws-new > .wv-icon');
         await page.locator('#ws-new').click();
         await page.waitForSelector('.wv-menu.ws-plus');
         const items = await page.locator('.wv-menu.ws-plus .wv-menu-row').allInnerTexts();
