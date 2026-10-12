@@ -82,7 +82,7 @@ A menu opened away from its object (a sidebar row, a right-click, a rail chip) s
 
 ## What stays out of menus
 
-- View actions belong to the toolbar: Stats, Fields, Sort, Activity, Show or hide fields.
+- View actions belong to the toolbar: Fields, Sort, Activity, Show or hide fields.
 - Click-to-edit belongs in place: a title, an icon, a workspace logo, a table name (double-click its sidebar row).
 - Copy link belongs to the header permalink button, which shows on a phone and in the dock.
 - A deck's download, composed model and new version controls are buttons on its panel.

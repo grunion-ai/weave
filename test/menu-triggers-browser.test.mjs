@@ -165,21 +165,20 @@ if (s) {
     });
   }
 
-  for (const theme of ['light', 'dark']) {
-    test(`${theme}: Column stats is a toolbar button beside Fields (Feature #296)`, async () => {
-      const page = await open(`#/table/${tableId}`, theme);
-      try {
-        await page.waitForSelector('#main .crumb-actions .table-stats-btn');
-        const order = await page.$$eval('#main .crumb-actions > *', (ns) => ns.map((n) => n.className));
-        const eye = order.findIndex((c) => /eye-btn/.test(c));
-        assert.ok(/table-stats-btn/.test(order[eye + 1]), `Stats sits right after Fields: ${order.join(' | ')}`);
-        const ink = await page.$eval('#main .table-stats-btn', (b) => [getComputedStyle(b).color, getComputedStyle(b).backgroundColor]);
-        assert.notEqual(ink[0], ink[1], `${theme}: the label reads against its button`);
-        await page.click('#main .table-stats-btn');
-        await page.waitForSelector('#modal .wv-stats-cards, #modal h3');
-      } finally { await page.close(); }
-    });
-  }
+  test('the table toolbar has no Stats control and the table menu has no stats row (Feature #308)', async () => {
+    const page = await open(`#/table/${tableId}`);
+    try {
+      await page.waitForSelector('#main .crumb-actions .eye-btn');
+      const order = await page.$$eval('#main .crumb-actions > *', (ns) => ns.map((n) => `${n.className} ${n.textContent} ${n.getAttribute('aria-label') ?? ''} ${n.title ?? ''}`));
+      assert.equal(await page.locator('#main .table-stats-btn').count(), 0, 'no Stats button');
+      assert.deepEqual(order.filter((t) => /stat/i.test(t)), [], `no toolbar control names stats: ${order.join(' | ')}`);
+      const eye = order.findIndex((c) => /eye-btn/.test(c));
+      assert.match(order[eye + 1], /table-filter-btn/, 'Filters sits right after Fields');
+      const { rows } = await via('#main .crumb-actions .dots-btn[title="Table actions"]')(page);
+      assert.deepEqual(rows.filter((r) => /stat/i.test(r)), [], `no table menu row names stats: ${rows.join(' | ')}`);
+      assert.equal(await page.locator('#modal.wv-stats').count(), 0);
+    } finally { await page.close(); }
+  });
 
   test('double-clicking a nav table row renames it in place (Feature #296)', async () => {
     const page = await open(`#/table/${tableId}`);

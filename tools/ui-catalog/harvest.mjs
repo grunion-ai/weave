@@ -12,7 +12,7 @@ export const PAGE_LIB = () => {
     ['tabs', '[role=tablist], .seg-ctl, .list-segs, .new-row-seg, .view-tab'],
     ['button', 'button, a.btn, [role=button], summary, input[type=button], input[type=submit]'],
     ['input', 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=button]):not([type=submit]), textarea, select'],
-    ['card', '.wv-card, .card, .wv-stats-card, .sk-card, .fx-sigcard, .wv-act-card'],
+    ['card', '.wv-card, .card, .sk-card, .fx-sigcard, .wv-act-card'],
     ['empty', '.wv-empty, .is-empty, .empty-note, .k-empty, .picker-empty, .table-search-empty, .wv-members-empty, .cmdk-empty, .view-desc-empty'],
     ['nav', '.crumb-row, .nav-space-row, .nav-db, .ws-icon, .nav-foot, .nav-account, .nav-menu-row, .crumb-nav'],
     ['bar', '.wv-toolbar, .table-tools, .view-header, .sk-toolbar, .vditor-toolbar, .wv-act-bar, .wv-bar-dock, .phone-bar, .file-viewer-bar, .fsv-bar, .doc-expand-bar'],
@@ -90,8 +90,9 @@ export const PAGE_LIB = () => {
         let els = [...root.querySelectorAll(sel)].filter((e) => vis(e) && !(e instanceof SVGElement));
         if (cat === 'button') els = els.filter((e) => !e.closest(MENUISH) && !e.matches(ROWISH));
         if (['toggle', 'tabs', 'chip', 'card', 'bar', 'nav'].includes(cat)) els = outermost(els, sel);
+        if (cat === 'cell') els = els.filter((e) => !/^T[DH]$/.test(e.tagName) || e.parentElement === [...e.parentElement.parentElement.rows].find(vis));
         for (const el of els) {
-          if (taken.has(el) || [...taken].some((t) => t.contains(el) && cat !== 'button' && cat !== 'input')) continue;
+          if (taken.has(el) || [...taken].some((t) => t.contains(el) && cat !== 'button' && cat !== 'input' && !(cat === 'cell' && /^T[DH]$/.test(el.tagName)))) continue;
           if (cat === 'button' && el.closest(LEAVES[0][1]) && el.closest(LEAVES[0][1]) !== el) continue;
           taken.add(el);
           const r = rec(el, cat, extra);

@@ -66,7 +66,6 @@ export const OVERLAYS = [
   { name: 'fields', surface: 'table', cells: BOTH, root: '.table-fields-popover', open: toolsThen('#main .eye-btn') },
   { name: 'filters', surface: 'table', cells: BOTH, root: '.table-filter-popover', open: toolsThen('#main .table-filter-btn') },
   { name: 'table-menu', surface: 'table', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Table actions"]', cell) },
-  { name: 'column-stats', surface: 'table', cells: BOTH, root: '#modal-back', open: toolsThen('#main .table-stats-btn') },
   { name: 'share-table', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('Share…') },
   { name: 'share-page', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('New share page') },
   {

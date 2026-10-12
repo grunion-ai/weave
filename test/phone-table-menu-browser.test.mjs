@@ -4,13 +4,13 @@ import { engineOf, launch, settled, phoneProfile } from './lib/browser.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
 
-const SHEET = ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-stats-btn', '.table-filter-btn', '.table-sort-btn'];
+const SHEET = ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn', '.table-sort-btn'];
 const FOLDED = ['.table-search', '.dots-btn'];
 const rgb = (c) => {
   const n = String(c).match(/[\d.]+/g).map(Number);
   return (c.startsWith('color(') ? n.slice(0, 3).map((v) => Math.round(v * 255)) : n.slice(0, 3)).join(',');
 };
-const DESKTOP = ['.table-search', '.table-view-btn', '.table-density-btn', '.eye-btn', '.table-stats-btn', '.table-filter-btn', '.table-sort-btn', '.dots-btn'];
+const DESKTOP = ['.table-search', '.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn', '.table-sort-btn', '.dots-btn'];
 
 const s = await launch('phone table menu', (weave) => {
   weave.createSpace({ name: 'Development' });

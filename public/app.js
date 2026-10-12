@@ -4485,13 +4485,6 @@ function tableChrome(db, trashCount) {
           ? phoneRowPopover(eye, ref.db) : fieldVisibilityPopover(eye, ref.db, ref.trashCount)));
         return eye;
       })(),
-      (() => {
-        const stats = tableControlButton('table-stats-btn', 'Stats', 'chart-column');
-        stats.setAttribute('aria-label', 'Column stats');
-        stats.title = 'Column stats';
-        stats.addEventListener('click', () => { tools.shut(); columnStatsPanel(ref.db); });
-        return stats;
-      })(),
       filterBtn,
       groupBtn,
       sortBtn,
@@ -5030,8 +5023,8 @@ function renderList(main, db, items, ctx) {
     };
   }
 }
-function groupFieldOptions(db, { dates = true } = {}) {
-  return db.fields.filter((f) => listCore.groupable(f) && (dates || f.type !== 'date'))
+function groupFieldOptions(db) {
+  return db.fields.filter((f) => listCore.groupable(f))
     .map((f) => ({ id: f.name, label: f.name, hint: f.type === 'relation' ? 'link' : f.type }));
 }
 const LEVEL_ORDERS = { option: 'Option order', table: 'Table order', az: 'A to Z' };
@@ -8674,112 +8667,6 @@ async function spaceStatTiles(space) {
       el('span', { class: 'wv-stat-label' }, `${t?.name ?? ''}${f.targetField ? ` · ${f.targetField}` : ''}`),
       el('span', { class: 'wv-stat-agg' }, FOOT_LABELS[f.aggregate] ?? f.aggregate, f.where ? ' · filtered' : ''));
   }));
-}
-
-async function columnStatsPanel(db) {
-  document.querySelector('#modal-back')?.remove();
-  const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } });
-  const body = el('div', { class: 'wv-stats-body' }, el('div', { class: 'wv-muted' }, 'Reading…'));
-  const ctl = el('div', { class: 'wv-stats-ctl' }, el('span', { class: 'wv-muted' }, 'Group by'));
-  let bySel = null;
-  const statSel = pickerSelect({ name: 'stat', title: 'Group figure', value: 'sum', options: ['sum', 'avg', 'median', 'min', 'max'].map((k) => ({ id: k, label: k })) });
-  statSel.classList.add('wv-stats-stat');
-  const panel = el('div', { id: 'modal', class: 'wv-stats' },
-    el('div', { class: 'wv-stats-head' },
-      el('h2', {}, `${db.name} · statistics`),
-      el('div', { class: 'wv-stats-ctl-row' }, ctl, statSel,
-        el('button', { class: 'btn btn-sm', type: 'button', onclick: () => back.remove() }, 'Close'))),
-    body);
-  back.append(panel);
-  holdPage(back, panel);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
-  });
-  const fmt = (n) => (n == null ? '—' : typeof n === 'number' ? (Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 2 })) : String(n));
-  const bars = (dist, total, { top = 8 } = {}) => {
-    const max = Math.max(1, ...dist.map((d) => d.count));
-    const shown = dist.slice(0, top);
-    return el('div', { class: 'wv-dist' },
-      ...shown.map((d) => el('div', { class: 'wv-dist-row' },
-        el('span', { class: 'wv-dist-label' + (d.value == null ? ' empty' : '') }, d.value == null ? '(empty)' : String(d.value)),
-        el('span', { class: 'wv-dist-bar' }, el('span', { class: 'wv-dist-fill', style: `width:${Math.round(100 * d.count / max)}%` })),
-        el('span', { class: 'wv-dist-n' }, `${d.count} · ${Math.round(100 * d.count / Math.max(1, total))}%`))),
-      dist.length > top ? el('div', { class: 'wv-muted' }, `+ ${dist.length - top} more`) : null);
-  };
-  const hist = (h) => {
-    const max = Math.max(1, ...h.map((b) => b.count));
-    return el('div', { class: 'wv-hist', title: 'Distribution' }, ...h.map((b) => el('span', {
-      class: 'wv-hist-bar', style: `height:${Math.max(2, Math.round(100 * b.count / max))}%`,
-      title: `${b.fromDisplay} – ${b.toDisplay}: ${b.count}`,
-    })));
-  };
-  const render = (s) => {
-    const numbers = s.columns.filter((c) => c.kind === 'number');
-    const cats = s.columns.filter((c) => c.kind === 'category');
-    const dates = s.columns.filter((c) => c.kind === 'date');
-    const texts = s.columns.filter((c) => c.kind === 'text');
-    const parts = [el('div', { class: 'wv-stats-rows' }, `${s.rows.toLocaleString()} ${s.rows === 1 ? db.term.singular : db.term.plural}`,
-      s.rollups.length ? el('span', { class: 'wv-muted' }, ` · ${s.rollups.length} space rollup${s.rollups.length === 1 ? '' : 's'} on this table`) : null)];
-    if (s.groups) {
-      const k = statSel.input.value || 'sum';
-      parts.push(el('h3', {}, `By ${s.by} · ${k}`),
-        el('div', { class: 'table-wrap' }, el('table', { class: 'table table-sm wv-grid wv-stats-table' },
-          el('thead', {}, el('tr', {}, el('th', {}, s.by), el('th', { class: 'num' }, 'rows'), ...numbers.map((c) => el('th', { class: 'num' }, c.name)))),
-          el('tbody', {}, ...s.groups.map((g) => el('tr', {},
-            el('td', { class: g.value == null ? 'wv-muted' : '' }, g.value == null ? '(empty)' : String(g.value)),
-            el('td', { class: 'num' }, fmt(g.rows)),
-            ...numbers.map((c) => el('td', { class: 'num' }, g.display[c.name]?.[k] ?? '—'))))))));
-    }
-    if (numbers.length) {
-      parts.push(el('h3', {}, 'Numbers'),
-        el('div', { class: 'table-wrap' }, el('table', { class: 'table table-sm wv-grid wv-stats-table' },
-          el('thead', {}, el('tr', {}, el('th', {}, 'Column'), el('th', { class: 'num' }, 'filled'), ...['sum', 'avg', 'median', 'min', 'max', 'stdev'].map((k) => el('th', { class: 'num' }, k)), el('th', {}, 'distribution'))),
-          el('tbody', {}, ...numbers.map((c) => el('tr', { dataset: { col: c.name } },
-            el('td', {}, c.name),
-            el('td', { class: 'num' }, `${c.filled}${c.empty ? ` / ${c.empty} empty` : ''}`),
-            ...['sum', 'avg', 'median', 'min', 'max', 'stdev'].map((k) => el('td', { class: 'num' }, c.display[k] ?? '—')),
-            el('td', {}, hist(c.histogram))))))));
-    }
-    if (cats.length) {
-      parts.push(el('h3', {}, 'Chips and boxes'), el('div', { class: 'wv-stats-cards' }, ...cats.map((c) => el('div', { class: 'wv-stats-card', dataset: { col: c.name } },
-        el('div', { class: 'wv-stats-card-title' }, c.name, el('span', { class: 'wv-muted' }, ` · ${c.distribution.filter((d) => d.value != null).length} values`)),
-        bars(c.distribution, s.rows)))));
-    }
-    if (dates.length) {
-      parts.push(el('h3', {}, 'Dates'), el('div', { class: 'wv-stats-cards' }, ...dates.map((c) => el('div', { class: 'wv-stats-card', dataset: { col: c.name } },
-        el('div', { class: 'wv-stats-card-title' }, c.name),
-        el('div', { class: 'wv-muted' }, c.earliest == null ? 'no dates' : `${c.earliestDisplay} → ${c.latestDisplay} · ${c.spanDays} day${c.spanDays === 1 ? '' : 's'} · ${c.filled} filled`),
-        c.byMonth?.length ? bars([...c.byMonth].sort((a, b) => String(a.value).localeCompare(String(b.value))), c.filled, { top: 12 }) : null))));
-    }
-    if (texts.length) {
-      parts.push(el('h3', {}, 'Text'), el('div', { class: 'wv-stats-cards' }, ...texts.map((c) => el('div', { class: 'wv-stats-card', dataset: { col: c.name } },
-        el('div', { class: 'wv-stats-card-title' }, c.name),
-        el('div', { class: 'wv-muted' }, `${c.filled} filled · ${c.empty} empty · ${c.distinct} distinct`)))));
-    }
-    body.replaceChildren(...parts);
-  };
-  const load = async () => {
-    try {
-      const by = bySel?.input.value || '';
-      const s = await api('GET', `/tables/${db.id}/stats${by ? `?by=${encodeURIComponent(by)}` : ''}`);
-      if (!bySel) {
-        bySel = pickerSelect({ name: 'by', title: 'Group by', placeholder: 'No grouping', options: [
-          { id: '', label: 'No grouping' },
-          ...groupFieldOptions(db, { dates: false }),
-          ...s.columns.filter((x) => x.kind === 'category' && !listCore.groupable(db.fields.find((f) => f.name === x.name))).map((c) => ({ id: c.name, label: c.name })),
-        ] });
-        bySel.classList.add('wv-stats-by');
-        bySel.input.addEventListener('change', load);
-        ctl.append(bySel);
-      }
-      statSel.hidden = !s.groups;
-      render(s);
-    } catch (err) { body.replaceChildren(el('div', { class: 'wv-muted' }, err.message)); }
-  };
-  statSel.input.addEventListener('change', load);
-  statSel.hidden = true;
-  await load();
 }
 
 async function showSpace(spaceId) {
