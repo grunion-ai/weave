@@ -10238,7 +10238,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 
   const grid = el('div', { class: 'entity-grid', dataset: { eid: id } });
   grid.classList.toggle('side-open', sideOpen);
-  mount.append(grid);
+  mount.append(el('div', { class: 'entity-split' }, grid));
   const left = el('div');
   const right = el('div', { class: 'entity-side' });
   grid.append(left, right);
@@ -10724,10 +10724,9 @@ const activityPanel = (() => {
       el('div', { class: 'wv-act-head' }, el('h3', {}, 'Activity'),
         el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
       filters, list);
-    if (panel) panel.replaceWith(next); else document.body.append(next);
+    const host = st.mount?.querySelector?.(':scope > .entity-split') ?? st.mount;
+    if (panel?.parentElement === host) panel.replaceWith(next); else { panel?.remove(); host.append(next); }
     panel = next;
-    const dock = st.mount?.closest?.('#dock');
-    if (dock && !dockCoversScreen.matches) panel.style.right = `${innerWidth - dock.getBoundingClientRect().left + 8}px`;
     list.scrollTop = keep;
     const s = list.querySelector('.wv-act-row.sel');
     if (s) {
@@ -10784,7 +10783,6 @@ const activityPanel = (() => {
     try { await flushDocSaves(); await load(); } catch (err) { st = null; return toast(err.message, true); }
     const first = H().filterFeed(st.items, st.filter)[0];
     st.sel = first?.id ?? null;
-    document.body.classList.toggle('wv-activity-open', !!st.mount?.closest?.('#main'));
     if (dockCoversScreen.matches && !sheetBack) {
       sheetBack = () => close({ back: true });
       history.pushState({ ...(history.state ?? {}), wvSheet: 'activity' }, '', location.href);
@@ -10800,29 +10798,29 @@ const activityPanel = (() => {
     }
     panel?.remove(); panel = null;
     clearViews();
-    document.body.classList.remove('wv-activity-open');
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
     st = null;
   }
   function toggle(id, field, mount) {
     const want = field ? `doc:${field}` : 'all';
-    if (st?.id === id && panel && st.filter === want) return close();
+    if (st?.id === id && panel?.isConnected && st.filter === want) return close();
     return open(id, field, mount);
   }
   function mounted(id, mount) {
     if (!st || !panel) return;
-    if (st.id !== id) { if (!st.mount?.isConnected) close(); return; }
+    if (st.id !== id) { if (!st.mount?.isConnected || !panel.isConnected) close(); return; }
     st.mount = mount;
     for (const b of mount.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
+    renderPanel();
     renderView();
   }
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
+    if (e.key !== 'Escape' || !panel?.isConnected || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
     e.stopPropagation();
     close();
   }, true);
   window.addEventListener('hashchange', () => setTimeout(() => { if (st && !st.mount?.isConnected) close(); }, 0));
-  return { toggle, open, close, mounted, get openFor() { return panel ? st?.id : null; } };
+  return { toggle, open, close, mounted, get openFor() { return panel?.isConnected ? st?.id : null; } };
 })();
 
 function quickCreate(db) {

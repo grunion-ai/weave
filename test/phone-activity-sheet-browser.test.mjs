@@ -70,7 +70,7 @@ if (s) {
     }
   }
 
-  test('on a desktop Activity stays a 328px side panel (Issue #733)', async () => {
+  test('on a desktop Activity stays a side panel inside the peek, at most 328px wide (Issues #733, #871)', async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 844 } });
     try {
       await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
@@ -78,7 +78,9 @@ if (s) {
       await page.click('#dock .activity-btn');
       await page.waitForSelector('aside.wv-activity');
       const p = await sheet(page);
-      assert.equal(Math.round(p.right - p.left), 328);
+      const width = Math.round(p.right - p.left);
+      assert.ok(width >= 240 && width <= 328, `a side column, not a sheet (${width}px)`);
+      assert.ok(await page.evaluate(() => !!document.querySelector('#dock aside.wv-activity')), 'inside the peek');
     } finally { await page.close(); }
   });
 }
