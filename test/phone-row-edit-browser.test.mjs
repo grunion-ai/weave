@@ -47,7 +47,7 @@ if (s) {
   const row = (page, n) => page.locator('#main tbody tr.entity-row').nth(n);
   const value = (n, field) => weave.readEntity(weave.listEntities(id)[n].id).fields[field];
   const tapOn = async (page, locator, { dx = 0, dy = 0 } = {}) => {
-    await locator.scrollIntoViewIfNeeded();
+    await locator.evaluate((n) => n.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
     const b = await locator.boundingBox();
     await page.touchscreen.tap(b.x + b.width / 2 + dx, b.y + b.height / 2 + dy);
   };
