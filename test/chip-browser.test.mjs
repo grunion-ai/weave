@@ -87,7 +87,7 @@ if (s) {
     test(`every chip surface draws at the shared size — label >= 13px, box >= 24px, 20px in a Comfortable grid — in ${colorScheme}`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'load' });
-      await page.waitForSelector('.wv-grid td .k-state');
+      await page.waitForSelector('.wv-grid td:not(.pid-cell) .k-state');
       const tok = await tokens(page);
       assert.match(tok.font, /^\d+(\.\d+)?px$/, 'the size is a token on :root, --wv-chip-font');
       assert.match(tok.line, /^\d+(\.\d+)?px$/, 'and so is the line, --wv-chip-line');
@@ -95,9 +95,9 @@ if (s) {
       const font = parseFloat(tok.font);
       assert.ok(font >= 13 && font <= body, `the label is body size or one step below: got ${tok.font} under a ${body}px body`);
       const surfaces = {
-        'a state cell': '.wv-grid td .k-state',
-        'a select cell': '.wv-grid td .k-select',
-        'a relation cell': '.wv-grid td .k-rel',
+        'a state cell': '.wv-grid td:not(.pid-cell) .k-state',
+        'a select cell': '.wv-grid td:not(.pid-cell) .k-select',
+        'a relation cell': '.wv-grid td:not(.pid-cell) .k-rel',
       };
       for (const [what, sel] of Object.entries(surfaces)) {
         const m = await measure(page, sel);
@@ -105,7 +105,7 @@ if (s) {
         assert.ok(m.height >= 20 && m.height <= 22, `${what} is a Comfortable grid chip: ${m.height}px, want 20 to 22`);
         assert.equal(m.radius, '4px', `${what} keeps the 4px corner`);
       }
-      assert.equal((await measure(page, '.wv-grid td .k-rel')).background, 'rgba(0, 0, 0, 0)', 'still no fill behind a pointer chip');
+      assert.equal((await measure(page, '.wv-grid td:not(.pid-cell) .k-rel')).background, 'rgba(0, 0, 0, 0)', 'still no fill behind a pointer chip');
       await page.goto(`${base}/#/entity/${task.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-appears-chip .k-rel');
       const appears = await measure(page, '.wv-appears-chip .k-rel');
