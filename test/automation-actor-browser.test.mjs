@@ -49,7 +49,7 @@ if (s) {
   });
   const pulses = (page) => page.evaluate(() => window.pulses.map(({ where, delay, anim }) => ({ where, delay, anim })));
   const pickState = async (page, scope, name) => {
-    await page.locator(`${scope} [data-field="Stage"] button`).first().click();
+    await page.locator(`${scope} [data-field="Stage"]:not(.phone-lead) button`).first().click();
     await page.waitForSelector('.picker-pop');
     await page.locator('.picker-pop .picker-list').getByText(name, { exact: true }).first().click();
   };
