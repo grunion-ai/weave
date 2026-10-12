@@ -19,7 +19,7 @@ test('the confirmed versions are pinned, and DOMPurify is its own entry inside m
   assert.equal(by.dompurify.version, '3.4.16');
   assert.equal(by.dompurify.bundledIn, 'mermaid');
   assert.equal(by.vditor.version, '3.11.3');
-  assert.equal(by.katex.version, '0.16.47');
+  assert.equal(by.katex.version, '0.18.11');
   assert.equal(by['highlight.js'].version, '11.7.0');
   assert.equal(by.tabler.npm, '@tabler/core');
   assert.equal(by.tabler.version, '1.4.0');
