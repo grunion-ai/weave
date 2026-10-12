@@ -1,1 +1,0 @@
-- `GET /api/health` names the running version to an anonymous caller again, so the production supervisor, which waits for a candidate's health to report its own version, can swap in a new release on a walled instance. The build, sizes, workspace and backup state still need an architect (Issues #843 and #844).

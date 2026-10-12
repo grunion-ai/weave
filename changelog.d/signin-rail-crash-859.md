@@ -1,1 +1,0 @@
-- **A provider sign-in no longer answers 500 when the hub root holds no accounts** (Issue #859): find my workspaces (#11) read the creator's root account name without checking it exists. Sign out everywhere now also drops the start page's held logins and clears the start and rail cookies, so the start page cannot reopen a workspace without a new sign-in.

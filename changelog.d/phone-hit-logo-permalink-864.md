@@ -1,1 +1,0 @@
-- **The workspace logo and the row permalink button keep a 44px tap target on a phone** (Issue #864): the click-to-edit workspace logo (#69) is a 44px box on a phone or coarse pointer, and the permalink button that #69 brought into the phone dock header keeps its full 44px hit area (the crumb path no longer clips it, and it keeps a 4px step from the dock's action buttons).
