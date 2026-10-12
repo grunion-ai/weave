@@ -1,0 +1,1 @@
+- `GET /api/health` again answers `{ok, name}` to an anonymous caller, as Issue #520 set out: the release supervisor confirms a new worker by the version that worker reports over its private IPC channel, so a walled instance takes releases without showing its version to the public internet (Issues #520, #843 and #844).
