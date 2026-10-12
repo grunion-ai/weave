@@ -85,6 +85,7 @@ test('the weave:// parser names the host, the account and an optional archive, o
   assert.equal(cloud.parse('weave://127.0.0.1:4400/alice').origin, 'http://127.0.0.1:4400');
   assert.equal(cloud.parse('weave://localhost:9/alice').origin, 'http://localhost:9');
   for (const bad of ['weave://host', 'weave://host/', 's3://bucket/p', 'weave://host/a/b/c', '']) assert.throws(() => cloud.parse(bad), /weave:\/\/host\/account/);
+  assert.throws(() => cloud.parse('weave://h/%E0%A4%A'), /malformed percent-escape/);
   assert.equal(destKind('weave://h/a'), 'weave');
   assert.equal(destKind('s3://b/p'), 's3');
   assert.equal(destKind(null), null);

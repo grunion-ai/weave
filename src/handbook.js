@@ -2054,6 +2054,13 @@ Each account keeps at most thirty archives and at most its byte quota, 5 GiB unl
 ## Restore from the cloud
 \`weave restore --from weave://weave.grunion.ai/alice --data <dir>\` pulls the newest archive, checks every entry against its manifest and unpacks it, the same as a restore from a file. Name an archive to take an older one: \`weave restore --from weave://weave.grunion.ai/alice/<archive> --data <dir>\`. The restore needs \`WEAVE_BACKUP_TOKEN\` and the passphrase the archive was sealed with.
 
+## Migrate to a cloud workspace
+A stored archive can become a workspace on the cloud. \`weave workspace migrate --from weave://weave.grunion.ai/alice --name acme\` takes the newest archive (name one with \`/<archive>\` at the end), sends the passphrase once, and the cloud creates the workspace \`acme\` from it: it decrypts the archive in a scratch directory, runs the same restore as \`weave restore\`, moves the workspace and its attachments into place and deletes the scratch directory. The passphrase is never written down or logged. The command reads it from \`WEAVE_BACKUP_PASSPHRASE\` or \`--passphrase-env NAME\`, and needs \`WEAVE_BACKUP_TOKEN\` from an architect on the cloud's hub root.
+
+An archive of several workspaces needs \`--workspace <name>\` to pick one. Keystore secrets stay behind: set them again on the new workspace. The migration is one-way; the self-hosted instance keeps running and keeps backing up.
+
+Over HTTP the same thing is \`POST /api/workspaces\` with \`{ "name": "acme", "from": "backup:<archive>", "key": "<passphrase>" }\`. A wrong passphrase answers \`400\` and creates nothing. An archive from another account is not found (\`404\`). Migrating the same archive twice answers \`409\`, because its workspace is already there.
+
 ## The doors
 Every door needs \`Authorization: Bearer wv_…\` from an account on the deployment, and stores under that account only.
 
