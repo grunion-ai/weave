@@ -952,9 +952,11 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .doc-anchor.permalink-copy { opacity: .7; }
 .doc-anchor { cursor: pointer; font-size: var(--fs-meta); border: 0; background: none; padding: 0; color: inherit; line-height: 1; }
 @media (hover: hover) { .doc-anchor:hover { opacity: 1; } }
-body.wv-activity-open #main { margin-right: 344px; }
-.wv-activity { position: fixed; top: 8px; right: 8px; bottom: 8px; width: 328px; z-index: 900; display: flex; flex-direction: column;
-  background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius-lg); box-shadow: var(--wv-panel-shadow); color: var(--tblr-body-color); font-size: var(--fs-body); }
+.entity-split { display: flex; align-items: flex-start; gap: 24px; }
+.entity-split > .entity-grid { flex: 1 1 0; min-width: 0; }
+.wv-activity { position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px)); flex: none; width: 328px; max-height: calc(100dvh - 40px - var(--wv-view-h, 0px)); display: flex; flex-direction: column;
+  background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); color: var(--tblr-body-color); font-size: var(--fs-body); }
+#dock .wv-activity { width: clamp(240px, 45%, 328px); }
 .wv-act-head { display: flex; align-items: center; gap: 2px; padding: 12px 10px 6px 16px; }
 .wv-act-head h3 { margin: 0; font-size: var(--fs-body); font-weight: 600; flex: 1; }
 .wv-act-icon { border: 0; background: none; color: var(--wv-icon-rest); width: 26px; height: 26px; border-radius: var(--tblr-border-radius); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; padding: 0; }
@@ -1012,12 +1014,8 @@ body.wv-activity-open #main { margin-right: 344px; }
 .wv-act-card b { font-weight: 600; }
 .activity-btn svg { display: block; }
 .activity-btn[aria-pressed="true"] { background: var(--wv-pill-active); }
-@media (max-width: 720px) {
-  body.wv-activity-open #main { margin-right: 0; }
-  .wv-activity { left: 8px; width: auto; }
-}
 @media (max-width: 600px) {
-  .wv-activity { inset: 0; width: auto; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); border-radius: 0; box-shadow: none; font-size: var(--fs-doc); }
+  .wv-activity, #dock .wv-activity { position: fixed; inset: 0; z-index: 900; width: auto; max-height: none; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); border: 0; border-radius: 0; box-shadow: none; font-size: var(--fs-doc); }
   .wv-act-head { min-height: 56px; padding: 6px 6px 6px 16px; }
   .wv-act-head h3 { font-size: var(--fs-h2); }
   .wv-act-icon { width: 44px; height: 44px; }
