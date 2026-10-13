@@ -779,7 +779,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const actor = !signedIn ? 'anonymous' : form.owner === weave ? requestActor : (authz && /^Bearer /i.test(authz) ? form.owner.verifyToken(authz.slice(7).trim()) ?? docsToken(form.owner, authz.slice(7).trim()) : sessionOn(form.owner))?.name ?? requestActor;
         const body = await rx.readBody();
         const idempotencyKey = rx.header('idempotency-key') ?? body?.idempotencyKey;
-        const knownClient = /^[A-Za-z0-9_-]{43}$/.test(cookies.wv_form_client ?? '');
         const client = formClient();
         if (!signedIn && idempotencyKey != null && !/^[A-Za-z0-9_-]{32,200}$/.test(idempotencyKey)) throw new WeaveError('Anonymous Idempotency-Key must contain 32 to 200 letters, digits, hyphens or underscores', 'invalid');
         const input = form.kind === 'Row' && body && typeof body === 'object' && !Array.isArray(body) && !Object.hasOwn(body, 'values') ? { values: Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'idempotencyKey')) } : body;
@@ -788,7 +787,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           server: { version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name },
           idempotencyKey,
           scope: signedIn ? '' : idempotencyKey != null ? `key:${await digest(idempotencyKey)}` : `client:${client}`,
-          dedupScope: signedIn ? '' : knownClient ? `client:${client}` : null,
+          dedupScope: signedIn ? '' : `client:${client}`,
         });
         return out(result.replayed ? 200 : 201, result);
       }
