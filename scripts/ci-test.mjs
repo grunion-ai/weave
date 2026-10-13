@@ -102,7 +102,7 @@ async function main() {
   if (command === 'plan') { console.log(JSON.stringify({ include: manifest.map(({ id, lane }) => ({ id, lane })) })); return; }
   if (command === 'aggregate') {
     const results = readdirSync(id, { recursive: true }).filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(join(id, f), 'utf8')));
-    const summary = validate(manifest, pr ? newestAttempts(results) : results, commit);
+    const summary = validate(manifest, newestAttempts(results), commit);
     console.log(JSON.stringify(summary, null, 2));
     return;
   }

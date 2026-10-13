@@ -158,3 +158,18 @@ test('pr.yml names each shard artifact by attempt so a re-run never overwrites t
   const workflow = readFileSync('.github/workflows/pr.yml', 'utf8');
   assert.match(workflow, /name: pr-\$\{\{ matrix.id \}\}-\$\{\{ github.run_attempt \}\}/);
 });
+
+test('the main tests gate judges each shard by its newest attempt, so Re-run failed jobs can turn CI gate green', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  assert.match(workflow, /name: ci-\$\{\{ matrix.id \}\}-\$\{\{ github.run_attempt \}\}\n/);
+  assert.match(workflow, /pattern: ci-\*\n/);
+  const source = readFileSync('scripts/ci-test.mjs', 'utf8');
+  assert.ok(source.includes('const summary = validate(manifest, newestAttempts(results), commit);'), 'aggregate keeps the newest attempt for main and PR runs alike');
+  assert.doesNotMatch(source, /pr \? newestAttempts/);
+  const failed = { ...evidence()[0], attempt: 1, code: 1 };
+  const rerun = { ...evidence()[0], attempt: 2 };
+  const passed = evidence().slice(1).map((r) => ({ ...r, attempt: 1 }));
+  assert.throws(() => validate(manifest, newestAttempts([failed, ...passed]), 'abc'), /Invalid shard/);
+  assert.equal(validate(manifest, newestAttempts([failed, ...passed, rerun]), 'abc').files, 4);
+});
