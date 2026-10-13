@@ -80,7 +80,7 @@ test('the closed sets match the engine and the field dialog', () => {
 });
 
 test('the system columns are the ones updateTable accepts', () => {
-  const known = ENGINE.match(/const known = (\[[^\]]*\])/)?.[1] ?? '[]';
+  const known = ENGINE.match(/const GRID_SYSTEM_COLUMNS = (\[[^\]]*\])/)?.[1] ?? '[]';
   assert.deepEqual(VOCABULARY.systemFields, JSON.parse(known.replace(/'/g, '"')));
 });
 

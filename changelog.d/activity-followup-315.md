@@ -1,0 +1,1 @@
+- The record page and the peek fetch a record's references beside the record itself, so a redraw of the same record keeps its scroll and the side column never jumps. The table badge on a relation chip reads at 4.5:1 contrast in the References card (Feature #315).

@@ -590,8 +590,8 @@ function dockGo(next) {
 async function drawDock() {
   if (!dock) return;
   const top = dock.state.chain[dock.state.chain.length - 1];
-  let entity;
-  try { entity = await api('GET', `/entities/${top.id}`); } catch (err) { dockClose(); return toast(err.message, true); }
+  let entity, refs;
+  try { [entity, refs] = await Promise.all([api('GET', `/entities/${top.id}`), entityRefs(top.id)]); } catch (err) { dockClose(); return toast(err.message, true); }
   crumbNav = weaveBreadcrumbs.navUpdate(crumbNav, entityHop(entity));
   syncDockChain();
   noteEntityRecent(entity);
@@ -623,7 +623,7 @@ async function drawDock() {
       }, iconEl('✕')),
     ],
   };
-  await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs, dockControls });
+  await renderEntityView(entity, { mount: host, refresh: drawDock, refs, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs, dockControls });
   markDockedRow();
 }
 
@@ -10118,9 +10118,9 @@ function appearsAsPanel(db, entity, refresh) {
 }
 
 async function showEntity(id) {
-  let entity;
+  let entity, refs;
   try {
-    entity = await api('GET', `/entities/${id}`);
+    [entity, refs] = await Promise.all([api('GET', `/entities/${id}`), entityRefs(id)]);
   } catch (err) {
     toast(`Couldn't open that record: ${err.message}`, true);
     return showHome();
@@ -10136,7 +10136,7 @@ async function showEntity(id) {
   renderNav();
   const main = $('#main');
   main.replaceChildren();
-  await renderEntityView(entity, { mount: main, refresh: () => showEntity(id) });
+  await renderEntityView(entity, { mount: main, refresh: () => showEntity(id), refs });
 }
 
 function nextStateButton(entity, db, refresh) {
@@ -10183,11 +10183,11 @@ function entityHop(entity) {
   return { id: entity.id, publicId: entity.publicId, name: entity.name, space: db?.space ?? '', spaceId: db?.spaceId ?? '', spaceIcon: db?.spaceIcon ?? null, table: db?.name ?? entity.db, tableId: entity.dbId, tableIcon: db?.icon ?? null };
 }
 
-async function renderEntityView(entity, { mount, refresh, inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null }) {
+const entityRefs = (id) => Promise.all(['references-from', 'references'].map((path) => api('GET', `/entities/${id}/${path}`).catch(() => [])));
+async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null }) {
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
-  const [refsOut, refsIn] = await Promise.all(['references-from', 'references']
-    .map((path) => api('GET', `/entities/${id}/${path}`).catch(() => [])));
+  const [refsOut, refsIn] = refs;
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
