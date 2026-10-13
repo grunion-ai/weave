@@ -45,6 +45,23 @@ if (s) {
     return { found: true, scrollTop: body.scrollTop, top: Math.round(r.top), bottom: Math.round(r.bottom), limit: Math.round(Math.min(b.bottom, innerHeight)) };
   }, label);
 
+  const tabCycle = async (page, cap = 400) => {
+    await page.evaluate(() => document.activeElement?.blur());
+    const names = [];
+    for (let i = 0; i < cap; i += 1) {
+      await page.keyboard.press('Tab');
+      const name = await page.evaluate(() => {
+        const a = document.activeElement;
+        if (!a || a === document.body) return 'BODY';
+        if (a.tagName === 'SUMMARY') return `summary:${a.firstChild?.textContent?.trim() || a.textContent.trim()}`;
+        return a.getAttribute('aria-label') || a.getAttribute('class') || a.tagName;
+      });
+      if (names.length && name === names[0]) break;
+      names.push(name);
+    }
+    return names;
+  };
+
   for (const colorScheme of ['light', 'dark']) {
     test(`a sparkline formula's Display, Style, Color and Sample sit under the result, on screen in a 1000px window (${colorScheme})`, async () => {
       const page = await grid(colorScheme);
@@ -98,6 +115,28 @@ if (s) {
       await page.waitForSelector('#tray .fx-expr');
       assert.equal(await page.locator('#tray details.fx-ref').evaluate((d) => d.open), true, 'nothing written yet: the reference is open');
       assert.ok(await page.locator('#tray .fx-chip.fn').first().isVisible());
+    } finally { await page.close(); }
+  });
+
+  test('Tab reaches the formula reference and agent disclosures inside the field tray, and opens them from the keyboard', async () => {
+    const page = await grid();
+    try {
+      await openFieldDialog(page, 'Trend');
+      await page.locator('.tray-form details.fx-ref').waitFor();
+      assert.equal(await page.locator('.tray-form details.fx-ref').evaluate((d) => d.open), false, 'the reference starts closed on an existing formula');
+      const cycle = await tabCycle(page);
+      assert.ok(cycle.includes('summary:Fields and functions'), `Tab reaches the reference disclosure (${cycle.join(' \u2192 ')})`);
+      assert.ok(cycle.includes('summary:As an agent would do it'), `Tab reaches the agent recipe disclosure (${cycle.join(' \u2192 ')})`);
+      assert.ok(!cycle.some((n) => n.includes('fx-chip')), `the chips inside the closed disclosure are not stops (${cycle.join(' \u2192 ')})`);
+      assert.ok(cycle.length < 400, `the cycle closes instead of dead-ending (${cycle.length} stops)`);
+      assert.ok(cycle.includes('btn btn-primary'), `Tab still reaches the tray's own Save button (${cycle.join(' \u2192 ')})`);
+      await page.evaluate(() => document.querySelector('.tray-form details.fx-ref > summary').focus());
+      await page.keyboard.press('Enter');
+      await page.locator('.tray-form .fx-chip.fn').first().waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.tray-form details.fx-ref').evaluate((d) => d.open), true, 'Enter on the summary opens the disclosure');
+      await page.keyboard.press('Tab');
+      assert.equal(await page.evaluate(() => !!document.querySelector('.tray-form details.fx-ref')?.contains(document.activeElement)), true,
+        'the next Tab lands on the first control inside the opened disclosure');
     } finally { await page.close(); }
   });
 }
