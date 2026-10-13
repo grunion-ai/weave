@@ -1789,7 +1789,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .btn { --tblr-btn-focus-box-shadow: 0 0 0 0 transparent; }
 .wv-grid :focus-visible, .nav-db:focus-visible { outline-offset: -2px; }
 .wv-grid tbody td[tabindex]:focus-visible,
-#main:focus-visible, .vditor-reset:focus-visible, #cmdk-input:focus-visible { outline: none !important; }
+#main:focus-visible, .vditor-reset:focus-visible, #cmdk-input:focus-visible, #fsv-back:focus-visible { outline: none !important; }
 
 .skip-link { position: fixed; left: 12px; top: -48px; z-index: 1000; padding: 8px 14px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); box-shadow: var(--wv-panel-shadow); text-decoration: none; font-weight: 600; }
 .skip-link:focus { top: 12px; }
