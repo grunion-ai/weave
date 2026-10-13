@@ -64,6 +64,30 @@ Browser assertions use `styleOf` or `settled` from `test/lib/browser.mjs`, never
 fixed sleeps. `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
 Retries remain visible in test output; repeated flakiness gets a tracker issue.
 
+### Sheriff
+
+`.github/workflows/sheriff.yml` owns a red main (Feature #320). A failed main
+push `tests` run gets its failed jobs rerun once by `scripts/sheriff.mjs`. A green
+rerun is a flake: it appends a line to the Issue row
+`Error: <test file> flakes on main`, creating it if none is open, and stops. A
+second red finds the commits since the last main run whose `CI gate` succeeded
+and bisects them by dispatching `tests` with its `ref` input, at most four
+runs. Completed runs for a commit are reused for free. It then opens a
+`sheriff/revert-<sha>` PR with squash auto-merge, comments on the original PR,
+files `Error: <test> fails on main after PR #<n>` with the run links, and writes
+one alert line to the job summary and `SHERIFF_ALERT_URL`. Past the cap it
+reverts what is still suspect. It never reverts a revert, never acts on a
+culprit that already has a revert branch, never pushes to main and never
+forces a push. Replay a run without writing anything:
+`gh workflow run sheriff -f run_id=<id> -f dry_run=true`, or locally
+`node scripts/sheriff.mjs <id> --dry-run`.
+
+Secrets: `SHERIFF_TOKEN` (fine-grained token with contents, pull requests,
+actions and workflows write, so the revert PR starts `Dev gate` and its merge
+starts `tests`; without it the PR opens unarmed), `WEAVE_TRACKER_TOKEN`
+(bearer for the canonical tracker; without it no rows are filed) and the
+optional `SHERIFF_ALERT_URL`.
+
 ## Releasing
 
 A release starts with a notes-bearing `Development/Release` row in the canonical
