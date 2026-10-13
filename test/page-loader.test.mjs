@@ -136,7 +136,7 @@ test('each end of the rope rides the dash end it replaces', () => {
 test('the rope moves by transform only, on the published cycle', () => {
   const css = loaderRopeCss();
   assert.ok(FRAGMENT.includes(`<style>\n${css}</style>`), 'the fragment carries the generated CSS');
-  const frames = css.slice(css.indexOf('@keyframes'));
+  const frames = css.slice(css.indexOf('@keyframes'), css.indexOf('@media (prefers-reduced-motion'));
   const props = new Set([...frames.matchAll(/\{\s*([a-z-]+):/g)].map((m) => m[1]));
   assert.deepEqual([...props], ['transform'], 'only transform keeps the rope on the compositor');
   const runs = [...css.matchAll(/animation: (rope-[a-z-]+) (\d+)ms linear infinite;/g)];
@@ -187,7 +187,7 @@ test('the loader host survives a page render', () => {
   const loaderAt = app.indexOf('id="page-loader"');
   const mainEnd = app.indexOf('</main>');
   assert.ok(loaderAt > mainEnd, 'the loader is a sibling of <main>, not a child');
-  assert.match(HTML, /<div id="page-loader" class="boot" aria-hidden="true">\S/,
+  assert.match(HTML, /<div id="page-loader" class="boot" role="status" aria-hidden="true">\S/,
     'the host ships the boot mark, gated by CSS until the threshold (Issue #391)');
   assert.match(fnBody('hidePageLoader'), /host\.hidden = true/,
     'hidden is the resting state once the script has run');
@@ -299,4 +299,60 @@ test('showing the loader no longer waits on the fetched rope (Issue #391)', () =
   const finallyBody = wrap.slice(wrap.indexOf('finally'));
   assert.equal((finallyBody.match(/hidePageLoader\(\)/g) ?? []).length, 2,
     'every exit hides: the CSS gate would otherwise strand a loader the script never showed');
+});
+
+test('reduced motion pauses every animated rope selector on the woven pose (Issue #394)', () => {
+  const POSE_FROM = Number(APP.match(/const LOADER_POSE_FROM = ([\d.]+);/)[1]);
+  const POSE_TO = Number(APP.match(/const LOADER_POSE_TO = ([\d.]+);/)[1]);
+  const css = loaderRopeCss();
+  const block = css.match(/@media \(prefers-reduced-motion: reduce\) \{\n([\s\S]*?)\n\}\n?$/);
+  assert.ok(block, 'loaderRopeCss must ship its own reduced-motion block: a rule in style.css loses to the injected <style>');
+  const animated = [...css.matchAll(/^(\.rope-[^{]*?) \{ animation: rope-/gm)].map((m) => m[1].trim());
+  assert.ok(animated.length >= 12, `expected the rope's animated selectors, found ${animated.length}`);
+  for (const sel of animated) {
+    assert.match(block[1], new RegExp(`^${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{ `, 'm'),
+      `${sel} keeps animating under reduced motion: the off switch must match its specificity`);
+  }
+  assert.doesNotMatch(block[1], /animation: none/,
+    'animation: none drops the transforms that place the strands, which empties the mark');
+  for (const rule of block[1].split('\n')) {
+    assert.match(rule, /animation-play-state: paused;/, `${rule.slice(0, 40)} must park the animation`);
+    const delay = Number(rule.match(/animation-delay: (-?[\d.]+)ms;/)[1]);
+    const phase = -delay / LOADER_CYCLE_MS;
+    assert.ok(phase > POSE_FROM && phase < POSE_TO,
+      `the paused phase ${phase} sits outside the woven window ${POSE_FROM}-${POSE_TO}, so the mark parks half-drawn`);
+  }
+});
+
+test('the loader host is one status region, and the mark no longer announces (Issue #394)', () => {
+  const host = HTML.match(/<div id="page-loader"([^>]*)>([\s\S]*?)<\/div>/);
+  assert.match(host[1], /role="status"/, 'the host is the status region the row asks for');
+  assert.match(host[2], /<span class="loader-mark" aria-hidden="true">/,
+    'the mark is hidden from assistive tech, or its svg aria-label announces beside the status text');
+  assert.match(host[2], /<span class="loader-status visually-hidden">Loading the page<\/span>/,
+    'bare "Loading" announces a state with no object');
+  assert.equal((host[2].match(/aria-label="Loading"/g) ?? []).length, 2,
+    'the two theme marks keep their own labels for the standalone brand files');
+  assert.equal(host[2].indexOf('loader-status') > host[2].indexOf('loader-mark'), true,
+    'the status text follows the mark, so the caption Issue #393 adds can sit beside it');
+});
+
+test('the rope arrives inside the mark, leaving the status text in place (Issue #394)', () => {
+  const init = fnBody('initPageLoader');
+  assert.match(init, /if \(stillLoader\(\)\) return;[\s\S]*fetch\('\/brand\/weave-loader-rope\.html'\)/,
+    'reduced motion keeps the still mark: a parked rope rests on one strand, not the woven mark');
+  assert.doesNotMatch(fnBody('showGridLoader'), /loading\.ready/,
+    'gating the grid loader on the fetched rope leaves reduced motion with no mark at all');
+  assert.doesNotMatch(init, /host\.innerHTML = html/,
+    'replacing the whole host deletes the status text the row just added');
+  assert.match(init, /loader-mark/, 'the fetched rope replaces the mark only');
+  assert.match(fnBody('showGridLoader'), /loader-mark/,
+    'the grid loader clones the mark, never the status text');
+});
+
+test('the loader marks #main busy while it is up (Issue #394)', () => {
+  assert.match(fnBody('showPageLoader'), /setAttribute\('aria-busy', 'true'\)/,
+    'a page behind the loader is busy, and the grid wait already says so');
+  assert.match(fnBody('hidePageLoader'), /removeAttribute\('aria-busy'\)/,
+    'a stuck aria-busy tells every later reader the page is still loading');
 });

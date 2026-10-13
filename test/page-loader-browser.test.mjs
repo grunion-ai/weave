@@ -205,4 +205,66 @@ if (s) {
         `the ${r.wait} ms wait left the rope running: the pose has to be held, not passed through`);
     }
   });
+
+  test('reduced motion keeps the still mark and runs nothing (Issue #394)', async (t) => {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 }, reducedMotion: 'reduce' });
+    await page.route('**/api/schema', async (route) => {
+      await new Promise((r) => setTimeout(r, 4000));
+      await route.continue();
+    });
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await eventually(() => page.evaluate(() => {
+      const host = document.querySelector('#page-loader');
+      return !!host && host.getAttribute('aria-hidden') === 'false'
+        && Number(getComputedStyle(host).opacity) === 1;
+    }), true, { timeout: 20000, every: 25 });
+    const seen = await page.evaluate(() => {
+      const host = document.querySelector('#page-loader');
+      const box = host.querySelector('.loader-mark').getBoundingClientRect();
+      return {
+        running: host.getAnimations({ subtree: true })
+          .filter((a) => a.playState === 'running').map((a) => String(a.animationName || a.id)),
+        rope: host.querySelectorAll('.rope-a').length,
+        still: host.querySelectorAll('svg[role="img"]').length,
+        size: [box.width, box.height],
+      };
+    });
+    t.diagnostic(`rope spans ${seen.rope}, still marks ${seen.still}, running ${JSON.stringify(seen.running)}`);
+    assert.deepEqual(seen.running, [],
+      'reduced motion still runs animations inside the loader, so the rope loops');
+    assert.equal(seen.rope, 0,
+      'the rope was fetched anyway: a parked rope rests on one strand, not the woven mark');
+    assert.ok(seen.still >= 1, 'the mark on screen is the still one inlined in index.html');
+    assert.deepEqual(seen.size, [96, 96], 'the still mark keeps the 96px box');
+    await page.close();
+  });
+
+  test('the loader announces the wait once and marks the page busy (Issue #394)', async (t) => {
+    const page = await openWithRope(browser, base, 'light');
+    const seen = await page.evaluate(async () => {
+      const host = document.querySelector('#page-loader');
+      const named = () => [...host.querySelectorAll('[aria-label], [role="img"]')]
+        .filter((n) => !n.closest('[aria-hidden="true"]')).length;
+      const shown = {
+        role: host.getAttribute('role'),
+        ariaHidden: host.getAttribute('aria-hidden'),
+        text: host.querySelector('.loader-status')?.textContent.trim(),
+        regions: host.querySelectorAll('.loader-status').length,
+        extraNames: named(),
+        busy: document.querySelector('#main').getAttribute('aria-busy'),
+      };
+      hidePageLoader();
+      return { shown, busyAfter: document.querySelector('#main').getAttribute('aria-busy') };
+    });
+    t.diagnostic(JSON.stringify(seen));
+    assert.equal(seen.shown.role, 'status', 'the host must be the live region, or nothing is announced');
+    assert.equal(seen.shown.ariaHidden, 'false', 'an aria-hidden live region announces nothing');
+    assert.equal(seen.shown.text, 'Loading the page', 'the status region carries the text that names the wait');
+    assert.equal(seen.shown.regions, 1, 'two status regions would announce the wait twice');
+    assert.equal(seen.shown.extraNames, 0,
+      'a second accessible name inside the host makes the page announce the wait twice');
+    assert.equal(seen.shown.busy, 'true', '#main is busy while the loader covers it');
+    assert.equal(seen.busyAfter, null, 'aria-busy outlived the loader, so the page reads as loading forever');
+    await page.close();
+  });
 }

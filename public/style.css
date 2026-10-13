@@ -1166,6 +1166,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 #page-loader.loader-out { animation: loader-out 160ms linear 120ms both; }
 #main > .grid-loader.loader-out { animation: loader-out 160ms linear 120ms both; }
 #page-loader .mark-light, #page-loader .mark-dark { position: relative; width: 96px; height: 96px; }
+#page-loader .loader-mark { position: relative; width: 96px; height: 96px; }
 #page-loader svg { width: 100%; height: 100%; display: block; }
 #page-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-light { display: none; }
@@ -1187,6 +1188,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
   animation: loader-in .18s ease both;
 }
 #main > .grid-loader .mark-light, #main > .grid-loader .mark-dark { position: relative; width: 96px; height: 96px; }
+#main > .grid-loader .loader-mark { position: relative; width: 96px; height: 96px; }
 #main > .grid-loader svg { width: 100%; height: 100%; display: block; }
 #main > .grid-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #main > .grid-loader .mark-light { display: none; }

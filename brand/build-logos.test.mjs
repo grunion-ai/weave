@@ -285,7 +285,7 @@ test("the boot mark is both themes of the mark at rest, nothing newly drawn (Iss
 test("shellWithBootMark fills the loader host and keeps the rest of the shell (Issue #391)", () => {
   const shell = '<body>\n  <div id="page-loader" hidden aria-hidden="true"></div>\n  <script src="/app.js"></script>\n</body>\n';
   const filled = shellWithBootMark(shell);
-  assert.ok(filled.includes(`<div id="page-loader" class="boot" aria-hidden="true">${loaderBootHtml()}</div>`));
+  assert.ok(filled.includes(`<div id="page-loader" class="boot" role="status" aria-hidden="true">${loaderBootHtml()}</div>`));
   assert.ok(!filled.includes("hidden aria-hidden"), "a hidden host cannot paint before app.js runs");
   assert.ok(filled.includes('<script src="/app.js"></script>'), "the rest of the shell is untouched");
   assert.equal(shellWithBootMark(filled), filled, "filling an already filled shell changes nothing");
