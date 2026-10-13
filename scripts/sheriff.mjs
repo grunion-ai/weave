@@ -244,6 +244,16 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     const row = await tracker('/tables/Issue/entities', { method: 'POST', body: JSON.stringify({ Name: name, Severity: severity, Symptom: ['Error'], Description: description }) });
     return { id: row.id, publicId: row.publicId, url: `${env.WEAVE_TRACKER_URL || TRACKER}/e/${row.id}` };
   };
+  const pushRevert = ({ branch, shas, message }) => {
+    run('git', ['fetch', '--quiet', 'origin', 'main']);
+    run('git', ['switch', '--quiet', '-C', branch, 'origin/main']);
+    try { run('git', [...BOT, 'revert', '--no-commit', ...[...shas].reverse()]); }
+    catch (error) { try { run('git', ['revert', '--abort']); } catch {} return { conflict: true, error: String(error.stderr || error.message).split('\n')[0] }; }
+    run('git', [...BOT, 'commit', '--quiet', '-F', '-'], { input: message });
+    try { run('git', pushArgs(branch), { token: writeToken }); }
+    catch (error) { if (/rejected|already exists|fetch first/i.test(String(error.stderr))) return { exists: true, branch }; throw error; }
+    return null;
+  };
   return {
     repo,
     self: env.GITHUB_RUN_ID ? `https://github.com/${repo}/actions/runs/${env.GITHUB_RUN_ID}` : undefined,
@@ -302,14 +312,13 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     },
     pullsFor: async (sha) => api(`${base}/commits/${sha}/pulls`).filter((p) => p.merged_at).map((p) => ({ number: p.number, html_url: p.html_url, title: p.title })),
     openRevert: async ({ branch, shas, title, body, message }) => {
-      try { run('git', ['ls-remote', '--exit-code', 'origin', `refs/heads/${branch}`]); return { exists: true, branch }; } catch {}
-      run('git', ['fetch', '--quiet', 'origin', 'main']);
-      run('git', ['switch', '--quiet', '-C', branch, 'origin/main']);
-      try { run('git', [...BOT, 'revert', '--no-commit', ...[...shas].reverse()]); }
-      catch (error) { try { run('git', ['revert', '--abort']); } catch {} return { conflict: true, error: String(error.stderr || error.message).split('\n')[0] }; }
-      run('git', [...BOT, 'commit', '--quiet', '-F', '-'], { input: message });
-      try { run('git', pushArgs(branch), { token: writeToken }); }
-      catch (error) { if (/rejected|already exists|fetch first/i.test(String(error.stderr))) return { exists: true, branch }; throw error; }
+      let pushed = false;
+      try { run('git', ['ls-remote', '--exit-code', 'origin', `refs/heads/${branch}`]); pushed = true; } catch {}
+      if (pushed && api(`${base}/pulls?state=all&head=${repo.split('/')[0]}:${branch}`).length) return { exists: true, branch };
+      if (!pushed) {
+        const made = pushRevert({ branch, shas, message });
+        if (made) return made;
+      }
       const pr = api(`${base}/pulls`, { method: 'POST', token: writeToken, body: { title, head: branch, base: 'main', body } });
       const armed = Boolean(env.SHERIFF_TOKEN);
       if (armed) run('gh', ['pr', 'merge', String(pr.number), '-R', repo, '--auto', '--squash', '--subject', title, '--body', message.split('\n').slice(2).join('\n')], { token: writeToken });
