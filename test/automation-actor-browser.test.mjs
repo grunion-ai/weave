@@ -11,7 +11,7 @@ const s = await launch('automation actor', (w) => {
   const t = w.createTable({ space: 'Ops', name: 'Request' });
   w.addField(t.id, { name: 'Stage', type: 'workflow', config: { states: [{ name: 'Open', category: 'not-started', default: true }, { name: 'Done', category: 'done' }] } });
   w.addField(t.id, { name: 'Resolved', type: 'checkbox' });
-  w.updateTable(t.id, { systemFields: ['Created By', 'Modified By', 'Activity'] });
+  w.updateTable(t.id, { systemFields: ['Created By', 'Modified By'] });
   const rule = w.createAutomation(t.id, { name: 'Close out on Done', trigger: { type: 'state-changed', field: 'Stage', toState: 'Done' }, actions: [{ type: 'set-field', field: 'Resolved', value: true }] });
   w.actor = `kyle via ${TOKEN}`;
   const rows = ['Printer', 'Badge', 'Desk'].map((name) => w.createEntity(t.id, { name }));
@@ -65,7 +65,9 @@ if (s) {
     assert.doesNotMatch(await page.locator('body').innerText(), new RegExp(TOKEN), 'the grid prints no token id');
     await page.goto(`${base}/#/entity/${rows[0].id}`, { waitUntil: 'networkidle' });
     await page.locator('.fieldrow-system[data-field="Created By"] .k-actor').waitFor();
-    assert.ok(await page.locator('.activity-item .k-actor').count(), 'the activity pane names the person');
+    await page.click('#main .activity-btn');
+    await page.locator('.wv-activity .wv-act-who .k-actor').first().waitFor();
+    assert.ok(await page.locator('.wv-activity .wv-act-who .k-actor').count(), 'the activity panel names the person');
     assert.doesNotMatch(await page.locator('body').innerText(), new RegExp(TOKEN));
     const authors = page.locator('.comment .who');
     await authors.first().waitFor();

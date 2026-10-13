@@ -48,11 +48,11 @@ if (s) {
     const id = freshSprint({ Window: { start: '2026-08-01', end: '2026-09-15' } });
     weave.updateEntity(id, { Window: { start: '2026-08-03', end: '2026-09-15' } });
     const page = await browser.newPage();
-    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('.activity-item', { state: 'attached' });
+    await page.goto(`${base}/#/activity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.activity-row');
     const leaks = await page.locator('text=[object Object]').count();
     assert.equal(leaks, 0, 'the history painted the stored object');
-    assert.match(await page.locator('.activity-item').first().textContent(), /Aug 3/);
+    assert.match(await page.locator('.activity-row').first().textContent(), /Aug 3/);
     await page.close();
   });
 

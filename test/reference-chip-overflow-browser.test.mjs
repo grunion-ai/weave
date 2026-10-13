@@ -12,7 +12,6 @@ const s = await launch('reference chip overflow', (weave) => {
   target = weave.createEntity('Task', { name: LONG });
   short = weave.createEntity('Task', { name: 'Short one' });
   issue = weave.createEntity('Issue', { name: 'Overflowing chip', doc: 'see [[Task#1]] and [[Task#2]]' });
-  weave.updateTable(issues.id, { systemFields: ['Activity'] });
 });
 
 if (s) {

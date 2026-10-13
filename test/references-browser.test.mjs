@@ -14,21 +14,15 @@ const s = await launch('reference panels', (weave) => {
 });
 if (s) {
   const { base, browser, weave } = s;
-  const open = async (id, { colorScheme = 'light', side = false } = {}) => {
+  const open = async (id, { colorScheme = 'light' } = {}) => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
     page.refRequests = [];
     page.on('request', (r) => { if (/\/references(-from)?$/.test(r.url())) page.refRequests.push(r.url()); });
-    const db = weave.getEntity(id).dbId;
-    weave.updateTable(db, { systemFields: side ? ['Activity'] : [] });
     await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'load' });
     await page.waitForSelector('.entity-grid');
     return page;
   };
   const card = (page, sel) => page.waitForSelector(sel, { state: 'attached' });
-  const flipActivity = async (page) => {
-    await page.click('.eye-btn');
-    await page.click('.chip-pop .eye-row:has(.eye-label:text-is("Activity"))');
-  };
   const panelTitles = (page) => page.$$eval('.entity-side > .card.panel', (ns) =>
     ns.map((n) => n.querySelector('.card-title')?.textContent));
   const chipStyle = (page, sel) => page.$eval(`${sel} .k.k-rel`, (chip) => {
@@ -50,44 +44,24 @@ if (s) {
     };
   });
 
-  test('references are hidden with comments and activity, and not even fetched, until the Activity toggle opens the column', async () => {
+  test('references load with the record and open the side column, with no Activity switch (Feature #315)', async () => {
     const page = await open(issue.id);
-    await page.waitForTimeout(150);
-    assert.equal(await page.$('.ref-backlinks-card'), null, 'the resting page never mentions references');
-    assert.equal(await page.isVisible('.entity-side'), false, 'the side column is closed');
-    assert.deepEqual(page.refRequests, [], 'nothing is fetched until the reader asks');
-    await flipActivity(page);
     await card(page, '.ref-outbound-card');
     assert.ok(await page.$eval('.entity-grid', (g) => g.classList.contains('side-open')), 'the column is open');
     assert.equal(await page.isVisible('.ref-outbound-card'), true, 'and the panel shows in it');
     assert.equal(await page.$eval('.ref-outbound-card', (n) => n.parentElement.className), 'entity-side',
       'the panel is in the side column, never the body');
-    assert.deepEqual(await panelTitles(page), ['Comments (0)', 'Activity', 'References · 1'],
-      'dressed like Activity and below it: what people said, what happened, what this points at');
+    assert.deepEqual(await panelTitles(page), ['Comments (0)', 'References · 1'],
+      'what people said, then what this points at; no Activity card');
     assert.deepEqual(page.refRequests.map((u) => u.split('/').pop()).sort(), ['references', 'references-from'],
-      'both directions are fetched once the column opens');
-    await page.close();
-  });
-
-  test('closing the column hides the references again, and the choice is remembered on the table', async () => {
-    const page = await open(issue.id, { side: true });
-    await card(page, '.ref-outbound-card');
-    assert.equal(await page.isVisible('.ref-outbound-card'), true, 'a table with Activity on sees references on load');
-    await flipActivity(page);
-    await page.waitForSelector('.entity-grid:not(.side-open)');
-    assert.equal(await page.$('.ref-backlinks-card'), null, 'closing the column takes the references with it');
-    assert.equal(await page.isVisible('.entity-side'), false);
-    await page.reload({ waitUntil: 'load' });
-    await page.waitForSelector('.entity-grid');
-    await page.waitForTimeout(150);
-    assert.equal(await page.$('.ref-backlinks-card'), null, 'and the next load finds it closed — the table remembers, not the browser');
+      'both directions are fetched with the record');
     await page.close();
   });
 
   test('the inbound panel mirrors it on the target', async () => {
-    const page = await open(target.id, { side: true });
+    const page = await open(target.id);
     await card(page, '.ref-inbound-card');
-    assert.deepEqual(await panelTitles(page), ['Comments (0)', 'Activity', 'Referenced by · 1']);
+    assert.deepEqual(await panelTitles(page), ['Comments (0)', 'Referenced by · 1']);
     assert.equal(await page.$('.ref-outbound-card'), null, 'a direction with nothing to say is absent');
     const chip = await chipStyle(page, '.ref-inbound-card');
     assert.equal(chip.href, `#/entity/${issue.id}`, 'the chip points back at the mentioning entity');
@@ -96,16 +70,17 @@ if (s) {
     await page.close();
   });
 
-  test('an entity nobody mentions, mentioning nobody, adds nothing to the open column', async () => {
-    const page = await open(loner.id, { side: true });
-    await page.waitForTimeout(150);
-    assert.deepEqual(await panelTitles(page), ['Comments (0)', 'Activity'], 'no empty reference panel');
+  test('an entity nobody mentions, mentioning nobody, with no comments, keeps the side column closed', async () => {
+    const page = await open(loner.id);
+    await page.waitForSelector('.entity-grid:not(.side-open)');
+    assert.equal(await page.$('.ref-backlinks-card'), null, 'no empty reference panel');
+    assert.equal(await page.isVisible('.entity-side'), false, 'the side column is gone, not blank');
     await page.close();
   });
 
   for (const colorScheme of ['light', 'dark']) {
     test(`the reference chip is the pointer-tier k k-rel chip in ${colorScheme}`, async () => {
-      const page = await open(issue.id, { colorScheme, side: true });
+      const page = await open(issue.id, { colorScheme });
       assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme, 'the page resolved the theme under test');
       await card(page, '.ref-outbound-card');
       const chip = await chipStyle(page, '.ref-outbound-card');
@@ -127,7 +102,7 @@ if (s) {
 
   test('light and dark paint the chip differently, so neither theme is the other one unthemed', async () => {
     const paint = async (colorScheme) => {
-      const page = await open(issue.id, { colorScheme, side: true });
+      const page = await open(issue.id, { colorScheme });
       await card(page, '.ref-outbound-card');
       const chip = await chipStyle(page, '.ref-outbound-card');
       await page.close();

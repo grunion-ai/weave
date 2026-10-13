@@ -48,15 +48,18 @@ test('fields: the entity shape, cut to the named fields', () => {
   assert.ok(a.comments.length && a.activity.length, 'the full read still carries them');
 });
 
-test('fields: a named document sends its text; Activity brings the history', () => {
+test('fields: a named document sends its text; Activity is no column, so it is refused (Feature #315)', () => {
   const { w, cases } = buildWorkspace();
-  const r = w.query(cases, { sort: ['Line'], fields: ['Description', 'Activity'] }).items[0];
+  const r = w.query(cases, { sort: ['Line'], fields: ['Description'] }).items[0];
   assert.deepEqual(r.docs, { Description: 'desc 0' }, 'the named document only');
   assert.equal(r.doc, 'desc 0', 'the default document comes with it, as readEntity names it');
   assert.equal(r.docField, 'Description');
-  assert.ok(Array.isArray(r.activity) && r.activity.length, 'the Activity column counts the history');
+  assert.equal('activity' in r, false, 'the history stays on the entity read');
   assert.equal('Notes' in r.docs, false);
   assert.deepEqual(Object.keys(r.fields), ['Description']);
+  assert.throws(() => w.query(cases, { fields: ['Description', 'Activity'] }), /Field 'Activity' not found/);
+  const desc = TOOLS.find((t) => t.name === 'weave_query').inputSchema.properties.fields.description;
+  assert.doesNotMatch(desc, /Activity brings/, 'the tool no longer offers Activity as a column');
 });
 
 test('fields: a name that is not a field or a system column is refused', () => {

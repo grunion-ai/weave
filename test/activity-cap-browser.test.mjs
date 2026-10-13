@@ -10,28 +10,9 @@ const s = await launch('activity cap', (weave) => {
   quiet = weave.createEntity(t, { name: 'quiet' });
   busy = weave.createEntity(t, { name: 'busy' });
   for (let i = 0; i < ACTIVITY_CAP + 6; i++) weave.addComment(busy.id, { text: `c${i}` });
-  weave.updateTable(t, { systemFields: ['Activity'] });
 });
 if (s) {
   const { base, browser } = s;
-  for (const colorScheme of ['light', 'dark']) {
-    test(`entity pane names the dropped count (${colorScheme})`, async () => {
-      const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
-      try {
-        await page.goto(`${base}/#/entity/${busy.id}`, { waitUntil: 'load' });
-        const line = await page.waitForSelector('.activity-dropped');
-        assert.equal((await line.textContent()).trim(), '7 older entries not kept');
-        assert.ok(await line.isVisible());
-        const { fg, bg } = await line.evaluate((n) => ({ fg: getComputedStyle(n).color, bg: getComputedStyle(document.body).backgroundColor }));
-        assert.notEqual(fg, bg, 'legible against the page');
-
-        await page.goto(`${base}/#/entity/${quiet.id}`, { waitUntil: 'load' });
-        await page.waitForSelector('.activity-item');
-        assert.equal(await page.$('.activity-dropped'), null, 'an entity under the cap shows no marker');
-      } finally { await page.close(); }
-    });
-  }
-
   test('the entity Activity table note carries the count', async () => {
     const page = await browser.newPage();
     try {

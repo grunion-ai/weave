@@ -350,11 +350,10 @@ test('only one overflow menu is open at a time', () => {
   assert.match(body, /dismissOutside\(\{ open: \(\) => pop\.isConnected, inside: \(t\) => pop\.contains\(t\)/, 'a tap or click away must close it (Issue #726)');
 });
 
-test('comments and activity make up the side column; fields lead the body', () => {
-  assert.match(APP, /right\.append\(commentsPanel, actPanel\)/,
-    'the side column reads Comments → Activity');
+test('comments and references make up the side column; fields lead the body; no Activity card (Feature #315)', () => {
+  assert.match(APP, /right\.append\(commentsPanel\);/, 'the side column reads Comments first');
   assert.doesNotMatch(APP, /left\.append\(commentsPanel\)/, 'comments must leave the main column');
-  assert.doesNotMatch(APP, /left\.append\(actPanel\)/, 'activity must leave the main column');
+  assert.doesNotMatch(APP, /actPanel|ACTIVITY_PANE_ROWS|activity-item/, 'the Activity card is gone: the toolbar panel covers it');
 });
 
 test('the space caret is a real hit target, not a 18px sliver', () => {
@@ -660,9 +659,9 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn, \.\.\.poseControls\)/,
     'the Activity clock-arrow, the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
-  assert.match(body, /const sideOpen = \(db\.systemFields \?\? \[\]\)\.includes\('Activity'\);/, 'the column opens with the Activity system field');
+  assert.match(body, /grid\.classList\.toggle\('side-open', entity\.comments\.length > 0 \|\| refsOut\.length > 0 \|\| refsIn\.length > 0\)/,
+    'the column opens when it has comments or references, never on an Activity switch (Feature #315)');
   assert.ok(!/localStorage/.test(body.slice(body.indexOf('activityBtn'), body.indexOf('activityBtn') + 600)) && !body.includes('wv-entity-side'), 'the Activity icon keeps no per-browser memory, and the side column has no second switch');
-  assert.match(body, /grid\.classList\.toggle\('side-open', sideOpen\)/, 'the grid carries the state');
   assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
   assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
   assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the side column is gone, not blank');
@@ -697,23 +696,23 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(fnBody('kindDots'), /align = 'right'/, 'a right-edge menu must drop its panel to the left');
 });
 
-test('reference panels join the opt-in side column, dressed like Activity, wearing the pointer-tier relation chip', () => {
+test('reference panels join the side column, dressed like Comments, wearing the pointer-tier relation chip', () => {
   const body = fnBody('renderEntityView');
   const block = body.slice(body.indexOf('const refCard'), body.indexOf('deck is composed on read'));
   assert.ok(block.length > 0, 'the reference panel builder lives in the entity view');
   assert.match(block, /right\.append\(el\('div', \{ class: `card panel ref-backlinks-card \$\{extraClass\}` \}/,
-    'a side-column panel, the same dress as Comments and Activity');
+    'a side-column panel, the same dress as Comments');
   assert.doesNotMatch(block, /left\.append/, 'the entity body stays quiet');
   assert.doesNotMatch(block, /el\('details'|el\('summary'/, 'no disclosure of its own: the side column is the disclosure');
   assert.match(block, /el\('div', \{ class: 'card-header' \},\s*el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
-    'the header is title + count, as Activity wears it');
-  assert.match(block, /if \(sideOpen\) \{\s*api\('GET', `\/entities\/\$\{id\}\/references-from`\)/,
-    'nothing is fetched until the side column is open');
-  assert.match(block, /\.then\(refCard\('References', 'ref-outbound-card'\)\)/, 'what this entity mentions');
-  assert.match(block, /\.then\(refCard\('Referenced by', 'ref-inbound-card'\)\)/, 'who mentions it');
+    'the header is title + count');
+  assert.match(body, /const \[refsOut, refsIn\] = await Promise\.all\(\['references-from', 'references'\]/,
+    'both directions load with the record, before it paints, so the column never jumps (Feature #315)');
+  assert.match(block, /refCard\('References', 'ref-outbound-card', refsOut\)/, 'what this entity mentions');
+  assert.match(block, /refCard\('Referenced by', 'ref-inbound-card', refsIn\)/, 'who mentions it');
   assert.match(block, /relationChipEl\(\{ targetDbIds: true \}, r\)/, 'the chip is the relation chip — the far row’s Chip — and the chip is the link, wearing the short home-table badge');
   assert.doesNotMatch(block, /class: 'x'|×/, 'no unlink control: a reference is text');
-  assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the panels hide with comments and activity');
+  assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'an empty side column is gone, not blank');
   assert.doesNotMatch(CSS, /\.ref-summary|\.ref-backlinks-card\[open\]/, 'the <details> dress is gone');
   assert.doesNotMatch(CSS, /\.ref-backlinks a\.mention|\.ref-backlink\b/, 'the bespoke mention styling is gone');
   assert.doesNotMatch(CSS, /\.ref-backlinks(-card)?\s+\.k\b/, 'no reference-local chip rules');
@@ -763,16 +762,6 @@ test('a computed field carries its glyph next to the name, not only in cells', (
   const mark = rulesFor('.field-mark');
   assert.ok(mark['font-size'], 'the mark is smaller than the name it annotates');
   assert.ok(mark.color, 'and quieter than it');
-});
-
-test('the entity activity pane shows ten rows, each linking into the Activity table', () => {
-  const body = fnBody('renderEntityView');
-  assert.match(APP, /const ACTIVITY_PANE_ROWS = 10;/, 'the pane is capped at ten');
-  assert.match(body, /slice\(0, ACTIVITY_PANE_ROWS\)/, 'and takes the ten most recent');
-  assert.match(body, /href: `#\/activity\/\$\{id\}:\$\{firstIndex - n\}`/,
-    'each row addresses its own event in the Activity table');
-  assert.match(body, /href: `#\/activity\/\$\{id\}`/, 'and the pane header opens the filtered table');
-  assert.match(body, /activitySummary\(a\)/, 'one summary function serves the pane and the table');
 });
 
 test('the Activity table is routed, read-only and reachable from the workspace page', () => {
@@ -1719,9 +1708,9 @@ test('a stale process raises the toast and tints its chip louder than behind', (
     'and reads apart from the merely-behind chip');
 });
 
-test('the entity page draws the System toggles — one read-only row per systemFields name, Activity excepted (Issue #174)', () => {
+test('the entity page draws the System toggles — one read-only row per systemFields name (Issue #174)', () => {
   const body = fnBody('renderEntityView');
-  assert.match(body, /for \(const n of \(db\.systemFields \?\? \[\]\)\) \{\s*\n\s*if \(n === 'Activity' \|\| !SYSTEM_COLS\[n\]\) continue;/,
+  assert.match(body, /for \(const n of \(db\.systemFields \?\? \[\]\)\) \{\s*\n\s*if \(!SYSTEM_COLS\[n\]\) continue;/,
     'the page reads the same list the grid reads, and the same formatter');
   assert.match(body, /class: 'fieldrow fieldrow-system'/, 'a system row is a fieldrow, marked');
   assert.match(body, /SYSTEM_COLS\[n\]\(entity\)/, 'the value comes off the entity payload, like the grid cell');

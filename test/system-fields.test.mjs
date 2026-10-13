@@ -77,13 +77,25 @@ test('the server names its caller from X-Weave-Actor', async () => {
   }
 });
 
-test('Activity is a system column with a count', () => {
+test('Activity is no system column: refused on write, stripped from old tables, still on the entity read (Feature #315)', () => {
   const w = fresh('ada');
-  w.updateTable('Task', { systemFields: ['Activity'] });
-  const task = w.describeSchema().find((sp) => !sp.system).tables.find((t) => t.name === 'Task');
-  assert.deepEqual(task.systemFields, ['Activity']);
-  const t = w.createEntity('Task', { name: 'T' });
-  w.setDoc(t.id, 'hello');
-  const read = w.readEntity(t.id);
-  assert.ok(read.activity.length >= 2, 'created + doc-updated');
+  assert.throws(() => w.updateTable('Task', { systemFields: ['Activity'] }), /'Activity' is not a system field/);
+  w.updateTable('Task', { systemFields: ['Created At'] });
+  const dump = w.exportJSON();
+  const task = Object.values(dump.tables).find((x) => x.name === 'Task');
+  task.systemFields = ['Created At', 'Activity'];
+  for (const v of task.tableViews) v.fields.push('sys:Activity');
+  const w2 = new Weave();
+  w2.importJSON(dump);
+  const after = w2.getTable('Task');
+  assert.deepEqual(after.systemFields, ['Created At'], 'an old table loses its Activity switch on load');
+  assert.ok(after.tableViews.every((v) => !v.fields.includes('sys:Activity')), 'and no view keeps an Activity column');
+  const schema = w2.describeSchema();
+  const doc = schema.find((sp) => !sp.system).tables.find((t) => t.name === 'Task');
+  doc.systemFields = ['Created At', 'Activity'];
+  w2.applySchema(schema);
+  assert.deepEqual(w2.getTable('Task').systemFields, ['Created At'], 'an old schema document applies without bringing it back');
+  const t = w2.createEntity('Task', { name: 'T' });
+  w2.setDoc(t.id, 'hello');
+  assert.ok(w2.readEntity(t.id).activity.length >= 2, 'the entity read keeps its history: created + doc-updated');
 });

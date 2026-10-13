@@ -689,10 +689,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .comment:first-child { border-top: none; }
 .comment .who { font-weight: 600; font-size: var(--fs-grid); }
 .comment .when { color: var(--tblr-secondary); font-size: var(--fs-secondary); margin-left: 6px; }
-.activity-item { display: block; font-size: var(--fs-secondary); color: var(--tblr-secondary); padding: 3px 0; border-top: 1px solid var(--tblr-border-color); text-decoration: none; }
-.activity-item:first-child { border-top: none; }
-.activity-item:hover { color: var(--tblr-primary); }
-.activity-dropped { display: block; font-size: var(--fs-secondary); font-style: italic; color: var(--tblr-secondary); padding: 3px 0; border-top: 1px solid var(--tblr-border-color); }
 .panel-link { margin-left: auto; font-size: var(--fs-secondary); text-decoration: none; }
 .system-tables { margin: 14px 0; }
 .wv-start, .space-tables { margin: 14px 0; }

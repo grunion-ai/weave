@@ -134,7 +134,7 @@ export const VOCABULARY = {
   cardinalities: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'],
   stateCategories: ['not-started', 'in-progress', 'done', 'canceled'],
   aggregates: ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'],
-  systemFields: ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'],
+  systemFields: ['Created At', 'Modified At', 'Created By', 'Modified By'],
   viewKinds: ['table'],
   columnWidth: {
     min: 60,
