@@ -53,6 +53,14 @@ test('an ineligible run, a rerun attempt or a main that went green again writes 
   }
 });
 
+test('main going green while the rerun runs stops the sheriff before any revert', async () => {
+  const f = fake();
+  let calls = 0;
+  f.io.greenAfter = async () => (calls++ ? { sha: sha(101) } : null);
+  assert.equal((await sheriff(900, f.io)).action, 'skip');
+  assert.deepEqual(f.kinds(), ['rerun']);
+});
+
 test('a rerun that passes is a flake: logged once, nothing reverted or alerted', async () => {
   const f = fake({ rerunGate: 'success' });
   const out = await sheriff(900, f.io);

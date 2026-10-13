@@ -152,6 +152,8 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
     await io.logFlake({ run, files, jobs });
     return result('flake', { reason: `rerun passed; ${files.length ? files.join(', ') : 'no failing file recorded'}`, files });
   }
+  const healed = dryRun ? null : await io.greenAfter(run);
+  if (healed) return result('skip', { reason: `main went green at ${short(healed.sha)} while the rerun ran` });
 
   const base = (await io.lastGreen(run)) ?? {};
   const commits = base.sha ? await io.range(base.sha, run.head_sha) : [];
