@@ -3395,7 +3395,7 @@ const showsRollups = (db) => !db.system && (db.view && !db.view.blank && typeof 
 function systemDefault(db, view = null) {
   const table = allTables().find((d) => d.id === db.id) || db;
   return {
-    fields: [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n] && n !== 'Activity')],
+    fields: [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n])],
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
@@ -4213,7 +4213,7 @@ function tableFieldsPopover(anchor, db, trashCount) {
   let pop;
   const raw = () => allTables().find((t) => t.id === db.id) || db;
   const current = () => { const t = raw(); return viewed(t, db.view?.blank ? blankView(t) : t.views.find((v) => v.id === db.view.id) || db.view); };
-  const systemColumns = Object.keys(SYSTEM_COLS).filter((n) => n !== 'Activity');
+  const systemColumns = Object.keys(SYSTEM_COLS);
   let order = [...new Set([...(db.columns || []), ...raw().fields.map((f) => f.name), ...systemColumns])];
   const movedHidden = new Set();
   const here = () => state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id;
@@ -5579,7 +5579,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let grabbed = null;
   let colShift = null;
   const nudgeTimers = new Map();
-  const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 160, 'Modified By': 160, Activity: 88 };
+  const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 160, 'Modified By': 160 };
   const canFreezeHere = () => !!db.view && !db.view.blank;
   const storedFrozen = () => (canFreezeHere() ? db.view.frozen ?? 0 : 0);
   const storedWidth = (c) => db.view?.widths?.[c] ?? colField(db, c)?.width;
@@ -6714,7 +6714,6 @@ const SYSTEM_COLS = {
   'Modified At': (e) => (e.updatedAt ?? '').slice(0, 16).replace('T', ' '),
   'Created By': (e) => actorChipEl(e.createdBy),
   'Modified By': (e) => actorChipEl(e.modifiedBy),
-  'Activity': (e) => `${(e.activity ?? []).length}⚡`,
 };
 
 function actorChipEl(actor, { link = true } = {}) {
@@ -10163,6 +10162,8 @@ function entityHop(entity) {
 async function renderEntityView(entity, { mount, refresh, inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null }) {
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
+  const [refsOut, refsIn] = await Promise.all(['references-from', 'references']
+    .map((path) => api('GET', `/entities/${id}/${path}`).catch(() => [])));
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
@@ -10183,29 +10184,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     catch (err) { toast(err.message, true); }
   });
 
-  const recent = [...entity.activity].reverse().slice(0, ACTIVITY_PANE_ROWS);
-  const firstIndex = entity.activity.length - 1;
-  const actBody = el('div', { class: 'card-body' },
-    ...recent.map((a, n) => el('a', {
-      class: 'activity-item', href: `#/activity/${id}:${firstIndex - n}`,
-      title: 'Open this event',
-    }, whenEl(a.ts), ' — ', actorChipEl(a.actor, { link: false }), ` ${activitySummary(a)}`)),
-    recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'),
-    entity.activityDropped ? el('span', { class: 'activity-dropped' }, droppedText(entity.activityDropped)) : null);
-  const actPanel = el('div', { class: 'card panel' },
-    el('div', { class: 'card-header' },
-      el('h3', { class: 'card-title' }, 'Activity'),
-      el('a', { class: 'panel-link', href: `#/activity/${id}` },
-        entity.activity.length > recent.length ? `All ${entity.activity.length} →` : 'Open table →')),
-    actBody);
-
   const recordCtx = () => ({ db, inPeek, onClose });
   const dlBtn = kindDots('record', entity, recordCtx, { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions` });
 
-  const sideOpen = (db.systemFields ?? []).includes('Activity');
   const activityBtn = el('button', {
     class: 'btn btn-sm activity-btn', type: 'button', title: 'Activity', 'aria-label': 'Activity',
-    'aria-pressed': String(activityPanel.openFor === id), onclick: () => activityPanel.toggle(id, null, mount),
+    'aria-pressed': String(activityPanel.openFor === id), onclick: () => activityPanel.toggle(id, mount),
   }, iconEl('lucide:history', 'wv-icon'));
   const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
   eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false }); });
@@ -10244,7 +10228,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   }
 
   const grid = el('div', { class: 'entity-grid', dataset: { eid: id } });
-  grid.classList.toggle('side-open', sideOpen);
+  grid.classList.toggle('side-open', entity.comments.length > 0 || refsOut.length > 0 || refsIn.length > 0);
   mount.append(el('div', { class: 'entity-split' }, grid));
   const left = el('div');
   const right = el('div', { class: 'entity-side' });
@@ -10270,14 +10254,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     };
     let showingSource = false;
     let mounted = false;
-    const fieldQ = `field=${encodeURIComponent(f.name)}`;
-    const histBtn = el('button', {
-      type: 'button', class: 'doc-anchor doc-history-btn', title: 'History', 'aria-label': `${f.name} history`, hidden: '',
-      onclick: () => activityPanel.toggle(id, f.name, mount),
-    }, iconEl('lucide:history', 'wv-icon'));
-    const checkHistory = () => api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=2`)
-      .then((r) => { histBtn.hidden = r.revisions.length < 2; }, () => { histBtn.hidden = true; });
-    checkHistory();
     const sourceToggle = appFrame ? el('span', {
       class: 'doc-anchor', title: 'Edit source',
       onclick: () => {
@@ -10306,7 +10282,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
         sourceToggle,
-        histBtn,
         el('button', {
           type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this document', 'aria-label': 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
@@ -10327,7 +10302,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         entityId: id,
         placeholder: `Write ${f.name}… press / for blocks`,
         onInput: (value) => {
-          scheduleDocSave(id, f.name, value, status, checkHistory);
+          scheduleDocSave(id, f.name, value, status);
           rail.schedule();
           folds.schedule();
         },
@@ -10337,7 +10312,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
       ta.value = entity.docs?.[f.name] ?? '';
-      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status, checkHistory));
+      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status));
       sourceBox = ta;
       host.append(ta);
     };
@@ -10436,7 +10411,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     values.append(dragRow(node, f));
   }
   for (const n of (db.systemFields ?? [])) {
-    if (n === 'Activity' || !SYSTEM_COLS[n]) continue;
+    if (!SYSTEM_COLS[n]) continue;
     values.append(el('div', { class: 'fieldrow fieldrow-system', dataset: { field: n } },
       el('span', { class: 'opt-grip', 'aria-hidden': 'true' }),
       el('label', { class: 'fieldrow-label' }, n),
@@ -10506,22 +10481,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         ...loose.map((file) => attachItemEl(file)))));
   }
 
-  const refCard = (title, extraClass) => (refs) => {
-    if (!refs?.length || !mount.isConnected) return;
+  const refCard = (title, extraClass, refs) => {
+    if (!refs.length) return;
     right.append(el('div', { class: `card panel ref-backlinks-card ${extraClass}` },
       el('div', { class: 'card-header' },
         el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
       el('div', { class: 'card-body ref-backlinks' },
         ...refs.map((r) => relationChipEl({ targetDbIds: true }, r)))));
   };
-  if (sideOpen) {
-    api('GET', `/entities/${id}/references-from`)
-      .then(refCard('References', 'ref-outbound-card'))
-      .catch(() => {});
-    api('GET', `/entities/${id}/references`)
-      .then(refCard('Referenced by', 'ref-inbound-card'))
-      .catch(() => {});
-  }
   const deckRole = deckRoleOf(db);
   if (deckRole) {
     const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
@@ -10570,7 +10537,9 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     left.prepend(section);
     if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
   }
-  right.append(commentsPanel, actPanel);
+  right.append(commentsPanel);
+  refCard('References', 'ref-outbound-card', refsOut);
+  refCard('Referenced by', 'ref-inbound-card', refsIn);
   activityPanel.mounted(id, mount);
 }
 
@@ -10750,7 +10719,6 @@ const activityPanel = (() => {
       if (body) body.hidden = false;
       v.remove();
     }
-    for (const b of document.querySelectorAll('.doc-history-btn.active')) b.classList.remove('active');
   }
   async function renderView() {
     clearViews();
@@ -10762,7 +10730,6 @@ const activityPanel = (() => {
       const from = st.from ? byId(st.from) : prevOf(it);
       const view = el('div', { class: 'wv-act-view' });
       body.hidden = true; body.after(view);
-      sec.querySelector('.doc-history-btn')?.classList.add('active');
       const [ft, tt] = await Promise.all([from ? text(from) : '', text(it)]);
       if (!view.isConnected) return;
       const diff = el('div', { class: 'wv-act-diff' }); diff.innerHTML = H().renderDiff(ft, tt);
@@ -10784,9 +10751,9 @@ const activityPanel = (() => {
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
   }
 
-  async function open(id, field, mount) {
+  async function open(id, mount) {
     if (st?.id !== id) st = { id, texts: new Map() };
-    Object.assign(st, { mount: mount ?? st.mount ?? $('#main'), filter: field ? `doc:${field}` : 'all', from: null, done: null, scroll: !field });
+    Object.assign(st, { mount: mount ?? st.mount ?? $('#main'), filter: 'all', from: null, done: null, scroll: true });
     try { await flushDocSaves(); await load(); } catch (err) { st = null; return toast(err.message, true); }
     const first = H().filterFeed(st.items, st.filter)[0];
     st.sel = first?.id ?? null;
@@ -10808,10 +10775,9 @@ const activityPanel = (() => {
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
     st = null;
   }
-  function toggle(id, field, mount) {
-    const want = field ? `doc:${field}` : 'all';
-    if (st?.id === id && panel?.isConnected && st.filter === want) return close();
-    return open(id, field, mount);
+  function toggle(id, mount) {
+    if (st?.id === id && panel?.isConnected) return close();
+    return open(id, mount);
   }
   function mounted(id, mount) {
     if (!st || !panel) return;
@@ -11159,7 +11125,6 @@ async function relatedGrid(entity, f, onSaved) {
         el('table', { class: 'table table-sm wv-grid' }, body)));
 }
 
-const ACTIVITY_PANE_ROWS = 10;
 
 function droppedText(n) {
   return `${n} older ${n === 1 ? 'entry' : 'entries'} not kept`;

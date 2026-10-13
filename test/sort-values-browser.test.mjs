@@ -22,7 +22,7 @@ const s = await launch('a grid sorts by value, not costume', (weave) => {
     const e = weave.createEntity(entries, { name });
     weave.state.entities[e.id].createdAt = at;
   }
-  weave.updateTable(entries, { systemFields: ['Created At', 'Activity'] });
+  weave.updateTable(entries, { systemFields: ['Created At'] });
   journal = weave.createTable({ space: 'Agent', name: 'Journal' });
   weave.addField(journal, { name: 'Note', type: 'text' });
   for (let i = 1; i <= 12; i++) {
@@ -159,7 +159,6 @@ if (s) {
       await sortBy(page, 'Created At', 'Oldest to newest');
       await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'oldest');
       assert.deepEqual(await order(page), ['oldest', 'middle', 'newest'], 'whole table: app.js orders by the stamp too');
-      assert.equal(await page.locator('.wv-grid thead th.sys-head', { hasText: 'Activity' }).locator('.field-menu').count(), 0);
       await sortBy(page, 'Public Id');
       let pop = await sortPop(page);
       assert.deepEqual(await labels(pop), ['Smallest to largest', 'Largest to smallest']);

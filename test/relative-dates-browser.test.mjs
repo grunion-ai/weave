@@ -28,14 +28,14 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the entity activity pane prints relative times', async () => {
+  test('a record\'s Activity table prints relative times (Feature #315)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
-      await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
-      const t = page.locator('.activity-item time').first();
-      await t.waitFor({ state: 'attached' });
+      await page.goto(`${base}/#/activity/${acme.id}`, { waitUntil: 'networkidle' });
+      const t = page.locator('.activity-row .activity-when').first();
+      await t.waitFor();
       assert.equal(await t.textContent(), 'just now');
-      assert.doesNotMatch(await page.locator('.activity-item').first().textContent(), /\d+:\d+:\d+/, 'no seconds in the pane');
+      assert.doesNotMatch(await t.textContent(), /\d+:\d+:\d+/, 'no seconds in the table');
     } finally { await page.close(); }
   });
 }

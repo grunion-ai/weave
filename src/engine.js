@@ -214,6 +214,8 @@ function plainLines(md, budget = 12) {
     .trim()).filter(Boolean);
 }
 const GRID_SYSTEM_COLUMNS = ['Created At', 'Modified At', 'Created By', 'Modified By'];
+const RETIRED_SYSTEM_FIELD = 'Activity';
+const withoutRetired = (list) => (list ?? []).filter((n) => n !== RETIRED_SYSTEM_FIELD);
 const sysColumnId = (name) => `sys:${name}`;
 const sysColumnName = (id) => (typeof id === 'string' && id.startsWith('sys:') && GRID_SYSTEM_COLUMNS.includes(id.slice(4)) ? id.slice(4) : null);
 const viewEntryName = (db, id) => db.fields[id]?.name ?? sysColumnName(id);
@@ -961,6 +963,7 @@ export class Weave {
       }
       if (this.#ensureTableViews(db)) changed = true;
       if (this.#ensureSystemColumnsInViews(db)) changed = true;
+      if (this.#dropRetiredSystemField(db)) changed = true;
       if (this.#ensureStandardViewName(db)) changed = true;
     }
     for (const e of Object.values(s.entities ?? {})) {
@@ -1137,6 +1140,15 @@ export class Weave {
     db.systemColumnsInViews = true;
     const ids = (db.systemFields ?? []).filter((n) => GRID_SYSTEM_COLUMNS.includes(n)).map(sysColumnId);
     for (const v of db.tableViews) for (const id of ids) if (!v.fields.includes(id)) v.fields.push(id);
+    return true;
+  }
+
+  #dropRetiredSystemField(db) {
+    const col = sysColumnId(RETIRED_SYSTEM_FIELD);
+    const views = (db.tableViews ?? []).filter((v) => v.fields?.includes(col));
+    if (!db.systemFields?.includes(RETIRED_SYSTEM_FIELD) && !views.length) return false;
+    if (db.systemFields) db.systemFields = withoutRetired(db.systemFields);
+    for (const v of views) v.fields = v.fields.filter((id) => id !== col);
     return true;
   }
 
@@ -1561,9 +1573,8 @@ export class Weave {
       this.#setTerm(db, patch.noun.trim() ? { singular: patch.noun } : null);
     }
     if (patch.systemFields != null) {
-      const known = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
       for (const n of patch.systemFields) {
-        if (!known.includes(n)) throw new WeaveError(`'${n}' is not a system field (${known.join(', ')})`, 'invalid');
+        if (!GRID_SYSTEM_COLUMNS.includes(n)) throw new WeaveError(`'${n}' is not a system field (${GRID_SYSTEM_COLUMNS.join(', ')})`, 'invalid');
       }
       db.systemFields = [...patch.systemFields];
       const cur = !db.system ? db.tableViews?.[0] : null;
@@ -2293,10 +2304,9 @@ export class Weave {
     if (sort != null) patch.sort = sort;
     if (hiddenFields != null) {
       if (!Array.isArray(hiddenFields)) throw new WeaveError('hiddenFields is a list of field names', 'invalid');
-      const system = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
       const hide = new Set();
       for (const n of hiddenFields) {
-        if (system.includes(n)) continue;
+        if (GRID_SYSTEM_COLUMNS.includes(n) || n === RETIRED_SYSTEM_FIELD) continue;
         const f = this.findField(db, n);
         if (!f) throw new WeaveError(`'${n}' is not a field of ${db.name}`, 'invalid');
         hide.add(f.id);
@@ -2500,8 +2510,9 @@ export class Weave {
             tPatch.sort = tDoc.sort ?? [];
           }
         }
-        if ('systemFields' in tDoc && JSON.stringify(tDoc.systemFields ?? []) !== JSON.stringify(db.systemFields ?? [])) {
-          tPatch.systemFields = tDoc.systemFields ?? [];
+        const sys = withoutRetired(tDoc.systemFields);
+        if ('systemFields' in tDoc && JSON.stringify(sys) !== JSON.stringify(db.systemFields ?? [])) {
+          tPatch.systemFields = sys;
         }
         if ('hideRollups' in tDoc && (tDoc.hideRollups !== false) !== (db.hideRollups !== false)) tPatch.hideRollups = !!tDoc.hideRollups;
         if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
@@ -2956,7 +2967,7 @@ export class Weave {
       if (tDoc.filters && Object.keys(tDoc.filters).length) patch.filters = tDoc.filters;
       if (tDoc.sort?.length) patch.sort = tDoc.sort;
     }
-    if (tDoc.systemFields?.length) patch.systemFields = [...tDoc.systemFields];
+    if (withoutRetired(tDoc.systemFields).length) patch.systemFields = withoutRetired(tDoc.systemFields);
     if (tDoc.hideRollups != null) patch.hideRollups = !!tDoc.hideRollups;
     const wanted = [];
     for (const fDoc of tDoc.fields ?? []) {
@@ -2985,8 +2996,7 @@ export class Weave {
   #legacyEdits(db, tDoc, created = new Set()) {
     const v0 = tDoc.views[0];
     const out = {};
-    const SYSTEM = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
-    const fresh = (list) => (list ?? []).every((n) => SYSTEM.includes(n) || this.findField(db, n));
+    const fresh = (list) => (list ?? []).every((n) => GRID_SYSTEM_COLUMNS.includes(n) || n === RETIRED_SYSTEM_FIELD || this.findField(db, n));
     if ('hiddenFields' in tDoc && Array.isArray(v0?.fields) && fresh(tDoc.hiddenFields)) {
       const shown = new Set(v0.fields);
       const echo = (tDoc.fields ?? []).map((f) => f.name).filter((n) => !shown.has(n) && !created.has(n));
@@ -6689,7 +6699,6 @@ export class Weave {
         raw,
         ...(docNamed ? { doc: e.docs?.[defaultDocField.id] ?? '', docField: defaultDocField.name } : {}),
         docs,
-        ...(pick.activity ? { activity: e.activity, activityDropped: e.activityDropped ?? 0 } : {}),
         createdAt: e.createdAt,
         updatedAt: e.updatedAt,
         createdBy: e.createdBy ?? null,
@@ -6782,12 +6791,11 @@ export class Weave {
     if (fields != null && !Array.isArray(fields)) throw new WeaveError('fields must be a list of field names', 'invalid');
     if (fields && select) throw new WeaveError('Ask for select or fields, not both: select is a flat projection, fields cuts the entity', 'invalid');
     if (relations != null && relations !== 'full' && relations !== 'chip') throw new WeaveError(`relations must be 'full' or 'chip' (got '${relations}')`, 'invalid');
-    const pick = fields && { ids: new Set(), activity: false };
+    const pick = fields && { ids: new Set() };
     for (const name of fields ?? []) {
-      if (name === 'Activity') pick.activity = true;
       const f = this.findField(db, name);
       if (f) pick.ids.add(f.id);
-      else if (name !== 'Activity' && !Object.hasOwn(SYSTEM_SORT_KEYS, name)) this.getField(db.id, name);
+      else if (!Object.hasOwn(SYSTEM_SORT_KEYS, name)) this.getField(db.id, name);
     }
     const chips = relations === 'chip' && !select ? Object.create(null) : null;
     let rows = this.listEntities(db.id, { includeDeleted });

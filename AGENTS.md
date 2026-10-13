@@ -380,7 +380,8 @@ weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name
   `Created By`, `Modified By`) are names in the same `fields` list: they
   `show`, `hide`, `move`, freeze and take `widths` like fields (Issue #418).
   `weave_update_table`'s `systemFields` still works and writes the default
-  view; `Activity` stays a table-level switch.
+  view. `Activity` is no system field: an entity's history is on
+  `weave_get_entity` and `weave_activity` (Feature #315).
 - `filters` (`{Field: [names]}`: a workflow's states, a toggle's labels, or a
   single-select's or multi-select's options; Issue #319) and `sort`
   (`[{field, dir}]`) are `weave_update_table`'s shapes and validators.

@@ -32,9 +32,15 @@ if (s) {
   };
   const row = (page, rid) => page.locator(`.wv-activity .wv-act-row[data-id="${rid}"]`);
   const pick = async (page, rid) => { await row(page, rid).locator('.wv-act-what').click(); await page.waitForSelector(`.wv-act-row.sel[data-id="${rid}"]`); };
-  const docIcon = (page, field) => page.locator(`.doc-section[data-doc-field="${field}"] .doc-history-btn`);
+  const showDoc = async (page, field) => {
+    if (!(await page.locator('.wv-activity').count())) await page.click('.activity-btn');
+    await page.waitForSelector('.wv-activity .wv-act-row');
+    await page.click(`.wv-act-filters button:text-is("${field}")`);
+    await page.waitForSelector(`.wv-act-filters button[aria-pressed="true"]:text-is("${field}")`);
+    await pick(page, await page.locator('.wv-act-row').first().getAttribute('data-id'));
+  };
 
-  test('the header clock-arrow opens one panel for the whole record; a document\'s own opens it filtered', async () => {
+  test('the header clock-arrow opens one panel for the whole record; a document\'s chip filters it; no per-document button (Feature #315)', async () => {
     const page = await open();
     try {
       await page.click('.activity-btn');
@@ -50,24 +56,21 @@ if (s) {
       assert.equal(await page.locator('.wv-act-day').first().textContent(), 'Today');
       assert.ok(await page.locator('.wv-act-row .wv-act-who .k-actor .k-label').count() > 0, 'the actor is drawn as a chip (Feature #265)');
 
-      await docIcon(page, 'Spec').click();
+      await page.click('.wv-act-filters button:text-is("Spec")');
       await page.waitForSelector('.wv-act-filters button[aria-pressed="true"]:text-is("Spec")');
       const ids = await page.locator('.wv-act-row').evaluateAll((rs) => rs.map((r) => r.dataset.id));
-      assert.deepEqual(ids, revs('Spec').map((r) => `r${r.seq}`), 'Spec\'s icon shows Spec\'s versions only');
-      await docIcon(page, 'Spec').click();
+      assert.deepEqual(ids, revs('Spec').map((r) => `r${r.seq}`), 'Spec\'s chip shows Spec\'s versions only');
+      assert.equal(await page.locator('.doc-history-btn').count(), 0, 'no document carries its own History button');
+      await page.click('.activity-btn');
       await page.waitForSelector('.wv-activity', { state: 'detached' });
       assert.equal(await page.locator('.activity-btn').getAttribute('aria-pressed'), 'false');
     } finally { await page.close(); }
-    const single = await open(lone);
-    try {
-      assert.equal(await docIcon(single, 'Description').getAttribute('hidden'), '', 'one revision: nothing to browse, the control is hidden');
-    } finally { await single.close(); }
   });
 
   test('a revision shows its diff in place of its document; Restore writes it back; Undo steps back only that', async () => {
     const page = await open();
     try {
-      await docIcon(page, 'Description').click();
+      await showDoc(page, 'Description');
       await page.waitForSelector('.wv-act-row.sel');
       const sec = page.locator('.doc-section[data-doc-field="Description"]');
       await sec.locator('.wv-act-view .wv-act-diff').waitFor();
@@ -108,7 +111,7 @@ if (s) {
   test('Undo refuses once something else was written since', async () => {
     const page = await open();
     try {
-      await docIcon(page, 'Description').click();
+      await showDoc(page, 'Description');
       await pick(page, `r${revs('Description').at(-1).seq}`);
       await page.click('.wv-act-row.sel .wv-act-tray .btn-primary');
       assert.equal(await eventually(() => doc(), 'first draft'), 'first draft');
@@ -131,7 +134,7 @@ if (s) {
     const before = weave.listDocRevisions(lone).revisions;
     const page = await open(lone);
     try {
-      await docIcon(page, 'Description').click();
+      await showDoc(page, 'Description');
       await pick(page, `r${before.at(-1).seq}`);
       await page.click('.wv-act-row.sel .wv-act-tray .btn-primary');
       const t = page.locator('.wv-toast', { hasText: 'already reads as the version from' });
@@ -161,7 +164,7 @@ if (s) {
   test('two documents stay apart: Spec compares and restores within Spec; Description is untouched', async () => {
     const page = await open();
     try {
-      await docIcon(page, 'Spec').click();
+      await showDoc(page, 'Spec');
       await page.waitForSelector('.wv-act-row.sel');
       await page.click('.wv-act-row.sel .wv-act-cmp .picker-face');
       await page.waitForSelector('.picker-pop .picker-list');

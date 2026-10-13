@@ -16,7 +16,7 @@ const s = await launch('grid asks for its columns', (weave) => {
     const c = weave.createEntity(cases, { name: `case ${i}`, values: { Line: i * 10, Owner: `owner ${i}`, Suite: grid.id }, doc: `about case ${i}` });
     weave.addComment(c.id, { text: 'a comment the grid never draws' });
   }
-  weave.updateTable(cases, { hiddenFields: ['Owner'], systemFields: ['Activity'], sort: [{ field: 'Line', dir: 'asc' }] });
+  weave.updateTable(cases, { hiddenFields: ['Owner'], systemFields: ['Created At'], sort: [{ field: 'Line', dir: 'asc' }] });
 });
 
 if (s) {
@@ -41,7 +41,7 @@ if (s) {
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 5);
       assert.equal(seen.length, 1, 'one query opens the table');
       const { body } = seen[0];
-      assert.deepEqual([...body.fields].sort(), ['Activity', 'Card', 'Chip', 'Description', 'Line', 'Name', 'Suite'],
+      assert.deepEqual([...body.fields].sort(), ['Card', 'Chip', 'Created At', 'Description', 'Line', 'Name', 'Suite'],
         'the visible columns, and the shown system column; the hidden Owner is not asked for');
       assert.equal(body.relations, 'chip');
       const res = await seen[0].res;
@@ -60,7 +60,7 @@ if (s) {
         assert.match(c.fields, /test\/grid\.test\.mjs/, 'and its segments');
       }
       const acts = await page.$$eval('.wv-grid tbody tr.entity-row td.sys-cell', (tds) => tds.map((t) => t.textContent));
-      assert.ok(acts.every((t) => /^[1-9]\d*⚡$/.test(t)), `activity counted: ${acts.join(' ')}`);
+      assert.ok(acts.length === 5 && acts.every((t) => /^\d{4}-\d{2}-\d{2}/.test(t)), `the shown system column fills from the row: ${acts.join(' ')}`);
       assert.match(await page.textContent('.wv-grid tbody tr.entity-row td[data-field="Description"]'), /about case 0/);
       await page.close();
     });
