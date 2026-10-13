@@ -20,7 +20,7 @@ export const COMPACT_TOOLS = new Set([
   'weave_create_table', 'weave_update_table', 'weave_move_table', 'weave_duplicate_table', 'weave_restore_table',
   'weave_add_field', 'weave_update_field', 'weave_add_relation',
 ]);
-const BRIEF_KEYS = ['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged', 'next', 'hints'];
+const BRIEF_KEYS = ['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged', 'next', 'hints', 'invite', 'token'];
 function brief(obj) {
   const out = {};
   for (const k of BRIEF_KEYS) if (obj?.[k] != null) out[k] = obj[k];
@@ -644,6 +644,13 @@ function callTool(weave, name, rawArgs, caller) {
   return verbose === true ? result : compactResult(name, result);
 }
 
+function refuseUsersWrite(weave, ref, caller) {
+  if (!caller || mayAdminister(weave, caller.role)) return;
+  let system = null;
+  try { system = weave.state.tables[weave.getEntity(ref).dbId]?.system; } catch {}
+  if (system === 'users') throw new Error('Writing a Users row needs an architect token');
+}
+
 export function mayAdminister(on, role) {
   return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
 }
@@ -688,14 +695,18 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.readEntity(args.entity);
     case 'weave_create_entity': {
       checkRowArgs(name, args, false);
+      if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system === 'users') throw new Error('Writing a Users row needs an architect token');
       const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc, docs: args.docs });
-      return weave.readEntity(e.id);
+      const once = weave.takeOneTime(e.id);
+      return { ...weave.readEntity(e.id), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(envOrigin(), once.invite.code) } } : once ?? {}) };
     }
     case 'weave_update_entity':
       checkRowArgs(name, args, true);
+      refuseUsersWrite(weave, args.entity, caller);
       weave.updateEntity(args.entity, args.values);
       return weave.readEntity(args.entity);
     case 'weave_delete_entity':
+      refuseUsersWrite(weave, args.entity, caller);
       return weave.deleteEntity(args.entity, { hard: Boolean(args.hard) });
     case 'weave_restore_entity':
       return weave.restoreEntity(args.entity);

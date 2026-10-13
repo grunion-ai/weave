@@ -897,6 +897,17 @@ export function runDeferredMigrations() {
 }
 
 export const inviteUrl = (origin, code) => `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(code)}`;
+const USER_COLUMNS = [
+  ['Email', 'text', {}],
+  ['Role', 'select', { options: [{ name: 'Architect', hue: 'purple' }, { name: 'Editor', hue: 'blue' }, { name: 'Observer', hue: 'slate' }] }],
+  ['Status', 'select', { options: [{ name: 'Invited', hue: 'amber' }, { name: 'Active', hue: 'green' }] }],
+  ['Kind', 'select', { options: [{ name: 'Person', hue: 'slate' }, { name: 'Agent', hue: 'slate' }] }],
+  ['Identities', 'number', { decimals: 0 }],
+  ['Last Seen', 'date', { time: true }],
+  ['Created', 'date', { time: true }],
+];
+const USER_KEPT = ['Email', 'Status', 'Kind', 'Identities', 'Last Seen', 'Created'];
+const capital = (s) => String(s ?? '').charAt(0).toUpperCase() + String(s ?? '').slice(1);
 
 export class Weave {
   #dirty = new Set();
@@ -3316,6 +3327,10 @@ export class Weave {
   }
 
   createAccount({ name, role: asked = 'editor' } = {}) {
+    return this.#createAccount({ name, role: asked });
+  }
+
+  #createAccount({ name, role: asked = 'editor' } = {}, id = uuid()) {
     if (!name) throw new WeaveError('Account name is required', 'invalid');
     refuseReserved('account', name);
     const role = Weave.roleName(asked);
@@ -3323,10 +3338,11 @@ export class Weave {
     const accounts = (this.state.meta.accounts ??= {});
     if (Object.values(accounts).some((a) => a.name === name)) throw new WeaveError(`Account '${name}' already exists`, 'conflict');
     const token = 'wv_' + randomBytes(24).toString('base64url');
-    const account = { id: uuid(), name, role, tokenHash: this.#hash(token), createdAt: nowISO() };
+    const account = { id, name, role, tokenHash: this.#hash(token), createdAt: nowISO() };
     accounts[account.id] = account;
     this.save();
     this.#audit('account-created', { name, role });
+    this.#syncUsers();
     const { tokenHash, ...pub } = account;
     const note = role !== asked ? `Role '${asked}' is now '${role}'; the old name is deprecated and accepted for one more release` : undefined;
     return { account: pub, token, ...(note ? { note } : {}) };
@@ -3361,6 +3377,7 @@ export class Weave {
     this.save();
     this.#audit('account-deleted', { name: a.name });
     if (ended) this.#audit('session-revoked', { name: a.name, count: ended, all: true });
+    this.#syncUsers();
     return { id: a.id, deleted: true };
   }
 
@@ -3407,6 +3424,7 @@ export class Weave {
     sessions[this.#hash(token)] = { accountId: a.id, createdAt: at, expiresAt, lastSeenAt: at, ua: String(ua ?? '').slice(0, 200) };
     this.save();
     this.#audit('session-created', { name: a.name });
+    this.#syncUsers();
     return { token, expiresAt, account: { id: a.id, name: a.name, role: a.role } };
   }
 
@@ -3508,6 +3526,7 @@ export class Weave {
     if (this.listInvites().some((i) => i.email === mail)) throw new WeaveError(`${mail} already has a pending invite; revoke it to send a new one`, 'conflict');
     const { code, h } = this.#mintInvite({ accountId: null, issuer: iss, email: mail, role, invitedBy: this.actor });
     this.#audit('member-invited', { role, issuer: iss });
+    this.#syncUsers();
     return { ...this.listInvites().find((i) => i.id === h), code };
   }
 
@@ -3515,7 +3534,7 @@ export class Weave {
     const now = Date.now();
     return Object.entries(this.state.meta.identityInvites ?? {})
       .filter(([, i]) => !i.accountId && Date.parse(i.expiresAt) > now)
-      .map(([id, i]) => ({ id, email: i.email, name: this.#memberName(i.email), role: i.role, roleLabel: Weave.ROLE_LABELS[i.role], workspace: this.state.meta.name, invitedBy: i.invitedBy, createdAt: i.createdAt, expiresAt: i.expiresAt }))
+      .map(([id, i]) => ({ id, email: i.email, name: this.#inviteName(i), role: i.role, roleLabel: Weave.ROLE_LABELS[i.role], workspace: this.state.meta.name, invitedBy: i.invitedBy, createdAt: i.createdAt, expiresAt: i.expiresAt }))
       .sort((x, y) => x.createdAt.localeCompare(y.createdAt));
   }
 
@@ -3526,7 +3545,43 @@ export class Weave {
     delete invites[key];
     this.save();
     this.#audit('invite-revoked', {});
+    this.#syncUsers();
     return { revoked: 1 };
+  }
+
+  #inviteName(i) {
+    const wanted = String(i.name ?? '').trim();
+    if (wanted && !Object.values(this.state.meta.accounts ?? {}).some((a) => a.name === wanted)) {
+      try { refuseReserved('account', wanted); return wanted; } catch {}
+    }
+    return this.#memberName(i.email);
+  }
+
+  renameAccount(ref, name) {
+    const a = this.#account(ref);
+    const next = String(name ?? '').trim();
+    if (!next) throw new WeaveError('Account name is required', 'invalid');
+    if (next === a.name) return { id: a.id, name: a.name };
+    refuseReserved('account', next);
+    if (Object.values(this.state.meta.accounts ?? {}).some((x) => x.name === next)) throw new WeaveError(`Account '${next}' already exists`, 'conflict');
+    const from = a.name;
+    a.name = next;
+    this.save();
+    this.#audit('account-renamed', { from, name: next });
+    this.#syncUsers();
+    return { id: a.id, name: next };
+  }
+
+  setAccountRole(ref, asked) {
+    const a = this.#account(ref);
+    const role = Weave.roleName(String(asked ?? '').toLowerCase());
+    if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${asked}' (${Weave.ROLES.join(', ')})`, 'invalid');
+    if (role === a.role) return { id: a.id, role };
+    a.role = role;
+    this.save();
+    this.#audit('account-role-changed', { name: a.name, role });
+    this.#syncUsers();
+    return { id: a.id, role };
   }
 
   #memberName(email) {
@@ -3541,7 +3596,7 @@ export class Weave {
 
   identityInvite(code) {
     const found = this.#invite(code);
-    return found ? { account: found.a?.name ?? this.#memberName(found.i.email), issuer: found.i.issuer, expiresAt: found.i.expiresAt } : null;
+    return found ? { account: found.a?.name ?? this.#inviteName(found.i), issuer: found.i.issuer, expiresAt: found.i.expiresAt } : null;
   }
 
   invitesForEmail(email) {
@@ -3577,11 +3632,12 @@ export class Weave {
     delete this.state.meta.identityInvites[h];
     const at = nowISO();
     if (!a) {
-      const { account } = this.createAccount({ name: this.#memberName(i.email), role: i.role });
+      const { account } = this.#createAccount({ name: this.#inviteName(i), role: i.role }, i.rowId ?? uuid());
       const row = this.state.meta.accounts[account.id];
       row.identities = [stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at })];
       this.save();
       this.#audit('member-joined', { name: row.name, role: row.role, invitedBy: i.invitedBy ?? null });
+      this.#syncUsers();
       const { tokenHash, ...pub } = row;
       return pub;
     }
@@ -3592,6 +3648,7 @@ export class Weave {
       this.#audit('identity-linked', { name: a.name, issuer: iss });
     } else stamp(identity).lastUsedAt = at;
     this.save();
+    this.#syncUsers();
     const { tokenHash, ...pub } = a;
     return pub;
   }
@@ -3606,6 +3663,7 @@ export class Weave {
     a.identities = keep;
     this.save();
     this.#audit('identity-unlinked', { name: a.name, ...(iss ? { issuer: iss } : {}) });
+    this.#syncUsers();
     return { unlinked, remaining: keep.length };
   }
 
@@ -3618,6 +3676,7 @@ export class Weave {
       const mail = String(email ?? '').trim().toLowerCase();
       if (mail) i.verifiedEmail = mail;
       this.save();
+      this.#syncUsers();
       const { tokenHash, ...pub } = a;
       return pub;
     }
@@ -3641,6 +3700,8 @@ export class Weave {
   }
 
   #inMetaSync = false;
+  #oneTime = new Map();
+  inviteIssuer = null;
   registryHost = null;
   members = [];
   get #reg() { return this.registryHost ?? this; }
@@ -3722,7 +3783,7 @@ export class Weave {
 
   dropWorkspace(wsId) {
     this.members = this.members.filter((m) => m.state.meta.id !== wsId);
-    for (const kind of ['views', 'fields', 'tables', 'spaces']) {
+    for (const kind of ['users', 'views', 'fields', 'tables', 'spaces']) {
       const t = this.#sysTable(kind);
       if (!t) continue;
       for (const row of this.listEntities(t.id, { includeDeleted: true })) {
@@ -3743,6 +3804,188 @@ export class Weave {
       if (t.system) continue;
       for (const f of Object.values(t.fields)) this.#syncFieldRow(t, f);
     }
+    this.#syncUsers();
+  }
+
+  #userRows() {
+    const meta = this.state.meta;
+    const now = Date.now();
+    const rows = new Map();
+    const seen = {};
+    for (const s of Object.values(meta.sessions ?? {})) {
+      if (s.accountId && !s.removedAt && (!seen[s.accountId] || s.lastSeenAt > seen[s.accountId])) seen[s.accountId] = s.lastSeenAt;
+    }
+    for (const a of Object.values(meta.accounts ?? {})) {
+      const ids = a.identities ?? [];
+      const last = [seen[a.id], ...ids.map((i) => i.lastUsedAt)].filter(Boolean).sort().pop() ?? null;
+      rows.set(a.id, {
+        Name: a.name,
+        Email: ids.find((i) => i.verifiedEmail)?.verifiedEmail ?? '',
+        Role: capital(Weave.roleName(a.role)),
+        Status: 'Active',
+        Kind: ids.length ? 'Person' : 'Agent',
+        Identities: ids.length,
+        'Last Seen': last,
+        Created: a.createdAt ?? null,
+      });
+    }
+    let minted = false;
+    for (const i of Object.values(meta.identityInvites ?? {})) {
+      if (i.accountId || Date.parse(i.expiresAt) <= now) continue;
+      if (!i.rowId) { i.rowId = uuid(); minted = true; }
+      rows.set(i.rowId, {
+        Name: this.#inviteName(i),
+        Email: i.email,
+        Role: capital(i.role),
+        Status: 'Invited',
+        Kind: 'Person',
+        Identities: 0,
+        'Last Seen': null,
+        Created: i.createdAt ?? null,
+      });
+    }
+    if (minted) this.save();
+    return rows;
+  }
+
+  #syncUsers() {
+    const t = this.#sysTable('users');
+    if (!t) return;
+    const reg = this.#reg;
+    const wsRow = this.#sysRow('workspaces', this.state.meta.id);
+    const want = this.#userRows();
+    for (const row of reg.listEntities(t.id, { includeDeleted: true })) {
+      if ((this.#wsIdOfRow(row) ?? reg.state.meta.id) !== this.state.meta.id) continue;
+      if (!row.sysId || !want.has(row.sysId)) reg.#metaSync(() => reg.deleteEntity(row.id, { hard: true }));
+    }
+    for (const [sysId, values] of want) {
+      const row = this.#sysRow('users', sysId);
+      if (!row) {
+        const made = reg.#metaSync(() => reg.createEntity(t.id, { values: { ...values, ...(wsRow ? { Workspace: wsRow.id } : {}) } }));
+        made.sysId = sysId;
+        reg.#mark(made);
+        reg.save();
+        continue;
+      }
+      const patch = {};
+      for (const [k, v] of Object.entries(values)) {
+        const f = this.#sysField(t, k);
+        if (f && JSON.stringify(row.values[f.id] ?? null) !== JSON.stringify(reg.#validateValue(f, v) ?? null)) patch[k] = v;
+      }
+      if (row.deletedAt) reg.#metaSync(() => reg.restoreEntity(row.id));
+      if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
+    }
+  }
+
+  #userTarget(row) {
+    const owner = this.#ownerOf(row);
+    const account = own(owner.state.meta.accounts ?? {}, row.sysId);
+    if (account) return { owner, account };
+    const entry = Object.entries(owner.state.meta.identityInvites ?? {}).find(([, i]) => i.rowId === row.sysId);
+    if (entry) return { owner, inviteKey: entry[0], invite: entry[1] };
+    throw new WeaveError(`Users row '${this.entityName(row)}' describes no account or invite`, 'not-found');
+  }
+
+  #userValues(input) {
+    const flat = Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !CREATE_INPUT_KEYS.has(k)));
+    return { ...flat, ...(input?.values ?? {}) };
+  }
+
+  #createUserRow(db, input) {
+    const values = this.#userValues(input);
+    const name = String(input?.name ?? values.Name ?? '').trim();
+    const email = String(values.Email ?? '').trim();
+    const role = String(values.Role ?? 'editor').toLowerCase();
+    const kind = String(values.Kind ?? (email ? 'Person' : 'Agent')).toLowerCase();
+    for (const k of ['Status', 'Identities', 'Last Seen', 'Created']) {
+      if (values[k] != null && values[k] !== '') throw new WeaveError(`'${k}' is kept by weave and cannot be set on a Users row`, 'invalid');
+    }
+    let owner = this;
+    if (values.Workspace != null) {
+      const wsRow = this.findEntity(this.#sysTable('workspaces').id, values.Workspace) ?? this.#sysRow('workspaces', values.Workspace);
+      if (!wsRow) throw new WeaveError(`Workspace row '${values.Workspace}' not found`, 'not-found');
+      owner = this.#engineOf(wsRow.sysId);
+    }
+    for (const k of ['Name', 'Email', 'Role', 'Kind', 'Workspace', 'Status', 'Identities', 'Last Seen', 'Created']) delete values[k];
+    let sysId;
+    let once;
+    if (email) {
+      if (kind === 'agent') throw new WeaveError('An agent has no Email: leave Email empty and give it a Name', 'invalid');
+      const made = owner.inviteMember({ email, role, issuer: this.#reg.inviteIssuer ?? process.env.WEAVE_OIDC_ISSUER });
+      const entry = owner.state.meta.identityInvites[made.id];
+      entry.rowId ??= uuid();
+      if (name) entry.name = name;
+      owner.save();
+      sysId = entry.rowId;
+      once = { invite: { code: made.code, expiresAt: made.expiresAt } };
+    } else if (kind === 'agent') {
+      if (!name) throw new WeaveError('An agent account needs a Name', 'invalid');
+      const made = owner.createAccount({ name, role });
+      sysId = made.account.id;
+      once = { token: made.token };
+    } else {
+      throw new WeaveError('A Users row needs an Email to invite a person, or Kind Agent and a Name to make an agent account', 'invalid');
+    }
+    owner.#syncUsers();
+    const row = this.#sysRow('users', sysId);
+    if (Object.keys(values).length) this.#metaSync(() => this.updateEntity(row.id, values));
+    this.#reg.#oneTime.set(row.id, once);
+    return this.getEntity(row.id);
+  }
+
+  #updateUserRow(e, db, valuesByName) {
+    const patch = { ...valuesByName };
+    for (const k of [...USER_KEPT, 'Workspace']) {
+      if (!(k in patch)) continue;
+      const f = this.#sysField(db, k);
+      if (f && JSON.stringify(this.#validateValue(f, patch[k]) ?? null) !== JSON.stringify(e.values[f.id] ?? null)) {
+        throw new WeaveError(`'${k}' is kept by weave and cannot be edited on a Users row`, 'invalid');
+      }
+      delete patch[k];
+    }
+    if ('Name' in patch || 'Role' in patch) {
+      const { owner, account, invite } = this.#userTarget(e);
+      if ('Role' in patch) {
+        if (account) owner.setAccountRole(account.id, patch.Role);
+        else owner.#setInviteRole(invite, patch.Role);
+      }
+      if ('Name' in patch) {
+        if (account) owner.renameAccount(account.id, patch.Name);
+        else { invite.name = String(patch.Name ?? '').trim() || undefined; owner.save(); owner.#syncUsers(); }
+      }
+      delete patch.Name;
+      delete patch.Role;
+    }
+    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
+    return this.getEntity(e.id);
+  }
+
+  #setInviteRole(invite, asked) {
+    const role = Weave.roleName(String(asked ?? '').toLowerCase());
+    if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${asked}' (${Weave.ROLES.join(', ')})`, 'invalid');
+    invite.role = role;
+    this.save();
+    this.#audit('invite-role-changed', { role });
+    this.#syncUsers();
+  }
+
+  #deleteUserRow(e) {
+    const { owner, account, inviteKey } = this.#userTarget(e);
+    if (account) owner.deleteAccount(account.id);
+    else {
+      delete owner.state.meta.identityInvites[inviteKey];
+      owner.save();
+      owner.#audit('invite-revoked', {});
+      owner.#syncUsers();
+    }
+    return { id: e.id, purged: true };
+  }
+
+  takeOneTime(id) {
+    const reg = this.#reg;
+    const once = reg.#oneTime.get(id) ?? null;
+    reg.#oneTime.delete(id);
+    return once;
   }
 
   #syncWorkspaceRow() {
@@ -4014,9 +4257,14 @@ export class Weave {
       for (const v of wfT.tableViews ?? []) if (v.fields.includes(on.id)) lead(v.fields);
       this.save();
     }
+    const usersT = this.#sysTable('users')
+      ?? mkTable('Users', 'users', 'Every account and pending invite in this workspace, as a row. A row with an Email invites that person at its Role; a row with Kind Agent and no Email makes an agent account and shows its token once. Editing Role or Name changes the account; deleting the row revokes the invite or deletes the account.');
+    for (const [n, type, config] of USER_COLUMNS) {
+      if (!this.#sysField(usersT, n)) this.addField(usersT.id, { name: n, type, config }).system = true;
+    }
     const wsT = this.#sysTable('workspaces')
       ?? mkTable('Workspaces', 'workspaces', 'Every workspace this weave serves, as a row: the hub root and every member workspace. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted from the hub, not as rows.');
-    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views']]) {
+    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
       field.system = true;
@@ -4290,6 +4538,7 @@ export class Weave {
   #interceptCreate(db, input) {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a row', 'invalid');
+    if (db.system === 'users') return this.#createUserRow(db, input);
     if (db.system === 'workflows') {
       const values = { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !CREATE_INPUT_KEYS.has(k))), ...(input?.values ?? {}) };
       this.#guardWorkflowOn(null, db, values, input?.docs);
@@ -4370,6 +4619,7 @@ export class Weave {
       return this.getEntity(e.id);
     }
     if (db.system === 'workflows') { this.#guardWorkflowOn(e, db, valuesByName); return undefined; }
+    if (db.system === 'users') return this.#updateUserRow(e, db, valuesByName);
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     const patch = { ...valuesByName };
     if ('Workspace' in patch) {
@@ -4484,6 +4734,7 @@ export class Weave {
   #interceptDelete(e, db, hard) {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a row', 'invalid');
+    if (db.system === 'users') return this.#deleteUserRow(e);
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     if (db.system === 'views') {
       const hit = this.#viewAnywhere(e.sysId);
@@ -7952,6 +8203,9 @@ export class Weave {
       delete a.tokenHash;
       for (const i of a.identities ?? []) delete i.verifiedEmail;
     }
+    const usersT = Object.values(out.tables).find((t) => t.system === 'users');
+    const emailF = usersT && Object.values(usersT.fields).find((f) => f.name === 'Email');
+    if (emailF) for (const e of Object.values(out.entities)) if (e.dbId === usersT.id) delete e.values[emailF.id];
     for (const v of [...Object.values(out.meta.views ?? {}), ...Object.values(out.meta.trashedViews ?? {})]) delete v.shareToken;
     Shares.redactTokens(out);
     delete out.meta.formReceipts;

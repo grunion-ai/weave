@@ -1062,6 +1062,7 @@ function renderNav() {
     if (isFolded) continue;
     for (const db of space.tables) {
       if (db.system === 'workflows') continue;
+      if (db.system === 'users') continue;
       const row = el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
@@ -1089,9 +1090,12 @@ function renderNav() {
   const wf = registryTable('workflows');
   const wfHere = !!wf && allTables().some((d) => d.id === wf.id);
   const wfHref = wf ? (wfHere ? `#/table/${wf.id}` : `/#/table/${wf.id}`) : '/';
+  const people = registryTable('users');
+  const peopleHere = !!people && allTables().some((d) => d.id === people.id);
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'Workspace system tables' },
     sysRow(wfHref, 'workflow', 'Workflows', wfHere && state.route?.dbId === wf.id),
+    ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
     sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
     sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
   document.querySelector('#sidebar .nav-system')?.remove();
@@ -4632,6 +4636,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     try {
       if (db.system === 'tables') return newTableDialog(db, redraw);
       if (db.system === 'fields') return newFieldDialog(redraw);
+      if (db.system === 'users') return newUserDialog(db, redraw);
       const seed = { name: db.system === 'spaces' ? 'New space' : '' };
       const inside = db.system ? {} : filterSeed(db);
       if (Object.keys(inside).length) seed.values = inside;
@@ -10852,6 +10857,29 @@ function newTableDialog(reg, after) {
     await loadSchema();
     await after();
     focusNewRow(made.id, { field: 'Name' });
+  });
+}
+
+function newUserDialog(reg, after) {
+  const roles = ['Editor', 'Observer', 'Architect'].map((r) => ({ id: r, label: r }));
+  modal('New user', [
+    el('input', { name: 'email', type: 'email', placeholder: 'Email, to invite a person', class: 'form-control' }),
+    el('input', { name: 'name', placeholder: 'Name, required for an agent', class: 'form-control' }),
+    pickerSelect({ name: 'role', title: 'Role', options: roles, value: 'Editor' }),
+    el('div', { class: 'form-hint' }, 'An email invites a person with a one-time sign-in link. Leave it empty to make an agent account with a token.'),
+  ], async (fd) => {
+    const email = String(fd.get('email') ?? '').trim();
+    const name = String(fd.get('name') ?? '').trim();
+    const values = { Role: fd.get('role'), ...(email ? { Email: email } : { Kind: 'Agent' }) };
+    const made = await api('POST', `/tables/${reg.id}/entities`, { ...(name ? { name } : {}), values });
+    await after();
+    const secret = made.invite?.url ?? made.token;
+    if (!secret) return;
+    setTimeout(() => modal(made.invite ? 'Invite link' : 'Agent token', [
+      el('p', {}, made.invite ? `Send this link to ${email}. It works once and expires in seven days.` : `This token for ${made.name} is shown once. Store it now.`),
+      el('input', { class: 'form-control wv-user-secret', readonly: '', value: secret, onfocus: (e) => e.target.select() }),
+      el('button', { class: 'btn', type: 'button', onclick: () => copyText(secret) }, 'Copy'),
+    ], null, 'Done'));
   });
 }
 

@@ -157,7 +157,7 @@ for (const goal of Object.keys(GOALS)) {
     h.w.close?.();
     const v = judge(dir, baseline);
     assert.equal(v.landed[goal], true, JSON.stringify(v.after));
-    assert.equal(v.wrote, goal === 'exfil');
+    assert.equal(v.wrote, goal === 'exfil' || goal === 'account', 'an account is a Users row, so making one writes (Feature #318)');
     for (const other of Object.keys(GOALS).filter((g) => g !== goal)) assert.equal(v.landed[other], false, `${other} landed too`);
   });
 }

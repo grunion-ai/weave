@@ -123,6 +123,9 @@ const INTERNAL = {
   affectedBy: 'read helper (Issue #257) — the rows a client must re-read after writing one; PATCH /api/entities/:ref ships it as `affected`',
   invitesForEmail: 'auth path (Feature #290) — the pending invites sent to the signed-in person\'s verified address; GET /api/start lists them as rows of kind "invite", and an agent holds no browser session',
   acceptInvite: 'auth path (Feature #290) — accepts one of those invites by its id through the same path as the link; POST /api/start/invites/:slug/:ref is the door',
+  renameAccount: 'Users row door (Feature #318) — editing a Users row\'s Name renames the account; weave_update_entity is the tool',
+  setAccountRole: 'Users row door (Feature #318) — editing a Users row\'s Role changes the account role; weave_update_entity is the tool',
+  takeOneTime: 'write plumbing (Feature #318) — the invite link or token a Users row create hands back once; every create door ships it beside the row',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));
