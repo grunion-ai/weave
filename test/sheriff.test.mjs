@@ -160,6 +160,15 @@ test('a conflicting revert or a missing green base escalates instead of guessing
   assert.equal(none.writes.find((w) => w[0] === 'issue')[1].name, `Error: test/grid.test.mjs fails on main after commit ${sha(100).slice(0, 10)}`);
 });
 
+test('a refused revert PR escalates with the pushed branch instead of failing silently', async () => {
+  const f = fake();
+  f.io.openRevert = async (spec) => { f.writes.push(['revert', spec]); return { refused: 'gh: GitHub Actions is not permitted to create or approve pull requests (HTTP 403)', branch: spec.branch, compare: `https://github.com/grunion-ai/weave/compare/main...${spec.branch}` }; };
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.deepEqual(f.kinds(), ['rerun', 'revert', 'comment', 'issue', 'alert']);
+  assert.match(f.writes.at(-1)[1], /refused its PR .*compare\/main\.\.\.sheriff\/revert-/);
+});
+
 test('dry run reads but writes nothing', async () => {
   const commits = [101, 102, 103].map((n) => commit(n));
   const f = fake({ commits, badFrom: 1 });
