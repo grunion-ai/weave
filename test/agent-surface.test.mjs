@@ -92,6 +92,7 @@ const INTERNAL = {
   settleDeferred: 'process plumbing (Feature #250): runDeferredMigrations settles each workspace a supervised worker opened while the old worker still served; an agent never calls it',
   userTables: 'read helper (Issue #386) — the tables a person made, registry excluded; the hub list\'s `tables` count reads it, and describeSchema already carries the `system` flag an agent filters on',
   schemaVersion: 'read helper (Issue #274) — the structure\'s fingerprint; every API response stamps it as X-Weave-Schema-Version and GET /api/workspace ships it in the body, so an agent reads it without a verb of its own',
+  workflowWorkspace: 'hub plumbing (Issue #875): the member route asks which workspace a Workflows row belongs to before it lets a member read it by id; an agent reads the row\'s Workspace column',
   joinRegistry: 'hub plumbing (Feature #219) — the hub joins every member to the root registry on adoption',
   hostRegistry: 'hub plumbing (Feature #219) — the engine the hub stands on hosts the registry',
   syncRegistry: 'hub plumbing (Feature #219) — re-asserts a workspace\'s rows after a soft delete or restore; rebuildRegistry is the surfaced verb',
@@ -291,5 +292,5 @@ test('every query option reaches every door', () => {
     if (!CLI_EXEMPT[k]) assert.ok(cliBlock.includes(`${k}:`), `weave query lacks --${k}`);
   }
   assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
-  assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, viewerZone \}\)/, 'POST /api/tables/:ref/query passes its body through');
+  assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, viewerZone, workspace: member\.state\.meta\.id \}\)/, 'POST /api/tables/:ref/query passes its body through, scoped to the asking workspace (Issue #875)');
 });

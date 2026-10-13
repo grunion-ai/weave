@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
-let wfId, usersId, member;
+let wfId, usersId, member, other;
 const s = await launch('system tables nav', (weave) => {
   weave.createSpace({ name: 'Work' });
   const t = weave.createTable({ space: 'Work', name: 'Tasks' });
@@ -15,7 +15,11 @@ const s = await launch('system tables nav', (weave) => {
   member.updateWorkspace({ name: 'member' });
   member.createSpace({ name: 'Notes' });
   member.createTable({ space: 'Notes', name: 'Ideas' });
-}, { server: () => ({ workspaces: { member } }) });
+  other = new Weave();
+  other.updateWorkspace({ name: 'other' });
+  other.createSpace({ name: 'Ops' });
+  other.createTable({ space: 'Ops', name: 'Pages' });
+}, { server: () => ({ workspaces: { member, other } }) });
 
 if (s) {
   const { base, browser } = s;
@@ -56,8 +60,30 @@ if (s) {
     await page.goto(`${base}/w/${member.state.meta.id}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-    assert.deepEqual(rows, [['Workflows', `/#/table/${wfId}`], ['Users', `/#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`], ['Users', `/#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
     await page.close();
+  });
+
+  test('browser: each member workspace\'s Workflows view lists only its own workflows (Issue #875)', async () => {
+    const rule = { trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'seen' }] };
+    member.createAutomation('Notes/Ideas', { name: 'member idea rule', ...rule });
+    other.createAutomation('Ops/Pages', { name: 'other page rule', ...rule });
+    const listed = async (ws) => {
+      const page = await browser.newPage();
+      await page.goto(`${base}/w/${ws.state.meta.id}/#/`, { waitUntil: 'networkidle' });
+      await page.click('#sidebar .nav-system a[href^="#/table/"]');
+      await page.waitForURL(new RegExp(`/w/${ws.state.meta.id}/#/table/${wfId}$`));
+      await page.waitForSelector('#main .wv-grid tbody tr');
+      const text = await page.textContent('#main .wv-grid');
+      await page.close();
+      return text;
+    };
+    const mine = await listed(member);
+    assert.match(mine, /member idea rule/);
+    assert.doesNotMatch(mine, /other page rule/);
+    const theirs = await listed(other);
+    assert.match(theirs, /other page rule/);
+    assert.doesNotMatch(theirs, /member idea rule/);
   });
 
   test('browser: the view title read waits out a repaint, where a read taken once does not', async () => {

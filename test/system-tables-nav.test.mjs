@@ -74,7 +74,8 @@ test('the Workflows row always shows, resolved through the registry a member rea
   const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("$('#sidebar').append(system"));
   assert.doesNotMatch(group, /wf \? \[/, 'no condition wraps the Workflows row');
   assert.match(nav, /registryTable\('workflows'\)/, 'a member workspace finds Workflows in state.registry');
-  assert.match(nav, /`\/#\/table\/\$\{wf\.id\}`/, 'a root registry table links through the root');
+  assert.match(nav, /wf \? `#\/table\/\$\{wf\.id\}`/, 'the row opens Workflows at this workspace\'s own URL (Issue #875)');
+  assert.doesNotMatch(nav, /`\/#\/table\/\$\{wf\.id\}`/, 'never the root registry table, which lists other workspaces\' workflows');
   assert.match(nav, /: '\/'/, 'nothing resolved still links the root registry');
 });
 

@@ -685,6 +685,14 @@ function allTables() {
   return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId, spaceIcon: s.icon ?? null })));
 }
 
+function registryWorkflows(dbId) {
+  for (const s of state.registry ?? []) {
+    const d = s.tables.find((t) => t.id === dbId && t.system === 'workflows');
+    if (d) return { ...d, space: s.space, spaceId: s.spaceId, spaceIcon: s.icon ?? null };
+  }
+  return null;
+}
+
 async function readRegistry() {
   const res = await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } });
   if (res.status === 401 || res.status === 403) return [];
@@ -1101,13 +1109,12 @@ function renderNav() {
     `${entityTotal.toLocaleString()} ${entityTotal === 1 ? WeaveTerm.DEFAULT.singular : WeaveTerm.DEFAULT.plural}`);
   const stats = el('div', { class: 'nav-stats' }, foot, line);
   const wf = registryTable('workflows');
-  const wfHere = !!wf && allTables().some((d) => d.id === wf.id);
-  const wfHref = wf ? (wfHere ? `#/table/${wf.id}` : `/#/table/${wf.id}`) : '/';
+  const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
   const peopleHere = !!people && allTables().some((d) => d.id === people.id);
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'Workspace system tables' },
-    sysRow(wfHref, 'workflow', 'Workflows', wfHere && state.route?.dbId === wf.id),
+    sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
     ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
     sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
     sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
@@ -3818,7 +3825,7 @@ function tableSearchBox(db) {
 }
 
 async function showDatabase(dbId, view) {
-  const table = allTables().find((d) => d.id === dbId);
+  const table = allTables().find((d) => d.id === dbId) ?? registryWorkflows(dbId);
   if (!table) return showHome();
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
   if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
