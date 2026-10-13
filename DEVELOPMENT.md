@@ -3,8 +3,9 @@
 GitHub is the canonical repository. Pull requests replace the Gerrit review queue.
 Agents work in isolated branches and run targeted checks locally. A ready pull
 request lands on main after a fast `Dev gate` and deploys to dev.weave.grunion.ai
-within a minute. The full test inventory runs on main and informs promotion to
-production, which needs an approved release.
+within a minute. The full test inventory runs on main. The `promote` workflow
+moves production to the newest main commit that passed both the `CI gate` and
+the dev soak.
 
 ## Daily flow
 
@@ -137,8 +138,8 @@ node scripts/changelog-fold.mjs
 node scripts/architecture.mjs
 ```
 
-The fold also stamps the version into `server.json`. After the approved `publish`
-job tags the release, `release.yml` pushes `ghcr.io/grunion-ai/weave:<version>` and
+The fold also stamps the version into `server.json`. After the `publish` job tags
+the release, `release.yml` pushes `ghcr.io/grunion-ai/weave:<version>` and
 `:latest`, then publishes `server.json` to the Official MCP Registry with a pinned
 `mcp-publisher` signed in through GitHub OIDC.
 
@@ -174,48 +175,63 @@ CHANGELOG.md. The fold sorts and deletes fragments. A refactor or documentation
 change without a release bullet carries `No-changelog: <reason>` in its commit.
 The changelog and development-sync tests enforce these contracts.
 
-Production promotion is manual: dispatch the `release` workflow with the main
-`tests` run ID. Its publish job runs in the `production` environment and waits
-for a required reviewer to approve. Its read-only guard validates the
-same-repository event, run ID and completed `CI gate`. Pull requests never call
-release publication. Its publishing
-job checks out the exact tested SHA and checks GitHub main again. A superseded run
-skips publication so the newer main run owns delivery. The publisher validates the
-version, matching tracker manifest and nonempty `## v<version>` changelog section
-before creating an immutable `v<version>` tag and GitHub Release. Existing published ancestor versions stay
-unchanged. A partial publication resumes only if its tag names the tested commit;
-a conflicting tag fails and is never moved.
+Releases are on demand and never move production. When a version should be
+published, dispatch the `release` workflow with a main push `tests` run ID.
+Its read-only guard validates the same-repository event, run ID and completed
+`CI gate`. Its publishing job checks out the exact tested SHA and checks GitHub
+main again; a superseded run skips publication. The publisher validates the
+version, matching tracker manifest and nonempty `## v<version>` changelog
+section before creating an immutable `v<version>` tag and GitHub Release.
+Existing published ancestor versions stay unchanged. A partial publication
+resumes only if its tag names the tested commit; a conflicting tag fails and is
+never moved. To revert a release, land a tested revert PR and cut a new version.
+Confirm the publication with `gh release list -R grunion-ai/weave --limit 1`.
 
-The hosted supervisor at https://weave.grunion.ai polls GitHub releases every ten
-minutes. It downloads the tag's immutable SHA, checks health, and swaps workers.
-With `WEAVE_AUTO_UPDATE=1` it unpacks each release into `releases/v<version>/`
-beside `WEAVE_DATA` and keeps two folders at most: the serving release and the
-most recently served good one. A release that fails its health check is deleted
-along with every older folder. While the image serves, only the newest good
-folder stays. A folder it cannot remove is logged and never blocks a swap.
-Each swap is watched and rolled back the same way as on dev (Daily flow, step 6).
-The release job polls health for at most 90 attempts, with ten-second intervals and
-five-second request timeouts. Success requires the exact package version and
-`supervisor.release` tag. A rejected update or timeout fails the workflow visibly.
-For a no-version-change landing, an existing image at the matching version is a
-valid baseline. The local deployment watcher separately follows verified GitHub
-main into `~/.weave-serve` and refreshes the local tracker and quality mirror.
+### Production promotion
 
-Recovery uses Actions' `release` workflow dispatch with the main push `tests`
-run ID. The same event, gate, SHA and current-main checks apply. A completed run
-with failed delivery jobs can retry only when the CI gate succeeded and no test
-job failed. Other failed or canceled runs cannot publish.
-Confirm the workflow is green and the expected release is Latest:
+Production follows the `production` branch. The hosted supervisor at
+https://weave.grunion.ai runs with `WEAVE_TRACK=branch:production` and a
+`WEAVE_DEPLOY_TOKEN`, so it serves `releases/c<sha>/` folders and swaps, watches
+and rolls back exactly as dev does (Daily flow, steps 5 and 6).
+
+`.github/workflows/promote.yml` (Feature #322) moves the branch. It runs every
+hour and acts when the UTC hour is a multiple of the repository variable
+`PROMOTION_EVERY_HOURS` (default 2); `workflow_dispatch` acts at once, and its
+`dry_run` input only prints the pick. `scripts/promote.mjs select` picks the
+newest main commit that has a push `tests` run whose `CI gate` succeeded and a
+`dev-soak` commit status of success, and that descends from the `production`
+head. With none it exits quietly. The `promote` job then, in the `production`
+environment:
+
+1. pushes `<sha>:refs/heads/production` through the promotion deploy key
+   (`PROMOTION_DEPLOY_KEY`), a fast-forward that is never forced;
+2. calls `POST /_supervisor/check` with `PROD_DEPLOY_TOKEN`;
+3. waits up to 25 minutes for `/api/health` to show `supervisor.commit` at that
+   SHA, `lastSwap.ok` true and `supervisor.watch` for `c<sha>` with `ok` true.
+
+A failed watch or a rollback fails the run, files the Issue row
+`Error: production rolled back the promotion of <sha>`, writes one alert line
+and opens a `promote/revert-<sha>` PR on main for the promoted range (armed when
+`SHERIFF_TOKEN` is set). `production` is never rewound: it stays on the failed
+commit while prod serves its rollback, and the next promotion waits for a main
+commit that reverts it. A timeout files and alerts without a revert.
+
+Set the repository variable `PROMOTION_PAUSED=true` to stop promotion; delete it
+or set it to anything else to resume. Two rulesets guard the branch: nobody
+deletes it or pushes a non-fast-forward, and only the promotion deploy key
+updates it. Both secrets live in the `production` environment, which has no
+required reviewer and admits main only.
+
+Check a promotion:
 
 ```bash
-gh release list -R grunion-ai/weave --limit 1
+gh run list -R grunion-ai/weave --workflow promote --limit 3
+gh api repos/grunion-ai/weave/branches/production --jq .commit.sha
 curl -fsS https://weave.grunion.ai/api/health
 ```
 
-Never hand-deploy Railway after a routine landing. The release tag is the hosted
-deployment. Container redeployment is reserved for Node, Dockerfile or supervisor
-changes. To revert application behavior, land a tested revert PR and cut a new
-version; never retarget an existing release tag.
+Never hand-deploy Railway after a routine landing. Container redeployment is
+reserved for Node, Dockerfile or supervisor changes.
 
 ## Architecture map
 

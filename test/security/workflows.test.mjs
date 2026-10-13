@@ -55,7 +55,7 @@ test('workflow write permissions are confined to guarded release delivery', () =
       assert.match(job('image'), /needs: \[guard, publish\]/);
       assert.match(job('registry'), /needs: \[guard, image\]/);
       assert.match(publish, /needs: guard/);
-      assert.match(publish, /environment:\n      name: production\n/);
+      assert.doesNotMatch(src, /environment:/, 'a release never deploys production; promote.yml does');
       assert.match(publish, /if: needs.guard.outputs.current == 'true'/);
       assert.match(publish, /ref: \$\{\{ needs.guard.outputs.sha \}\}/);
     }
