@@ -191,6 +191,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   const opened = await io.openRevert({ branch: revertBranch(ctx.culprits), shas: ctx.culprits.map((c) => c.sha), title: revertTitle(ctx), body: revertBody(ctx), message: revertMessage(ctx) });
   if (opened.exists) return result('skip', { reason: `${revertBranch(ctx.culprits)} already exists; this culprit was handled` });
   if (opened.conflict) return escalate(io, ctx, result, `git revert conflicted: ${opened.error}`);
+  if (opened.refused) return escalate(io, ctx, result, `revert branch ${opened.branch} is pushed but GitHub refused its PR (${opened.refused}); open it from ${opened.compare}`);
   return report(io, ctx, result, opened, `revert PR ${opened.html_url ?? opened.branch}${opened.armed === false ? ' (auto-merge not armed: SHERIFF_TOKEN missing)' : ''}`, 'revert');
 }
 
@@ -321,7 +322,9 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
         const made = pushRevert({ branch, shas, message });
         if (made) return made;
       }
-      const pr = api(`${base}/pulls`, { method: 'POST', token: writeToken, body: { title, head: branch, base: 'main', body } });
+      let pr;
+      try { pr = api(`${base}/pulls`, { method: 'POST', token: writeToken, body: { title, head: branch, base: 'main', body } }); }
+      catch (error) { return { refused: String(error.stderr || error.message).trim().split('\n').at(-1), branch, compare: `https://github.com/${repo}/compare/main...${branch}` }; }
       const armed = Boolean(env.SHERIFF_TOKEN);
       if (armed) run('gh', ['pr', 'merge', String(pr.number), '-R', repo, '--auto', '--squash', '--subject', title, '--body', message.split('\n').slice(2).join('\n')], { token: writeToken });
       return { number: pr.number, html_url: pr.html_url, branch, armed };
