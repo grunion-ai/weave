@@ -1,0 +1,75 @@
+name: promote
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Pick the commit and print it without promoting
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promotion
+  cancel-in-progress: false
+
+jobs:
+  select:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.select.outputs.sha }}
+      from: ${{ steps.select.outputs.from }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - id: select
+        run: node scripts/promote.mjs select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROMOTION_PAUSED: ${{ vars.PROMOTION_PAUSED }}
+          PROMOTION_EVERY_HOURS: ${{ vars.PROMOTION_EVERY_HOURS }}
+          PROMOTION_EVENT: ${{ github.event_name }}
+          PROMOTION_DRY_RUN: ${{ inputs.dry_run && 'true' || '' }}
+
+  promote:
+    needs: select
+    if: needs.select.outputs.sha != ''
+    environment:
+      name: production
+      url: https://weave.grunion.ai
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - name: Fast-forward production and wait for its watch
+        run: node scripts/promote.mjs promote
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.select.outputs.sha }}
+          FROM: ${{ needs.select.outputs.from }}
+          PROMOTION_PAUSED: ${{ vars.PROMOTION_PAUSED }}
+          PROMOTION_DEPLOY_KEY: ${{ secrets.PROMOTION_DEPLOY_KEY }}
+          PROD_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}
+          SHERIFF_TOKEN: ${{ secrets.SHERIFF_TOKEN }}
+          SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
+          WEAVE_TRACKER_TOKEN: ${{ secrets.WEAVE_TRACKER_TOKEN }}
