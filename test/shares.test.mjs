@@ -463,3 +463,40 @@ test('the MCP tool and the CLI verb mint, list and revoke', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a shared table page shows the rows its default view keeps (Issue #838)', async () => {
+  const { w, task, call, mint, stop } = await serve();
+  try {
+    w.addField(task.id, { name: 'Stage', type: 'select', config: { options: ['Open', 'Done'] } });
+    w.updateEntity(w.listEntities(task.id)[0].id, { Stage: 'Done' });
+    w.updateEntity(w.listEntities(task.id)[1].id, { Stage: 'Open' });
+    w.updateTable(task.id, { filters: { Stage: ['Open'] } });
+    const g = mint({ kind: 'table', id: task.id });
+    const html = await (await call('GET', `/s/${g.token}/table/${task.id}`)).text();
+    assert.ok(html.includes('Two'), 'the row the view keeps is on the page');
+    assert.ok(!html.includes('One'), 'the row the view filters out is not');
+    assert.ok(html.includes('1 row'), 'the count names what the page shows');
+  } finally { stop(); }
+});
+
+test("a shared table page honours the view's saved search (Issue #838)", async () => {
+  const { w, task, call, mint, stop } = await serve();
+  try {
+    const view = w.tableView({ id: task.id }).views[0].name;
+    w.tableView(`Dev/Task/${view}`, { search: 'dana' });
+    const g = mint({ kind: 'table', id: task.id });
+    const html = await (await call('GET', `/s/${g.token}/table/${task.id}`)).text();
+    assert.ok(html.includes('Two'), 'the row the search matches is on the page');
+    assert.ok(!html.includes('One'), 'the row the search excludes is not');
+  } finally { stop(); }
+});
+
+test("a shared table page follows the view's sort order (Issue #838)", async () => {
+  const { w, task, call, mint, stop } = await serve();
+  try {
+    w.updateTable(task.id, { sort: [{ field: 'Name', dir: 'desc' }] });
+    const g = mint({ kind: 'table', id: task.id });
+    const html = await (await call('GET', `/s/${g.token}/table/${task.id}`)).text();
+    assert.ok(html.indexOf('Two') < html.indexOf('One'), 'Name desc puts Two first');
+  } finally { stop(); }
+});

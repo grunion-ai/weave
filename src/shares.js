@@ -350,10 +350,20 @@ function page(title, subtitle, markdown) {
   return renderDocumentPage({ title, subtitle, markdown: markdown + FOOT });
 }
 
-const rowsIn = (weave, grant, db, where = null) => {
+const rowsIn = (weave, grant, db, where = null, { sort = null, search = '' } = {}) => {
   const inScope = inScopeOf(weave, grant, db);
-  return weave.query(db.id, where?.length ? { where } : {}).items.filter((x) => inScope(x.id));
+  const opts = { ...(where?.length ? { where } : {}), ...(sort?.length ? { sort } : {}), ...(search ? { search } : {}) };
+  return weave.query(db.id, opts).items.filter((x) => inScope(x.id));
 };
+
+const defaultViewOf = (db) => (Array.isArray(db.tableViews) ? db.tableViews[0] ?? null : null);
+
+const filterWhere = (weave, db, filters) => Object.entries(filters ?? {}).flatMap(([name, states]) => {
+  const f = weave.findField(db, name);
+  if (!f || !Array.isArray(states) || !states.length) return [];
+  if (f.type === 'toggle') return [[f.name, 'in', states.map((s) => s === f.config?.on)]];
+  return [[f.name, 'in', states]];
+});
 
 export function sharePage(weave, grant, rest, { method, prefix = '' }) {
   if (method !== 'GET' && method !== 'HEAD') return { status: 405 };
@@ -372,7 +382,8 @@ export function sharePage(weave, grant, rest, { method, prefix = '' }) {
   if ((m = rest.match(/^\/table\/([^/]+)$/))) {
     const db = liveTable(weave, m[1]);
     if (!db || !withinScope(weave, grant, { tableId: db.id })) return { status: 404 };
-    const items = rowsIn(weave, grant, db);
+    const v = defaultViewOf(db);
+    const items = rowsIn(weave, grant, db, filterWhere(weave, db, v?.filters), { sort: v?.sort, search: v?.search });
     const space = weave.state.spaces[db.spaceId]?.name;
     return { html: page(db.name, `${space} • ${count(items.length, 'row')}`, rowsTable(weave, db, items, base)) };
   }
