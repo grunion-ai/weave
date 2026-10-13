@@ -251,7 +251,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     catch (error) { try { run('git', ['revert', '--abort']); } catch {} return { conflict: true, error: String(error.stderr || error.message).split('\n')[0] }; }
     run('git', [...BOT, 'commit', '--quiet', '-F', '-'], { input: message });
     try { run('git', pushArgs(branch), { token: writeToken }); }
-    catch (error) { if (/rejected|already exists|fetch first/i.test(String(error.stderr))) return { exists: true, branch }; throw error; }
+    catch (error) { if (/\(fetch first\)|\(non-fast-forward\)|already exists/.test(String(error.stderr))) return { exists: true, branch }; throw error; }
     return null;
   };
   return {
@@ -361,8 +361,13 @@ async function main() {
   if (!/^\d+$/.test(runId ?? '')) throw new Error('Expected SHERIFF_RUN_ID or a run id argument');
   const dryRun = process.env.SHERIFF_DRY_RUN === '1' || process.argv.includes('--dry-run');
   const io = realIO();
-  const outcome = await sheriff(runId, dryRun ? dryIO(io) : io, { dryRun });
-  console.log(JSON.stringify(outcome, null, 2));
+  try {
+    const outcome = await sheriff(runId, dryRun ? dryIO(io) : io, { dryRun });
+    console.log(JSON.stringify(outcome, null, 2));
+  } catch (error) {
+    if (!dryRun) await io.alert(`weave sheriff: failed on run https://github.com/${io.repo}/actions/runs/${runId}: ${error.message}${io.self ? ` (${io.self})` : ''}`);
+    throw error;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch((error) => { console.error(error.message); process.exitCode = 1; });
