@@ -197,7 +197,7 @@ test('workflows: tests takes a ref input for bisect probes and the sheriff answe
   assert.match(tests, /group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}-\$\{\{ inputs\.ref \}\}/);
   assert.match(tests, /workflow_dispatch' && !inputs\.ref\)/);
   const yml = readFileSync('.github/workflows/sheriff.yml', 'utf8');
-  assert.match(yml, /workflow_run:\n    workflows: \[tests\]\n    types: \[completed\]\n    branches: \[main\]/);
+  assert.match(yml, /workflow_run:[^\n]*\n    workflows: \[tests\]\n    types: \[completed\]\n    branches: \[main\]/);
   for (const guard of ["conclusion == 'failure'", "event == 'push'", "head_branch == 'main'", 'run_attempt == 1']) assert.ok(yml.includes(guard), guard);
   assert.match(yml, /node scripts\/sheriff\.mjs/);
   assert.doesNotMatch(yml + readFileSync('scripts/sheriff.mjs', 'utf8'), /--force|push -f/);

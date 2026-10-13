@@ -1,7 +1,7 @@
 name: sheriff
 
 on:
-  workflow_run:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [tests]
     types: [completed]
     branches: [main]
