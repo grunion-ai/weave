@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { testFiles, lanes } from './test.mjs';
 
@@ -44,14 +44,51 @@ export function validate(manifest, results, commit) {
   return { commit, files: summaries.length, tests: summaries.reduce((n, s) => n + s.counts.tests, 0), slowest: summaries.sort((a, b) => b.duration_ms - a.duration_ms).slice(0, 10) };
 }
 
+export const SMOKE = [
+  'test/doc-title-browser.test.mjs',
+  'test/entity-dock-browser.test.mjs',
+  'test/first-run-browser.test.mjs',
+  'test/picker-browser.test.mjs',
+  'test/route-skeleton-browser.test.mjs',
+  'test/table-views-browser.test.mjs',
+];
+
+export function touchedBrowser(changed, browser, read) {
+  const picked = new Set(SMOKE.filter(file => browser.includes(file)));
+  for (const file of changed) {
+    if (browser.includes(file)) { picked.add(file); continue; }
+    const name = basename(file);
+    const stem = name.replace(/\.[^.]+$/, '').replace(/-core$/, '');
+    for (const test of browser) {
+      const testStem = basename(test).replace(/(-browser)?\.test\.mjs$/, '');
+      if (testStem === stem || testStem.startsWith(`${stem}-`) || read(test).includes(name)) picked.add(test);
+    }
+  }
+  return [...picked].sort();
+}
+
+export function prPlan({ unit, browser }, changed, read, weight) {
+  const touched = touchedBrowser(changed, browser, read);
+  return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
+}
+
+const weightOf = file => statSync(join(ROOT, file)).size;
+
 function currentPlan() {
   const files = testFiles(ROOT);
-  return plan(files, lanes(files, ROOT), file => statSync(join(ROOT, file)).size);
+  return plan(files, lanes(files, ROOT), weightOf);
+}
+
+function currentPrPlan() {
+  const changed = execFileSync('git', ['diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightOf);
 }
 
 async function main() {
-  const [command, id, out = 'ci-results'] = process.argv.slice(2);
-  const manifest = currentPlan();
+  const [mode, id, out = 'ci-results'] = process.argv.slice(2);
+  const pr = mode?.startsWith('pr-');
+  const command = pr ? mode.slice(3) : mode;
+  const manifest = pr ? currentPrPlan() : currentPlan();
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
   if (command === 'plan') { console.log(JSON.stringify({ include: manifest.map(({ id, lane }) => ({ id, lane })) })); return; }
   if (command === 'aggregate') {
@@ -60,7 +97,7 @@ async function main() {
     console.log(JSON.stringify(summary, null, 2));
     return;
   }
-  if (command !== 'run') throw new Error('Expected plan, run <shard>, or aggregate <directory>');
+  if (command !== 'run') throw new Error('Expected [pr-]plan, [pr-]run <shard>, or [pr-]aggregate <directory>');
   const shard = manifest.find(s => s.id === id);
   if (!shard) throw new Error(`Unknown shard ${id}`);
   const dir = mkdtempSync(join(tmpdir(), 'weave-ci-'));
