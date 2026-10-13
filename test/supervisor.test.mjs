@@ -534,9 +534,9 @@ test('without a deploy token the hook path is not special', async () => {
   }
 });
 
-function walledBin(reported, body = { ok: true, name: 'weave' }) {
+function walledBin(reported) {
   return `import { createServer } from 'node:http';
-const s = createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end(${JSON.stringify(JSON.stringify(body))}); });
+const s = createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end(JSON.stringify({ ok: true, name: 'weave' })); });
 s.listen(0, '127.0.0.1', () => process.send({ weave: 'listening', port: s.address().port, version: ${JSON.stringify(reported)} }));
 process.on('message', (m) => { if (m?.weave === 'migrate') process.send({ weave: 'migrated' }); });
 `;
@@ -567,19 +567,7 @@ test('a worker that reports a different version over IPC is refused', async () =
   }
 });
 
-test('a candidate whose anonymous health names its version is accepted without an IPC report, the probe the v0.4.88 image supervisor runs', async () => {
-  const dataPath = dataDir('anon-version');
-  const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: walledBin(undefined, { ok: true, name: 'weave', version: NEXT }) }) });
-  const { sup } = await supervise(dataPath, gh);
-  try {
-    const result = await sup.check();
-    assert.equal(result.action, 'swapped', result.reason);
-  } finally {
-    await sup.close();
-  }
-});
-
-test('a walled workspace swaps to a real release, and anonymous health then names the new version', async () => {
+test('a walled workspace swaps to a real release whose anonymous health is only {ok, name}, through the version the worker reports over IPC', async () => {
   const dataPath = dataDir('walled-real');
   const w = new Weave({ path: dataPath });
   w.createAccount({ name: 'root', role: 'architect' });
@@ -589,11 +577,16 @@ test('a walled workspace swaps to a real release, and anonymous health then name
   const gh = fakeGitHub();
   const { sup, base } = await supervise(dataPath, gh);
   try {
+    const before = await health(base);
+    assert.deepEqual(Object.keys(before).sort(), ['name', 'ok', 'supervisor']);
     const result = await sup.check();
     assert.equal(result.action, 'swapped', result.reason);
-    const body = await health(base);
-    assert.equal(body.version, NEXT);
-    assert.equal(body.workspace, undefined);
+    const after = await health(base);
+    assert.deepEqual(Object.keys(after).sort(), ['name', 'ok', 'supervisor']);
+    assert.equal(after.supervisor.release, `v${NEXT}`);
+    assert.equal(after.supervisor.lastSwap.ok, true);
+    assert.equal(after.supervisor.lastSwap.to, `v${NEXT}`);
+    assert.deepEqual(after.supervisor.failed, []);
   } finally {
     await sup.close();
   }
