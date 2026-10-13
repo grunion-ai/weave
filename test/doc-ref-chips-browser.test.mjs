@@ -177,11 +177,10 @@ if (s) {
           const root = document.querySelector('.vditor-ir .vditor-reset');
           const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
           for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-            const at = n.nodeValue.indexOf(']] for');
-            if (at < 0) continue;
+            if (!n.nodeValue.startsWith(' for') || !n.previousSibling?.classList?.contains('doc-ref-raw')) continue;
             root.focus();
             const range = document.createRange();
-            range.setStart(n, at + 3); range.collapse(true);
+            range.setStart(n, 1); range.collapse(true);
             getSelection().removeAllRanges(); getSelection().addRange(range);
             return;
           }

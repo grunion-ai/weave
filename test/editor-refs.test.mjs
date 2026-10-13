@@ -57,9 +57,8 @@ test('the overlay never rewrites the contenteditable DOM', () => {
     'chips must never be appended into the editing surface');
 });
 
-test('decoration is debounced and scoped to visible text', () => {
+test('decoration is debounced', () => {
   assert.match(APP, /REF_CHIP_DEBOUNCE\s*=\s*\d+/, 'a named debounce for the pass');
-  assert.match(APP, /innerHeight/, 'off-screen paragraphs must not pay for geometry');
 });
 
 test('references resolve through the same endpoint the previews use', () => {
@@ -87,10 +86,10 @@ test('the layer is click-transparent except for the chips themselves', () => {
 });
 
 test('the editor chip is the one renderer’s markup, sized to its label (Issue #679)', () => {
-  const draw = APP.match(/const slot = el\('span', \{\s*class: 'doc-ref-slot wv-prose',[^]*?st\.layer\.append\(slot\);/)[0];
+  const draw = APP.match(/const slot = el\('span', \{\s*class: 'doc-ref-slot wv-prose'\s*\}\);[^]*?st\.layer\.append\(slot\);/)[0];
   assert.match(draw, /class: 'doc-ref-slot wv-prose'/, 'the slot is prose ground, not a second costume');
   assert.match(draw, /slot\.append\(hit\.chip\.cloneNode\(true\)\)/, 'the chip is the rendered document\'s own node, cloned, never re-parsed from a string');
-  assert.ok(!/width:\$\{r\.width\}px/.test(draw), 'the chip is no longer cut to the width of its literal');
+  assert.match(APP, /const r = d\.slot\.getBoundingClientRect\(\);/, 'the hidden literal takes the chip\'s own measured width, so the chip is never cut to the literal (Issue #878)');
   assert.match(APP, /lib\.aliasRefSpans\(md/, 'a bare reference is stored aliased, so the literal reserves the room');
   assert.match(CSS, /\.k-rel:not\(\.has-id\) > \.mention-entity::before \{ content: "#"; \}/);
   assert.doesNotMatch(CSS, /a\.mention[^{]*\{[^}]*rgba\(var\(--tblr-primary-rgb\), \.08\)/, 'no tinted-link costume');

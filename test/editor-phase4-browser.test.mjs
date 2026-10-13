@@ -122,15 +122,16 @@ if (s) {
         const chip = slot.querySelector('a.mention');
         const label = slot.querySelector('.k-label');
         const slotRect = slot.getBoundingClientRect();
+        const textRect = document.querySelector('.vditor-ir .doc-ref-raw')?.getBoundingClientRect();
         const walker = document.createTreeWalker(
           document.querySelector('.vditor-ir .vditor-reset'), NodeFilter.SHOW_TEXT);
-        let textRect = null;
+        let after = null;
         for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-          const at = n.nodeValue.indexOf('[[');
+          const at = n.nodeValue.indexOf('here');
           if (at < 0) continue;
           const range = document.createRange();
-          range.setStart(n, at); range.setEnd(n, n.nodeValue.indexOf(']]') + 2);
-          textRect = range.getBoundingClientRect();
+          range.setStart(n, at); range.setEnd(n, at + 4);
+          after = range.getBoundingClientRect();
         }
         const text = document.createRange();
         text.selectNodeContents(label);
@@ -138,7 +139,7 @@ if (s) {
           label: slot.textContent,
           href: chip.getAttribute('href'),
           startsAtLiteral: textRect && Math.abs(slotRect.left - textRect.left) < 2,
-          fitsInLiteral: textRect && slotRect.width <= textRect.width + 2,
+          fitsInLiteral: textRect && slotRect.width <= textRect.width + 2 && after && slotRect.right <= after.left + 1,
           labelWhole: text.getBoundingClientRect().width <= label.getBoundingClientRect().width + 1,
           value: window.__weaveEditors.values().next().value.getValue(),
         };
@@ -146,7 +147,7 @@ if (s) {
       assert.ok(r.label.includes('Chip target'), `chip must carry the resolved name, got "${r.label}"`);
       assert.match(r.href, /#\/entity\//, 'an entity chip opens the entity page in-app');
       assert.ok(r.startsAtLiteral, 'the chip starts where its reference starts');
-      assert.ok(r.fitsInLiteral, 'and ends inside it, so it never covers the words after it');
+      assert.ok(r.fitsInLiteral, 'and ends inside the room the hidden literal keeps, so it never covers the words after it (Issue #878)');
       assert.ok(r.labelWhole, 'the name reads whole: the chip is sized to its label, not to the literal (Issue #679)');
       assert.match(r.value, /\[\[Note#\d+\|Chip target\]\]/,
         'a bare reference is stored aliased once the editor resolves it, which is what reserves the room');
