@@ -148,3 +148,29 @@ test('an interleaved request cannot change the authenticated form author or rece
   assert.equal(independent.status, 201);
   assert.notEqual((await independent.json()).id, result.body.id);
 });
+
+test('a fresh browser that retries with a new key still files one row (Issue #811)', async (t) => {
+  const previous = process.env.WEAVE_ANONYMOUS_FORMS;
+  process.env.WEAVE_ANONYMOUS_FORMS = '1';
+  let f;
+  try { f = await fixture(t); } finally {
+    if (previous === undefined) delete process.env.WEAVE_ANONYMOUS_FORMS;
+    else process.env.WEAVE_ANONYMOUS_FORMS = previous;
+  }
+  const { w, send } = f;
+  const form = createForm(w, { name: 'Open intake', table: 'Intake/Requests', fields: ['Name'], floor: 'Anonymous' });
+  w.createAccount({ name: 'owner', role: 'architect' });
+  w.setRequireAuth(true);
+  const first = await send(`/api/forms/${form.id}/submit`, '{"Name":"Same"}', { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() });
+  assert.equal(first.status, 201);
+  const minted = /wv_form_client=([\w-]{43})/.exec(first.headers.get('set-cookie') ?? '');
+  assert.ok(minted, 'the first submission mints the browser client cookie');
+  const retry = await send(`/api/forms/${form.id}/submit`, '{"Name":"Same"}', {
+    'Content-Type': 'application/json',
+    'Idempotency-Key': crypto.randomUUID(),
+    Cookie: `wv_form_client=${minted[1]}`,
+  });
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).id, (await first.json()).id);
+  assert.equal(w.listEntities(w.getTable('Intake/Requests').id).length, 1);
+});
