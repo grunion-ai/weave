@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, SMOKE } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, SMOKE, newestAttempts } from '../scripts/ci-test.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
 const manifest = plan(files, { unit: files.slice(0, 2), browser: files.slice(2) }, () => 10, 2, 2);
@@ -140,4 +140,21 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /install --with-deps chromium webkit/);
   assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
+});
+
+test('a re-run shard replaces its earlier attempt, so the gate judges the newest result', () => {
+  const failed = { ...evidence()[0], attempt: 1, code: 1 };
+  const rerun = { ...evidence()[0], attempt: 2 };
+  const results = [failed, rerun, ...evidence().slice(1).map(r => ({ ...r, attempt: 1 }))];
+  assert.throws(() => validate(manifest, results, 'abc'), /duplicate/);
+  assert.equal(validate(manifest, newestAttempts(results), 'abc').files, 4);
+  assert.equal(validate(manifest, newestAttempts([rerun, failed, ...results.slice(2)]), 'abc').files, 4);
+  assert.throws(() => validate(manifest, newestAttempts([{ ...failed, attempt: 3 }, rerun, ...results.slice(2)]), 'abc'), /Invalid shard/);
+  assert.deepEqual(newestAttempts([{ id: 'unit-1' }, { id: 'unit-1', attempt: 2 }]), [{ id: 'unit-1', attempt: 2 }]);
+});
+
+test('pr.yml names each shard artifact by attempt so a re-run never overwrites the one it replaces', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/pr.yml', 'utf8');
+  assert.match(workflow, /name: pr-\$\{\{ matrix.id \}\}-\$\{\{ github.run_attempt \}\}/);
 });

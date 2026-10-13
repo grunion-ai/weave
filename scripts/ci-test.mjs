@@ -74,6 +74,15 @@ export function prPlan({ unit, browser }, changed, read, weight) {
 
 const weightOf = file => statSync(join(ROOT, file)).size;
 
+export function newestAttempts(results) {
+  const newest = new Map();
+  for (const result of results) {
+    const held = newest.get(result.id);
+    if (!held || (result.attempt ?? 1) > (held.attempt ?? 1)) newest.set(result.id, result);
+  }
+  return [...newest.values()];
+}
+
 function currentPlan() {
   const files = testFiles(ROOT);
   return plan(files, lanes(files, ROOT), weightOf);
@@ -93,7 +102,7 @@ async function main() {
   if (command === 'plan') { console.log(JSON.stringify({ include: manifest.map(({ id, lane }) => ({ id, lane })) })); return; }
   if (command === 'aggregate') {
     const results = readdirSync(id, { recursive: true }).filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(join(id, f), 'utf8')));
-    const summary = validate(manifest, results, commit);
+    const summary = validate(manifest, pr ? newestAttempts(results) : results, commit);
     console.log(JSON.stringify(summary, null, 2));
     return;
   }
@@ -108,7 +117,7 @@ async function main() {
     cwd: ROOT, stdio: 'inherit', env: { ...process.env, WEAVE_CI_REPORT: report },
   });
   const events = readFileSync(report, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const result = { ...shard, commit, manifest: digest(manifest), code: child.status ?? 1, durationMs: Date.now() - start, summaries: events.filter(e => e.type === 'summary').map(e => e.data), skips: events.filter(e => e.type === 'skip').map(e => e.data) };
+  const result = { ...shard, commit, manifest: digest(manifest), attempt: Number(process.env.GITHUB_RUN_ATTEMPT ?? 1), code: child.status ?? 1, durationMs: Date.now() - start, summaries: events.filter(e => e.type === 'summary').map(e => e.data), skips: events.filter(e => e.type === 'skip').map(e => e.data) };
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, `${id}.json`), JSON.stringify(result, null, 2) + '\n');
   rmSync(dir, { recursive: true, force: true });
