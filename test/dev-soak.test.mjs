@@ -94,11 +94,20 @@ test('soak: a watch that has not passed when the soak ends gets the grace period
   assert.ok(never.at() - t0 >= DEFAULTS.soakMs + DEFAULTS.graceMs);
 });
 
-test('soak: a failed smoke fails at once and names the step', async () => {
-  const io = fakeIO({ healthAt: watching(5), smokeAt: (n) => (n === 2 ? { ok: false, step: 'open table', error: 'timeout', fivexx: 0 } : { ok: true, fivexx: 0 }) });
+test('soak: a smoke that fails twice in a row fails and names the step', async () => {
+  const io = fakeIO({ healthAt: watching(5), smokeAt: (n) => (n === 2 || n === 3 ? { ok: false, step: 'open table', error: 'timeout', fivexx: 0 } : { ok: true, fivexx: 0 }) });
   const outcome = await soak({ sha: SHA, io, clock: fakeClock() });
   assert.equal(outcome.state, 'failure');
-  assert.equal(outcome.reason, 'smoke 3 failed at open table: timeout');
+  assert.equal(outcome.reason, 'smoke 3 failed at open table twice: timeout');
+});
+
+test('soak: one failed smoke is retried at once and a passing retry keeps the soak going, logged', async () => {
+  const io = fakeIO({ healthAt: watching(25), smokeAt: (n) => (n === 2 ? { ok: false, step: 'open table', error: 'timeout', fivexx: 0 } : { ok: true, fivexx: 0 }) });
+  const outcome = await soak({ sha: SHA, io, clock: fakeClock() });
+  assert.equal(outcome.state, 'success');
+  assert.equal(outcome.retries, 1);
+  assert.equal(io.calls.smokes.length, 6);
+  assert.match(io.calls.logs.join('\n'), /smoke 3 failed at open table \(timeout\); retrying once/);
 });
 
 test('soak: any 5xx past the budget fails, from the smoke or from health', async () => {
