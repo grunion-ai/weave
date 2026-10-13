@@ -1,0 +1,1 @@
+- Keyboard navigation inside a dialog or tray now reaches a disclosure's summary, and no longer dead-ends on the controls hidden inside a closed one. Tab through the field tray of a formula field reaches "Fields and functions", "As an agent would do it" and the tray's own Save button; Enter on a summary opens the section and the next Tab lands inside it. (Issue #816)

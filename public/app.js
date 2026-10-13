@@ -205,7 +205,12 @@ addEventListener('keydown', (e) => {
 }, true);
 
 const MODAL_LIVE = '#wv-toasts, .bug-fab, #bug-panel';
-const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), iframe, details > summary:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
+function reachableStop(n) {
+  if (!n.getClientRects().length) return false;
+  const shut = n.closest('details:not([open])');
+  return !shut || (n.tagName === 'SUMMARY' && n.parentElement === shut);
+}
 const holds = [];
 function releasePage() {
   for (const gone of holds.filter((h) => !h.back.isConnected)) {
@@ -224,7 +229,7 @@ function holdPage(back, box, label = box.querySelector('h2')) {
   else if (label) { label.id ||= `${back.id}-title`; box.setAttribute('aria-labelledby', label.id); }
   const wrap = box.querySelector('iframe') ? el('span', { class: 'hold-wrap', tabindex: '0' }) : null;
   if (wrap) box.append(wrap);
-  const stops = () => [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n !== wrap && n.getClientRects().length);
+  const stops = () => [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n !== wrap && reachableStop(n));
   wrap?.addEventListener('focus', () => stops()[0]?.focus());
   document.body.append(back);
   const hold = { back, held: [] };
@@ -12682,7 +12687,7 @@ function wireNavHold() {
   if (!app || !rail || !sidebar) return;
   const drawer = () => (railFolds.matches ? [sidebar, rail] : [sidebar]);
   const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
-    .filter((n) => n.getClientRects().length);
+    .filter(reachableStop);
   const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };
   let held = null;
   const hold = () => {
