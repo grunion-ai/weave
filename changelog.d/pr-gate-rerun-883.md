@@ -1,0 +1,1 @@
+- **Re-running a failed PR shard can turn `PR gate` green** (Issue #883): each shard's evidence artifact now carries its run attempt, and `PR gate` judges every shard by its newest attempt. Before, a re-run that passed still failed the gate, because the failed attempt's artifact overwrote the new one on download. Gate: `test/ci-test.test.mjs`.
