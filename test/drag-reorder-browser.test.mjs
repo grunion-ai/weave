@@ -7,7 +7,7 @@ let ids;
 const s = await launch('drag to reorder, desktop (Feature #282)', (weave) => { ids = seedReorder(weave); });
 if (s) {
   const { base, browser, weave } = s;
-  const all = surfaces({ weave, base, ids });
+  const all = surfaces({ weave, base, ids, cell: 'desktop' });
   const page = async (options = {}) => browser.newPage({ viewport: { width: 1280, height: 900 }, ...options });
 
   for (const surface of all) {

@@ -84,7 +84,7 @@ async function tool(page, button) {
   await page.click(button);
 }
 
-export function surfaces({ weave, base, ids }) {
+export function surfaces({ weave, base, ids, cell = null }) {
   const { grid, eye, tabs, pick, card, cardId, todo, flowId } = ids;
   return [
     {
@@ -108,6 +108,7 @@ export function surfaces({ weave, base, ids }) {
     },
     {
       name: 'Fields popover',
+      cells: ['desktop'],
       axis: 'y',
       reset: () => weave.tableView(viewRef(weave, eye), { fields: ['Name', 'Owner', 'Stage', 'Amount'] }),
       open: async (page) => {
@@ -124,6 +125,27 @@ export function surfaces({ weave, base, ids }) {
       move: { from: 'Amount', onto: 'Name', side: 'before' },
       midway: ['[Amount]', 'Name', 'Owner', 'Stage'],
       after: ['Amount', 'Name', 'Owner', 'Stage'],
+      cancel: { from: 'Owner', onto: 'Stage', side: 'after' },
+    },
+    {
+      name: 'Phone row sheet',
+      cells: ['phone'],
+      axis: 'y',
+      reset: () => weave.tableView(viewRef(weave, eye), { fields: ['Name', 'Owner', 'Stage', 'Amount'], phoneRow: null }),
+      open: async (page) => {
+        await page.goto(`${base}/#/table/${eye.id}`, { waitUntil: 'networkidle' });
+        await tool(page, '.eye-btn');
+        await page.waitForSelector('.phone-row-popover .phone-row-chips .phone-row-field');
+        await quiet(page);
+      },
+      handle: (page, key) => page.locator(`.phone-row-chips .phone-row-field[data-field="${key}"] .field-reorder-handle`),
+      target: (page, key) => page.locator(`.phone-row-chips .phone-row-field[data-field="${key}"]`),
+      keys: (page) => listKeys(page, '.phone-row-chips', '.phone-row-field', 'field'),
+      saved: () => firstView(weave, eye).phoneRow?.chips ?? null,
+      start: ['Owner', 'Stage', 'Amount'],
+      move: { from: 'Amount', onto: 'Owner', side: 'before' },
+      midway: ['[Amount]', 'Owner', 'Stage'],
+      after: ['Amount', 'Owner', 'Stage'],
       cancel: { from: 'Owner', onto: 'Stage', side: 'after' },
     },
     {
@@ -263,7 +285,7 @@ export function surfaces({ weave, base, ids }) {
       after: ['Charlie', 'Alpha', 'Bravo'],
       cancel: { from: 'Alpha', onto: 'Bravo', side: 'after' },
     },
-  ];
+  ].filter((s) => !cell || !s.cells || s.cells.includes(cell));
 }
 
 export function pointer(page, { touch = false } = {}) {
