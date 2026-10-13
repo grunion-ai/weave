@@ -100,12 +100,13 @@ test('the Worker answers a generic body for an error outside the dispatcher', as
   const dobj = new WeaveWorkspace({ storage: shimStorage() }, { WEAVE_VERSION: '0.0.0-test' });
   const log = capture();
   try {
-    const res = await dobj.fetch(new Request('http://do/api/%zz', { headers: { 'x-weave-workspace': 'scratch' } }));
+    const headers = { get: (name) => { if (name === 'origin') throw new Error(SECRET); return name === 'x-weave-workspace' ? 'scratch' : null; } };
+    const res = await dobj.fetch({ url: 'http://do/api/health', method: 'GET', headers });
     const json = await res.json();
     assert.equal(res.status, 500);
     assert.equal(json.code, 'internal');
     assert.match(json.id, ID);
-    assert.ok(!/malformed/i.test(json.error), JSON.stringify(json));
+    assert.ok(!json.error.includes('/secret/path'), JSON.stringify(json));
     assert.ok(log.lines.some((l) => l.includes(json.id)));
   } finally { log.restore(); }
 });
