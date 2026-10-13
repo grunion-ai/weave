@@ -18,10 +18,7 @@ on:
         default: true
 
 permissions:
-  contents: write
-  actions: write
-  pull-requests: write
-  issues: write
+  contents: read
 
 concurrency:
   group: sheriff-${{ github.event.workflow_run.id || inputs.run_id }}
@@ -38,6 +35,11 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 150
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
