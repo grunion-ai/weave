@@ -10,14 +10,17 @@ production, which needs an approved release.
 
 1. Query the weave Development tracker before work and add the regression test
    before the fix. Keep one concern per worktree and coordinate file ownership.
-2. Run relevant local tests with explicit filenames. Read the complete diff,
-   including lifecycle, undo, CLI, API and MCP parity. Check both themes for UI
-   changes and update the Handbook where behavior changes.
-3. Push the feature branch to origin and open a GitHub pull request. Record the
-   tracker reference, changes and test evidence. Never push directly to main.
-4. Self-review, then arm auto-merge: `gh pr merge --auto --squash`. The only
-   required check is `Dev gate` (syntax plus a boot health check, under a
-   minute). The branch does not have to be up to date with main.
+2. Push the feature branch to origin early and open a GitHub pull request; the
+   `PR gate` runs the tests on GitHub-hosted runners. Record the tracker
+   reference, changes and test evidence. Never push directly to main. Local runs
+   through the shared test manager are optional, for debugging a failure. Read
+   the complete diff, including lifecycle, undo, CLI, API and MCP parity. Check
+   both themes for UI changes and update the Handbook where behavior changes.
+3. Self-review, then arm auto-merge: `gh pr merge --auto --squash`. Two checks
+   are required: `Dev gate` (syntax plus a boot health check, under a minute)
+   and `PR gate` (the `pr` workflow, under six minutes). The branch does not
+   have to be up to date with main.
+4. Fix a red `PR gate` by pushing again; a new push cancels the superseded run.
 5. Every main push swaps dev.weave.grunion.ai to that commit. The dev supervisor
    boots the new commit beside the serving one, moves traffic only after its
    health check passes, and keeps the old worker serving when it fails. A failed
@@ -32,15 +35,27 @@ production, which needs an approved release.
 
 ## Verification
 
+The `pr` workflow runs on every ready pull request. Its plan, `node
+scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
+three shards, plus the browser tests the diff maps to, sharded at about twenty
+files each, four at most. A changed browser test runs itself. Any other changed
+file maps to browser tests named for its module (`public/chip-core.js` maps to
+`test/chip-*-browser.test.mjs`) or whose source cites its file name. A fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`) always runs, so a
+diff nothing maps to still boots the app in a browser. `PR gate` succeeds only
+when every shard succeeded and `pr-aggregate` finds executed evidence for every
+planned file at the exact commit. A newer push to the same pull request cancels
+the running one.
+
 The `tests` workflow runs the full inventory on every main push. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can
 only publish a main commit whose `CI gate` succeeded. Browser dependencies are installed in CI;
 a missing browser or skipped required browser suite fails the gate. Parallel CI
 jobs have isolated runners and test data. Superseded branch runs are canceled.
 
-Local workers use `npm test -- --targeted <file...>` and leave full verification
-to CI. Never invoke bare `node --test`; empty selections must fail before Node
-starts. The shared test manager serializes local browser work across worktrees.
+Local runs are for debugging: `npm test -- --targeted <file...>` reproduces a
+red shard, and CI owns verification. Never invoke bare `node --test`; empty
+selections must fail before Node starts. The shared test manager serializes
+local browser work across worktrees.
 Use `npm test -- --status` to inspect the queue and cancel only your own job.
 Browser assertions use `styleOf` or `settled` from `test/lib/browser.mjs`, never
 fixed sleeps. `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.

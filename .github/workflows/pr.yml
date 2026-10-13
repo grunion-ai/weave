@@ -1,0 +1,102 @@
+name: pr
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLAYWRIGHT_VERSION: "1.62.1"
+
+jobs:
+  plan:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - id: plan
+        run: echo "matrix=$(node scripts/ci-test.mjs pr-plan)" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: pr ${{ matrix.id }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - name: Install pinned browser driver
+        run: |
+          npm ci --ignore-scripts --prefix .github/test-tools
+          ln -s .github/test-tools/node_modules node_modules
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Install browsers and system dependencies
+        run: npx --no-install playwright install --with-deps chromium webkit
+      - name: Run fast shard
+        env:
+          SHARD: ${{ matrix.id }}
+          WEAVE_TEST_QUEUE_WAIT_MS: "60000"
+        run: node scripts/ci-test.mjs pr-run "$SHARD"
+      - name: Retain execution evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr-${{ matrix.id }}
+          path: ci-results/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  gate:
+    name: PR gate
+    if: ${{ always() && !github.event.pull_request.draft }}
+    needs: [plan, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every shard
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: test "$PLAN_RESULT" = success && test "$TEST_RESULT" = success
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: pr-*
+          path: ci-results
+      - name: Verify exact commit and complete executed coverage
+        run: node scripts/ci-test.mjs pr-aggregate ci-results
