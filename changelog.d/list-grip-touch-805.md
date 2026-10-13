@@ -1,0 +1,1 @@
+- A List view row's drag grip is a 44 by 44 target on a touch screen, up from about 20 by 20, so a finger can take hold of a row to reorder it. The glyph keeps its size and sits centred in the target, the row height does not change, and a mouse pointer still gets the small grip on hover. Gate: `test/phone-list-grip-browser.test.mjs`. (Issue #805)
