@@ -1,1 +1,0 @@
-- **Workflows stays in every sidebar** (Issue #872): a member workspace served by the hub keeps its Workflows row beside Activity and Trash. The row finds the Workflows table through the root registry and opens it on the root, and it still shows, linking the root registry, when no Workflows table resolves.

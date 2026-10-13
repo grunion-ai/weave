@@ -1,1 +1,0 @@
-- A supervisor serving the image it shipped in reports the commit Railway built it from in `/api/health` (`supervisor.commit`), so production names its build the way dev already does (Feature #305).

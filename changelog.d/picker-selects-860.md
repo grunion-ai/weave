@@ -1,1 +1,0 @@
-- **Prefill links and the form editor choose through the picker** (Issue #860): the New row form a prefill link opens and the form editor's Audience, choice default and Yes/No default no longer draw native selects. Each opens the search picker every other selector uses, and a multiselect prefill or default picks several values in place through a new multi face on the form picker.

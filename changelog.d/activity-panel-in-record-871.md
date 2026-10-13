@@ -1,1 +1,0 @@
-- The Activity panel opens inside the record as a column right of its body, on the full record page and in the peek beside a table. The record body narrows to make room; the page, the crumb row and the table no longer move or sit under the panel. On a phone it is still a full-screen sheet (Issue #871).

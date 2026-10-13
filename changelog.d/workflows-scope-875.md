@@ -1,1 +1,0 @@
-- Each workspace's Workflows row opens that workspace's own workflows at its own address, and the root lists only its own. The server scopes the Workflows query, row list and trash to the asking workspace, a member cannot read another workspace's workflow by id, and existing rows take their workspace from the table their rule runs on (Issue #875).
