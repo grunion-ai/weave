@@ -2153,6 +2153,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 @media (hover: hover) { .wv-list .list-row:hover .list-grip { opacity: .7; } }
 @media (hover: none) { .list-grip { opacity: .7; } }
 .list-grip svg { width: 14px; height: 14px; }
+@media (pointer: coarse) {
+  .wv-list .list-row .list-grip { width: 44px; height: 44px; padding: 0; margin-block: calc(var(--list-pad) * -1); }
+}
 .list-check { margin: 0; flex: none; cursor: pointer; }
 .list-check-gap { width: 1em; flex: none; }
 .list-chip { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; min-width: 0; flex: 1; }
