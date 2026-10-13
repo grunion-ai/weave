@@ -45,24 +45,6 @@ export async function publishRelease(metadata, sha, io) {
   return { state: 'published', ...metadata };
 }
 
-export async function waitForDeployment(url, metadata, { attempts = 90, delayMs = 10_000, allowImage = false, fetch = globalThis.fetch } = {}) {
-  let last = 'no health response';
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    let health;
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { 'cache-control': 'no-cache' } });
-      health = await response.json();
-      const tagged = health.supervisor?.release === metadata.tag && (health.version ?? metadata.version) === metadata.version;
-      const image = allowImage && health.supervisor?.release === 'image' && health.version === metadata.version;
-      if (response.ok && health.ok && (tagged || image)) return health;
-      last = `HTTP ${response.status}, version ${health.version}, release ${health.supervisor?.release}`;
-    } catch (error) { last = error.message; }
-    if (health?.supervisor?.failed?.includes(metadata.version)) throw new Error(`Supervisor rejected ${metadata.tag}`);
-    if (attempt + 1 < attempts) await new Promise((done) => setTimeout(done, delayMs));
-  }
-  throw new Error(`Deployment did not reach ${metadata.tag}: ${last}`);
-}
-
 export const MAX_BUFFER = 256 * 1024 * 1024;
 
 export function capture(cmd, args, options = {}) {
@@ -117,10 +99,6 @@ async function main() {
   const metadata = releaseMetadata(JSON.parse(readFileSync('package.json', 'utf8')), readFileSync('CHANGELOG.md', 'utf8'), JSON.parse(readFileSync('docs/development.json', 'utf8')));
   const result = await publishRelease(metadata, sha, io);
   console.log(JSON.stringify({ state: result.state, tag: result.tag, sha }));
-  if (result.state !== 'superseded') {
-    const health = await waitForDeployment('https://weave.grunion.ai/api/health', metadata, { allowImage: result.state === 'unchanged' });
-    console.log(JSON.stringify({ healthy: true, version: health.version, release: health.supervisor.release }));
-  }
 }
 
 function gitHead() {

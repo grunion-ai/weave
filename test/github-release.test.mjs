@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateRun, releaseMetadata, publishRelease, waitForDeployment, capture } from '../scripts/github-release.mjs';
+import { readFileSync } from 'node:fs';
+import { validateRun, releaseMetadata, publishRelease, capture } from '../scripts/github-release.mjs';
 
 const sha = 'a'.repeat(40);
 const repo = 'grunion-ai/weave';
@@ -57,19 +58,9 @@ test('stale runs skip, mismatched tags fail, published ancestor versions remain 
   assert.equal(old.writes.length, 0);
 });
 
-test('health waits for exact version and tag; baseline image allowed only for unchanged releases', async () => {
-  let calls = 0;
-  const health = { ok: true, version: '1.2.3', supervisor: { release: 'v1.2.3', failed: [] } };
-  const options = { attempts: 2, delayMs: 0, fetch: async () => ({ ok: true, json: async () => ++calls === 1 ? { ...health, version: '1.2.2' } : health }) };
-  assert.deepEqual(await waitForDeployment('https://example.com/api/health', metadata, options), health);
-  const image = { ...options, attempts: 1, fetch: async () => ({ ok: true, json: async () => ({ ...health, supervisor: { release: 'image' } }) }) };
-  await assert.rejects(waitForDeployment('https://example.com/api/health', metadata, image));
-  await waitForDeployment('https://example.com/api/health', metadata, { ...image, allowImage: true });
-  await assert.rejects(waitForDeployment('https://example.com/api/health', metadata, { ...image, fetch: async () => { throw new Error('offline'); } }), /offline/);
-  const walled = { ok: true, name: 'weave', supervisor: { release: 'v1.2.3', failed: [] } };
-  assert.deepEqual(await waitForDeployment('https://example.com/api/health', metadata, { ...options, fetch: async () => ({ ok: true, json: async () => walled }) }), walled, 'an auth-walled health body proves the release by its supervisor tag');
-  await assert.rejects(waitForDeployment('https://example.com/api/health', metadata, { ...image, allowImage: true, fetch: async () => ({ ok: true, json: async () => ({ ok: true, name: 'weave', supervisor: { release: 'image' } }) }) }), 'a versionless image proves nothing');
-  await assert.rejects(waitForDeployment('https://example.com/api/health', metadata, { ...image, fetch: async () => ({ ok: true, json: async () => ({ ...health, supervisor: { release: 'v1.2.2', failed: ['1.2.3'] } }) }) }), /rejected/);
+test('publishing a release never waits on production, which follows the production branch', () => {
+  const src = readFileSync('scripts/github-release.mjs', 'utf8');
+  assert.doesNotMatch(src, /weave\.grunion\.ai|api\/health/);
 });
 
 test('publication stops on write failures and a later retry resumes safely', async () => {

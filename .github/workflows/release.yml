@@ -13,7 +13,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: production-release
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -41,9 +41,6 @@ jobs:
   publish:
     needs: guard
     if: needs.guard.outputs.current == 'true'
-    environment:
-      name: production
-      url: https://weave.grunion.ai
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
