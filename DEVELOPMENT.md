@@ -37,7 +37,7 @@ production, which needs an approved release.
 
 The `pr` workflow runs on every ready pull request. Its plan, `node
 scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
-three shards, plus the browser tests the diff maps to, sharded at about twenty
+four shards, plus the browser tests the diff maps to, sharded at about twenty
 files each, four at most. A changed browser test runs itself. Any other changed
 file maps to browser tests named for its module (`public/chip-core.js` maps to
 `test/chip-*-browser.test.mjs`) or whose source cites its file name. A fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`) always runs, so a

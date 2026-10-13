@@ -69,7 +69,7 @@ export function touchedBrowser(changed, browser, read) {
 
 export function prPlan({ unit, browser }, changed, read, weight) {
   const touched = touchedBrowser(changed, browser, read);
-  return plan([...unit, ...touched], { unit, browser: touched }, weight, 3, Math.min(4, Math.ceil(touched.length / 20)));
+  return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
 }
 
 const weightOf = file => statSync(join(ROOT, file)).size;

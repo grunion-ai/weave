@@ -115,7 +115,7 @@ test('the PR plan runs every unit file and the touched browser tests through the
   const many = Array.from({ length: 70 }, (_, i) => `test/b${String(i).padStart(2, '0')}-browser.test.mjs`);
   const browser = [...many, ...SMOKE];
   const small = prPlan({ unit, browser }, ['DEVELOPMENT.md'], read, () => 1);
-  assert.deepEqual(small.filter(s => s.lane === 'unit').map(s => s.id), ['unit-1', 'unit-2', 'unit-3']);
+  assert.deepEqual(small.filter(s => s.lane === 'unit').map(s => s.id), ['unit-1', 'unit-2', 'unit-3', 'unit-4']);
   assert.deepEqual(small.filter(s => s.lane === 'unit').flatMap(s => s.files).sort(), unit);
   assert.deepEqual(small.filter(s => s.lane === 'browser').map(s => s.id), ['browser-1']);
   assert.deepEqual(small.filter(s => s.lane === 'browser').flatMap(s => s.files).sort(), [...SMOKE].sort());
@@ -139,4 +139,5 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
   assert.match(workflow, /node scripts\/ci-test.mjs pr-aggregate ci-results/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /install --with-deps chromium webkit/);
+  assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
 });

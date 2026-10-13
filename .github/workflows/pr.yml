@@ -54,11 +54,13 @@ jobs:
         run: |
           npm ci --ignore-scripts --prefix .github/test-tools
           ln -s .github/test-tools/node_modules node_modules
-      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+      - if: matrix.lane == 'browser'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
       - name: Install browsers and system dependencies
+        if: matrix.lane == 'browser'
         run: npx --no-install playwright install --with-deps chromium webkit
       - name: Run fast shard
         env:
