@@ -224,10 +224,12 @@ export function loaderRopeCss({ sw = 3.5 } = {}) {
     `.rope-c > .rope-in { left: ${n(r)}px; top: ${n(r)}px; }`,
   ];
   let frames = "";
+  const animated = [];
   for (const end of ["head", "tail"]) {
     const stops = ropeStops(end, { sw });
     const set = (name, sel, f) => {
       rules.push(`${sel} { ${run(name)} }`);
+      animated.push(sel);
       frames += `@keyframes ${name} {\n` + stops.map(([u, e, x, y, a]) => {
         const [E, D, Y] = [e * U, (x - e) * U, y * U];
         return `  ${n(u * 100)}% { transform: ${f(n(E), n(D), n(Y), n(a))}; }\n`;
@@ -243,7 +245,11 @@ export function loaderRopeCss({ sw = 3.5 } = {}) {
     set(`rope-${end}-c`, `.rope-${end} .rope-c > .rope-in`,
       (E, D, Y) => `translate(${neg(D)}px, ${neg(Y)}px) translate(${neg(E)}px, 0px)`);
   }
-  return rules.join("\n") + "\n" + frames;
+  const pose = (+DRAW.keyTimes[1] + +DRAW.keyTimes[2]) / 2;
+  const park = `animation-delay: ${n(-pose * LOADER_CYCLE_MS)}ms; animation-play-state: paused;`;
+  const still = `@media (prefers-reduced-motion: reduce) {\n`
+    + animated.map(sel => `${sel} { ${park} }`).join("\n") + `\n}\n`;
+  return rules.join("\n") + "\n" + frames + still;
 }
 
 export function loaderRopeHtml({ c1 = PALETTE.blue, sw = 3.5 } = {}) {
@@ -266,14 +272,18 @@ export function loaderRopeHtml({ c1 = PALETTE.blue, sw = 3.5 } = {}) {
     mark("mark-light", PALETTE.ink, "rl") + mark("mark-dark", PALETTE.sky, "rd");
 }
 
+export const LOADER_STATUS_TEXT = "Loading the page";
+
 export function loaderBootHtml({ c1 = PALETTE.blue, sw = 3.5 } = {}) {
   const mark = (cls, c2, id) => `<span class="${cls}">${loaderStill({ c1, c2, sw, id })}</span>`;
-  return mark("mark-light", PALETTE.ink, "bl") + mark("mark-dark", PALETTE.sky, "bd");
+  return `<span class="loader-mark" aria-hidden="true">` +
+    mark("mark-light", PALETTE.ink, "bl") + mark("mark-dark", PALETTE.sky, "bd") + `</span>` +
+    `<span class="loader-status visually-hidden">${LOADER_STATUS_TEXT}</span>`;
 }
 
 export const SHELL_LOADER = /<div id="page-loader"[^>]*>[\s\S]*?<\/div>/;
 
-export const SHELL_LOADER_HOST = '<div id="page-loader" class="boot" aria-hidden="true">';
+export const SHELL_LOADER_HOST = '<div id="page-loader" class="boot" role="status" aria-hidden="true">';
 
 export function shellWithBootMark(html) {
   if (!SHELL_LOADER.test(html)) throw new Error("the shell has no #page-loader host to fill");

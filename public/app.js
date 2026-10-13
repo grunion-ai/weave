@@ -12009,10 +12009,12 @@ const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, exit: 
 async function initPageLoader() {
   const host = $('#page-loader');
   if (!host) return;
+  if (stillLoader()) return;
+  const mark = host.querySelector('.loader-mark');
   const html = await fetch('/brand/weave-loader-rope.html')
     .then((res) => (res.ok ? res.text() : null)).catch(() => null);
-  if (!html) return;
-  host.innerHTML = html;
+  if (!html || !mark) return;
+  mark.innerHTML = html;
   loading.ready = true;
 }
 
@@ -12022,6 +12024,7 @@ function showPageLoader() {
   loading.shownAt = Date.now();
   host.hidden = false;
   host.setAttribute('aria-hidden', 'false');
+  $('#main')?.setAttribute('aria-busy', 'true');
   keepLoader(host, loading);
 }
 
@@ -12031,13 +12034,18 @@ function hidePageLoader() {
   host.classList.remove('boot');
   host.hidden = true;
   host.setAttribute('aria-hidden', 'true');
+  $('#main')?.removeAttribute('aria-busy');
   loading.shownAt = 0;
   loading.exit = null;
 }
 
+function stillLoader() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function ropeAnimations(node) {
-  const all = node && node.getAnimations ? node.getAnimations({ subtree: true }) : [];
-  return all.filter((a) => String(a.animationName ?? '').startsWith('rope-'));
+  if (!node || !node.getAnimations || stillLoader()) return [];
+  return node.getAnimations({ subtree: true }).filter((a) => String(a.animationName ?? '').startsWith('rope-'));
 }
 
 function settleLoader(node, state, hide) {
@@ -12154,11 +12162,11 @@ function placeGridLoader() {
 function showGridLoader() {
   const main = $('#main');
   const source = $('#page-loader');
-  if (!main?.querySelector(':scope > .table-wrap') || !loading.ready || !source) return;
+  if (!main?.querySelector(':scope > .table-wrap') || !source?.querySelector('.loader-mark')) return;
   let node = gridLoaderNode();
   if (!node) {
     node = el('div', { class: 'grid-loader', 'aria-hidden': 'true' });
-    for (const mark of source.querySelectorAll(':scope > span')) node.append(mark.cloneNode(true));
+    for (const mark of source.querySelectorAll(':scope > .loader-mark')) node.append(mark.cloneNode(true));
     main.append(node);
   }
   node.hidden = false;
