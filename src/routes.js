@@ -1090,6 +1090,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : {}),
             })));
         }
+        if (route === 'POST /api/workspaces' && body?.from != null) {
+          const source = String(body.from).match(/^backup:(.+)$/);
+          if (!source) throw new WeaveError('from takes backup:<archive>, an archive GET /api/backups lists', 'invalid');
+          if (body.key == null || body.key === '') throw new WeaveError('key is required: the passphrase the archive was sealed with', 'invalid');
+          if (!cloudBackups) return out(400, { error: 'This deployment keeps no backups: it has no bucket configured.', code: 'invalid' });
+          const hubRoot = hub.get(hub.defaultName);
+          const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
+          const caller = bearer ? hubRoot.verifyToken(bearer) : sessionOn(hubRoot);
+          if (!caller) return deny(401, 'Migrating a backup needs an account on the hub root');
+          const archive = await cloudBackups.get(caller.id, source[1]);
+          const w = await hub.createFrom(body.name, { slug: body.slug ?? null, archive, key: body.key, workspace: body.workspace ?? null });
+          return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, from: `backup:${source[1]}`, entities: w.storageStats().entities });
+        }
         if (route === 'POST /api/workspaces') {
           const w = hub.create(body.name, { slug: body.slug ?? null });
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/` });

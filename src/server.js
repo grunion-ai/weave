@@ -1,6 +1,7 @@
 import { createServer as createHttpServer } from 'node:http';
 import { spawnSync, execFile } from 'node:child_process';
-import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname, extname } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -11,7 +12,7 @@ import { createRequestHandler, decodePath, MAX_BODY_BYTES } from './routes.js';
 import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
-import { cloudStore } from './backup.js';
+import { cloudStore, restore as restoreArchive, isEncrypted, inspect as inspectDb } from './backup.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 export const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
@@ -311,7 +312,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       const held = this.get(slug) ?? this.aliasOf(slug);
       return held && held !== self ? 'taken' : 'available';
     },
-    create(asked, { slug = null } = {}) {
+    create(asked, { slug = null, from = null } = {}) {
       let title, name;
       if (slug != null && slug !== '') {
         name = String(slug);
@@ -329,8 +330,20 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       if (held?.state.meta.deletedAt) throw new WeaveError(`Workspace '${name}' is in the trash — restore it instead`, 'slug_taken');
       if (held || this.aliasOf(name)) throw new WeaveError(slugTaken(name).message, 'slug_taken');
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
-      const w = new Weave({ path: join(dataDir, `${name}.db`) });
+      const target = join(dataDir, `${name}.db`);
+      if (from) {
+        if (existsSync(target)) throw new WeaveError(slugTaken(name).message, 'slug_taken');
+        copyFileSync(from, target);
+      }
+      const w = new Weave({ path: target });
+      const twin = from && [...instances.entries()].find(([, x]) => x.state.meta.id === w.state.meta.id);
+      if (twin) {
+        w.store.close?.();
+        for (const suffix of ['', '-wal', '-shm']) rmSync(target + suffix, { force: true });
+        throw new WeaveError(`This archive's workspace is already here as '${twin[0]}'`, 'conflict');
+      }
       w.state.meta.name = name;
+      if (from) { delete w.state.meta.title; w.state.meta.deletedAt = null; }
       if (title !== name) w.state.meta.title = title;
       w.save();
       instances.set(name, enroll(w));
@@ -338,6 +351,33 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       const order = defaultWeave.state.meta.workspaceOrder;
       if (Array.isArray(order) && !order.includes(w.state.meta.id)) { order.push(w.state.meta.id); defaultWeave.save(); }
       return w;
+    },
+    async createFrom(asked, { slug = null, archive, key, workspace = null } = {}) {
+      if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
+      const scratch = mkdtempSync(join(tmpdir(), 'weave-migrate-'));
+      try {
+        const sealed = join(scratch, 'archive.tar.enc');
+        writeFileSync(sealed, archive);
+        if (!isEncrypted(sealed)) throw new WeaveError('A migration takes a sealed archive only', 'invalid');
+        const landed = join(scratch, 'data');
+        const r = await restoreArchive({ source: sealed, dataDir: landed, env: { WEAVE_BACKUP_PASSPHRASE: String(key) } });
+        const dbs = r.landed.filter((n) => /^[^/]+\.db$/.test(n));
+        const pick = workspace != null && workspace !== '' ? `${workspace}.db` : dbs.length === 1 ? dbs[0] : null;
+        if (!pick || !dbs.includes(pick)) {
+          throw new WeaveError(`The archive holds ${dbs.map((n) => n.slice(0, -3)).join(', ') || 'no workspace'}: name the one to migrate as workspace`, 'invalid');
+        }
+        const from = join(landed, pick);
+        const refs = inspectDb(from).refs.map((f) => f.id);
+        const w = this.create(asked == null || asked === '' ? pick.slice(0, -3) : asked, { slug, from });
+        const blobs = join(dataDir, 'files');
+        for (const id of new Set(refs)) {
+          const src = join(landed, 'files', id);
+          if (!existsSync(src) || existsSync(join(blobs, id))) continue;
+          mkdirSync(blobs, { recursive: true });
+          copyFileSync(src, join(blobs, id));
+        }
+        return w;
+      } finally { rmSync(scratch, { recursive: true, force: true }); }
     },
     entries() {
       scan();

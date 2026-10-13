@@ -523,7 +523,11 @@ export const cloud = {
     const m = String(dest ?? '').match(/^weave:\/\/([^/]+)\/([^/]+)(?:\/([^/]+))?\/?$/);
     if (!m) throw new WeaveError(`The destination must be weave://host/account[/archive], got '${dest}'`, 'invalid');
     const host = m[1].toLowerCase();
-    return { host, origin: `${LOOPBACK.test(host) ? 'http' : 'https'}://${host}`, account: decodeURIComponent(m[2]), name: m[3] ? decodeURIComponent(m[3]) : null };
+    try {
+      return { host, origin: `${LOOPBACK.test(host) ? 'http' : 'https'}://${host}`, account: decodeURIComponent(m[2]), name: m[3] ? decodeURIComponent(m[3]) : null };
+    } catch {
+      throw new WeaveError(`The destination '${dest}' carries a malformed percent-escape`, 'invalid');
+    }
   },
   token(env = process.env) {
     const token = String(env.WEAVE_BACKUP_TOKEN ?? '').trim();
@@ -550,6 +554,20 @@ export const cloud = {
       put: async (name, body) => (await call('PUT', name, body)).json(),
       list: async () => (await call('GET')).json(),
       get: async (name) => Buffer.from(await (await call('GET', name)).arrayBuffer()),
+      migrate: async ({ name = null, slug = null, archive, key, workspace = null }) => {
+        const url = `${d.origin}/api/workspaces`;
+        const res = await fetchImpl(url, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, slug, from: `backup:${archive}`, key, workspace }),
+        });
+        if (!res.ok) {
+          let reason = '';
+          try { reason = (await res.json()).error ?? ''; } catch {}
+          throw new WeaveError(`POST ${url} → ${res.status}${reason ? `: ${reason}` : ''}`, { 404: 'not-found', 403: 'forbidden', 409: 'conflict' }[res.status] ?? 'invalid');
+        }
+        return res.json();
+      },
     };
   },
 };

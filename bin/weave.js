@@ -227,6 +227,9 @@ The workspace itself
   workspace require-auth [--off]
   workspace link-preview [--off]      Link preview before sign-in: a walled permalink unfurls
   workspace leave [--account name]    Remove your own account (never the docs workspace, never its last architect)
+  workspace migrate --from weave://host/account[/archive] [--name N] [--workspace W] [--passphrase-env NAME]
+                                      Create a cloud workspace from a stored archive; the key
+                                      travels once and is never stored
   form [list] | get <form>            The forms whose table lives here (Workspace/Forms rows)
   form config <form>                 Editable form definition
   form create --definition '{json}'  Create a native table form
@@ -518,6 +521,22 @@ async function main() {
     lines.push(`  orphaned references in the source (Issue #250): ${r.orphans.count}`);
     if (r.landed.includes('keystore.json')) lines.push('  keystore.json landed — put keystore.key (or WEAVE_KEYSTORE_PASSPHRASE) beside it before credentials will read');
     return out(lines.join('\n'));
+  }
+  if (command === 'workspace' && args[0] === 'migrate') {
+    const { cloud, resolvePassphrase } = await import('../src/backup.js');
+    const source = flagStr('from');
+    if (!source) throw new WeaveError('workspace migrate needs --from weave://host/account[/archive]', 'invalid');
+    const c = cloud.client({ dest: source, env: process.env });
+    const key = resolvePassphrase({ env: process.env, dataDir: dataDirOf(dataPath), passphraseEnv: flagStr('passphrase-env') });
+    if (!key) throw new WeaveError('workspace migrate needs the passphrase the archive was sealed with: set WEAVE_BACKUP_PASSPHRASE or pass --passphrase-env NAME', 'invalid');
+    let archive = c.name;
+    if (!archive) {
+      const { backups } = await c.list();
+      if (!backups.length) throw new WeaveError(`${source} holds no backups yet`, 'not-found');
+      archive = backups.at(-1).name;
+    }
+    const r = await c.migrate({ name: flagStr('name'), slug: flagStr('slug'), archive, key, workspace: flagStr('workspace') });
+    return out(`Migrated ${archive} into the workspace ${r.name} on ${c.origin} (${r.entities} entities): ${c.origin}${r.url}`);
   }
 
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
