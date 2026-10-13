@@ -1,1 +1,0 @@
-- A shared table page now shows the rows the table's default view shows: its filters, its saved search and its sort order, the same configuration the table page opens with. It used to list every row in the table, so a viewer saw rows the owner had filtered out (Issue #838).
