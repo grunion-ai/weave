@@ -672,7 +672,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back';
+const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back, #app.nav-held';
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !dock) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
@@ -12425,7 +12425,7 @@ document.addEventListener('keydown', (e) => {
   if (state.route?.page !== 'db') return;
   const editing = e.target.closest?.('input,select,textarea,[contenteditable]');
   if (editing && !editing.closest('.wv-grid tr[data-eid]')) return;
-  if ($('#modal-back, #cmdk-back, #tray-back, #fsv-back')) return;
+  if ($('#modal-back, #cmdk-back, #tray-back, #fsv-back, #app.nav-held')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
   if (!db) return;
   e.preventDefault();
@@ -12639,10 +12639,74 @@ function wireNavCollapse() {
   narrowShell.addEventListener('change', shut);
 }
 
+const railFolds = matchMedia('(max-width: 600px)');
+const NAV_KEY_OWNERS = '#modal-back, #tray-back, #cmdk-back, #fsv-back, .chip-pop, .picker-pop, .cell-pop, .date-pop, [role="menu"]';
+function wireNavHold() {
+  const app = $('#app');
+  const rail = $('#ws-rail');
+  const sidebar = $('#sidebar');
+  if (!app || !rail || !sidebar) return;
+  const drawer = () => (railFolds.matches ? [sidebar, rail] : [sidebar]);
+  const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
+    .filter((n) => n.getClientRects().length);
+  const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };
+  let held = null;
+  const hold = () => {
+    const opener = document.activeElement;
+    const members = drawer();
+    const nodes = [];
+    for (const n of [...app.children, ...document.body.children]) {
+      if (n === app || members.includes(n) || n.inert || n.matches(MODAL_LIVE)) continue;
+      n.inert = true;
+      nodes.push(n);
+    }
+    held = { nodes, opener };
+    app.classList.add('nav-held');
+    expanded(true);
+    stops()[0]?.focus();
+  };
+  const release = () => {
+    const { nodes, opener } = held;
+    held = null;
+    const at = document.activeElement;
+    const inside = !at || at === document.body || rail.contains(at) || sidebar.contains(at);
+    app.classList.remove('nav-held');
+    for (const n of nodes) n.inert = false;
+    expanded(false);
+    if (!inside) return;
+    const back = opener?.isConnected && opener.closest?.('#main') ? opener : $('#main .nav-menu');
+    back?.focus();
+  };
+  new MutationObserver(() => {
+    const open = app.classList.contains('nav-peek') && narrowShell.matches;
+    if (open && !held) hold();
+    else if (!open && held) release();
+  }).observe(app, { attributes: true, attributeFilter: ['class'] });
+  addEventListener('keydown', (e) => {
+    if (!held || document.querySelector(NAV_KEY_OWNERS)) return;
+    const at = document.activeElement;
+    if (e.key === 'Escape') {
+      if (at?.matches('input, textarea, select, [contenteditable]') && drawer().some((n) => n.contains(at))) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      app.classList.remove('nav-peek');
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const list = stops();
+    if (!list.length) return;
+    e.preventDefault();
+    const i = list.indexOf(at);
+    const next = i === -1 ? (e.shiftKey ? -1 : 0) : i + (e.shiftKey ? -1 : 1);
+    list.at(next % list.length).focus();
+  }, true);
+}
+
 function navMenuButton() {
   const btn = el('button', {
     class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button',
     title: 'Open navigation', 'aria-label': 'Open navigation', 'aria-controls': 'sidebar',
+    'aria-expanded': $('#app')?.classList.contains('nav-held') ? 'true' : 'false',
     onclick: () => $('#app').classList.add('nav-peek'),
   });
   btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
@@ -12895,3 +12959,4 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
+wireNavHold();
