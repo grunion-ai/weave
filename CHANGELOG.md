@@ -2,6 +2,15 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.92 (2026-10-12)
+
+- **A reference chip in the editor sits inline where its markup was** (Issue #878): an aliased `[[Issue#229|Long label]]` drew its chip over the raw markup, which kept rendering underneath, so its tail (`pped]]`) leaked past the chip into the next words, the `[[` peeked out below it, and a reference that wrapped to a second line stayed raw. While the caret is outside a reference its markup now takes no visible space and keeps exactly the chip's width, so the line reflows around the chip; a reference that wraps gets its chip too, and a chip wider than its line ends in an ellipsis. With the caret inside, the markup shows for editing. The stored markdown is unchanged. Gate: `test/doc-ref-chips-inline-browser.test.mjs`.
+- **A request entity id never reaches Object.prototype in the hub route switch** (Issue #881): a member route that falls back to the root for an entity it does not hold now checks both workspaces with `Object.hasOwn`, so an id of `__proto__`, `constructor` or `toString` answers the member's own 404. The semgrep result that kept the security workflow red since 25be20b is fixed in code, not baselined.
+- An anonymous form submission from a browser that had no client cookie yet now records its receipt under the cookie the answer mints, so a retry with a fresh idempotency key replays that receipt instead of filing a second row (Issue #811).
+- A write that lands while another signed-in request is still arriving now records the account that sent it, instead of whichever request reached the server last. Row authors, comment authors, bug-report reporters, template builds and credential ownership checks all read the actor captured when the request authenticated (Issue #810).
+- A shared table page now shows the rows the table's default view shows: its filters, its saved search and its sort order, the same configuration the table page opens with. It used to list every row in the table, so a viewer saw rows the owner had filtered out (Issue #838).
+- The self-updating supervisor now watches each new release for ten minutes (`WEAVE_WATCH_MS`). A serving worker that exits, three failed health checks in a row or a 5xx rate past `WEAVE_WATCH_5XX_RATE` swaps back to the kept good release, unless that release's deferred migration already wrote to the workspace, which raises an alert instead. A boot that fails falls back to the newest good release before the image, and `WEAVE_TRACK=branch:<name>` follows a promotion branch (Feature #321).
+
 ## v0.4.91 (2026-10-12)
 
 - The record page and the peek fetch a record's references beside the record itself, so a redraw of the same record keeps its scroll and the side column never jumps. The table badge on a relation chip reads at 4.5:1 contrast in the References card (Feature #315).

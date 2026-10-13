@@ -1,1 +1,0 @@
-- An anonymous form submission from a browser that had no client cookie yet now records its receipt under the cookie the answer mints, so a retry with a fresh idempotency key replays that receipt instead of filing a second row (Issue #811).
