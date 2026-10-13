@@ -57,10 +57,11 @@ export function pruneReleases(releasesDir, { serving, failed = {}, log = console
   return removed;
 }
 
-function bootRelease({ releasesDir, imageDir, failed, commit }) {
+const imageRelease = (imageDir, commit) => ({ dir: imageDir, version: versionOf(imageDir), release: 'image', ...(COMMIT.test(commit ?? '') ? { commit } : {}) });
+function bootRelease({ releasesDir, imageDir, failed, commit, imageCommit }) {
   const tracked = commit && join(releasesDir, `c${commit}`);
   if (tracked && !failed[commit] && existsSync(join(tracked, OK_MARK)) && versionOf(tracked)) return { dir: tracked, version: versionOf(tracked), release: `c${commit}`, commit };
-  let best = { dir: imageDir, version: versionOf(imageDir), release: 'image' };
+  let best = imageRelease(imageDir, imageCommit);
   for (const name of existsSync(releasesDir) ? readdirSync(releasesDir) : []) {
     const version = /^v(\d+\.\d+\.\d+)$/.exec(name)?.[1];
     const dir = join(releasesDir, name);
@@ -316,7 +317,7 @@ export async function startSupervisor({
     return swapping;
   }
 
-  let boot = bootRelease({ releasesDir, imageDir, failed: state.failed, commit: track ? state.commit : null });
+  let boot = bootRelease({ releasesDir, imageDir, failed: state.failed, commit: track ? state.commit : null, imageCommit: env.RAILWAY_GIT_COMMIT_SHA });
   let first = spawnWorker(boot, { defer: false });
   try {
     await waitHealthy(first);
@@ -327,7 +328,7 @@ export async function startSupervisor({
     state.failed[boot.commit ?? boot.version] = { at: new Date().toISOString(), reason: `failed at boot: ${err.message}` };
     save();
     log.warn(`weave supervise: ${boot.release} failed at boot (${err.message}); serving the image`);
-    boot = { dir: imageDir, version: versionOf(imageDir), release: 'image' };
+    boot = imageRelease(imageDir, env.RAILWAY_GIT_COMMIT_SHA);
     first = spawnWorker(boot, { defer: false });
     await waitHealthy(first);
   }

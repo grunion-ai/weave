@@ -205,35 +205,46 @@ addEventListener('keydown', (e) => {
 }, true);
 
 const MODAL_LIVE = '#wv-toasts, .bug-fab, #bug-panel';
-const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-let pageHeld = [];
+const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+const holds = [];
 function releasePage() {
-  if (document.querySelector('#modal-back')) return;
-  for (const n of pageHeld) n.inert = false;
-  pageHeld = [];
+  for (const gone of holds.filter((h) => !h.back.isConnected)) {
+    holds.splice(holds.indexOf(gone), 1);
+    const top = holds.at(-1);
+    for (const n of gone.held) {
+      if (top && n !== top.back) top.held.push(n); else n.inert = false;
+    }
+  }
 }
-function holdPage(back, box) {
+function holdPage(back, box, label = box.querySelector('h2')) {
   const opener = document.activeElement;
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-modal', 'true');
-  const heading = box.querySelector('h2');
-  if (heading) { heading.id = 'modal-title'; box.setAttribute('aria-labelledby', 'modal-title'); }
+  if (typeof label === 'string') box.setAttribute('aria-label', label);
+  else if (label) { label.id ||= `${back.id}-title`; box.setAttribute('aria-labelledby', label.id); }
+  const wrap = box.querySelector('iframe') ? el('span', { class: 'hold-wrap', tabindex: '0' }) : null;
+  if (wrap) box.append(wrap);
+  const stops = () => [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n !== wrap && n.getClientRects().length);
+  wrap?.addEventListener('focus', () => stops()[0]?.focus());
   document.body.append(back);
+  const hold = { back, held: [] };
   for (const n of document.body.children) {
     if (n === back || n.inert || n.matches(MODAL_LIVE)) continue;
     n.inert = true;
-    pageHeld.push(n);
+    hold.held.push(n);
   }
+  holds.push(hold);
   addEventListener('keydown', function trap(e) {
     if (!back.isConnected) return removeEventListener('keydown', trap);
+    if (e.defaultPrevented || holds.at(-1) !== hold) return;
     const at = document.activeElement ?? document.body;
     if (e.key !== 'Tab' || (at !== document.body && !back.contains(at))) return;
-    const stops = [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n.getClientRects().length);
-    if (!stops.length) return;
+    const all = stops();
+    if (!all.length) return;
     e.preventDefault();
-    const i = stops.indexOf(at);
+    const i = all.indexOf(at);
     const next = i === -1 ? (e.shiftKey ? -1 : 0) : i + (e.shiftKey ? -1 : 1);
-    stops.at(next % stops.length).focus();
+    all.at(next % all.length).focus();
   });
   new MutationObserver((_, watch) => {
     if (back.isConnected) return;
@@ -287,6 +298,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
     const at = document.activeElement;
     const held = !at || at === document.body || back.contains(at);
     back.remove();
+    releasePage();
     if (held && opener?.isConnected) opener.focus();
   };
   const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) close(); } });
@@ -304,11 +316,12 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
       if (!err.shown) toast(err.message, true);
     }
   });
-  back.append(el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },
+  const box = el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },
     el('div', { class: 'tray-head' }, el('h2', { id: 'tray-title' }, title),
       el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: close }, iconEl('✕'))),
-    form));
-  document.body.append(back);
+    form);
+  back.append(box);
+  holdPage(back, box);
   const esc = (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.chip-pop')) return;
     e.preventDefault();
@@ -659,7 +672,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back';
+const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back, #app.nav-held';
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !dock) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
@@ -1311,7 +1324,9 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
       el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
-  document.body.append(back);
+  holdPage(back, back, back.querySelector('.fsv-title'));
+  back.tabIndex = -1;
+  back.focus();
   const onKey = (e) => {
     if (e.key === 'Escape') close();
     else if (e.key === 'ArrowLeft' && prev) prev();
@@ -11651,6 +11666,7 @@ function openCommandK({
   let picked = false;
   const dismiss = () => {
     back.remove();
+    releasePage();
     if (picked) return;
     picked = true;
     if (multi) onCommit?.([...chosen]);
@@ -11678,7 +11694,7 @@ function openCommandK({
     if (hit.kind === 'create') {
       let made;
       try { made = await hit.run(input.value.trim()); } catch (err) { toast(err.message, true); return; }
-      if (!multi) { picked = true; back.remove(); onPick?.(made); return; }
+      if (!multi) { picked = true; back.remove(); releasePage(); onPick?.(made); return; }
       chosen.add(made.id);
       linked.push(made);
       input.value = '';
@@ -11695,6 +11711,7 @@ function openCommandK({
     }
     picked = true;
     back.remove();
+    releasePage();
     if (onPick) onPick(hit);
     else navigateToResult(hit);
   };
@@ -11780,7 +11797,7 @@ function openCommandK({
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); }
   });
   const cap = (k) => el('kbd', {}, k);
-  back.append(el('div', { id: 'cmdk', role: 'dialog', 'aria-label': 'Search' },
+  const box = el('div', { id: 'cmdk' },
     el('div', { class: 'cmdk-inp' },
       iconEl('lucide:search', 'wv-icon cmdk-ic'),
       input,
@@ -11790,8 +11807,9 @@ function openCommandK({
       el('span', {}, cap('↑'), ' ', cap('↓'), ' move'),
       el('span', {}, cap('↵'), multi ? ' toggle' : scope ? ' pick' : ' open'),
       el('span', {}, cap('tab'), ' next group'),
-      multi ? el('span', {}, cap('↵'), ' on empty or ', cap('esc'), ' done') : el('span', {}, cap('esc'), ' close'))));
-  document.body.append(back);
+      multi ? el('span', {}, cap('↵'), ' on empty or ', cap('esc'), ' done') : el('span', {}, cap('esc'), ' close')));
+  back.append(box);
+  holdPage(back, box, 'Search');
   if (scope) {
     render('', scopedGroups('', []), 'Searching…');
     load('');
@@ -12409,7 +12427,7 @@ document.addEventListener('keydown', (e) => {
   if (state.route?.page !== 'db') return;
   const editing = e.target.closest?.('input,select,textarea,[contenteditable]');
   if (editing && !editing.closest('.wv-grid tr[data-eid]')) return;
-  if ($('#modal-back') || $('#cmdk-back')) return;
+  if ($('#modal-back, #cmdk-back, #tray-back, #fsv-back, #app.nav-held')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
   if (!db) return;
   e.preventDefault();
@@ -12623,10 +12641,74 @@ function wireNavCollapse() {
   narrowShell.addEventListener('change', shut);
 }
 
+const railFolds = matchMedia('(max-width: 600px)');
+const NAV_KEY_OWNERS = '#modal-back, #tray-back, #cmdk-back, #fsv-back, .chip-pop, .picker-pop, .cell-pop, .date-pop, [role="menu"]';
+function wireNavHold() {
+  const app = $('#app');
+  const rail = $('#ws-rail');
+  const sidebar = $('#sidebar');
+  if (!app || !rail || !sidebar) return;
+  const drawer = () => (railFolds.matches ? [sidebar, rail] : [sidebar]);
+  const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
+    .filter((n) => n.getClientRects().length);
+  const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };
+  let held = null;
+  const hold = () => {
+    const opener = document.activeElement;
+    const members = drawer();
+    const nodes = [];
+    for (const n of [...app.children, ...document.body.children]) {
+      if (n === app || members.includes(n) || n.inert || n.matches(MODAL_LIVE)) continue;
+      n.inert = true;
+      nodes.push(n);
+    }
+    held = { nodes, opener };
+    app.classList.add('nav-held');
+    expanded(true);
+    stops()[0]?.focus();
+  };
+  const release = () => {
+    const { nodes, opener } = held;
+    held = null;
+    const at = document.activeElement;
+    const inside = !at || at === document.body || rail.contains(at) || sidebar.contains(at);
+    app.classList.remove('nav-held');
+    for (const n of nodes) n.inert = false;
+    expanded(false);
+    if (!inside) return;
+    const back = opener?.isConnected && opener.closest?.('#main') ? opener : $('#main .nav-menu');
+    back?.focus();
+  };
+  new MutationObserver(() => {
+    const open = app.classList.contains('nav-peek') && narrowShell.matches;
+    if (open && !held) hold();
+    else if (!open && held) release();
+  }).observe(app, { attributes: true, attributeFilter: ['class'] });
+  addEventListener('keydown', (e) => {
+    if (!held || document.querySelector(NAV_KEY_OWNERS)) return;
+    const at = document.activeElement;
+    if (e.key === 'Escape') {
+      if (at?.matches('input, textarea, select, [contenteditable]') && drawer().some((n) => n.contains(at))) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      app.classList.remove('nav-peek');
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const list = stops();
+    if (!list.length) return;
+    e.preventDefault();
+    const i = list.indexOf(at);
+    const next = i === -1 ? (e.shiftKey ? -1 : 0) : i + (e.shiftKey ? -1 : 1);
+    list.at(next % list.length).focus();
+  }, true);
+}
+
 function navMenuButton() {
   const btn = el('button', {
     class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button',
     title: 'Open navigation', 'aria-label': 'Open navigation', 'aria-controls': 'sidebar',
+    'aria-expanded': $('#app')?.classList.contains('nav-held') ? 'true' : 'false',
     onclick: () => $('#app').classList.add('nav-peek'),
   });
   btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
@@ -12879,3 +12961,4 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
+wireNavHold();
