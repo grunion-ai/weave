@@ -74,6 +74,9 @@
 .doc-ref-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 4; }
 .doc-ref-layer .doc-ref-slot { position: absolute; pointer-events: auto; white-space: nowrap;
   background: var(--tblr-bg-surface); line-height: 1; max-width: 100%; }
+.doc-ref-layer .doc-ref-slot.long { overflow: hidden; text-overflow: ellipsis; }
+.doc-ref-raw:not(.open) { display: inline-block; font-size: 0; line-height: 0; color: transparent;
+  overflow: hidden; white-space: nowrap; vertical-align: middle; }
 .hue-slate  { --fill: rgba(0, 5, 20, .05);      --text: #60646c; --dot: transparent; }
 .hue-blue   { --fill: rgba(71, 105, 235, .12);  --text: #3a5bc7; --dot: #4769eb; }
 .hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #218358; --dot: #2ea043; }

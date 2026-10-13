@@ -9340,7 +9340,8 @@ function skipCaretOnlyUndo(vditor) {
   const undo = vditor?.undo;
   if (!undo?.addToUndoStack || !undo.addCaret) return;
   const add = undo.addToUndoStack.bind(undo);
-  const bare = (html) => String(html ?? '').replace(/<wbr>/g, '').replace(/ vditor-ir__node--expand/g, '');
+  const bare = (html) => String(html ?? '').replace(/<wbr>/g, '').replace(/ vditor-ir__node--expand/g, '')
+    .replace(/<span class="doc-ref-raw[^"]*"(?: style="[^"]*")?>([^<]*)<\/span>/g, '$1');
   undo.addToUndoStack = (v) => {
     const mode = undo[v.currentMode];
     if (mode?.undoStack?.length && bare(undo.addCaret(v, true)) === bare(mode.lastText)) return;
@@ -9692,6 +9693,7 @@ window.addEventListener('resize', () => {
   if (resizeFrame) return;
   resizeFrame = requestAnimationFrame(() => {
     resizeFrame = 0;
+    for (const st of refChipLayers) st.schedule();
     for (const st of docRails) st.schedule();
   });
 });
@@ -9703,6 +9705,11 @@ async function refreshRefChips(st) {
   if (!st.layer.isConnected) st.host.append(st.layer);
   const lib = globalThis.WeaveEditorLib;
 
+  const wholeRef = (w) => {
+    const found = lib.findRefSpans(w.textContent);
+    return found.length === 1 && found[0].start === 0 && found[0].end === w.textContent.length && !w.querySelector('*') ? found[0] : null;
+  };
+  for (const w of root.querySelectorAll('.doc-ref-raw')) if (!wholeRef(w)) w.replaceWith(...w.childNodes);
   root.normalize();
 
   const spans = [];
@@ -9710,40 +9717,58 @@ async function refreshRefChips(st) {
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const codeCtx = n.parentElement?.closest(lib.REF_SKIP_SELECTOR);
     if (codeCtx && codeCtx !== root) continue;
-    const found = lib.findRefSpans(n.nodeValue);
-    if (!found.length) continue;
-    const box = n.parentElement.getBoundingClientRect();
-    if (box.bottom < 0 || box.top > innerHeight) continue;
-    for (const s of found) spans.push({ node: n, ...s });
+    if (n.parentElement.classList.contains('doc-ref-raw')) continue;
+    for (const s of lib.findRefSpans(n.nodeValue)) spans.push({ node: n, text: n.nodeValue, ...s });
   }
+  const wraps = () => [...root.querySelectorAll('.doc-ref-raw')].map((w) => ({ w, ...wholeRef(w) }));
 
-  await resolveRefs(spans.map((s) => s.ref));
+  await resolveRefs([...spans, ...wraps()].map((s) => s.ref));
   if (!document.body.contains(st.layer)) return;
 
   const sel = getSelection();
   const caret = sel?.rangeCount ? sel.getRangeAt(0) : null;
-  const base = st.layer.getBoundingClientRect();
+  for (const s of spans.reverse()) {
+    const n = s.node;
+    if (!refResolveCache.get(s.ref) || !n.isConnected || n.parentElement.classList.contains('doc-ref-raw')) continue;
+    if (n.nodeValue.slice(s.start, s.end) !== s.text.slice(s.start, s.end)) continue;
+    if (caret?.startContainer === n && caret.startOffset >= s.start && caret.startOffset <= s.end) continue;
+    if (s.end < n.length) n.splitText(s.end);
+    const mid = s.start > 0 ? n.splitText(s.start) : n;
+    const w = el('span', { class: 'doc-ref-raw' });
+    mid.before(w);
+    w.append(mid);
+  }
+
   st.layer.replaceChildren();
-  for (const s of spans) {
-    const hit = refResolveCache.get(s.ref);
-    if (!hit) continue;
-    if (caret?.startContainer === s.node && caret.startOffset >= s.start && caret.startOffset <= s.end) continue;
-    const range = document.createRange();
-    range.setStart(s.node, s.start);
-    range.setEnd(s.node, s.end);
-    const rects = range.getClientRects();
-    if (rects.length !== 1) continue;
-    const r = rects[0];
-    const slot = el('span', {
-      class: 'doc-ref-slot wv-prose',
-      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; max-width:${Math.max(0, base.width - (r.left - base.left))}px;`,
-    });
+  const drawn = [];
+  for (const { w, ref, label } of wraps()) {
+    const hit = ref && refResolveCache.get(ref);
+    if (!hit) { w.replaceWith(...w.childNodes); continue; }
+    const open = !!caret && w.contains(caret.startContainer);
+    w.classList.toggle('open', open);
+    if (open) { w.removeAttribute('style'); continue; }
+    const slot = el('span', { class: 'doc-ref-slot wv-prose' });
     slot.append(hit.chip.cloneNode(true));
-    if (s.label) {
-      const label = slot.querySelector('.k-label');
-      if (label) label.textContent = s.label;
+    if (label) {
+      const k = slot.querySelector('.k-label');
+      if (k) k.textContent = label;
     }
     st.layer.append(slot);
+    drawn.push({ w, slot });
+  }
+  for (const d of drawn) {
+    const box = d.w.parentElement.closest('p, li, td, th, h1, h2, h3, h4, h5, h6, blockquote') ?? root;
+    const cs = getComputedStyle(box);
+    const r = d.slot.getBoundingClientRect();
+    d.width = Math.min(r.width, box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    d.height = r.height;
+  }
+  for (const d of drawn) d.w.style.cssText = `width:${d.width}px; height:${d.height}px;`;
+  const base = st.layer.getBoundingClientRect();
+  for (const d of drawn) {
+    const r = d.w.getBoundingClientRect();
+    d.slot.style.cssText = `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px;`;
+    d.slot.classList.toggle('long', d.slot.scrollWidth > r.width + 1);
   }
 }
 
