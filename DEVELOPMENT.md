@@ -88,6 +88,28 @@ starts `tests`; without it the PR opens unarmed), `WEAVE_TRACKER_TOKEN`
 (bearer for the canonical tracker; without it no rows are filed) and the
 optional `SHERIFF_ALERT_URL`.
 
+### Dev smoke and soak
+
+`.github/workflows/dev-soak.yml` runs after the `dev` workflow's `Deploy dev`
+job confirms a main commit is serving on dev.weave.grunion.ai. It runs
+`scripts/dev-soak.mjs`: a Playwright smoke (load the app, open the `/w/weave`
+workspace, open a table, open a document) every three minutes for fifteen
+minutes, and dev's `/api/health` every thirty seconds. The soak passes when
+the supervisor's `watch` for `c<sha>` reports `ok: true`, no rollback
+happened, the worker's pid never changed and dev answered no 5xx. It then
+posts the commit status `dev-soak` (success) on that SHA; promotion reads that
+context. A failure posts `dev-soak` failure linking the run and sends one line
+to `SHERIFF_ALERT_URL` and the job summary. A newer main commit cancels the
+older run, and a soak that sees dev move to newer main posts nothing.
+
+With the `DEV_SMOKE_TOKEN` secret (an editor `wv_` token on dev) the smoke
+also creates a row through the API, sees it in the grid, and hard-deletes it,
+in the workspace named by the `DEV_SMOKE_WORKSPACE` variable (default
+`/w/smoke`, which needs at least one table). Without it the smoke covers the
+anonymous read surface only. Run one smoke locally with
+`node scripts/dev-soak.mjs smoke`, or soak a commit dev serves with
+`gh workflow run dev-soak -f sha=<sha>`.
+
 ## Releasing
 
 A release starts with a notes-bearing `Development/Release` row in the canonical

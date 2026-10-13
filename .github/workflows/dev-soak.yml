@@ -1,0 +1,62 @@
+name: dev-soak
+run-name: dev-soak ${{ github.event.workflow_run.head_sha || inputs.sha }}
+
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [dev]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Main commit dev serves now, to smoke and soak
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  statuses: write
+
+env:
+  PLAYWRIGHT_VERSION: "1.62.1"
+
+jobs:
+  soak:
+    name: Dev smoke and soak
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: dev-soak-${{ github.event.workflow_run.head_branch || github.ref_name }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - name: Install pinned browser driver
+        run: |
+          npm ci --ignore-scripts --prefix .github/test-tools
+          ln -s .github/test-tools/node_modules node_modules
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}-chromium
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Smoke and soak dev
+        run: node scripts/dev-soak.mjs soak
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEV_SOAK_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
+          DEV_SMOKE_TOKEN: ${{ secrets.DEV_SMOKE_TOKEN }}
+          DEV_SMOKE_WORKSPACE: ${{ vars.DEV_SMOKE_WORKSPACE }}
+          SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
