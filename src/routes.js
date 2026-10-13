@@ -276,7 +276,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const root = weave.registryHost;
       const eM = root && path.match(/^\/(?:api\/entities|e)\/([^/]+)/);
       const tM = root && !eM && path.match(/^\/api\/tables\/([^/]+)/);
-      if (eM && !weave.state.entities[eM[1]] && root.state.entities[eM[1]]) weave = root;
+      const theirs = (id) => { const ws = root.workflowWorkspace(id); return ws !== undefined && ws !== weave.state.meta.id; };
+      if (eM && !weave.state.entities[eM[1]] && root.state.entities[eM[1]] && !theirs(eM[1])) weave = root;
       else if (tM) {
         let ref = tM[1];
         try { ref = decodeURIComponent(ref); } catch {}
@@ -1493,7 +1494,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (rx.method === 'POST') {
-            if (weave !== member && ['spaces', 'users'].includes(weave.findTable(m[1])?.system)) {
+            if (weave !== member && ['spaces', 'users', 'workflows'].includes(weave.findTable(m[1])?.system)) {
               const values = body.values ?? body;
               if (values.Workspace == null) values.Workspace = member.state.meta.id;
             }
@@ -1505,7 +1506,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'GET') {
             const limit = boundedLimit(rx.searchParams.get('limit'));
             const offset = Number(rx.searchParams.get('offset') ?? 0);
-            return out(200, weave.query(m[1], { limit, offset, viewerZone }));
+            return out(200, weave.query(m[1], { limit, offset, viewerZone, workspace: member.state.meta.id }));
           }
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/prefill$/)) && rx.method === 'GET') {
@@ -1513,7 +1514,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && rx.method === 'POST') {
           if (body?.limit != null) body.limit = boundedLimit(body.limit);
-          return out(200, weave.query(m[1], { ...body, viewerZone }));
+          return out(200, weave.query(m[1], { ...body, viewerZone, workspace: member.state.meta.id }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/formula-check$/)) && rx.method === 'POST') {
           return out(200, weave.checkFormula(m[1], body?.expression, { entity: body?.entity ?? null, excludeField: body?.excludeField ?? null, scan: Boolean(body?.scan) }));
@@ -1527,11 +1528,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.tableStats(m[1], { by, where, field }));
         }
         if (path === '/api/trash' && rx.method === 'GET') {
-          const items = weave.listTrash();
+          const items = weave.listTrash(null, { workspace: member.state.meta.id });
           return out(200, { total: items.length, items, views: weave.listViews({ trash: true }) });
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/trash$/)) && rx.method === 'GET') {
-          const items = weave.listTrash(m[1]);
+          const items = weave.listTrash(m[1], { workspace: member.state.meta.id });
           return out(200, { total: items.length, items });
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/export\.csv$/)) && rx.method === 'GET') {

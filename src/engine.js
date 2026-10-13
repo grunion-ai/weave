@@ -4552,6 +4552,8 @@ export class Weave {
     if (db.system === 'workflows') {
       const values = { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !CREATE_INPUT_KEYS.has(k))), ...(input?.values ?? {}) };
       this.#guardWorkflowOn(null, db, values, input?.docs);
+      const wsRow = values.Workspace == null ? null : this.#sysRow('workspaces', values.Workspace);
+      if (wsRow) (input.values && 'Workspace' in input.values ? input.values : input).Workspace = wsRow.id;
       return undefined;
     }
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
@@ -5692,10 +5694,11 @@ export class Weave {
     return counts;
   }
 
-  listTrash(dbRef = null) {
+  listTrash(dbRef = null, { workspace = null } = {}) {
     const dbId = dbRef == null ? null : this.getTable(dbRef).id;
+    const mine = (e) => { const inWs = this.#inWorkspace(this.state.tables[e.dbId] ?? {}, workspace); return !inWs || inWs(e); };
     return Object.values(this.state.entities)
-      .filter((e) => e.deletedAt && (dbId == null || e.dbId === dbId))
+      .filter((e) => e.deletedAt && (dbId == null || e.dbId === dbId) && mine(e))
       .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
       .map((e) => this.readEntity(e.id));
   }
@@ -6780,14 +6783,32 @@ export class Weave {
     return { id: e.id, publicId: e.publicId, name: this.entityName(e), db: this.qualifiedName(db), ...(db.system ? {} : { chip: this.renderView(e.id, 'chip') }) };
   }
 
-  query(dbRef, { viewerZone = null, ...opts } = {}) {
-    if (viewerZone == null) return this.#queryIn(dbRef, opts);
+  #inWorkspace(db, workspace) {
+    if (db.system !== 'workflows') return null;
+    const want = workspace ?? this.state.meta.id;
+    return (e) => this.#workflowWsId(e) === want;
+  }
+
+  #workflowWsId(row) {
+    return this.#wsIdOfRow(row) ?? this.#reg.state.meta.id;
+  }
+
+  workflowWorkspace(id) {
+    const e = own(this.#reg.state.entities, id);
+    if (!e || this.#reg.state.tables[e.dbId]?.system !== 'workflows') return undefined;
+    return this.#workflowWsId(e);
+  }
+
+  query(dbRef, { viewerZone = null, workspace = null, ...opts } = {}) {
+    if (viewerZone == null) return this.#queryIn(dbRef, opts, workspace);
     const prev = this.viewerZone;
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
-    try { return this.#queryIn(dbRef, opts); } finally { this.viewerZone = prev; }
+    try { return this.#queryIn(dbRef, opts, workspace); } finally { this.viewerZone = prev; }
   }
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '' } = {}) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '' } = {}, workspace = null) {
     const db = this.getTable(dbRef);
+    const inWs = this.#inWorkspace(db, workspace);
+    const scoped = (list) => (inWs ? list.filter(inWs) : list);
     if (fields != null && !Array.isArray(fields)) throw new WeaveError('fields must be a list of field names', 'invalid');
     if (fields && select) throw new WeaveError('Ask for select or fields, not both: select is a flat projection, fields cuts the entity', 'invalid');
     if (relations != null && relations !== 'full' && relations !== 'chip') throw new WeaveError(`relations must be 'full' or 'chip' (got '${relations}')`, 'invalid');
@@ -6798,14 +6819,14 @@ export class Weave {
       else if (!Object.hasOwn(SYSTEM_SORT_KEYS, name)) this.getField(db.id, name);
     }
     const chips = relations === 'chip' && !select ? Object.create(null) : null;
-    let rows = this.listEntities(db.id, { includeDeleted });
-    const all = countAll ? (includeDeleted ? this.listEntities(db.id).length : rows.length) : null;
+    let rows = scoped(this.listEntities(db.id, { includeDeleted }));
+    const all = countAll ? (includeDeleted ? scoped(this.listEntities(db.id)).length : rows.length) : null;
     if (String(search ?? '').trim()) {
       const hit = new Set(this.#searchHits(search, db.id).map((h) => h.e.id));
       rows = rows.filter((e) => hit.has(e.id));
     }
     const trashed = trashCount
-      ? this.listEntities(db.id, { includeDeleted: true }).filter((e) => e.deletedAt).length
+      ? scoped(this.listEntities(db.id, { includeDeleted: true })).filter((e) => e.deletedAt).length
       : null;
     if (where && (Array.isArray(where) ? where.length : true)) {
       rows = rows.filter((e) => this.#matchNode(e, db, Array.isArray(where) ? { and: where } : where));
@@ -7354,7 +7375,7 @@ export class Weave {
     if (!rule.problem) {
       const db = rule.owner.state.tables[rule.dbId];
       const wfT = this.#sysTable('workflows');
-      for (const [name, kind, id] of [['Tables', 'tables', db.id], ['Spaces', 'spaces', db.spaceId]]) {
+      for (const [name, kind, id] of [['Tables', 'tables', db.id], ['Spaces', 'spaces', db.spaceId], ['Workspace', 'workspaces', rule.owner.state.meta.id]]) {
         const target = this.#sysRow(kind, id);
         if (!target) continue;
         const f = F(name);
