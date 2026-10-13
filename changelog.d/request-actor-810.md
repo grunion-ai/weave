@@ -1,0 +1,1 @@
+- A write that lands while another signed-in request is still arriving now records the account that sent it, instead of whichever request reached the server last. Row authors, comment authors, bug-report reporters, template builds and credential ownership checks all read the actor captured when the request authenticated (Issue #810).

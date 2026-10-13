@@ -570,7 +570,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return wall();
     }
-    const requestActor = role ? weave.actor : 'anonymous';
+    const actorForRequest = weave.actor;
+    const requestActor = role ? actorForRequest : 'anonymous';
     const guarded = () => !!(weave.listAccounts().length || hub.get(hub.defaultName).listAccounts().length);
     const cap = role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
     if (cap && cap !== 'architect') {
@@ -843,6 +844,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
       if (path.startsWith('/api/')) {
         const body = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody() : {};
+        weave.actor = actorForRequest;
         const route = `${rx.method} ${path}`;
         if (share) {
           const gated = shareGate(weave, share, { method: rx.method, path, body, searchParams: rx.searchParams, viewerZone });
@@ -1072,7 +1074,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!mayAdminister(target, roleOn(target))) throw new WeaveError(`You cannot build in ${key}: using a template there needs an architect on it`, 'forbidden');
           target.maybeRefresh?.();
           const was = target.actor;
-          target.actor = weave.actor;
+          target.actor = actorForRequest;
           try {
             const r = weave.useTemplate(space, target, { name: name == null || name === '' ? undefined : String(name) });
             const url = key === hub.defaultName ? `/#/space/${r.space.id}` : `/w/${key}/#/space/${r.space.id}`;
@@ -1224,7 +1226,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const reveal = !!km?.[2] && rx.method === 'POST';
           const target = route === 'POST /api/keys' ? body?.name
             : km && !km[2] && rx.method === 'DELETE' ? decodeURIComponent(km[1]) : null;
-          const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === weave.actor;
+          const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === actorForRequest;
           if (!mayAdminister(root, rootRole) && !(reveal && rootRole) && !owns) {
             return deny(rootRole ? 403 : 401, 'Managing keys needs an architect on the hub root');
           }
@@ -1388,7 +1390,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           docs.maybeRefresh();
           const form = ensureBugForm(docs);
           const instance = role != null && typeof body?.instance === 'string' && body.instance.trim() ? body.instance.trim().slice(0, 200) : null;
-          const filed = submitForm(docs, form.id, body ?? {}, { actor: role == null ? 'bug-report' : weave.actor, server: { ...stamp(), instance, forwardFailure } });
+          const filed = submitForm(docs, form.id, body ?? {}, { actor: role == null ? 'bug-report' : actorForRequest, server: { ...stamp(), instance, forwardFailure } });
           return out(201, { ...filed, ...failed });
         }
 
@@ -1631,7 +1633,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {
-          return out(201, weave.addComment(m[1], role && !['architect', 'editor'].includes(role) ? { ...body, author: weave.actor } : body));
+          return out(201, weave.addComment(m[1], role && !['architect', 'editor'].includes(role) ? { ...body, author: actorForRequest } : body));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments\/([^/]+)$/)) && rx.method === 'DELETE') {
           weave.deleteComment(m[1], m[2]);
