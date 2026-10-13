@@ -23,7 +23,15 @@ test('workflow write permissions are confined to guarded release delivery', () =
   for (const f of files) {
     const src = text(f);
     assert.match(src, /^permissions:\n  contents: read\n/m, `${f}: top-level permissions block`);
-    if (f !== 'release.yml') assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
+    if (f === 'sheriff.yml') {
+      const head = src.slice(0, src.indexOf('\njobs:'));
+      assert.doesNotMatch(head, /(write|admin)\s*$/m, 'sheriff.yml: a top-level write permission');
+      assert.match(src, /runs-on: ubuntu-latest\n    timeout-minutes: 150\n    permissions:\n      contents: write\n      actions: write\n      pull-requests: write\n      issues: write\n    steps:/);
+      assert.match(src, /github\.event\.workflow_run\.event == 'push'/);
+      assert.match(src, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/);
+      assert.match(src, /ref: main\n/);
+      assert.doesNotMatch(src, /workflow_run\.head_sha|workflow_run\.head_branch \}\}|pull_request_target/);
+    } else if (f !== 'release.yml') assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
     else {
       const job = (name) => src.slice(src.indexOf(`  ${name}:\n`)).split(/\n(?=  \S)/)[0];
       const publish = job('publish');
