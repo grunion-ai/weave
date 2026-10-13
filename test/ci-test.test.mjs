@@ -15,7 +15,7 @@ test('shards cover every file exactly once and balance deterministic weights', (
 });
 
 test('aggregation requires exact commit, manifest, every shard and executed file evidence', () => {
-  assert.equal(validate(manifest, evidence(), 'abc').files, 4);
+  assert.equal(validate(manifest, evidence(), 'abc').files, 5);
   for (const mutate of [
     r => r.pop(),
     r => r.push(r[0]),
