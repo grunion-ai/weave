@@ -286,6 +286,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
 
     weave.actor = String(rx.header('x-weave-actor') || 'web').slice(0, 120);
+    if (oidc?.issuer) (weave.registryHost ?? weave).inviteIssuer = oidc.issuer;
     path = path.replace(/^(\/api\/tables\/)([^/]+)/, (whole, head, key) => {
       if (!/%2f/i.test(key)) return whole;
       try { return head + (weave.findTable(key.replace(/%2f/gi, '/'))?.id ?? key); } catch { return whole; }
@@ -1492,12 +1493,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (rx.method === 'POST') {
-            if (weave !== member && weave.findTable(m[1])?.system === 'spaces') {
+            if (weave !== member && ['spaces', 'users'].includes(weave.findTable(m[1])?.system)) {
               const values = body.values ?? body;
               if (values.Workspace == null) values.Workspace = member.state.meta.id;
             }
             const e = weave.createEntity(m[1], body);
-            return out(201, weave.readEntity(e.id, { viewerZone }));
+            const once = weave.takeOneTime(e.id);
+            const secret = once?.invite ? { invite: { ...once.invite, url: inviteUrl(`${originFor(rx)}${wsPrefix}`, once.invite.code) } } : once ?? {};
+            return out(201, { ...weave.readEntity(e.id, { viewerZone }), ...secret });
           }
           if (rx.method === 'GET') {
             const limit = boundedLimit(rx.searchParams.get('limit'));

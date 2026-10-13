@@ -1612,6 +1612,14 @@ weave asks the provider for the \`openid\` and \`email\` scopes (Feature #290, w
 
 A hosted provider with open sign-up lets anyone create a user there. A sign-in at the provider proves who someone is, and weave admits that person only after they have redeemed an invite for an account. weave keeps only the invite's hash, like a token or a session, and an invite works once.
 
+## The Users table
+
+**Users** is a system table in the Workspace space, pinned in the sidebar under Workflows (Feature #318). Each account and each pending invite is a row with Name, Email, Role (Architect, Editor or Observer), Status (Invited or Active), Kind (Person or Agent), Identities, Last Seen and Created. The accounts stay the source of truth and the rows follow them, so an account made with \`weave account create\` or redeemed from an invite shows up here too.
+
+You manage people by editing rows. A new row with an Email invites that person at the row's Role; the answer carries the one-time sign-in link as \`invite.url\`, and the row reads Invited until they sign in. A new row with Kind Agent and no Email makes an agent account; the answer carries its \`wv_\` token as \`token\`, shown once. Editing Role changes the account's role, editing Name renames the account, and deleting the row revokes the invite or deletes the account. Email, Status, Kind, Identities, Last Seen and Created are kept by weave and refuse edits.
+
+Add your own fields to Users like on any table, and point a relation at it from any table in the same workspace for an owner or an assignee. Only an architect creates, edits or deletes Users rows; editors and observers read them and relate to them. No row, query, export or MCP answer carries a token, session or invite hash, and \`weave export\` leaves the Email column out.
+
 ## Application at the provider
 
 Register an OAuth or OIDC application that uses the authorization code flow with PKCE, the scope \`openid\` and one redirect URI:

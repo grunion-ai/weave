@@ -20,7 +20,7 @@ const SEED = () => [
 ];
 
 const fieldInSchema = (doc, name) => doc
-  .flatMap((sp) => sp.tables).flatMap((db) => db.fields).find((f) => f.name === name);
+  .flatMap((sp) => sp.tables).filter((db) => db.name === 'Task').flatMap((db) => db.fields).find((f) => f.name === name);
 
 test('a state keeps the hue it was given; one without a hue keeps no key', () => {
   const { w, t } = ws();

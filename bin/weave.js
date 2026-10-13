@@ -742,7 +742,8 @@ async function main() {
     case 'create': {
       const [db, name] = args;
       const e = w.createEntity(db, { name, values: parseJsonFlag('values') ?? {}, doc: flags.doc === true ? '' : flags.doc });
-      return out(w.readEntity(e.id));
+      const once = w.takeOneTime(e.id);
+      return out({ ...w.readEntity(e.id), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '', once.invite.code) } } : once ?? {}) });
     }
     case 'update': {
       const e = resolveEntityRef(w, args[0], flags.db);
