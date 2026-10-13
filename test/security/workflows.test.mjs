@@ -31,6 +31,14 @@ test('workflow write permissions are confined to guarded release delivery', () =
       assert.match(src, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/);
       assert.match(src, /ref: main\n/);
       assert.doesNotMatch(src, /workflow_run\.head_sha|workflow_run\.head_branch \}\}|pull_request_target/);
+    } else if (f === 'dev-soak.yml') {
+      assert.doesNotMatch(src.slice(0, src.indexOf('\njobs:')), /(write|admin)\s*$/m, 'dev-soak.yml: a top-level write permission');
+      assert.deepEqual(src.match(/^ +\S+: (write|admin)$/gm).map((l) => l.trim()), ['statuses: write']);
+      assert.match(src, /timeout-minutes: 30\n    permissions:\n      contents: read\n      statuses: write\n    concurrency:/);
+      assert.match(src, /github\.event\.workflow_run\.event == 'push'/);
+      assert.match(src, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/);
+      assert.match(src, /ref: main\n/);
+      assert.doesNotMatch(src, /pull_request_target/);
     } else if (f !== 'release.yml') assert.doesNotMatch(src, /(write|admin)\s*$/m, `${f}: a write permission`);
     else {
       const job = (name) => src.slice(src.indexOf(`  ${name}:\n`)).split(/\n(?=  \S)/)[0];
