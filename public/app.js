@@ -2133,20 +2133,29 @@ function fitPhoneChipLines(grid) {
   const wrap = grid.dataset.phoneWrap != null;
   for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
     const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
-    for (const td of cells) { td.classList.remove('list-hide'); delete td.dataset.more; }
+    for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
     if (!phone) continue;
-    const shown = cells.filter((td) => td.getClientRects().length).sort((a, b) => Number(a.dataset.phoneChip) - Number(b.dataset.phoneChip));
-    if (!shown.length) continue;
+    const drawn = cells.filter((td) => td.getClientRects().length).sort((a, b) => Number(a.dataset.phoneChip) - Number(b.dataset.phoneChip));
+    if (!drawn.length) continue;
+    const cut = drawn.filter((td) => [...td.querySelectorAll('.k-label')].some(overflowsX));
+    for (const td of cut) td.classList.add('list-hide');
+    const shown = drawn.filter((td) => !cut.includes(td));
+    if (!shown.length) {
+      cut[0].classList.replace('list-hide', 'phone-count-only');
+      cut[0].dataset.more = `+${cut.length}`;
+      continue;
+    }
     const top = shown[0].getBoundingClientRect().top;
     const box = tr.getBoundingClientRect();
     const edge = box.right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
     let n = shown.length;
     const fits = () => {
       const r = shown[n - 1].getBoundingClientRect();
-      return (wrap ? r.bottom <= box.bottom + 0.5 : r.top - top < 1) && (n === shown.length || r.right + PHONE_MORE_W <= edge);
+      return (wrap ? r.bottom <= box.bottom + 0.5 : r.top - top < 1) && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
     };
     while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
-    if (n < shown.length) shown[n - 1].dataset.more = `+${shown.length - n}`;
+    const hidden = cut.length + shown.length - n;
+    if (hidden) shown[n - 1].dataset.more = `+${hidden}`;
   }
 }
 function markClippedCells(grid) {
