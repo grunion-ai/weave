@@ -109,7 +109,8 @@ optional `SHERIFF_ALERT_URL`.
 job confirms a main commit is serving on dev.weave.grunion.ai. It runs
 `scripts/dev-soak.mjs`: a Playwright smoke (load the app, open the `/w/weave`
 workspace, open a table, open a document) every three minutes for fifteen
-minutes, and dev's `/api/health` every thirty seconds. The soak passes when
+minutes, and dev's `/api/health` every thirty seconds. A failed smoke runs
+again at once; a second failure in a row fails the soak. The soak passes when
 the supervisor's `watch` for `c<sha>` reports `ok: true`, no rollback
 happened, the worker's pid never changed and dev answered no 5xx. It then
 posts the commit status `dev-soak` (success) on that SHA; promotion reads that

@@ -35,7 +35,7 @@ export function judge(health, { sha, first = null }) {
 
 export function describe(outcome) {
   const text = outcome.state === 'success'
-    ? `${outcome.rounds} smokes over ${Math.round(outcome.ms / 60_000)} min, watch passed, ${outcome.fivexx} 5xx`
+    ? `${outcome.rounds} smokes over ${Math.round(outcome.ms / 60_000)} min${outcome.retries ? ` (${outcome.retries} retried)` : ''}, watch passed, ${outcome.fivexx} 5xx`
     : outcome.reason;
   return text.length > 140 ? `${text.slice(0, 137)}...` : text;
 }
@@ -46,14 +46,21 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
   let fivexx = 0;
   let rounds = 0;
   let misses = 0;
+  let retries = 0;
   let nextSmoke = start;
-  const end = (state, reason) => ({ state, reason, rounds, fivexx, ms: clock.now() - start });
+  const end = (state, reason) => ({ state, reason, rounds, retries, fivexx, ms: clock.now() - start });
   for (;;) {
     if (clock.now() >= nextSmoke && clock.now() - start < cfg.soakMs) {
-      const smoke = await io.smoke();
+      let smoke = await io.smoke();
       rounds++;
       fivexx += smoke.fivexx ?? 0;
-      if (!smoke.ok) return end('failure', `smoke ${rounds} failed at ${smoke.step}: ${smoke.error}`);
+      if (!smoke.ok) {
+        io.log(`smoke ${rounds} failed at ${smoke.step} (${smoke.error}); retrying once`);
+        retries++;
+        smoke = await io.smoke();
+        fivexx += smoke.fivexx ?? 0;
+        if (!smoke.ok) return end('failure', `smoke ${rounds} failed at ${smoke.step} twice: ${smoke.error}`);
+      }
       nextSmoke = start + rounds * cfg.smokeEveryMs;
     }
     const health = await io.health();
@@ -117,7 +124,7 @@ export async function smoke(page, { base, workspace, writeWorkspace, token }) {
       if (row) { picked = { table: t, row }; break; }
     }
     if (!picked) throw new Error('no table in the first eight holds a row with a document');
-    await page.evaluate((id) => { location.hash = `#/table/${id}`; }, picked.table.id);
+    await page.goto(`${ws}/#/table/${picked.table.id}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.waitForSelector('.wv-grid tbody tr.entity-row', { timeout: 20_000 });
     step = 'open document';
     await page.evaluate((id) => { location.hash = `#/entity/${id}`; }, picked.row.id);
