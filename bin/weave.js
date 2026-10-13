@@ -278,7 +278,7 @@ async function main() {
       const sup = await startSupervisor({ port, host, dataPath });
       for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => sup.close().finally(() => process.exit(0)));
       const s = sup.status();
-      console.log(`weave supervise: serving ${s.release} (${s.dir}) at http://${host}:${sup.port}; ${process.env.WEAVE_TRACK === 'main' ? 'following main' : 'checking for a newer release'} every 10 minutes`);
+      console.log(`weave supervise: serving ${s.release} (${s.dir}) at http://${host}:${sup.port}; ${s.track ? `following ${s.track}` : 'checking for a newer release'} every 10 minutes`);
       return;
     }
   }

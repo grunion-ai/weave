@@ -10,7 +10,7 @@ import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
 import { packTar } from '../src/backup.js';
 import { Weave, deferMigrations, runDeferredMigrations } from '../src/engine.js';
-import { startSupervisor, autoUpdateFromEnv, unpackRelease, pruneReleases, REPO_API } from '../src/supervisor.js';
+import { startSupervisor, autoUpdateFromEnv, trackFromEnv, unpackRelease, pruneReleases, REPO_API } from '../src/supervisor.js';
 import { RELEASES_URL } from '../src/update-check.js';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -76,7 +76,7 @@ async function supervise(dataPath, gh, extra = {}) {
   const events = [];
   const sup = await startSupervisor({
     port: 0, host: '127.0.0.1', dataPath, env: ENV, fetch: gh.fetch,
-    interval: 0, healthTimeoutMs: 60_000, log: { log() {}, warn() {}, error() {} },
+    interval: 0, healthTimeoutMs: 60_000, watchMs: 0, log: { log() {}, warn() {}, error() {} },
     onEvent: (e) => events.push({ ...e, t: Date.now() }),
     onWorkerDied: () => { throw new Error('a worker died under the supervisor'); },
     ...extra,
@@ -424,7 +424,8 @@ function fakeMain({ heads, tarball = () => releaseTarball(NEXT) }) {
   const fetch = async (url) => {
     url = String(url);
     calls.push(url);
-    if (url === `${REPO_API}/commits/main`) return Response.json({ sha: heads.main });
+    const branch = url.startsWith(`${REPO_API}/commits/`) ? url.slice(`${REPO_API}/commits/`.length) : null;
+    if (branch && heads[branch]) return Response.json({ sha: heads[branch] });
     const sha = /\/tarball\/([0-9a-f]{40})$/.exec(url)?.[1];
     if (sha) return new Response(tgz.get(sha) ?? tgz.set(sha, tarball(sha)).get(sha));
     return new Response('not found', { status: 404 });
@@ -589,5 +590,208 @@ test('a walled workspace swaps to a real release whose anonymous health is only 
     assert.deepEqual(after.supervisor.failed, []);
   } finally {
     await sup.close();
+  }
+});
+
+test('WEAVE_TRACK names main, a branch through branch:<name>, or nothing; a malformed branch is refused', () => {
+  assert.equal(trackFromEnv({ WEAVE_TRACK: 'main' }), 'main');
+  assert.equal(trackFromEnv({ WEAVE_TRACK: 'branch:production' }), 'production');
+  assert.equal(trackFromEnv({ WEAVE_TRACK: 'branch:release/v1' }), 'release/v1');
+  for (const v of [undefined, '', 'release', 'production']) assert.equal(trackFromEnv(v === undefined ? {} : { WEAVE_TRACK: v }), null, `WEAVE_TRACK=${v}`);
+  for (const v of ['branch:', 'branch:a b', 'branch:../main', 'branch:-x']) assert.throws(() => trackFromEnv({ WEAVE_TRACK: v }), /WEAVE_TRACK/, v);
+});
+
+test('tracking a promotion branch follows that branch, never main, and the deploy hook checks it', async () => {
+  const dataPath = dataDir('track-branch');
+  const heads = { main: MAIN_A, production: MAIN_B };
+  const gh = fakeMain({ heads });
+  const { sup, base } = await supervise(dataPath, gh, { env: { ...ENV, WEAVE_TRACK: 'branch:production', WEAVE_DEPLOY_TOKEN: 'k'.repeat(32) } });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    const h = await health(base);
+    assert.equal(h.supervisor.commit, MAIN_B);
+    assert.equal(h.supervisor.release, `c${MAIN_B}`);
+    assert.equal(h.supervisor.track, 'production');
+    assert.ok(gh.calls.includes(`${REPO_API}/commits/production`));
+    assert.ok(!gh.calls.includes(`${REPO_API}/commits/main`), 'main is never asked');
+    heads.production = MAIN_C;
+    const hook = await fetch(`${base}/_supervisor/check`, { method: 'POST', headers: { authorization: `Bearer ${'k'.repeat(32)}` } });
+    const body = await hook.json();
+    assert.equal(body.action, 'swapped');
+    assert.equal(body.commit, MAIN_C);
+  } finally {
+    await sup.close();
+  }
+});
+
+function fakeBin(version, { afterMigrate = '', migrateWrites = false } = {}) {
+  return `import { createServer } from 'node:http';
+${migrateWrites ? "import { DatabaseSync } from 'node:sqlite';" : ''}
+const data = process.argv[process.argv.indexOf('--data') + 1];
+let sick = false;
+let broken = false;
+const s = createServer((q, r) => {
+  r.setHeader('content-type', 'application/json');
+  if (q.url.startsWith('/api/health')) { r.statusCode = sick ? 503 : 200; return r.end(JSON.stringify({ ok: !sick, name: 'weave', version: ${JSON.stringify(version)} })); }
+  r.statusCode = broken ? 500 : 200;
+  r.end('{}');
+});
+s.listen(0, '127.0.0.1', () => process.send({ weave: 'listening', port: s.address().port, version: ${JSON.stringify(version)} }));
+process.on('message', (m) => {
+  if (m?.weave !== 'migrate') return;
+  ${migrateWrites ? "const db = new DatabaseSync(data); db.exec('PRAGMA busy_timeout = 5000'); db.exec('CREATE TABLE IF NOT EXISTS fake_migration (x)'); db.close();" : ''}
+  process.send({ weave: 'migrated' });
+  ${afterMigrate}
+});
+`;
+}
+
+const waitFor = async (what, ms = 30_000) => {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    const v = await what();
+    if (v) return v;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error('timed out waiting');
+};
+const WATCH = { watchMs: 1500, watchPollMs: 50 };
+const okMark = (dataPath, name) => existsSync(join(dataPath, '..', 'releases', name, '.weave-release-ok'));
+
+test('a release that passes its watch is marked good only then, and the watch shows in health', async () => {
+  const dataPath = dataDir('watch-pass');
+  const { sup, base, events } = await supervise(dataPath, fakeGitHub(), WATCH);
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    const during = await health(base);
+    assert.equal(during.supervisor.watch.ok, null, 'watching');
+    assert.ok(Date.parse(during.supervisor.watch.until) > Date.now());
+    assert.equal(during.supervisor.watch.migrated, false, 'a real release on a current workspace writes nothing at migrate');
+    assert.ok(!okMark(dataPath, `v${NEXT}`), 'not good yet');
+    await waitFor(() => events.some((e) => e.type === 'watch-passed'));
+    assert.equal((await health(base)).supervisor.watch.ok, true);
+    assert.ok(okMark(dataPath, `v${NEXT}`), 'good once the watch passed');
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a serving worker that exits inside its watch rolls back to the image when no good release is kept', async () => {
+  const dataPath = dataDir('watch-exit');
+  const heads = { main: MAIN_A };
+  const gh = fakeMain({ heads, tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { afterMigrate: 'setTimeout(() => process.exit(7), 100);' }) }) });
+  const { sup, base, events } = await supervise(dataPath, gh, { env: TRACK, ...WATCH });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    await waitFor(() => events.some((e) => e.type === 'rolled-back'));
+    const h = await health(base);
+    assert.equal(h.version, IMAGE_VERSION);
+    assert.equal(h.supervisor.release, 'image');
+    assert.equal(h.supervisor.lastSwap.ok, true);
+    assert.equal(h.supervisor.lastSwap.from, `c${MAIN_A}`);
+    assert.equal(h.supervisor.lastSwap.to, 'image');
+    assert.match(h.supervisor.lastSwap.rollback, /exited/);
+    assert.equal(h.supervisor.watch.ok, false);
+    assert.deepEqual(h.supervisor.failed, [MAIN_A]);
+    assert.equal((await sup.check()).action, 'skipped', 'the rolled-back commit is not tried again until the branch moves');
+  } finally {
+    await sup.close();
+  }
+});
+
+test('three failed health checks inside the watch roll back to the kept good release', async () => {
+  const dataPath = dataDir('watch-health');
+  const heads = { main: MAIN_A };
+  const gh = fakeMain({ heads, tarball: (sha) => releaseTarball(NEXT, { bin: fakeBin(NEXT, sha === MAIN_B ? { afterMigrate: 'sick = true;' } : {}) }) });
+  const { sup, base, events } = await supervise(dataPath, gh, { env: TRACK, ...WATCH });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    await waitFor(() => events.some((e) => e.type === 'watch-passed'));
+    heads.main = MAIN_B;
+    assert.equal((await sup.check()).action, 'swapped');
+    await waitFor(() => events.some((e) => e.type === 'rolled-back'));
+    const h = await health(base);
+    assert.equal(h.supervisor.commit, MAIN_A);
+    assert.equal(h.supervisor.release, `c${MAIN_A}`);
+    assert.equal(h.supervisor.lastSwap.from, `c${MAIN_B}`);
+    assert.equal(h.supervisor.lastSwap.to, `c${MAIN_A}`);
+    assert.match(h.supervisor.lastSwap.rollback, /health/);
+    assert.deepEqual(h.supervisor.failed, [MAIN_B]);
+    assert.ok(!okMark(dataPath, `c${MAIN_B}`), 'the bad release was never marked good');
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a 5xx rate past the threshold inside the watch rolls back', async () => {
+  const dataPath = dataDir('watch-5xx');
+  const gh = fakeMain({ heads: { main: MAIN_A }, tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { afterMigrate: 'broken = true;' }) }) });
+  const { sup, base, events } = await supervise(dataPath, gh, { env: TRACK, ...WATCH, watchMs: 20_000 });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    for (let i = 0; i < 25 && !events.some((e) => e.type === 'rolled-back'); i++) await fetch(`${base}/api/anything`).then((r) => r.arrayBuffer());
+    await waitFor(() => events.some((e) => e.type === 'rolled-back'));
+    const h = await health(base);
+    assert.equal(h.supervisor.release, 'image');
+    assert.match(h.supervisor.lastSwap.rollback, /5xx/);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a release whose deferred migration wrote to the workspace is never rolled back: it is marked good and a trip only alerts', async () => {
+  const dataPath = dataDir('watch-migrated');
+  const gh = fakeMain({ heads: { main: MAIN_A }, tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { migrateWrites: true, afterMigrate: 'sick = true;' }) }) });
+  const { sup, events } = await supervise(dataPath, gh, { env: TRACK, ...WATCH });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    await waitFor(() => events.some((e) => e.type === 'watch-alert'));
+    const s = sup.status();
+    assert.equal(s.release, `c${MAIN_A}`, 'still serving the migrated release');
+    assert.equal(s.watch.migrated, true);
+    assert.equal(s.watch.ok, false);
+    assert.match(s.watch.alert, /migration/);
+    assert.deepEqual(s.failed, []);
+    assert.ok(okMark(dataPath, `c${MAIN_A}`), 'marked good the moment its migration wrote');
+    assert.ok(!events.some((e) => e.type === 'rolled-back'));
+  } finally {
+    await sup.close();
+  }
+});
+
+function plantRunnable(releasesDir, name, version, served, bin) {
+  const dir = plantRelease(releasesDir, name, { version, served });
+  mkdirSync(join(dir, 'bin'), { recursive: true });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'weave', version, type: 'module' }));
+  writeFileSync(join(dir, 'bin', 'weave.js'), bin);
+  return dir;
+}
+
+test('a boot that fails falls back to the newest good release folder before the image, for commit and version folders', async () => {
+  const crash = 'process.exit(3);\n';
+  const tracked = dataDir('boot-fallback-commit');
+  const dir = join(tracked, '..', 'releases');
+  plantRunnable(dir, `c${MAIN_A}`, NEXT, '2026-10-01T00:00:00.000Z', fakeBin(NEXT));
+  plantRunnable(dir, `c${MAIN_B}`, NEXT, '2026-10-02T00:00:00.000Z', crash);
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ failed: {}, commit: MAIN_B }));
+  const a = await supervise(tracked, fakeMain({ heads: { main: MAIN_B } }), { env: TRACK });
+  try {
+    const s = a.sup.status();
+    assert.equal(s.release, `c${MAIN_A}`);
+    assert.deepEqual(s.failed, [MAIN_B]);
+  } finally {
+    await a.sup.close();
+  }
+  const versioned = dataDir('boot-fallback-version');
+  const vdir = join(versioned, '..', 'releases');
+  plantRunnable(vdir, 'v9.9.8', '9.9.8', '2026-10-01T00:00:00.000Z', fakeBin('9.9.8'));
+  plantRunnable(vdir, 'v9.9.9', '9.9.9', '2026-10-02T00:00:00.000Z', crash);
+  const b = await supervise(versioned, fakeGitHub());
+  try {
+    const s = b.sup.status();
+    assert.equal(s.release, 'v9.9.8');
+    assert.deepEqual(s.failed, ['9.9.9']);
+  } finally {
+    await b.sup.close();
   }
 });

@@ -28,7 +28,25 @@ production, which needs an approved release.
    `releases/` except the serving commit and the most recently served good one,
    kept for rollback, and never touches `releases/state.json`) and
    `WEAVE_DEPLOY_TOKEN` (32+ characters; `POST /_supervisor/check` with that
-   bearer token checks main at once, which the `Deploy dev` job calls). Migrated draft PRs stay drafts until their own review finishes.
+   bearer token checks main at once, which the `Deploy dev` job calls).
+   `WEAVE_TRACK=branch:<name>` follows another branch, such as a `production`
+   promotion branch, with the same `c<sha>` folders and deploy hook. Migrated draft PRs stay drafts until their own review finishes.
+6. After every switch the supervisor watches the new release for
+   `WEAVE_WATCH_MS` (default ten minutes). The serving worker exiting, three
+   failed `/api/health` polls in a row, or a 5xx share of proxied responses at
+   or above `WEAVE_WATCH_5XX_RATE` (default 0.25, over at least 20 responses)
+   marks the release failed and swaps back, through the same health-checked
+   path, to the kept rollback folder, or the image when none is kept.
+   `lastSwap.rollback` names the trip and `/api/health` shows
+   `supervisor.watch` with `until` and `ok`. A release is written good
+   (`.weave-release-ok`) only when its watch passes, so a restart mid-watch
+   boots the last proven release; a boot that fails falls back to the newest
+   good `v<version>` or `c<sha>` folder before the image.
+   Migration rule: a release whose deferred migration wrote to any workspace in
+   the data directory (`PRAGMA data_version` moved across the migrate step) is
+   never rolled back automatically. It is written good at once, and a later
+   trip logs an `ALERT` and sets `watch.alert` for a person to act on; old code
+   never runs on a schema a newer release migrated.
 
 ## Verification
 
@@ -114,6 +132,7 @@ beside `WEAVE_DATA` and keeps two folders at most: the serving release and the
 most recently served good one. A release that fails its health check is deleted
 along with every older folder. While the image serves, only the newest good
 folder stays. A folder it cannot remove is logged and never blocks a swap.
+Each swap is watched and rolled back the same way as on dev (Daily flow, step 6).
 The release job polls health for at most 90 attempts, with ten-second intervals and
 five-second request timeouts. Success requires the exact package version and
 `supervisor.release` tag. A rejected update or timeout fails the workflow visibly.
