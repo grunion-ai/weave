@@ -22,6 +22,8 @@ export const decodePath = (pathname) => {
   catch { throw new WeaveError('Malformed percent-escape in the path', 'invalid'); }
 };
 
+export const ownsEntity = (ws, id) => Object.hasOwn(ws.state.entities, id);
+
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
   return { 'not-found': 404, conflict: 409, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415, 'too-large': 413, 'rate-limited': 429 }[err.code] ?? 400;
@@ -277,7 +279,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const eM = root && path.match(/^\/(?:api\/entities|e)\/([^/]+)/);
       const tM = root && !eM && path.match(/^\/api\/tables\/([^/]+)/);
       const theirs = (id) => { const ws = root.workflowWorkspace(id); return ws !== undefined && ws !== weave.state.meta.id; };
-      if (eM && !weave.state.entities[eM[1]] && root.state.entities[eM[1]] && !theirs(eM[1])) weave = root;
+      if (eM && !ownsEntity(weave, eM[1]) && ownsEntity(root, eM[1]) && !theirs(eM[1])) weave = root;
       else if (tM) {
         let ref = tM[1];
         try { ref = decodeURIComponent(ref); } catch {}
