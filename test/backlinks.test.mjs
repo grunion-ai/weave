@@ -182,13 +182,13 @@ test('GET /api/entities/:ref/references-from serves the outbound refs', async ()
   }
 });
 
-test('reference panels join the opt-in side column and wear k k-rel chips', async () => {
+test('reference panels join the side column and wear k k-rel chips', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   const block = src.slice(src.indexOf('const refCard'), src.indexOf('deck is composed on read'));
   assert.ok(block.includes('right.append'), 'panels join the entity-side column, never the body');
-  assert.ok(block.includes('sideOpen'), 'nothing is fetched until the side column is open');
-  assert.ok(block.includes('card panel ref-backlinks-card'), 'same panel dress as Activity and Comments');
+  assert.ok(block.includes("refCard('References', 'ref-outbound-card', refsOut)"), 'the references load with the record and open the column (Feature #315)');
+  assert.ok(block.includes('card panel ref-backlinks-card'), 'same panel dress as Comments');
   assert.ok(block.includes('relationChipEl({ targetDbIds: true }, r)'), 'chips are the shared relation chip — the far row’s Chip, wearing its home table badge');
   assert.ok(!block.includes('left.append'), 'the entity body stays quiet');
 });

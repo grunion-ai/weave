@@ -706,8 +706,12 @@ test('reference panels join the side column, dressed like Comments, wearing the 
   assert.doesNotMatch(block, /el\('details'|el\('summary'/, 'no disclosure of its own: the side column is the disclosure');
   assert.match(block, /el\('div', \{ class: 'card-header' \},\s*el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
     'the header is title + count');
-  assert.match(body, /const \[refsOut, refsIn\] = await Promise\.all\(\['references-from', 'references'\]/,
-    'both directions load with the record, before it paints, so the column never jumps (Feature #315)');
+  assert.match(APP, /const entityRefs = \(id\) => Promise\.all\(\['references-from', 'references'\]/,
+    'both directions load with the record (Feature #315)');
+  for (const fn of ['showEntity', 'drawDock']) {
+    assert.match(fnBody(fn), /Promise\.all\(\[api\('GET', `\/entities\/\$\{(id|top\.id)\}`\), entityRefs\((id|top\.id)\)\]\)/,
+      `${fn} fetches the references beside the record, before it clears the pane, so a redraw keeps its scroll and the column never jumps`);
+  }
   assert.match(block, /refCard\('References', 'ref-outbound-card', refsOut\)/, 'what this entity mentions');
   assert.match(block, /refCard\('Referenced by', 'ref-inbound-card', refsIn\)/, 'who mentions it');
   assert.match(block, /relationChipEl\(\{ targetDbIds: true \}, r\)/, 'the chip is the relation chip — the far row’s Chip — and the chip is the link, wearing the short home-table badge');
