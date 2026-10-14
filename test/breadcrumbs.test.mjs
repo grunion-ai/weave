@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 await import('../public/breadcrumbs.js');
-const { pushTrail, entityCrumbs, dockCrumbs } = globalThis.weaveBreadcrumbs;
+const { pushTrail, entityCrumbs, dockCrumbs, ROW_MARK } = globalThis.weaveBreadcrumbs;
 
 const ada = { id: 'a', name: 'Ada Chen', space: 'Showcase', spaceId: 's1', table: 'People', tableId: 't1' };
 const board = { id: 'b', name: 'Sensor board', space: 'Showcase', spaceId: 's1', table: 'Field Types', tableId: 't2' };
@@ -82,7 +82,7 @@ test('entityCrumbs: the head and the current row when there is no trail', () => 
   const cur = c[3];
   assert.equal(cur.current, true, 'the last crumb is the row you are on');
   assert.equal(cur.publicId, 3);
-  assert.equal(cur.icon, 'lucide:cpu', 'the row crumb wears its table icon');
+  assert.equal(cur.icon, ROW_MARK, 'the row crumb behind its own table crumb wears the row mark, not the table icon again');
   assert.equal(cur.href, '#/entity/b');
 });
 
@@ -91,10 +91,22 @@ test('entityCrumbs: the head is where the path started; rows follow with their o
   assert.deepEqual(c.map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'Sensor board'], 'no Field Types crumb mid-trail');
   assert.equal(c[3].href, '#/entity/a');
   assert.equal(c[3].current, false);
-  assert.equal(c[3].icon, 'lucide:user');
+  assert.equal(c[3].icon, ROW_MARK, 'the first row sits behind its own table crumb, so it wears the row mark');
   assert.equal(c[3].title, 'People \u00b7 Ada Chen', 'the tooltip names the table');
   assert.equal(c[4].icon, 'lucide:cpu', 'the hop into Field Types shows in its icon');
   assert.deepEqual(entityCrumbs('weave', [adaH], leoH).map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'Leo Marsh']);
+});
+
+test('entityCrumbs: no row crumb repeats the glyph of the crumb in front of it (Issue #746)', () => {
+  const glyphs = (c) => c.map((x) => x.icon);
+  assert.deepEqual(glyphs(entityCrumbs('weave', [], boardH)).slice(2), ['lucide:cpu', ROW_MARK], 'table then its row');
+  assert.deepEqual(glyphs(entityCrumbs('weave', [adaH], leoH)).slice(2), ['lucide:user', ROW_MARK, ROW_MARK], 'two rows of the one table');
+  const hop = glyphs(entityCrumbs('weave', [adaH], boardH)).slice(2);
+  assert.deepEqual(hop, ['lucide:user', ROW_MARK, 'lucide:cpu'], 'a hop into another table keeps that table icon');
+  for (const c of [entityCrumbs('weave', [], boardH), entityCrumbs('weave', [adaH], leoH), entityCrumbs('weave', [adaH], boardH)]) {
+    assert.equal(c[2].kind, 'table');
+    assert.notEqual(c[3].icon, c[2].icon, 'the first row does not repeat the table crumb glyph');
+  }
 });
 
 test('dockCrumbs: the rows of the path, no table in front, the last one current', () => {

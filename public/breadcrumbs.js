@@ -7,23 +7,29 @@
     return [...trail, prev.entity];
   }
 
-  function rowCrumb(h, current = false) {
+  const ROW_MARK = 'lucide:file-text';
+
+  function rowCrumb(h, current = false, icon = h.tableIcon ?? null) {
     return {
       kind: 'row', id: h.id, label: h.name ?? '', href: `#/entity/${h.id}`,
-      icon: h.tableIcon ?? null, publicId: h.publicId ?? null,
+      icon, publicId: h.publicId ?? null,
       title: h.table ? `${h.table} \u00b7 ${h.name ?? ''}` : (h.name ?? ''), current,
     };
   }
 
   function entityCrumbs(wsName, trail, entity) {
     const first = trail[0] ?? entity;
-    return [
+    const crumbs = [
       { kind: 'ws', label: wsName, href: '#/' },
       { kind: 'space', label: first.space, href: `#/space/${first.spaceId}`, icon: first.spaceIcon ?? null },
       { kind: 'table', label: first.table, href: `#/table/${first.tableId}`, icon: first.tableIcon ?? null },
-      ...trail.map((h) => rowCrumb(h)),
-      rowCrumb(entity, true),
     ];
+    let shown = first.tableId;
+    for (const [h, current] of [...trail.map((t) => [t, false]), [entity, true]]) {
+      crumbs.push(rowCrumb(h, current, h.tableId === shown ? ROW_MARK : (h.tableIcon ?? null)));
+      shown = h.tableId;
+    }
+    return crumbs;
   }
 
   function dockCrumbs(hops) {
@@ -85,7 +91,7 @@
   }
 
   root.weaveBreadcrumbs = {
-    pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, docTitle, rowTitle,
+    pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, docTitle, rowTitle, ROW_MARK,
     navOpen, navHop, navBack, navForward, navCanBack, navCanForward, navCurrent, navPath, navUpdate,
   };
 })(globalThis);

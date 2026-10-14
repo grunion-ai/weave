@@ -61,6 +61,36 @@ if (s) {
     await page.close();
   });
 
+  const glyphs = (page, scope) => page.$$eval(`${scope} .view-header .crumb-path .crumb-item`, (items) => items.map((c) => {
+    const ic = c.querySelector('.crumb-ic');
+    return [...(ic?.classList ?? [])].find((k) => k.startsWith('mi-'))?.slice(3) ?? null;
+  }));
+
+  const inkOf = (page, sel) => page.$eval(sel, (host) => {
+    const svg = [...host.querySelectorAll('svg')].find((n) => n.getClientRects().length);
+    const box = svg.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    const bb = svg.getBBox();
+    const stroke = Number(getComputedStyle(svg.querySelector('[stroke-width]') ?? svg).strokeWidth.replace('px', '')) || 0;
+    return { ink: ((bb.width + stroke) / vb.width) * box.width, box: box.width, cls: svg.getAttribute('class') };
+  });
+
+  test('the full page: the row crumb does not draw its table glyph a second time (Issue #746)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#main .name-edit');
+    const g = await glyphs(page, '#main');
+    assert.equal(g.length, 4, 'ws, space, table, row');
+    assert.ok(g[2], 'the table crumb wears the table icon');
+    assert.ok(g[3], 'the row crumb wears a glyph of its own');
+    assert.notEqual(g[3], g[2], 'and it is not the table glyph again');
+    await page.goto(`${base}/#/entity/${jane.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#main .name-edit');
+    const h = await glyphs(page, '#main');
+    assert.notEqual(h[h.length - 1], h[2], 'a table with no icon of its own does not lend the row its fallback either');
+    await page.close();
+  });
+
   test('the full page: workspace › space › table, then the row, every crumb with its icon', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
