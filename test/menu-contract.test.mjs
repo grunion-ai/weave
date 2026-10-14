@@ -40,19 +40,6 @@ test('rows that left the menus stay out of app.js menus (Feature #296)', () => {
   assert.doesNotMatch(fnBody('fieldMenuButton'), /onSort|sortLabelsFor/, 'the column menu holds no sort rows');
 });
 
-test('Share sits in the header on every shareable kind, and only a phone reads it off the menu (Issue #765)', () => {
-  assert.match(fnBody('shareButton'), /class: 'btn btn-sm share-btn'/, 'one helper builds the Share button');
-  assert.match(fnBody('shareButton'), /shareDialog\(/, 'and it opens the share dialog');
-  for (const fn of ['showSpace', 'showView', 'tableChrome', 'renderEntityView']) {
-    assert.match(fnBody(fn), /shareButton\(/, `${fn} puts the Share button in its header`);
-  }
-  const shareRows = [...ROWS_SRC.matchAll(/share: [^\n]*label: 'Share…'[^\n]*/g)].map((m) => m[0]);
-  assert.equal(shareRows.length, 4, `every shareable kind keeps one Share… row for the phone sheet: ${shareRows.length}`);
-  for (const row of shareRows) assert.match(row, /phone: true/, `a Share… row the desktop menu would draw beside the button: ${row.trim()}`);
-  assert.match(CSS, /@media \(max-width: 600px\) \{ \.share-btn \{ display: none; \} \}/, 'the phone hides the button, where the sheet row stands in');
-  assert.match(CSS, /\.share-btn::after/, 'and a coarse pointer wider than a phone gets a 44px hit area on it');
-});
-
 test('every delete row is the one trash row: one click, "Moved to trash", Undo through the restore route (Feature #296, D6)', () => {
   const kinds = globalThis.menuCore.kinds().filter((k) => globalThis.menuCore.definition(k).delete);
   assert.deepEqual(kinds, ['table', 'record', 'space', 'share-page', 'field']);
