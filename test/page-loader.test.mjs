@@ -356,3 +356,65 @@ test('the loader marks #main busy while it is up (Issue #394)', () => {
   assert.match(fnBody('hidePageLoader'), /removeAttribute\('aria-busy'\)/,
     'a stuck aria-busy tells every later reader the page is still loading');
 });
+
+test('a long wait names itself at four seconds and offers a way out at ten (Issue #393)', () => {
+  const caption = Number(APP.match(/const LOADER_CAPTION_AFTER_MS = (\d+);/)[1]);
+  const retry = Number(APP.match(/const LOADER_RETRY_AFTER_MS = (\d+);/)[1]);
+  const show = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
+  assert.equal(caption, 4000);
+  assert.equal(retry, 10000);
+  assert.ok(caption > show, 'a caption armed before the loader shows would caption a wait nobody saw');
+  assert.ok(retry > caption, 'the way out follows the sentence that names the wait');
+  assert.match(APP, /const LOADER_CAPTION_TEXT = 'Still loading this page';/,
+    'the caption copy is the drafted line: Still says the load is running rather than stalled');
+  assert.match(APP, /const LOADER_RETRY_LABEL = 'Try again';/,
+    'paintRouteError already labels its route reload Try again, and the two must read as one button');
+  const wrap = fnBody('withPageLoader');
+  for (const timer of ['captionTimer', 'retryTimer']) {
+    assert.match(wrap, new RegExp(`loading\\.${timer} = setTimeout`), `${timer} is armed with the wait`);
+  }
+  const armed = wrap.slice(wrap.indexOf('showTimer = setTimeout'), wrap.indexOf('try {'));
+  assert.match(armed, /captionTimer/, 'the wait timers arm beside the show timer, once per wait');
+});
+
+test('the retry hands off to the route, the way the error card does (Issue #393)', () => {
+  assert.match(fnBody('paintLoaderRetry'), /onclick: \(\) => route\(\)/,
+    'the loader reuses paintRouteError hand-off rather than reloading the document');
+  assert.match(fnBody('paintRouteError'), /onclick: \(\) => route\(\)/,
+    'the error card hand-off this one copies');
+});
+
+test('hiding the loader takes the caption and its timers down (Issue #393)', () => {
+  const hide = fnBody('hidePageLoader');
+  for (const timer of ['captionTimer', 'retryTimer']) {
+    assert.match(hide, new RegExp(`clearTimeout\\(loading\\.${timer}\\)`),
+      `a live ${timer} would caption the next wait from the last one`);
+  }
+  assert.match(hide, /clearLoaderWait\(/, 'the caption and the retry leave with the loader');
+  const clear = fnBody('clearLoaderWait');
+  assert.match(clear, /\.loader-wait'\)\?\.remove\(\)/);
+  assert.match(clear, /\.loader-status'\)\?\.removeAttribute\('hidden'\)/,
+    'the status text comes back, or a later wait announces nothing');
+});
+
+test('the caption is built by the script, never typed into the shell (Issue #393)', () => {
+  const host = HTML.match(/<div id="page-loader"[^>]*>([\s\S]*?)<\/div>/)[1];
+  assert.doesNotMatch(host, /Still loading/,
+    'a caption typed into index.html does not survive node brand/build-logos.mjs');
+  assert.doesNotMatch(host, /loader-wait/);
+  assert.match(fnBody('paintLoaderWait'), /el\('div', \{ class: 'loader-wait' \}/);
+});
+
+test('the caption stacks under the mark and fades in, except under reduced motion (Issue #393)', () => {
+  const box = rulesFor('#page-loader');
+  assert.equal(box['flex-direction'], 'column', 'the caption sits under the mark, not beside it');
+  assert.ok(px(box.gap) > 0, 'the caption needs air under the 96px mark');
+  const wait = CSS.match(/#page-loader \.loader-wait \{([^}]*)\}/)[1];
+  assert.match(wait, /animation: loader-in/, 'the caption fades in, it does not appear');
+  assert.match(wait, /pointer-events: auto/, 'the host is pointer-events: none, so the retry would not take a click');
+  assert.match(CSS, /@media \(pointer: coarse\) \{ #page-loader \.loader-retry \{ min-height: 44px; \} \}/,
+    'a 28px way out on a phone is the defect Issue #805 just fixed for the list grip');
+  const block = CSS.match(/@media \(prefers-reduced-motion: reduce\) \{\s*#page-loader \{ animation: none; \}[\s\S]*?\n\}/)[0];
+  assert.match(block, /#page-loader \.loader-wait \{ animation: none; \}/,
+    'reduced motion drops the caption fade too, and only there');
+});

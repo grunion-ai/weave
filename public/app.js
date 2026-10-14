@@ -12004,7 +12004,14 @@ const LOADER_EXIT_RATE = 3;
 const LOADER_HOLD_MS = 120;
 const LOADER_FADE_MS = 160;
 const SKELETON_SHOW_AFTER_MS = 150;
-const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, exit: null, ready: false };
+const LOADER_CAPTION_AFTER_MS = 4000;
+const LOADER_RETRY_AFTER_MS = 10000;
+const LOADER_CAPTION_TEXT = 'Still loading this page';
+const LOADER_RETRY_LABEL = 'Try again';
+const loading = {
+  depth: 0, shownAt: 0, showTimer: null, hideTimer: null, exit: null, ready: false,
+  captionTimer: null, retryTimer: null,
+};
 
 async function initPageLoader() {
   const host = $('#page-loader');
@@ -12028,9 +12035,35 @@ function showPageLoader() {
   keepLoader(host, loading);
 }
 
+function paintLoaderWait() {
+  const host = $('#page-loader');
+  if (!host) return;
+  host.querySelector('.loader-status')?.setAttribute('hidden', '');
+  if (host.querySelector('.loader-wait')) return;
+  host.append(el('div', { class: 'loader-wait' }, el('p', { class: 'loader-caption' }, LOADER_CAPTION_TEXT)));
+}
+
+function paintLoaderRetry() {
+  const wait = $('#page-loader .loader-wait');
+  if (!wait || wait.querySelector('.loader-retry')) return;
+  wait.append(el('button', {
+    class: 'btn btn-primary btn-sm loader-retry', type: 'button', onclick: () => route(),
+  }, LOADER_RETRY_LABEL));
+}
+
+function clearLoaderWait(host) {
+  host.querySelector('.loader-wait')?.remove();
+  host.querySelector('.loader-status')?.removeAttribute('hidden');
+}
+
 function hidePageLoader() {
   const host = $('#page-loader');
   if (!host) return;
+  clearTimeout(loading.captionTimer);
+  loading.captionTimer = null;
+  clearTimeout(loading.retryTimer);
+  loading.retryTimer = null;
+  clearLoaderWait(host);
   host.classList.remove('boot');
   host.hidden = true;
   host.setAttribute('aria-hidden', 'true');
@@ -12098,6 +12131,14 @@ async function withPageLoader(work) {
       loading.showTimer = null;
       showPageLoader();
     }, LOADER_SHOW_AFTER_MS);
+    loading.captionTimer = setTimeout(() => {
+      loading.captionTimer = null;
+      paintLoaderWait();
+    }, LOADER_CAPTION_AFTER_MS);
+    loading.retryTimer = setTimeout(() => {
+      loading.retryTimer = null;
+      paintLoaderRetry();
+    }, LOADER_RETRY_AFTER_MS);
   }
   try {
     return await work();

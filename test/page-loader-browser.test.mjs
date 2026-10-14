@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, styleOf } from './lib/browser.mjs';
 import { APP } from './lib/source.mjs';
 const LOADER_SHOW_AFTER_MS = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
 
@@ -265,6 +265,60 @@ if (s) {
       'a second accessible name inside the host makes the page announce the wait twice');
     assert.equal(seen.shown.busy, 'true', '#main is busy while the loader covers it');
     assert.equal(seen.busyAfter, null, 'aria-busy outlived the loader, so the page reads as loading forever');
+    await page.close();
+  });
+
+  test('a long wait names itself, then offers a way out (Issue #393)', async (t) => {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    await page.route('**/api/schema', async (route) => {
+      await new Promise((r) => setTimeout(r, 14000));
+      await route.continue();
+    });
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    const caption = page.locator('#page-loader .loader-caption');
+    await caption.waitFor({ state: 'visible', timeout: 20000 });
+    const atCaption = await page.evaluate(() => Math.round(performance.now()));
+    assert.equal((await caption.textContent()).trim(), 'Still loading this page');
+    assert.ok(atCaption >= 3500, `the caption appeared at +${atCaption} ms, before the four second mark`);
+    assert.equal(await page.locator('#page-loader button').count(), 0,
+      'the way out arrived with the caption: ten seconds is the point of offering one');
+    const retry = page.locator('#page-loader .loader-retry');
+    await retry.waitFor({ state: 'visible', timeout: 20000 });
+    const atRetry = await page.evaluate(() => Math.round(performance.now()));
+    t.diagnostic(`caption at +${atCaption} ms, retry at +${atRetry} ms`);
+    assert.equal((await retry.textContent()).trim(), 'Try again');
+    assert.ok(atRetry >= 9500, `the retry appeared at +${atRetry} ms, before the ten second mark`);
+    const hidden = await page.evaluate(() => document.querySelector('#page-loader .loader-status').hidden);
+    assert.equal(hidden, true, 'the loader says one thing at a time, or the region reads both lines');
+    await styleOf(retry, 'pointer-events', 'auto');
+    const called = await page.evaluate(async () => {
+      window.__routed = 0;
+      const real = window.route;
+      window.route = () => { window.__routed += 1; return real(); };
+      document.querySelector('#page-loader .loader-retry').click();
+      return window.__routed;
+    });
+    assert.equal(called, 1, 'the retry did not hand off to the route');
+    await page.close();
+  });
+
+  test('a wait that ends before the caption never paints one (Issue #393)', async (t) => {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    await page.route('**/api/schema', async (route) => {
+      await new Promise((r) => setTimeout(r, 1200));
+      await route.continue();
+    });
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await eventually(() => page.evaluate(() => document.querySelector('#page-loader').hidden), true,
+      { timeout: 20000, every: 25 });
+    await eventually(() => page.evaluate(() => performance.now() > 6000), true, { timeout: 20000, every: 100 });
+    const seen = await page.evaluate(() => ({
+      caption: document.querySelectorAll('#page-loader .loader-wait').length,
+      status: document.querySelector('#page-loader .loader-status')?.hidden,
+    }));
+    t.diagnostic(`caption nodes ${seen.caption}, status hidden ${seen.status}`);
+    assert.equal(seen.caption, 0, 'the caption outlived its wait and will caption the next one from the start');
+    assert.equal(seen.status, false, 'the status text stayed hidden, so the next wait announces nothing');
     await page.close();
   });
 }
