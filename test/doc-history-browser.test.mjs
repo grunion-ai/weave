@@ -46,13 +46,13 @@ if (s) {
       await page.click('.activity-btn');
       await page.waitForSelector('.wv-activity .wv-act-row');
       assert.equal(await page.locator('.activity-btn').getAttribute('aria-pressed'), 'true');
-      assert.deepEqual(await page.locator('.wv-act-filters button').allTextContents(), ['All', 'Description', 'Spec', 'Release note', 'Fields', 'Comments'], 'a chip per document');
+      assert.deepEqual(await page.locator('.wv-act-filters button').allTextContents(), ['All', 'Description', 'Spec', 'Release note', 'Fields'], 'a chip per document; no Comments chip (Feature #323)');
       assert.equal(await page.locator('.wv-act-head').textContent(), 'Activity', 'a title and a close button: no counts, no subtitle');
       const clipped = await page.locator('.wv-act-filters button').evaluateAll((bs) => bs.filter((b) => b.getBoundingClientRect().right > b.closest('.wv-activity').getBoundingClientRect().right).length);
       assert.equal(clipped, 0, 'every filter chip is inside the panel: the row wraps, never clips');
       for (const rid of [`r${revs('Description')[0].seq}`, `r${revs('Spec')[0].seq}`]) assert.equal(await row(page, rid).count(), 1, `${rid} listed`);
       assert.match(await page.locator('.wv-activity').textContent(), /Priority/, 'field changes are in the panel');
-      assert.match(await page.locator('.wv-activity').textContent(), /looks right/, 'comments are in the panel');
+      assert.doesNotMatch(await page.locator('.wv-activity').textContent(), /looks right/, 'comments stay out of the panel until their redesign (Feature #323)');
       assert.equal(await page.locator('.wv-act-day').first().textContent(), 'Today');
       assert.ok(await page.locator('.wv-act-row .wv-act-who .k-actor .k-label').count() > 0, 'the actor is drawn as a chip (Feature #265)');
 

@@ -15,6 +15,7 @@ const s = await launch('automation actor', (w) => {
   const rule = w.createAutomation(t.id, { name: 'Close out on Done', trigger: { type: 'state-changed', field: 'Stage', toState: 'Done' }, actions: [{ type: 'set-field', field: 'Resolved', value: true }] });
   w.actor = `kyle via ${TOKEN}`;
   const rows = ['Printer', 'Badge', 'Desk'].map((name) => w.createEntity(t.id, { name }));
+  w.updateEntity(rows[0].id, { Resolved: true });
   w.actor = 'local';
   w.addComment(rows[0].id, { author: 'automation', text: 'Logged by an old rule.' });
   w.addComment(rows[0].id, { author: `workflow:${rule.id}`, text: 'Logged by the rule.' });
@@ -69,15 +70,6 @@ if (s) {
     await page.locator('.wv-activity .wv-act-who .k-actor').first().waitFor();
     assert.ok(await page.locator('.wv-activity .wv-act-who .k-actor').count(), 'the activity panel names the person');
     assert.doesNotMatch(await page.locator('body').innerText(), new RegExp(TOKEN));
-    const authors = page.locator('.comment .who');
-    await authors.first().waitFor();
-    assert.equal(await authors.nth(0).locator('.k-actor-wf.is-inline .k-label').textContent(), 'Automation', 'a legacy author is a neutral Automation label');
-    assert.equal(await authors.nth(1).locator('.k-actor-wf a').getAttribute('href'), `#/entity/${rule.id}`, 'a workflow author is the rule\'s chip');
-    await page.waitForFunction(() => document.querySelectorAll('.comment .who .k-actor-wf .k-label')[1]?.textContent === 'Close out on Done');
-    assert.equal(await authors.nth(2).locator('.k-actor .k-label').textContent(), 'Kyle', 'an MCP author is the person chip');
-    assert.match(await authors.nth(2).locator('.k-actor-via').textContent(), /via MCP/);
-    const label = authors.nth(2).locator('.k-actor .k-label');
-    assert.notEqual(await label.evaluate((n) => getComputedStyle(n).color), await page.evaluate(() => getComputedStyle(document.body).backgroundColor), `the chip reads in ${colorScheme}`);
     await page.goto(`${base}/#/activity/${rows[0].id}`, { waitUntil: 'networkidle' });
     await page.locator('.activity-row .k-actor').first().waitFor();
     assert.doesNotMatch(await page.locator('body').innerText(), new RegExp(TOKEN));

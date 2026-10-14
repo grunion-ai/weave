@@ -6774,12 +6774,6 @@ function actorChipEl(actor, { link = true } = {}) {
     a.via ? el('span', { class: 'k-actor-via' }, `· via ${a.via}`) : null);
 }
 
-function commentAuthorEl(author) {
-  if (/^workflow:/.test(author ?? '')) return actorChipEl(author);
-  if (author === 'automation') return el('span', { class: 'k k-actor-wf is-inline' }, iconEl('lucide:workflow', 'wv-icon wv-icon-xs'), el('span', { class: 'k-label' }, 'Automation'));
-  if (weaveActor.parseActor(author).via) return actorChipEl(author, { link: false });
-  return author;
-}
 function commentAuthorText(author) {
   const a = weaveActor.parseActor(author);
   if (a.kind === 'workflow') return workflowRow(a.workflowId).name ?? 'an automation';
@@ -10289,7 +10283,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
 
   const grid = el('div', { class: 'entity-grid', dataset: { eid: id } });
-  grid.classList.toggle('side-open', entity.comments.length > 0 || refsOut.length > 0 || refsIn.length > 0);
+  grid.classList.toggle('side-open', refsOut.length > 0 || refsIn.length > 0);
   mount.append(el('div', { class: 'entity-split' }, grid));
   const left = el('div');
   const right = el('div', { class: 'entity-side' });
@@ -10382,26 +10376,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     return section;
   };
 
-  const commentsBody = el('div', { class: 'card-body' });
-  const commentsPanel = el('div', { class: 'card panel' },
-    el('div', { class: 'card-header' },
-      el('h3', { class: 'card-title' }, `Comments (${entity.comments.length})`)),
-    commentsBody);
-  for (const c of entity.comments) {
-    commentsBody.append(el('div', { class: 'comment' },
-      el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), whenEl(c.createdAt, 'when')),
-      el('div', {}, c.text)));
-  }
-  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…' });
-  commentInput.addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter' && commentInput.value.trim()) {
-      try {
-        await api('POST', `/entities/${id}/comments`, { author: 'me', text: commentInput.value.trim() });
-        refresh();
-      } catch (err) { toast(err.message, true); }
-    }
-  });
-  commentsBody.append(el('div', { style: 'margin-top:8px' }, commentInput));
 
   const VALUES_BLOCK = '@values';
   left.classList.add('entity-body');
@@ -10598,7 +10572,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     left.prepend(section);
     if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
   }
-  right.append(commentsPanel);
   refCard('References', 'ref-outbound-card', refsOut);
   refCard('Referenced by', 'ref-inbound-card', refsIn);
   activityPanel.mounted(id, mount);
@@ -10632,7 +10605,7 @@ const activityPanel = (() => {
       return (f?.optionsFull ?? []).find((o) => o?.id === v)?.name ?? v;
     };
     st.docFields = docFields;
-    st.items = H().feed({ documents, activity: act.items, comments: ent.comments ?? [], optionName });
+    st.items = H().feed({ documents, activity: act.items, optionName });
     if (st.sel && !byId(st.sel)) st.sel = null;
   }
   const text = async (r) => {
@@ -10662,11 +10635,10 @@ const activityPanel = (() => {
   }
   async function revert(a) {
     try {
-      if (a.kind === 'comment') await api('DELETE', `/entities/${st.id}/comments/${a.commentId}`);
-      else await api('PATCH', `/entities/${st.id}`, { values: { [a.field]: a.from } });
+      await api('PATCH', `/entities/${st.id}`, { values: { [a.field]: a.from } });
       const mine = await undoTop();
       st.sel = a.id;
-      await afterWrite(a.kind === 'comment' ? 'Comment deleted' : `${a.field} reverted`, mine);
+      await afterWrite(`${a.field} reverted`, mine);
     } catch (err) { toast(err.message, true); }
   }
   async function undo() {
@@ -10705,7 +10677,6 @@ const activityPanel = (() => {
         : el('div', { class: 'wv-act-tray' }, btn('Restore', 'lucide:undo', () => restore(it), true), cmpSelect(it));
     }
     if (it.kind === 'undo' || it.undone) return null;
-    if (it.kind === 'comment') return el('div', { class: 'wv-act-tray' }, btn('Delete', 'lucide:trash-2', () => revert(it)));
     return el('div', { class: 'wv-act-tray' }, btn(`Revert to ${it.from}`, 'lucide:undo', () => revert(it), true));
   }
   function row(it) {
@@ -10721,10 +10692,6 @@ const activityPanel = (() => {
         it.delta ? el('span', { class: `wv-act-delta ${it.delta > 0 ? 'pos' : 'neg'}` }, it.delta > 0 ? `+${it.delta}` : `−${-it.delta}`) : null];
       if (it.current) who += ' · current'; else if (it.undo) who += ' · undo';
       if (!it.current && !on) act = { title: 'Restore this version', icon: 'lucide:undo', run: () => restore(it) };
-    } else if (it.kind === 'comment') {
-      icon = 'lucide:message-square';
-      what = [el('span', { class: 'quote' }, `“${it.body}”`)];
-      if (!on) act = { title: 'Delete comment', icon: 'lucide:trash-2', run: () => revert(it) };
     } else {
       icon = it.kind === 'undo' ? 'lucide:undo' : it.kind === 'state' ? 'lucide:workflow' : 'lucide:pencil';
       what = [el('span', { class: 'name' }, it.field), val(it.from), arrow(), val(it.to, 'new')];
@@ -10745,7 +10712,7 @@ const activityPanel = (() => {
     return node;
   }
   function renderPanel() {
-    const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields'], ['comments', 'Comments']];
+    const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields']];
     const filters = el('div', { class: 'wv-act-filters', role: 'toolbar', 'aria-label': 'Show' },
       ...chips.map(([k, label]) => el('button', { type: 'button', 'aria-pressed': String(st.filter === k), onclick: () => { st.filter = k; render(); } }, label)));
     const list = el('div', { class: 'wv-act-list' });
@@ -10800,8 +10767,7 @@ const activityPanel = (() => {
     }
     const host = st.mount?.querySelector('.entity-body'); if (!host) return;
     const view = el('div', { class: 'wv-act-view top' }, el('div', { class: 'wv-act-card' },
-      ...(it.kind === 'comment' ? [iconEl('lucide:message-square', 'wv-icon'), el('span', {}, it.body)]
-        : [el('b', {}, it.field), val(it.from), arrow(), val(it.to, 'new')])));
+      el('b', {}, it.field), val(it.from), arrow(), val(it.to, 'new')));
     host.prepend(view);
     reveal(view);
   }
