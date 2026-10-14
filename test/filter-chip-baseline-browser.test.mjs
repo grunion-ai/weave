@@ -60,7 +60,7 @@ if (s) {
       await page.evaluate(() => [...document.querySelectorAll('.table-filter-popover .filter-chip')]
         .find((k) => k.textContent.trim() === 'Done').click());
       await page.waitForSelector('.table-filter-popover .filter-chip.on');
-      const ring = await page.$eval('.table-filter-popover .filter-chip.on', (n) => {
+      const ring = await page.locator('.table-filter-popover .filter-chip.on').first().evaluate((n) => {
         const cs = getComputedStyle(n);
         return { shadow: cs.boxShadow, weight: cs.fontWeight };
       });
