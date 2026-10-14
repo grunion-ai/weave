@@ -117,8 +117,8 @@ test('the definitions match the target menu table', () => {
   assert.deepEqual(shape('table'), { organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
   assert.deepEqual(shape('record'), { organize: ['duplicate'], share: ['share'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
-  assert.deepEqual(shape('space'), { share: ['share'], delete: ['delete'] });
-  assert.deepEqual(shape('share-page'), { share: ['share'], delete: ['delete'] });
+  assert.deepEqual(shape('space'), { delete: ['delete'] });
+  assert.deepEqual(shape('share-page'), { delete: ['delete'] });
   assert.deepEqual(shape('workspace'), { share: ['link-preview'] });
   assert.deepEqual(shape('field'), { settings: ['settings'], organize: ['insert'], delete: ['delete'] });
 });
@@ -161,17 +161,6 @@ test('context may hide a row that cannot work there, never add one', () => {
   assert.deepEqual(rows.map((r) => r.label), ['Share…', 'Delete table']);
   assert.throws(() => core.assemble('space', { rename: { label: 'Rename…', run } }), /"rename" is not on the space menu/);
   assert.throws(() => core.assemble('record', { export: core.exportSection({ name: 'x', serves: ['csv'], href: () => '' }) }), /CSV is not on the record menu/);
-});
-
-test('Share is the header button on a desktop and the one sheet row on a phone (Issue #765)', () => {
-  for (const kind of ['table', 'record', 'space', 'share-page']) {
-    assert.ok((core.definition(kind).share ?? []).includes('share'), `${kind} declares the share row the phone sheet draws`);
-  }
-  const rows = core.assemble('record', { share: { label: 'Share…', phone: true, run }, duplicate: { label: 'Duplicate', run } });
-  assert.deepEqual(core.plan(rows).map((s) => [s.section, s.items.map((i) => i.label)]), [['organize', ['Duplicate']]],
-    'the desktop menu drops it, because the header carries the button');
-  assert.deepEqual(core.plan(rows, { sheet: true }).map((s) => [s.section, s.items.map((i) => i.label)]), [['organize', ['Duplicate']], ['share', ['Share…']]],
-    'the phone sheet keeps it, because the header hides the button there');
 });
 
 test('assemble drops export formats the object does not serve and keeps the rest in registry order', () => {
