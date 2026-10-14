@@ -1,6 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { alertRequest } from './sheriff.mjs';
 
 export const CONTEXT = 'dev-soak';
 export const REPO = 'grunion-ai/weave';
@@ -203,7 +204,7 @@ function realIO(cfg, env = process.env) {
     alert: async (line) => {
       console.log(`::warning::${line}`);
       if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${line}\n`);
-      if (env.SHERIFF_ALERT_URL) await fetch(env.SHERIFF_ALERT_URL, { method: 'POST', body: line, signal: AbortSignal.timeout(10_000) }).catch((e) => console.log(`alert post failed: ${e.message}`));
+      if (env.SHERIFF_ALERT_URL) await fetch(env.SHERIFF_ALERT_URL, alertRequest(env, line)).catch((e) => console.log(`alert post failed: ${e.message}`));
     },
     close: async () => { await browser?.close(); },
   };

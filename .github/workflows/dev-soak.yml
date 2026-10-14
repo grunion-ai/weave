@@ -63,3 +63,4 @@ jobs:
           DEV_SMOKE_TOKEN: ${{ secrets.DEV_SMOKE_TOKEN }}
           DEV_SMOKE_WORKSPACE: ${{ vars.DEV_SMOKE_WORKSPACE }}
           SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
+          SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}

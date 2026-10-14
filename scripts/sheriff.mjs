@@ -206,6 +206,9 @@ async function report(io, ctx, result, revert, outcome, action, note) {
   return result(action, { reason: outcome, culprits: ctx.culprits.map((c) => c.sha), prs: ctx.prs.map((p) => p.number), probes: ctx.probes, revert, issue });
 }
 
+export function alertRequest(env, line) {
+  return { method: 'POST', body: line, headers: env.SHERIFF_ALERT_TOKEN ? { Authorization: `Bearer ${env.SHERIFF_ALERT_TOKEN}` } : {}, signal: AbortSignal.timeout(10_000) };
+}
 export function pushArgs(branch) {
   return ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential', 'push', 'origin', `HEAD:refs/heads/${branch}`];
 }
@@ -341,7 +344,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     alert: async (line) => {
       console.log(`::warning::${line}`);
       if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${line}\n`);
-      if (env.SHERIFF_ALERT_URL) await fetch(env.SHERIFF_ALERT_URL, { method: 'POST', body: line, signal: AbortSignal.timeout(10_000) }).catch((e) => console.log(`alert post failed: ${e.message}`));
+      if (env.SHERIFF_ALERT_URL) await fetch(env.SHERIFF_ALERT_URL, alertRequest(env, line)).catch((e) => console.log(`alert post failed: ${e.message}`));
     },
   };
 }

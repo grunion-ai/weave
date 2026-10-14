@@ -102,7 +102,9 @@ Secrets: `SHERIFF_TOKEN` (fine-grained token with contents, pull requests,
 actions and workflows write, so the revert PR starts `Dev gate` and its merge
 starts `tests`; without it the PR opens unarmed), `WEAVE_TRACKER_TOKEN`
 (bearer for the canonical tracker; without it no rows are filed) and the
-optional `SHERIFF_ALERT_URL`.
+optional `SHERIFF_ALERT_URL`, which receives the alert line as a POST body. When
+`SHERIFF_ALERT_TOKEN` is also set, the POST carries `Authorization: Bearer <token>`;
+the `weave-alerts` Worker refuses a request without it.
 
 ### Dev smoke and soak
 
