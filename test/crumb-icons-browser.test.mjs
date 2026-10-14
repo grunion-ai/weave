@@ -91,6 +91,29 @@ if (s) {
     await page.close();
   });
 
+  for (const theme of ['light', 'dark']) {
+    test(`the workspace mark reads as big as the glyphs beside it in ${theme} (Issue #746)`, async () => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main .name-edit');
+      await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
+      await page.evaluate(() => {
+        document.querySelector('#rail-weave').classList.add('active');
+        refreshWsMarks();
+      });
+      await page.waitForSelector('#main .view-header .crumb-ws-mark svg', { state: 'attached' });
+      const mark = await inkOf(page, '#main .view-header .crumb-ws-mark');
+      const glyph = await inkOf(page, '#main .view-header .crumb-item.crumb-k-table .crumb-ic');
+      assert.ok(mark.ink >= glyph.ink * 0.85, `the mark's ink (${mark.ink.toFixed(1)}px) is not far thinner than a crumb glyph's (${glyph.ink.toFixed(1)}px)`);
+      assert.ok(mark.ink <= glyph.ink * 1.35, `the mark's ink (${mark.ink.toFixed(1)}px) does not tower over a crumb glyph's (${glyph.ink.toFixed(1)}px)`);
+      const shown = await page.$$eval('#main .view-header .crumb-ws-mark svg', (svgs) => svgs
+        .filter((n) => n.getClientRects().length)
+        .map((n) => n.getAttribute('class')));
+      assert.deepEqual(shown, [`mark-${theme}`], `only the ${theme} mark is painted`);
+      await page.close();
+    });
+  }
+
   test('the full page: workspace › space › table, then the row, every crumb with its icon', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
