@@ -1,1 +1,0 @@
-- A row crumb no longer draws its table's icon a second time: on a full entity page the row wears its own record mark, and a hop into another table still shows that table's icon (Issue #746).
