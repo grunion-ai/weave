@@ -235,7 +235,7 @@ export function surfaces({ weave, base, ids }) {
         await page.goto(`${base}/#/entity/${cardId}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('.entity-values .fieldrow[data-field="Stage"]');
       },
-      handle: (page, key) => page.locator(`.entity-values .fieldrow[data-field="${key}"] .opt-grip`),
+      handle: (page, key) => page.locator(`.entity-values .fieldrow[data-field="${key}"] .fieldrow-label`),
       target: (page, key) => page.locator(`.entity-values .fieldrow[data-field="${key}"]`),
       keys: async (page) => (await listKeys(page, '.entity-values', '.fieldrow', 'field')).filter((k) => /Vendor|Batch|Stage/.test(k)),
       saved: () => { const t = weave.getTable(card.id); return t.fieldOrder.map((id) => t.fields[id].name).filter((n) => ['Vendor', 'Batch', 'Stage'].includes(n)); },

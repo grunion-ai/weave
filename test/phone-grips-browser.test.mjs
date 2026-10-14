@@ -46,15 +46,19 @@ if (s) {
 
   for (const [engine, b, profile] of engines) {
     for (const theme of ['light', 'dark']) {
-      test(`a touch screen draws every entity reorder grip at rest (${engine}, ${theme}, Issue #744)`, async () => {
+      test(`a touch screen draws no decorative entity grip (${engine}, ${theme}, Issue #806)`, async () => {
         const page = await open(b, profile, theme, entity, '.entity-fields .fieldrow');
         try {
           assert.equal(await page.evaluate(() => matchMedia('(hover: none)').matches), true, 'the profile is a touch screen');
           assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
           for (const [what, selector] of GRIPS) {
-            const opacity = await restingOpacity(page, selector);
-            assert.ok(opacity > 0, `${what} shows its grip at rest, not at opacity ${opacity}`);
-            assert.equal(opacity, REST, `${what} rests at the touch opacity`);
+            const grips = page.locator(selector);
+            const count = await grips.count();
+            assert.ok(count > 0, `${what} still builds its grip into the page, got ${count}`);
+            for (let i = 0; i < count; i += 1) {
+              const box = await grips.nth(i).boundingBox();
+              assert.equal(box, null, `${what} grip #${i} still takes a layout box on a touch screen: ${JSON.stringify(box)}`);
+            }
           }
         } finally { await page.close(); }
       });
