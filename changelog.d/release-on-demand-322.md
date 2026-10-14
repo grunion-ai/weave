@@ -1,1 +1,0 @@
-- **Releases no longer gate production** (Feature #322): the `release` workflow's publish job leaves the `production` environment and stops waiting on prod health, since prod now follows the `production` branch that `promote` moves. Tags, the GitHub Release, the GHCR image and the MCP registry entry stay available on demand.

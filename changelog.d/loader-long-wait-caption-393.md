@@ -1,1 +1,0 @@
-- A wait past four seconds captions the page loader with "Still loading this page", and past ten seconds offers a "Try again" control that re-runs the route, the same hand-off the route error card makes (Issue #393).
