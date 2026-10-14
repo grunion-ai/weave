@@ -1845,7 +1845,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .table-filter-popover .filter-label svg { width: 14px; height: 14px; color: var(--tblr-secondary); }
 .filter-type { margin-left: auto; font-size: var(--fs-meta); color: var(--tblr-secondary); font-weight: 400; }
 .filter-values { display: flex; gap: 7px; flex-wrap: wrap; }
-.table-filter-popover .filter-chip { gap: 8px; min-height: 32px; user-select: none; -webkit-user-select: none; }
+.table-filter-popover .filter-chip { gap: 8px; min-height: 32px; white-space: normal; user-select: none; -webkit-user-select: none; }
 .filter-footer { border-top: 1px solid var(--tblr-border-color); display: flex; align-items: center; justify-content: space-between; padding: 8px 4px 0 8px; gap: 8px; }
 .filter-footer [role="status"] { font-size: var(--fs-meta); color: var(--tblr-secondary); }
 .table-fields-popover { width: 320px; overflow: hidden; }
