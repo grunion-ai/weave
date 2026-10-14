@@ -66,7 +66,7 @@ if (s) {
     return [...(ic?.classList ?? [])].find((k) => k.startsWith('mi-'))?.slice(3) ?? null;
   }));
 
-  const inkOf = (page, sel) => page.$eval(sel, (host) => {
+  const inkOf = (page, sel) => page.locator(sel).first().evaluate((host) => {
     const svg = [...host.querySelectorAll('svg')].find((n) => n.getClientRects().length);
     const box = svg.getBoundingClientRect();
     const vb = svg.viewBox.baseVal;
@@ -106,7 +106,7 @@ if (s) {
       const glyph = await inkOf(page, '#main .view-header .crumb-item.crumb-k-table .crumb-ic');
       assert.ok(mark.ink >= glyph.ink * 0.85, `the mark's ink (${mark.ink.toFixed(1)}px) is not far thinner than a crumb glyph's (${glyph.ink.toFixed(1)}px)`);
       assert.ok(mark.ink <= glyph.ink * 1.35, `the mark's ink (${mark.ink.toFixed(1)}px) does not tower over a crumb glyph's (${glyph.ink.toFixed(1)}px)`);
-      const shown = await page.$$eval('#main .view-header .crumb-ws-mark svg', (svgs) => svgs
+      const shown = await page.locator('#main .view-header .crumb-ws-mark svg').evaluateAll((svgs) => svgs
         .filter((n) => n.getClientRects().length)
         .map((n) => n.getAttribute('class')));
       assert.deepEqual(shown, [`mark-${theme}`], `only the ${theme} mark is painted`);
