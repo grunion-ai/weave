@@ -72,4 +72,5 @@ jobs:
           PROD_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}
           SHERIFF_TOKEN: ${{ secrets.SHERIFF_TOKEN }}
           SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
+          SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}
           WEAVE_TRACKER_TOKEN: ${{ secrets.WEAVE_TRACKER_TOKEN }}

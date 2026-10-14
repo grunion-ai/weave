@@ -56,5 +56,6 @@ jobs:
           SHERIFF_TOKEN: ${{ secrets.SHERIFF_TOKEN }}
           WEAVE_TRACKER_TOKEN: ${{ secrets.WEAVE_TRACKER_TOKEN }}
           SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
+          SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}
           SHERIFF_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
           SHERIFF_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
