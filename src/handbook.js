@@ -949,7 +949,7 @@ On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by defa
 
 ## Share links
 
-A share link opens one row, table, space, saved view or the whole workspace to whoever holds it, and nothing beside it. **Share…** sits in a row's **⋮** menu and the table menu, and as a button on a space's page and a saved view's page. The dialog picks the access, whether the link needs a signed-in account, and a label, then copies the new link. Under the form it lists the links already made there, each with **Copy** and **Revoke**.
+A share link opens one row, table, space, saved view or the whole workspace to whoever holds it, and nothing beside it. **Share…** is a button in the header of every shareable page: a row, a table, a space and a saved view. On a phone, where the header has no room for it, the same **Share…** sits in that page's **⋮** sheet. The dialog picks the access, whether the link needs a signed-in account, and a label, then copies the new link. Under the form it lists the links already made there, each with **Copy** and **Revoke**.
 
 | Access | What the link can do |
 | --- | --- |
@@ -2305,7 +2305,7 @@ A table can be read several ways. Each **view** keeps which columns show, their 
 
 ## The toolbar
 
-The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Filters → Group (List layout only) → Sort → Table actions (⋮)**. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **Share…**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
+The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Filters → Group (List layout only) → Sort → Share → Table actions (⋮)**. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. **Share…** is the header button beside it, and joins the ⋮ only on a phone. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
 
 | Control | What it does |
 | --- | --- |

@@ -658,8 +658,8 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.doesNotMatch(APP, /crumb-offset/, 'the crumb no longer indents around a corner control');
   assert.doesNotMatch(CSS, /crumb-offset/);
 
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn, \.\.\.poseControls\)/,
-    'the Activity clock-arrow, the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn, \.\.\.poseControls\)/,
+    'the Activity clock-arrow, the eye, Share, ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
   assert.match(body, /grid\.classList\.toggle\('side-open', refsOut\.length > 0 \|\| refsIn\.length > 0\)/,
     'the column opens when it has references, never on comments (Feature #323) or an Activity switch (Feature #315)');
