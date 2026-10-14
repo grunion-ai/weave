@@ -3656,6 +3656,7 @@ const FILTER_KINDS = {
   multiselect: { label: 'Multi select', icon: 'list-checks' },
 };
 const isFilterField = (f) => Object.hasOwn(FILTER_KINDS, f.type);
+const FILTER_CHIP_ROLE = { select: 'k-select', multiselect: 'k-multi' };
 const filterStates = (f) => (f.type === 'toggle'
   ? [{ name: f.on, category: 'done', on: true }, { name: f.off, category: 'not-started', on: false }]
   : f.type === 'select' || f.type === 'multiselect'
@@ -3746,8 +3747,8 @@ function filterStrip(db, onChange) {
         clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
       } });
       const chip = st.hue
-        ? el('label', { class: `filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), el('span', { class: 'filter-chip-label' }, st.name))
-        : el('label', { class: `filter-chip cat-${st.category}` }, box, el('span', { class: 'filter-chip-label' }, st.name));
+        ? el('label', { class: `k ${FILTER_CHIP_ROLE[f.type] ?? 'k-state'} filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), el('span', { class: 'filter-chip-label' }, st.name))
+        : el('label', { class: `k ${FILTER_CHIP_ROLE[f.type] ?? 'k-state'} filter-chip cat-${st.category}` }, box, el('span', { class: 'filter-chip-label' }, st.name));
       chips.push({ chip, field: f.name, name: st.name }); values.append(chip);
     }
     row.append(values); scroll.append(row);

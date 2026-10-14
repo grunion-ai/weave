@@ -217,11 +217,13 @@ test('an empty chip is dashed, never dimmed', () => {
   }
 });
 
-test('the filter row above the grid speaks the row’s vocabulary', () => {
+test('the filter row above the grid is the baseline chip, not a second build (Issue #769)', () => {
   const f = rulesFor('.filter-chip');
-  assert.equal(f['border-radius'], '4px', 'same 4px as every chip');
-  assert.equal(f['font-size'], 'var(--wv-chip-font)', 'same size as every chip: the token');
-  assert.equal(f['line-height'], 'var(--wv-chip-line)', 'and the same line');
+  for (const prop of ['border-radius', 'font-size', 'line-height', 'padding', 'border']) {
+    assert.equal(f[prop], undefined, `.filter-chip writes no ${prop} of its own: .k carries it`);
+  }
+  assert.match(APP, /class: `k \$\{FILTER_CHIP_ROLE\[f\.type\] \?\? 'k-state'\} filter-chip/,
+    'a filter value is drawn as .k with the role its field type calls for');
 });
 
 test('an option carries a hue and a glyph, not a loose hex', () => {
@@ -276,7 +278,7 @@ test('the chip size is two tokens on :root: 13px label, 22px line — a 24px tar
   assert.equal(root['--wv-chip-line'], '22px', '22 + 1 + 1 = 24px, the hit target');
   assert.equal(rulesFor('body')['font-size'], 'var(--fs-body)', 'the body the chip is one step below');
   assert.equal(root['--fs-body'], '14px');
-  for (const sel of ['.k', '.chip', '.filter-chip']) {
+  for (const sel of ['.k', '.chip']) {
     const r = rulesFor(sel);
     assert.equal(r['font-size'], 'var(--wv-chip-font)', `${sel} reads the font token`);
     assert.equal(r['line-height'], 'var(--wv-chip-line)', `${sel} reads the line token`);

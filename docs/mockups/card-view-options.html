@@ -6,7 +6,7 @@
 <title>weave — card view options (Features #181, #184)</title>
 <style>
 /* weave chip system, lifted from public/style.css — the same rules a table cell uses */
-:root { --wv-chip-font: var(--fs-grid); --wv-chip-line: 22px; }
+:root { --wv-chip-font: var(--fs-grid); --wv-chip-line: 22px; --wv-chip-selected-ring: 0 0 0 1.5px var(--tblr-primary); }
 .k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: var(--wv-chip-font); font-weight: 400; line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
 .k .ico { font-size: var(--fs-meta); line-height: 1; opacity: .85; flex: none; }
 .k-state, .k-select, .k-multi, .k-key { background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); border: 0; }
