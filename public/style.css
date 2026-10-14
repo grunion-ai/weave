@@ -1350,7 +1350,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .picker-box:focus-within { border-color: var(--tblr-primary); }
 .picker-chips { display: contents; }
 .picker-chip { cursor: default; }
-.picker-chip.sel { outline: 2px solid var(--tblr-primary); outline-offset: 1px; }
+.picker-chip.sel { box-shadow: var(--wv-chip-selected-ring); }
 .picker-search { flex: 1 1 90px; min-width: 90px; border-radius: 3px; font-size: var(--fs-grid); padding: 3px 3px; outline: none; }
 .picker-name { flex: 0 1 auto; margin-left: auto; padding: 0 2px 0 8px; max-width: 50%; color: var(--tblr-secondary); font-size: var(--fs-secondary); font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; user-select: none; }
 .picker-name:empty { display: none; }

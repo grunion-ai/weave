@@ -1050,7 +1050,8 @@ test('the picker is a token box: chips sit inside the field, ahead of the caret'
   assert.ok(picker.includes("st.caret === i ? ' sel' : ''"), 'the chip under the cursor is marked');
   assert.ok(picker.includes('chips.replaceChildren('), 'only the chips redraw');
   assert.equal(rulesFor('.picker-chips')['display'], 'contents', 'so the chips still flow in the box row');
-  assert.ok(rulesFor('.picker-chip.sel')['outline'], 'the cursor on a chip reads as a ring');
+  assert.equal(rulesFor('.picker-chip.sel')['box-shadow'], 'var(--wv-chip-selected-ring)',
+    'the cursor on a chip reads as the one ring a picked filter value wears (Issue #772)');
   assert.equal(rulesFor('.picker-box')['flex-wrap'], 'wrap', 'a full box wraps rather than clipping');
   assert.ok(HTML.indexOf('picker-core.js') < HTML.indexOf('"/app.js"'), 'picker-core.js loads first');
 });
