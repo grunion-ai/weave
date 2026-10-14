@@ -1,1 +1,0 @@
-- The page loader keeps a still woven mark under `prefers-reduced-motion: reduce` instead of looping the rope, announces the wait once as a `role="status"` region reading "Loading the page", and marks `#main` busy while it covers the page (Issue #394).
