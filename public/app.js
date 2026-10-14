@@ -843,7 +843,7 @@ function stickViewHeader(box) {
 addEventListener('resize', publishViewHeaderHeight);
 window.visualViewport?.addEventListener('resize', publishViewHeaderHeight);
 
-const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: 'lucide:table' };
+const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: weaveBreadcrumbs.ROW_MARK };
 function crumbIconEl(c) {
   if (c.kind === 'ws') return wsMarkEl();
   return iconEl(c.icon, 'wv-icon crumb-ic') ?? (CRUMB_ICON_FALLBACK[c.kind] ? iconEl(CRUMB_ICON_FALLBACK[c.kind], 'wv-icon crumb-ic') : null);

@@ -1616,6 +1616,8 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 .crumb-cur { max-width: none; color: var(--tblr-body-color); font-weight: 600; cursor: default; }
 .crumb-copy { flex: none; padding: 2px; line-height: 0; }
 .crumb-ws-mark { overflow: hidden; border-radius: 4px; }
+.crumb-ws-mark:has(svg) { overflow: visible; }
+.crumb-ws-mark svg { width: 150%; height: 150%; }
 .crumb-ws-mark img { width: 100%; height: 100%; object-fit: cover; }
 .crumb-ws-mark .mark-dark { display: none; }
 [data-bs-theme="dark"] .crumb-ws-mark .mark-light { display: none; }

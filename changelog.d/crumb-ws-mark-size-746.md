@@ -1,0 +1,1 @@
+- The workspace mark in the breadcrumb bar is drawn at the size of the glyphs beside it: the weave mark paints half the width of its own box, so it read smaller than every lucide crumb icon next to it (Issue #746).
