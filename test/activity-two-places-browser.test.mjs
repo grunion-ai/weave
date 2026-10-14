@@ -81,7 +81,7 @@ if (s) {
       await closePop(p);
       await p.click('#main .activity-btn');
       await p.waitForSelector('aside.wv-activity .wv-act-row');
-      assert.deepEqual(await p.locator('.wv-act-filters button').allTextContents(), ['All', 'Description', 'Spec', 'Fields', 'Comments'],
+      assert.deepEqual(await p.locator('.wv-act-filters button').allTextContents(), ['All', 'Description', 'Spec', 'Fields'],
         'the panel filters by document, which the History button used to do');
     } finally { await p.close(); }
   });

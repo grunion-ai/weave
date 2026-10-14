@@ -51,8 +51,8 @@ if (s) {
     assert.equal(await page.isVisible('.ref-outbound-card'), true, 'and the panel shows in it');
     assert.equal(await page.$eval('.ref-outbound-card', (n) => n.parentElement.className), 'entity-side',
       'the panel is in the side column, never the body');
-    assert.deepEqual(await panelTitles(page), ['Comments (0)', 'References · 1'],
-      'what people said, then what this points at; no Activity card');
+    assert.deepEqual(await panelTitles(page), ['References · 1'],
+      'what this points at; no Comments card (Feature #323) and no Activity card');
     assert.deepEqual(page.refRequests.map((u) => u.split('/').pop()).sort(), ['references', 'references-from'],
       'both directions are fetched with the record');
     await page.close();
@@ -61,7 +61,7 @@ if (s) {
   test('the inbound panel mirrors it on the target', async () => {
     const page = await open(target.id);
     await card(page, '.ref-inbound-card');
-    assert.deepEqual(await panelTitles(page), ['Comments (0)', 'Referenced by · 1']);
+    assert.deepEqual(await panelTitles(page), ['Referenced by · 1']);
     assert.equal(await page.$('.ref-outbound-card'), null, 'a direction with nothing to say is absent');
     const chip = await chipStyle(page, '.ref-inbound-card');
     assert.equal(chip.href, `#/entity/${issue.id}`, 'the chip points back at the mentioning entity');

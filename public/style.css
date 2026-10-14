@@ -685,10 +685,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   .entity-fields .entity-values .fieldrow { grid-template-columns: 16px minmax(0, 1fr); }
   .entity-fields .entity-values .fieldrow > :nth-child(3) { grid-column: 2; }
 }
-.comment { border-top: 1px solid var(--tblr-border-color); padding: 8px 0; }
-.comment:first-child { border-top: none; }
-.comment .who { font-weight: 600; font-size: var(--fs-grid); }
-.comment .when { color: var(--tblr-secondary); font-size: var(--fs-secondary); margin-left: 6px; }
 .panel-link { margin-left: auto; font-size: var(--fs-secondary); text-decoration: none; }
 .system-tables { margin: 14px 0; }
 .wv-start, .space-tables { margin: 14px 0; }
@@ -970,8 +966,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .wv-act-row:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
 .wv-act-kind { color: var(--wv-icon-rest); display: flex; }
 .wv-act-what { display: flex; align-items: center; gap: 6px; min-width: 0; line-height: 20px; }
-.wv-act-what .name, .wv-act-what .quote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.wv-act-what .quote { color: var(--tblr-secondary); }
+.wv-act-what .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .wv-act-src { font-size: var(--fs-secondary); color: var(--tblr-secondary); white-space: nowrap; flex: none; }
 .wv-act-row.undone .name { text-decoration: line-through; color: var(--tblr-secondary); }
 .wv-act-who { grid-column: 2; font-size: var(--fs-secondary); line-height: 16px; color: var(--tblr-secondary); display: flex; align-items: center; gap: 0 4px; flex-wrap: wrap; min-width: 0; }

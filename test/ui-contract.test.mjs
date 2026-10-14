@@ -350,9 +350,8 @@ test('only one overflow menu is open at a time', () => {
   assert.match(body, /dismissOutside\(\{ open: \(\) => pop\.isConnected, inside: \(t\) => pop\.contains\(t\)/, 'a tap or click away must close it (Issue #726)');
 });
 
-test('comments and references make up the side column; fields lead the body; no Activity card (Feature #315)', () => {
-  assert.match(APP, /right\.append\(commentsPanel\);/, 'the side column reads Comments first');
-  assert.doesNotMatch(APP, /left\.append\(commentsPanel\)/, 'comments must leave the main column');
+test('references make up the side column; comments are off until their redesign; no Activity card (Feature #315, Feature #323)', () => {
+  assert.doesNotMatch(APP, /commentsPanel|commentInput|Add a comment/, 'no Comments card and no comment input on a record (Feature #323)');
   assert.doesNotMatch(APP, /actPanel|ACTIVITY_PANE_ROWS|activity-item/, 'the Activity card is gone: the toolbar panel covers it');
 });
 
@@ -659,8 +658,8 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn, \.\.\.poseControls\)/,
     'the Activity clock-arrow, the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
-  assert.match(body, /grid\.classList\.toggle\('side-open', entity\.comments\.length > 0 \|\| refsOut\.length > 0 \|\| refsIn\.length > 0\)/,
-    'the column opens when it has comments or references, never on an Activity switch (Feature #315)');
+  assert.match(body, /grid\.classList\.toggle\('side-open', refsOut\.length > 0 \|\| refsIn\.length > 0\)/,
+    'the column opens when it has references, never on comments (Feature #323) or an Activity switch (Feature #315)');
   assert.ok(!/localStorage/.test(body.slice(body.indexOf('activityBtn'), body.indexOf('activityBtn') + 600)) && !body.includes('wv-entity-side'), 'the Activity icon keeps no per-browser memory, and the side column has no second switch');
   assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
   assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
@@ -696,12 +695,12 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(fnBody('kindDots'), /align = 'right'/, 'a right-edge menu must drop its panel to the left');
 });
 
-test('reference panels join the side column, dressed like Comments, wearing the pointer-tier relation chip', () => {
+test('reference panels join the side column as card panels, wearing the pointer-tier relation chip', () => {
   const body = fnBody('renderEntityView');
   const block = body.slice(body.indexOf('const refCard'), body.indexOf('deck is composed on read'));
   assert.ok(block.length > 0, 'the reference panel builder lives in the entity view');
   assert.match(block, /right\.append\(el\('div', \{ class: `card panel ref-backlinks-card \$\{extraClass\}` \}/,
-    'a side-column panel, the same dress as Comments');
+    'a side-column card panel');
   assert.doesNotMatch(block, /left\.append/, 'the entity body stays quiet');
   assert.doesNotMatch(block, /el\('details'|el\('summary'/, 'no disclosure of its own: the side column is the disclosure');
   assert.match(block, /el\('div', \{ class: 'card-header' \},\s*el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
