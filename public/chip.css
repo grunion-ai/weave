@@ -1,6 +1,7 @@
 :root {
   --wv-chip-font: var(--fs-grid);
   --wv-chip-line: 22px;
+  --wv-chip-selected-ring: 0 0 0 1.5px var(--tblr-primary);
 }
 .k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
      font-size: var(--wv-chip-font); font-weight: 400; line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
