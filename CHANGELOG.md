@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.94 (2026-10-14)
+
+- A row crumb no longer draws its table's icon a second time: on a full entity page the row wears its own record mark, and a hop into another table still shows that table's icon (Issue #746).
+- The workspace mark in the breadcrumb bar is drawn at the size of the glyphs beside it: the weave mark paints half the width of its own box, so it read smaller than every lucide crumb icon next to it (Issue #746).
+
 ## v0.4.93 (2026-10-14)
 
 - **Comments off in the UI** (Feature #323): a record, on the full page and in the peek, no longer draws the Comments card or its comment box, comments alone no longer open the side column, and the Activity panel drops its Comments chip, its comment rows and their Delete action. Stored comments, `POST`/`DELETE /api/entities/:id/comments`, the MCP comment tools, the `add-comment` automation action and `comment-added` entries in the Activity table are unchanged, so turning comments back on needs no migration. Gate: `test/comments-off-browser.test.mjs`.
