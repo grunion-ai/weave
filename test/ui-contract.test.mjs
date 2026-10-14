@@ -622,8 +622,11 @@ test('the resize grip is a visible edge, not an invisible strip', () => {
   const grip = rulesFor('.col-resize');
   assert.equal(grip.position, 'absolute', 'the grip rides its header edge');
   assert.equal(grip.cursor, 'col-resize', 'the cursor is the whole affordance');
-  assert.ok(px(grip.width) >= 5, `the grip needs a grabbable width, got ${grip.width}`);
-  const hot = rulesFor('.wv-grid th.col-head:hover .col-resize');
+  const line = rulesFor('.col-resize::after');
+  assert.ok(px(line.width) >= 5, `the painted edge needs a visible width, got ${line.width}`);
+  const target = Number(grip.width.match(/(\d+)px/)?.[1]);
+  assert.ok(target >= 24, `a finger needs a target it can land on, got ${grip.width}`);
+  const hot = rulesFor('.wv-grid th.col-head:hover .col-resize::after');
   assert.ok(hot.background, 'hovering a header shows where the edge is');
 });
 
