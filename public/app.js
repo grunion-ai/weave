@@ -2513,7 +2513,7 @@ const MENU_ROWS = {
         } catch (err) { toast(err.message, true); }
       },
     },
-    share: { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
+    share: { label: 'Share…', phone: true, run: () => shareDialog('table', db.id, db.name) },
     'share-page': {
       label: 'New share page…',
       run: () => modal('New share page', [
@@ -2549,7 +2549,7 @@ const MENU_ROWS = {
         } catch (err) { toast(err.message, true); }
       },
     } : null,
-    share: { label: 'Share…', run: () => shareDialog('entity', entity.id, entity.name || `#${entity.publicId}`) },
+    share: { label: 'Share…', phone: true, run: () => shareDialog('entity', entity.id, entity.name || `#${entity.publicId}`) },
     export: globalThis.menuCore.exportSection({ name: entity.name || 'entity', serves: ['md', 'html', 'pdf'], href: (ext) => `${WS_PREFIX}/e/${entity.id}/entity.${ext}` }),
     delete: trashRow({
       remove: () => api('DELETE', `/entities/${entity.id}`),
@@ -2568,6 +2568,7 @@ const MENU_ROWS = {
     }),
   }),
   space: (space) => ({
+    share: space.system ? null : { label: 'Share…', phone: true, run: () => shareDialog('space', space.spaceId, space.space) },
     delete: space.system ? null : trashRow({
       remove: () => api('DELETE', `/spaces/${space.spaceId}`),
       restore: () => api('POST', `/spaces/${space.spaceId}/restore`),
@@ -2583,6 +2584,7 @@ const MENU_ROWS = {
     }),
   }),
   'share-page': (v) => ({
+    share: { label: 'Share…', phone: true, run: () => shareDialog('view', v.id, v.name) },
     delete: trashRow({
       remove: () => api('DELETE', `/views/${v.id}`),
       restore: () => api('POST', `/views/${v.id}/restore`),
@@ -4537,6 +4539,7 @@ function tableChrome(db, trashCount) {
       filterBtn,
       groupBtn,
       sortBtn,
+      shareButton('table', () => ref.db.id, () => ref.db.name),
       kindDots('table', () => ref.db, () => ({}), { title: 'Table actions', labelled: true, onRun: () => tools.shut() }),
     ],
   });
@@ -8741,7 +8744,7 @@ async function showSpace(spaceId) {
         await loadSchema();
       },
       actions: space.system ? [] : [
-        el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('space', spaceId, space.space) }, 'Share…'),
+        shareButton('space', spaceId, space.space),
         ...(space.template ? [useTemplateButton(space)] : []),
         kindDots('space', space, () => ({}), { title: 'Space actions' }),
       ],
@@ -10241,6 +10244,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
   const recordCtx = () => ({ db, inPeek, onClose });
   const dlBtn = kindDots('record', entity, recordCtx, { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions` });
+  const shareBtn = shareButton('entity', id, entity.name || `#${entity.publicId}`);
 
   const activityBtn = el('button', {
     class: 'btn btn-sm activity-btn', type: 'button', title: 'Activity', 'aria-label': 'Activity',
@@ -10270,7 +10274,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') },
           foldFrom: inPeek ? 1 : 4,
         }),
-        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
+        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, shareBtn, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
   );
   const nextFab = nextStateButton(entity, db, refresh);
@@ -11358,6 +11362,13 @@ async function showActivityDetail(id) {
 const SHARE_MODES = [['read', 'Read'], ['comment', 'Comment (soon)'], ['edit', 'Edit rows'], ['manage', 'Add and delete rows']];
 const SHARE_MODE_LABEL = Object.fromEntries(SHARE_MODES);
 
+function shareButton(kind, id, name) {
+  return el('button', {
+    class: 'btn btn-sm share-btn', type: 'button',
+    onclick: () => shareDialog(kind, unthunk(id), unthunk(name)),
+  }, 'Share…');
+}
+
 function shareDialog(kind, id, name) {
   const rows = el('div', { class: 'share-list', 'aria-live': 'polite' });
   const fill = async () => {
@@ -11418,7 +11429,7 @@ async function showView(id) {
   main.replaceChildren(kindContext(el('div', { class: 'wv-toolbar share-page-head' },
     el('h1', {}, v.name),
     el('span', { style: 'flex:1' }),
-    el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('view', id, v.name) }, 'Share…'),
+    shareButton('view', id, v.name),
     kindDots('share-page', v, () => ({}), { title: 'Share page actions' })), 'share-page', v));
   for (const b of v.blocks) {
     const cols = Object.keys(b.items[0]?.fields ?? {});

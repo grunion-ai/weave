@@ -90,8 +90,8 @@ if (s) {
       await page.locator('#main .crumb-actions .dots-btn').focus();
       await page.keyboard.press('Enter');
       await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
-      await page.keyboard.type('share');
-      assert.equal((await focused(page)).text, 'Share…', 'typing a whole word reaches its row');
+      await page.keyboard.type('forms');
+      assert.equal((await focused(page)).text, 'Forms…', 'typing a whole word reaches its row');
       await page.keyboard.press('Enter');
       await page.waitForSelector('#modal, #tray-back, [role="dialog"]');
       assert.equal(await menuOpen(page), 0, 'the menu closed before the share dialog opened');

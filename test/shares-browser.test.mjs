@@ -22,10 +22,7 @@ if (s) {
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     return page;
   };
-  const fromMenu = async (page, scope) => {
-    await page.locator(`${scope} .dots-btn`).first().click();
-    await page.locator('.wv-menu .wv-menu-row', { hasText: 'Share…' }).click();
-  };
+  const fromHeader = (page, scope) => page.locator(`${scope} .share-btn`).first().click();
   const dialog = (page) => page.locator('#modal');
   const reset = () => { for (const g of weave.listShares()) weave.revokeShare(g.id); };
 
@@ -34,7 +31,7 @@ if (s) {
     const page = await open(`#/entity/${one.id}`);
     try {
       await painted(page, '.entity-head');
-      await fromMenu(page, '.view-header .crumb-actions');
+      await fromHeader(page, '.view-header .crumb-actions');
       await painted(page, '#modal');
       assert.match(await dialog(page).locator('h2').textContent(), /Share/);
       const options = await page.$$eval('#modal input[name=mode]', (os) => os.map((o) => [o.value, o.disabled, o.checked]));
@@ -59,7 +56,7 @@ if (s) {
   test('the table, space and saved-view pages open the same dialog on their own scope', async () => {
     reset();
     const cases = [
-      [`#/table/${task.id}`, async (page) => fromMenu(page, '.view-header .crumb-actions'), 'table', task.id],
+      [`#/table/${task.id}`, async (page) => fromHeader(page, '.view-header'), 'table', task.id],
       [`#/space/${space.id}`, async (page) => page.locator('.view-header .share-btn').click(), 'space', space.id],
       [`#/view/${view.id}`, async (page) => page.locator('#main .share-btn').click(), 'view', view.id],
     ];
@@ -88,7 +85,7 @@ if (s) {
       try {
         await painted(page, '.entity-head');
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
-        await fromMenu(page, '.view-header .crumb-actions');
+        await fromHeader(page, '.view-header .crumb-actions');
         await page.locator('#modal .share-row').first().waitFor();
         const look = await page.evaluate(() => {
           const lum = (c) => {

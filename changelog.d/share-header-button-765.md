@@ -1,0 +1,1 @@
+- Share is a header button on all four shareable pages: a space, a share page, a table and a record. It used to sit in the header on a space and a share page and inside the ⋮ on a table and a record. On a phone, where the header has no room for it, Share is a row on that page's ⋮ sheet instead, on every one of the four (Issue #765).
