@@ -40,7 +40,11 @@ if (s) {
   };
   const via = (sel, how = 'click') => async (page) => {
     await page.waitForSelector(sel, { state: 'attached' });
-    if (how === 'right') await page.locator(sel).first().click({ button: 'right', force: true });
+    if (how === 'corner') {
+      const target = page.locator(sel).first();
+      const bounds = await target.boundingBox();
+      await target.click({ button: 'right', position: { x: bounds.width - 2, y: bounds.height - 2 } });
+    } else if (how === 'right') await page.locator(sel).first().click({ button: 'right', force: true });
     else await page.locator(sel).first().click({ force: true });
     await page.waitForSelector(MENU);
     const rows = await read(page);
@@ -54,7 +58,7 @@ if (s) {
       kind: 'table', hash: `#/table/${tableId}`, ready: '#main .wv-grid',
       triggers: {
         'header ⋮': via('#main .crumb-actions .dots-btn[title="Table actions"]'),
-        'header right-click': via('#main .view-header .view-title-row', 'right'),
+        'header right-click': via('#main .view-header', 'corner'),
         'nav row ⋮': via(`#nav .nav-db[data-db="${tableId}"] .nav-db-menu .dots-btn`),
         'nav row right-click': via(`#nav .nav-db[data-db="${tableId}"]`, 'right'),
       },
