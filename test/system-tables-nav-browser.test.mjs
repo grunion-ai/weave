@@ -59,10 +59,10 @@ if (s) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#nav .nav-space');
-    const spaces = await page.$$eval('#nav .nav-space', (as) => as.map((a) => a.textContent.trim()));
+    const spaces = await page.locator('#nav .nav-space').evaluateAll((as) => as.map((a) => a.textContent.trim()));
     assert.ok(spaces.includes('Work'), 'user spaces stay in the sidebar');
     assert.ok(!spaces.includes('Workspace'), 'the registry space is not a sidebar space');
-    const listed = await page.$$eval('#nav .nav-db', (as) => as.map((a) => a.textContent.trim()));
+    const listed = await page.locator('#nav .nav-db').evaluateAll((as) => as.map((a) => a.textContent.trim()));
     for (const name of ['Spaces', 'Tables', 'Fields', 'Views', 'Workspaces', 'Forms']) {
       assert.ok(!listed.includes(name), `${name} is not a sidebar row`);
     }
@@ -74,7 +74,7 @@ if (s) {
     await page.click('#main .system-tables .list-row[data-registry="spaces"]');
     await page.waitForURL(new RegExp(`${spacesId.replace(/[/#]/g, '\\$&')}$`));
     await page.waitForSelector('#main .wv-grid tbody tr');
-    assert.match(await page.textContent('#main .wv-grid'), /Work/, 'the Spaces registry still opens and lists the spaces');
+    assert.match(await page.locator('#main .wv-grid').first().textContent(), /Work/, 'the Spaces registry still opens and lists the spaces');
     await page.close();
   });
 
