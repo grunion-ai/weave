@@ -1058,6 +1058,7 @@ function renderNav() {
     renderNav();
   };
   for (const space of state.schema) {
+    if (space.system) continue;
     const isFolded = folded.has(space.spaceId);
     const spaceRow = el('div', { class: 'nav-space-row' },
       el('a', {
@@ -11491,6 +11492,12 @@ async function showHome() {
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview };
   const wsCtx = () => ({ after: () => showHome() });
+  const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
+    return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
+      el('span', {}, db.name), el('span', { class: 'k k-sys' }, 'system'),
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? 'row' : 'rows'}`));
+  });
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -11511,7 +11518,8 @@ async function showHome() {
       el('div', { class: 'list-row', dataset: { href: '#/activity' }, onclick: () => { location.hash = '#/activity'; } },
         el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
         el('span', { class: 'spacer' }),
-        el('span', { class: 'pid' }, 'every event in this workspace'))));
+        el('span', { class: 'pid' }, 'every event in this workspace')),
+      ...registryRows));
   kindContext(main.querySelector('.view-header'), 'workspace', here, wsCtx, { skip: `${OWN_CONTEXT}, .crumb-path a, .ws-logo` });
   try {
     const views = await api('GET', '/views');
