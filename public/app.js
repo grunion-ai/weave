@@ -8922,7 +8922,7 @@ async function useTemplateDialog(space) {
   let list;
   try { list = await api('GET', '/workspaces'); } catch (err) { return toast(err.message, true); }
   const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
-  const here = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
+  const here = seg ? list.find((w) => w.name === seg || w.id === seg) : bareRootWs(list);
   const others = list.filter((w) => w !== here && !w.held);
   const said = el('div', { class: 'use-template-said', role: 'alert' });
   said.hidden = true;
@@ -10732,10 +10732,11 @@ const activityPanel = (() => {
   let st = null;
   let panel = null;
   let sheetBack = null;
+  let fitObserver = null;
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
-  const val = (v, cls = '') => el('span', { class: `wv-act-val ${cls}`.trim() }, String(v ?? '—'));
+  const val = (v, cls = '') => el('span', { class: `wv-act-val ${cls}`.trim() }, H().valueText(v));
   const arrow = () => el('span', { class: 'wv-act-arr' }, iconEl('lucide:arrow-right', 'wv-icon'));
   const byId = (id) => st?.items.find((it) => it.id === id);
   const revsOf = (field) => st.items.filter((it) => it.kind === 'rev' && it.field === field);
@@ -10827,7 +10828,7 @@ const activityPanel = (() => {
         : el('div', { class: 'wv-act-tray' }, btn('Restore', 'lucide:undo', () => restore(it), true), cmpSelect(it));
     }
     if (it.kind === 'undo' || it.undone) return null;
-    return el('div', { class: 'wv-act-tray' }, btn(`Revert to ${it.from}`, 'lucide:undo', () => revert(it), true));
+    return el('div', { class: 'wv-act-tray' }, btn(H().revertLabel(it.from), 'lucide:undo', () => revert(it), true));
   }
   function row(it) {
     const on = st.sel === it.id;
@@ -10846,7 +10847,7 @@ const activityPanel = (() => {
       icon = it.kind === 'undo' ? 'lucide:undo' : it.kind === 'state' ? 'lucide:workflow' : 'lucide:pencil';
       what = [el('span', { class: 'name' }, it.field), val(it.from), arrow(), val(it.to, 'new')];
       if (it.undone) who += ' · undone';
-      if (!on && !it.undone && it.kind !== 'undo') act = { title: `Revert to ${it.from}`, icon: 'lucide:undo', run: () => revert(it) };
+      if (!on && !it.undone && it.kind !== 'undo') act = { title: H().revertLabel(it.from), icon: 'lucide:undo', run: () => revert(it) };
     }
     const node = el('div', { class: `wv-act-row${on ? ' sel' : ''}${it.undone ? ' undone' : ''}`, tabindex: '0', 'data-id': it.id },
       el('span', { class: 'wv-act-kind' }, iconEl(icon, 'wv-icon')),
@@ -10861,10 +10862,34 @@ const activityPanel = (() => {
     node.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === node) node.click(); });
     return node;
   }
+  function fitFilters(strip) {
+    if (!strip.isConnected) return;
+    const chipEls = [...strip.querySelectorAll(':scope > button[data-filter]')];
+    const more = strip.querySelector(':scope > .wv-act-more');
+    const fits = () => {
+      const last = [...strip.children].filter((c) => !c.hidden).at(-1);
+      const edge = strip.getBoundingClientRect().right - parseFloat(getComputedStyle(strip).paddingRight);
+      return !last || last.getBoundingClientRect().right <= edge + 0.5;
+    };
+    for (const c of chipEls) c.hidden = false;
+    more.hidden = true;
+    if (fits()) return;
+    more.hidden = false;
+    const spare = chipEls.filter((c) => c.dataset.filter.startsWith('doc:') && c.getAttribute('aria-pressed') !== 'true').reverse();
+    for (const c of spare) {
+      c.hidden = true;
+      if (fits()) return;
+    }
+  }
   function renderPanel() {
     const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields']];
-    const filters = el('div', { class: 'wv-act-filters', role: 'toolbar', 'aria-label': 'Show' },
-      ...chips.map(([k, label]) => el('button', { type: 'button', 'aria-pressed': String(st.filter === k), onclick: () => { st.filter = k; render(); } }, label)));
+    const pickFilter = (k) => { st.filter = k; render(); };
+    const chipEls = chips.map(([k, label]) => el('button', { type: 'button', 'data-filter': k, 'aria-pressed': String(st.filter === k), onclick: () => pickFilter(k) }, label));
+    const more = el('button', {
+      type: 'button', class: 'wv-act-more', hidden: true, 'aria-haspopup': 'menu', title: 'More filters',
+      onclick: () => menu(chipEls.filter((c) => c.hidden).map((c) => ({ label: c.textContent, section: 'organize', run: () => pickFilter(c.dataset.filter) })), { anchor: more, label: 'More filters' }),
+    }, 'More', iconEl('lucide:chevron-down', 'wv-icon'));
+    const filters = el('div', { class: 'wv-act-filters', role: 'toolbar', 'aria-label': 'Show' }, ...chipEls, more);
     const list = el('div', { class: 'wv-act-list' });
     let day = '';
     for (const it of H().filterFeed(st.items, st.filter)) {
@@ -10881,6 +10906,10 @@ const activityPanel = (() => {
     const host = st.mount?.querySelector?.(':scope > .entity-split') ?? st.mount;
     if (panel?.parentElement === host) panel.replaceWith(next); else { panel?.remove(); host.append(next); }
     panel = next;
+    fitObserver?.disconnect();
+    fitFilters(filters);
+    fitObserver = new ResizeObserver(() => fitFilters(filters));
+    fitObserver.observe(filters);
     list.scrollTop = keep;
     const s = list.querySelector('.wv-act-row.sel');
     if (s) {
@@ -10947,6 +10976,7 @@ const activityPanel = (() => {
       sheetBack = null;
       if (!back && history.state?.wvSheet === 'activity') history.back();
     }
+    fitObserver?.disconnect(); fitObserver = null;
     panel?.remove(); panel = null;
     clearViews();
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
@@ -12693,7 +12723,7 @@ async function buildWsRail() {
   try {
     const list = await api('GET', '/workspaces');
     const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
-    const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
+    const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : bareRootWs(list);
     const current = cur?.name ?? seg;
     state.wsList = list;
     state.wsCurrent = current;
@@ -12706,18 +12736,17 @@ async function buildWsRail() {
     const weaveWs = list.find((w) => w.name === 'weave');
     const pinned = $('#rail-weave');
     if (pinned) {
-      if (weaveWs) pinned.href = weaveWs.default ? '/' : (weaveWs.url ?? '/w/weave/');
+      if (weaveWs) pinned.href = wsHref(weaveWs);
       pinned.classList.toggle('active', current === 'weave');
     }
     listBox.replaceChildren(
       ...list.filter((w) => w.name !== 'weave').map((w) => {
-        const prefix = w.default ? '' : `/w/${w.id}`;
         const chip = el('a', {
           class: 'ws-icon' + (w.logo && !w.held ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : '') + (w.held ? ' ws-held' : ''),
-          href: w.held ? w.open : w.default ? '/' : (w.url ?? `/w/${w.id}/`),
+          href: w.held ? w.open : wsHref(w),
           title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
         }, w.logo && !w.held
-          ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name, onerror: (e) => {
+          ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo`, alt: w.name, onerror: (e) => {
             const host = e.currentTarget.parentElement;
             host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id)}`);
             host.replaceChildren(w.name.slice(0, 1).toUpperCase());
@@ -12767,7 +12796,10 @@ function trashedWorkspacesCard(trashed, redraw) {
         },
       }, 'Restore'))));
 }
-const wsApiPrefix = (w) => (w.default ? '' : `/w/${w.id}`) + '/api';
+const servesBareRoot = (w) => (w.host ? new URL(w.host).hostname === location.hostname : !!w.default);
+const bareRootWs = (list) => list.find(servesBareRoot);
+const wsHref = (w) => (servesBareRoot(w) ? '/' : (w.url ?? `/w/${w.id}/`));
+const wsApiPrefix = (w) => `/w/${w.id}/api`;
 async function wsApi(w, method, path, body) {
   const res = await fetch(wsApiPrefix(w) + path, {
     method,

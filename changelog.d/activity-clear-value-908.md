@@ -1,0 +1,1 @@
+- The Activity panel's revert button and row icon read "Clear value" when a field was empty before the change, instead of "Revert to null", and an empty prior value reads as a dash whether it was stored as null, an empty string or an empty list (#908).

@@ -6,9 +6,8 @@ import { execFileSync } from 'node:child_process';
 import { loadavg } from 'node:os';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-import { JOURNEYS } from '../test/lib/journeys.mjs';
 import { OVERLAYS } from '../test/lib/overlays.mjs';
-import { CELLS, PLATFORM, fingerprint, lower, ratchet, sectionOf, seed, sweepCell, tally } from '../test/lib/cutoff.mjs';
+import { CELLS, PLATFORM, SWEEP_JOURNEYS, fingerprint, lower, ratchet, sectionOf, seed, sweepCell, tally } from '../test/lib/cutoff.mjs';
 
 const BASELINE = new URL('../test/cutoff-baseline.json', import.meta.url);
 const { values: a } = parseArgs({ options: {
@@ -22,7 +21,7 @@ const pw = await import('playwright').catch(() => null);
 if (!pw) { console.error('playwright not installed: ln -s ~/.gerrit/weave/pw/node_modules node_modules'); process.exit(2); }
 
 const pick = (list, csv) => (csv ? list.filter((x) => csv.split(',').includes(x.name)) : list);
-const journeys = pick(JOURNEYS, a.journey ?? (a.overlay ? '-' : null));
+const journeys = pick(SWEEP_JOURNEYS, a.journey ?? (a.overlay ? '-' : null));
 const overlays = pick(OVERLAYS, a.overlay ?? (a.journey ? '-' : null));
 const wanted = a.cell ? a.cell.split(',') : Object.keys(CELLS);
 const out = resolve(a.out);

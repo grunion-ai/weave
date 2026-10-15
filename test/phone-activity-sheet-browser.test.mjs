@@ -22,7 +22,7 @@ const sheet = (page) => page.evaluate(() => {
     theme: document.documentElement.dataset.bsTheme, left: r.left, top: r.top, right: r.right, bottom: r.bottom,
     vw: document.documentElement.clientWidth, vh: innerHeight, list: list.width, close: [close.width, close.height],
     onTop: !!hit?.closest('aside.wv-activity'), rows: p.querySelectorAll('.wv-act-row').length,
-    filters: [...p.querySelectorAll('.wv-act-filters button')].map((b) => Math.round(b.getBoundingClientRect().height)),
+    filters: [...p.querySelectorAll('.wv-act-filters button:not([hidden])')].map((b) => Math.round(b.getBoundingClientRect().height)),
   };
 });
 

@@ -18,3 +18,11 @@ paths = ['''^test/bug-report\.test\.mjs$''']
 regexes = ['''token=''']
 regexTarget = "line"
 condition = "AND"
+
+[[allowlists]]
+description = "fake Clerk pk_test_ fixture in test/billing-gate.test.mjs (publishable test keys handed to a fake clerk, not secrets)"
+targetRules = ["generic-api-key"]
+paths = ['''^test/billing-gate\.test\.mjs$''']
+regexes = ['''pk_test_''']
+regexTarget = "line"
+condition = "AND"

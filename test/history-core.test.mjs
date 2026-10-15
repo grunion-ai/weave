@@ -117,3 +117,19 @@ test('day labels: Today, Yesterday, then a short date', () => {
   assert.equal(core.dayLabel('2026-10-02T09:00:00', now), 'Yesterday');
   assert.match(core.dayLabel('2026-09-29T09:00:00', now), /Sep/);
 });
+
+test('revert label: an empty prior value clears, any other names the value it goes back to (Issue #908)', () => {
+  for (const empty of [null, undefined, '', []]) assert.equal(core.revertLabel(empty), 'Clear value', `${JSON.stringify(empty)} reads as Clear value`);
+  assert.equal(core.revertLabel('Open'), 'Revert to Open');
+  assert.equal(core.revertLabel(0), 'Revert to 0');
+  assert.equal(core.revertLabel(false), 'Revert to false');
+  assert.equal(core.revertLabel(['Red', 'Blue']), 'Revert to Red, Blue');
+  assert.doesNotMatch(core.revertLabel(null), /null/);
+});
+
+test('value text: an empty value reads as a dash however it is stored (Issue #908)', () => {
+  for (const empty of [null, undefined, '', []]) assert.equal(core.valueText(empty), '—');
+  assert.equal(core.valueText('https://example.com'), 'https://example.com');
+  assert.equal(core.valueText(['a', 'b']), 'a, b');
+  assert.equal(core.valueText(0), '0');
+});

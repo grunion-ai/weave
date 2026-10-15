@@ -118,5 +118,14 @@
     return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
   }
 
-  root.weaveHistoryCore = { lcs, renderDiff, feed, filterFeed, dayLabel, esc };
+  const isEmpty = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  function valueText(v) {
+    if (isEmpty(v)) return '—';
+    return Array.isArray(v) ? v.join(', ') : String(v);
+  }
+  function revertLabel(from) {
+    return isEmpty(from) ? 'Clear value' : `Revert to ${valueText(from)}`;
+  }
+
+  root.weaveHistoryCore = { lcs, renderDiff, feed, filterFeed, dayLabel, esc, valueText, revertLabel };
 })(globalThis);
