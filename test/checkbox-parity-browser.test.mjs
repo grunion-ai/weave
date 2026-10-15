@@ -78,7 +78,7 @@ if (s) {
         await page.click('thead tr.wv-foot td.foot-cell[data-col="Hours"]');
         await page.waitForSelector('.chip-pop .foot-row');
         assert.equal(await page.locator('.chip-pop :is([role="switch"], .switch)').count(), 0, 'no switch in the Σ picker (Issue #915)');
-        const footBoxes = await page.$$eval('.chip-pop .foot-row', (rows) => rows.map((r) => !!r.querySelector('input.form-check-input[type="checkbox"]')));
+        const footBoxes = await page.locator('.chip-pop .foot-row').evaluateAll((rows) => rows.map((r) => !!r.querySelector('input.form-check-input[type="checkbox"]')));
         assert.ok(footBoxes.length > 3 && footBoxes.every(Boolean), 'every Σ picker row holds the checkbox');
         for (const checked of [false, true]) {
           const got = await readBox(page, '.chip-pop .foot-row[data-agg="avg"] input[type="checkbox"]', checked);
