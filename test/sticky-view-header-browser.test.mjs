@@ -37,6 +37,7 @@ if (s) {
   const open = async (id, theme = null) => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });
+    await page.click('.view-title-row .desc-info');
     if (theme) await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     await page.waitForSelector('.wv-grid tbody tr[data-eid]');
     await page.waitForSelector('.view-desc-body');
@@ -129,6 +130,7 @@ if (s) {
     const page = await open(tasks.id);
     const before = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--wv-view-h'));
     await page.goto(`${base}/#/table/${tasks.id}?e=${alpha.id}`, { waitUntil: 'networkidle' });
+    await page.click('.view-title-row .desc-info');
     await page.waitForSelector('#dock .dock-entity .view-header');
     await page.waitForTimeout(400);
     const after = await page.evaluate(() => {
@@ -163,6 +165,7 @@ if (s) {
       const page = await browser.newPage({ viewport: { width: 1470, height: 900 } });
       try {
         await page.goto(`${base}/#/table/${long.id}`, { waitUntil: 'networkidle' });
+        await page.click('.view-title-row .desc-info');
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         await page.waitForSelector('.wv-grid tbody tr[data-eid]');
         await page.waitForSelector('.view-desc-more');
