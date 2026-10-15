@@ -139,13 +139,13 @@ if (s) {
       assert.ok(atEnd.scroll >= spare - 1, `the nav is at its end: ${atEnd.scroll} of ${spare}`);
       assert.ok(atEnd.within, `+ New space is still in the sidebar's window at the nav's end: ${JSON.stringify(atEnd)}`);
       assert.ok(Math.abs(atEnd.top - atTop.top) <= 20, `the button held its place while the nav ran ${spare}px: ${atTop.top} -> ${atEnd.top}`);
-      const order = await page.evaluate(() => [...document.querySelectorAll('#sidebar .nav-stats > *')].map((n) => n.className.split(' ')[0]));
-      assert.deepEqual(order.slice(0, 2), ['nav-foot', 'nav-stats-line'], `the button leads the strip, the records line follows: ${order}`);
+      const order = await page.evaluate(() => [...document.querySelectorAll('#sidebar .nav-pinned > *')].map((n) => n.className.split(' ')[0]));
+      assert.deepEqual(order, ['nav-foot', 'nav-system', 'nav-stats'], `the button leads the strip, the system tables follow, the records line last (Issue #854): ${order}`);
       await page.click(btn);
       await page.waitForTimeout(150);
       const input = await seen('.nav-inline-add');
       assert.ok(input?.within, `the new-space name input is in the sidebar's window: ${JSON.stringify(input)}`);
-      assert.ok(await page.evaluate(() => !!document.querySelector('.nav-inline-add')?.closest('.nav-stats')), 'the name input opens inside the pinned strip');
+      assert.ok(await page.evaluate(() => !!document.querySelector('.nav-inline-add')?.closest('.nav-pinned')), 'the name input opens inside the pinned strip');
       await page.close();
     });
   }
