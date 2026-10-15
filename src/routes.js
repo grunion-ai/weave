@@ -437,8 +437,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       ];
       const names = live.filter(([, w]) => opener(w) && !isDocsWorkspace(w)).map(([name]) => name.toLowerCase());
       const creator = logins.find((me) => mayAdminister(hubRoot, rootOf(me)?.role)) ?? null;
-      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@')) ?? null;
-      return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, creator, canCreate: !!creator, accountName, hubRoot };
+      const owner = creator ?? (billing ? logins[0] ?? null : null);
+      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@')) ?? (owner?.email?.split('@')[0] || null);
+      const unpaid = async (me) => {
+        for (const [name, w] of live) {
+          if (Weave.roleName(w.accountForIdentity(me)?.role) !== 'architect') continue;
+          if ((await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() })).plan == null) return name;
+        }
+        return null;
+      };
+      return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, creator, owner, canCreate: !!owner, accountName, hubRoot, unpaid };
     };
     const heldStart = async () => {
       prune(starts);
@@ -961,7 +969,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (!engine) {
                 noteFailure(ip);
                 const ws = c.holder.state.meta.name;
-                return refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [await differentAccount(), signInAgain()]);
+                const own = billing ? [{ label: 'Start your own workspace', href: `${startRoot}/start` }] : [];
+                const page = refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [...own, await differentAccount(), signInAgain()]);
+                return own.length ? withCookies(page, startCookies(await holdLogin(who))) : page;
               }
               const kept = startCookies(await holdLogin(who));
               if (c.handoff) return withCookies(await handOff(engine, account.id, c.next, c.handoff), kept);
@@ -1055,10 +1065,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, { name: w.state.meta.name, account: account.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
           }
           if (route === 'POST /api/start/workspaces') {
-            const me = found.creator;
+            const me = found.owner;
             if (!me) return deny(403, 'Creating a workspace needs an architect on the hub root');
+            if (!found.creator) {
+              let waiting;
+              try { waiting = await found.unpaid(me); } catch (error) {
+                if (!(error instanceof BillingUnavailable)) throw error;
+                return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
+              }
+              if (waiting) return out(402, { error: `${waiting} is still waiting on a plan. Subscribe to the solo plan on its billing page, then start another workspace.`, code: 'plan-required', waiting }, { 'Cache-Control': 'no-store' });
+            }
             const w = hub.create(body?.name, { slug: body?.slug ?? null });
-            const owner = w.createAccount({ name: hubRoot.accountForIdentity(me).name, role: 'architect' }).account;
+            const owner = w.createAccount({ name: found.accountName ?? 'Architect', role: 'architect' }).account;
             w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
             return out(201, { name: w.state.meta.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
           }
