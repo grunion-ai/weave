@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fingerprint, confirm, frameFlashes, diffRatio, regressed, evidenceFrames, GATED, answering, ANSWER_FRAMES } from './lib/flicker.mjs';
+import { fingerprint, confirm, frameFlashes, diffRatio, regressed, evidenceFrames, GATED, answering, ANSWER_FRAMES, fixedFault } from './lib/flicker.mjs';
 import { CELLS, JOURNEYS, cellsOf } from './lib/journeys.mjs';
 import { PHONE } from './lib/browser.mjs';
 
@@ -105,11 +105,24 @@ test('regressed names a fixed fingerprint that came back, and nothing else', () 
   assert.deepEqual(regressed({ 'open-table': [ev('blank', 'div.a')] }, fixed), []);
 });
 
-test('every fixed fingerprint names the Issue that fixed it', () => {
+test('a fingerprint the gate never reads is refused from flicker-fixed.json (Issue #702)', () => {
+  assert.equal(fixedFault('open-row|transient|div.a'), null, 'a gated kind is accepted');
+  assert.equal(fixedFault('open-row|transient|div.a|phone'), null, 'the phone cell is accepted');
+  assert.equal(fixedFault('_'), null, 'the file\'s own doc key is not a fingerprint');
+  for (const kind of ['frame', 'jank', 'rerender']) {
+    const fault = fixedFault(`switch-view|${kind}|box 320,40 160x160`);
+    assert.ok(fault, `a ${kind} entry is refused, because the gate would never check it`);
+    assert.match(fault, /test\/flicker-core\.test\.mjs/, `the ${kind} refusal names where its regression goes instead`);
+  }
+  for (const k of GATED) assert.equal(fixedFault(`open-row|${k}|div.a`), null, `${k} is gated, so it is accepted`);
+  assert.match(fixedFault('open-row|transient'), /fingerprint/, 'a key that is not journey|kind|selector is refused');
+});
+
+test('every fixed fingerprint is one the gate reads, and names the Issue that fixed it', () => {
   const fixed = JSON.parse(readFileSync(new URL('./flicker-fixed.json', import.meta.url), 'utf8'));
   for (const [fp, row] of Object.entries(fixed)) {
+    assert.equal(fixedFault(fp), null, `${fp} would never be checked`);
     if (fp.startsWith('_')) continue;
-    assert.match(fp, /^[a-z-]+\|(transient|blank|revert|shift|cut)\|[^|]+(\|(phone))?$/, `${fp} is a gated fingerprint`);
     assert.ok(Number.isInteger(row.issue) && row.issue > 0, `${fp} names its Issue`);
   }
 });

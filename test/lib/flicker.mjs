@@ -13,6 +13,17 @@ export const GATED = ['transient', 'blank', 'revert', 'shift', 'cut'];
 
 export const DESKTOP = 'desktop';
 
+const FINGERPRINT = /^([a-z-]+)\|([a-z]+)\|([^|]+?)(\|phone)?$/;
+
+export function fixedFault(fp) {
+  const key = String(fp);
+  if (key.startsWith('_')) return null;
+  const kind = FINGERPRINT.exec(key)?.[2];
+  if (!kind) return `${key} is not a journey|kind|selector fingerprint`;
+  if (!GATED.includes(kind)) return `${key} is a ${kind} finding and test/flicker-gate-browser.test.mjs reads only ${GATED.join(', ')}, so the entry would never be checked; hold a ${kind} finding with a frameFlashes case in test/flicker-core.test.mjs and leave the screencast to scripts/flicker-sweep.mjs`;
+  return null;
+}
+
 export const fingerprint = (journey, e) => `${journey}|${e.kind}|${String(e.sel).split(' > ').slice(-2).join(' > ')}${e.cell && e.cell !== DESKTOP ? `|${e.cell}` : ''}`;
 
 function probe({ maxMs: MAX, answerFrames: FRAMES }) {
