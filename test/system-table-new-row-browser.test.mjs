@@ -114,6 +114,7 @@ if (s) {
 
   test('the sidebar space + opens the same tray and lands on the new table (Issue #778)', async () => {
     const page = await open(tablesT);
+    const from = await page.evaluate(() => location.hash);
     const add = page.locator('#sidebar .nav-add-table').first();
     await add.waitFor();
     await add.click();
@@ -124,7 +125,7 @@ if (s) {
       'the sidebar already knows which space it is adding to');
     await page.fill('#tray-back input[name="name"]', 'Shipments');
     await page.click('#tray-back button[type="submit"]');
-    await page.waitForFunction(() => location.hash.startsWith('#/table/'));
+    await page.waitForFunction((h) => location.hash.startsWith('#/table/') && location.hash !== h, from);
     const made = weave.listTables().find((t) => t.name === 'Shipments');
     assert.ok(made, 'the table exists');
     assert.equal(await page.evaluate(() => location.hash), `#/table/${made.id}`, 'and the sidebar lands on it');
