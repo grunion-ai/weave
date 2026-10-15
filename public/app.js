@@ -1628,6 +1628,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     box, list, foot);
   const commit = async () => { pop.remove(); await multi.onCommit(core.ids(st)); };
   const dismiss = () => { if (multi) commit(); else pop.remove(); anchor?.focus?.(); };
+  if (sheet) pop.prepend(sheetGrip(pop, dismiss));
   if (multi) pop.commit = commit;
   const pick = async (o) => { pop.remove(); await onPick(o); };
   const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); if (!quiet) input.focus(); };
@@ -12436,6 +12437,54 @@ function rowNoun(db) {
   if (db?.term?.set || db?.system) return db.term?.singular ?? WeaveTerm.DEFAULT.singular;
   return WeaveTerm.singularize(db?.name) || WeaveTerm.DEFAULT.singular;
 }
+function sheetGrip(sheet, close) {
+  const grip = el('div', { class: 'sheet-grip', 'aria-hidden': 'true' }, el('span', { class: 'sheet-grip-pill' }));
+  let from = null;
+  let at = 0;
+  let last = 0;
+  const settle = () => {
+    sheet.style.transition = '';
+    sheet.style.transform = '';
+    sheet.classList.remove('sheet-dragging');
+  };
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || from !== null) return;
+    from = { y: e.clientY, t: e.timeStamp, id: e.pointerId, height: sheet.getBoundingClientRect().height };
+    at = 0;
+    last = e.timeStamp;
+    sheet.classList.add('sheet-dragging');
+    grip.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (from === null || e.pointerId !== from.id) return;
+    at = Math.max(0, e.clientY - from.y);
+    last = e.timeStamp;
+    sheet.style.transform = at ? `translateY(${at}px)` : '';
+  });
+  const release = (e) => {
+    if (from === null || e.pointerId !== from.id) return;
+    const { height, y, t } = from;
+    const span = Math.max(1, last - t);
+    const speed = Math.max(0, e.clientY - y) / span;
+    from = null;
+    grip.releasePointerCapture?.(e.pointerId);
+    if (at > height * 0.3 || (at > 24 && speed > 0.5)) {
+      settle();
+      close();
+      return;
+    }
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || !at) return settle();
+    sheet.style.transition = 'transform .18s ease-out';
+    sheet.addEventListener('transitionend', settle, { once: true });
+    setTimeout(settle, 260);
+    sheet.style.transform = '';
+  };
+  grip.addEventListener('pointerup', release);
+  grip.addEventListener('pointercancel', release);
+  return grip;
+}
+
 function newRowSheet(start) {
   const pickTable = !start;
   let db = start ?? allTables().find((t) => !t.system);
@@ -12525,7 +12574,7 @@ function newRowSheet(start) {
   create.addEventListener('click', () => write((made) => openEntity(made.id)));
   more.addEventListener('click', () => write((made) => { location.hash = `#/entity/${made.id}`; }));
   sheet.append(
-    el('div', { class: 'new-row-grip', 'aria-hidden': 'true' }),
+    sheetGrip(sheet, close),
     el('div', { class: 'new-row-head' }, title, tableChip),
     el('label', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, 'Name'), name),
     fieldsBox,

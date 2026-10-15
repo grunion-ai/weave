@@ -37,8 +37,49 @@ if (s) {
     return page;
   };
 
+  const dragSheet = async (page, sel, dy, { step = 40 } = {}) => {
+    const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i += 1) {
+      await page.waitForTimeout(step);
+      await page.mouse.move(x, y + (dy * i) / 6);
+    }
+    await page.mouse.up();
+  };
+
   for (const [engine, make] of engines) {
     for (const theme of ['light', 'dark']) {
+      test(`the new-row sheet grabber follows the finger and dismisses past a third (${engine}, ${theme}, Issue #808)`, async () => {
+        const page = await open(make, issues, theme);
+        try {
+          const before = (await rows(page, issues)).length;
+          await page.click('.phone-bar .phone-new');
+          await page.waitForSelector('.new-row-sheet .sheet-grip');
+          const grip = await page.locator('.new-row-sheet .sheet-grip').boundingBox();
+          assert.ok(Math.round(grip.height) >= 44, `the grabber is a real target, got ${Math.round(grip.height)}px tall`);
+          const h = (await page.locator('.new-row-sheet').boundingBox()).height;
+
+          await dragSheet(page, '.new-row-sheet', h * 0.12);
+          assert.ok(await page.isVisible('.new-row-sheet'), 'a short drag springs the sheet back');
+          assert.equal(await page.evaluate(() => document.querySelector('.new-row-sheet').style.transform), '',
+            'and leaves no transform behind');
+
+          await dragSheet(page, '.new-row-sheet', h * 0.5);
+          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
+          assert.equal((await rows(page, issues)).length, before, 'dragging it away writes nothing');
+
+          await page.waitForTimeout(700);
+          await page.click('.phone-bar .phone-new');
+          await page.waitForSelector('.new-row-sheet .sheet-grip');
+          await dragSheet(page, '.new-row-sheet', h * 0.12, { step: 4 });
+          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
+        } finally { await page.close(); }
+      });
+
+
       test(`on a phone + opens a New bug sheet that writes nothing until Create, then Create writes the name and choices (${engine}, ${theme}, Issue #739)`, async () => {
         const page = await open(make, issues, theme);
         try {
