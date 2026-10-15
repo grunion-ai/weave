@@ -87,27 +87,48 @@ if (s) {
     await page.close();
   });
 
-  test('+ New table on Workspace/Tables asks for the name and the space, then lands on the new row', async () => {
+  test('+ New table on Workspace/Tables opens the tray for the name and the space, then lands on the new row (Issue #778)', async () => {
     const page = await open(tablesT);
     const known = ids(tablesT);
     await page.click('.wv-grid .add-entity-btn');
-    await page.waitForSelector('#modal input[name="name"]');
-    await page.click('#modal .picker-face');
+    await page.waitForSelector('#tray-back input[name="name"]');
+    assert.equal(await page.locator('#modal-back').count(), 0, 'create happens in the tray, not a modal');
+    await page.click('#tray-back .picker-face');
     await page.waitForSelector('.chip-pop .picker-row');
     const spaces = await page.locator('.chip-pop .picker-row').evaluateAll((rs) => rs.map((r) => r.textContent.trim()));
     assert.ok(!spaces.some((v) => v.includes('Workspace')), 'the system space is not on offer');
     assert.ok(spaces.some((v) => v.includes('Work')));
     await page.fill('.chip-pop .picker-search', 'Work');
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => document.querySelector('#modal input[name="space"]')?.value === 'Work');
-    await page.fill('#modal input[name="name"]', 'Widgets');
-    await page.click('#modal button[type="submit"]');
+    await page.waitForFunction(() => document.querySelector('#tray-back input[name="space"]')?.value === 'Work');
+    await page.fill('#tray-back input[name="name"]', 'Widgets');
+    await page.click('#tray-back button[type="submit"]');
     await waitForNewRow(page, known);
     const at = await focused(page);
     assert.equal(at.field, 'Name');
     const made = weave.findTable('Work/Widgets');
     assert.ok(made, 'the table exists in the chosen space');
     assert.equal(weave.getEntity(at.eid).sysId, made.id, 'the focused row is that table');
+    await page.close();
+  });
+
+  test('the sidebar space + opens the same tray and lands on the new table (Issue #778)', async () => {
+    const page = await open(tablesT);
+    const from = await page.evaluate(() => location.hash);
+    const add = page.locator('#sidebar .nav-add-table').first();
+    await add.waitFor();
+    await add.click();
+    await page.waitForSelector('#tray-back input[name="name"]');
+    assert.equal(await page.locator('#modal-back').count(), 0, 'create happens in the tray, not an inline nav input');
+    assert.equal(await page.locator('#sidebar .nav-inline-add').count(), 0, 'and not the old inline name box');
+    assert.equal(await page.locator('#tray-back input[name="space"], #tray-back .picker-face').count(), 0,
+      'the sidebar already knows which space it is adding to');
+    await page.fill('#tray-back input[name="name"]', 'Shipments');
+    await page.click('#tray-back button[type="submit"]');
+    await page.waitForFunction((h) => location.hash.startsWith('#/table/') && location.hash !== h, from);
+    const made = weave.listTables().find((t) => t.name === 'Shipments');
+    assert.ok(made, 'the table exists');
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${made.id}`, 'and the sidebar lands on it');
     await page.close();
   });
 

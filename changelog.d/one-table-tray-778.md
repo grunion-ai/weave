@@ -1,0 +1,1 @@
+- Creating a table happens in one right-hand tray with Name, Space and icon, opened by the Tables grid +, the empty-workspace + New table, the sidebar space + and the space page add. The two centered New table modals are gone, and a table is named before it is created rather than landing as a row called "New table" (Issue #778).

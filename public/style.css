@@ -1953,6 +1953,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 @media (pointer: coarse) { .table-view-popover .view-acts { opacity: 1; }
   .table-view-popover .view-grip { position: relative; min-width: 44px; min-height: 44px; margin-inline: -8px -10px; } }
 
+.tray-body .tray-name-row { display: flex; align-items: center; gap: 6px; }
+.tray-body .tray-name-row .form-control { flex: 1; min-width: 0; }
+
 .table-filter-popover { overflow: hidden; }
 .table-filter-popover > :not(.filter-strip) { flex-shrink: 0; }
 .table-filter-popover .filter-scroll { min-height: 0; flex: 0 1 auto; overflow-y: auto; overscroll-behavior: contain; }

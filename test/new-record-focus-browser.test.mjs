@@ -113,6 +113,12 @@ if (s) {
     const known = await page.evaluate(() => [...document.querySelectorAll('tr[data-eid]')].map((r) => r.dataset.eid));
 
     await page.click('.wv-grid .add-entity-btn');
+    await page.waitForSelector('#tray-back input[name="name"]');
+    assert.equal(await page.locator('#modal-back').count(), 0, 'create happens in the tray, not a modal (Issue #778)');
+    assert.equal(await page.locator('#tray-back input[name="space"], #tray-back .picker-face').count(), 0,
+      'the space page knows its space, so the tray asks for no other');
+    await page.fill('#tray-back input[name="name"]', 'Bugs');
+    await page.click('#tray-back button[type="submit"]');
     await waitForNewRow(page, known);
     await settle(page);
 
@@ -120,14 +126,11 @@ if (s) {
     assert.equal(at.tag, 'INPUT');
     assert.equal(at.field, 'Name', 'the new table row\'s Name cell holds focus');
     assert.equal(weave.listEntities(tasks.id).length, before, 'no stray row landed in Tasks');
-    const made = weave.listTables().find((t) => t.name === 'New table');
-    assert.ok(made, 'a table named "New table" exists');
+    assert.equal(weave.listTables().filter((t) => t.name === 'New table').length, 0,
+      'no placeholder row was created before the table was named');
+    const made = weave.listTables().find((t) => t.name === 'Bugs');
+    assert.ok(made, 'the table is named at creation');
     assert.equal(made.spaceId, space, 'in this space');
-    await page.keyboard.type('Bugs');
-    await page.keyboard.press('Enter');
-    await page.waitForFunction(() => !!document.querySelector('.wv-grid'));
-    await settle(page);
-    assert.ok(weave.listTables().some((t) => t.name === 'Bugs'), 'typing over the placeholder renamed the table');
     await page.close();
   });
 

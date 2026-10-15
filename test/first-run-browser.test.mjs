@@ -52,12 +52,14 @@ if (empty) {
     await page.close();
   });
 
-  test('New table with no space yet names one, then lands on the new table', async () => {
+  test('New table with no space yet names one in the tray, then lands on the new table (Issue #778)', async () => {
     const page = await open(empty, '#/');
     await page.click('.wv-start-new');
-    await page.waitForSelector('#modal-back input[name="name"]');
-    assert.equal(await page.inputValue('#modal-back input[name="space"]'), 'General');
-    await page.fill('#modal-back input[name="name"]', 'Notes');
+    await page.waitForSelector('#tray-back input[name="name"]');
+    assert.equal(await page.locator('#modal-back').count(), 0, 'create happens in the tray, not a modal');
+    assert.equal(await page.locator('#tray-back .icon-btn').count(), 1, 'and the tray offers the icon');
+    assert.equal(await page.inputValue('#tray-back input[name="space"]'), 'General');
+    await page.fill('#tray-back input[name="name"]', 'Notes');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => location.hash.startsWith('#/table/'));
     assert.ok(empty.weave.findTable('General/Notes'), 'the table exists in a new General space');
