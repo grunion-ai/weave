@@ -11656,9 +11656,17 @@ async function showHome() {
 }
 
 const ROLE_LABELS = { editor: 'Editor, paid seat', observer: 'Observer, free', architect: 'Architect, paid' };
+function seatNote(billing) {
+  if (!billing || billing.plan === 'comped') return null;
+  const lead = billing.plan === 'team' ? 'Inviting an Editor or Architect adds a seat to the team plan.'
+    : billing.plan === 'solo' ? 'The solo plan covers one paid seat: a second Editor or Architect needs the team plan.'
+    : 'No plan covers this workspace yet, so Editors and Architects work as Observers.';
+  return el('div', { class: 'wv-invite-note wv-seat-note' }, `${lead} Observers stay free. `, el('a', { href: `${WS_PREFIX}/billing` }, 'Billing'));
+}
 async function membersSection(parent) {
-  const [acc, inv] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites')]);
+  const [acc, inv, bill] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites'), api('GET', '/billing')]);
   if (acc.status !== 'fulfilled' || inv.status !== 'fulfilled') return;
+  const billing = bill.status === 'fulfilled' ? bill.value : null;
   const body = el('div', { class: 'wv-members' });
   const box = el('details', { class: 'wv-members-box' }, el('summary', {}, summaryChevron(), 'Members'), body);
   const day = (iso) => String(iso ?? '').slice(0, 10);
@@ -11709,7 +11717,7 @@ async function membersSection(parent) {
             } catch (err) { toast(err.message, true); }
           } }, 'Revoke'))))
         : el('div', { class: 'wv-members-empty' }, 'None'),
-      form, shown);
+      form, seatNote(billing), shown);
   };
   draw(acc.value, inv.value);
   parent.append(box);
