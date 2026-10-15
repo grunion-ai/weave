@@ -36,7 +36,7 @@ if (s) {
   }, [look.toString(), checked]);
 
   for (const theme of ['light', 'dark']) {
-    test(`the grid, Fields and Filters draw the field dialog's checkbox (${theme})`, async () => {
+    test(`the grid and Filters draw the field dialog's checkbox, and Fields draws one switch per row (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: theme });
       try {
         await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
@@ -57,15 +57,9 @@ if (s) {
         await page.click('.eye-btn');
         await page.waitForSelector('.table-fields-popover .table-field-row');
         assert.equal(await page.locator('.field-visible-check').count(), 0, 'no hand-drawn box');
-        assert.equal(await page.locator('.table-fields-popover [role="switch"]').count(), 0, 'no box announced as a switch');
-        for (const checked of [false, true]) {
-          const got = await readBox(page, '.table-field-row[data-field="Owner"] input[type="checkbox"]', checked);
-          assert.match(got.cls, /\bform-check-input\b/, 'Fields: the shared checkbox');
-          const w = checked ? want.on : want.off;
-          for (const k of ['w', 'h', 'radius', 'border', 'borderWidth', 'appearance', 'bg']) assert.equal(got[k], w[k], `Fields ${checked ? 'checked' : 'unchecked'}: ${k}`);
-        }
-        const rowsBoxes = await page.$$eval('.table-fields-popover .eye-row', (rows) => rows.map((r) => !!r.querySelector('input.form-check-input[type="checkbox"]')));
-        assert.ok(rowsBoxes.length > 3 && rowsBoxes.every(Boolean), 'every show/hide row, Deleted rows and the Σ row included, holds the checkbox');
+        assert.equal(await page.locator('.table-fields-popover input[type="checkbox"]').count(), 0, 'no checkbox in the Fields menu (Issue #910)');
+        const rowsSwitches = await page.$$eval('.table-fields-popover .eye-row', (rows) => rows.map((r) => r.getAttribute('role') === 'switch' && !!r.querySelector('.switch .switch-knob')));
+        assert.ok(rowsSwitches.length > 3 && rowsSwitches.every(Boolean), 'every show/hide row, Deleted rows and the Σ row included, is one switch');
         await page.keyboard.press('Escape');
         await page.click('.table-filter-btn');
         await page.waitForSelector('.table-filter-popover .filter-chip');
@@ -79,20 +73,20 @@ if (s) {
     });
   }
 
-  test('a Fields row is a labelled checkbox: a click on its name flips it and the grid follows', async () => {
+  test('a Fields row is a labelled switch: a click on its name flips it and the grid follows (Issue #910)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
       await page.click('.eye-btn');
-      const box = page.getByRole('checkbox', { name: 'Owner', exact: true });
-      assert.equal(await box.isChecked(), true);
+      const box = page.getByRole('switch', { name: 'Owner', exact: true });
+      assert.equal(await box.getAttribute('aria-checked'), 'true');
       await page.locator('.table-field-row[data-field="Owner"] .eye-label').click();
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Owner'));
-      assert.equal(await box.isChecked(), false);
+      assert.equal(await box.getAttribute('aria-checked'), 'false');
       await box.focus();
       await page.keyboard.press('Space');
       await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Owner'));
-      assert.equal(await box.isChecked(), true, 'Space flips it from the keyboard');
+      assert.equal(await box.getAttribute('aria-checked'), 'true', 'Space flips it from the keyboard');
     } finally { await page.close(); }
   });
 
