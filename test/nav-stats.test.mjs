@@ -61,13 +61,16 @@ test('fmtSize speaks GB and TB, never MB', () => {
 });
 
 test('the strip pins to the sidebar bottom and style.css dresses it', () => {
-  assert.ok(APP.includes("class: 'nav-stats'"), 'renderNav builds the strip');
-  assert.ok(APP.includes("$('#sidebar').append(stats)"), 'the strip is a sidebar sibling after #nav, not a foot child');
+  assert.ok(APP.includes("class: 'nav-stats'"), 'renderNav builds the records line');
+  assert.ok(APP.includes("class: 'nav-pinned'"), 'and the strip that pins it, with New space and the system tables, to the bottom');
+  assert.ok(APP.includes("$('#sidebar').append(el('div', { class: 'nav-pinned' }"), 'the strip is a sidebar sibling after #nav, not a foot child');
   const CSS = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
-  const rule = CSS.match(/\.nav-stats\s*{([^}]*)}/)?.[1] ?? '';
+  const rule = CSS.match(/\.nav-pinned\s*{([^}]*)}/)?.[1] ?? '';
   assert.ok(/position:\s*sticky/.test(rule), 'sticky');
   const pad = CSS.match(/#sidebar\s*{[^}]*padding:\s*(\d+)px/)[1];
-  assert.match(rule, new RegExp(`bottom:\\s*-${pad}px`), 'stuck to the sidebar\'s outer bottom edge');
-  assert.ok(Number(rule.match(/padding:\s*\d+px \d+px (\d+)px/)[1]) >= Number(pad), 'and padded over the band it covers');
+  assert.match(rule, new RegExp(`bottom:\\s*-${pad}px`), "stuck to the sidebar's outer bottom edge");
   assert.ok(/margin-top:\s*auto/.test(rule), 'pushed to the bottom when the nav is short');
+  const head = CSS.match(/\.nav-head\s*{([^}]*)}/)?.[1] ?? '';
+  assert.ok(/position:\s*sticky/.test(head), 'the name and search are pinned the same way, at the top (Issue #854)');
+  assert.match(head, new RegExp(`top:\\s*-${pad}px`), "stuck to the sidebar's outer top edge");
 });

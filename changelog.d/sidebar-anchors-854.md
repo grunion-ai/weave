@@ -1,0 +1,1 @@
+- The sidebar holds its edges: the workspace name and the search button stay at the top however far the space list scrolls, and **+ New space** now sits above the system tables (Workflows, Users, Activity, Trash) in one pinned strip at the bottom (Issue #854).

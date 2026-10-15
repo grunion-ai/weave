@@ -1158,7 +1158,7 @@ function renderNav() {
   const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
   const line = el('span', { class: 'nav-stats-line', title: 'Rows in this workspace · storage on disk' },
     `${entityTotal.toLocaleString()} ${entityTotal === 1 ? WeaveTerm.DEFAULT.singular : WeaveTerm.DEFAULT.plural}`);
-  const stats = el('div', { class: 'nav-stats' }, foot, line);
+  const stats = el('div', { class: 'nav-stats' }, line);
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
@@ -1169,10 +1169,8 @@ function renderNav() {
     ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
     sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
     sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
-  document.querySelector('#sidebar .nav-system')?.remove();
-  document.querySelector('#sidebar .nav-stats')?.remove();
-  $('#sidebar').append(system);
-  $('#sidebar').append(stats);
+  document.querySelector('#sidebar .nav-pinned')?.remove();
+  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, stats));
   (state.healthP ??= api('GET', '/health')).then((h) => {
     if (h.sizeBytes != null) line.append(` · ${fmtSize(h.sizeBytes)}`);
   }).catch(() => {});

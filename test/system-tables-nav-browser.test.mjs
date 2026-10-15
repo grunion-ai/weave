@@ -6,6 +6,10 @@ import { launch } from './lib/browser.mjs';
 let wfId, usersId, member, other;
 const s = await launch('system tables nav', (weave) => {
   weave.createSpace({ name: 'Work' });
+  for (let i = 1; i <= 16; i += 1) {
+    weave.createSpace({ name: `Filler ${i}` });
+    weave.createTable({ space: `Filler ${i}`, name: `Sheet ${i}` });
+  }
   const t = weave.createTable({ space: 'Work', name: 'Tasks' });
   const e = weave.createEntity(t.id, { Name: 'binned' });
   weave.deleteEntity(e.id);
@@ -41,10 +45,11 @@ if (s) {
     const inList = await page.$$eval('#nav .nav-db', (as) => as.map((a) => a.textContent.trim()));
     assert.ok(!inList.includes('Workflows') && !inList.includes('Users'), 'Workflows and Users are not listed twice');
     const below = await page.evaluate(() => {
-      const last = [...document.querySelectorAll('#nav > *')].pop().getBoundingClientRect();
-      return document.querySelector('#sidebar .nav-system').getBoundingClientRect().top >= last.bottom - 1;
+      const group = document.querySelector('#sidebar .nav-system');
+      const nav = document.querySelector('#nav').getBoundingClientRect();
+      return { outside: !document.querySelector('#nav').contains(group), under: group.getBoundingClientRect().top >= nav.top };
     });
-    assert.ok(below, 'the group is at the bottom, under every space');
+    assert.deepEqual(below, { outside: true, under: true }, 'the group sits under the space list, outside it, in the pinned strip');
     await page.click('#sidebar .nav-system a[href="#/trash"]');
     await page.waitForSelector('#main .trash-when');
     assert.match(await page.textContent('#main'), /binned/);
@@ -54,6 +59,57 @@ if (s) {
     assert.equal(await page.locator('#main input.view-title').first().evaluate((i) => i.readOnly), true, 'Workflows cannot be renamed from its page');
     await page.close();
   });
+
+  for (const theme of ['light', 'dark']) {
+    test(`browser: the name and search hold the top, New space and the system tables hold the bottom, however far the nav scrolls (${theme}, Issue #854)`, async () => {
+      const page = await browser.newPage({ viewport: { width: 1400, height: 760 } });
+      await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
+      await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#sidebar .nav-system a');
+      const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
+      assert.ok(spare > 200, `the nav has more spaces than room, so anything unpinned would scroll away: ${spare}`);
+
+      const SEEN = ['#ws-name', '#search-btn', '#sidebar .nav-foot button', '#sidebar .nav-system a[href="#/trash"]'];
+      const look = () => page.evaluate((sels) => {
+        const box = document.querySelector('#sidebar').getBoundingClientRect();
+        const out = {};
+        for (const sel of sels) {
+          const r = document.querySelector(sel).getBoundingClientRect();
+          out[sel] = { top: Math.round(r.top), within: r.top >= box.top - 1 && r.bottom <= box.bottom + 1 };
+        }
+        return out;
+      }, SEEN);
+
+      const atTop = await look();
+      for (const sel of SEEN) assert.ok(atTop[sel].within, `${sel} is in the sidebar's window unscrolled: ${JSON.stringify(atTop[sel])}`);
+      await page.evaluate(() => { const n = document.querySelector('#sidebar'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
+      await page.waitForTimeout(150);
+      const atEnd = await look();
+      for (const sel of SEEN) {
+        assert.ok(atEnd[sel].within, `${sel} is still in the sidebar's window at the nav's end: ${JSON.stringify(atEnd[sel])}`);
+        assert.ok(Math.abs(atEnd[sel].top - atTop[sel].top) <= 20,
+          `${sel} held its place while the nav ran ${spare}px: ${atTop[sel].top} -> ${atEnd[sel].top}`);
+      }
+
+      const stack = await page.evaluate(() => {
+        const y = (sel) => document.querySelector(sel).getBoundingClientRect().top;
+        return {
+          order: [...document.querySelectorAll('#sidebar > *')].map((n) => n.id || n.className.split(' ')[0]),
+          strip: [...document.querySelectorAll('#sidebar .nav-pinned > *')].map((n) => n.className.split(' ')[0]),
+          newSpaceAboveSystem: y('#sidebar .nav-foot') < y('#sidebar .nav-system'),
+          systemBelowNav: y('#sidebar .nav-system') > y('#nav'),
+          opaque: getComputedStyle(document.querySelector('.nav-head')).backgroundColor,
+          canvas: getComputedStyle(document.querySelector('#sidebar')).getPropertyValue('--wv-canvas').trim(),
+        };
+      });
+      assert.deepEqual(stack.order, ['nav-head', 'nav', 'nav-pinned'], 'head, scrolling list, pinned strip');
+      assert.deepEqual(stack.strip, ['nav-foot', 'nav-system', 'nav-stats'], 'New space, then the system tables, then the records line');
+      assert.ok(stack.newSpaceAboveSystem, 'New space sits above the system tables');
+      assert.ok(stack.systemBelowNav, 'the system tables sit below the spaces');
+      assert.notEqual(stack.opaque, 'rgba(0, 0, 0, 0)', `the head is opaque, so rows scroll under it: ${stack.opaque}`);
+      await page.close();
+    });
+  }
 
   test('browser: the root workspace keeps its Workspace registry off the sidebar and lists it on the workspace page (Issue #874)', async () => {
     const page = await browser.newPage();

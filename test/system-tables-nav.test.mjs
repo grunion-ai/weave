@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-import { APP, fnBodyOf, rulesFor } from './lib/source.mjs';
+import { APP, HTML, fnBodyOf, rulesFor } from './lib/source.mjs';
 
 function build() {
   const w = new Weave();
@@ -59,9 +59,39 @@ test('GET /api/trash lists every trashed row in the workspace, and PATCH refuses
   } finally { server.close(); }
 });
 
+test('the sidebar anchors its name and search at the top, and pins New space then the system tables at the bottom (Issue #854)', () => {
+  assert.match(HTML, /<div class="nav-head">[\s\S]*id="ws-name"[\s\S]*id="search-btn"[\s\S]*<\/div>/,
+    'the workspace name and the search button share one head block, so one rule anchors both');
+  const head = rulesFor('.nav-head');
+  const pinned = rulesFor('.nav-pinned');
+  assert.equal(head.position, 'sticky', 'the head holds the sidebar\'s top edge');
+  assert.equal(pinned.position, 'sticky', 'the pinned strip holds its bottom edge');
+  assert.equal(head.top, '-14px', 'it sticks past the sidebar\'s own padding, as the strip already does');
+  assert.equal(pinned.bottom, '-14px');
+  for (const [name, rules] of [['.nav-head', head], ['.nav-pinned', pinned]]) {
+    assert.match(rules.background ?? '', /--wv-canvas/, `${name} paints the canvas, so rows scroll under it rather than through it`);
+  }
+  assert.equal(rulesFor('#sidebar')['overflow-y'], 'auto', 'the sidebar stays the one scroll container (Issue #451)');
+  for (const [sidebar, nav] of [['#sidebar', '#sidebar .nav-head'], ['#app.nav-peek #sidebar', '#app.nav-peek #sidebar .nav-head']]) {
+    const pad = rulesFor(sidebar)['padding-top'] ?? rulesFor(sidebar).padding?.split(/\s+/)[0];
+    if (!pad) continue;
+    assert.equal(rulesFor(nav)['padding-top'], pad, `${nav} covers the ${pad} the sidebar pads at that size`);
+    assert.equal(rulesFor(nav).top, `-${pad}`, `${nav} sticks flush with the sidebar's own edge there`);
+  }
+
+  const nav = fnBodyOf('renderNav');
+  const strip = nav.indexOf("class: 'nav-pinned'");
+  assert.ok(strip > -1, 'one strip holds everything pinned to the bottom');
+  const order = ['foot', 'system', 'line'].map((n) => nav.indexOf(n, strip));
+  assert.deepEqual([...order].sort((a, b) => a - b), order,
+    'New space leads the strip, the system tables follow it, the records line last (Issue #854)');
+  assert.doesNotMatch(nav.slice(nav.indexOf("class: 'nav-stats'")), /append\(system\)/,
+    'the system tables are no longer appended on their own');
+});
+
 test('the nav pins Workflows, Users, Activity and Trash, in that order, under the spaces', () => {
   const nav = fnBodyOf('renderNav');
-  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("$('#sidebar').append(system"));
+  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("class: 'nav-pinned'"));
   const at = (s) => group.indexOf(s);
   assert.ok(at("'#/activity'") > -1 && at("'#/trash'") > -1 && at("'Workflows'") > -1, 'the three routes');
   assert.ok(at("'Workflows'") < at("'Users'") && at("'Users'") < at("'#/activity'") && at("'#/activity'") < at("'#/trash'"), 'Workflows, Users, Activity, Trash (Issue #561, Feature #318)');
@@ -71,7 +101,7 @@ test('the nav pins Workflows, Users, Activity and Trash, in that order, under th
 
 test('the Workflows row always shows, resolved through the registry a member reads from the root (Issue #872)', () => {
   const nav = fnBodyOf('renderNav');
-  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("$('#sidebar').append(system"));
+  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("class: 'nav-pinned'"));
   assert.doesNotMatch(group, /wf \? \[/, 'no condition wraps the Workflows row');
   assert.match(nav, /registryTable\('workflows'\)/, 'a member workspace finds Workflows in state.registry');
   assert.match(nav, /wf \? `#\/table\/\$\{wf\.id\}`/, 'the row opens Workflows at this workspace\'s own URL (Issue #875)');
@@ -89,9 +119,10 @@ test('the sidebar lists user spaces only; the registry lives on the workspace pa
 
 test('the pinned group sits outside the scrolling list, above the stats strip', () => {
   const nav = fnBodyOf('renderNav');
-  assert.match(nav, /document\.querySelector\('#sidebar \.nav-system'\)\?\.remove\(\)/, 'redrawn, never stacked');
-  assert.ok(nav.indexOf("$('#sidebar').append(system") > -1, 'a sibling after #nav, like the stats strip');
-  assert.ok(nav.indexOf("$('#sidebar').append(system") < nav.indexOf("$('#sidebar').append(stats)"), 'system rows above the stats');
+  assert.match(nav, /document\.querySelector\('#sidebar \.nav-pinned'\)\?\.remove\(\)/, 'redrawn, never stacked');
+  const strip = nav.indexOf("class: 'nav-pinned'");
+  assert.ok(strip > -1, 'a sibling after #nav, the one strip pinned to the bottom');
+  assert.ok(nav.indexOf('system', strip) < nav.indexOf('stats', strip), 'system rows above the stats');
   assert.ok(rulesFor('.nav-system')['border-top'], 'a hairline sets it apart from the spaces');
 });
 
