@@ -10,6 +10,7 @@ const { createBilling, CLERK_API } = await import('../src/billing.js');
 const { client } = await import('./lib/fixtures.mjs');
 
 const ISSUER = 'https://clerk.weave.example.com';
+const PUBLISHABLE = ['pk', 'test', Buffer.from('clerk.weave.example.com$').toString('base64')].join('_');
 const PERIOD_END = Date.now() + 20 * 86_400_000;
 const active = (slug) => [200, { subscription_items: [{ status: 'active', plan: { slug }, period_end: PERIOD_END }] }];
 
@@ -40,7 +41,7 @@ function build(routes = {}, { comped = false, billingOn = true } = {}) {
   w.setRequireAuth(true);
   if (comped) w.state.meta.createdAt = '2026-01-01T00:00:00.000Z';
   const fake = clerk(routes);
-  const billing = billingOn ? createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', since: Date.parse('2026-06-01T00:00:00Z'), issuer: ISSUER, publishableKey: 'pk_test_Y2xlcmsud2VhdmUuZXhhbXBsZS5jb20k', fetch: fake.fetch }) : null;
+  const billing = billingOn ? createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', since: Date.parse('2026-06-01T00:00:00Z'), issuer: ISSUER, publishableKey: PUBLISHABLE, fetch: fake.fetch }) : null;
   tableId = w.findTable('Dev/Task').id;
   return { w, call: client(createWorkspaceHub(w), { billing }), t, calls: fake.calls };
 }
@@ -99,7 +100,7 @@ test('GET /api/billing: the plan, the seat count and who holds a seat, for any m
   assert.deepEqual(res.json.members.map((m) => [m.name, m.role, m.seated]).sort(), [['arc', 'architect', false], ['ed', 'editor', false], ['ob', 'observer', true]]);
   assert.equal(res.json.soloPlan, 'solo');
   assert.equal(res.json.teamPlan, 'team');
-  assert.equal(res.json.publishableKey, 'pk_test_Y2xlcmsud2VhdmUuZXhhbXBsZS5jb20k');
+  assert.equal(res.json.publishableKey, PUBLISHABLE);
   assert.equal(res.json.orgId, null);
 });
 
