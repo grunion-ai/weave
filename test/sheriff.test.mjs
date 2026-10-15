@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sheriff, dryIO, eligible, nextProbe, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, BISECT_CAP } from '../scripts/sheriff.mjs';
+import { sheriff, dryIO, eligible, nextProbe, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const repo = 'grunion-ai/weave';
@@ -210,4 +210,20 @@ test('workflows: tests takes a ref input for bisect probes and the sheriff answe
   for (const guard of ["conclusion == 'failure'", "event == 'push'", "head_branch == 'main'", 'run_attempt == 1']) assert.ok(yml.includes(guard), guard);
   assert.match(yml, /node scripts\/sheriff\.mjs/);
   assert.doesNotMatch(yml + readFileSync('scripts/sheriff.mjs', 'utf8'), /--force|push -f/);
+});
+
+
+test('unresolved recovery fails the workflow while dry runs and completed recovery succeed', () => {
+  for (const action of ['skip', 'flake']) assert.equal(outcomeExitCode({ action }), 0);
+  assert.equal(outcomeExitCode({ action: 'revert', revert: { armed: true } }), 0);
+  for (const outcome of [{ action: 'escalate' }, { action: 'revert', revert: { armed: false } }]) {
+    assert.equal(outcomeExitCode(outcome), 1);
+    assert.equal(outcomeExitCode(outcome, { dryRun: true }), 0);
+  }
+});
+
+test('missing tracker credentials reject both incident filing and flake recording', async () => {
+  const io = realIO({});
+  await assert.rejects(io.fileIssue({ name: 'incident', description: 'evidence' }), /WEAVE_TRACKER_TOKEN missing/);
+  await assert.rejects(io.logFlake({ run: red(), files: ['test/grid.test.mjs'], jobs: [] }), /WEAVE_TRACKER_TOKEN missing/);
 });

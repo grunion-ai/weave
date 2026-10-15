@@ -100,11 +100,16 @@ forces a push. Replay a run without writing anything:
 
 Secrets: `SHERIFF_TOKEN` (fine-grained token with contents, pull requests,
 actions and workflows write, so the revert PR starts `Dev gate` and its merge
-starts `tests`; without it the PR opens unarmed), `WEAVE_TRACKER_TOKEN`
-(bearer for the canonical tracker; without it no rows are filed) and the
+starts `tests`; without it the PR opens unarmed and the sheriff job fails), `WEAVE_TRACKER_TOKEN`
+(a dedicated editor bearer for the canonical tracker; a missing token fails incident and flake recording) and the
 optional `SHERIFF_ALERT_URL`, which receives the alert line as a POST body. When
 `SHERIFF_ALERT_TOKEN` is also set, the POST carries `Authorization: Bearer <token>`;
-the `weave-alerts` Worker refuses a request without it.
+the `weave-alerts` Worker refuses a request without it. The repository's
+Actions setting must allow GitHub Actions to create pull requests when using
+the built-in token. Keep the default workflow permission read-only; the sheriff
+job declares its required write permissions. Scope `SHERIFF_TOKEN` to this
+repository only. An escalation or unarmed revert fails the sheriff job after
+writing its evidence. Read-only dry runs still succeed.
 
 ### Dev smoke and soak
 

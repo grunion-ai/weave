@@ -135,6 +135,10 @@ export function alertLine(ctx, outcome) {
   return `weave sheriff: main red at ${short(ctx.run.head_sha)} (${ctx.run.html_url}); ${outcome}`;
 }
 
+export function outcomeExitCode(outcome, { dryRun = false } = {}) {
+  return !dryRun && (outcome.action === 'escalate' || (outcome.action === 'revert' && outcome.revert?.armed === false)) ? 1 : 0;
+}
+
 export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = {}) {
   const run = await io.run(runId);
   const result = (action, extra = {}) => { io.log(`${action}: ${extra.reason ?? ''}`.trim()); return { action, run: run.id, ...extra }; };
@@ -241,7 +245,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     return res.json();
   };
   const upsertIssue = async ({ name, description, severity, line }) => {
-    if (!env.WEAVE_TRACKER_TOKEN) { console.log(`WEAVE_TRACKER_TOKEN missing; not filed: ${name}`); return null; }
+    if (!env.WEAVE_TRACKER_TOKEN) throw new Error(`WEAVE_TRACKER_TOKEN missing; not filed: ${name}`);
     const open = (await tracker('/tables/Issue/query', { method: 'POST', body: JSON.stringify({ where: [['Name', '=', name], ['Status', '=', 'Open']] }) })).items ?? [];
     if (open[0]) {
       await tracker(`/entities/${open[0].id}/doc`, { method: 'POST', body: JSON.stringify({ doc: `\n\n${line ?? description}` }) });
@@ -372,6 +376,7 @@ async function main() {
   try {
     const outcome = await sheriff(runId, dryRun ? dryIO(io) : io, { dryRun });
     console.log(JSON.stringify(outcome, null, 2));
+    process.exitCode = outcomeExitCode(outcome, { dryRun });
   } catch (error) {
     if (!dryRun) await io.alert(`weave sheriff: failed on run https://github.com/${io.repo}/actions/runs/${runId}: ${error.message}${io.self ? ` (${io.self})` : ''}`);
     throw error;
