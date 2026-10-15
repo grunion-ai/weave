@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { createOidc, oidcFromEnv } from '../src/oidc.js';
 import { renderAuthPage } from '../src/auth-page.js';
+import { createBilling } from '../src/billing.js';
 import { startIdp, serveOidc, cookieOf } from './lib/idp.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -175,7 +176,7 @@ test('page: the sign-in page names the provider only when one is configured', ()
   assert.match(html, /Sign in with Clerk &lt;b&gt;/);
 });
 
-async function serve({ idpOptions, link = 'user_kyle', configured = true, limits = { options: 1000, failed: 1000 } } = {}) {
+async function serve({ idpOptions, link = 'user_kyle', configured = true, limits = { options: 1000, failed: 1000 }, billing = null } = {}) {
   const idp = await startIdp(idpOptions);
   const w = new Weave();
   w.createSpace({ name: 'Dev' });
@@ -185,7 +186,7 @@ async function serve({ idpOptions, link = 'user_kyle', configured = true, limits
   w.createAccount({ name: 'kyle', role: 'writer' });
   if (link) w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: link });
   w.setRequireAuth(true);
-  return { w, idp, admin, reader, ...await serveOidc(w, idp, { configured, limits }) };
+  return { w, idp, admin, reader, ...await serveOidc(w, idp, { configured, limits, billing }) };
 }
 
 const KYLE = { sub: 'user_kyle', email: 'kyle@example.com', email_verified: true };
@@ -275,6 +276,24 @@ test('routes: signing in provisions nobody — a stranger, and the linked email 
     }
     assert.equal((await s.signIn(KYLE)).res.status, 302);
     assert.equal(Object.keys(s.w.state.meta.sessions).length, 1);
+  } finally { s.stop(); }
+});
+
+test('routes: with billing on, the No access page also offers a workspace of your own and holds the login for /start', async () => {
+  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', fetch: async () => new Response('{}', { status: 404 }) });
+  const s = await serve({ billing });
+  try {
+    const { res } = await s.signIn({ sub: 'user_x', email: 'stranger@example.com', email_verified: true });
+    assert.equal(res.status, 403);
+    const page = await res.text();
+    assert.match(page, /<h1>No access to /);
+    assert.match(page, /A workspace architect can send you an invite link/, 'the invite advice stays');
+    assert.match(page, /<a class="provider" href="\/start">Start your own workspace<\/a>/);
+    const held = res.headers.getSetCookie().find((c) => c.startsWith('wv_start='))?.split(';')[0];
+    assert.ok(held, 'the login is held for the start page');
+    assert.equal(Object.keys(s.w.state.meta.sessions ?? {}).length, 0, 'no session on the workspace it has no access to');
+    const start = await (await s.call('GET', '/api/start', { cookie: held })).json();
+    assert.deepEqual([start.signedIn, start.rows, start.canCreate], [true, [], true]);
   } finally { s.stop(); }
 });
 
