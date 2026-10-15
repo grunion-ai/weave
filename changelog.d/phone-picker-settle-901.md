@@ -1,0 +1,1 @@
+- **The phone picker gesture test waits for the sheet to rest** (Issue #901): wait for the opening animation and short-drag spring to finish before measuring or dragging the grabber again. Check the rendered transform as well as the inline transform so an unfinished spring cannot pass as a settled sheet.

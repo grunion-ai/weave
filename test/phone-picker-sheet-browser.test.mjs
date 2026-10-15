@@ -59,14 +59,18 @@ if (s) {
         const was = await page.textContent('#dock .chip-trigger[title="Status"]');
         await page.click('#dock .chip-trigger[title="Status"]');
         await page.waitForSelector('.picker-pop .sheet-grip');
+        await settled(page.locator('.picker-pop'));
         const grip = await page.locator('.picker-pop .sheet-grip').boundingBox();
         assert.ok(Math.round(grip.height) >= 44, `the grabber is a real target, got ${Math.round(grip.height)}px tall`);
         const h = (await page.locator('.picker-pop').boundingBox()).height;
 
         await dragSheet(page, '.picker-pop', h * 0.12);
+        await settled(page.locator('.picker-pop'));
         assert.ok(await page.isVisible('.picker-pop'), 'a short, slow drag springs the picker back');
         assert.equal(await page.evaluate(() => document.querySelector('.picker-pop').style.transform), '',
           'and leaves no transform behind');
+        assert.equal(await page.locator('.picker-pop').evaluate((n) => new DOMMatrix(getComputedStyle(n).transform).isIdentity), true,
+          'the sheet is back at rest before the next drag');
 
         await dragSheet(page, '.picker-pop', h * 0.5);
         await page.waitForSelector('.picker-pop', { state: 'detached' });
