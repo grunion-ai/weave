@@ -1,1 +1,0 @@
-- The reorder grip on a view in the Views menu is a 44x44 target on a touch screen, pulled back with negative margins so the view name and the popover keep their width (Issue #804).
