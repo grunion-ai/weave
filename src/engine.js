@@ -3289,6 +3289,19 @@ export class Weave {
     return { name, shared: entry.shared };
   }
 
+  #renameKeyHolder(from, to) {
+    const data = this.#readKeystore();
+    let moved = 0;
+    for (const entry of Object.values(data.keys)) {
+      if (entry.owner === from) { entry.owner = to; moved++; }
+      if (Array.isArray(entry.shared) && entry.shared.includes(from)) {
+        entry.shared = [...new Set(entry.shared.map((a) => (a === from ? to : a)))];
+        moved++;
+      }
+    }
+    if (moved) this.#writeKeystore(data);
+  }
+
   credentialLink(field, ref) {
     const { keystore } = this.credentialConfig(field);
     const r = encodeURIComponent(String(ref ?? ''));
@@ -3592,6 +3605,7 @@ export class Weave {
     const from = a.name;
     a.name = next;
     this.save();
+    this.#renameKeyHolder(from, next);
     this.#audit('account-renamed', { from, name: next });
     this.#syncUsers();
     return { id: a.id, name: next };
