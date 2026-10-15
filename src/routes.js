@@ -13,6 +13,7 @@ import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.j
 import { PRIVACY, TERMS } from './legal.js';
 import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
+import { BillingUnavailable, PAID_ROLES } from './billing.js';
 import '../public/starter-core.js';
 import '../public/prefill-core.js';
 const { WeaveStarters, WeaveSlugs, weavePrefill } = globalThis;
@@ -121,9 +122,17 @@ const START_TTL_MS = 30 * 60 * 1000;
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, billing = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const challenges = new Map();
   const handoffs = new Map();
+  const remirror = async (w) => {
+    const orgId = billing ? w.billing().billing.orgId : null;
+    if (!orgId) return null;
+    try { return await billing.syncMembers({ orgId, accounts: w.listAccounts() }); } catch (err) {
+      console.error(`weave: the Clerk organization ${orgId} was not re-mirrored: ${err.message}`);
+      return null;
+    }
+  };
   const scheme = origin ? new URL(origin).protocol : 'http:';
   const apexOrigin = origin ?? `${scheme}//${baseDomain}`;
   const rates = { options: new Map(), failed: new Map(), slugs: new Map() };
@@ -408,6 +417,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
     let session = null;
+    let accountName = null;
     const cookies = parseCookies(rx.header('cookie'));
     const startRoot = baseDomain ? apexOrigin : '';
     const sameLogin = (a, b) => a.issuer === b.issuer && a.subject === b.subject;
@@ -539,9 +549,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = oauth ? `${account.name} via MCP` : account.name;
+      accountName = account.name;
       role = Weave.roleName(account.role);
     } else if ((session = sessionOn(weave))) {
       weave.actor = session.name;
+      accountName = session.name;
       role = Weave.roleName(session.role);
     } else if (weave.state.meta.requireAuth && !openDoor && (cookies[cookieName(weave)] || cookies[LEGACY_COOKIE])) {
       const held = [cookies[cookieName(weave)], cookies[LEGACY_COOKIE]].filter(Boolean);
@@ -562,6 +574,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return wall();
+    }
+    let unseated = null;
+    if (billing && PAID_ROLES.has(role) && accountName && !['GET', 'HEAD', 'OPTIONS'].includes(rx.method) && !path.startsWith('/api/billing') && !path.startsWith('/api/auth/')) {
+      try {
+        if (!(await billing.standing({ workspace: weave.billing(), accounts: weave.listAccounts() })).seated(accountName)) { unseated = role; role = 'observer'; }
+      } catch (error) {
+        if (!(error instanceof BillingUnavailable)) throw error;
+        return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
+      }
     }
     const actorForRequest = weave.actor;
     const requestActor = role ? actorForRequest : 'anonymous';
@@ -602,6 +623,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       })());
       const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
       if (observer && !read && !ownComment && !submits) {
+        if (unseated) return out(402, { error: `Creating and editing in ${weave.state.meta.name} needs a paid seat. Reading and commenting stay free; an architect can subscribe on the billing page.`, code: 'seat-required', billing: `${wsPrefix}/billing` }, { 'Cache-Control': 'no-store' });
         return role ? deny(403, 'An observer may read and comment, nothing else') : deny(401, 'This workspace has accounts: send a token or sign in to write');
       }
       if (cap === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
@@ -804,6 +826,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return notFound({ error: 'Not found', code: 'not-found' });
       }
 
+      if (path === '/billing' && ['GET', 'HEAD'].includes(rx.method)) {
+        const page = billing && serveStatic ? serveStatic('/billing.html', rx) : null;
+        if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
+        return notFound({ error: 'Not found', code: 'not-found' });
+      }
+
       if (legalPage) {
         const [title, markdown] = path === '/privacy' ? ['Privacy policy', PRIVACY] : ['Terms of Service', TERMS];
         return out(200, renderDocumentPage({ title, subtitle: 'weave', markdown }), { 'Content-Type': 'text/html; charset=utf-8' });
@@ -880,7 +908,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 const me = heldLogins[Number(as)];
                 if (!me) return refusal(400, 'This choice expired', 'Open the invite link again.', [another]);
                 let account;
-                try { account = weave.redeemIdentityInvite(invite, me); } catch (err) {
+                try { account = weave.redeemIdentityInvite(invite, me); await remirror(weave); } catch (err) {
                   noteFailure(ip);
                   if (err.code === 'conflict') return refusal(409, 'This login already opens another account', 'The invite was not used. Accept it with the login it was meant for.', [another, signInAgain()]);
                   return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
@@ -922,6 +950,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 try {
                   account = c.holder.redeemIdentityInvite(c.invite, who);
                   engine = c.holder;
+                  await remirror(c.holder);
                 } catch (err) {
                   noteFailure(ip);
                   if (err.code === 'conflict') return refusal(409, 'This identity already opens another account', `You signed in at ${oidc.name} as someone this server already knows, so the invite was not used. Sign in as the person it was meant for to use it.`, [{ label: 'Use a different account', href: fresh(c.invite) }, signInAgain()]);
@@ -1022,6 +1051,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (!w) return notFound({ error: 'Not found', code: 'not-found' });
             const me = logins.find((l) => l.email && w.invitesForEmail(l.email).some((i) => i.id === m[2])) ?? logins[0];
             const account = w.acceptInvite(m[2], me);
+            await remirror(w);
             return out(200, { name: w.state.meta.name, account: account.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
           }
           if (route === 'POST /api/start/workspaces') {
@@ -1170,6 +1200,41 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion(), ...(oidc ? { start: `${startRoot}/start` } : {}) });
         }
 
+        if (path === '/api/billing' || path === '/api/billing/team') {
+          if (!billing) return notFound({ error: 'This deployment bills nobody: WEAVE_CLERK_SECRET_KEY and the plan slugs are not set.', code: 'billing-off' });
+          const architect = (unseated ?? role) === 'architect' || mayAdminister(weave, unseated ?? role);
+          const standingNow = async () => {
+            const accounts = weave.listAccounts();
+            const s = await billing.standing({ workspace: weave.billing(), accounts });
+            return {
+              plan: s.plan, seats: s.seats, orgId: s.orgId, soloPlan: billing.soloPlan, teamPlan: billing.teamPlan, publishableKey: billing.publishableKey,
+              me: accountName, architect,
+              members: accounts.map((a) => ({ name: a.name, role: Weave.roleName(a.role), paid: PAID_ROLES.has(Weave.roleName(a.role)), seated: s.seated(a.name) })),
+            };
+          };
+          const answer = async (extra = {}) => {
+            try { return out(200, { ...(await standingNow()), ...extra }, { 'Cache-Control': 'no-store' }); } catch (error) {
+              if (!(error instanceof BillingUnavailable)) throw error;
+              return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
+            }
+          };
+          if (route === 'GET /api/billing') {
+            if (!role && !unseated && !mayAdminister(weave, role)) return deny(401, 'Sign in to see this workspace\'s plan');
+            return answer();
+          }
+          if (route === 'POST /api/billing/team') {
+            if (!architect) return deny(role ? 403 : 401, 'Opening the team plan needs an architect');
+            const me = weave.listAccounts().find((a) => a.name === accountName);
+            const createdBy = me ? billing.subjectOf(me) : null;
+            if (!createdBy) return out(400, { error: 'Your account has no sign-in identity at the billing provider, so it cannot own the team plan. Sign in with the provider first.', code: 'invalid' });
+            weave.linkBillingOrg(await billing.ensureOrg({ workspace: weave.billing(), createdBy }));
+            const synced = await remirror(weave);
+            billing.forget();
+            return answer(synced?.refused?.length ? { refused: synced.refused } : {});
+          }
+          return out(405, { error: 'Billing answers GET /api/billing and POST /api/billing/team', code: 'method-not-allowed' }, { Allow: 'GET, POST' });
+        }
+
         if (path.startsWith('/api/accounts') || path.startsWith('/api/invites') || (route === 'PATCH /api/workspace' && ('requireAuth' in (body ?? {}) || 'linkPreview' in (body ?? {})))) {
           if (!mayAdminister(weave, role)) {
             return deny(role ? 403 : 401, 'Managing accounts needs an architect token');
@@ -1207,7 +1272,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         }
         if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
-        if ((m = path.match(/^\/api\/accounts\/([^/]+)$/)) && rx.method === 'PATCH') return out(200, weave.setAccountRole(decodeURIComponent(m[1]), body?.role));
+        if ((m = path.match(/^\/api\/accounts\/([^/]+)$/)) && rx.method === 'PATCH') {
+          const changed = weave.setAccountRole(decodeURIComponent(m[1]), body?.role);
+          await remirror(weave);
+          return out(200, changed);
+        }
         if ((m = path.match(/^\/api\/accounts\/([^/]+)\/identities$/))) {
           const ref = decodeURIComponent(m[1]);
           if (rx.method === 'POST') {
@@ -1217,7 +1286,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'DELETE') return out(200, weave.unlinkIdentity(ref, { issuer: rx.searchParams?.get('issuer') ?? null, subject: rx.searchParams?.get('subject') }));
         }
         if ((m = path.match(/^\/api\/accounts\/(.+)$/)) && rx.method === 'DELETE') {
-          return out(200, weave.deleteAccount(decodeURIComponent(m[1])));
+          const gone = weave.deleteAccount(decodeURIComponent(m[1]));
+          await remirror(weave);
+          return out(200, gone);
         }
         if (path.startsWith('/api/keys')) {
           const root = hub.get(hub.defaultName);
@@ -1369,7 +1440,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           refuseOnDocs(weave, 'left');
           const me = session && session.engine === weave && !session.visitor ? session : role ? weave.verifyToken(authz?.slice(7).trim() ?? '') : null;
           if (!me) return deny(401, 'Sign in to leave a workspace');
-          return out(200, leaveWorkspace(weave, me.id));
+          const left = leaveWorkspace(weave, me.id);
+          await remirror(weave);
+          return out(200, left);
         }
 
         if (route === 'POST /api/bug-report') {

@@ -12,6 +12,7 @@ import { createRequestHandler, decodePath, MAX_BODY_BYTES } from './routes.js';
 import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
+import { billingFromEnv } from './billing.js';
 import { cloudStore, restore as restoreArchive, isEncrypted, inspect as inspectDb } from './backup.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -453,7 +454,7 @@ const VENDOR_CACHE = 'public, max-age=3600';
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), deployToken = deployTokenFromEnv() } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces, walled: !!origin });
   const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
 
@@ -505,6 +506,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     mcpOrigins,
     mail,
     baseDomain,
+    billing,
     ...(limits ? { limits } : {}),
   });
 

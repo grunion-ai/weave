@@ -30,7 +30,7 @@ if (s) {
     await p.click(`${scope} .activity-btn`);
     await p.waitForSelector('aside.wv-activity .wv-act-row');
     return {
-      chips: await p.locator('.wv-act-filters button').allTextContents(),
+      chips: await p.locator('.wv-act-filters button[data-filter]').allTextContents(),
       text: await p.locator('aside.wv-activity').innerText(),
       deletes: await p.locator('aside.wv-activity [title="Delete comment"], aside.wv-activity .wv-act-tray button:text-is("Delete")').count(),
       rows: await p.locator('aside.wv-activity .wv-act-row').count(),

@@ -978,8 +978,8 @@ test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #
     'the peek overlays the page instead of reflowing it');
   assert.match(CSS, /#app\.nav-collapsed #nav-hot-strip \{[^}]*position: fixed/,
     'the strip only exists while the nav is collapsed');
-  assert.match(CSS, /#sidebar \{ width: 264px/,
-    'the nav keeps its comfortable width (264px), never compacted');
+  assert.match(CSS, /#sidebar \{ width: var\(--wv-nav-width, 264px\)/,
+    'the nav keeps its comfortable width (264px) until someone drags it (Issue #905)');
 });
 
 test('horizontal overscroll is forbidden (Issue #76)', () => {
@@ -1594,7 +1594,8 @@ test('workspace links and rename use the workspace id permalink', () => {
   assert.match(home, /\/w\/\$\{updated\.id\}\//, 'a rename lands on the id URL, which the rename cannot break');
   assert.doesNotMatch(home, /\/w\/\$\{updated\.name\}\//, 'never the name URL');
   const rail = fnBody('buildWsRail');
-  assert.match(rail, /w\.url|\/w\/\$\{w\.id\}\//, 'the rail links workspaces by id');
+  assert.match(rail, /wsHref\(w\)/, 'the rail links workspaces through wsHref');
+  assert.match(APP, /const wsHref = \(w\) => \(servesBareRoot\(w\) \? '\/' : \(w\.url \?\? `\/w\/\$\{w\.id\}\/`\)\)/, 'wsHref links by id unless the workspace serves this host\'s bare root');
   assert.match(rail, /w\.id === seg|seg === w\.id|\.id === seg/, 'the current workspace matches by id or name segment');
 });
 
