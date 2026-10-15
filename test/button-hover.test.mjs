@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CSS, rulesFor } from './lib/source.mjs';
 
 const QUIET = ['.icon-btn', '.ws-icon', '.wv-act-icon', '.url-edit', '.field-menu', '.add-field-btn', '.tray-close', '.bug-cat', '.mention-caret', '.doc-caret'];
-const BORDERED = ['.search-like', '#nav-expand', '.type-tile', '.ws-icon.ws-new'];
+const BORDERED = ['.search-like', '.type-tile', '.ws-icon.ws-new'];
 
 test('the hover palette is two tokens, not a grey per author (Issue #760)', () => {
   const root = rulesFor(':root');
@@ -31,7 +31,7 @@ test('no quiet class keeps a hover of its own, and the bordered weight reads the
   for (const sel of QUIET) {
     assert.deepEqual(Object.keys(rulesFor(`${sel}:hover`)), [], `${sel} wrote its own hover; the shared rule carries it now`);
   }
-  const bordered = CSS.match(/:where\(([^)]*#nav-expand[^{]*)\):hover \{([^}]*)\}/);
+  const bordered = CSS.match(/:where\(([^)]*\.search-like[^{]*)\):hover \{([^}]*)\}/);
   assert.ok(bordered, 'the bordered buttons share one :where(...):hover rule');
   for (const sel of BORDERED) assert.ok(bordered[1].includes(sel), `${sel} is on the shared bordered rule`);
   assert.match(bordered[2], /border-color: var\(--wv-hover-border\)/, 'and it darkens the border to the one grey');

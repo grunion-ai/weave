@@ -1,0 +1,1 @@
+- The nav show and hide buttons draw one panel-left icon on a soft borderless 28px square and sit in the same top-left spot whether the nav is open or collapsed, so the control never jumps when clicked. The titles read Hide sidebar and Show sidebar. (#906)
