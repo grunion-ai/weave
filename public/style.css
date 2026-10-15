@@ -2324,3 +2324,8 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .view-title-row > .desc-info .wv-icon, .view-title-row > .desc-info svg { width: 15px; height: 15px; }
 .view-description-toggle .view-desc { max-width: 68ch; padding-bottom: 8px; }
 @media (pointer: coarse) { .fieldrow-note { grid-column: 1 / -1; } }
+
+@media (max-width: 600px), (pointer: coarse) {
+  .desc-info, .view-title-row > .desc-info { min-width: 44px; min-height: 44px; }
+  .view-title-row > .icon-btn { margin-right: 6px; }
+}
