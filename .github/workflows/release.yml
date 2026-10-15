@@ -11,7 +11,7 @@ on:
         description: Recover a tested main ancestor without changing latest
         type: boolean
         default: false
-  workflow_run:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [tests]
     types: [completed]
     branches: [main]
