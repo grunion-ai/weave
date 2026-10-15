@@ -184,13 +184,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const host = String(rx.header('host') ?? '').toLowerCase();
     return known.find((o) => new URL(o).host === host) ?? known[0] ?? originFor(rx);
   };
-  const opened = new WeakMap();
-  const accountOn = (who, engine) => {
-    let byEngine = opened.get(who);
-    if (!byEngine) opened.set(who, (byEngine = new Map()));
-    if (!byEngine.has(engine)) byEngine.set(engine, engine.accountForIdentity(who));
-    return byEngine.get(engine);
-  };
   const clientIp = (rx) => clientAddress({ forwarded: rx.header('x-forwarded-for'), remote: rx.remote, trustProxy });
   const LEGACY_COOKIE = 'wv_session';
   const cookieName = (w) => `${LEGACY_COOKIE}_${w.state.meta.id}`;
@@ -519,7 +512,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         const root = hub.get(hub.defaultName);
         let account = null;
-        const engine = [weave, root].find((e) => (account = accountOn(who, e)));
+        const engine = [weave, root].find((e) => (account = e.accountForIdentity(who)));
         if (!engine) return deny(403, `This ${oidc.name} sign-in opens no account on this workspace. Ask an operator for an invite (weave account link <name>) and open it in a browser once; then sign in here again.`);
         oauth = { account, engine };
       }
@@ -1207,6 +1200,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         }
         if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
+        if ((m = path.match(/^\/api\/accounts\/([^/]+)$/)) && rx.method === 'PATCH') return out(200, weave.setAccountRole(decodeURIComponent(m[1]), body?.role));
         if ((m = path.match(/^\/api\/accounts\/([^/]+)\/identities$/))) {
           const ref = decodeURIComponent(m[1]);
           if (rx.method === 'POST') {

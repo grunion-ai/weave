@@ -453,7 +453,7 @@ export const ONTOLOGY = {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
       definition: 'A named token holder with a role — architect, editor, or observer (admin, writer and reader before 2026-10-02, rewritten on open). Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a row by the passkey door removed in Feature #243 is kept and ignored. Provider identities ({ issuer, subject }, no email) live on the row as identities[] (Feature #212, Feature #252); an identity is linked by redeeming a one-time invite kept as its sha256 in meta.identityInvites.',
       identity: 'uuid; name unique in the workspace',
-      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'removedSession', 'listSessions', 'revokeSession', 'linkIdentity', 'inviteMember', 'listInvites', 'revokeInvite', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
+      api: ['createAccount', 'listAccounts', 'setAccountRole', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'removedSession', 'listSessions', 'revokeSession', 'linkIdentity', 'inviteMember', 'listInvites', 'revokeInvite', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
     },
     {
       key: 'key', name: 'Credential', storedIn: 'keystore',
@@ -3587,6 +3587,9 @@ export class Weave {
     const role = Weave.roleName(String(asked ?? '').toLowerCase());
     if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${asked}' (${Weave.ROLES.join(', ')})`, 'invalid');
     if (role === a.role) return { id: a.id, role };
+    if (Weave.roleName(a.role) === 'architect' && role !== 'architect' && !Object.values(this.state.meta.accounts).some(x => x.id !== a.id && Weave.roleName(x.role) === 'architect')) {
+      throw new WeaveError(`${a.name} is the last architect: make someone else an architect before changing this role`, 'invalid');
+    }
     a.role = role;
     this.save();
     this.#audit('account-role-changed', { name: a.name, role });

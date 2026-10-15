@@ -191,6 +191,7 @@ Credentials (#64, #143 — secrets live encrypted in ~/.weave/keystore.json, nev
   key delete <name>
 Accounts & audit (Feature #14)
   account create <name> [--role architect|editor|observer]   Default editor; admin|writer|reader are deprecated aliases
+  account set <name> --role architect|editor|observer   Change role without rotating credentials
   account list
   account delete <ref>
   audit [--limit 50]
@@ -567,6 +568,7 @@ async function main() {
     case 'account': {
       const [sub, ref] = args;
       if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'editor' }));
+      if (sub === 'set') return out(w.setAccountRole(ref, flags.role));
       if (sub === 'delete') return out(w.deleteAccount(ref));
       if (sub === 'list' || !sub) return out(w.listAccounts());
       if (sub === 'sessions') return out(w.listSessions(ref));
@@ -586,7 +588,7 @@ async function main() {
         const made = w.linkIdentity(ref, { issuer });
         return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
       }
-      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete, sessions, revoke-session, link, unlink`);
+      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, set, list, delete, sessions, revoke-session, link, unlink`);
     }
     case 'invite': {
       const [sub, ref] = args;
