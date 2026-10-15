@@ -244,8 +244,8 @@ order, hidden columns, saved views — without a human opening the UI.
 Two things make that practical. `weave_vocabulary` returns every value a config
 key will accept **and what the choice looks like on screen**, so an agent picking
 a color or an icon is reading rather than guessing. And the meta-model means the
-schema is data: the rows of `Workspace/Spaces`, `Workspace/Tables` and
-`Workspace/Fields` *are* the spaces, tables and fields, so an entity write on a
+schema is data: the rows of `System/Spaces`, `System/Tables` and
+`System/Fields` *are* the spaces, tables and fields, so an entity write on a
 registry row runs the same validation as the schema verb — a field's whole shape
 edits through its `Definition`, a table's column order through `Field Order`.
 The registry lives once, at the weave root (the default workspace): a

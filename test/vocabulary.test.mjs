@@ -91,9 +91,9 @@ test('the column width rules are the ones the grid enforces', () => {
 });
 
 test('the registries name the columns that are schema writes', () => {
-  assert.deepEqual(Object.keys(VOCABULARY.registries), ['Workspace/Workspaces', 'Workspace/Spaces', 'Workspace/Tables', 'Workspace/Fields']);
-  assert.ok(VOCABULARY.registries['Workspace/Tables'].includes('Field Order'));
-  assert.ok(VOCABULARY.registries['Workspace/Fields'].includes('Definition'));
+  assert.deepEqual(Object.keys(VOCABULARY.registries), ['System/Workspaces', 'System/Spaces', 'System/Tables', 'System/Fields']);
+  assert.ok(VOCABULARY.registries['System/Tables'].includes('Field Order'));
+  assert.ok(VOCABULARY.registries['System/Fields'].includes('Definition'));
 });
 
 test('the vocabulary is served, so a remote agent has it too', async () => {

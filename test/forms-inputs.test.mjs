@@ -147,8 +147,8 @@ test('another engine refreshes its receipts under the storage transaction', () =
 
 test('ordinary registry writes bind fields and hidden values to stable IDs', () => {
   const { w, table } = fixture();
-  const tableRow = w.listEntities(w.getTable('Workspace/Tables').id).find(row => row.sysId === table.id);
-  const formRow = w.createEntity('Workspace/Forms', { name: 'Registry', Table: tableRow.id, Fields: '[{"field":"Name","key":"title"}]', Hidden: '{"Private":"$actor"}', Enabled: true });
+  const tableRow = w.listEntities(w.getTable('System/Tables').id).find(row => row.sysId === table.id);
+  const formRow = w.createEntity('System/Forms', { name: 'Registry', Table: tableRow.id, Fields: '[{"field":"Name","key":"title"}]', Hidden: '{"Private":"$actor"}', Enabled: true });
   w.updateEntity(formRow.id, { Fields: '[{"field":"Name","key":"title","label":"Your title"}]' });
   w.updateField(table.id, w.findField(table, 'Name').id, { name: 'Headline' });
   w.updateField(table.id, w.findField(table, 'Private').id, { name: 'Internal' });

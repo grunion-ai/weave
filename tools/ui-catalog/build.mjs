@@ -36,7 +36,7 @@ export const recat = (s) => {
   if (['dialog', 'popover', 'picker', 'menu'].includes(s.cat)) {
     if (/picker-pop|date-pop|cell-pop|value-pop/.test(sig)) return 'picker';
     if (/popover/.test(sig)) return 'popover';
-    if (/dl-menu|nav-menu|field-menu|wv-menu|dropdown-menu|crumb-fold|account-menu/.test(sig)) return 'menu';
+    if (/dl-menu|nav-menu|field-menu|wv-menu|dropdown-menu|crumb-fold|account-menu|personal-menu/.test(sig)) return 'menu';
     if (/chip-pop/.test(sig) && /table-field|wv-toggle|switch/.test(s.html)) return 'popover';
     if (/chip-pop/.test(sig)) return 'colmenu';
     if (/modal|sheet|cmdk|bug|tray|role="dialog"|role="alertdialog"/.test(sig + s.html.slice(0, 400))) return 'dialog';

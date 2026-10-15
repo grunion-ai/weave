@@ -28,7 +28,7 @@ const SCHEMA = [
 test('the registry stays out of it — user structure only', () => {
   const m = relmapLayout(SCHEMA);
   assert.deepEqual(m.nodes.map((n) => n.name), ['Project', 'Task', 'Person']);
-  assert.ok(!m.groups.some((g) => g.name === 'Workspace'), 'and its space with it');
+  assert.ok(!m.groups.some((g) => g.name === 'System'), 'and its space with it');
 });
 
 test('nodes are grouped into one column per space, in schema order', () => {

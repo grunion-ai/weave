@@ -1,0 +1,1 @@
+- The Users table's Last Seen moves while someone stays signed in: a renewed session updates it, at most once an hour per account, so it shows recent activity instead of the last sign-in. (#877)

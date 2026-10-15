@@ -13,8 +13,8 @@ const s = await launch('system tables nav', (weave) => {
   const t = weave.createTable({ space: 'Work', name: 'Tasks' });
   const e = weave.createEntity(t.id, { Name: 'binned' });
   weave.deleteEntity(e.id);
-  wfId = weave.getTable('Workspace/Workflows').id;
-  usersId = weave.getTable('Workspace/Users').id;
+  wfId = weave.getTable('System/Workflows').id;
+  usersId = weave.getTable('System/Users').id;
   member = new Weave();
   member.updateWorkspace({ name: 'member' });
   member.createSpace({ name: 'Notes' });
@@ -69,7 +69,7 @@ if (s) {
       const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
       assert.ok(spare > 200, `the nav has more spaces than room, so anything unpinned would scroll away: ${spare}`);
 
-      const SEEN = ['#ws-name', '#search-btn', '#sidebar .nav-foot button', '#sidebar .nav-system a[href="#/trash"]'];
+      const SEEN = ['#ws-name', '#search-btn', '#sidebar .nav-foot button', '#sidebar .nav-system a[href="#/trash"]', '#sidebar .nav-identity .nav-identity-more'];
       const look = () => page.evaluate((sels) => {
         const box = document.querySelector('#sidebar').getBoundingClientRect();
         const out = {};
@@ -94,8 +94,8 @@ if (s) {
       const stack = await page.evaluate(() => {
         const y = (sel) => document.querySelector(sel).getBoundingClientRect().top;
         return {
-          order: [...document.querySelectorAll('#sidebar > *')].map((n) => n.id || n.className.split(' ')[0]),
-          strip: [...document.querySelectorAll('#sidebar .nav-pinned > *')].map((n) => n.className.split(' ')[0]),
+          order: [...document.querySelectorAll('#sidebar > :not(#nav-resize)')].map((n) => n.id || n.className.split(' ')[0]),
+          strip: [...document.querySelectorAll('#sidebar .nav-pinned > *')].filter((n) => !n.hidden).map((n) => n.className.split(' ')[0]),
           newSpaceAboveSystem: y('#sidebar .nav-foot') < y('#sidebar .nav-system'),
           systemBelowNav: y('#sidebar .nav-system') > y('#nav'),
           opaque: getComputedStyle(document.querySelector('.nav-head')).backgroundColor,
@@ -103,7 +103,7 @@ if (s) {
         };
       });
       assert.deepEqual(stack.order, ['nav-head', 'nav', 'nav-pinned'], 'head, scrolling list, pinned strip');
-      assert.deepEqual(stack.strip, ['nav-foot', 'nav-system', 'nav-stats'], 'New space, then the system tables, then the records line');
+      assert.deepEqual(stack.strip, ['nav-foot', 'nav-system', 'nav-identity'], 'New space, then the System space, then the identity panel (Feature #333)');
       assert.ok(stack.newSpaceAboveSystem, 'New space sits above the system tables');
       assert.ok(stack.systemBelowNav, 'the system tables sit below the spaces');
       assert.notEqual(stack.opaque, 'rgba(0, 0, 0, 0)', `the head is opaque, so rows scroll under it: ${stack.opaque}`);
@@ -111,13 +111,13 @@ if (s) {
     });
   }
 
-  test('browser: the root workspace keeps its Workspace registry off the sidebar and lists it on the workspace page (Issue #874)', async () => {
+  test('browser: the root workspace keeps its System registry off the sidebar and lists it on the workspace page (Issue #874)', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#nav .nav-space');
     const spaces = await page.locator('#nav .nav-space').evaluateAll((as) => as.map((a) => a.textContent.trim()));
     assert.ok(spaces.includes('Work'), 'user spaces stay in the sidebar');
-    assert.ok(!spaces.includes('Workspace'), 'the registry space is not a sidebar space');
+    assert.ok(!spaces.includes('System') && !spaces.includes('Workspace'), 'the registry space is not a scrolling sidebar space');
     const listed = await page.locator('#nav .nav-db').evaluateAll((as) => as.map((a) => a.textContent.trim()));
     for (const name of ['Spaces', 'Tables', 'Fields', 'Views', 'Workspaces', 'Forms']) {
       assert.ok(!listed.includes(name), `${name} is not a sidebar row`);

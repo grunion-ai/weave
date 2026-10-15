@@ -292,7 +292,7 @@ test('table, space, view and workspace pages render from the schema, inside thei
     const ws = mint({ kind: 'workspace', id: w.state.meta.id });
     const wsHtml = await (await call('GET', `/s/${ws.token}/workspace`)).text();
     assert.ok(wsHtml.includes(`/s/${ws.token}/space/${dev.id}`));
-    assert.ok(!/Workspace\/Tables|>Workspace</.test(wsHtml), 'the registry space is not listed');
+    assert.ok(!/(System|Workspace)\/Tables|>(System|Workspace)</.test(wsHtml), 'the registry space is not listed');
   } finally {
     stop();
   }

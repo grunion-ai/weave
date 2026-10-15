@@ -118,7 +118,7 @@ Schema
   ontology [--concept T] [--since E]  The schema as a short outline, one table, or what changed
   schema                              Describe spaces, tables, fields
   schema export [--out file]          The schema as an editable JSON document
-  schema apply --file doc.json [--dry-run] [--allow-destructive]
+  schema apply --file doc.json [--dry-run] [--allow-destructive] [--partial]
                                       Grow the workspace to match the document
   build <spec.json> [--dry-run] [--skip-existing-rows]
                                       Spaces, tables, fields, relations and rows in one
@@ -231,7 +231,7 @@ The workspace itself
   workspace migrate --from weave://host/account[/archive] [--name N] [--workspace W] [--passphrase-env NAME]
                                       Create a cloud workspace from a stored archive; the key
                                       travels once and is never stored
-  form [list] | get <form>            The forms whose table lives here (Workspace/Forms rows)
+  form [list] | get <form>            The forms whose table lives here (System/Forms rows)
   form config <form>                 Editable form definition
   form create --definition '{json}'  Create a native table form
   form update <form> --definition '{json}'  Edit or pause; preserve its link
@@ -551,7 +551,7 @@ async function main() {
       const [sub] = args;
       if (sub === 'apply') {
         const doc = JSON.parse(readFileSync(flags.file, 'utf8'));
-        return out(w.applySchema(doc, { dryRun: !!flags['dry-run'], allowDestructive: !!flags['allow-destructive'] }));
+        return out(w.applySchema(doc, { dryRun: !!flags['dry-run'], allowDestructive: !!flags['allow-destructive'], partial: !!flags.partial }));
       }
       if (sub === 'export') {
         const json = JSON.stringify(w.describeSchema(), null, 2);

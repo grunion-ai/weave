@@ -164,7 +164,7 @@ export const JOURNEYS = [
     setup: table,
     async run(page) {
       for (let i = 0; i < 2; i++) {
-        await page.click('#theme-toggle');
+        await page.evaluate(() => cycleTheme());
         await frames(page, 4);
       }
     },

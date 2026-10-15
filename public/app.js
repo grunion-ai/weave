@@ -808,7 +808,7 @@ function iconButton(current, onPick) {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     searchPicker({
-      anchor: btn, title: 'Icon', placeholder: 'Search by name or category…',
+      anchor: btn, title: 'Icon',
       options: iconCatalogue(), grid: true,
       currentId: current ?? '',
       onPick: (o) => onPick(o.id || null),
@@ -1078,14 +1078,6 @@ function wsHomeHref() {
   return (WS_PREFIX || '') + '/';
 }
 
-function fmtSize(bytes) {
-  const gb = bytes / 1e9;
-  if (gb >= 1000) return `${(gb / 1000).toFixed(2)} TB`;
-  if (gb >= 100) return `${Math.round(gb)} GB`;
-  if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  return `${gb.toFixed(2)} GB`;
-}
-
 document.addEventListener('dblclick', (e) => {
   const row = e.target.closest?.('#nav .nav-db[data-db]');
   if (!row || e.target.closest('.nav-db-menu')) return;
@@ -1155,42 +1147,45 @@ function renderNav() {
         await loadSchema();
       })),
     }, '+ New space'));
-  const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
-  const line = el('span', { class: 'nav-stats-line', title: 'Rows in this workspace · storage on disk' },
-    `${entityTotal.toLocaleString()} ${entityTotal === 1 ? WeaveTerm.DEFAULT.singular : WeaveTerm.DEFAULT.plural}`);
-  const stats = el('div', { class: 'nav-stats' }, line);
+  const systemFolded = folded.has(SYSTEM_FOLD_KEY);
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
   const peopleHere = !!people && allTables().some((d) => d.id === people.id);
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
-  const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'Workspace system tables' },
-    sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
-    ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
-    sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
-    sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
-  document.querySelector('#sidebar .nav-pinned')?.remove();
-  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, stats));
-  (state.healthP ??= api('GET', '/health')).then((h) => {
-    if (h.sizeBytes != null) line.append(` · ${fmtSize(h.sizeBytes)}`);
-  }).catch(() => {});
-  if (state.healthChip) stats.append(state.healthChip);
-  else {
-    const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
+  const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
+    el('div', { class: 'nav-space-row nav-system-head' },
+      el('button', {
+        class: 'nav-space', type: 'button', 'aria-expanded': String(!systemFolded),
+        title: systemFolded ? 'Expand System' : 'Collapse System',
+        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
+      }, lucideEl('settings', 'wv-icon nav-icon'), 'System'),
+      disclosure('nav-caret', !systemFolded, {
+        title: systemFolded ? 'Expand System' : 'Collapse System',
+        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
+      })),
+    ...(systemFolded ? [] : [
+      sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
+      ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
+      sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
+      sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
+    ]));
+  if (!state.healthChip) {
+    const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
+    status.hidden = true;
     (state.healthP ??= api('GET', '/health')).then((h) => {
-      const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
       state.health = h;
-      status.textContent = `v${h.version}${up}`;
-      if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;
+      const warn = (cls, text, title) => {
+        status.classList.add(cls);
+        status.textContent = `v${h.version} · ${text}`;
+        status.title = title;
+        status.hidden = false;
+      };
       if (h.stale) {
-        status.classList.add('is-stale');
-        status.textContent += ` · ${h.sha} ≠ ${h.diskSha}`;
-        status.title = `This server booted at ${h.sha}; the checkout it serves is at ${h.diskSha} — restart weave`;
+        warn('is-stale', `${h.sha} ≠ ${h.diskSha}`, `This server booted at ${h.sha}; the checkout it serves is at ${h.diskSha} — restart weave`);
         toast(`This page was served by ${h.diskSha} but the server is still running ${h.sha} — restart weave; until then saving can fail silently`, true);
       } else if (h.releaseBehind) {
-        status.classList.add('is-behind');
-        status.textContent += ` · v${h.latestRelease} available`;
-        status.title = `weave v${h.latestRelease} is out; this instance runs v${h.version}. Checked ${h.releaseCheckedAt}.`;
+        warn('is-behind', `v${h.latestRelease} available`, `weave v${h.latestRelease} is out; this instance runs v${h.version}. Checked ${h.releaseCheckedAt}.`);
         let seen = null;
         try { seen = localStorage.getItem('wv-release-seen'); } catch {}
         if (seen !== h.latestRelease) {
@@ -1198,16 +1193,17 @@ function renderNav() {
           try { localStorage.setItem('wv-release-seen', h.latestRelease); } catch {}
         }
       } else if (h.behind) {
-        status.classList.add('is-behind');
-        status.textContent += ` · ${h.sha} ≠ ${h.latestSha}`;
-        status.title = `This instance runs ${h.sha}; main is at ${h.latestSha}. Run git pull, then restart weave.`;
+        warn('is-behind', `${h.sha} ≠ ${h.latestSha}`, `This instance runs ${h.sha}; main is at ${h.latestSha}. Run git pull, then restart weave.`);
         toast(`This instance is behind main (${h.sha} → ${h.latestSha}). Run git pull, then restart weave.`, true);
       }
-    }).catch(() => { status.textContent = 'offline'; });
-    stats.append(status);
+    }).catch(() => {});
   }
-  stats.append(accountSlot());
+  const identity = el('div', { class: 'nav-identity' }, accountSlot(), personalMenuButton());
+  document.querySelector('#sidebar .nav-pinned')?.remove();
+  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, state.healthChip, identity));
 }
+
+const SYSTEM_FOLD_KEY = 'system';
 
 const ACCOUNT_ROLE_LABELS = { architect: 'Architect', editor: 'Editor', observer: 'Observer', admin: 'Architect', writer: 'Editor', reader: 'Observer' };
 
@@ -1238,36 +1234,60 @@ async function refreshAccountChip() {
   }
   const walled = await api('GET', '/workspace').then((w) => !!w.requireAuth, (err) => err.status === 401);
   slot.dataset.state = walled ? 'signed-out' : 'none';
-  slot.replaceChildren(...(walled ? [el('a', {
+  slot.replaceChildren(walled ? el('a', {
     class: 'nav-account-chip nav-account-signin',
     href: `${WS_PREFIX}/auth?next=${encodeURIComponent(location.pathname + location.hash)}`,
     title: `Sign in to ${accountWorkspaceName()}`,
-  }, lucideEl('log-in', 'wv-icon nav-account-ic'), el('span', { class: 'nav-account-name' }, 'Sign in'))] : []));
+  }, lucideEl('log-in', 'wv-icon nav-account-ic'), el('span', { class: 'nav-account-name' }, 'Sign in'))
+    : el('span', { class: 'nav-account-chip nav-account-open', title: `${accountWorkspaceName()} asks nobody to sign in` },
+      lucideEl('user', 'wv-icon nav-account-ic'), el('span', { class: 'nav-account-name' }, 'Open access')));
 }
+
+const ACCOUNT_ROLE_HUES = { Architect: 'purple', Editor: 'blue', Observer: 'slate' };
 
 function accountChip(me) {
   const name = accountDisplayName(me.account.name) || 'Signed in';
   const role = ACCOUNT_ROLE_LABELS[me.role] ?? me.role ?? '';
   const avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
-  const btn = el('button', {
-    type: 'button', class: 'nav-account-chip', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+  return el('span', {
+    class: 'nav-account-chip',
     title: `${name}${role ? `, ${role}` : ''} in ${accountWorkspaceName()}`,
-    onclick: (e) => { e.stopPropagation(); accountMenu(btn); },
-  }, avatar, el('span', { class: 'nav-account-name' }, name), role ? el('span', { class: 'nav-account-role' }, role) : null);
-  return btn;
+  }, avatar, el('span', { class: 'nav-account-name' }, name),
+  role ? el('span', { class: `k k-select nav-account-role hue-${ACCOUNT_ROLE_HUES[role] ?? 'slate'}` }, role) : null);
 }
 
 function closeAccountMenu() {
-  document.querySelector('.nav-account-menu')?.close?.();
+  document.querySelector('.nav-personal-menu')?.remove();
 }
 
-function accountMenu(btn) {
+function personalMenuButton() {
+  if (state.personalBtn) return state.personalBtn;
+  const btn = state.personalBtn = el('button', {
+    type: 'button', class: 'btn btn-sm btn-icon btn-ghost-secondary nav-identity-more',
+    title: 'Your menu', 'aria-label': 'Your menu', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    onclick: (e) => { e.stopPropagation(); personalMenu(btn); },
+  }, iconEl('lucide:ellipsis', 'wv-icon'));
+  return btn;
+}
+
+async function personalMenu(btn) {
+  const h = state.health ?? await (state.healthP ??= api('GET', '/health')).catch(() => null);
+  const version = h?.version ? `v${h.version}` : null;
+  const signedIn = accountSlot().dataset.state === 'signed-in';
   const ws = accountWorkspaceName();
   const everywhere = [WS_PREFIX, ...(state.wsList ?? []).filter((w) => w.name !== state.wsCurrent).map((w) => `/w/${encodeURIComponent(w.name)}`)];
+  const pref = themePref();
   menu([
-    { label: `Sign out of ${ws}`, icon: 'lucide:log-out', section: 'organize', run: () => signOutOf([WS_PREFIX]) },
-    { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutOf(everywhere) },
-  ], { anchor: btn, className: 'nav-account-menu', label: 'Account', minWidth: btn.getBoundingClientRect().width });
+    { label: 'Theme', hint: THEME_LABELS[pref], icon: THEME_ICONS[pref], section: 'settings', className: 'nav-theme-row', title: `Theme: ${pref}, choose to switch`, run: cycleTheme },
+    { label: 'Keyboard shortcuts', hint: '?', icon: 'lucide:circle-question-mark', section: 'settings', run: openKeySheet },
+    ...(signedIn ? [
+      { label: 'Sign out', hint: version, icon: 'lucide:log-out', section: 'organize', title: `Sign out of ${ws}`, run: () => signOutOf([WS_PREFIX]) },
+      { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutOf(everywhere) },
+    ] : []),
+  ], {
+    anchor: btn, className: 'nav-personal-menu', label: 'Your menu',
+    head: signedIn || !version ? null : { title: 'weave', kind: version },
+  });
 }
 
 async function signOutOf(prefixes) {
@@ -1599,7 +1619,7 @@ function restoreGridFocus({ now = false } = {}) {
 }
 
 
-function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null, grid = false, groups = false, custom = null }) {
+function searchPicker({ anchor = null, title = '', placeholder: given = null, options, currentId = null, onPick, multi = null, clearId = null, grid = false, groups = false, custom = null }) {
   document.querySelector('.chip-pop')?.remove();
   const core = globalThis.pickerCore;
   if (grid) currentId = window.weaveIconRegistry?.canonical(currentId) ?? currentId;
@@ -1610,15 +1630,16 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     currentId,
     clearId,
   });
+  const sheet = dockCoversScreen.matches;
+  const quiet = sheet && !grid && !groups && options.length <= PHONE_SHORT_LIST;
+  const heading = title || (sheet ? anchor?.dataset?.fieldTitle || anchor?.getAttribute?.('title') || '' : '');
+  const placeholder = given ?? core.hint(heading);
   const input = el('input', { class: 'search-bare picker-search', placeholder, type: 'text' });
   const chips = el('span', { class: 'picker-chips' });
   const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
   const box = el('div', { class: 'picker-box' }, chips, input, readout);
   const list = el('div', { class: 'picker-list' });
   const foot = el('div', { class: 'picker-foot', hidden: '' });
-  const sheet = dockCoversScreen.matches;
-  const quiet = sheet && !grid && !groups && options.length <= PHONE_SHORT_LIST;
-  const heading = title || (sheet ? anchor?.dataset?.fieldTitle || anchor?.getAttribute?.('title') || '' : '');
   const pop = el('div', { class: 'chip-pop picker-pop' + (quiet ? ' picker-quiet' : '') + (quiet && !multi ? ' picker-short' : '') },
     heading ? el('div', { class: 'picker-title' }, heading) : null,
     box, list, foot);
@@ -1632,7 +1653,6 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   const drawChips = () => {
     if (grid || groups) {
       chips.replaceChildren();
-      input.placeholder = placeholder;
       return;
     }
     chips.replaceChildren(...st.staged.map((x, i) => el('span', {
@@ -1646,7 +1666,6 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
           if (multi) apply(core.removeId(st, x.id)); else pick({ id: clearId, label: clearId });
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null)));
-    input.placeholder = st.staged.length ? '' : placeholder;
     const clearable = !multi && !!clearId && !!st.staged.length;
     foot.replaceChildren(...(clearable ? [el('kbd', { class: 'picker-key' }, '⌫'), ' clear'] : []));
     foot.hidden = !clearable;
@@ -1842,7 +1861,7 @@ function pickerSelect({ name, options, value = null, placeholder = 'Choose…', 
   return wrap;
 }
 
-function chipPicker({ trigger, options, current, onPick, clearId = null, custom = null }) {
+function chipPicker({ trigger, field = null, options, current, onPick, clearId = null, custom = null }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1852,6 +1871,7 @@ function chipPicker({ trigger, options, current, onPick, clearId = null, custom 
       : null;
     searchPicker({
       anchor: trigger,
+      title: field?.name,
       options: options.map((o) => ({ id: o.id ?? o.name, label: o.label ?? o.name, cls: o.cls, group: o.group, chip: true })),
       currentId: current,
       clearId,
@@ -1862,7 +1882,7 @@ function chipPicker({ trigger, options, current, onPick, clearId = null, custom 
   return trigger;
 }
 
-function chipPickerMulti({ trigger, options, selected, onCommit, custom = null }) {
+function chipPickerMulti({ trigger, field = null, options, selected, onCommit, custom = null }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1871,7 +1891,7 @@ function chipPickerMulti({ trigger, options, selected, onCommit, custom = null }
       ? { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell) }
       : null;
     searchPicker({
-      anchor: trigger, options, custom,
+      anchor: trigger, title: field?.name, options, custom,
       multi: { selected, onCommit },
     });
   });
@@ -2566,7 +2586,7 @@ const MENU_ROWS = {
     move: db.system ? null : {
       label: 'Move to space…',
       run: () => searchPicker({
-        anchor, title: `Move ${db.name} to…`, placeholder: 'Space…',
+        anchor, title: 'Space',
         options: state.schema.filter((s) => s.space !== db.space && !s.system).map((s) => ({ id: s.space, label: s.space })),
         onPick: async (o) => {
           await api('POST', `/tables/${db.id}/move`, { space: o.id });
@@ -2885,7 +2905,7 @@ function stateOptions(f) {
 }
 function statePicker(anchor, f, current, onPick) {
   searchPicker({
-    anchor, title: f.name, placeholder: 'Search states…', options: stateOptions(f),
+    anchor, title: f.name, options: stateOptions(f),
     currentId: current, clearId: '—',
     onPick: (o) => onPick(o.id === '—' ? null : o.id),
   });
@@ -3140,6 +3160,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const paint = (name) => { const next = optionChipEl(f, name); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
+      field: f,
       options: stateOptions(f),
       current: val ?? null,
       clearId: '—',
@@ -3159,6 +3180,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const paint = (v) => { const next = optionChipEl(f, v); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
+      field: f,
       options: f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` })),
       current: val ?? null,
       clearId: '—',
@@ -3177,6 +3199,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     paint(current);
     chipPickerMulti({
       trigger: box,
+      field: f,
       options: f.options.map((o) => ({ id: o, label: o, chip: true, cls: `k k-multi ${optionHue(f, o)}` })),
       selected: current.map((v) => ({ id: v, label: v, cls: `k k-multi ${optionHue(f, v)}` })),
       custom: optionCreator(db, f, (name, fresh) => ({ id: name, label: name, chip: true, cls: `k k-multi ${optionHue(fresh, name)}` })),
@@ -5497,17 +5520,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const write = (v) => runBulk('Set', 'set', { values: { [f.name]: v } });
     const title = `${f.name} on ${nRows()}`;
     if (f.type === 'workflow') {
-      return picker(anchor, { title, placeholder: 'Search states…',
+      return picker(anchor, { title, placeholder: globalThis.pickerCore.hint(f.name),
         options: f.states.map((st) => ({ id: st.name, label: stateLabel(f, st.name), cls: stateChipClass(f, st.name), chip: true })),
         onPick: (o) => write(o.id) });
     }
     if (f.type === 'select') {
-      return picker(anchor, { title, placeholder: 'Search options…',
+      return picker(anchor, { title, placeholder: globalThis.pickerCore.hint(f.name),
         options: [{ id: '—', label: '—' }, ...f.options.map((name) => ({ id: name, label: name, chip: true, cls: `k k-select hue-${chipCore.hueFromHex((f.optionsFull ?? []).find((x) => x.name === name)?.color)}` }))],
         onPick: (o) => write(o.id === '—' ? null : o.id) });
     }
     if (f.type === 'multiselect') {
-      return picker(anchor, { title, placeholder: 'Search options…',
+      return picker(anchor, { title, placeholder: globalThis.pickerCore.hint(f.name),
         options: f.options.map((name) => ({ id: name, label: name, chip: true, cls: `k k-multi hue-${chipCore.hueFromHex((f.optionsFull ?? []).find((x) => x.name === name)?.color)}` })),
         multi: { selected: [], onCommit: (ids) => write(ids) } });
     }
@@ -5550,7 +5573,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       `${SEL().countLabel(chosen().size, db.term)} — links copied`),
   };
   const more = (anchor) => picker(anchor, {
-    title: 'More', placeholder: 'Search…',
+    title: 'More', placeholder: globalThis.pickerCore.hint(''),
     options: moreCmds().map((c) => ({ id: c.id, label: c.label, lucide: MORE_ICON[c.id] })),
     onPick: (o) => MORE_CMDS[o.id](anchor),
   });
@@ -7533,7 +7556,7 @@ function huePopover(anchor, current, onPick, { reset = null, note = 'Stored as a
 }
 function glyphPopover(anchor, current, onPick) {
   searchPicker({
-    anchor, title: 'Icon', placeholder: 'Search by name or category…',
+    anchor, title: 'Icon',
     options: iconCatalogue(), grid: true, currentId: current ?? '',
     onPick: (o) => onPick(o.id || ''),
   });
@@ -7576,7 +7599,7 @@ function termSection(state, onChange) {
     draw(); onChange();
   };
   face.onclick = () => searchPicker({
-    anchor: face, title: 'Rows in this table are…', placeholder: 'Search terms, or type your own…',
+    anchor: face, title: 'Term',
     options: T.options().map((o) => ({ id: o.id, label: o.label, group: o.group })),
     currentId: state.term?.singular ?? T.DEFAULT.singular,
     groups: true,
@@ -7664,12 +7687,12 @@ function choiceDefaultControl(state, t) {
     const set = (ids) => { fdc.setChoiceDefault(state, t, ids); draw(); };
     if (multi) {
       searchPicker({
-        anchor: face, title: 'Default', placeholder: 'Search options…', options: opts,
+        anchor: face, title: 'Default', options: opts,
         multi: { selected: opts.filter((o) => list.find((x) => x.id === o.id).default), onCommit: set },
       });
     } else {
       searchPicker({
-        anchor: face, title: 'Default', placeholder: t === 'workflow' ? 'Search states…' : 'Search options…',
+        anchor: face, title: 'Default',
         options: [{ id: 'none', label: 'No default' }, ...opts],
         currentId: list.find((x) => x.default)?.id ?? 'none',
         onPick: (o) => set(o.id === 'none' ? [] : [o.id]),
@@ -12093,13 +12116,6 @@ document.addEventListener('keydown', (e) => {
   openKeySheet();
 });
 
-function wireKeySheet() {
-  const btn = $('#rail-help');
-  if (!btn) return;
-  btn.replaceChildren(iconEl('lucide:circle-question-mark') ?? '?');
-  btn.addEventListener('click', openKeySheet);
-}
-
 const LOADER_CYCLE_MS = 2000;
 const LOADER_SHOW_AFTER_MS = 500;
 const LOADER_POSE_FROM = 0.45;
@@ -12584,7 +12600,7 @@ function newRowSheet(start) {
     fieldsBox.replaceChildren(...choiceFields().map(choiceEl));
   };
   tableChip?.addEventListener('click', () => searchPicker({
-    anchor: tableChip, title: 'New row in', placeholder: 'Search tables…',
+    anchor: tableChip, title: 'Table',
     options: allTables().filter((t) => !t.system).map((t) => ({ id: t.id, label: t.name, sub: t.space })),
     currentId: db.id,
     onPick: (o) => { db = allTables().find((t) => t.id === o.id) ?? db; picked = {}; draw(); },
@@ -13024,27 +13040,30 @@ function wireSkipLink() {
   });
 }
 
-function wireThemeToggle() {
-  const btn = $('#theme-toggle');
-  if (!btn) return;
-  const icons = { auto: 'lucide:sun-moon', dark: 'lucide:moon', light: 'lucide:sun' };
-  const media = matchMedia('(prefers-color-scheme: dark)');
-  let pref = localStorage.getItem('weave-theme') ?? 'auto';
-  if (!icons[pref]) pref = 'auto';
-  const apply = () => {
-    const resolved = pref === 'auto' ? (media.matches ? 'dark' : 'light') : pref;
-    document.documentElement.dataset.bsTheme = resolved;
-    btn.replaceChildren(iconEl(icons[pref]) ?? icons[pref]);
-    btn.title = `Theme: ${pref} (click to switch)`;
-    retheme();
-  };
-  media.addEventListener('change', () => { if (pref === 'auto') apply(); });
-  apply();
-  btn.addEventListener('click', () => {
-    pref = pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto';
-    localStorage.setItem('weave-theme', pref);
-    apply();
-  });
+const THEME_ICONS = { auto: 'lucide:sun-moon', dark: 'lucide:moon', light: 'lucide:sun' };
+const THEME_LABELS = { auto: 'Auto', dark: 'Dark', light: 'Light' };
+const THEME_MEDIA = matchMedia('(prefers-color-scheme: dark)');
+
+function themePref() {
+  const pref = localStorage.getItem('weave-theme');
+  return THEME_ICONS[pref] ? pref : 'auto';
+}
+
+function applyTheme() {
+  const pref = themePref();
+  document.documentElement.dataset.bsTheme = pref === 'auto' ? (THEME_MEDIA.matches ? 'dark' : 'light') : pref;
+  retheme();
+}
+
+function cycleTheme() {
+  const pref = themePref();
+  localStorage.setItem('weave-theme', pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto');
+  applyTheme();
+}
+
+function wireTheme() {
+  THEME_MEDIA.addEventListener('change', () => { if (themePref() === 'auto') applyTheme(); });
+  applyTheme();
 }
 
 function syncSchema() {
@@ -13252,9 +13271,8 @@ initPageLoader();
 installBugReporter();
 installPhoneBar();
 toastLayer();
-wireThemeToggle();
+wireTheme();
 wireSkipLink();
-wireKeySheet();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
 wireSearchButton();
 buildWsRail();

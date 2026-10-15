@@ -297,7 +297,7 @@ const viewRows = (w) => {
   return w.listEntities(t.id).map((e) => w.readEntity(e.id));
 };
 
-test('every view is a Workspace/Views row, related to its table', () => {
+test('every view is a System/Views row, related to its table', () => {
   const w = fresh();
   w.tableView('Task/Open work', { fields: ['Name', 'State'], filters: { State: ['Open'] }, sort: [{ field: 'Due', dir: 'desc' }] });
   const rows = viewRows(w).filter((r) => r.fields.Table?.[0]?.name === 'Task' || r.fields.Table?.name === 'Task');

@@ -88,7 +88,7 @@ test('the polymorphic-relations guide covers the target set and the ruling behin
   const guide = GUIDES.find((g) => g.name === 'Polymorphic relations');
   assert.ok(guide, 'there is no polymorphic-relations guide');
   for (const topic of [
-    'targetDbs', '--target-dbs', 'Workspace/Spaces', 'Workspace/Tables', 'one core kind',
+    'targetDbs', '--target-dbs', 'System/Spaces', 'System/Tables', 'one core kind',
     'one-way', 'inverse', 'lookup', 'rollup', 'picker', 'relation map', 'home table',
     'Scope.Name', 'prune', 'Airtable', 'Fibery', 'bit-for-bit', 'weave_add_relation', '```mermaid',
   ]) {
@@ -371,7 +371,7 @@ test('the bug-reporting guide names both paths, the address, and what is never s
 });
 
 test('the handbook defines a space as the unit of meaning where it walks workspace, space and table (Feature #278)', () => {
-  const definition = 'A space is the unit of meaning in a workspace: it groups the tables of one area, such as Contact, Company and Deal in CRM. You address a table by space and table name, so CRM/Deal is the Deal table in CRM. Spaces never nest. Make a new space only when you have a table whose area no existing space covers. The Σ under a grid column is a rollup on the space\'s row in Workspace/Spaces. A space\'s schema version rises when its structure changes, so an agent can ask for only what changed. Mark a space as a template and weave_template_use copies its schema into another workspace.';
+  const definition = 'A space is the unit of meaning in a workspace: it groups the tables of one area, such as Contact, Company and Deal in CRM. You address a table by space and table name, so CRM/Deal is the Deal table in CRM. Spaces never nest. Make a new space only when you have a table whose area no existing space covers. The Σ under a grid column is a rollup on the space\'s row in System/Spaces. A space\'s schema version rises when its structure changes, so an agent can ask for only what changed. Mark a space as a template and weave_template_use copies its schema into another workspace.';
   const pages = GUIDES.filter((g) => g.doc.includes(definition));
   assert.deepEqual(pages.map((g) => g.name), ['Making a workspace your own']);
   const doc = pages[0].doc;

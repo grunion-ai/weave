@@ -19,7 +19,7 @@ function fresh() {
   w.inviteIssuer = ISS;
   return w;
 }
-const users = (w) => w.getTable('Workspace/Users');
+const users = (w) => w.getTable('System/Users');
 const row = (w, name) => w.readEntity(w.findEntity(users(w).id, name).id);
 
 test('engine: Users is a system table in the Workspace space with the account columns', () => {
@@ -292,4 +292,23 @@ test('hub: the root Users table lists every member account under its Workspace, 
   r.deleteEntity(made.id);
   assert.ok(!m.listAccounts().some((a) => a.name === 'uno-bot'));
   assert.ok(r.findEntity(t.id, 'boss'), 'the root row is untouched');
+});
+
+test('engine: Last Seen follows a signed-in session, at most once an hour per account (Issue #877)', (t) => {
+  const t0 = Date.parse('2026-10-15T09:00:00.000Z');
+  t.mock.timers.enable({ apis: ['Date'], now: t0 });
+  const w = fresh();
+  w.createAccount({ name: 'kyle', role: 'architect' });
+  const { token } = w.createSession('kyle');
+  const lastSeen = () => row(w, 'kyle').raw['Last Seen'];
+  assert.equal(lastSeen(), new Date(t0).toISOString(), 'sign-in writes Last Seen');
+  t.mock.timers.tick(2 * 60 * 60_000);
+  assert.ok(w.verifySession(token));
+  assert.equal(lastSeen(), new Date(t0 + 2 * 60 * 60_000).toISOString(), 'a renewal two hours on moves Last Seen');
+  t.mock.timers.tick(10 * 60_000);
+  assert.ok(w.verifySession(token).renewed);
+  assert.equal(lastSeen(), new Date(t0 + 2 * 60 * 60_000).toISOString(), 'a renewal ten minutes later leaves it alone');
+  t.mock.timers.tick(55 * 60_000);
+  assert.ok(w.verifySession(token));
+  assert.equal(lastSeen(), new Date(t0 + 185 * 60_000).toISOString(), 'past the hour it moves again');
 });

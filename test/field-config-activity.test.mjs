@@ -169,7 +169,7 @@ test('formula, workflow and number costume edits roll back', () => {
 
 test('the registry door records the same entry', () => {
   const { w, t } = workspace();
-  const fieldsT = w.findTable('Workspace/Fields');
+  const fieldsT = w.findTable('System/Fields');
   const f = w.getField(t.id, 'Priority');
   const row = w.listEntities(fieldsT.id).find((e) => e.sysId === f.id);
   w.updateEntity(row.id, { Definition: { type: 'select', config: { options: [{ id: 'low', name: 'Low' }] } } });
@@ -193,7 +193,7 @@ test('applying a schema records the fields it changes, not the ones a new table 
 
 test('a system table records nothing', () => {
   const { w } = workspace();
-  const fieldsT = w.findTable('Workspace/Fields');
+  const fieldsT = w.findTable('System/Fields');
   w.updateField(fieldsT.id, fieldsT.nameFieldId, { config: { description: 'the field' } });
   assert.equal(configEntries(w).length, 0);
 });

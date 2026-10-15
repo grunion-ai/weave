@@ -43,15 +43,15 @@ if (s) {
     await page.click('.chip-pop .foot-row[data-agg="sum"]');
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     assert.equal(await cell.locator('.foot-val').innerText(), '4');
-    const spacesT = root.getTable('Workspace/Spaces');
+    const spacesT = root.getTable('System/Spaces');
     const made = Object.values(spacesT.fields).find((f) => f.type === 'rollup' && f.config.via === sessions.id);
     assert.ok(made, 'the rollup field landed on the root Spaces table');
-    assert.throws(() => uno.getTable('Workspace/Spaces'), 'the member minted nothing');
+    assert.throws(() => uno.getTable('System/Spaces'), 'the member minted nothing');
     await page.close();
   });
 
   test('the root Tables grid carries a Workspace column and deep-links a member row into its workspace', async () => {
-    const tablesT = root.getTable('Workspace/Tables');
+    const tablesT = root.getTable('System/Tables');
     const page = await open(`${base}/#/table/${tablesT.id}`);
     await page.waitForSelector('tbody tr');
     const headers = await page.locator('thead th').allInnerTexts();

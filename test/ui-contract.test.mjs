@@ -1223,8 +1223,8 @@ test('spaces and tables wear Lucide icons that move, picked beside their name (F
   assert.ok(html.indexOf('icon-registry.js') < html.indexOf('field-dialog-core.js'), 'the registry loads before the dialog core that groups on it');
   assert.ok(!html.includes('iconly-flat'), 'the Iconly file is gone');
   assert.ok(app.includes('function iconEl(') && app.includes('function iconButton('));
-  assert.ok(app.includes('searchPicker({') && app.includes('Search by name or category…'),
-    'the icon picker speaks the one dialect');
+  assert.match(fnBody('iconButton'), /searchPicker\(\{\s*anchor: btn, title: 'Icon',/,
+    'the icon picker speaks the one dialect, titled Icon (Issue #799)');
   assert.match(fnBody('iconButton'), /grid: true/, 'the table gate opens the grid');
   assert.match(fnBody('glyphPopover'), /grid: true/, 'the option and state gate opens the same grid');
   assert.ok(app.includes("iconEl(space.icon") && app.includes("iconEl(db.icon"), 'nav renders both');
@@ -1726,7 +1726,6 @@ test('no surface says "entity" to a reader where a table has a row term', () => 
   assert.match(APP, /countLabel\(sel\.size, db\.term\)/, 'the puck count');
   assert.match(APP, /Search \$\{term\.plural\} to link as/, 'relation pickers speak the target\'s plural');
   assert.match(APP, /WeaveTerm\.count\(n\.entityCount, n\.term\)/, 'relation-map nodes');
-  assert.match(APP, /WeaveTerm\.DEFAULT\.singular : WeaveTerm\.DEFAULT\.plural/, 'the workspace total speaks the default term');
   assert.doesNotMatch(APP, /\?\? 'record'/, 'no surface carries its own copy of the default noun');
 });
 
@@ -1818,4 +1817,23 @@ test('the entity name wraps instead of clipping: a content-sized textarea, Enter
   assert.equal(css.width, '100%');
   assert.equal(css['max-width'], undefined, 'no 640px cap — the full name always shows');
   assert.ok(!CSS.includes('input.name-edit'), 'no stale input rule');
+});
+
+test('no searchPicker call types its own placeholder, and the chip pickers title themselves with the field (Issue #799)', () => {
+  const calls = [];
+  for (let at = APP.indexOf('searchPicker({'); at >= 0; at = APP.indexOf('searchPicker({', at + 1)) {
+    if (APP.slice(Math.max(0, at - 9), at) === 'function ') continue;
+    let depth = 0, end = at + 'searchPicker('.length;
+    for (; end < APP.length; end++) {
+      if (APP[end] === '{') depth++;
+      else if (APP[end] === '}' && --depth === 0) break;
+    }
+    calls.push(APP.slice(at, end + 1));
+  }
+  assert.ok(calls.length >= 10, `found ${calls.length} searchPicker calls`);
+  const typed = calls.filter((c) => /\bplaceholder\s*:/.test(c));
+  assert.deepEqual(typed.map((c) => c.split('\n').slice(0, 2).join(' ').trim()), [], 'the hint derives from the title');
+  assert.match(fnBody('chipPicker'), /title: field\?\.name/, 'chipPicker titles the picker with the field name');
+  assert.match(fnBody('chipPickerMulti'), /title: field\?\.name/, 'chipPickerMulti titles the picker with the field name');
+  assert.doesNotMatch(fnBody('searchPicker'), /st\.staged\.length \? '' : placeholder/, 'a set value keeps the hint');
 });

@@ -265,8 +265,7 @@ if (s) {
 
       const paint = async (theme) => {
         await page.evaluate((want) => {
-          const btn = document.querySelector('#theme-toggle');
-          for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== want; i++) btn.click();
+          for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== want; i++) cycleTheme();
         }, theme);
         return page.locator('.wv-activity').evaluate((n) => ({ bg: getComputedStyle(n).backgroundColor, text: getComputedStyle(n.querySelector('.wv-act-row')).color }));
       };

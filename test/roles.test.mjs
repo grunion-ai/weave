@@ -218,7 +218,7 @@ test('account role changes reject invalid roles, unauthorized actors and the las
   }
   assert.equal((await call('PATCH', '/api/accounts/missing', { token: t.architect, body: { role: 'editor' } })).status, 404);
   assert.throws(() => w.setAccountRole('arc', 'observer'), /last architect/i);
-  const user = w.findEntity('Workspace/Users', 'arc');
+  const user = w.findEntity('System/Users', 'arc');
   assert.throws(() => w.updateEntity(user.id, { Role: 'Observer' }), /last architect/i);
   assert.equal(w.readEntity(user.id).fields.Role, 'Architect');
   assert.equal(w.verifyToken(t.architect).role, 'architect');

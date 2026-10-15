@@ -21,8 +21,7 @@ if (s) {
   const nameOf = (id) => weave.entityName(weave.getEntity(id));
 
   const setTheme = (page, want) => page.evaluate((w) => {
-    const btn = document.querySelector('#theme-toggle');
-    for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== w; i++) btn.click();
+    for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== w; i++) cycleTheme();
   }, want);
 
   const focused = (page) => page.evaluate(() => {

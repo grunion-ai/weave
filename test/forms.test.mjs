@@ -35,17 +35,17 @@ function feedbackWorkspace() {
 
 const rowCounts = (w) => Object.fromEntries(w.listTables().map((t) => [w.qualifiedName(t), w.listEntities(t.id).length]));
 
-test('every workspace carries Workspace/Forms beside Spaces, Tables and Fields', () => {
+test('every workspace carries System/Forms beside Spaces, Tables and Fields', () => {
   const w = new Weave();
-  const t = w.getTable('Workspace/Forms');
+  const t = w.getTable('System/Forms');
   assert.equal(t.system, 'forms');
   const names = Object.values(t.fields).map((f) => f.name);
-  for (const n of ['Name', 'Description', 'Table', 'Fields', 'Hidden', 'Enabled', 'Floor', 'Kind']) assert.ok(names.includes(n), `Workspace/Forms has ${n}`);
+  for (const n of ['Name', 'Description', 'Table', 'Fields', 'Hidden', 'Enabled', 'Floor', 'Kind']) assert.ok(names.includes(n), `System/Forms has ${n}`);
   assert.equal(w.findField(t, 'Table').type, 'relation');
   assert.ok(Object.values(t.fields).every((f) => f.system), 'every column of the registry is a system column');
 });
 
-test('a form is a row in Workspace/Forms naming its table, its fields in order, and what the server fills', () => {
+test('a form is a row in System/Forms naming its table, its fields in order, and what the server fills', () => {
   const { w, form } = feedbackWorkspace();
   const row = w.getEntity(form.id);
   assert.equal(w.state.tables[row.dbId].system, 'forms');
@@ -314,7 +314,7 @@ test('the Handbook carries a Forms guide', () => {
   const at = src.indexOf("name: 'Forms',");
   assert.ok(at > 0, 'a guide named Forms');
   const doc = src.slice(at, at + 4000);
-  assert.match(doc, /Workspace\/Forms/);
+  assert.match(doc, /System\/Forms/);
   assert.match(doc, /weave_form_submit/);
   assert.match(doc, /weave form submit/);
 });
