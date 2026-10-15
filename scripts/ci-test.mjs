@@ -30,7 +30,7 @@ export function validate(manifest, results, commit) {
     if (!result || result.commit !== commit || result.manifest !== digest(manifest) || result.code !== 0) throw new Error(`Invalid shard ${shard.id}`);
     if (JSON.stringify(result.files) !== JSON.stringify(shard.files)) throw new Error(`Selection mismatch ${shard.id}`);
     if (result.skips.some(({ file, reason }) => !shard.files.includes(file) || !(
-      (file === 'test/security/security-scan.test.mjs' && reason === 'semgrep not installed') ||
+      (file === 'test/security/security-scan.test.mjs' && (reason === 'semgrep not installed' || reason === 'gitleaks not installed')) ||
       (file === 'test/ws-rail-inset-browser.test.mjs' && reason.startsWith('overlay scrollbars here: no gutter to measure ('))
     ))) throw new Error(`Skipped coverage ${shard.id}`);
     const actual = new Map(result.summaries.map(s => [s.file, s]));
