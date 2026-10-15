@@ -89,6 +89,27 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: an unavailable logo falls back to the workspace initial (Issue #889)`, async () => {
+      const page = await browser.newPage();
+      try {
+        await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
+        await page.route('**/api/workspace/logo*', (route) => route.fulfill({ status: 404, body: 'Missing logo' }));
+        await page.goto(base);
+        await page.waitForSelector('#main .ws-logo-pick');
+        await page.waitForLoadState('networkidle');
+        assert.equal(await chip(page, 'main').locator('img').count(), 0);
+        assert.equal((await chip(page, 'main').textContent()).trim(), 'M');
+        assert.equal(await page.locator('#main .ws-logo-pick img').count(), 0);
+        assert.equal((await page.locator('#main .ws-logo-pick').textContent()).trim(), 'M');
+        assert.equal(await page.locator('.crumb-ws-mark img').count(), 0);
+        assert.ok(await page.locator('.crumb-ws-letter').count() > 0);
+        assert.equal(await page.locator('#main .ws-logo-clear').count(), 1);
+        assert.ok(logoOf(main));
+      } finally { await page.close(); }
+    });
+  }
+
   test('a left click on the current chip opens the menu instead of reloading; siblings still switch', async () => {
     const page = await open();
     const url = page.url();

@@ -12564,7 +12564,12 @@ async function buildWsRail() {
           href: w.held ? w.open : w.default ? '/' : (w.url ?? `/w/${w.id}/`),
           title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
         }, w.logo && !w.held
-          ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
+          ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name, onerror: (e) => {
+            const host = e.currentTarget.parentElement;
+            host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id)}`);
+            host.replaceChildren(w.name.slice(0, 1).toUpperCase());
+            refreshWsMarks();
+          } })
           : w.name.slice(0, 1).toUpperCase());
         if (w.held) return chip;
         const wsMenu = async (e) => {
@@ -12626,7 +12631,11 @@ function wsLogoButton(w, hasLogo) {
     type: 'button', class: `ws-logo-pick${hasLogo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id ?? w.name)}`}`,
     title: hasLogo ? 'Change the workspace logo' : 'Add a workspace logo', 'aria-label': hasLogo ? 'Change the workspace logo' : 'Add a workspace logo',
     onclick: () => uploadWorkspaceLogo(w, after),
-  }, hasLogo ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo?t=${Date.now()}`, alt: '' }) : String(w.name ?? 'w').slice(0, 1).toUpperCase());
+  }, hasLogo ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo?t=${Date.now()}`, alt: '', onerror: (e) => {
+    const host = e.currentTarget.parentElement;
+    host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id ?? w.name)}`);
+    host.replaceChildren(String(w.name ?? 'w').slice(0, 1).toUpperCase());
+  } }) : String(w.name ?? 'w').slice(0, 1).toUpperCase());
   const clear = hasLogo ? el('button', {
     type: 'button', class: 'ws-logo-clear', title: 'Remove logo', 'aria-label': 'Remove logo',
     onclick: () => removeWorkspaceLogo(w, after),
