@@ -54,8 +54,8 @@ export function normalise(v) {
     .map(([k, x]) => [k, normalise(x)]));
 }
 
-export function client(hub) {
-  const handle = createRequestHandler(hub, { version: 'test' });
+export function client(hub, opts = {}) {
+  const handle = createRequestHandler(hub, { version: 'test', ...opts });
   return async (method, path, { body, token, cookie } = {}) => {
     const url = new URL(path, 'http://localhost:4400');
     const headers = { host: 'localhost:4400' };

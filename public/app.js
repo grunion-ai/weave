@@ -6847,11 +6847,31 @@ async function editPhoneField(anchor, db, eid, name) {
 }
 
 const SYSTEM_COLS = {
-  'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
-  'Modified At': (e) => (e.updatedAt ?? '').slice(0, 16).replace('T', ' '),
+  'Created At': (e) => stampEl(e.createdAt),
+  'Modified At': (e) => stampEl(e.updatedAt),
   'Created By': (e) => actorChipEl(e.createdBy),
   'Modified By': (e) => actorChipEl(e.modifiedBy),
 };
+
+function stampEl(iso) {
+  const s = weaveDateCore.stamp(iso, LOCAL_ZONE);
+  return s.text ? el('span', { class: 'wv-stamp', title: s.title }, s.text) : '';
+}
+
+const usersCache = { rows: [], read: null, done: false };
+function workspaceUsers() {
+  if (usersCache.read) return usersCache;
+  const t = registryTable('users');
+  if (!t) return usersCache;
+  const here = allTables().some((d) => d.id === t.id);
+  usersCache.read = api('POST', `/tables/${t.id}/query`, {}).then((res) => {
+    usersCache.rows = (res.items ?? []).map((u) => ({
+      id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
+      workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
+    }));
+  }).catch(() => {}).finally(() => { usersCache.done = true; });
+  return usersCache;
+}
 
 function actorChipEl(actor, { link = true } = {}) {
   const a = weaveActor.parseActor(actor);
@@ -6869,10 +6889,24 @@ function actorChipEl(actor, { link = true } = {}) {
       ? el('span', { class: 'k k-rel k-actor-wf' }, inner)
       : el('span', { class: 'k k-actor-wf is-inline' }, ...body);
   }
-  return el('span', { class: 'k k-actor', title: a.via ? `${a.name} via ${a.via}` : a.name },
-    el('span', { class: `av hue-${chipCore.hueForName(a.name)}` }, chipCore.initialsFor(a.name)),
-    el('span', { class: 'k-label' }, a.name),
-    a.via ? el('span', { class: 'k-actor-via' }, `· via ${a.via}`) : null);
+  const chip = el('span', { class: 'k k-actor' });
+  const paint = (users) => {
+    const r = weaveActor.resolveActor(actor, users, { workspaceId: state.wsId });
+    const mark = r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
+      : r.kind === 'person' ? el('span', { class: `av hue-${chipCore.hueForName(r.name)}` }, chipCore.initialsFor(r.name)) : null;
+    const label = el('span', { class: 'k-label' }, r.name);
+    const via = r.via ? el('span', { class: 'k-actor-via' }, `· via ${r.via}`) : null;
+    chip.classList.toggle('is-unknown', r.kind === 'unknown');
+    chip.title = r.title;
+    const body = r.user && link
+      ? [el('a', { href: r.user.href, title: r.title, onclick: (e) => e.stopPropagation() }, mark, label)]
+      : [mark, label];
+    chip.replaceChildren(...[...body, via].filter(Boolean));
+  };
+  const people = workspaceUsers();
+  paint(people.rows);
+  if (!people.done) people.read?.then(() => paint(people.rows));
+  return chip;
 }
 
 function commentAuthorText(author) {
@@ -11663,9 +11697,17 @@ async function showHome() {
 }
 
 const ROLE_LABELS = { editor: 'Editor, paid seat', observer: 'Observer, free', architect: 'Architect, paid' };
+function seatNote(billing) {
+  if (!billing || billing.plan === 'comped') return null;
+  const lead = billing.plan === 'team' ? 'Inviting an Editor or Architect adds a seat to the team plan.'
+    : billing.plan === 'solo' ? 'The solo plan covers one paid seat: a second Editor or Architect needs the team plan.'
+    : 'No plan covers this workspace yet, so Editors and Architects work as Observers.';
+  return el('div', { class: 'wv-invite-note wv-seat-note' }, `${lead} Observers stay free. `, el('a', { href: `${WS_PREFIX}/billing` }, 'Billing'));
+}
 async function membersSection(parent) {
-  const [acc, inv] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites')]);
+  const [acc, inv, bill] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites'), api('GET', '/billing')]);
   if (acc.status !== 'fulfilled' || inv.status !== 'fulfilled') return;
+  const billing = bill.status === 'fulfilled' ? bill.value : null;
   const body = el('div', { class: 'wv-members' });
   const box = el('details', { class: 'wv-members-box' }, el('summary', {}, summaryChevron(), 'Members'), body);
   const day = (iso) => String(iso ?? '').slice(0, 10);
@@ -11716,7 +11758,7 @@ async function membersSection(parent) {
             } catch (err) { toast(err.message, true); }
           } }, 'Revoke'))))
         : el('div', { class: 'wv-members-empty' }, 'None'),
-      form, shown);
+      form, seatNote(billing), shown);
   };
   draw(acc.value, inv.value);
   parent.append(box);
@@ -12906,6 +12948,56 @@ function wireNavCollapse() {
   narrowShell.addEventListener('change', shut);
 }
 
+const NAV_WIDTH = { min: 200, max: 480, base: 264, step: 16 };
+function wireNavResize() {
+  const app = $('#app');
+  const sidebar = $('#sidebar');
+  if (!app || !sidebar) return;
+  const grip = el('div', {
+    id: 'nav-resize', role: 'separator', tabindex: '0', 'aria-orientation': 'vertical', 'aria-label': 'Resize the sidebar',
+    'aria-valuemin': String(NAV_WIDTH.min), 'aria-valuemax': String(NAV_WIDTH.max),
+  });
+  sidebar.append(grip);
+  let width = NAV_WIDTH.base;
+  const show = (px) => {
+    width = Math.min(NAV_WIDTH.max, Math.max(NAV_WIDTH.min, Math.round(px)));
+    app.style.setProperty('--wv-nav-width', `${width}px`);
+    grip.setAttribute('aria-valuenow', String(width));
+  };
+  const keep = () => localStorage.setItem('weave-nav-width', String(width));
+  const stored = Number(localStorage.getItem('weave-nav-width'));
+  show(stored > 0 ? stored : NAV_WIDTH.base);
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add('nav-resizing');
+    const left = sidebar.getBoundingClientRect().left;
+    const move = (ev) => show(ev.clientX - left);
+    const up = () => {
+      document.body.classList.remove('nav-resizing');
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      keep();
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('dblclick', () => {
+    localStorage.removeItem('weave-nav-width');
+    show(NAV_WIDTH.base);
+  });
+  grip.addEventListener('keydown', (e) => {
+    const dir = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    show(width + dir * NAV_WIDTH.step);
+    keep();
+  });
+}
+
 const railFolds = matchMedia('(max-width: 600px)');
 const NAV_KEY_OWNERS = '#modal-back, #tray-back, #cmdk-back, #fsv-back, .chip-pop, .picker-pop, .cell-pop, .date-pop, [role="menu"]';
 function wireNavHold() {
@@ -13226,4 +13318,5 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
+wireNavResize();
 wireNavHold();
