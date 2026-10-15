@@ -26,7 +26,8 @@ test('server.json names io.github.grunion-ai/weave at the package.json version, 
 
 test('the release pushes the image the registry entry names, labelled with the server name, then publishes server.json with a pinned mcp-publisher over OIDC', () => {
   assert.ok(release.includes(`io.modelcontextprotocol.server.name=${server.name}`));
-  assert.match(release, /ghcr\.io\/grunion-ai\/weave:\$\{\{ steps\.version\.outputs\.version \}\}\n {12}ghcr\.io\/grunion-ai\/weave:latest/);
+  assert.ok(release.includes("${{ !inputs.historical && 'ghcr.io/grunion-ai/weave:latest' || '' }}"));
+  assert.match(release, /ref: \$\{\{ needs.publish.outputs.sha \}\}/);
   assert.match(release, /^ {6}MCP_PUBLISHER_VERSION: "\d+\.\d+\.\d+"$/m);
   assert.match(release, /^ {6}MCP_PUBLISHER_SHA256: [a-f0-9]{64}$/m);
   assert.match(release, /sha256sum -c -/);

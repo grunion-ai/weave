@@ -7,6 +7,10 @@ on:
         description: Main push tests run ID with a successful CI gate
         required: true
         type: string
+      historical:
+        description: Recover a tested main ancestor without changing latest
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,9 +41,12 @@ jobs:
         run: node scripts/github-release.mjs --guard
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_RUN_ID: ${{ inputs.run_id || github.run_id }}
+          HISTORICAL: ${{ github.event_name == 'workflow_dispatch' && inputs.historical }}
+          CI_RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
   publish:
     needs: guard
+    outputs:
+      sha: ${{ steps.publish.outputs.sha }}
     if: needs.guard.outputs.current == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -55,14 +62,22 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
-      - run: node scripts/github-release.mjs
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: release-tools
+          fetch-depth: 0
+          persist-credentials: false
+      - id: publish
+        run: node release-tools/scripts/github-release.mjs
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_RUN_ID: ${{ inputs.run_id || github.run_id }}
+          HISTORICAL: ${{ github.event_name == 'workflow_dispatch' && inputs.historical }}
+          CI_RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
 
   image:
     needs: [guard, publish]
-    if: needs.guard.outputs.current == 'true'
+    if: needs.publish.outputs.sha != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -71,7 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ needs.guard.outputs.sha }}
+          ref: ${{ needs.publish.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
       - id: version
@@ -87,17 +102,17 @@ jobs:
           push: true
           tags: |
             ghcr.io/grunion-ai/weave:${{ steps.version.outputs.version }}
-            ghcr.io/grunion-ai/weave:latest
+            ${{ !inputs.historical && 'ghcr.io/grunion-ai/weave:latest' || '' }}
           labels: |
             io.modelcontextprotocol.server.name=io.github.grunion-ai/weave
             org.opencontainers.image.source=https://github.com/grunion-ai/weave
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.revision=${{ needs.guard.outputs.sha }}
+            org.opencontainers.image.revision=${{ needs.publish.outputs.sha }}
             org.opencontainers.image.licenses=MIT
 
   registry:
-    needs: [guard, image]
-    if: needs.guard.outputs.current == 'true'
+    needs: [guard, publish, image]
+    if: needs.publish.outputs.sha != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -109,7 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ needs.guard.outputs.sha }}
+          ref: ${{ needs.publish.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
       - run: |

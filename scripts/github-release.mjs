@@ -27,19 +27,20 @@ export function releaseMetadata(pkg, changelog, manifest) {
   return { version: pkg.version, tag, notes };
 }
 
-export async function publishRelease(metadata, sha, io) {
-  if (await io.main() !== sha) return { state: 'superseded', ...metadata };
+export async function publishRelease(metadata, sha, io, { historical = false } = {}) {
+  if (historical && !await io.onMain(sha)) throw new Error('Historical release must be a main ancestor');
+  if (!historical && await io.main() !== sha) return { state: 'superseded', ...metadata };
   const existing = await io.tag(metadata.tag);
   const release = await io.release(metadata.tag);
   if (release && (release.draft || release.prerelease)) throw new Error('Existing release is draft or prerelease');
   if (existing && existing !== sha) {
-    if (release && await io.ancestor(existing, sha, metadata.version)) return { state: 'unchanged', ...metadata };
+    if (!historical && release && await io.ancestor(existing, sha, metadata.version)) return { state: 'unchanged', ...metadata };
     throw new Error(`Existing ${metadata.tag} names a different commit; refusing to move it`);
   }
-  if (await io.main() !== sha) return { state: 'superseded', ...metadata };
+  if (!historical && await io.main() !== sha) return { state: 'superseded', ...metadata };
   if (!existing) await io.createTag(metadata.tag, sha);
   if (await io.tag(metadata.tag) !== sha) throw new Error('Published tag does not match tested SHA');
-  if (!release) await io.createRelease(metadata, sha);
+  if (!release) await io.createRelease(metadata, sha, !historical);
   const published = await io.release(metadata.tag);
   if (!published || published.draft || published.prerelease) throw new Error('GitHub release was not published');
   return { state: 'published', ...metadata };
@@ -67,6 +68,7 @@ async function main() {
   const repo = process.env.GITHUB_REPOSITORY;
   const runId = process.env.CI_RUN_ID;
   if (repo !== 'grunion-ai/weave' || !/^\d+$/.test(runId ?? '')) throw new Error('Expected repository and numeric CI_RUN_ID');
+  const historical = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' && process.env.HISTORICAL === 'true';
   const base = `repos/${repo}`;
   const run = api(`${base}/actions/runs/${runId}`);
   const pages = JSON.parse(gh(['api', `${base}/actions/runs/${runId}/jobs?filter=latest&per_page=100`, '--paginate', '--slurp']));
@@ -74,6 +76,7 @@ async function main() {
   const sha = validateRun(run, pages.flatMap((page) => page.jobs), repo, { activeRunId });
   const io = {
     main: async () => api(`${base}/git/ref/heads/main`).object.sha,
+    onMain: async (commit) => ['ahead', 'identical'].includes(api(`${base}/compare/${commit}...main`).status),
     tag: async (tag) => {
       let object = api(`${base}/git/ref/tags/${tag}`, { optional: true })?.object;
       for (let depth = 0; object?.type === 'tag' && depth < 5; depth++) object = api(`${base}/git/tags/${object.sha}`).object;
@@ -87,18 +90,21 @@ async function main() {
       return ['ahead', 'identical'].includes(comparison.status) && JSON.parse(Buffer.from(pkg.content, 'base64')).version === version;
     },
     createTag: async (tag, commit) => api(`${base}/git/refs`, { input: JSON.stringify({ ref: `refs/tags/${tag}`, sha: commit }) }),
-    createRelease: async (metadata, commit) => gh(['release', 'create', metadata.tag, '--repo', repo, '--verify-tag', '--target', commit, '--title', `weave ${metadata.tag}`, '--notes-file', '-', '--latest'], { input: metadata.notes }),
+    createRelease: async (metadata, commit, latest) => gh(['release', 'create', metadata.tag, '--repo', repo, '--verify-tag', '--target', commit, '--title', `weave ${metadata.tag}`, '--notes-file', '-', `--latest=${latest}`], { input: metadata.notes }),
   };
   if (process.argv.includes('--guard')) {
-    const current = await io.main() === sha;
+    const current = historical ? await io.onMain(sha) : await io.main() === sha;
     if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `sha=${sha}\ncurrent=${current}\n`);
     console.log(JSON.stringify({ sha, current }));
     return;
   }
   if (gitHead() !== sha) throw new Error('Checkout is not the tested commit');
   const metadata = releaseMetadata(JSON.parse(readFileSync('package.json', 'utf8')), readFileSync('CHANGELOG.md', 'utf8'), JSON.parse(readFileSync('docs/development.json', 'utf8')));
-  const result = await publishRelease(metadata, sha, io);
-  console.log(JSON.stringify({ state: result.state, tag: result.tag, sha }));
+  const result = await publishRelease(metadata, sha, io, { historical });
+  const artifactSha = result.state === 'superseded' ? '' : result.state === 'unchanged' ? await io.tag(metadata.tag) : sha;
+  if (artifactSha && !historical) gh(['release', 'edit', metadata.tag, '--repo', repo, '--latest']);
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `sha=${artifactSha}\n`);
+  console.log(JSON.stringify({ state: result.state, tag: result.tag, sha: artifactSha }));
 }
 
 function gitHead() {
