@@ -1,0 +1,1 @@
+- `test/flicker-fixed.json` refuses a fingerprint the flicker gate never reads. The gate walks each journey with the DOM probe alone, so a `frame`, `jank` or `rerender` entry sat there unchecked; `fixedFault` now names the kind, the kinds the gate does read and the `frameFlashes` case that holds a frame finding instead (Issue #702).

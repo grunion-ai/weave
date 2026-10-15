@@ -366,6 +366,16 @@ the same change. `test/flicker-gate-browser.test.mjs` walks every journey in
 the gate and fails when a listed fingerprint comes back, so a fixed flicker
 stays fixed. A journey whose selectors rot fails the gate too.
 
+The gate reads the DOM probe only, so it reads the kinds in `GATED`
+(`transient`, `blank`, `revert`, `shift`, `cut`). A `frame` finding comes from
+the sweep's screencast, which the gate does not run: taking it would put the
+gate's own paint timing into the result. `fixedFault` refuses a `frame`,
+`jank` or `rerender` key in `test/flicker-fixed.json` for that reason
+(`test/flicker-core.test.mjs`, Issue #702), because such an entry would sit
+there unchecked. Hold a frame finding with a `frameFlashes` case in
+`test/flicker-core.test.mjs` built from the frames on the Issue row, and mark
+the row Fixed naming that case.
+
 ## Cut-off loop
 
 Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page
