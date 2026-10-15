@@ -134,14 +134,12 @@ test('the guard refuses CHANGELOG.md lines added without a version bump', () => 
     'rewriting a version heading is not release notes written by hand (Issue #566)');
 });
 
-test('the guard lets CHANGELOG.md lines be rewritten to drop an em dash, and nothing more (Issue #722)', () => {
-  const dashed = ['- **One** \u2014 body.', '- **Two** \u2014 body.'];
-  const swept = ['- **One**: body.', '- **Two**: body.'];
+test('the guard refuses a CHANGELOG.md line added beside a removed one without a version bump (Issue #917)', () => {
   const at = { versionBefore: '0.4.99', versionAfter: '0.4.99' };
-  assert.equal(changelogGuard({ addedLines: swept, removedLines: dashed, ...at }), null, 'a sweep of dashed lines');
-  assert.match(changelogGuard({ addedLines: [...swept, '- **Three**: new.'], removedLines: dashed, ...at }), /changelog\.d\//, 'a new line beside the sweep');
-  assert.match(changelogGuard({ addedLines: swept, removedLines: ['- **One**.', '- **Two**.'], ...at }), /changelog\.d\//, 'removed lines that carried no dash');
-  assert.match(changelogGuard({ addedLines: dashed, removedLines: dashed, ...at }), /changelog\.d\//, 'a rewrite that keeps the dash');
+  const removed = ['- **One** \u2014 body.'];
+  assert.match(changelogGuard({ addedLines: ['- **Unrelated**: new.'], removedLines: removed, ...at }), /changelog\.d\//, 'an unrelated line beside a removal');
+  assert.match(changelogGuard({ addedLines: ['- **One**: body.'], removedLines: removed, ...at }), /changelog\.d\//, 'a rewrite of a released line');
+  assert.equal(changelogGuard({ addedLines: ['- **Unrelated**: new.'], removedLines: removed, versionBefore: '0.4.99', versionAfter: '0.5.0' }), null, 'a release commit');
 });
 
 const FIX = {
@@ -210,7 +208,7 @@ test('this commit edits CHANGELOG.md only if it bumps the version', () => {
   for (const sha of underTest()) {
     const diff = git('diff', '--unified=0', `${sha}^`, sha, '--', 'CHANGELOG.md').split('\n');
     const side = (mark) => diff.filter((l) => l.startsWith(mark) && !l.startsWith(mark.repeat(3))).map((l) => l.slice(1));
-    const why = changelogGuard({ addedLines: side('+'), removedLines: side('-'), versionBefore: versionAt(`${sha}^`), versionAfter: versionAt(sha) });
+    const why = changelogGuard({ addedLines: side('+'), versionBefore: versionAt(`${sha}^`), versionAfter: versionAt(sha) });
     assert.equal(why, null, `${sha.slice(0, 8)}: ${why}`);
   }
 });
