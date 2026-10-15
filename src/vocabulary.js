@@ -13,7 +13,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'workflow', renders: 'one state chip, colored by its category unless the state carries a hue', config: ['states'] },
   { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background; its header and field label are marked ↳', config: ['relationField', 'targetField'] },
-  { type: 'rollup', renders: 'read-only cell on a tinted background; its header and field label are marked Σ; wearing the target column\'s costume; on a Workspace/Spaces row a `via` rollup is the figure the grid footer shows under that column', config: ['relationField', 'via', 'where', 'targetField', 'aggregate', 'separator'] },
+  { type: 'rollup', renders: 'read-only cell on a tinted background; its header and field label are marked Σ; wearing the target column\'s costume; on a System/Spaces row a `via` rollup is the figure the grid footer shows under that column', config: ['relationField', 'via', 'where', 'targetField', 'aggregate', 'separator'] },
   { type: 'formula', renders: 'read-only cell on a tinted background; its header and field label are marked ƒ; a numeric result can wear a bar, ring or heat display like a number; a list result (a lookup, or sortby over lookups) can wear `display: sparkline` in a `style` of line, column or winloss, drawn from the last 60 points, sorted and filtered on its last value; the graphic wears the field\'s `color` like a number', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'color'] },
   { type: 'document', renders: 'every document field is a column of its own: the description previews its first lines; any other renders as a named chip wearing its kind', config: ['kind'] },
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
@@ -148,9 +148,9 @@ export const VOCABULARY = {
   formulaFunctions: FORMULA_FUNCTIONS,
   formulaGroups: FORMULA_GROUPS,
   registries: {
-    'Workspace/Workspaces': ['Description'],
-    'Workspace/Spaces': ['Name', 'Description'],
-    'Workspace/Tables': ['Name', 'Description', 'Field Order', 'Hidden Fields', 'Filter', 'Sort', 'Hide Rollups'],
-    'Workspace/Fields': ['Name', 'Definition'],
+    'System/Workspaces': ['Description'],
+    'System/Spaces': ['Name', 'Description'],
+    'System/Tables': ['Name', 'Description', 'Field Order', 'Hidden Fields', 'Filter', 'Sort', 'Hide Rollups'],
+    'System/Fields': ['Name', 'Definition'],
   },
 };

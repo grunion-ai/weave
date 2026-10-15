@@ -78,5 +78,5 @@ test('a registry row never shadows its own space or table hit (Issue #382)', () 
   assert.deepEqual(hits.map((h) => `${h.kind}:${h.db ?? ''}${h.name}`), ['table:Issue desk/Onboarding']);
   const desk = w.universalSearch('issue desk');
   assert.deepEqual(desk.map((h) => h.kind), ['space', 'table'].filter((k) => desk.some((h) => h.kind === k)));
-  assert.ok(!desk.some((h) => h.kind === 'entity' && /^Workspace\//.test(h.db)), `no registry rows: ${desk.map((h) => h.db ?? h.kind)}`);
+  assert.ok(!desk.some((h) => h.kind === 'entity' && /^(System|Workspace)\//.test(h.db)), `no registry rows: ${desk.map((h) => h.db ?? h.kind)}`);
 });

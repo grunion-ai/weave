@@ -118,7 +118,7 @@ test('a space rollup answers only on the row of the space that holds the table',
 test('`via` is refused off the Spaces registry, on a registry table, and on a table that does not exist', () => {
   const { w, t, spacesT } = build();
   assert.throws(() => w.addField(t.id, { name: 'Self', type: 'rollup', config: { via: 'Sessions', aggregate: 'count' } }), /Spaces/);
-  assert.throws(() => w.addField(spacesT.id, { name: 'Reg', type: 'rollup', config: { via: 'Workspace/Tables', aggregate: 'count' } }), /system registry/);
+  assert.throws(() => w.addField(spacesT.id, { name: 'Reg', type: 'rollup', config: { via: 'System/Tables', aggregate: 'count' } }), /system registry/);
   assert.throws(() => w.addField(spacesT.id, { name: 'Ghost', type: 'rollup', config: { via: 'Nowhere', aggregate: 'count' } }), /not found/);
   assert.throws(() => w.addField(spacesT.id, { name: 'Mode', type: 'rollup', config: { via: 'Sessions', targetField: 'Cost', aggregate: 'mode' } }), /Invalid aggregate/);
 });

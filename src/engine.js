@@ -90,6 +90,11 @@ const checkPosition = (position) => {
   if (!(Number.isInteger(position) && position >= 0)) throw new WeaveError('position is a whole number: 0 is the first place', 'invalid');
   return position;
 };
+const SYSTEM_SPACE_NAME = 'System';
+const SYSTEM_SPACE_ICON = 'lucide:settings';
+const LEGACY_SYSTEM_SPACE_NAME = 'workspace';
+const answersLegacySystem = (sp, name) => sp?.system === 'workspace' && String(name).toLowerCase() === LEGACY_SYSTEM_SPACE_NAME;
+
 function refuseReserved(kind, name) {
   if (RESERVED_NAMES.has(String(name).trim())) throw new WeaveError(`'${String(name).trim()}' is reserved and cannot name a ${kind}`, 'invalid');
 }
@@ -370,25 +375,25 @@ export const ONTOLOGY = {
 
   levels: [
     {
-      key: 'workspace', name: 'Workspace', isEntity: true, registry: 'Workspace/Workspaces', storedIn: 'state.meta',
+      key: 'workspace', name: 'Workspace', isEntity: true, registry: 'System/Workspaces', storedIn: 'state.meta',
       contains: 'spaces', identity: 'the .db file; a name and an optional logo',
       definition: 'One workspace file and everything in it. The top level of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and its spaces, tables and fields relate back to it.',
       api: ['describeSchema', 'ontology', 'spaceVersions', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
     },
     {
-      key: 'space', name: 'Space', isEntity: true, registry: 'Workspace/Spaces', storedIn: 'state.spaces',
+      key: 'space', name: 'Space', isEntity: true, registry: 'System/Spaces', storedIn: 'state.spaces',
       contains: 'tables', identity: 'uuid; name unique in the workspace, and the left half of Space/Table',
-      definition: 'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in Workspace/Spaces is the same object seen as data.',
+      definition: 'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in System/Spaces is the same object seen as data.',
       api: ['createSpace', 'listSpaces', 'updateSpace', 'deleteSpace'],
     },
     {
-      key: 'table', name: 'Table', isEntity: true, registry: 'Workspace/Tables', storedIn: 'state.tables',
+      key: 'table', name: 'Table', isEntity: true, registry: 'System/Tables', storedIn: 'state.tables',
       contains: 'rows', identity: 'uuid; qualified name Space/Table',
       definition: 'An entity that is also an entity TYPE: the ordered set of fields every row inside it follows.',
       api: ['createTable', 'listTables', 'updateTable', 'moveTable', 'duplicateTable', 'deleteTable', 'qualifiedName'],
     },
     {
-      key: 'field', name: 'Field', isEntity: true, registry: 'Workspace/Fields', storedIn: 'table.fields',
+      key: 'field', name: 'Field', isEntity: true, registry: 'System/Fields', storedIn: 'table.fields',
       contains: 'nothing', identity: 'uuid; name unique within its table',
       definition: 'One typed, named slot on a table. A field is not itself a row of data, but it has a row in the Fields registry — carrying its type and its definition — so the schema is editable as data.',
       api: ['addField', 'addRelation', 'updateField', 'deleteField', 'restoreField', 'materializeField'],
@@ -445,7 +450,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.entities',
-      definition: 'A rule bound to one table, held as a row of Workspace/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
+      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
@@ -879,8 +884,8 @@ export function templateDoc(spaceDoc, { name, rollups = [] } = {}) {
   const kept = [];
   for (const r of rollups ?? []) {
     const far = tableOf(r.viaTable);
-    if (!far) { skipped.push({ table: 'Workspace/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
-    if (r.targetField != null && gone.get(far.name).has(r.targetField)) { skipped.push({ table: 'Workspace/Spaces', field: r.name, viaTable: r.viaTable, targetField: r.targetField }); continue; }
+    if (!far) { skipped.push({ table: 'System/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
+    if (r.targetField != null && gone.get(far.name).has(r.targetField)) { skipped.push({ table: 'System/Spaces', field: r.name, viaTable: r.viaTable, targetField: r.targetField }); continue; }
     const out = without(r, ['id', 'viaTableId']);
     out.viaTable = move(r.viaTable);
     kept.push(out);
@@ -1406,7 +1411,7 @@ export class Weave {
   createSpace({ name, description = '', icon = '', template = false }) {
     if (!name) throw new WeaveError('Space name is required', 'invalid');
     refuseReserved('space', name);
-    if (this.findSpace(name)) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
+    if (Object.values(this.state.spaces).some((s) => !s.deletedAt && s.name.toLowerCase() === String(name).toLowerCase())) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
     const held = Object.values(this.state.spaces).find((s) => s.deletedAt && s.name.toLowerCase() === name.toLowerCase());
     if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
     const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), ...(template === true ? { template: true } : {}), createdAt: nowISO() };
@@ -1427,7 +1432,8 @@ export class Weave {
     if (ref && typeof ref === 'object') ref = ref.id;
     const live = Object.values(this.state.spaces).filter((s) => !s.deletedAt);
     return own(this.state.spaces, ref) ?? live.find((s) => s.name === ref)
-      ?? live.find((s) => s.name.toLowerCase() === String(ref).toLowerCase());
+      ?? live.find((s) => s.name.toLowerCase() === String(ref).toLowerCase())
+      ?? live.find((s) => answersLegacySystem(s, ref));
   }
 
   getSpace(ref) {
@@ -1476,7 +1482,7 @@ export class Weave {
       ?? Object.values(this.state.spaces).find((x) => x.name.toLowerCase() === String(ref).toLowerCase());
     if (!s) throw new WeaveError(`Space '${ref}' not found`, 'not-found');
     if (!s.deletedAt) return s;
-    if (s.system && this.state.meta.registry === 'hub') throw new WeaveError('The registry lives at the weave root now — this workspace\'s own Workspace space is a tombstone', 'invalid');
+    if (s.system && this.state.meta.registry === 'hub') throw new WeaveError('The registry lives at the weave root now — this workspace\'s own System space is a tombstone', 'invalid');
     const clash = Object.values(this.state.spaces).find((x) => !x.deletedAt && x.name.toLowerCase() === s.name.toLowerCase());
     if (clash) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
     s.deletedAt = null;
@@ -1491,7 +1497,7 @@ export class Weave {
     if (!name) throw new WeaveError('Table name is required', 'invalid');
     refuseReserved('table', name);
     const qualified = `${sp.name}/${name}`;
-    if (this.findTable(qualified)) throw new WeaveError(`Table '${qualified}' already exists`, 'conflict');
+    if (Object.values(this.state.tables).some((d) => !d.deletedAt && d.spaceId === sp.id && d.name.toLowerCase() === name.toLowerCase())) throw new WeaveError(`Table '${qualified}' already exists`, 'conflict');
     const held = Object.values(this.state.tables).find((d) => d.deletedAt && d.spaceId === sp.id && d.name.toLowerCase() === name.toLowerCase());
     if (held) throw new WeaveError(`Table '${qualified}' is in the trash — restore or purge it first`, 'conflict');
     const nameField = { id: uuid(), name: 'Name', type: 'text', config: {} };
@@ -1544,8 +1550,9 @@ export class Weave {
     const all = Object.values(this.state.tables).filter((d) => !d.deletedAt && !this.state.spaces[d.spaceId]?.deletedAt);
     if (String(ref).includes('/')) {
       const [spName, dbName] = String(ref).split('/');
-      return all.find((d) => d.name.toLowerCase() === dbName.toLowerCase()
-        && this.state.spaces[d.spaceId]?.name.toLowerCase() === spName.toLowerCase());
+      const named = all.filter((d) => d.name.toLowerCase() === dbName.toLowerCase());
+      return named.find((d) => this.state.spaces[d.spaceId]?.name.toLowerCase() === spName.toLowerCase())
+        ?? named.find((d) => answersLegacySystem(this.state.spaces[d.spaceId], spName));
     }
     const matches = all.filter((d) => d.name.toLowerCase() === String(ref).toLowerCase());
     if (matches.length > 1) throw new WeaveError(`Table name '${ref}' is ambiguous; qualify as Space/Name`, 'ambiguous');
@@ -1794,8 +1801,9 @@ export class Weave {
     let db = own(this.state.tables, ref);
     if (!db) {
       const [spName, dbName] = String(ref).includes('/') ? String(ref).split('/') : [null, String(ref)];
-      db = Object.values(this.state.tables).find((d) => d.name.toLowerCase() === String(dbName).toLowerCase()
-        && (!spName || this.state.spaces[d.spaceId]?.name.toLowerCase() === spName.toLowerCase()));
+      const named = Object.values(this.state.tables).filter((d) => d.name.toLowerCase() === String(dbName).toLowerCase());
+      db = named.find((d) => !spName || this.state.spaces[d.spaceId]?.name.toLowerCase() === spName.toLowerCase())
+        ?? named.find((d) => answersLegacySystem(this.state.spaces[d.spaceId], spName));
     }
     if (!db) throw new WeaveError(`Table '${ref}' not found`, 'not-found');
     if (!db.deletedAt) return db;
@@ -2639,19 +2647,19 @@ export class Weave {
     if (spacesT && spacesDoc) {
       const wantedRollups = (spacesDoc.fields ?? []).filter((f) => f.type === 'rollup' && f.viaTable);
       const cfgOf = (f) => ({ via: this.findTable(f.viaTable)?.id ?? f.viaTable, targetField: f.targetField, aggregate: f.aggregate, ...(f.where ? { where: f.where } : {}) });
-      const regSpaces = reg === this ? current.get('Workspace/Spaces') : reg.describeSchema().find((sp) => sp.system === 'workspace')?.tables.find((t) => t.system === 'spaces');
+      const regSpaces = reg === this ? current.get(this.qualifiedName(spacesT)) : reg.describeSchema().find((sp) => sp.system === 'workspace')?.tables.find((t) => t.system === 'spaces');
       for (const fDoc of wantedRollups) {
         const existing = Object.values(spacesT.fields).find((x) => x.name === fDoc.name);
         const have = regSpaces?.fields.find((x) => x.name === fDoc.name);
         if (existing && !fieldChanged(fDoc, have)) continue;
-        if (existing) act('delete-field', `Workspace/Spaces.${fDoc.name}`, () => reg.deleteField(spacesT.id, existing.id));
-        act('create-field', `Workspace/Spaces.${fDoc.name}`, () => reg.addField(spacesT.id, { name: fDoc.name, type: 'rollup', config: cfgOf(fDoc) }));
+        if (existing) act('delete-field', `System/Spaces.${fDoc.name}`, () => reg.deleteField(spacesT.id, existing.id));
+        act('create-field', `System/Spaces.${fDoc.name}`, () => reg.addField(spacesT.id, { name: fDoc.name, type: 'rollup', config: cfgOf(fDoc) }));
       }
       for (const existing of partial ? [] : Object.values(spacesT.fields)) {
         if (existing.type !== 'rollup' || !existing.config.via) continue;
         if (wantedRollups.some((f) => f.name === existing.name)) continue;
-        if (!allowDestructive) throw new WeaveError(`Applying this document would delete 'Workspace/Spaces.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
-        act('delete-field', `Workspace/Spaces.${existing.name}`, () => this.deleteField(spacesT.id, existing.id));
+        if (!allowDestructive) throw new WeaveError(`Applying this document would delete 'System/Spaces.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
+        act('delete-field', `System/Spaces.${existing.name}`, () => this.deleteField(spacesT.id, existing.id));
       }
     }
     for (const sp of partial ? [] : this.listSpaces()) {
@@ -2696,13 +2704,13 @@ export class Weave {
     const theirs = target.#sysTable('spaces');
     const landing = [];
     for (const r of carried) {
-      if (!theirs) { skipped.push({ table: 'Workspace/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
+      if (!theirs) { skipped.push({ table: 'System/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
       const taken = (n) => !!target.findField(theirs, n);
       const n = taken(r.name) ? `${r.name} (${as})` : r.name;
-      if (taken(n)) { skipped.push({ table: 'Workspace/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
+      if (taken(n)) { skipped.push({ table: 'System/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
       landing.push({ ...r, name: n });
     }
-    const full = [doc, ...(landing.length ? [{ space: 'Workspace', system: 'workspace', tables: [{ name: 'Spaces', system: 'spaces', fields: landing }] }] : [])];
+    const full = [doc, ...(landing.length ? [{ space: SYSTEM_SPACE_NAME, system: 'workspace', tables: [{ name: 'Spaces', system: 'spaces', fields: landing }] }] : [])];
     let plan;
     try {
       plan = target.applySchema(full, { partial: true });
@@ -4225,8 +4233,13 @@ export class Weave {
     const s = this.state;
     let ws = Object.values(s.spaces).find((x) => x.system === 'workspace');
     if (!ws) {
-      ws = { id: uuid(), name: 'Workspace', description: 'The workspace itself: its spaces and tables, as rows.', system: 'workspace', createdAt: nowISO() };
+      ws = { id: uuid(), name: SYSTEM_SPACE_NAME, description: 'The workspace itself: its spaces and tables, as rows.', icon: SYSTEM_SPACE_ICON, system: 'workspace', createdAt: nowISO() };
       s.spaces[ws.id] = ws;
+    } else if (ws.name.toLowerCase() === LEGACY_SYSTEM_SPACE_NAME || !ws.icon) {
+      const taken = Object.values(s.spaces).some((x) => x !== ws && !x.deletedAt && x.name.toLowerCase() === SYSTEM_SPACE_NAME.toLowerCase());
+      if (!taken) ws.name = SYSTEM_SPACE_NAME;
+      ws.icon ||= SYSTEM_SPACE_ICON;
+      this.save();
     }
     const mkTable = (name, kind, description) => {
       const nameF = { id: uuid(), name: 'Name', type: 'text', config: {}, system: true };

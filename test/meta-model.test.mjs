@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { Weave, WeaveError } from '../src/engine.js';
 import { fresh } from './lib/fixtures.mjs';
 
-test('every workspace carries the Workspace system space with Spaces and Tables', () => {
+test('every workspace carries the System space with Spaces and Tables', () => {
   const w = new Weave();
-  const ws = w.getSpace('Workspace');
+  const ws = w.getSpace('System');
   assert.equal(ws.system, 'workspace');
   assert.equal(w.getTable('Spaces').system, 'spaces');
   assert.equal(w.getTable('Tables').system, 'tables');
   const names = w.listEntities(w.getTable('Spaces').id).map((e) => w.entityName(e));
-  assert.deepEqual(names, ['Workspace']);
+  assert.deepEqual(names, ['System']);
   const tNames = w.listEntities(w.getTable('Tables').id).map((e) => w.entityName(e)).sort();
   assert.deepEqual(tNames, ['Fields', 'Forms', 'Spaces', 'Tables', 'Users', 'Views', 'Workflows', 'Workspaces']);
 });
@@ -55,7 +55,7 @@ test('a legacy workspace is backfilled with registry rows on load', () => {
   w2.importJSON(json);
   assert.equal(w2.getTable('Spaces').system, 'spaces');
   const names = w2.listEntities(w2.getTable('Spaces').id).map((e) => w2.entityName(e)).sort();
-  assert.deepEqual(names, ['Dev', 'Workspace']);
+  assert.deepEqual(names, ['Dev', 'System']);
   const t2 = w2.listEntities(w2.getTable('Tables').id).filter((e) => !w2.state.tables[e.sysId]?.system);
   assert.deepEqual(t2.map((e) => w2.entityName(e)), ['Task']);
 });
@@ -117,7 +117,7 @@ test('deleting a registry row is soft; hard is still the real, unrecoverable del
   assert.equal(w.findSpace('Dev'), undefined);
   assert.equal(w.findTable('Dev/Task'), undefined, 'the space took its tables with it');
   assert.equal(w.listEntities(w.getTable('Tables').id).filter((e) => !w.state.tables[e.sysId]?.system).length, 0);
-  const sysRow = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'Workspace');
+  const sysRow = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'System');
   assert.throws(() => w.deleteEntity(sysRow.id, { hard: true }), /system/i);
 });
 
@@ -132,7 +132,7 @@ test('moving a table between spaces is refused with a clear reason', () => {
 test('describeSchema flags the system space and tables so surfaces can badge them', () => {
   const w = new Weave();
   const schema = w.describeSchema();
-  const ws = schema.find((s) => s.space === 'Workspace');
+  const ws = schema.find((s) => s.space === 'System');
   assert.equal(ws.system, 'workspace');
   assert.equal(ws.tables.find((t) => t.name === 'Spaces').system, 'spaces');
 });

@@ -114,7 +114,7 @@ test('a member\'s space is marked a template from its row in the root registry',
   const { root, acme, server, base } = await hub();
   try {
     acme.createSpace({ name: 'Kit' });
-    const spaces = root.getTable('Workspace/Spaces');
+    const spaces = root.getTable('System/Spaces');
     const row = root.listEntities(spaces.id).find((e) => root.entityName(e) === 'Kit');
     const res = await fetch(`${base}/api/entities/${row.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Template: true }) });
     assert.equal(res.status, 200, await res.clone().text());
@@ -134,7 +134,7 @@ test('a space rollup travels into a hub member, where the root registry holds it
   root.createSpace({ name: 'CRM', template: true });
   const deal = root.createTable({ space: 'CRM', name: 'Deal' });
   root.addField(deal.id, { name: 'Amount', type: 'number' });
-  const spaces = root.getTable('Workspace/Spaces');
+  const spaces = root.getTable('System/Spaces');
   root.addField(spaces.id, { name: 'Deal sum', type: 'rollup', config: { via: deal.id, targetField: 'Amount', aggregate: 'sum' } });
   root.useTemplate('CRM', acme, { name: 'Sales' });
   const via = (n) => root.findField(spaces, n)?.config.via;

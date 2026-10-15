@@ -176,7 +176,7 @@ Each error is the text weave returns; the fix follows.
 | `Workspace name must be alphanumeric` | Name the workspace as a slug: letters, digits and dashes, starting with a letter or digit (`personal-finance`). |
 | `Field 'Stage' not found in table 'Deal'` | The field was never made because an earlier step failed. Read the build's `errors` (each has a `path` such as `spaces[0].tables[1].fields[2]`), fix that entry and resend the whole spec. |
 | `Invalid number format 'currencyy' (number, currency, percent, compact)` | Pick a value the message lists. |
-| `Field 'When' not found in table 'Transaction'. Sort reads 'Field asc\|desc, Field2 asc\|desc', e.g. 'Date desc'` (a `Sort` on a `Workspace/Tables` or `Workspace/Views` row) | Name a field the table has; `-Date` and `[{field, dir}]` land too (Issue #626). |
+| `Field 'When' not found in table 'Transaction'. Sort reads 'Field asc\|desc, Field2 asc\|desc', e.g. 'Date desc'` (a `Sort` on a `System/Tables` or `System/Views` row) | Name a field the table has; `-Date` and `[{field, dir}]` land too (Issue #626). |
 | `Table 'Deals' not found` | Use the name `weave_ontology` shows, as `Table` or `Space/Table`. Table names are singular. |
 
 ## Reference
@@ -209,7 +209,7 @@ full object (Issue #596).
 sum, avg, median, min, max, p25/p75, stdev and a histogram for numbers; a
 ranked distribution for chips; earliest, latest and span for dates; the space
 rollups pointed at the table; and per-group figures with `by`. To keep a
-figure on the record, add a rollup on the `Workspace/Spaces` row with
+figure on the record, add a rollup on the `System/Spaces` row with
 `config.via` naming the table (`aggregate` from the vocabulary, optional
 `where`); that is the Σ the grid footer draws under the column. A grid draws no
 Σ row until the table asks for one: `weave_update_table` with
@@ -290,8 +290,8 @@ column-width rules (60px floor, 260px cap when unset, a set width is a floor as
 well as a ceiling). Guessing a color that validates still reads wrong.
 `weave_vocabulary {section: "icons"}` returns that section alone, `{sections: ["icons", "optionColors", "formulaFunctions"]}` returns several keyed by name (REST `?section=icons,optionColors`, CLI `weave vocabulary icons,optionColors`), a comma list of queries searches several icon words at once, and `{section: "icons", query: "build"}` searches the icon names by name, category and synonym (REST `GET /api/vocabulary?section=icons&query=build`, CLI `weave vocabulary icons build`), so a guessed icon costs one small call, not the whole list. A refused icon names the three nearest inventory icons.
 
-**The registry rows are the schema verbs.** `Workspace/Spaces`,
-`Workspace/Tables` and `Workspace/Fields` are ordinary tables whose rows *are*
+**The registry rows are the schema verbs.** `System/Spaces`,
+`System/Tables` and `System/Fields` are ordinary tables whose rows *are*
 the spaces, tables and fields, so entity CRUD on them runs the same validation
 as the schema verb — useful when you are already holding an entity tool. They
 live once, at the weave root (the default workspace, served at `/`); a
@@ -300,10 +300,10 @@ workspace's own `/w/<id>/api` answers for its rows:
 
 | Change | Write |
 | --- | --- |
-| Rename a table, edit its description | `weave_update_entity` on `Workspace/Tables#n` → `Name`, `Description` |
+| Rename a table, edit its description | `weave_update_entity` on `System/Tables#n` → `Name`, `Description` |
 | Reorder columns | same row → `Field Order`: every field name, comma-separated, exactly once |
-| Hide a column | same row → `Hidden Fields` — the table's default view (data untouched); every view is also a `Workspace/Views` row: `Fields`, `Filter`, `Sort`, `Default`, `Position` |
-| Rename a field | `weave_update_entity` on `Workspace/Fields#n` → `Name` |
+| Hide a column | same row → `Hidden Fields` — the table's default view (data untouched); every view is also a `System/Views` row: `Fields`, `Filter`, `Sort`, `Default`, `Position` |
+| Rename a field | `weave_update_entity` on `System/Fields#n` → `Name` |
 | Reconfigure a field | same row → `Definition` = `{type, config: {…}}` — the type cannot change |
 | Drop a field or table | `weave_delete_entity` on its registry row with `hard: true` |
 

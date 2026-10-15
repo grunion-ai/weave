@@ -60,7 +60,7 @@ test('the schema document carries it, applySchema round-trips it, and export kee
   assert.equal(w2.tableView('Task/Standard').search, 'beta');
 });
 
-test('the Workspace/Views row shows and writes it', () => {
+test('the System/Views row shows and writes it', () => {
   const w = seeded();
   const t = w.getTable('Views');
   const row = () => w.listEntities(t.id).map((e) => w.readEntity(e.id)).find((r) => r.name === 'Standard' && (r.fields.Table?.[0]?.name ?? r.fields.Table?.name) === 'Task');

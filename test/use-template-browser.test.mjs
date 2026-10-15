@@ -21,12 +21,12 @@ if (s) {
     for (let i = 0; i < 200; i++) { if (cond()) return; await new Promise((r) => setTimeout(r, 25)); }
     assert.fail(`timed out waiting for ${what}`);
   };
-  const spacesRow = () => root.listEntities(root.getTable('Workspace/Spaces').id).find((e) => root.entityName(e) === 'CRM');
+  const spacesRow = () => root.listEntities(root.getTable('System/Spaces').id).find((e) => root.entityName(e) === 'CRM');
 
   test('the Template box on the Spaces row marks the space, in the grid and on the row\'s page', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     try {
-      await page.goto(`${base}/#/table/${root.getTable('Workspace/Spaces').id}`, { waitUntil: 'load' });
+      await page.goto(`${base}/#/table/${root.getTable('System/Spaces').id}`, { waitUntil: 'load' });
       const box = page.locator(`tbody tr[data-eid="${spacesRow().id}"]`).getByRole('checkbox', { name: 'Template, CRM' });
       await box.waitFor();
       assert.equal(await box.isChecked(), false);

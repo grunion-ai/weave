@@ -140,9 +140,9 @@ test('the vendored hint renders the whole catalogue, not the first eight rows', 
 
 test('the theme is applied before the first render', () => {
   const boot = APP.indexOf('withPageLoader(() => loadSchema()');
-  const theme = APP.indexOf('wireThemeToggle();');
+  const theme = APP.indexOf('wireTheme();');
   assert.ok(theme > 0 && boot > 0, 'boot sequence not found');
-  assert.ok(theme < boot, 'wireThemeToggle() must run before the first render');
+  assert.ok(theme < boot, 'wireTheme() must run before the first render');
 });
 
 test('the server serves the vendored editor with usable content types', async () => {

@@ -50,10 +50,10 @@ test('multi-target needs at least one target and rejects unknown cardinality reu
 
 test('linking across member tables and the registry, chips carry each home table', () => {
   const { w, projects, tasks, tickets } = build();
-  w.addRelation(tickets, { name: 'Scope', targetDbs: [tasks, projects, 'Workspace/Spaces'], cardinality: 'many-to-many' });
+  w.addRelation(tickets, { name: 'Scope', targetDbs: [tasks, projects, 'System/Spaces'], cardinality: 'many-to-many' });
   const task = w.createEntity(tasks, { values: { Name: 'Fix header' } });
   const proj = w.createEntity(projects, { values: { Name: 'Redesign' } });
-  const spaceRow = w.findEntity('Workspace/Spaces', 'Product');
+  const spaceRow = w.findEntity('System/Spaces', 'Product');
   assert.ok(spaceRow, 'registry row for the Product space exists');
 
   const t = w.createEntity(tickets, { values: { Name: 'Rendering bug' } });
@@ -63,7 +63,7 @@ test('linking across member tables and the registry, chips carry each home table
   const chips = read.fields.Scope;
   assert.equal(chips.length, 3);
   const dbs = chips.map((c) => c.db).sort();
-  assert.deepEqual(dbs, ['Product/Project', 'Product/Task', 'Workspace/Spaces'].sort());
+  assert.deepEqual(dbs, ['Product/Project', 'Product/Task', 'System/Spaces'].sort());
 });
 
 test('name refs resolve across the target set; outsiders are rejected', () => {

@@ -14,8 +14,7 @@ const s = await launch('menu opacity', (weave) => {
 if (s) {
   const { base, browser } = s;
   const setTheme = (page, want) => page.evaluate((w) => {
-    const btn = document.querySelector('#theme-toggle');
-    for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== w; i++) btn.click();
+    for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== w; i++) cycleTheme();
   }, want);
   const open = async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });

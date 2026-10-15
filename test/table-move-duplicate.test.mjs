@@ -55,7 +55,7 @@ test('moveTable refuses a clash with a trashed table in the destination', () => 
 
 test('moveTable refuses system tables and unknown spaces', () => {
   const { w, tasks } = build();
-  const registry = w.findTable('Workspace/Tables');
+  const registry = w.findTable('System/Tables');
   if (registry) assert.throws(() => w.moveTable(registry.id, 'Archive'), /system/i);
   assert.throws(() => w.moveTable(tasks.id, 'Nowhere'), /not found/i);
   assert.throws(() => w.moveTable(tasks.id, 'Workspace'), /system/i, 'the registry space takes no tenants');
@@ -64,12 +64,12 @@ test('moveTable refuses system tables and unknown spaces', () => {
 test('moveTable re-links the registry Tables row to the new Space row', () => {
   const { w, tasks } = build();
   w.moveTable(tasks.id, 'Archive');
-  const tablesT = w.findTable('Workspace/Tables');
+  const tablesT = w.findTable('System/Tables');
   const row = w.listEntities(tablesT.id).find((r) => r.sysId === tasks.id);
   const spaceF = w.findField(tablesT, 'Space');
   assert.ok(spaceF, 'registry keeps a Space relation');
   const linked = w.readEntity(row.id).raw['Space'];
-  const archiveRow = w.listEntities(w.findTable('Workspace/Spaces').id)
+  const archiveRow = w.listEntities(w.findTable('System/Spaces').id)
     .find((r) => r.sysId === w.getSpace('Archive').id);
   assert.ok(linked.includes(archiveRow.id), 'Tables row points at the Archive space row');
 });
@@ -184,7 +184,7 @@ test('duplicate retargets a self-relation into the copy', () => {
 
 test('duplicate carries a one-way target-set relation as-is', () => {
   const { w, tasks, projects } = build();
-  const spacesT = w.findTable('Workspace/Spaces');
+  const spacesT = w.findTable('System/Spaces');
   w.addRelation(tasks.id, { name: 'About', targetDbs: [projects.id, spacesT.id], cardinality: 'many-to-many' });
   const copy = w.duplicateTable(tasks.id);
   const cpAbout = w.findField(copy, 'About');
@@ -229,14 +229,14 @@ test('duplicate copies schema, never rows — the copy starts empty', () => {
 
 test('duplicate refuses system tables', () => {
   const { w } = build();
-  const registry = w.findTable('Workspace/Tables');
+  const registry = w.findTable('System/Tables');
   assert.throws(() => w.duplicateTable(registry.id), /system/i);
 });
 
 test('duplicate registers the copy in the Tables registry', () => {
   const { w, tasks } = build();
   const copy = w.duplicateTable(tasks.id);
-  const tablesT = w.findTable('Workspace/Tables');
+  const tablesT = w.findTable('System/Tables');
   const row = w.listEntities(tablesT.id).find((r) => r.sysId === copy.id);
   assert.ok(row, 'the copy has a registry row');
   assert.equal(w.entityName(row), 'Task Copy');
@@ -295,7 +295,7 @@ test('POST /api/tables/:id/duplicate answers 201 with the copy', async () => {
     assert.equal(r.status, 201);
     assert.equal(r.data.name, 'Task Copy');
     assert.ok(w.getTable(r.data.id), 'the copy is real');
-    const registry = w.findTable('Workspace/Tables');
+    const registry = w.findTable('System/Tables');
     assert.equal((await call('POST', `/api/tables/${registry.id}/duplicate`)).status, 400, 'system tables refuse');
   });
 });

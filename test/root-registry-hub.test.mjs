@@ -51,7 +51,7 @@ test('hub: adopted and created workspaces join; a hard delete drops the rows', a
     legacy.updateWorkspace({ name: 'legacy' });
     legacy.createSpace({ name: 'Ops' });
     legacy.createTable({ space: 'Ops', name: 'Run' });
-    assert.ok(legacy.getTable('Workspace/Tables'), 'a legacy workspace minted its own registry');
+    assert.ok(legacy.getTable('System/Tables'), 'a legacy workspace minted its own registry');
     legacy.store.close?.();
     const { server } = await startServer(main, { port: 0 });
     const base = `http://127.0.0.1:${server.address().port}`;
@@ -61,7 +61,7 @@ test('hub: adopted and created workspaces join; a hard delete drops the rows', a
       assert.ok(leg, 'scan adopted the sibling');
       const legSchema = await json(await fetch(`${base}/w/${leg.id}/api/schema`));
       assert.deepEqual(legSchema.map((s) => s.space), ['Ops'], 'the legacy registry is tombstoned');
-      const wsT = main.getTable('Workspace/Workspaces');
+      const wsT = main.getTable('System/Workspaces');
       const names = () => main.listEntities(wsT.id).map((e) => main.entityName(e)).sort();
       assert.deepEqual(names(), ['legacy', 'main']);
       const made = await json(await post(`${base}/api/workspaces`, { name: 'scratch' }));
@@ -91,5 +91,5 @@ test('hub: a single-member hub (the worker shape) is its own root, unchanged', (
   const hub = createWorkspaceHub(only);
   assert.equal(hub.get(hub.defaultName), only);
   assert.equal(only.registryHost, null);
-  assert.ok(only.getTable('Workspace/Workspaces'));
+  assert.ok(only.getTable('System/Workspaces'));
 });

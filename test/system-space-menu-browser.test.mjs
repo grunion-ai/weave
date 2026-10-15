@@ -5,7 +5,7 @@ import { launch } from './lib/browser.mjs';
 const s = await launch('system space menu', (weave) => {
   weave.createSpace({ name: 'Product' });
   weave.createTable({ space: 'Product', name: 'Tasks' });
-  return { sys: weave.getSpace('Workspace'), user: weave.getSpace('Product') };
+  return { sys: weave.getSpace('System'), user: weave.getSpace('Product') };
 });
 
 if (s) {
@@ -27,7 +27,7 @@ if (s) {
   }
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: the Workspace space renders no ⋮ menu`, async () => {
+    test(`${theme}: the System space renders no ⋮ menu`, async () => {
       const page = await openSpace(sys.id, theme);
       assert.equal(await page.locator('.view-header .dots-btn').count(), 0, 'no ⋮ on the system space');
       assert.equal(await page.locator('.wv-menu').count(), 0, 'no empty menu panel');

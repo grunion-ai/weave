@@ -82,7 +82,7 @@ const sysTable = (reg, kind) => Object.values(reg.state.tables).find((t) => t.sy
 
 function formsTable(w) {
   const t = sysTable(registryOf(w), 'forms');
-  if (!t) throw new WeaveError('This workspace has no Workspace/Forms registry here: forms live at the hub root', 'not-found');
+  if (!t) throw new WeaveError('This workspace has no System/Forms registry here: forms live at the hub root', 'not-found');
   return t;
 }
 
@@ -273,7 +273,7 @@ export function createForm(w, settings = {}) {
   if (db.system) throw new WeaveError('A form needs a table outside the system registry', 'invalid');
   const tablesT = sysTable(reg, 'tables');
   const tablesRow = tablesT && reg.listEntities(tablesT.id).find((e) => e.sysId === db.id);
-  if (!tablesRow) throw new WeaveError(`${w.qualifiedName(db)} has no Workspace/Tables row to point a form at`, 'not-found');
+  if (!tablesRow) throw new WeaveError(`${w.qualifiedName(db)} has no System/Tables row to point a form at`, 'not-found');
   ({ fields, hidden } = normalizeDefinition(w, db, name, fields, hidden, kind));
   const row = reg.createEntity(formsT.id, {
     name,
