@@ -13053,8 +13053,7 @@ const THEME_LABELS = { auto: 'Auto', dark: 'Dark', light: 'Light' };
 const THEME_MEDIA = matchMedia('(prefers-color-scheme: dark)');
 
 function themePref() {
-  let pref = null;
-  try { pref = localStorage.getItem('weave-theme'); } catch {}
+  const pref = localStorage.getItem('weave-theme');
   return THEME_ICONS[pref] ? pref : 'auto';
 }
 
@@ -13066,7 +13065,7 @@ function applyTheme() {
 
 function cycleTheme() {
   const pref = themePref();
-  try { localStorage.setItem('weave-theme', pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto'); } catch {}
+  localStorage.setItem('weave-theme', pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto');
   applyTheme();
 }
 
