@@ -1320,6 +1320,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.applySchema(body?.schema ?? body, {
             dryRun: !!body?.dryRun,
             allowDestructive: !!body?.allowDestructive,
+            partial: !!body?.partial,
           }));
         }
         if (route === 'POST /api/build') {
