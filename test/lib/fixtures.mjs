@@ -60,7 +60,7 @@ export function client(hub, opts = {}) {
     const url = new URL(path, 'http://localhost:4400');
     const headers = { host: 'localhost:4400' };
     if (token) headers.authorization = `Bearer ${token}`;
-    if (cookie) headers.cookie = `wv_session=${cookie}`;
+    if (cookie) headers.cookie = hub.entries().map(([, w]) => `wv_session_${w.state.meta.id}=${cookie}`).join('; ');
     const res = await handle({
       method, path: decodeURIComponent(url.pathname), searchParams: url.searchParams,
       header: (n) => headers[n.toLowerCase()], readBody: async () => body ?? {}, remote: '127.0.0.1',

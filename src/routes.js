@@ -419,6 +419,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     let session = null;
     let accountName = null;
     const cookies = parseCookies(rx.header('cookie'));
+    if (cookies[LEGACY_COOKIE]) jar.push(clearCookie(LEGACY_COOKIE, rx));
     const startRoot = baseDomain ? apexOrigin : '';
     const sameLogin = (a, b) => a.issuer === b.issuer && a.subject === b.subject;
     const findWorkspaces = (logins) => {
@@ -473,12 +474,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (resolved.has(w)) return resolved.get(w);
       const name = cookieName(w);
       const own = cookies[name] ? w.verifySession(cookies[name]) : null;
-      const legacy = !own && cookies[LEGACY_COOKIE] ? w.verifySession(cookies[LEGACY_COOKIE]) : null;
-      const token = own ? cookies[name] : cookies[LEGACY_COOKIE];
-      const hit = own ? { ...own, engine: w, cookie: name }
-        : legacy ? { ...legacy, engine: w, cookie: name, legacy: true } : null;
-      if (hit?.renewed || hit?.legacy) jar.push(sessionCookie(name, token, rx));
-      if (hit?.legacy) jar.push(clearCookie(LEGACY_COOKIE, rx));
+      const hit = own ? { ...own, engine: w, cookie: name } : null;
+      if (hit?.renewed) jar.push(sessionCookie(name, cookies[name], rx));
       resolved.set(w, hit);
       return hit;
     };
@@ -563,9 +560,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       weave.actor = session.name;
       accountName = session.name;
       role = Weave.roleName(session.role);
-    } else if (weave.state.meta.requireAuth && !openDoor && (cookies[cookieName(weave)] || cookies[LEGACY_COOKIE])) {
-      const held = [cookies[cookieName(weave)], cookies[LEGACY_COOKIE]].filter(Boolean);
-      if (held.some((t) => weave.removedSession(t))) {
+    } else if (weave.state.meta.requireAuth && !openDoor && cookies[cookieName(weave)]) {
+      if (weave.removedSession(cookies[cookieName(weave)])) {
         const ws = weave.state.meta.name;
         if (path.startsWith('/api/')) return out(403, { error: `Your access to ${ws} was removed`, code: 'access-removed' }, { 'Cache-Control': 'no-store' });
         return out(403, renderRefusalPage({
@@ -1001,7 +997,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             }
             const names = new Set(everywhere
               ? [...Object.keys(cookies).filter((n) => n === LEGACY_COOKIE || n.startsWith(`${LEGACY_COOKIE}_`)), ...ending.map((hit) => hit.cookie)]
-              : [session?.cookie ?? cookieName(weave), ...(session?.legacy ? [LEGACY_COOKIE] : [])]);
+              : [session?.cookie ?? cookieName(weave)]);
             const held = everywhere ? await heldStart() : null;
             if (held) starts.delete(held.key);
             const startEnds = everywhere ? [clearCookie('wv_start', rx), clearRail()] : [];
