@@ -35,7 +35,7 @@
     };
   };
 
-  const workflowOf =(a) => /^workflow:(.+)$/.exec(a?.actor ?? '')?.[1] ?? null;
+  const workflowOf = (a) => /^workflow:(.+)$/.exec(a?.actor ?? '')?.[1] ?? null;
   const isAutomation = (a) => !!workflowOf(a) || a?.kind === 'automation-ran';
 
   const automationWrites = (activity, { now = Date.now(), windowMs = 10000 } = {}) => {
