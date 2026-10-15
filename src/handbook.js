@@ -1241,11 +1241,14 @@ A deck is a read over slide rows, composed on request — the rows stay editable
 
 \`\`\`bash
 weave account create ci-bot --role editor
+weave account set ci-bot --role observer
 weave account list
 weave audit --limit 50
 \`\`\`
 
 Three roles. An **Observer** (free) reads every page and comments: through the API or MCP it may post a comment, under its own name, and delete a comment it made. An **Editor** (paid seat) also creates, edits and deletes rows and any comment, and never touches structure: no workspace, space, table or field definition. An **Architect** (paid) does everything, structure, accounts and the keystore included. "Free" and "paid seat" are labels: weave bills nobody. Before 2026-10-02 the three were \`reader\`, \`writer\` and \`admin\`; every open rewrites a stored old name to the new one, so every token keeps working, and \`--role admin|writer|reader\` is still accepted, with a deprecation note, for one more release. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
+
+An architect changes an existing account with \`weave account set <name> --role observer|editor|architect\`, \`weave_accounts\` with \`action: set\`, \`account\` and \`role\`, or \`PATCH /api/accounts/:ref\` with \`{role}\`. The account keeps its identity, tokens and sessions, which use the new role on their next request. The change is audited, and the last architect cannot be demoted. Editing Role in the Users table follows the same rules.
 
 \`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\` (status only without credentials: \`{"ok":true,"name":"weave"}\`; the version, build, sizes and backup state need an architect token or session), a share link (\`/s/<token>\`, and the old \`/view/<token>\` that redirects there), the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. An observer may read any page and write nothing but its own comments; an editor writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an architect token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
 
@@ -1621,7 +1624,7 @@ A hosted provider with open sign-up lets anyone create a user there. A sign-in a
 
 **Users** is a system table in the Workspace space, pinned in the sidebar under Workflows (Feature #318). Each account and each pending invite is a row with Name, Email, Role (Architect, Editor or Observer), Status (Invited or Active), Kind (Person or Agent), Identities, Last Seen and Created. The accounts stay the source of truth and the rows follow them, so an account made with \`weave account create\` or redeemed from an invite shows up here too.
 
-You manage people by editing rows. A new row with an Email invites that person at the row's Role; the answer carries the one-time sign-in link as \`invite.url\`, and the row reads Invited until they sign in. A new row with Kind Agent and no Email makes an agent account; the answer carries its \`wv_\` token as \`token\`, shown once. Editing Role changes the account's role, editing Name renames the account, and deleting the row revokes the invite or deletes the account. Email, Status, Kind, Identities, Last Seen and Created are kept by weave and refuse edits.
+You manage people by editing rows. A new row with an Email invites that person at the row's Role; the answer carries the one-time sign-in link as \`invite.url\`, and the row reads Invited until they sign in. A new row with Kind Agent and no Email makes an agent account; the answer carries its \`wv_\` token as \`token\`, shown once. Editing Role changes the account's role without replacing its tokens or sessions; the last architect cannot be demoted. Editing Name renames the account, and deleting the row revokes the invite or deletes the account. Email, Status, Kind, Identities, Last Seen and Created are kept by weave and refuse edits.
 
 Add your own fields to Users like on any table, and point a relation at it from any table in the same workspace for an owner or an assignee. Only an architect creates, edits or deletes Users rows; editors and observers read them and relate to them. No row, query, export or MCP answer carries a token, session or invite hash, and \`weave export\` leaves the Email column out.
 
@@ -1769,7 +1772,7 @@ The resource names an origin weave was told about: \`WEAVE_ORIGIN\`, or one of t
 
 weave supports one provider per process and creates no account at sign-in. Signing out ends the weave session and leaves the provider's own session alone.
 
-The MCP door does not check that a token was issued for this instance (RFC 8707 resource indicators): Clerk does not bind its tokens to a resource, so any access token the provider issued to any of its clients passes userinfo. The account link is what decides who gets in. Revoking a link or an account takes up to a minute to reach a token weave has already checked.
+The MCP door does not check that a token was issued for this instance (RFC 8707 resource indicators): Clerk does not bind its tokens to a resource, so any access token the provider issued to any of its clients passes userinfo. The account link is what decides who gets in. Only the provider identity is cached for a minute. Every request checks the current account link and role, so demoting an account or revoking its link takes effect on the next request.
 
 ## How you know it worked
 
