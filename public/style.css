@@ -2306,7 +2306,8 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 
 .desc-info { display: inline-flex; align-items: center; justify-content: center; vertical-align: super; width: 24px; height: 24px; padding: 6px; margin-left: 2px; border: 0; background: none; color: var(--tblr-secondary); opacity: .7; cursor: pointer; }
 .desc-info .wv-icon, .desc-info svg { width: 12px; height: 12px; }
-.desc-info:hover, .desc-info:focus-visible { opacity: 1; }
+@media (hover: hover) { .desc-info:hover { opacity: 1; } }
+.desc-info:focus-visible { opacity: 1; }
 .desc-info:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
 .desc-info[aria-expanded="true"] { color: var(--tblr-primary); opacity: 1; }
 .fieldrow-note { grid-column: 2 / -1; max-width: 60ch; font-size: 13px; line-height: 1.55; color: var(--tblr-secondary); padding: 2px 0 10px; }
