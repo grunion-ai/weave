@@ -136,6 +136,72 @@ if (s) {
     }
   }
 
+  const viewSwitcher = {
+    name: 'views popover',
+    hash: `#/table/${table}`,
+    ready: '#main .wv-grid tbody tr.entity-row',
+    roots: ['.table-view-popover .view-row'],
+    act: async (page) => {
+      const tools = page.locator('#main .table-tools-btn');
+      if (await tools.isVisible()) await tools.click();
+      await page.click('#main .crumb-actions .table-view-btn');
+    },
+  };
+  const GRIPS = (min) => {
+    const out = [];
+    const pop = document.querySelector('.table-view-popover');
+    const popBox = pop.getBoundingClientRect();
+    const inset = 2;
+    for (const grip of pop.querySelectorAll('.view-grip')) {
+      const r = grip.getBoundingClientRect();
+      const row = grip.closest('.view-row');
+      const name = row.querySelector('.view-name');
+      const nameBox = name.getBoundingClientRect();
+      const owns = (node, x, y) => { const hit = document.elementFromPoint(x, y); return !!hit && (hit === node || node.contains(hit)); };
+      const corners = [[r.left + inset, r.top + inset], [r.right - inset, r.top + inset],
+        [r.left + inset, r.bottom - inset], [r.right - inset, r.bottom - inset]];
+      out.push({
+        label: grip.getAttribute('aria-label') || 'a view grip',
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+        deaf: corners.filter(([x, y]) => !owns(grip, x, y)).length,
+        spill: Math.round(Math.max(popBox.left - r.left, r.right - popBox.right)),
+        nameTaps: owns(name, nameBox.left + nameBox.width / 2, nameBox.top + nameBox.height / 2),
+        popWidth: Math.round(popBox.width),
+        min,
+      });
+    }
+    return out;
+  };
+  for (const [engine, b, profile] of engines) {
+    const themes = engine.startsWith('chromium') ? ['light', 'dark'] : ['light'];
+    for (const theme of themes) {
+      test(`on a phone the view reorder grip is a ${MIN}px target the view name still clears (${engine}, ${theme}, Issue #804)`, async () => {
+        const page = await open(b, profile, theme, viewSwitcher);
+        try {
+          const grips = await page.evaluate(GRIPS, MIN);
+          assert.ok(grips.length >= 1, `the view switcher draws a grip per view, got ${grips.length}`);
+          assert.deepEqual(grips.filter((g) => g.width < MIN || g.height < MIN)
+            .map((g) => `${g.label} draws ${g.width}x${g.height} of the ${MIN}px minimum`), [],
+          'every view grip is at least the minimum target');
+          assert.deepEqual(grips.filter((g) => g.deaf).map((g) => `${g.label} has ${g.deaf} of 4 corners answering to something else`), [],
+            'the whole grip box answers to the grip, so the target is real and not covered');
+          assert.deepEqual(grips.filter((g) => g.spill > 0).map((g) => `${g.label} spills ${g.spill}px past the popover`), [],
+            'the bigger target stays inside the popover');
+          assert.deepEqual(grips.filter((g) => !g.nameTaps).map((g) => `${g.label} covers the view name`), [],
+            'the view name still takes the tap that opens the view');
+          assert.ok(grips[0].popWidth <= 340, `the popover keeps its width, got ${grips[0].popWidth}px`);
+        } finally { await page.close(); }
+      });
+    }
+  }
+  test('on a desktop the view reorder grip keeps its drawn size (Issue #804)', async () => {
+    const page = await open(browser, { viewport: { width: 1280, height: 900 } }, 'light', viewSwitcher);
+    try {
+      const box = await page.locator('.table-view-popover .view-grip').first().boundingBox();
+      assert.ok(box.width < MIN && box.height < MIN, `the desktop grip stays ${Math.round(box.width)}x${Math.round(box.height)}`);
+    } finally { await page.close(); }
+  });
   test('on a desktop the same chrome keeps its drawn size (Issue #737)', async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
