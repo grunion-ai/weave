@@ -2310,10 +2310,10 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .desc-info:focus-visible { opacity: 1; }
 .desc-info:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
 .desc-info[aria-expanded="true"] { color: var(--tblr-primary); opacity: 1; }
-.fieldrow-note { grid-column: 2 / -1; max-width: 60ch; font-size: 13px; line-height: 1.55; color: var(--tblr-secondary); padding: 2px 0 10px; }
+.fieldrow-note { grid-column: 2 / -1; max-width: 60ch; font-size: var(--fs-grid); line-height: 1.55; color: var(--tblr-secondary); padding: 2px 0 10px; }
 .desc-clamp.clamped, .view-desc-body.desc-clamp.clamped { max-height: 3lh; overflow: hidden; mask-image: linear-gradient(to bottom, black 75%, transparent); }
 .view-description-toggle .view-title-h { flex: 0 1 auto; margin-right: 0; }
-.view-description-toggle .view-title { field-sizing: content; flex: 0 1 auto; max-width: 100%; }
+.view-description-toggle .view-title { field-sizing: content; max-width: 100%; }
 .view-description-toggle .view-title-row { gap: 2px; }
 .view-title-row > .desc-info { align-self: flex-start; flex-shrink: 0; width: 27px; height: 27px; }
 .view-title-row > .desc-info .wv-icon, .view-title-row > .desc-info svg { width: 15px; height: 15px; }
