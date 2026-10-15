@@ -10,7 +10,7 @@ import { startIdp } from './lib/idp.mjs';
 import { chromium, phoneBrowser, phonePage } from './lib/browser.mjs';
 import { connectLikeChatApp, CHAT_APPS } from './lib/chat-client.mjs';
 
-async function hub({ open = true, limit = 2 } = {}) {
+async function hub({ open = true, limit = 2, clerk = false } = {}) {
   const idp = await startIdp();
   const dir = mkdtempSync(join(tmpdir(), 'weave-setup-flows-'));
   const taken = new Weave({ path: join(dir, 'harbor.db'), name: 'harbor' });
@@ -24,7 +24,7 @@ async function hub({ open = true, limit = 2 } = {}) {
   main.setRequireAuth(true);
   main.save();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const { server } = await startServer(main, { port: 0, oidc, openSignup: { on: open, limit }, limits: { options: 1000, failed: 1000, slugs: 1000 } });
+  const { server } = await startServer(main, { port: 0, oidc, openSignup: { on: open, limit }, ...(clerk ? { clerkKey: idp.publishableKey } : {}), limits: { options: 1000, failed: 1000, slugs: 1000 } });
   const base = `http://localhost:${server.address().port}`;
   const opened = (name) => new Weave({ path: join(dir, `${name}.db`) });
   return { idp, dir, base, opened, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
@@ -36,7 +36,8 @@ if (!chromium) {
   const browser = await chromium.launch();
   const openHub = await hub();
   const closedHub = await hub({ open: false });
-  test.after(async () => { await browser.close(); openHub.stop(); closedHub.stop(); });
+  const clerkHub = await hub({ clerk: true });
+  test.after(async () => { await browser.close(); openHub.stop(); closedHub.stop(); clerkHub.stop(); });
 
   let people = 0;
   const person = (h, extra = {}) => {
@@ -256,4 +257,36 @@ if (!chromium) {
       await p.context().close();
     });
   }
+
+  test('Clerk in the pane: sign-up renders inside the left pane, styled, and returns to the next step', async () => {
+    const p = await page();
+    person(clerkHub);
+    await p.goto(`${clerkHub.base}/start`);
+    await step(p, 'account');
+    await p.waitForSelector('.pane #clerk-pane [data-fake-clerk="google"]');
+    assert.equal(await p.locator('main [data-go="signin"]').isHidden(), true, 'the provider button steps aside for the mounted form');
+    const options = await p.evaluate(() => ({ ...window.__clerkOptions, appearance: !!window.__clerkOptions.appearance?.variables?.colorPrimary }));
+    assert.deepEqual([options.withSignUp, options.appearance], [true, true], 'one form signs up and signs in, in weave colours');
+    assert.match(options.forceRedirectUrl, /^\/api\/auth\/oidc\/start\?start=1&next=%2Fstart$/);
+    await p.click('main [data-go="bypass"]');
+    await p.waitForFunction(() => /setup%3Dskip/.test(window.__clerkOptions.forceRedirectUrl));
+    await p.click('main [data-go="bypass"]');
+    await p.waitForFunction(() => !/setup%3Dskip/.test(window.__clerkOptions.forceRedirectUrl));
+    await p.click('#clerk-pane [data-fake-clerk="google"]');
+    await step(p, 'workspace');
+    await p.context().close();
+  });
+
+  test('Clerk in the pane: a blocked Clerk script falls back to the provider button', async () => {
+    const p = await page();
+    person(clerkHub);
+    await p.route('**/clerk.browser.js', (r) => r.abort());
+    await p.goto(`${clerkHub.base}/start`);
+    await step(p, 'account');
+    await p.waitForSelector('main [data-go="signin"]:visible');
+    assert.equal(await p.locator('#clerk-pane').isHidden(), true);
+    await go(p, 'signin');
+    await step(p, 'workspace');
+    await p.context().close();
+  });
 }

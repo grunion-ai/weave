@@ -122,7 +122,14 @@ const START_TTL_MS = 30 * 60 * 1000;
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, billing = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+  const clerkPane = (() => {
+    if (!clerkKey || !oidc) return null;
+    let host;
+    try { host = atob(clerkKey.split('_')[2]).replace(/\$$/, ''); } catch { return null; }
+    const issuer = new URL(oidc.issuer);
+    return issuer.host === host ? { publishableKey: clerkKey, script: `${issuer.origin}/npm/@clerk/clerk-js@6/dist/clerk.browser.js` } : null;
+  })();
   const challenges = new Map();
   const handoffs = new Map();
   const remirror = async (w) => {
@@ -1034,7 +1041,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (held) starts.delete(held.key);
             return out(200, { ok: true }, { 'Set-Cookie': [clearCookie('wv_start', rx), clearRail()], 'Cache-Control': 'no-store' });
           }
-          if (route === 'GET /api/start' && !logins.length) return out(200, { signedIn: false, provider: oidc.name }, { 'Cache-Control': 'no-store' });
+          if (route === 'GET /api/start' && !logins.length) return out(200, { signedIn: false, provider: oidc.name, ...(clerkPane ? { clerk: clerkPane } : {}) }, { 'Cache-Control': 'no-store' });
           if (!logins.length) return deny(401, 'Sign in first');
           const found = findWorkspaces(logins);
           const { hubRoot, accountIn } = found;
