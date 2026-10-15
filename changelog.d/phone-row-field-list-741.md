@@ -1,0 +1,1 @@
+- On a phone the fields block on a row page is an inset group of 50px rows, label left and value chip right, with a chevron that opens the field's picker sheet and an empty value as a single + chip. The drag grips are gone at that width and a relation that carries chips takes its own full-width row. (Issue #741)

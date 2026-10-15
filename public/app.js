@@ -10482,6 +10482,9 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
 
   const VALUES_BLOCK = '@values';
+  const SHEET_FIELD_TYPES = new Set(['workflow', 'select', 'multiselect', 'relation']);
+  const SHEET_HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .fieldrow-label';
+  const relationCount = (v) => (Array.isArray(v) ? v.length : v == null ? 0 : 1);
   left.classList.add('entity-body');
   const fields = el('div', { class: 'entity-fields' });
   const values = el('div', { class: 'entity-values' });
@@ -10538,15 +10541,25 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       continue;
     }
     const note = fieldDescription(f) ? el('div', { class: 'fieldrow-note' }, el('div', { class: 'desc-clamp clamped' }, fieldDescription(f))) : null;
+    const sheetKind = SHEET_FIELD_TYPES.has(f.type);
     const node = el('div', { class: 'fieldrow' },
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) },
         fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null),
-      labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }), note);
+      labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }),
+      sheetKind ? el('span', { class: 'fieldrow-chev', 'aria-hidden': 'true' }, chevron()) : null, note);
+    node.dataset.ftype = f.type;
     if (f.type === 'attachments') {
       node.classList.add('attach-block');
       wireBlock(f.name, node, [node.querySelector('.opt-grip')]);
       continue;
+    }
+    if (sheetKind) {
+      if (f.type === 'relation' && relationCount(entity.fields[f.name])) node.classList.add('fieldrow-wide');
+      node.addEventListener('click', (e) => {
+        if (!dockCoversScreen.matches || e.target.closest(SHEET_HANDS_OFF)) return;
+        (node.querySelector('.chip-trigger, .picker-face') ?? node.querySelector('.ms-box > button'))?.click();
+      });
     }
     values.append(dragRow(node, f));
   }
