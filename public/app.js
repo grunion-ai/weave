@@ -1648,7 +1648,15 @@ function searchPicker({ anchor = null, title = '', placeholder: given = null, op
           if (multi) apply(core.removeId(st, x.id)); else pick({ id: clearId, label: clearId });
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null)));
-    const clearable = !multi && !!clearId && !!st.staged.length;
+    if (multi) {
+      foot.replaceChildren(
+        el('span', { class: 'picker-count', 'aria-live': 'polite' }, `${st.staged.length} selected`),
+        el('button', { class: 'picker-done', type: 'button', onclick: (ev) => { ev.stopPropagation(); commit(); } },
+          'Done ', el('kbd', { class: 'picker-key' }, '↵')));
+      foot.hidden = false;
+      return;
+    }
+    const clearable = !!clearId && !!st.staged.length;
     foot.replaceChildren(...(clearable ? [el('kbd', { class: 'picker-key' }, '⌫'), ' clear'] : []));
     foot.hidden = !clearable;
   };

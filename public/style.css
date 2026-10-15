@@ -1387,6 +1387,9 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 @media (hover: hover) { .picker-row:hover .picker-num { opacity: 1; } }
 .picker-foot { display: flex; align-items: center; gap: 4px; padding: 6px 6px 2px; margin-top: 2px; border-top: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: var(--fs-meta); }
 .picker-foot[hidden] { display: none; }
+.picker-count { font-variant-numeric: tabular-nums; }
+.picker-done { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border: 0; border-radius: 4px; background: none; color: var(--tblr-body-color); font: inherit; font-weight: 600; cursor: pointer; }
+.picker-done:hover, .picker-done:focus-visible { background: var(--tblr-bg-surface-secondary); }
 .picker-key { padding: 0 4px; border: 1px solid var(--tblr-border-color); border-radius: 3px; background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); line-height: 1.5; }
 .picker-create .picker-num { opacity: 1; color: var(--tblr-primary); }
 .picker-create .picker-label { color: var(--tblr-primary); }
