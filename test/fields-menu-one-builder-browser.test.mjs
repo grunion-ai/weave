@@ -34,15 +34,15 @@ if (s) {
       fieldsMenu: pop.classList.contains('table-fields-popover'),
       title: pop.querySelector('.table-control-head strong')?.textContent,
       rows: rows.length,
-      switches: rows.filter((r) => r.querySelector('.eye-row[role="switch"] .switch')).length,
-      checkboxes: pop.querySelectorAll('input[type="checkbox"]').length,
+      checkboxes: rows.filter((r) => r.querySelector('label.eye-row > input.form-check-input[type="checkbox"]')).length,
+      switches: pop.querySelectorAll('[role="switch"], .switch').length,
       grips: rows.filter((r) => r.querySelector('button.field-reorder-handle')).length,
       legend: !!pop.querySelector('.table-field-legend'),
       actions: [...pop.querySelectorAll('.field-visibility-actions button')].map((b) => b.textContent),
     };
   });
 
-  test('the table and the record open the one Fields menu, built of switch rows that drag (Issue #910)', async () => {
+  test('the table and the record open the one Fields menu, built of checkbox rows that drag (Issues #910, #915)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await openMenu(page, surfaces.table(long));
@@ -54,8 +54,8 @@ if (s) {
         assert.equal(got.fieldsMenu, true, `${name}: the Fields menu`);
         assert.equal(got.title, 'Fields', `${name}: titled Fields`);
         assert.ok(got.rows >= 31, `${name}: one row per field (${got.rows})`);
-        assert.equal(got.switches, got.rows, `${name}: every row is a switch`);
-        assert.equal(got.checkboxes, 0, `${name}: no checkbox anywhere in the menu`);
+        assert.equal(got.checkboxes, got.rows, `${name}: every row is the shared checkbox`);
+        assert.equal(got.switches, 0, `${name}: no switch anywhere in the menu`);
         assert.equal(got.legend, true, `${name}: the reorder legend`);
         assert.deepEqual(got.actions, ['Show all', 'Hide all'], `${name}: Show all and Hide all`);
       }
@@ -66,7 +66,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the record menu reorders the table fields from the keyboard and hides with its switch (Issue #910)', async () => {
+  test('the record menu reorders the table fields from the keyboard and hides with its checkbox (Issues #910, #915)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       const pop = await openMenu(page, surfaces.record(short));
@@ -81,10 +81,10 @@ if (s) {
         if (Date.now() - t0 > 5000) throw new Error(`Owner never moved up: ${order()}`);
         await new Promise((r) => setTimeout(r, 25));
       }
-      const owner = pop.locator('.table-field-row[data-field="Owner"] [role="switch"]');
-      assert.equal(await owner.getAttribute('aria-checked'), 'true');
+      const owner = pop.locator('.table-field-row[data-field="Owner"]').getByRole('checkbox', { name: 'Owner', exact: true });
+      assert.equal(await owner.isChecked(), true);
       await owner.click();
-      await page.waitForFunction(() => document.querySelector('.table-field-row[data-field="Owner"] [role="switch"]').getAttribute('aria-checked') === 'false');
+      await page.waitForFunction(() => document.querySelector('.table-field-row[data-field="Owner"] input[type="checkbox"]').checked === false);
       for (let t0 = Date.now(); !(described().hiddenFields ?? []).includes('Owner');) {
         if (Date.now() - t0 > 5000) throw new Error('Owner never reached the hidden set');
         await new Promise((r) => setTimeout(r, 25));
@@ -98,7 +98,7 @@ if (s) {
 
   for (const [label, viewport, names] of [['desktop', { width: 1440, height: 700 }, ['table', 'record']], ['phone', { width: 390, height: 700 }, ['record']]]) {
     for (const theme of ['light', 'dark']) {
-      test(`the Fields list keeps a stable scrollbar gutter and its switches clear of it (Issue #909, ${label}, ${theme})`, async () => {
+      test(`the Fields list keeps a stable scrollbar gutter and its rows clear of it (Issues #909, #915, ${label}, ${theme})`, async () => {
         const page = await browser.newPage({ viewport, colorScheme: theme });
         try {
           const widths = {};
@@ -112,18 +112,24 @@ if (s) {
                 const cs = getComputedStyle(list);
                 const contentRight = box.left + list.clientLeft + list.clientWidth;
                 const grip = list.querySelector('.field-reorder-handle svg').getBoundingClientRect();
-                const gaps = [...list.querySelectorAll('.switch')].map((sw) => contentRight - sw.getBoundingClientRect().right);
+                const gaps = [...list.querySelectorAll('.eye-row')].map((row) => contentRight - row.getBoundingClientRect().right + parseFloat(getComputedStyle(row).paddingRight));
+                const boxes = [...list.querySelectorAll('.eye-row > input.form-check-input')].map((b) => b.getBoundingClientRect().left - grip.right);
                 return {
                   gutter: cs.scrollbarGutter,
                   scrolls: list.scrollHeight > list.clientHeight + 1,
                   clientWidth: list.clientWidth,
                   leftInset: grip.left - box.left,
                   minGap: Math.min(...gaps),
+                  boxGap: [Math.min(...boxes), Math.max(...boxes)],
+                  boxes: boxes.length,
+                  rows: gaps.length,
                 };
               });
               assert.equal(m.gutter, 'stable', `${name}: the gutter is reserved whether or not the list scrolls`);
               if (t === long) assert.equal(m.scrolls, true, `${name}: the long table scrolls its list`);
-              assert.ok(m.minGap >= 8 && m.minGap <= 12, `${name}: every switch sits 8 to 12px clear of the scrollbar (${m.minGap}px)`);
+              assert.ok(m.minGap >= 8 && m.minGap <= 12, `${name}: every row's content ends 8 to 12px clear of the scrollbar (${m.minGap}px)`);
+              assert.equal(m.boxes, m.rows, `${name}: every row holds the shared checkbox`);
+              assert.ok(m.boxGap[1] - m.boxGap[0] <= 1 && m.boxGap[0] >= 0, `${name}: every checkbox lines up just right of the grip column (${m.boxGap})`);
               assert.ok(Math.abs(m.minGap - m.leftInset) <= 4, `${name}: the right inset matches the left (${m.minGap}px against ${m.leftInset}px)`);
               (widths[name] ??= []).push(m.clientWidth);
               await page.keyboard.press('Escape');

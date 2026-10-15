@@ -27,7 +27,7 @@ if (s) {
   const hiddenNow = () => weave.describeSchema().flatMap((sp) => sp.tables).find((t) => t.id === tasks.id).hiddenFields ?? [];
   const switchReads = ([name, want]) => [...document.querySelectorAll('.eye-row')]
     .find((r) => r.querySelector('.eye-label')?.textContent === name)
-    ?.getAttribute('aria-checked') === want;
+    ?.querySelector('input')?.checked === (want === 'true');
   const flip = async (page, name) => {
     const was = hiddenNow().includes(name);
     await page.click('.eye-btn');

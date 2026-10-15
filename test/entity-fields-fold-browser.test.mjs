@@ -37,12 +37,12 @@ if (s) {
   });
   const flip = async (page, label) => {
     const before = await page.evaluate((l) => [...document.querySelectorAll('.chip-pop .eye-row')]
-      .find((r) => r.querySelector('.eye-label')?.textContent === l)?.getAttribute('aria-checked'), label);
+      .find((r) => r.querySelector('.eye-label')?.textContent === l)?.querySelector('input')?.checked, label);
     await page.evaluate((l) => [...document.querySelectorAll('.chip-pop .eye-row')]
       .find((r) => r.querySelector('.eye-label')?.textContent === l).click(), label);
     await page.waitForFunction(([l, was]) => {
       const row = [...document.querySelectorAll('.chip-pop .eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === l);
-      return row && row.getAttribute('aria-checked') !== was;
+      return row && row.querySelector('input').checked !== was;
     }, [label, before], { timeout: 5000 });
   };
 
