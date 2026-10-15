@@ -1622,12 +1622,13 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
   const box = el('div', { class: 'picker-box' }, chips, input, readout);
   const list = el('div', { class: 'picker-list' });
+  const foot = el('div', { class: 'picker-foot', hidden: '' });
   const sheet = dockCoversScreen.matches;
   const quiet = sheet && !grid && !groups && options.length <= PHONE_SHORT_LIST;
   const heading = title || (sheet ? anchor?.dataset?.fieldTitle || anchor?.getAttribute?.('title') || '' : '');
   const pop = el('div', { class: 'chip-pop picker-pop' + (quiet ? ' picker-quiet' : '') + (quiet && !multi ? ' picker-short' : '') },
     heading ? el('div', { class: 'picker-title' }, heading) : null,
-    box, list);
+    box, list, foot);
   const commit = async () => { pop.remove(); await multi.onCommit(core.ids(st)); };
   const dismiss = () => { if (multi) commit(); else pop.remove(); anchor?.focus?.(); };
   if (multi) pop.commit = commit;
@@ -1652,6 +1653,9 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null)));
     input.placeholder = st.staged.length ? '' : placeholder;
+    const clearable = !multi && !!clearId && !!st.staged.length;
+    foot.replaceChildren(...(clearable ? [el('kbd', { class: 'picker-key' }, '⌫'), ' clear'] : []));
+    foot.hidden = !clearable;
   };
   const restName = () => (currentId ? options.find((o) => o.id === currentId)?.label ?? '' : '');
   let hovering = null, focusing = null;
@@ -1702,7 +1706,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   };
   const rowEl = (o, i, quick) => el('button', {
     class: 'chip-pop-row picker-row' + (i === st.active ? ' active' : ''), type: 'button',
-    title: quick ? `⌥${quick}` : null,
+    title: quick ? `Option+${quick}` : null,
     onclick: async () => {
       if (multi) { apply(core.toggle(st, o)); return; }
       await pick(o);
@@ -2876,7 +2880,7 @@ document.addEventListener('click', (ev) => {
   editChipSegment(seg, chip.dataset.eid, seg.dataset.seg, seg.dataset.field);
 });
 function stateOptions(f) {
-  const options = [{ id: '—', label: '—', cls: 'k k-select hue-slate', chip: true }];
+  const options = [];
   for (const c of chipCore.CATEGORIES) {
     for (const s of f.states ?? []) {
       if (chipCore.categoryOrDefault(s.category) !== c.id) continue;
@@ -3161,7 +3165,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const paint = (v) => { const next = optionChipEl(f, v); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
-      options: [{ name: '—' }, ...f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` }))],
+      options: f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` })),
       current: val ?? null,
       clearId: '—',
       custom: optionCreator(db, f, (name, fresh) => ({ id: name, label: name, chip: true, cls: `k k-select ${optionHue(fresh, name)}` })),
@@ -6801,7 +6805,7 @@ async function editPhoneField(anchor, db, eid, name) {
         if (f.type === 'select') {
           return searchPicker({
             anchor, title: f.name, currentId: was ?? '—', clearId: '—',
-            options: [{ id: '—', label: '—', cls: 'k k-select hue-slate', chip: true }, ...f.options.map((o) => ({ id: o, label: o, cls: `k k-select ${optionHue(f, o)}`, chip: true }))],
+            options: f.options.map((o) => ({ id: o, label: o, cls: `k k-select ${optionHue(f, o)}`, chip: true })),
             onPick: (o) => run(o.id === (was ?? '—') ? null : write(o.id === '—' ? null : o.id)),
           });
         }
