@@ -1,0 +1,1 @@
+- Conditional document appends and state changes reject stale row revisions under the database write lock. Authenticated clients can read a minimal full serving-commit proof (Issue #902).

@@ -6654,6 +6654,23 @@ export class Weave {
     return out;
   }
 
+  entityRevision(id) {
+    return createHash('sha256').update(JSON.stringify(this.getEntity(id))).digest('hex');
+  }
+
+  conditionalWrite(id, { expectedRevision, operation, field, markdown, state } = {}) {
+    if (!/^[a-f0-9]{64}$/.test(expectedRevision ?? '') || !['append', 'state'].includes(operation)) throw new WeaveError('A conditional write requires expectedRevision and append or state operation', 'invalid');
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('Row revision changed; read it again before writing', 'conflict');
+      if (operation === 'append') {
+        if (typeof markdown !== 'string' || !markdown.trim()) throw new WeaveError('An append requires nonempty markdown', 'invalid');
+        this.appendDoc(id, markdown, field);
+      } else this.setState(id, field, state);
+      return this.readEntity(id);
+    });
+  }
+
   readEntity(id, { viewerZone = null } = {}) {
     if (viewerZone == null) return this.#readEntityIn(id);
     const prev = this.viewerZone;
@@ -6717,6 +6734,7 @@ export class Weave {
     }
     return {
       id: e.id,
+      revision: this.entityRevision(e.id),
       publicId: e.publicId,
       db: this.qualifiedName(db),
       dbId: db.id,

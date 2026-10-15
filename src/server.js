@@ -59,7 +59,7 @@ export function buildInfo() {
   const release = RELEASE?.status() ?? null;
   if (!BUILD.head) return release;
   if (Date.now() - BUILD.checkedAt > 5 * 60 * 1000) refreshLatest();
-  return { ...describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest, contains: BUILD.contains }), ...release };
+  return { ...describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest, contains: BUILD.contains }), ...release, servingSha: BUILD.head };
 }
 export const MIME = {
   '.html': 'text/html; charset=utf-8',
