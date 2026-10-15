@@ -1,1 +1,0 @@
-- The last three create surfaces open in the right-hand tray: the workspace rail's **New workspace**, a table menu's **New share page…** and a space's **Use template**. The first-run setup wizard stays a centered modal (Issue #780).

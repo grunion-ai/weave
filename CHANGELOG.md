@@ -2,6 +2,15 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.99 (2026-10-15)
+
+- Change an account's role with `account set --role`, `weave_accounts` action `set`, or `PATCH /api/accounts/:ref`. Existing tokens and sessions keep their identity and immediately use the new role; every door, including Users rows, refuses to demote the last architect. (#896)
+- The last three create surfaces open in the right-hand tray: the workspace rail's **New workspace**, a table menu's **New share page…** and a space's **Use template**. The first-run setup wizard stays a centered modal (Issue #780).
+- The flicker gate ignores editor teardown inside a panel removed in the same update. Connected editor regressions and visible transient subtrees remain checked (Issue #899).
+- **The phone picker gesture test waits for the sheet to rest** (Issue #901): wait for the opening animation and short-drag spring to finish before measuring or dragging the grabber again. Check the rendered transform as well as the inline transform so an unfinished spring cannot pass as a settled sheet.
+- The sidebar holds its edges: the workspace name and the search button stay at the top however far the space list scrolls, and **+ New space** now sits above the system tables (Workflows, Users, Activity, Trash) in one pinned strip at the bottom (Issue #854).
+- The supervisor swap test reads routing order per request loop instead of pooling every loop's completions into one list, so a request that finished out of order on the draining old worker no longer reads as the proxy routing backward (Issue #821).
+
 ## v0.4.98 (2026-10-15)
 
 - **The report button sits in the corner** (Issue #846): on a desktop viewport the bug glyph was pinned 40px above the bottom edge while holding 12px from the right, so it read as floating above the corner it belongs in. It now takes the same 12px inset from both edges, the value its phone rule already used. The raised offsets that clear a real neighbour are unchanged: the open tray still pushes it to 72px, and the phone bar still pushes it to 86px.
