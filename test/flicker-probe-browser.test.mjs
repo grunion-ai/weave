@@ -85,6 +85,38 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  for (const replaced of [false, true]) test(`disposing an editor ${replaced ? 'with' : 'without'} replacing its panel reports only visible changes (Issue #899)`, async () => {
+    const page = await open({ maxMs: 150 });
+    try {
+      const mounted = await page.evaluate(() => {
+        const panel = document.createElement('div');
+        panel.id = 'old-panel';
+        document.getElementById('stage').append(panel);
+        return performance.now();
+      });
+      await page.waitForFunction((at) => performance.now() - at > 150, mounted);
+      await page.evaluate(() => {
+        const host = document.createElement('div');
+        host.className = 'doc-editor';
+        document.getElementById('old-panel').append(host);
+        host.classList.add('vditor');
+        host.innerHTML = '<div class="vditor-content" style="width:200px;height:40px;background:#888">Document</div>';
+      });
+      await frames(page, 3);
+      await page.evaluate((detach) => {
+        const host = document.querySelector('.doc-editor');
+        host.classList.remove('vditor');
+        host.replaceChildren();
+        if (detach) document.getElementById('old-panel').remove();
+      }, replaced);
+      await frames(page, 2);
+      const reverts = await events(page, 'revert');
+      const transients = await events(page, 'transient');
+      assert.equal(reverts.length, replaced ? 0 : 1, JSON.stringify(reverts));
+      assert.equal(transients.length, replaced ? 0 : 1, JSON.stringify(transients));
+    } finally { await page.close(); }
+  });
+
   test('a node painted for a beat and removed is a transient, named by its selector', async () => {
     const page = await open();
     try {

@@ -103,7 +103,7 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
         if (!e) m.set(r.attributeName, { orig: r.oldValue, t, painted: false });
         else if (n.getAttribute(r.attributeName) === e.orig) {
           m.delete(r.attributeName);
-          if (e.painted && t - e.t < MAX && !answering(t)) {
+          if (n.isConnected && e.painted && t - e.t < MAX && !answering(t)) {
             const detail = r.attributeName === 'class' ? tokens(e.orig, e.mid) : `${r.attributeName}: ${String(e.mid ?? '(none)').slice(0, 80)}`;
             push({ kind: 'revert', sel: e.sel, ms: Math.round(t - e.t), detail });
           }
@@ -114,7 +114,7 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
     for (const [n, b] of born) if (!n.isConnected) { born.delete(n); gone.set(n, b); }
     const groups = new Map();
     for (const [n, b] of gone) {
-      if (!b.painted || t - b.t >= MAX || answering(t)) continue;
+      if (!b.painted || !b.parent?.isConnected || t - b.t >= MAX || answering(t)) continue;
       let up = n.parentElement;
       while (up && !gone.has(up)) up = up.parentElement;
       if (up) continue;
