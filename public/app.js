@@ -10698,6 +10698,7 @@ const activityPanel = (() => {
   let st = null;
   let panel = null;
   let sheetBack = null;
+  let fitObserver = null;
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
@@ -10827,10 +10828,34 @@ const activityPanel = (() => {
     node.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === node) node.click(); });
     return node;
   }
+  function fitFilters(strip) {
+    if (!strip.isConnected) return;
+    const chipEls = [...strip.querySelectorAll(':scope > button[data-filter]')];
+    const more = strip.querySelector(':scope > .wv-act-more');
+    const fits = () => {
+      const last = [...strip.children].filter((c) => !c.hidden).at(-1);
+      const edge = strip.getBoundingClientRect().right - parseFloat(getComputedStyle(strip).paddingRight);
+      return !last || last.getBoundingClientRect().right <= edge + 0.5;
+    };
+    for (const c of chipEls) c.hidden = false;
+    more.hidden = true;
+    if (fits()) return;
+    more.hidden = false;
+    const spare = chipEls.filter((c) => c.dataset.filter.startsWith('doc:') && c.getAttribute('aria-pressed') !== 'true').reverse();
+    for (const c of spare) {
+      c.hidden = true;
+      if (fits()) return;
+    }
+  }
   function renderPanel() {
     const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields']];
-    const filters = el('div', { class: 'wv-act-filters', role: 'toolbar', 'aria-label': 'Show' },
-      ...chips.map(([k, label]) => el('button', { type: 'button', 'aria-pressed': String(st.filter === k), onclick: () => { st.filter = k; render(); } }, label)));
+    const pickFilter = (k) => { st.filter = k; render(); };
+    const chipEls = chips.map(([k, label]) => el('button', { type: 'button', 'data-filter': k, 'aria-pressed': String(st.filter === k), onclick: () => pickFilter(k) }, label));
+    const more = el('button', {
+      type: 'button', class: 'wv-act-more', hidden: true, 'aria-haspopup': 'menu', title: 'More filters',
+      onclick: () => menu(chipEls.filter((c) => c.hidden).map((c) => ({ label: c.textContent, section: 'organize', run: () => pickFilter(c.dataset.filter) })), { anchor: more, label: 'More filters' }),
+    }, 'More', iconEl('lucide:chevron-down', 'wv-icon'));
+    const filters = el('div', { class: 'wv-act-filters', role: 'toolbar', 'aria-label': 'Show' }, ...chipEls, more);
     const list = el('div', { class: 'wv-act-list' });
     let day = '';
     for (const it of H().filterFeed(st.items, st.filter)) {
@@ -10847,6 +10872,10 @@ const activityPanel = (() => {
     const host = st.mount?.querySelector?.(':scope > .entity-split') ?? st.mount;
     if (panel?.parentElement === host) panel.replaceWith(next); else { panel?.remove(); host.append(next); }
     panel = next;
+    fitObserver?.disconnect();
+    fitFilters(filters);
+    fitObserver = new ResizeObserver(() => fitFilters(filters));
+    fitObserver.observe(filters);
     list.scrollTop = keep;
     const s = list.querySelector('.wv-act-row.sel');
     if (s) {
@@ -10913,6 +10942,7 @@ const activityPanel = (() => {
       sheetBack = null;
       if (!back && history.state?.wvSheet === 'activity') history.back();
     }
+    fitObserver?.disconnect(); fitObserver = null;
     panel?.remove(); panel = null;
     clearViews();
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');

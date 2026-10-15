@@ -10,6 +10,7 @@ const s = await launch('record activity panel', (weave) => {
   weave.addField(t, { name: 'Spec', type: 'document' });
   weave.addField(t, { name: 'Release note', type: 'document' });
   weave.addField(t, { name: 'Priority', type: 'select', config: { options: ['P1', 'P2'] } });
+  weave.addField(t, { name: 'Link', type: 'url' });
   id = weave.createEntity(t, { name: 'Panel', doc: 'first draft', values: { Priority: 'P2' } }).id;
   weave.setDoc(id, 'first draft\n\nsecond paragraph', 'Description');
   weave.setDoc(id, 'spec one', 'Spec');
@@ -46,10 +47,14 @@ if (s) {
       await page.click('.activity-btn');
       await page.waitForSelector('.wv-activity .wv-act-row');
       assert.equal(await page.locator('.activity-btn').getAttribute('aria-pressed'), 'true');
-      assert.deepEqual(await page.locator('.wv-act-filters button').allTextContents(), ['All', 'Description', 'Spec', 'Release note', 'Fields'], 'a chip per document; no Comments chip (Feature #323)');
+      assert.deepEqual(await page.locator('.wv-act-filters button[data-filter]').allTextContents(), ['All', 'Description', 'Spec', 'Release note', 'Fields'], 'a chip per document; no Comments chip (Feature #323)');
       assert.equal(await page.locator('.wv-act-head').textContent(), 'Activity', 'a title and a close button: no counts, no subtitle');
-      const clipped = await page.locator('.wv-act-filters button').evaluateAll((bs) => bs.filter((b) => b.getBoundingClientRect().right > b.closest('.wv-activity').getBoundingClientRect().right).length);
-      assert.equal(clipped, 0, 'every filter chip is inside the panel: the row wraps, never clips');
+      const strip = await page.locator('.wv-act-filters').evaluate((f) => {
+        const shown = [...f.children].filter((b) => !b.hidden);
+        const edge = f.getBoundingClientRect().right;
+        return { lines: new Set(shown.map((b) => Math.round(b.getBoundingClientRect().top))).size, clipped: shown.filter((b) => b.getBoundingClientRect().right > edge + 0.5).length };
+      });
+      assert.deepEqual(strip, { lines: 1, clipped: 0 }, 'the filter chips sit on one line and none is cut (Issue #907)');
       for (const rid of [`r${revs('Description')[0].seq}`, `r${revs('Spec')[0].seq}`]) assert.equal(await row(page, rid).count(), 1, `${rid} listed`);
       assert.match(await page.locator('.wv-activity').textContent(), /Priority/, 'field changes are in the panel');
       assert.doesNotMatch(await page.locator('.wv-activity').textContent(), /looks right/, 'comments stay out of the panel until their redesign (Feature #323)');
@@ -178,6 +183,37 @@ if (s) {
       assert.doesNotMatch(await page.locator('.wv-activity').textContent(), /null/);
       await page.click('.wv-act-row.sel .btn-primary');
       assert.equal(await eventually(async () => (await (await fetch(`${base}/api/entities/${lone}`)).json()).fields.Priority, null), null, 'Clear value empties the field');
+    } finally { await page.close(); }
+  });
+
+  test('a long value wraps inside the panel, and chips that do not fit wait under More (Issue #907)', async () => {
+    const url = 'https://adriany.fibery.io/Task_Management/Task/a-path-that-keeps-going-past-the-panel-edge-1234';
+    weave.updateEntity(lone, { Link: url });
+    const page = await open(lone);
+    try {
+      await page.click('.activity-btn');
+      const r = page.locator('.wv-activity .wv-act-row').filter({ has: page.locator('.name', { hasText: /^Link$/ }) }).first();
+      await r.waitFor();
+      const fit = await r.evaluate((n) => {
+        const list = n.closest('.wv-act-list'), lr = list.getBoundingClientRect();
+        const val = [...n.querySelectorAll('.wv-act-val')].find((v) => v.textContent.startsWith('https://'));
+        const vr = val.getBoundingClientRect();
+        return { text: val.textContent, inside: vr.left >= lr.left - 0.5 && vr.right <= lr.right + 0.5, overflowX: list.scrollWidth - list.clientWidth, lines: Math.round(vr.height / parseFloat(getComputedStyle(val).lineHeight)) };
+      });
+      assert.equal(fit.text, url, 'the whole value is in the row');
+      assert.ok(fit.inside, 'the value stays inside the list');
+      assert.ok(fit.overflowX <= 0, 'the list never scrolls sideways');
+      assert.ok(fit.lines > 1, 'the long value wraps onto more lines');
+      const more = page.locator('.wv-act-filters .wv-act-more');
+      assert.equal(await more.isVisible(), true, 'More shows once the chips run out of room');
+      const hidden = await page.locator('.wv-act-filters button[data-filter][hidden]').allTextContents();
+      assert.ok(hidden.length > 0, 'at least one document chip waits under More');
+      await more.click();
+      await page.waitForSelector('.wv-menu');
+      assert.deepEqual(await page.locator('.wv-menu .wv-menu-label').allTextContents(), hidden, 'More lists exactly the chips the strip left out');
+      await page.locator('.wv-menu .wv-menu-label', { hasText: hidden[0] }).click();
+      await page.waitForSelector(`.wv-act-filters button[aria-pressed="true"]:text-is("${hidden[0]}")`);
+      assert.equal(await page.locator(`.wv-act-filters button[aria-pressed="true"]`).isVisible(), true, 'the chosen chip takes a place on the strip');
     } finally { await page.close(); }
   });
 

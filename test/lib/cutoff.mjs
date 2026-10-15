@@ -221,8 +221,40 @@ export function seed(weave) {
       Tags: i % 2 ? ['Short'] : ['Short', 'A tag whose label runs long enough to need a wrap'],
     });
   }
-  return handles;
+  const notes = weave.createTable({ space: 'Work', name: 'Note' });
+  weave.addField(notes, { name: 'Link', type: 'url' });
+  for (const name of ['Spec', 'Release note', 'Customer summary']) weave.addField(notes, { name, type: 'document' });
+  const activity = weave.createEntity(notes, { name: 'Log', doc: 'First draft.' }).id;
+  weave.setDoc(activity, 'Spec text.', 'Spec');
+  weave.setDoc(activity, 'Release text.', 'Release note');
+  weave.setDoc(activity, 'Summary text.', 'Customer summary');
+  weave.updateEntity(activity, { Link: 'https://adriany.fibery.io/Task_Management/Task/a-path-that-keeps-going-past-the-panel-1234' });
+  return { ...handles, notes, activity };
 }
+
+const phoneCell = (page) => (page.viewportSize()?.width ?? 1440) < 768;
+
+export const ACTIVITY_JOURNEY = {
+  name: 'activity-panel',
+  cells: ['desktop', 'phone'],
+  root: 'aside.wv-activity, .wv-act-view',
+  async setup(page, ctx) {
+    const phone = phoneCell(page);
+    await page.goto(phone ? `${ctx.base}/#/table/${ctx.notes.id}?e=${ctx.activity}` : `${ctx.base}/#/entity/${ctx.activity}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector(`${phone ? '#dock:not([hidden])' : '#main'} .activity-btn`);
+  },
+  async run(page) {
+    const phone = phoneCell(page);
+    const btn = page.locator(`${phone ? '#dock' : '#main'} .activity-btn >> visible=true`).first();
+    await (phone ? btn.tap() : btn.click());
+    const link = page.locator('.wv-activity .wv-act-row').filter({ has: page.locator('.name', { hasText: /^Link$/ }) }).first();
+    await link.waitFor();
+    await (phone ? link.locator('.wv-act-what').tap() : link.locator('.wv-act-what').click());
+    await page.waitForSelector('.wv-activity .wv-act-row.sel .wv-act-tray');
+  },
+};
+
+export const SWEEP_JOURNEYS = [...JOURNEYS, ACTIVITY_JOURNEY];
 
 const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
 
@@ -232,7 +264,7 @@ export async function settle(page) {
   await frames(page, 2);
 }
 
-export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = JOURNEYS, overlays = OVERLAYS } = {}) {
+export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS } = {}) {
   const findings = [];
   const failed = [];
   const timings = [];
@@ -246,7 +278,7 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
   const noop = async () => {};
   for (const j of journeys.filter((x) => cellsOf(x).includes(cell))) {
     try {
-      await walk(browser, j, ctx, { ...pageOptions, probe: { install: noop, reset: noop, read: (page) => read(page, `journey:${j.name}`) } });
+      await walk(browser, j, ctx, { ...pageOptions, probe: { install: noop, reset: noop, read: (page) => read(page, `journey:${j.name}`, j.root ?? null) } });
     } catch (err) {
       failed.push({ where: `journey:${j.name}`, cell, error: String(err.message).split('\n')[0] });
     }
