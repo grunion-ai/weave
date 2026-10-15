@@ -263,3 +263,10 @@ test('createOffer reads a multi picker through what is still on the list (Issue 
   assert.equal(core.createOffer(core.search(m, 'Doing')), null, 'a staged option is still an option, never a new one');
   assert.deepEqual(core.createOffer(core.search(m, 'Nightly')), { term: 'Nightly', enter: true });
 });
+
+test('a picker titled Priority with no placeholder hints Search priority… (Issue #799)', () => {
+  assert.equal(core.hint('Priority'), 'Search priority…');
+  assert.equal(core.hint('Icon'), 'Search icon…');
+  assert.equal(core.hint(''), 'Search…', 'an untitled picker keeps the bare hint');
+  assert.equal(core.hint(null), 'Search…');
+});

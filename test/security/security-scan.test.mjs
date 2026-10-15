@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fingerprint, newFindings, summarize, onPath, steps } from '../../scripts/security-scan.mjs';
+import { fingerprint, newFindings, summarize, onPath, steps, gitleaksArgs, ROOT } from '../../scripts/security-scan.mjs';
 
 const result = (rule, path, start, end = start) => ({ check_id: `security.semgrep.${rule}`, path, start: { line: start }, end: { line: end } });
 
@@ -58,4 +58,27 @@ test('with an empty PATH every external tool is skipped and only the failing che
 test('the semgrep rules fire on their fixtures and stay quiet on the ok lines', { skip: !onPath('semgrep') && 'semgrep not installed' }, () => {
   const r = spawnSync('semgrep', ['--test', '--metrics=off', 'security/semgrep'], { encoding: 'utf8', cwd: join(import.meta.dirname, '../..') });
   assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('gitleaks reads the checked-out history only, never every fetched branch (Issue #913)', () => {
+  assert.ok(gitleaksArgs().includes('--log-opts=HEAD'));
+});
+
+test('a leak on another branch does not fail the scan of a clean checkout (Issue #913)', { skip: !onPath('gitleaks') && 'gitleaks not installed' }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'scanref-'));
+  const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' });
+  const scan = () => spawnSync('gitleaks', gitleaksArgs(join(ROOT, 'security/gitleaks.toml')), { cwd: dir, encoding: 'utf8' });
+  try {
+    git('init', '-q', '-b', 'main');
+    writeFileSync(join(dir, 'clean.js'), 'export const ok = 1;\n');
+    git('add', '.'); git('commit', '-q', '-m', 'clean');
+    git('checkout', '-q', '-b', 'other');
+    const value = ['k3J9', 'qP2x', 'Lm8v', 'Tz4w', 'Rb7n', 'Yc1s', 'Hd6f', 'Wg0e'].join('');
+    writeFileSync(join(dir, 'config.js'), `const api_key = "${value}";\n`);
+    git('add', '.'); git('commit', '-q', '-m', 'leak');
+    assert.notEqual(scan().status, 0, 'the fixture must be a finding when its branch is checked out');
+    git('checkout', '-q', 'main');
+    const r = scan();
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

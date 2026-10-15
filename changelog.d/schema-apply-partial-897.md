@@ -1,0 +1,1 @@
+- `PUT /api/schema` and `weave schema apply` take `partial`/`--partial`: a document that adds spaces no longer has to repeat every existing space, and nothing it leaves out is deleted. (#897)

@@ -1,0 +1,1 @@
+- Renaming an account carries its credentials with it: the keystore owner and every share naming the old account name move to the new one, so the owner and the accounts a credential was granted to keep their access. (#884)

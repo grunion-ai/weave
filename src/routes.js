@@ -439,9 +439,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const creator = logins.find((me) => mayAdminister(hubRoot, rootOf(me)?.role)) ?? null;
       const signedUp = (me) => live.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
       const signup = !creator && openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
+      const owner = creator ?? signup ?? (billing ? logins[0] ?? null : null);
       const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@'))
         ?? logins.map((me) => me.email?.split('@')[0]).find(Boolean) ?? null;
-      return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, creator, signup, canCreate: !!(creator || signup), accountName, hubRoot };
+      const unpaid = async (me) => {
+        for (const [name, w] of live) {
+          if (Weave.roleName(w.accountForIdentity(me)?.role) !== 'architect') continue;
+          if ((await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() })).plan == null) return name;
+        }
+        return null;
+      };
+      return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, creator, signup, owner, canCreate: !!owner, accountName, hubRoot, unpaid };
     };
     const heldStart = async () => {
       prune(starts);
@@ -972,7 +980,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (!engine) {
                 noteFailure(ip);
                 const ws = c.holder.state.meta.name;
-                return refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [await differentAccount(), signInAgain()]);
+                const own = billing ? [{ label: 'Start your own workspace', href: `${startRoot}/start` }] : [];
+                const page = refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [...own, await differentAccount(), signInAgain()]);
+                return own.length ? withCookies(page, startCookies(await holdLogin(who))) : page;
               }
               const kept = startCookies(await holdLogin(who));
               if (c.handoff) return withCookies(await handOff(engine, account.id, c.next, c.handoff), kept);
@@ -1075,10 +1085,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, { connected: !!seen, at: seen?.at ?? null, client: seen?.client ?? null }, { 'Cache-Control': 'no-store' });
           }
           if (route === 'POST /api/start/workspaces') {
-            const me = found.creator ?? found.signup;
+            const me = found.owner;
             if (!me) {
               if (openSignup.on) return out(403, { error: 'This sign-in has made as many workspaces as this server allows.', code: 'signup_limit' });
               return out(403, { error: 'Creating a workspace here needs an invite from the operator.', code: 'signup_closed' });
+            }
+            if (!found.creator && billing) {
+              let waiting;
+              try { waiting = await found.unpaid(me); } catch (error) {
+                if (!(error instanceof BillingUnavailable)) throw error;
+                return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
+              }
+              if (waiting) return out(402, { error: `${waiting} is still waiting on a plan. Subscribe to the solo plan on its billing page, then start another workspace.`, code: 'plan-required', waiting }, { 'Cache-Control': 'no-store' });
             }
             const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
             if (body?.template && !template) return out(400, { error: `Unknown template '${body.template}'`, code: 'invalid' });
@@ -1373,6 +1391,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.applySchema(body?.schema ?? body, {
             dryRun: !!body?.dryRun,
             allowDestructive: !!body?.allowDestructive,
+            partial: !!body?.partial,
           }));
         }
         if (route === 'POST /api/build') {

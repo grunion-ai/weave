@@ -3289,6 +3289,19 @@ export class Weave {
     return { name, shared: entry.shared };
   }
 
+  #renameKeyHolder(from, to) {
+    const data = this.#readKeystore();
+    let moved = 0;
+    for (const entry of Object.values(data.keys)) {
+      if (entry.owner === from) { entry.owner = to; moved++; }
+      if (Array.isArray(entry.shared) && entry.shared.includes(from)) {
+        entry.shared = [...new Set(entry.shared.map((a) => (a === from ? to : a)))];
+        moved++;
+      }
+    }
+    if (moved) this.#writeKeystore(data);
+  }
+
   credentialLink(field, ref) {
     const { keystore } = this.credentialConfig(field);
     const r = encodeURIComponent(String(ref ?? ''));
@@ -3443,6 +3456,7 @@ export class Weave {
   }
 
   static SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  static LAST_SEEN_MS = 60 * 60 * 1000;
 
   #account(ref) {
     const accounts = this.state.meta.accounts ?? {};
@@ -3483,9 +3497,18 @@ export class Weave {
       s.lastSeenAt = new Date(now).toISOString();
       s.expiresAt = new Date(now + Weave.SESSION_TTL_MS).toISOString();
       this.save();
+      if (this.#lastSeenStale(a.id, now)) this.#syncUsers();
     }
     const { tokenHash, ...pub } = a;
     return { ...pub, sessionId: h, expiresAt: s.expiresAt, renewed };
+  }
+
+  #lastSeenStale(accountId, now) {
+    const t = this.#sysTable('users');
+    if (!t) return false;
+    const row = this.#sysRow('users', accountId);
+    const at = Date.parse(row?.values[this.#sysField(t, 'Last Seen')?.id] ?? '');
+    return !(now - at < Weave.LAST_SEEN_MS);
   }
 
   removedSession(token) {
@@ -3607,6 +3630,7 @@ export class Weave {
     const from = a.name;
     a.name = next;
     this.save();
+    this.#renameKeyHolder(from, next);
     this.#audit('account-renamed', { from, name: next });
     this.#syncUsers();
     return { id: a.id, name: next };

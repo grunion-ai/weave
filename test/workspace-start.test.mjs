@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
+import { createBilling, CLERK_API } from '../src/billing.js';
 import { startIdp } from './lib/idp.mjs';
 await import('../public/slug-core.js');
 const { WeaveSlugs } = globalThis;
@@ -27,7 +28,7 @@ const hit = (port, host, method, path, { cookie, body, token } = {}) => new Prom
 });
 const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith(`${name}=`))?.split(';')[0];
 
-async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, rootArchitect = true } = {}) {
+async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, rootArchitect = true, billing = null } = {}) {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const dir = mkdtempSync(join(tmpdir(), 'weave-start-'));
@@ -50,13 +51,13 @@ async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, ro
   main.redeemIdentityInvite(main.linkIdentity('Kyle Adriany', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
   main.setRequireAuth(true);
   main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits });
+  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits, billing });
   const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
   const apex = at('weave.test');
   const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
-  const signInAtStart = async (sub) => {
+  const signInAtStart = async (sub, claims = {}) => {
     const start = await apex('GET', '/api/auth/oidc/start?start=1');
-    const back = idp.approve(start.headers.location, { sub });
+    const back = idp.approve(start.headers.location, { sub, ...claims });
     const res = await follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
     return { res, cookie: cookieOf(res, 'wv_start') };
   };
@@ -151,7 +152,9 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: eve.cookie, body: { name: 'Eve', slug: 'eve' } })).status, 403, 'creating needs the right to manage workspaces');
 
     const nobody = await s.signInAtStart('user_nobody');
-    assert.deepEqual((await s.apex('GET', '/api/start', { cookie: nobody.cookie })).json().rows, []);
+    const empty = (await s.apex('GET', '/api/start', { cookie: nobody.cookie })).json();
+    assert.deepEqual([empty.rows, empty.canCreate], [[], false], 'with billing off a stranger still cannot create');
+    assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: nobody.cookie, body: { name: 'Mine', slug: 'mine' } })).status, 403);
   } finally { s.stop(); }
 });
 
@@ -193,6 +196,55 @@ test('start: an architect creates a workspace from a name and a slug, and become
     assert.deepEqual([owner.name, Weave.roleName(owner.role), owner.identities[0].subject], ['Kyle Adriany', 'architect', 'user_kyle']);
     assert.equal(w.getWorkspace().title, 'Harbor Launch');
     w.store.close?.();
+  } finally { s.stop(); }
+});
+
+const clerkAt = (routes) => async (url, init = {}) => {
+  const hit = routes[`${init.method ?? 'GET'} ${String(url).slice(CLERK_API.length).split('?')[0]}`];
+  const [status, body] = hit ?? [404, { errors: [{ code: 'resource_not_found' }] }];
+  return new Response(JSON.stringify(body), { status });
+};
+const SOLO = [200, { subscription_items: [{ status: 'active', plan: { slug: 'solo' } }] }];
+
+test('start: with billing on, a new person creates a first workspace and is its Observer-only Architect until the solo plan', async () => {
+  const routes = {};
+  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', fetch: clerkAt(routes) });
+  const s = await serve({ billing });
+  try {
+    const dana = await s.signInAtStart('user_dana', { email: 'dana@example.com', email_verified: true });
+    const list = (await s.apex('GET', '/api/start', { cookie: dana.cookie })).json();
+    assert.deepEqual([list.rows, list.canCreate, list.accountName], [[], true, 'dana']);
+    const made = await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Dana Desk', slug: 'dana-desk' } });
+    assert.equal(made.status, 201);
+    assert.deepEqual([made.json().name, made.json().open], ['dana-desk', '/api/start/open/dana-desk']);
+    const w = new Weave({ path: join(s.dir, 'dana-desk.db') });
+    const owner = w.listAccounts()[0];
+    assert.deepEqual([w.listAccounts().length, owner.name, Weave.roleName(owner.role), owner.identities[0].subject], [1, 'dana', 'architect', 'user_dana']);
+    w.store.close?.();
+
+    const listed = (await s.apex('GET', '/api/start', { cookie: dana.cookie })).json();
+    assert.deepEqual(listed.rows.map((r) => r.name), ['dana-desk']);
+    const landed = await s.follow((await s.apex('GET', listed.rows[0].open, { cookie: dana.cookie })).headers.location);
+    const session = cookieOf(landed, [landed.headers['set-cookie']].flat()[0].split('=')[0]);
+    const desk = s.at('dana-desk.weave.test');
+    assert.equal((await desk('GET', '/api/spaces', { cookie: session })).status, 200, 'reading is free');
+    const unpaid = await desk('POST', '/api/spaces', { cookie: session, body: { name: 'Plans' } });
+    assert.deepEqual([unpaid.status, unpaid.json().code], [402, 'seat-required'], 'no solo plan yet, so the Architect works as an Observer');
+
+    const waiting = await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Second', slug: 'dana-two' } });
+    assert.deepEqual([waiting.status, waiting.json().code, waiting.json().waiting], [402, 'plan-required', 'dana-desk'], 'one unpaid workspace per identity');
+    routes['GET /users/user_dana/billing/subscription'] = [500, {}];
+    billing.forget();
+    const down = await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Second', slug: 'dana-two' } });
+    assert.deepEqual([down.status, down.json().code], [503, 'billing-unavailable'], 'Clerk down never grants a free create');
+
+    routes['GET /users/user_dana/billing/subscription'] = SOLO;
+    billing.forget();
+    assert.equal((await desk('POST', '/api/spaces', { cookie: session, body: { name: 'Plans' } })).status, 201, 'the solo plan seats the Architect');
+    assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Second', slug: 'dana-two' } })).status, 201, 'with the first workspace paid, another may start');
+
+    const kyle = await s.signInAtStart('user_kyle');
+    for (const slug of ['kyle-one', 'kyle-two']) assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name: slug, slug } })).status, 201, 'a hub-root architect is not held to the limit');
   } finally { s.stop(); }
 });
 
