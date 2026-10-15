@@ -3412,6 +3412,21 @@ export class Weave {
     return this.state.meta.requireAuth;
   }
 
+  billing() {
+    const m = this.state.meta;
+    return { slug: m.name, name: m.title || m.name, createdAt: m.createdAt ?? null, billing: { orgId: m.billing?.orgId ?? null } };
+  }
+
+  linkBillingOrg(orgId) {
+    const id = String(orgId ?? '').trim();
+    if (!/^org_[A-Za-z0-9]+$/.test(id)) throw new WeaveError(`'${orgId}' is not a Clerk organization id`, 'invalid');
+    if (this.state.meta.billing?.orgId === id) return id;
+    this.state.meta.billing = { ...(this.state.meta.billing ?? {}), orgId: id };
+    this.save();
+    this.#audit('billing-org-linked', { orgId: id });
+    return id;
+  }
+
   static SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
   #account(ref) {
