@@ -19,7 +19,6 @@ if (s) {
   async function open(hash) {
     const page = await browser.newPage();
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
-    if (hash.startsWith('#/table/')) await page.click('.view-title-row .desc-info');
     await page.waitForSelector('.view-desc .view-desc-body');
     return page;
   }
@@ -45,15 +44,14 @@ if (s) {
     ['a space page', () => `#/space/${longSpace.id}`],
     ['the workspace page', () => ''],
   ]) {
-    test(`${label}: a long description folds and offers Show more`, async () => {
+    test(`${label}: a long description shows five lines and a Show more control`, async () => {
       const page = await open(hash());
       try {
         const r = await probe(page);
-        const lines = label === 'a table page' ? 3 : 5;
         assert.ok(r.clamped, 'the body wears the clamp');
         assert.ok(r.full > r.shown, `there is hidden text (${r.shown} of ${r.full}px shown)`);
-        assert.ok(r.shown <= r.lineHeight * lines + 1, `shows at most the folded lines: ${r.shown}px at ${r.lineHeight}px/line`);
-        assert.ok(r.shown >= r.lineHeight * (lines - 1), `shows the folded lines, not fewer: ${r.shown}px`);
+        assert.ok(r.shown <= r.lineHeight * 5 + 1, `shows at most five lines: ${r.shown}px at ${r.lineHeight}px/line`);
+        assert.ok(r.shown >= r.lineHeight * 4, `shows about five lines, not fewer: ${r.shown}px`);
         assert.equal(r.more, 'Show more');
       } finally { await page.close(); }
     });

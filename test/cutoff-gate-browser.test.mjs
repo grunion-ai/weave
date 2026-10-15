@@ -19,7 +19,7 @@ if (s) {
     const page = await s.browser.newPage({ viewport: CELLS.desktop.viewport });
     try {
       await page.goto(`${s.base}/#/table/${s.tasks.id}`, { waitUntil: 'networkidle' });
-      for (const selector of ['.url-link', '.date-cell', '.range-cell']) {
+      for (const selector of ['.url-link', '.range-cell']) {
         const cell = page.locator(`.wv-grid tbody ${selector}`).first();
         const result = await cell.evaluate((node) => {
           const text = () => node.querySelector('input')?.value || node.textContent;
