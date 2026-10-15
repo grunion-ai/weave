@@ -209,6 +209,27 @@ test('one tray creates a field, with no modal in front of it (Issue #779)', () =
   assert.doesNotMatch(APP, /fieldDialog\(target, null/, 'nothing hands off from a modal to the tray');
 });
 
+const countOf = (needle) => APP.split(needle).length - 1;
+
+test('the last three create modals moved to the tray, and onboarding alone stays centred (Issue #780)', () => {
+  for (const [title, trigger] of [
+    ["'New workspace'", 'the workspace rail +'],
+    ["'New share page'", "the table menu's New share page"],
+    ['`Use ${space.space} as a template`', "a space's Use template"],
+  ]) {
+    assert.equal(countOf(`modal(${title}`), 0,
+      `${trigger} creates in the right-hand tray, never a centered modal`);
+    assert.equal(countOf(`tray(${title}`), 1, `${trigger} opens exactly one tray`);
+  }
+  const wire = fnBody('wireWsNew');
+  assert.match(wire, /#tray button\[type="submit"\]/, "the slug form binds the tray's submit button");
+  const useT = fnBody('useTemplateDialog');
+  assert.doesNotMatch(useT, /#modal/, 'Use template reads its own tray, not a modal');
+  assert.match(useT, /querySelector\('#tray'\)/);
+  assert.ok(countOf("modal('Keyboard shortcuts'") === 1, 'read-only modals are untouched');
+  assert.doesNotMatch(fnBody('onboard'), /\btray\(/, 'protected first-run onboarding stays a centered modal');
+});
+
 test('one popover implementation serves every anchored menu', () => {
   assert.match(APP, /function showPopover/);
   const fn = APP.slice(APP.indexOf('function showPopover'));

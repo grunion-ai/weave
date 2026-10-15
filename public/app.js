@@ -2593,7 +2593,7 @@ const MENU_ROWS = {
     share: { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
     'share-page': {
       label: 'New share page…',
-      run: () => modal('New share page', [
+      run: () => tray('New share page', [
         el('input', { name: 'name', placeholder: 'Page name', class: 'form-control' }),
       ], async (fd) => {
         const where = filterWhere(db);
@@ -8902,7 +8902,7 @@ async function useTemplateDialog(space) {
     el('div', { class: 'form-hint' }, 'Copies the tables, fields and views. Rows stay here.'),
     said,
   ] : [el('p', { class: 'use-template-none' }, 'There is no other workspace to build in. Create one first, from the workspace rail.')];
-  modal(`Use ${space.space} as a template`, body, async (fd) => {
+  tray(`Use ${space.space} as a template`, body, async (fd) => {
     if (!others.length) return;
     said.hidden = true;
     const workspace = String(fd.get('workspace'));
@@ -8916,7 +8916,7 @@ async function useTemplateDialog(space) {
       throw err;
     }
   }, 'Use');
-  const box = document.querySelector('#modal');
+  const box = document.querySelector('#tray');
   if (!others.length) box?.querySelector('button[type=submit]')?.setAttribute('disabled', '');
   else box?.querySelector('.picker-face')?.focus();
 }
@@ -12810,7 +12810,7 @@ function wireWsNew() {
     });
     const accountName = me?.account?.name ?? null;
     const slugs = WeaveSlugForm.mount({ accountName, check: (slug) => api('GET', `/workspaces/slug?slug=${encodeURIComponent(slug)}`) });
-    modal('New workspace', [slugs.node], async () => {
+    tray('New workspace', [slugs.node], async () => {
       try {
         const created = await api('POST', '/workspaces', slugs.value());
         location.href = created.url;
@@ -12819,7 +12819,7 @@ function wireWsNew() {
         throw err;
       }
     }, WeaveSlugs.COPY.submit);
-    const done = document.querySelector('#modal button[type="submit"]');
+    const done = document.querySelector('#tray button[type="submit"]');
     if (done) slugs.bindSubmit(done);
   }
 }

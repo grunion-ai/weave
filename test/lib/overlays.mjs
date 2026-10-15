@@ -47,7 +47,7 @@ export const OVERLAYS = [
     },
   },
   { name: 'shortcuts', surface: 'home', cells: DESKTOP, root: '#modal-back', open: (page, ctx, cell) => press(page, 'button[aria-label="Keyboard shortcuts"]', cell) },
-  { name: 'new-workspace', surface: 'home', cells: DESKTOP, root: '#modal-back', open: (page, ctx, cell) => press(page, '.ws-new', cell) },
+  { name: 'new-workspace', surface: 'home', cells: DESKTOP, root: '#tray-back', open: (page, ctx, cell) => press(page, '.ws-new', cell) },
   { name: 'workspace-menu', surface: 'home', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Workspace actions"]', cell) },
   { name: 'nav-table-menu', surface: 'home', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#nav .dots-btn[title="Task actions"]', cell) },
   { name: 'bug-report', surface: 'home', cells: BOTH, root: '#bug-panel', open: (page, ctx, cell) => press(page, '.bug-fab', cell) },
@@ -68,7 +68,7 @@ export const OVERLAYS = [
   { name: 'filters', surface: 'table', cells: BOTH, root: '.table-filter-popover', open: toolsThen('#main .table-filter-btn') },
   { name: 'table-menu', surface: 'table', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Table actions"]', cell) },
   { name: 'share-table', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('Share…') },
-  { name: 'share-page', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('New share page') },
+  { name: 'share-page', surface: 'table', cells: BOTH, root: '#tray-back', open: tableMenu('New share page') },
   {
     name: 'name-field-editor', surface: 'table', cells: DESKTOP, root: '#tray-back',
     async open(page, ctx, cell) {

@@ -21,34 +21,35 @@ if (s) {
   const focused = (page) => page.evaluate(() => {
     const a = document.activeElement;
     if (!a || a === document.body) return 'BODY';
-    return a.id || a.getAttribute('name') || a.textContent.trim() || a.tagName;
+    return a.id || a.getAttribute('name') || a.getAttribute('aria-label') || a.textContent.trim() || a.tagName;
   });
   const inertNow = (page) => page.evaluate(() => [...document.body.children]
     .filter((n) => n.inert).map((n) => n.id || n.className || n.tagName));
 
   for (const theme of ['light', 'dark']) {
-    test(`New workspace opens through modal() as a labelled modal dialog, its input in the modal's own style (${theme})`, async () => {
+    test(`New workspace opens in the tray as a labelled modal dialog, its input in the tray's own style (${theme})`, async () => {
       const page = await open(theme);
       try {
         await page.focus('#ws-new');
         await page.keyboard.press('Enter');
-        await page.waitForSelector('#modal input[name="name"]');
+        await page.waitForSelector('#tray input[name="name"]');
+        assert.equal(await page.locator('#modal').count(), 0, 'create never opens a centered modal (Issue #780)');
         const dlg = await page.evaluate(() => {
-          const m = document.querySelector('#modal');
+          const m = document.querySelector('#tray');
           const input = m.querySelector('input[name="name"]');
-          const form = m.querySelector('form');
-          const pad = parseFloat(getComputedStyle(form).paddingLeft) + parseFloat(getComputedStyle(form).paddingRight);
+          const body = m.querySelector('.tray-body');
+          const pad = parseFloat(getComputedStyle(body).paddingLeft) + parseFloat(getComputedStyle(body).paddingRight);
           return {
             role: m.getAttribute('role'),
             modal: m.getAttribute('aria-modal'),
             label: document.getElementById(m.getAttribute('aria-labelledby') ?? '')?.textContent ?? null,
             inlineStyle: input.getAttribute('style'),
-            fills: Math.abs(input.getBoundingClientRect().width - (form.clientWidth - pad)) <= 1,
+            fills: Math.abs(input.getBoundingClientRect().width - (body.clientWidth - pad)) <= 1,
           };
         });
         assert.deepEqual(dlg, { role: 'dialog', modal: 'true', label: 'New workspace', inlineStyle: null, fills: true },
-          'a modal dialog named by its title, and an input with no inline style that still fills the form');
-        assert.equal(await focused(page), 'name', 'the name input takes focus');
+          'a modal dialog named by its title, and an input with no inline style that still fills the tray');
+        assert.equal(await focused(page), 'name', 'the name input takes focus, not the close button');
       } finally { await page.close(); }
     });
 
@@ -56,17 +57,18 @@ if (s) {
       const page = await open(theme);
       try {
         await page.click('#ws-new');
-        await page.waitForSelector('#modal input[name="name"]');
+        await page.waitForSelector('#tray input[name="name"]');
         const walk = [await focused(page)];
-        for (let i = 0; i < 3; i += 1) { await page.keyboard.press('Tab'); walk.push(await focused(page)); }
-        assert.deepEqual(walk, ['name', 'slug', 'Cancel', 'name'], 'Tab cycles inside the dialog, past the Create button held disabled until the address is available');
+        for (let i = 0; i < 4; i += 1) { await page.keyboard.press('Tab'); walk.push(await focused(page)); }
+        assert.deepEqual(walk, ['name', 'slug', 'Cancel', 'Close', 'name'],
+          'Tab cycles inside the dialog, past the Create button held disabled until the address is available');
         await page.keyboard.press('Shift+Tab');
-        assert.equal(await focused(page), 'Cancel', 'Shift+Tab from the first control lands on the last');
+        assert.equal(await focused(page), 'Close', 'Shift+Tab steps back to the close button');
         await page.keyboard.press('Shift+Tab');
-        assert.equal(await focused(page), 'slug', 'and steps back from there as usual');
+        assert.equal(await focused(page), 'Cancel', 'and wraps from the first stop to the last');
         await page.evaluate(() => document.activeElement.blur());
         await page.keyboard.press('Tab');
-        assert.equal(await focused(page), 'name', 'Tab from nowhere lands on the dialog\'s first control');
+        assert.equal(await focused(page), 'Close', 'Tab from nowhere lands on the dialog\'s first stop');
       } finally { await page.close(); }
     });
 
@@ -75,10 +77,10 @@ if (s) {
       try {
         await page.focus('#ws-new');
         await page.keyboard.press('Enter');
-        await page.waitForSelector('#modal input[name="name"]');
+        await page.waitForSelector('#tray input[name="name"]');
         const behind = await page.evaluate(() => {
           const ws = document.querySelector('#ws-new');
-          const input = document.querySelector('#modal input[name="name"]');
+          const input = document.querySelector('#tray input[name="name"]');
           ws.focus();
           const r = ws.getBoundingClientRect();
           const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -88,14 +90,14 @@ if (s) {
             hit: hit?.id || hit?.className,
           };
         });
-        assert.deepEqual(behind, { appInert: true, focusStayed: true, hit: 'modal-back' },
+        assert.deepEqual(behind, { appInert: true, focusStayed: true, hit: 'tray-back' },
           'the app is inert: focusing a control behind the dialog does nothing, and a click there lands on the backdrop');
-        assert.equal(await page.evaluate(() => document.querySelector('#modal-back').inert), false, 'the dialog itself is live');
+        assert.equal(await page.evaluate(() => document.querySelector('#tray-back').inert), false, 'the dialog itself is live');
         assert.equal(await page.evaluate(() => document.querySelector('.bug-fab')?.inert ?? false), false,
           'the problem reporter floats above dialogs on purpose and stays reachable');
 
         await page.keyboard.press('Escape');
-        await page.waitForSelector('#modal-back', { state: 'detached' });
+        await page.waitForSelector('#tray-back', { state: 'detached' });
         assert.deepEqual(await inertNow(page), [], 'closing frees the page');
         assert.equal(await focused(page), 'ws-new', 'focus is back on the + that opened it');
       } finally { await page.close(); }
@@ -104,8 +106,9 @@ if (s) {
     test(`a backdrop removed by a caller frees the page; a modal replacing a modal keeps it held (${theme})`, async () => {
       const page = await open(theme);
       try {
-        await page.click('#ws-new');
-        await page.waitForSelector('#modal input[name="name"]');
+        await page.focus('#ws-new');
+        await page.evaluate(() => modal('First', [Object.assign(document.createElement('input'), { name: 'a' })], async () => {}));
+        await page.waitForSelector('#modal input[name="a"]');
         await page.evaluate(() => modal('Second', [Object.assign(document.createElement('input'), { name: 'b' })], async () => {}));
         await page.waitForFunction(() => document.querySelector('#modal h2')?.textContent === 'Second');
         await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));

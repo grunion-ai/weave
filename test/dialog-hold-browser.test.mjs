@@ -134,7 +134,7 @@ if (s) {
       const page = await open(theme);
       try {
         await page.focus('#ws-new');
-        await page.keyboard.press('Enter');
+        await page.evaluate(() => modal('Held', [Object.assign(document.createElement('input'), { name: 'name' })], async () => {}));
         await page.waitForSelector('#modal input[name="name"]');
         await page.evaluate(() => tray('Replacing', [Object.assign(document.createElement('input'), { name: 'b' })], async () => {}));
         await page.waitForSelector('#modal-back', { state: 'detached' });
@@ -244,7 +244,7 @@ if (s) {
       const page = await open(theme);
       try {
         await page.focus('#ws-new');
-        await page.keyboard.press('Enter');
+        await page.evaluate(() => modal('Held', [Object.assign(document.createElement('input'), { name: 'name' })], async () => {}));
         await page.waitForSelector('#modal input[name="name"]');
         await palette(page);
         const under = await inertNow(page);
