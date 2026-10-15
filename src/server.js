@@ -401,7 +401,7 @@ export function originFromEnv(env = process.env, name = 'WEAVE_ORIGIN') {
 export const mcpOriginsFromEnv = (env = process.env) => String(env.WEAVE_MCP_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean)
   .map((o) => originFromEnv({ WEAVE_MCP_ORIGINS: o }, 'WEAVE_MCP_ORIGINS'));
 export const deployTokenFromEnv = (env = process.env) => (String(env.WEAVE_DEPLOY_TOKEN ?? '').length >= 32 ? env.WEAVE_DEPLOY_TOKEN : null);
-export const trustProxyFromEnv =(env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
+export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
 const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const hostnameOf = (host) => { try { return host ? new URL(`http://${host}`).hostname : null; } catch { return null; } };
