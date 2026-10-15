@@ -178,8 +178,9 @@ CHANGELOG.md. The fold sorts and deletes fragments. A refactor or documentation
 change without a release bullet carries `No-changelog: <reason>` in its commit.
 The changelog and development-sync tests enforce these contracts.
 
-Releases are on demand and never move production. Publish or retry through the
-`release` workflow with a successful main push `tests` run ID.
+Releases publish automatically after successful same-repository main push `tests`
+runs and never move production. Retry publication by dispatching the `release`
+workflow with that tests run ID.
 Its read-only guard validates the same-repository event, run ID and completed
 `CI gate`. Its publishing job checks out the exact tested SHA and checks GitHub
 main again; a superseded run skips publication. The publisher validates the
@@ -192,7 +193,8 @@ Historical recovery uses `gh workflow run release -f run_id=<id> -f historical=t
 It requires a successful main push tests run for a commit still on main history.
 It publishes that exact commit, leaves GitHub Latest and the image `:latest` alone,
 and never moves an existing tag. Recover versions oldest first. A later ordinary
-run uses the existing immutable tag for image and registry retries.
+run uses the existing immutable tag for image and registry retries. Automatic
+runs skip image and registry publication for an already published ancestor version.
 Confirm the publication with `gh release list -R grunion-ai/weave --limit 1`.
 
 ### Production promotion

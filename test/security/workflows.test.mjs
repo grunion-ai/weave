@@ -93,7 +93,12 @@ test('release validates main CI before checking out the tested SHA with write cr
   assert.match(src, /^on:\n  workflow_dispatch:\n/m);
   assert.doesNotMatch(src, /workflow_call:|^  push:/m);
   assert.doesNotMatch(text('test.yml'), /release\.yml/);
-  assert.doesNotMatch(src, /workflow_run:/);
+  assert.match(src, /workflow_run:\n    workflows: \[tests\]\n    types: \[completed\]\n    branches: \[main\]/);
+  assert.match(src, /github.event.workflow_run.conclusion == 'success'/);
+  assert.match(src, /github.event.workflow_run.head_repository.full_name == github.repository/);
+  assert.match(src, /github.event.workflow_run.event == 'push'/);
+  assert.match(src, /inputs.run_id \|\| github.event.workflow_run.id/);
+  assert.match(src, /needs.publish.outputs.state == 'published' \|\| github.event_name == 'workflow_dispatch'/);
   assert.match(src, /HISTORICAL: \$\{\{ github.event_name == 'workflow_dispatch' && inputs.historical \}\}/);
   assert.match(src, /github.ref == 'refs\/heads\/main'/);
   assert.match(src, /node scripts\/github-release\.mjs --guard/);
