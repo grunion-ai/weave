@@ -1578,7 +1578,8 @@ test('workspace links and rename use the workspace id permalink', () => {
   assert.match(home, /\/w\/\$\{updated\.id\}\//, 'a rename lands on the id URL, which the rename cannot break');
   assert.doesNotMatch(home, /\/w\/\$\{updated\.name\}\//, 'never the name URL');
   const rail = fnBody('buildWsRail');
-  assert.match(rail, /w\.url|\/w\/\$\{w\.id\}\//, 'the rail links workspaces by id');
+  assert.match(rail, /wsHref\(w\)/, 'the rail links workspaces through wsHref');
+  assert.match(APP, /const wsHref = \(w\) => \(servesBareRoot\(w\) \? '\/' : \(w\.url \?\? `\/w\/\$\{w\.id\}\/`\)\)/, 'wsHref links by id unless the workspace serves this host\'s bare root');
   assert.match(rail, /w\.id === seg|seg === w\.id|\.id === seg/, 'the current workspace matches by id or name segment');
 });
 
