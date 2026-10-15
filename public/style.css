@@ -93,7 +93,7 @@ html:has(> body > #app), body:has(> #app) { height: 100%; overflow: hidden; }
 #nav { flex: 1; }
 .nav-space-row { display: flex; align-items: center; gap: 2px; margin: 8px 0 2px; }
 .nav-space { font-size: var(--fs-meta); text-transform: uppercase; letter-spacing: .06em; color: var(--wv-canvas-muted); }
-a.nav-space { text-decoration: none; display: block; }
+a.nav-space { text-decoration: none; display: flex; align-items: center; gap: 7px; }
 a.nav-space:hover { color: var(--tblr-primary); }
 .nav-add-table { margin-left: auto; opacity: 0; }
 .nav-space-menu { opacity: 0; }
