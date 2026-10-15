@@ -376,10 +376,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_apply_schema',
-    description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
+    description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing; partial adds or updates only what the document names and leaves every other space alone. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
     inputSchema: {
       type: 'object',
-      properties: { document: { type: 'array' }, dryRun: { type: 'boolean' }, allowDestructive: { type: 'boolean' } },
+      properties: { document: { type: 'array' }, dryRun: { type: 'boolean' }, allowDestructive: { type: 'boolean' }, partial: { type: 'boolean' } },
       required: ['document'],
     },
   },
@@ -805,7 +805,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_restore_field':
       return weave.restoreField(args.db, args.field);
     case 'weave_apply_schema':
-      return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive) }) };
+      return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive), partial: Boolean(args.partial) }) };
     case 'weave_build': {
       const { spec, dryRun, skipExistingRows, ...bare } = args;
       return JSON.stringify(weave.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) }));
