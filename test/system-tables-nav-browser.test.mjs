@@ -55,6 +55,29 @@ if (s) {
     await page.close();
   });
 
+  test('browser: the root workspace keeps its Workspace registry off the sidebar and lists it on the workspace page (Issue #874)', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#nav .nav-space');
+    const spaces = await page.locator('#nav .nav-space').evaluateAll((as) => as.map((a) => a.textContent.trim()));
+    assert.ok(spaces.includes('Work'), 'user spaces stay in the sidebar');
+    assert.ok(!spaces.includes('Workspace'), 'the registry space is not a sidebar space');
+    const listed = await page.locator('#nav .nav-db').evaluateAll((as) => as.map((a) => a.textContent.trim()));
+    for (const name of ['Spaces', 'Tables', 'Fields', 'Views', 'Workspaces', 'Forms']) {
+      assert.ok(!listed.includes(name), `${name} is not a sidebar row`);
+    }
+    const registry = await page.locator('#main .system-tables .list-row[data-registry]').evaluateAll((rows) => rows.map((r) => [r.dataset.registry, r.dataset.href]));
+    const spacesId = registry.find(([kind]) => kind === 'spaces')?.[1];
+    assert.deepEqual(registry.map(([kind]) => kind).sort(), ['fields', 'forms', 'spaces', 'tables', 'users', 'views', 'workflows', 'workspaces'],
+      'the workspace page lists every registry table');
+    assert.match(spacesId ?? '', /^#\/table\//);
+    await page.click('#main .system-tables .list-row[data-registry="spaces"]');
+    await page.waitForURL(new RegExp(`${spacesId.replace(/[/#]/g, '\\$&')}$`));
+    await page.waitForSelector('#main .wv-grid tbody tr');
+    assert.match(await page.locator('#main .wv-grid').first().textContent(), /Work/, 'the Spaces registry still opens and lists the spaces');
+    await page.close();
+  });
+
   test('browser: a member workspace served by the hub still pins Workflows, Users, Activity and Trash (Issue #872)', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/w/${member.state.meta.id}/#/`, { waitUntil: 'networkidle' });

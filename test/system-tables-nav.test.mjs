@@ -79,6 +79,14 @@ test('the Workflows row always shows, resolved through the registry a member rea
   assert.match(nav, /: '\/'/, 'nothing resolved still links the root registry');
 });
 
+test('the sidebar lists user spaces only; the registry lives on the workspace page (Issue #874)', () => {
+  const nav = fnBodyOf('renderNav');
+  assert.match(nav, /for \(const space of state\.schema\) \{\s*if \(space\.system\) continue;/, 'a system space never renders as a sidebar space');
+  const home = fnBodyOf('showHome');
+  assert.match(home, /state\.schema\.filter\(\(s\) => s\.system === 'workspace'\)/, 'the workspace page reads its own registry space, never the root\'s');
+  assert.match(home, /dataset: \{ href: `#\/table\/\$\{db\.id\}`, registry: db\.system \}/, 'each registry table is a row that opens it');
+});
+
 test('the pinned group sits outside the scrolling list, above the stats strip', () => {
   const nav = fnBodyOf('renderNav');
   assert.match(nav, /document\.querySelector\('#sidebar \.nav-system'\)\?\.remove\(\)/, 'redrawn, never stacked');
