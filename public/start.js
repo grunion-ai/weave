@@ -14,6 +14,8 @@
       lead: 'One account opens every workspace you make or join. New and returning people use the same button.',
       go: 'Sign up or sign in',
       bypass: 'Skip the guided setup and start an empty workspace',
+      bypassOn: 'Guided setup off: you will start in an empty workspace. Turn it back on',
+      loading: 'Loading sign-in',
     },
     list: { title: 'Your workspaces', empty: 'This sign-in has no workspaces yet.', create: 'Create a workspace', limit: 'This sign-in has reached the server\'s workspace limit. Open one of the workspaces above.' },
     closed: { title: 'This server is invite only', lead: 'Ask the owner of a workspace for an invite link. Opening it adds you to their workspace.' },
@@ -144,13 +146,60 @@
 
   const signInHref = (next) => `/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`;
 
+  let clerk = null;
+  const loadClerk = (pane) => clerk ?? (clerk = new Promise((resolve, reject) => {
+    const script = make('script', { src: pane.script, async: true, crossorigin: 'anonymous', 'data-clerk-publishable-key': pane.publishableKey });
+    script.onload = () => Promise.resolve(window.Clerk?.load?.()).then(() => resolve(window.Clerk), reject);
+    script.onerror = () => reject(new Error('Clerk did not load'));
+    document.head.append(script);
+  }));
+
+  function clerkAppearance() {
+    const css = getComputedStyle(document.documentElement);
+    const v = (name) => css.getPropertyValue(name).trim();
+    return {
+      variables: { colorPrimary: v('--accent'), colorText: v('--ink'), colorTextSecondary: v('--muted'), colorBackground: v('--panel'), colorInputBackground: v('--panel'), colorInputText: v('--ink'), borderRadius: '8px', fontFamily: v('--app'), fontSize: '15px' },
+      elements: { rootBox: { width: '100%' }, cardBox: { width: '100%', boxShadow: 'none', border: 'none' }, card: { boxShadow: 'none', border: 'none', padding: '0', background: 'transparent' }, header: { display: 'none' }, footer: { background: 'transparent' } },
+    };
+  }
+
   function account() {
+    let skipping = false;
+    const pane = me.clerk;
+    const button = make('a', { class: 'btn btn-primary btn-wide', href: signInHref('/start'), 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
+    const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
+    const show = async () => {
+      const next = skipping ? '/start?setup=skip' : '/start';
+      try {
+        const c = await loadClerk(pane);
+        if (c.user) { location.href = signInHref(next); return; }
+        c.unmountSignIn?.(mount);
+        mount.replaceChildren();
+        mount.removeAttribute('aria-busy');
+        c.mountSignIn(mount, { withSignUp: true, forceRedirectUrl: signInHref(next), signUpForceRedirectUrl: signInHref(next), appearance: clerkAppearance() });
+      } catch {
+        mount.replaceChildren();
+        mount.hidden = true;
+        button.hidden = false;
+      }
+    };
+    const bypass = make('a', { class: 'btn-link', href: signInHref('/start?setup=skip'), 'data-go': 'bypass', onclick: (ev) => {
+      if (!pane || mount.hidden) return;
+      ev.preventDefault();
+      skipping = !skipping;
+      ev.currentTarget.textContent = skipping ? COPY.account.bypassOn : COPY.account.bypass;
+      ev.currentTarget.setAttribute('aria-pressed', String(skipping));
+      button.href = signInHref(skipping ? '/start?setup=skip' : '/start');
+      show();
+    } }, COPY.account.bypass);
+    if (pane) queueMicrotask(show);
     return [
       make('h1', {}, COPY.account.title),
       make('p', { class: 'lead' }, COPY.account.lead),
       errorBox(s.error),
-      make('a', { class: 'btn btn-primary btn-wide', href: signInHref('/start'), 'data-go': 'signin' }, COPY.account.go),
-      make('p', { class: 'muted', style: 'margin-top:18px' }, make('a', { class: 'btn-link', href: signInHref('/start?setup=skip'), 'data-go': 'bypass' }, COPY.account.bypass)),
+      mount,
+      button,
+      make('p', { class: 'muted', style: 'margin-top:18px' }, bypass),
     ];
   }
 
