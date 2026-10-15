@@ -179,8 +179,8 @@ change without a release bullet carries `No-changelog: <reason>` in its commit.
 The changelog and development-sync tests enforce these contracts.
 
 Releases publish automatically after successful same-repository main push `tests`
-runs and never move production. Retry publication by dispatching the `release`
-workflow with that tests run ID.
+runs and never move production. Retry publication by dispatching the
+`release` workflow with that tests run ID.
 Its read-only guard validates the same-repository event, run ID and completed
 `CI gate`. Its publishing job checks out the exact tested SHA and checks GitHub
 main again; a superseded run skips publication. The publisher validates the
