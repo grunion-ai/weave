@@ -50,8 +50,8 @@ if (s) {
       assert.deepEqual(groups, ['Not started', 'In progress', 'Done', 'Canceled'],
         'every category is a thin divider, in the engine’s order (Issue #796)');
       const rows = await page.$$eval('.chip-pop .picker-row', (ns) => ns.map((n) => n.querySelector('.k, .picker-label').textContent.trim()));
-      assert.deepEqual(rows, ['—', 'Backlog', 'Triage', 'In progress', 'Shipped', 'Dropped'],
-        'the named states sit as numbered rows under their divider');
+      assert.deepEqual(rows, ['Backlog', 'Triage', 'In progress', 'Shipped', 'Dropped'],
+        'the named states sit as numbered rows under their divider, with no empty row above them (Issue #797)');
       assert.ok(await page.$eval('.chip-pop .picker-row .k.k-state', (n) => n.classList.contains('cat-not-started')),
         'a picker row wears the state chip it will set');
 

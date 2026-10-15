@@ -58,7 +58,7 @@ if (s) {
     assert.deepEqual(cell.dividers, ['Not started', 'In progress', 'Done', 'Canceled'],
       'the four categories are thin dividers, in the engine’s order');
     assert.deepEqual(cell.rows.map((r) => [r.num, r.label]), [
-      ['1', '—'], ['2', 'Backlog'], ['3', 'Building'], ['4', 'Shipped'], ['5', 'Dropped'],
+      ['1', 'Backlog'], ['2', 'Building'], ['3', 'Shipped'], ['4', 'Dropped'],
     ], 'every row is numbered and the dividers never shift a number');
     assert.deepEqual(cell.rows.filter((r) => r.current).map((r) => r.label), ['Building'],
       'the current state carries the check');

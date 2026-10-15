@@ -104,7 +104,7 @@ if (s) {
     await again.close();
   });
 
-  test('a set state clears back to empty from the grid, and rests blank', async () => {
+  test('a set state clears back to empty from the grid through the chip, and rests blank', async () => {
     weave.addField(tasks, { name: 'Lane', type: 'workflow' });
     const e = weave.createEntity(tasks, { name: 'lane row' });
     weave.setState(e.id, 'Lane', 'Done');
@@ -114,7 +114,7 @@ if (s) {
     await cell.scrollIntoViewIfNeeded();
     await cell.locator('button').click();
     await page.waitForSelector('.picker-pop');
-    await page.locator('.picker-pop .picker-list').getByText('—', { exact: true }).first().click();
+    await page.locator('.picker-pop .picker-chip > span.x').click();
     for (let i = 0; i < 50 && weave.readEntity(e.id).fields.Lane !== null; i++) await page.waitForTimeout(100);
     assert.equal(weave.readEntity(e.id).fields.Lane, null, 'the state is empty again');
     await page.locator(`.wv-grid tbody tr.entity-row[data-eid="${e.id}"] td[data-field="Lane"] .k-state.is-empty`).waitFor();

@@ -53,16 +53,16 @@ if (s) {
     let page = await openPicker(freshTask({ State: 'Done' }), 'State');
     try {
       const chips = await dressed(page);
-      assert.deepEqual(chips.map((c) => c.text), ['Done', '—', 'Open', 'In Progress', 'Done'], 'the staged chip, the clear row, then every state as a row');
+      assert.deepEqual(chips.map((c) => c.text), ['Done', 'Open', 'In Progress', 'Done'], 'the staged chip, then every real state as a row (Issue #797 dropped the clear row)');
       assert.ok(chips.every((c) => c.k), 'each one carries the k base');
       assert.ok(chips.every((c) => c.pad === '8px' && c.radius === '4px'), 'so each one has a chip’s padding and corners');
-      assert.deepEqual(chips.map((c) => c.hue), ['hue-green', 'hue-slate', 'hue-slate', 'hue-blue', 'hue-green'], 'and the hue its category wears in the cell');
+      assert.deepEqual(chips.map((c) => c.hue), ['hue-green', 'hue-slate', 'hue-blue', 'hue-green'], 'and the hue its category wears in the cell');
     } finally { await page.close(); }
     page = await openPicker(freshTask({ Priority: 'P1' }), 'Priority');
     try {
       const chips = await dressed(page);
-      assert.deepEqual(chips.map((c) => c.text), ['P1', '—', 'P0', 'P1', 'P2'],
-        'a select stages its value and lists every option as a chip — the clear row too, since the empty cell is a — chip');
+      assert.deepEqual(chips.map((c) => c.text), ['P1', 'P0', 'P1', 'P2'],
+        'a select stages its value and lists every real option as a chip; clearing is the chip’s ✕ and ⌫, never a row (Issue #797)');
       assert.ok(chips.every((c) => c.k && c.pad === '8px'), 'dressed the same way');
     } finally { await page.close(); }
     page = await openPicker(freshTask({ Tags: ['bug'] }), 'Tags');
@@ -136,7 +136,7 @@ if (s) {
   test('a select keeps its current value listed and ticked', async () => {
     const page = await openPicker(freshTask({ Priority: 'P1' }), 'Priority');
     try {
-      assert.deepEqual(await rows(page), ['—', 'P0', 'P1', 'P2'], 'nothing is filtered out of a single picker');
+      assert.deepEqual(await rows(page), ['P0', 'P1', 'P2'], 'nothing is filtered out of a single picker, and no empty row is added to it (Issue #797)');
       assert.equal(await page.locator('.picker-row .chip-pop-check').count(), 1, 'the current value keeps its ✓');
     } finally { await page.close(); }
   });
