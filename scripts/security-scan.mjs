@@ -66,9 +66,12 @@ const simple = (name, bin, args, lines) => () => {
   return { name, status: r.status === 0 ? 'pass' : 'fail', detail: r.status === 0 ? '' : tail(r, lines) };
 };
 
+export const gitleaksArgs = (config = 'security/gitleaks.toml') =>
+  ['git', '--no-banner', '--redact', '--config', config, '--log-opts=HEAD', '.'];
+
 export function steps(update = false) {
   return [
-    simple('gitleaks', 'gitleaks', ['git', '--no-banner', '--redact', '--config', 'security/gitleaks.toml', '.']),
+    simple('gitleaks', 'gitleaks', gitleaksArgs()),
     () => (onPath('semgrep') ? { name: 'semgrep', ...semgrepStep(update) } : { name: 'semgrep', status: 'skipped', detail: 'semgrep not on PATH' }),
     simple('zizmor', 'zizmor', [...(process.env.GH_TOKEN || process.env.GITHUB_TOKEN ? [] : ['--offline']), '--no-progress', '.github/workflows']),
     simple('actionlint', 'actionlint', []),

@@ -36,6 +36,7 @@ test('aggregation requires exact commit, manifest, every shard and executed file
 test('only exact security and overlay-scrollbar capability skips are allowed', () => {
   for (const [file, reason] of [
     ['test/security/security-scan.test.mjs', 'semgrep not installed'],
+    ['test/security/security-scan.test.mjs', 'gitleaks not installed'],
     ['test/ws-rail-inset-browser.test.mjs', 'overlay scrollbars here: no gutter to measure ({})'],
   ]) {
     const manifest = [{ id: 'unit-1', lane: 'unit', files: [file] }];
