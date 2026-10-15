@@ -108,7 +108,7 @@ if (s) {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
-    const tables = await page.getAttribute('a.nav-db:has-text("Tables")', 'href');
+    const tables = await page.getAttribute('.system-tables .list-row[data-registry="tables"]', 'data-href');
     await page.goto(`${base}/${tables}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     const row = page.locator('tr.entity-row').first();
