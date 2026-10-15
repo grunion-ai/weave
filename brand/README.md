@@ -116,6 +116,26 @@ Consumers:
 | App page loads | `public/brand/weave-loader-rope.html` (`loaderRopeHtml()`) | Inlined by `initPageLoader()`. Chrome and Safari tick SMIL on the main thread, so the SMIL rope froze on every long task (Issue #390). The app shows the still strands through windows that move by transform only, which the compositor runs: each end of the dash is an anchor holding a far-side window, a square cut at the end's point and a round cap disc, and the strand inside counter-moves so it stays put. The ends ride the dash's ends frame by frame; the unweave follows Chromium's dash so it ends on the two end dots. Look settled by Kyle, 2026-09-28 |
 | README hero | `assets/png/weave-loader-{dark,light}.gif` | GitHub's image proxy does not run SMIL; `brand/render-gif.mjs` builds the pair from the same generator |
 
+## Marketing: radiating rings (2026-10-15)
+
+A half-page print and social asset: the mark centred on a half US Letter page
+(8.5 x 5.5 in, landscape), with contour rings spaced 16 px apart at 3.8 px
+weight radiating from it to every edge. Kyle picked this from three contact
+sheet rounds (concept 1b-3).
+
+The rings are iso-lines of the distance from the two strands. Near the mark
+they follow the rope; further out the field is blurred at a radius that grows
+with distance, so every ring stays one continuous curve with no cusp at the
+strand ends while the pitch holds. `test/brand-radiate.test.mjs` gates the
+pitch, the smoothness, the edge-to-edge fill and both palettes.
+
+| File in `assets/marketing/` | Use |
+| --- | --- |
+| `weave-radiate-half-letter-dark.{svg,pdf,png}` | Slate canvas `#0f1115`, sky rings, blue + sky strands |
+| `weave-radiate-half-letter-light.{svg,pdf,png}` | White, blue rings, blue + ink strands |
+
+The SVG and PDF are vector. The PNG is 2550 x 1650, 300 dpi at print size.
+
 ## Usage rules
 
 - **Minimum sizes:** mark 12px tall; lockup 80px wide. Below that, use the favicon build.
@@ -132,6 +152,7 @@ Consumers:
 node brand/build-logos.mjs        # served SVGs + loader -> public/brand/, the rest -> brand/assets/
 node brand/render-png.mjs         # PNGs via Playwright Chromium
 node --test brand/build-logos.test.mjs
+node brand/build-radiate.mjs --render   # half-page radiating-rings asset -> brand/assets/marketing/
 ```
 
 ImageMagick cannot rasterize these SVGs (its delegate drops `<mask>`), which is
