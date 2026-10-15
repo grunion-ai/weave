@@ -138,7 +138,8 @@ if (s) {
           assert.ok(Math.abs(byChevron.bottom - byChevron.vh) <= 2, 'and it comes up from the bottom of the screen');
 
           await fresh();
-          await page.mouse.click(status.box.right - 30, status.box.mid);
+          const statusBox = await page.locator('#dock .entity-fields .fieldrow[data-field="Status"]').boundingBox();
+          await page.mouse.click(statusBox.x + statusBox.width - 30, statusBox.y + statusBox.height / 2);
           const byRow = await sheetTitle();
           assert.ok(byRow, 'and so does the empty width of the row');
           assert.equal(byRow.title, 'Status', 'naming the same field');
@@ -168,12 +169,13 @@ if (s) {
           const filled = r.rows.find((x) => x.field === 'Seen in');
           assert.ok(filled.wide, 'a relation that carries chips takes its own full-width row');
           assert.ok(filled.label.bottom <= filled.value.top, 'with the label above the chips');
-          await page.mouse.click(filled.box.right - 30, filled.label.mid);
-          await settled(page.locator('.picker-pop, .cmdk-pop, #cmdk-back'));
-          assert.equal(await page.evaluate(() => document.querySelectorAll('#dock .fieldrow[data-field="Seen in"] .k-rel, #dock .fieldrow[data-field="Seen in"] .ms-box a').length > 0), true,
+          const linksBefore = await page.evaluate(() => document.querySelectorAll('#dock .fieldrow[data-field="Seen in"] .ms-box > :not(button)').length);
+          await page.click('#dock .entity-fields .fieldrow[data-field="Seen in"] .fieldrow-chev');
+          await page.waitForSelector('#cmdk-back');
+          assert.equal(await page.evaluate(() => document.querySelectorAll('#dock .fieldrow[data-field="Seen in"] .ms-box > :not(button)').length), linksBefore,
             'tapping a filled relation row opens its search and unlinks nothing');
-          await page.reload({ waitUntil: 'networkidle' });
-          await page.waitForSelector('#dock:not([hidden]) .entity-fields .fieldrow .chip-trigger[title="Status"]');
+          await page.keyboard.press('Escape');
+          await page.waitForSelector('#cmdk-back', { state: 'detached' });
           assert.ok(r.docSections.length >= 1, 'long text stays in its own full-width section under the group');
           assert.ok(r.docSections[0].top >= r.group.bottom, 'below the group, never inside it');
         } finally { await page.close(); }
