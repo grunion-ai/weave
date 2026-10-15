@@ -52,7 +52,7 @@ if (s) {
   const pickState = async (page, scope, name) => {
     await page.locator(`${scope} [data-field="Stage"]:not(.phone-lead) button`).first().click();
     await page.waitForSelector('.picker-pop');
-    await page.locator('.picker-pop .picker-list').getByText(name, { exact: true }).first().click();
+    await page.locator('.picker-pop .picker-row', { has: page.getByText(name, { exact: true }) }).first().click();
   };
 
   for (const colorScheme of ['light', 'dark']) test(`a write through an MCP client is a person chip: the name, "via MCP", never the client id (${colorScheme})`, async () => {
