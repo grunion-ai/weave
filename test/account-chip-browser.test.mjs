@@ -22,7 +22,7 @@ if (s) {
 
   const open = async (path, { account = ada, theme } = {}) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    if (account) await ctx.addCookies([{ name: 'wv_session', value: root.createSession(account.id).token, url: base }]);
+    if (account) await ctx.addCookies([{ name: `wv_session_${root.state.meta.id}`, value: root.createSession(account.id).token, url: base }]);
     if (theme) await ctx.addInitScript((t) => { try { localStorage.setItem('weave-theme', t); } catch {} }, theme);
     const page = await ctx.newPage();
     await page.goto(base + path, { waitUntil: 'load' });
