@@ -6847,11 +6847,31 @@ async function editPhoneField(anchor, db, eid, name) {
 }
 
 const SYSTEM_COLS = {
-  'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
-  'Modified At': (e) => (e.updatedAt ?? '').slice(0, 16).replace('T', ' '),
+  'Created At': (e) => stampEl(e.createdAt),
+  'Modified At': (e) => stampEl(e.updatedAt),
   'Created By': (e) => actorChipEl(e.createdBy),
   'Modified By': (e) => actorChipEl(e.modifiedBy),
 };
+
+function stampEl(iso) {
+  const s = weaveDateCore.stamp(iso, LOCAL_ZONE);
+  return s.text ? el('span', { class: 'wv-stamp', title: s.title }, s.text) : '';
+}
+
+const usersCache = { rows: [], read: null, done: false };
+function workspaceUsers() {
+  if (usersCache.read) return usersCache;
+  const t = registryTable('users');
+  if (!t) return usersCache;
+  const here = allTables().some((d) => d.id === t.id);
+  usersCache.read = api('POST', `/tables/${t.id}/query`, {}).then((res) => {
+    usersCache.rows = (res.items ?? []).map((u) => ({
+      id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
+      workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
+    }));
+  }).catch(() => {}).finally(() => { usersCache.done = true; });
+  return usersCache;
+}
 
 function actorChipEl(actor, { link = true } = {}) {
   const a = weaveActor.parseActor(actor);
@@ -6869,10 +6889,24 @@ function actorChipEl(actor, { link = true } = {}) {
       ? el('span', { class: 'k k-rel k-actor-wf' }, inner)
       : el('span', { class: 'k k-actor-wf is-inline' }, ...body);
   }
-  return el('span', { class: 'k k-actor', title: a.via ? `${a.name} via ${a.via}` : a.name },
-    el('span', { class: `av hue-${chipCore.hueForName(a.name)}` }, chipCore.initialsFor(a.name)),
-    el('span', { class: 'k-label' }, a.name),
-    a.via ? el('span', { class: 'k-actor-via' }, `· via ${a.via}`) : null);
+  const chip = el('span', { class: 'k k-actor' });
+  const paint = (users) => {
+    const r = weaveActor.resolveActor(actor, users, { workspaceId: state.wsId });
+    const mark = r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
+      : r.kind === 'person' ? el('span', { class: `av hue-${chipCore.hueForName(r.name)}` }, chipCore.initialsFor(r.name)) : null;
+    const label = el('span', { class: 'k-label' }, r.name);
+    const via = r.via ? el('span', { class: 'k-actor-via' }, `· via ${r.via}`) : null;
+    chip.classList.toggle('is-unknown', r.kind === 'unknown');
+    chip.title = r.title;
+    const body = r.user && link
+      ? [el('a', { href: r.user.href, title: r.title, onclick: (e) => e.stopPropagation() }, mark, label)]
+      : [mark, label];
+    chip.replaceChildren(...[...body, via].filter(Boolean));
+  };
+  const people = workspaceUsers();
+  paint(people.rows);
+  if (!people.done) people.read?.then(() => paint(people.rows));
+  return chip;
 }
 
 function commentAuthorText(author) {
