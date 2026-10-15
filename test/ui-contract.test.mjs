@@ -197,6 +197,18 @@ test('one tray creates a table, and every trigger opens it (Issue #778)', () => 
   assert.match(body, /iconButton\(/, 'the tray offers the icon the modals never did');
 });
 
+test('one tray creates a field, with no modal in front of it (Issue #779)', () => {
+  assert.doesNotMatch(APP, /function newFieldDialog/, 'the Table-then-Next modal is gone');
+  assert.equal((APP.match(/modal\('New field'/g) ?? []).length, 0,
+    'create happens in the right-hand tray, never a centered modal');
+  assert.equal((APP.match(/'New field'/g) ?? []).filter(Boolean).length >= 1, true);
+  const fn = APP.slice(APP.indexOf('function fieldDialog('));
+  const sig = fn.slice(0, fn.indexOf('\n'));
+  assert.match(sig, /pickTables/, 'the tray itself takes the table choice');
+  assert.match(APP, /function fieldTray\(/, 'one helper opens it with the Table row');
+  assert.doesNotMatch(APP, /fieldDialog\(target, null/, 'nothing hands off from a modal to the tray');
+});
+
 test('one popover implementation serves every anchored menu', () => {
   assert.match(APP, /function showPopover/);
   const fn = APP.slice(APP.indexOf('function showPopover'));
@@ -1122,7 +1134,7 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
 });
 
 test('field dialogs are the unified fieldDialog, not the old string forms', () => {
-  assert.match(APP, /function fieldDialog\(db, existing, after\)/);
+  assert.match(APP, /function fieldDialog\(db, existing, after, \{ pickTables = null \} = \{\}\)/);
   assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,400}?fieldDialog\(db, null,/);
   assert.match(APP, /function editFieldDialog\(db, f\) \{\s*fieldDialog\(db, f,/);
   assert.doesNotMatch(APP, /Options \(comma-separated\)/);

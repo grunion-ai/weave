@@ -1,0 +1,1 @@
+- Creating a field from the Fields system table opens the field tray directly, with a Table row at the top instead of a centered modal that collected one value and handed off. A column header still opens the tray with no Table row, since the table is known (Issue #779).

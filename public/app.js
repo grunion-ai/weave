@@ -4773,7 +4773,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     }
     try {
       if (db.system === 'tables') return tableTray({ after: redraw });
-      if (db.system === 'fields') return newFieldDialog(redraw);
+      if (db.system === 'fields') return fieldTray(redraw);
       if (db.system === 'users') return newUserDialog(db, redraw);
       const seed = { name: db.system === 'spaces' ? 'New space' : '' };
       const inside = db.system ? {} : filterSeed(db);
@@ -8133,7 +8133,7 @@ function computedShowsAs(db, f, after) {
   ];
 }
 
-function fieldDialog(db, existing, after) {
+function fieldDialog(db, existing, after, { pickTables = null } = {}) {
   const fdc = fieldDialogCore;
   const isEdit = !!existing;
 
@@ -8517,7 +8517,15 @@ function fieldDialog(db, existing, after) {
   drawCfg();
 
   let saved = null;
+  const tableSel = pickTables && !isEdit
+    ? pickerSelect({ name: 'table', title: 'Table', options: pickTables.map((t) => ({ id: t.id, label: `${t.space}/${t.name}` })), value: db.id })
+    : null;
+  tableSel?.input.addEventListener('change', () => {
+    const next = pickTables.find((t) => t.id === tableSel.input.value);
+    if (next && next.id !== db.id) fieldDialog(next, null, after, { pickTables });
+  });
   tray(isEdit ? `Edit ${existing.name}` : 'New field', [
+    tableSel ? dsection('Table', tableSel) : '',
     dsection('Name', nameInput),
     describable ? dsection('Description', descInput) : '',
     gridWrap, cfgWrap,
@@ -11142,15 +11150,10 @@ async function schemaDisclosure(parent, draw) {
   return box;
 }
 
-function newFieldDialog(after) {
+function fieldTray(after) {
   const tables = allTables().filter((t) => !t.system);
   if (!tables.length) return toast('Create a table first — a field lands on one', true);
-  modal('New field', [
-    pickerSelect({ name: 'table', title: 'Table', options: tables.map((t) => ({ id: t.id, label: `${t.space}/${t.name}` })), value: tables[0].id }),
-  ], async (fd) => {
-    const target = tables.find((t) => t.id === fd.get('table'));
-    fieldDialog(target, null, () => keepScroll(after));
-  }, 'Next');
+  fieldDialog(tables[0], null, () => keepScroll(after), { pickTables: tables });
 }
 
 function addFieldDialog(db) {
