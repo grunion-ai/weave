@@ -12883,14 +12883,13 @@ function wireNavResize() {
     app.style.setProperty('--wv-nav-width', `${width}px`);
     grip.setAttribute('aria-valuenow', String(width));
   };
-  const keep = () => { try { localStorage.setItem('weave-nav-width', String(width)); } catch {} };
-  let stored = 0;
-  try { stored = Number(localStorage.getItem('weave-nav-width')); } catch {}
+  const keep = () => localStorage.setItem('weave-nav-width', String(width));
+  const stored = Number(localStorage.getItem('weave-nav-width'));
   show(stored > 0 ? stored : NAV_WIDTH.base);
   grip.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    try { grip.setPointerCapture(e.pointerId); } catch {}
+    grip.setPointerCapture(e.pointerId);
     document.body.classList.add('nav-resizing');
     const left = sidebar.getBoundingClientRect().left;
     const move = (ev) => show(ev.clientX - left);
@@ -12906,7 +12905,7 @@ function wireNavResize() {
     grip.addEventListener('pointercancel', up);
   });
   grip.addEventListener('dblclick', () => {
-    try { localStorage.removeItem('weave-nav-width'); } catch {}
+    localStorage.removeItem('weave-nav-width');
     show(NAV_WIDTH.base);
   });
   grip.addEventListener('keydown', (e) => {
