@@ -187,6 +187,9 @@
 .picker-num { flex: 0 0 11px; text-align: right; color: var(--tblr-secondary); font-size: var(--fs-meta); font-variant-numeric: tabular-nums; opacity: .55; user-select: none; }
 .picker-row.active .picker-num { opacity: 1; }
 @media (hover: hover) { .picker-row:hover .picker-num { opacity: 1; } }
+.picker-divider { display: flex; align-items: center; gap: 6px; padding: 7px 6px 3px; }
+.picker-divider::after { content: ''; flex: 1; height: 1px; background: var(--tblr-border-color); }
+.picker-divider-label { font-size: var(--fs-meta); letter-spacing: .13em; text-transform: uppercase; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); }
 .picker-cat { padding: 9px 6px 3px; font-size: var(--fs-meta); letter-spacing: .13em; text-transform: uppercase; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); }
 .picker-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: 2px; }
 .picker-cell { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--wv-icon-rest); cursor: pointer; }
