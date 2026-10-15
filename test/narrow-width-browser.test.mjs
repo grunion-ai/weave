@@ -16,7 +16,10 @@ const READ = () => {
       .filter((f) => f.getClientRects().length)
       .map((f) => {
         const tracks = getComputedStyle(f).gridTemplateColumns.split(' ').map(parseFloat);
-        return [label(f), Math.round(tracks[tracks.length - 1])];
+        if (f.classList.contains('fieldrow-wide')) return [label(f), Math.round(tracks.reduce((a, b) => a + b, 0))];
+        const placed = [...f.children].filter((n) => getComputedStyle(n).display !== 'none');
+        const i = placed.indexOf(f.querySelector(':scope > :nth-child(3)'));
+        return [label(f), Math.round(tracks[i >= 0 && i < tracks.length ? i : tracks.length - 1])];
       }),
     squashed: [...document.querySelectorAll('#dock .entity-values .fieldrow > :nth-child(3)')]
       .filter((v) => v.getClientRects().length && !v.matches('input, textarea') && v.scrollWidth > v.clientWidth + 1)
