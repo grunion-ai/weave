@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.98 (2026-10-15)
+
+- **The report button sits in the corner** (Issue #846): on a desktop viewport the bug glyph was pinned 40px above the bottom edge while holding 12px from the right, so it read as floating above the corner it belongs in. It now takes the same 12px inset from both edges, the value its phone rule already used. The raised offsets that clear a real neighbour are unchanged: the open tray still pushes it to 72px, and the phone bar still pushes it to 86px.
+- On a phone the fields block on a row page is an inset group of 50px rows, label left and value chip right, with a chevron that opens the field's picker sheet and an empty value as a single + chip. The drag grips are gone at that width and a relation that carries chips takes its own full-width row. (Issue #741)
+
 ## v0.4.97 (2026-10-15)
 
 - Restored automatic release publication after successful same-repository main CI; existing published versions skip duplicate image and registry publication (Issue #887).
