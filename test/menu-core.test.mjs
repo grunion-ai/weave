@@ -114,7 +114,7 @@ test('every kind has exactly one definition, and the registry names them all', (
 
 test('the definitions match the target menu table', () => {
   const shape = (kind) => Object.fromEntries(core.SECTIONS.map((s) => [s, core.definition(kind)[s] ?? []]).filter(([, ids]) => ids.length));
-  assert.deepEqual(shape('table'), { settings: ['description'], organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
+  assert.deepEqual(shape('table'), { organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
   assert.deepEqual(shape('record'), { organize: ['duplicate'], share: ['share'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
   assert.deepEqual(shape('space'), { delete: ['delete'] });
@@ -128,9 +128,9 @@ test('the workspace menu holds no delete row: workspace delete leaves the interf
   assert.throws(() => core.assemble('workspace', { delete: { label: 'Delete workspace…', run() {} } }), /"delete" is not on the workspace menu/);
 });
 
-test('table description creation and field settings occupy the settings section', () => {
+test('only a kind whose settings live in a dialog with no inline surface declares a Settings row', () => {
   const withSettings = core.kinds().filter((k) => core.definition(k).settings?.length);
-  assert.deepEqual(withSettings, ['table', 'field']);
+  assert.deepEqual(withSettings, ['field']);
 });
 
 test('every export list in a definition follows the format registry order', () => {

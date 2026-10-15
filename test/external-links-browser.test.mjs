@@ -24,7 +24,6 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await page.context().route('https://docs.example.test/**', (route) => route.fulfill({ contentType: 'text/html', body: '<title>guide</title>ok' }));
     await page.goto(`${base}/#/table/${glossary.id}`, { waitUntil: 'networkidle' });
-    await page.click('.view-title-row .desc-info');
     const far = page.locator(`.view-desc-body a[href="${FAR}"]`);
     await far.waitFor();
     assert.equal(await far.getAttribute('target'), '_blank', 'marked by the server render');
@@ -43,7 +42,6 @@ if (s) {
     const page = await browser.newPage();
     await page.context().route('https://far.example.test/**', (route) => route.fulfill({ body: 'ok' }));
     await page.goto(`${base}/#/table/${glossary.id}`, { waitUntil: 'networkidle' });
-    await page.click('.view-title-row .desc-info');
     await page.evaluate(() => {
       const a = document.createElement('a'); a.id = 'stray'; a.href = 'https://far.example.test/x'; a.textContent = 'stray';
       document.body.append(a);
