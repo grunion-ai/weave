@@ -12867,6 +12867,57 @@ function wireNavCollapse() {
   narrowShell.addEventListener('change', shut);
 }
 
+const NAV_WIDTH = { min: 200, max: 480, base: 264, step: 16 };
+function wireNavResize() {
+  const app = $('#app');
+  const sidebar = $('#sidebar');
+  if (!app || !sidebar) return;
+  const grip = el('div', {
+    id: 'nav-resize', role: 'separator', tabindex: '0', 'aria-orientation': 'vertical', 'aria-label': 'Resize the sidebar',
+    'aria-valuemin': String(NAV_WIDTH.min), 'aria-valuemax': String(NAV_WIDTH.max),
+  });
+  sidebar.append(grip);
+  let width = NAV_WIDTH.base;
+  const show = (px) => {
+    width = Math.min(NAV_WIDTH.max, Math.max(NAV_WIDTH.min, Math.round(px)));
+    app.style.setProperty('--wv-nav-width', `${width}px`);
+    grip.setAttribute('aria-valuenow', String(width));
+  };
+  const keep = () => { try { localStorage.setItem('weave-nav-width', String(width)); } catch {} };
+  let stored = 0;
+  try { stored = Number(localStorage.getItem('weave-nav-width')); } catch {}
+  show(stored > 0 ? stored : NAV_WIDTH.base);
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    try { grip.setPointerCapture(e.pointerId); } catch {}
+    document.body.classList.add('nav-resizing');
+    const left = sidebar.getBoundingClientRect().left;
+    const move = (ev) => show(ev.clientX - left);
+    const up = () => {
+      document.body.classList.remove('nav-resizing');
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      keep();
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('dblclick', () => {
+    try { localStorage.removeItem('weave-nav-width'); } catch {}
+    show(NAV_WIDTH.base);
+  });
+  grip.addEventListener('keydown', (e) => {
+    const dir = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    show(width + dir * NAV_WIDTH.step);
+    keep();
+  });
+}
+
 const railFolds = matchMedia('(max-width: 600px)');
 const NAV_KEY_OWNERS = '#modal-back, #tray-back, #cmdk-back, #fsv-back, .chip-pop, .picker-pop, .cell-pop, .date-pop, [role="menu"]';
 function wireNavHold() {
@@ -13187,4 +13238,5 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
+wireNavResize();
 wireNavHold();

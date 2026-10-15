@@ -977,8 +977,8 @@ test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #
     'the peek overlays the page instead of reflowing it');
   assert.match(CSS, /#app\.nav-collapsed #nav-hot-strip \{[^}]*position: fixed/,
     'the strip only exists while the nav is collapsed');
-  assert.match(CSS, /#sidebar \{ width: 264px/,
-    'the nav keeps its comfortable width (264px), never compacted');
+  assert.match(CSS, /#sidebar \{ width: var\(--wv-nav-width, 264px\)/,
+    'the nav keeps its comfortable width (264px) until someone drags it (Issue #905)');
 });
 
 test('horizontal overscroll is forbidden (Issue #76)', () => {
