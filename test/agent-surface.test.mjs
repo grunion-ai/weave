@@ -89,6 +89,8 @@ const SURFACE = [
 
 const INTERNAL = {
   save: 'persistence', maybeRefresh: 'cross-process refresh',
+  entityRevision: 'read helper (Issue #902): entity reads carry the opaque stored-row revision',
+  conditionalWrite: 'HTTP concurrency boundary (Issue #902): POST /api/entities/:id/conditional applies the existing append or state verb under an observed-revision write lock',
   settleDeferred: 'process plumbing (Feature #250): runDeferredMigrations settles each workspace a supervised worker opened while the old worker still served; an agent never calls it',
   userTables: 'read helper (Issue #386) — the tables a person made, registry excluded; the hub list\'s `tables` count reads it, and describeSchema already carries the `system` flag an agent filters on',
   schemaVersion: 'read helper (Issue #274) — the structure\'s fingerprint; every API response stamps it as X-Weave-Schema-Version and GET /api/workspace ships it in the body, so an agent reads it without a verb of its own',
