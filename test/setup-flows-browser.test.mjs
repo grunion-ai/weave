@@ -83,7 +83,7 @@ if (openHub) {
     assert.match(await p.locator('main .lead').textContent(), /template/, 'the step says it is a template setup');
     assert.ok(await p.locator('.pick[data-template]').count() >= 4, 'a list of kinds of work, not three cards');
     await p.click('.pick[data-template="crm"]');
-    assert.ok(await p.locator('#stage .loom text').count() >= 2, 'the stage previews the template tables');
+    assert.equal(await p.locator('#stage figure.workspace-art .art-project').count(), 1, 'the non-workflow pane carries the landing page hero art');
     await go(p, 'next');
     await step(p, 'build');
     assert.equal(await p.locator('#stage .loom.weaving').count(), 1, 'the weave setup animation runs while the workspace builds');
