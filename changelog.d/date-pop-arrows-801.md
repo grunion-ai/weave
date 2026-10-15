@@ -1,0 +1,1 @@
+- The date picker steps sideways: ‹ and › replace the ↑ and ↓ buttons for the month, year and decade steps, beside the month and year dropdowns the picker keeps. The year and decade steps gain aria-labels, and the date and range pickers name the field they edit. (#801)
