@@ -1,0 +1,1 @@
+- The required security scan judges the history a pull request would land. Gitleaks walked every fetched branch, so one open branch's finding failed the scan on every other pull request; it now scans HEAD's history only, and a leak still fails the pull request that carries it (Issue #913).
