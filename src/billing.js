@@ -27,18 +27,17 @@ const covers = (subscription, slug, at) => (subscription?.subscription_items ?? 
 
 export function billingFromEnv(env = process.env, opts = {}) {
   const secretKey = String(env.WEAVE_CLERK_SECRET_KEY ?? '').trim();
-  const soloPlan = String(env.WEAVE_BILLING_SOLO_PLAN ?? '').trim();
-  const teamPlan = String(env.WEAVE_BILLING_TEAM_PLAN ?? '').trim();
-  if (!secretKey || !soloPlan || !teamPlan) return null;
+  const plan = String(env.WEAVE_BILLING_PLAN ?? '').trim();
+  if (!secretKey || !plan) return null;
   const rawSince = String(env.WEAVE_BILLING_SINCE ?? '').trim();
   const since = rawSince ? Date.parse(rawSince) : 0;
   if (Number.isNaN(since)) throw new WeaveError(`WEAVE_BILLING_SINCE must be a date like 2026-10-16T00:00:00Z (got '${rawSince}')`, 'invalid');
   const issuer = String(env.WEAVE_OIDC_ISSUER ?? '').trim().replace(/\/+$/, '');
   const publishableKey = String(env.WEAVE_CLERK_PUBLISHABLE_KEY ?? '').trim() || null;
-  return createBilling({ secretKey, soloPlan, teamPlan, since, issuer, publishableKey, ...opts });
+  return createBilling({ secretKey, plan, since, issuer, publishableKey, ...opts });
 }
 
-export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, issuer = '', publishableKey = null, fetch = globalThis.fetch, now = Date.now }) {
+export function createBilling({ secretKey, plan, since = 0, issuer = '', publishableKey = null, fetch = globalThis.fetch, now = Date.now }) {
   const cache = new Map();
 
   async function api(method, path, body) {
@@ -80,27 +79,22 @@ export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, issuer
   async function lookup(workspace, accounts) {
     const seats = seatsOf(accounts);
     const orgId = workspace.billing?.orgId ?? null;
-    if (orgId) {
-      if (covers(await subscription('organizations', orgId), teamPlan, now())) {
-        const seated = new Set((await members(orgId)).map((m) => m?.public_user_data?.user_id).filter(Boolean));
-        return { plan: 'team', seats: seats.length, seatedSubjects: seated };
-      }
-    }
-    if (seats.length === 1 && covers(await subscription('users', subjectOf(seats[0])), soloPlan, now())) {
-      return { plan: 'solo', seats: 1, seatedSubjects: new Set([subjectOf(seats[0])]) };
+    if (orgId && covers(await subscription('organizations', orgId), plan, now())) {
+      const seated = new Set((await members(orgId)).map((m) => m?.public_user_data?.user_id).filter(Boolean));
+      return { plan: 'paid', seats: seats.length, seatedSubjects: seated };
     }
     return { plan: null, seats: seats.length, seatedSubjects: new Set() };
   }
 
-  const shape = ({ plan, seats, seatedSubjects }, accounts) => {
+  const shape = ({ plan: state, seats, seatedSubjects }, accounts) => {
     const byName = new Map(accounts.map((a) => [a.name, a]));
     return {
-      plan,
+      plan: state,
       seats,
       orgId: null,
       seated(name) {
         const account = byName.get(name);
-        if (!account || !PAID_ROLES.has(account.role) || plan === 'comped') return true;
+        if (!account || !PAID_ROLES.has(account.role) || state === 'comped') return true;
         const subject = subjectOf(account);
         return !subject || seatedSubjects.has(subject);
       },
@@ -108,8 +102,7 @@ export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, issuer
   };
 
   return {
-    soloPlan,
-    teamPlan,
+    plan,
     publishableKey,
     subjectOf,
     async standing({ workspace, accounts }) {

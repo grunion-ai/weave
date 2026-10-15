@@ -90,7 +90,7 @@ const SURFACE = [
 const INTERNAL = {
   save: 'persistence', maybeRefresh: 'cross-process refresh',
   billing: 'read helper (Feature #256): the workspace\'s name, creation date and Clerk organization for src/billing.js; GET /api/billing is the door',
-  linkBillingOrg: 'billing plumbing (Feature #256): POST /api/billing/team links the Clerk organization it creates; an agent never links one by hand',
+  linkBillingOrg: 'billing plumbing (Feature #256): POST /api/billing/organization links the Clerk organization it creates; an agent never links one by hand',
   entityRevision: 'read helper (Issue #902): entity reads carry the opaque stored-row revision',
   conditionalWrite: 'HTTP concurrency boundary (Issue #902): POST /api/entities/:id/conditional applies the existing append or state verb under an observed-revision write lock',
   settleDeferred: 'process plumbing (Feature #250): runDeferredMigrations settles each workspace a supervised worker opened while the old worker still served; an agent never calls it',

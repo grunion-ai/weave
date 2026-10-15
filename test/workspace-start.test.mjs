@@ -203,11 +203,11 @@ const clerkAt = (routes) => async (url, init = {}) => {
   const [status, body] = hit ?? [404, { errors: [{ code: 'resource_not_found' }] }];
   return new Response(JSON.stringify(body), { status });
 };
-const SOLO = [200, { subscription_items: [{ status: 'active', plan: { slug: 'solo' } }] }];
+const SEAT = [200, { subscription_items: [{ status: 'active', plan: { slug: 'seat' } }] }];
 
-test('start: with billing on, a new person creates a first workspace and is its Observer-only Architect until the solo plan', async () => {
+test('start: with billing on, a new person creates a first workspace and is its Observer-only Architect until it buys its first seat', async () => {
   const routes = {};
-  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', fetch: clerkAt(routes) });
+  const billing = createBilling({ secretKey: 'clerk-test', plan: 'seat', fetch: clerkAt(routes) });
   const s = await serve({ billing });
   try {
     const dana = await s.signInAtStart('user_dana', { email: 'dana@example.com', email_verified: true });
@@ -228,18 +228,24 @@ test('start: with billing on, a new person creates a first workspace and is its 
     const desk = s.at('dana-desk.weave.test');
     assert.equal((await desk('GET', '/api/spaces', { cookie: session })).status, 200, 'reading is free');
     const unpaid = await desk('POST', '/api/spaces', { cookie: session, body: { name: 'Plans' } });
-    assert.deepEqual([unpaid.status, unpaid.json().code], [402, 'seat-required'], 'no solo plan yet, so the Architect works as an Observer');
+    assert.deepEqual([unpaid.status, unpaid.json().code], [402, 'seat-required'], 'no seat bought yet, so the Architect works as an Observer');
 
     const waiting = await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Second', slug: 'dana-two' } });
     assert.deepEqual([waiting.status, waiting.json().code, waiting.json().waiting], [402, 'plan-required', 'dana-desk'], 'one unpaid workspace per identity');
-    routes['GET /users/user_dana/billing/subscription'] = [500, {}];
+    routes['POST /organizations'] = [200, { id: 'org_dana' }];
+    routes['GET /organizations/org_dana/memberships'] = [200, { data: [] }];
+    routes['POST /organizations/org_dana/memberships'] = [200, {}];
+    const setUp = await desk('POST', '/api/billing/organization', { cookie: session });
+    assert.deepEqual([setUp.status, setUp.json().orgId], [200, 'org_dana'], 'the unseated Architect sets up the billing organization');
+    routes['GET /organizations/org_dana/billing/subscription'] = [500, {}];
     billing.forget();
     const down = await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Second', slug: 'dana-two' } });
     assert.deepEqual([down.status, down.json().code], [503, 'billing-unavailable'], 'Clerk down never grants a free create');
 
-    routes['GET /users/user_dana/billing/subscription'] = SOLO;
+    routes['GET /organizations/org_dana/billing/subscription'] = SEAT;
+    routes['GET /organizations/org_dana/memberships'] = [200, { data: [{ public_user_data: { user_id: 'user_dana' } }] }];
     billing.forget();
-    assert.equal((await desk('POST', '/api/spaces', { cookie: session, body: { name: 'Plans' } })).status, 201, 'the solo plan seats the Architect');
+    assert.equal((await desk('POST', '/api/spaces', { cookie: session, body: { name: 'Plans' } })).status, 201, 'one bought seat seats the Architect');
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Second', slug: 'dana-two' } })).status, 201, 'with the first workspace paid, another may start');
 
     const kyle = await s.signInAtStart('user_kyle');

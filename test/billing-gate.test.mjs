@@ -41,7 +41,7 @@ function build(routes = {}, { comped = false, billingOn = true } = {}) {
   w.setRequireAuth(true);
   if (comped) w.state.meta.createdAt = '2026-01-01T00:00:00.000Z';
   const fake = clerk(routes);
-  const billing = billingOn ? createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', since: Date.parse('2026-06-01T00:00:00Z'), issuer: ISSUER, publishableKey: PUBLISHABLE, fetch: fake.fetch }) : null;
+  const billing = billingOn ? createBilling({ secretKey: 'sk_test_x', plan: 'seat', since: Date.parse('2026-06-01T00:00:00Z'), issuer: ISSUER, publishableKey: PUBLISHABLE, fetch: fake.fetch }) : null;
   tableId = w.findTable('Dev/Task').id;
   return { w, call: client(createWorkspaceHub(w), { billing }), t, calls: fake.calls };
 }
@@ -73,9 +73,9 @@ test('billing off: nothing changes and /api/billing says so', async () => {
   assert.equal(res.json.code, 'billing-off');
 });
 
-test('the team plan seats the Clerk organization members; a paid human without a seat stays an Observer', async () => {
+test('the seat plan seats the Clerk organization members; a paid human without a seat stays an Observer', async () => {
   const { w, call, t } = build({
-    'GET /organizations/org_1/billing/subscription': active('team'),
+    'GET /organizations/org_1/billing/subscription': active('seat'),
     'GET /organizations/org_1/memberships': [200, { data: [{ public_user_data: { user_id: 'user_arc' } }] }],
   });
   w.linkBillingOrg('org_1');
@@ -98,21 +98,20 @@ test('GET /api/billing: the plan, the seat count and who holds a seat, for any m
   assert.equal(res.json.plan, null);
   assert.equal(res.json.seats, 2);
   assert.deepEqual(res.json.members.map((m) => [m.name, m.role, m.seated]).sort(), [['arc', 'architect', false], ['ed', 'editor', false], ['ob', 'observer', true]]);
-  assert.equal(res.json.soloPlan, 'solo');
-  assert.equal(res.json.teamPlan, 'team');
+  assert.equal(res.json.planSlug, 'seat');
   assert.equal(res.json.publishableKey, PUBLISHABLE);
   assert.equal(res.json.orgId, null);
 });
 
-test('POST /api/billing/team: an unseated architect opens the Clerk organization and every paid human is mirrored into it', async () => {
+test('POST /api/billing/organization: an unseated architect opens the Clerk organization and every paid human is mirrored into it', async () => {
   const added = [];
   const { w, call, t } = build({
     'POST /organizations': [200, { id: 'org_7' }],
     'GET /organizations/org_7/memberships': [200, { data: [{ role: 'org:admin', public_user_data: { user_id: 'user_arc' } }] }],
     'POST /organizations/org_7/memberships': (body) => { added.push(body); return [200, {}]; },
   });
-  assert.equal((await call('POST', '/api/billing/team', { token: t.ed })).status, 403, 'only an architect opens the team plan');
-  const res = await call('POST', '/api/billing/team', { token: t.arc });
+  assert.equal((await call('POST', '/api/billing/organization', { token: t.ed })).status, 403, 'only an architect sets up billing');
+  const res = await call('POST', '/api/billing/organization', { token: t.arc });
   assert.equal(res.status, 200);
   assert.equal(res.json.orgId, 'org_7');
   assert.equal(w.billing().billing.orgId, 'org_7');
@@ -124,7 +123,7 @@ test('a role change on a linked workspace re-mirrors the Clerk organization', as
   const { w, call, t } = build({
     'GET /organizations/org_1/memberships': [200, { data: [{ role: 'org:admin', public_user_data: { user_id: 'user_arc' } }, { role: 'org:member', public_user_data: { user_id: 'user_ed' } }] }],
     'DELETE /organizations/org_1/memberships/user_ed': () => { writes.push('drop ed'); return [200, {}]; },
-    'GET /organizations/org_1/billing/subscription': active('team'),
+    'GET /organizations/org_1/billing/subscription': active('seat'),
   });
   w.linkBillingOrg('org_1');
   const res = await call('PATCH', '/api/accounts/ed', { token: t.arc, body: { role: 'observer' } });
