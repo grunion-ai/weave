@@ -1,6 +1,5 @@
 const prefix = location.pathname.replace(/\/billing\/?$/, '');
 const $ = (id) => document.getElementById(id);
-const PLAN_NAMES = { solo: 'the solo plan', team: 'the team plan' };
 
 const api = async (method, path) => {
   const res = await fetch(`${prefix}/api${path}`, { method, credentials: 'same-origin', headers: { Accept: 'application/json' } });
@@ -39,19 +38,17 @@ const mountCheckout = async (state) => {
   const box = $('checkout');
   box.replaceChildren();
   if (!state.publishableKey || state.plan === 'comped') return;
-  const forOrg = !!state.orgId;
-  if (forOrg && !state.architect) return;
-  if (!forOrg && state.seats > 1) return;
+  if (!state.orgId || !state.architect) return;
   try {
     const c = await loadClerk(state.publishableKey);
     if (!c?.user) {
       box.textContent = 'Sign in again to see the plans: your billing session has ended.';
       return;
     }
-    if (forOrg) await c.setActive({ organization: state.orgId });
+    await c.setActive({ organization: state.orgId });
     const mount = document.createElement('div');
     box.append(mount);
-    c.mountPricingTable(mount, { for: forOrg ? 'organization' : 'user', newSubscriptionRedirectUrl: location.href });
+    c.mountPricingTable(mount, { for: 'organization', newSubscriptionRedirectUrl: location.href });
   } catch (error) {
     box.textContent = error.message;
   }
@@ -62,7 +59,7 @@ const render = (state) => {
   $('summary').textContent = state.plan === 'comped'
     ? 'This workspace was made before billing began, so it is never charged.'
     : state.plan
-    ? `This workspace is on ${PLAN_NAMES[state.plan] ?? state.plan}. ${seated} of ${state.seats} paid ${state.seats === 1 ? 'seat is' : 'seats are'} covered.`
+    ? `${seated} of ${state.seats} paid ${state.seats === 1 ? 'seat is' : 'seats are'} covered at $4.99 a seat each month.`
     : state.seats === 0 ? 'Nobody here takes a paid seat yet.' : `No plan covers this workspace, so its ${state.seats === 1 ? 'Editor or Architect works' : `${state.seats} Editors and Architects work`} as Observers until one is bought.`;
   $('seats').replaceChildren(...state.members.map((m) => {
     const li = document.createElement('li');
@@ -77,12 +74,12 @@ const render = (state) => {
     li.append(who, mark);
     return li;
   }));
-  const needsTeam = state.plan !== 'comped' && !state.orgId && state.seats > 1;
-  $('team').hidden = !needsTeam;
-  $('team-open').disabled = !state.architect;
-  $('team-why').textContent = state.architect
-    ? 'More than one person here takes a paid seat, so the workspace needs the team plan. Opening it makes a billing organization with every Editor and Architect in it; you then pay per seat below.'
-    : 'More than one person here takes a paid seat, so the workspace needs the team plan. An architect opens it.';
+  const needsOrg = state.plan !== 'comped' && !state.orgId && state.seats > 0;
+  $('setup').hidden = !needsOrg;
+  $('setup-open').disabled = !state.architect;
+  $('setup-why').textContent = state.architect
+    ? 'Each Editor and Architect is a $4.99 seat. Setting up billing makes a billing organization with every paid person in it; you then buy the seats below.'
+    : 'Each Editor and Architect is a $4.99 seat. An architect sets up billing.';
   $('back').href = `${prefix}/`;
 };
 
@@ -96,15 +93,15 @@ const refresh = async () => {
   }
 };
 
-$('team-open').addEventListener('click', async () => {
-  $('team-open').disabled = true;
+$('setup-open').addEventListener('click', async () => {
+  $('setup-open').disabled = true;
   try {
-    const state = await api('POST', '/billing/team');
+    const state = await api('POST', '/billing/organization');
     render(state);
     await mountCheckout(state);
   } catch (error) {
-    $('team-why').textContent = error.message;
-    $('team-open').disabled = false;
+    $('setup-why').textContent = error.message;
+    $('setup-open').disabled = false;
   }
 });
 
