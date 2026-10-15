@@ -1,0 +1,1 @@
+- The supervisor swap test reads routing order per request loop instead of pooling every loop's completions into one list, so a request that finished out of order on the draining old worker no longer reads as the proxy routing backward (Issue #821).

@@ -96,6 +96,31 @@ function plantRelease(releasesDir, name, { version = name.slice(1), served = nul
 }
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
+const LOOPS = 6;
+function swapFaults(sequences, order) {
+  const rank = new Map(order.map((v, i) => [v, i]));
+  const faults = [];
+  sequences.forEach((seq, loop) => {
+    let reached = -1;
+    for (const [at, version] of seq.entries()) {
+      const r = rank.get(version);
+      if (r === undefined) return void faults.push({ loop, at, version, fault: 'unknown version' });
+      if (r < reached) return void faults.push({ loop, at, version, fault: 'routed back' });
+      reached = r;
+    }
+  });
+  return faults;
+}
+
+test('the swap observer separates out-of-order completion from routing that moved backward', () => {
+  const order = [IMAGE_VERSION, NEXT];
+  assert.deepEqual(swapFaults([[IMAGE_VERSION], [NEXT], [IMAGE_VERSION], [NEXT]], order), [], 'four loops each settled on one side of the swap: the interleaving of CI run 38111777298 is completion order, not routing order');
+  assert.deepEqual(swapFaults([[IMAGE_VERSION, NEXT], [NEXT], [IMAGE_VERSION]], order), [], 'a loop crossing the swap once is the expected shape');
+  assert.deepEqual(swapFaults([[IMAGE_VERSION, NEXT, IMAGE_VERSION]], order), [{ loop: 0, at: 2, version: IMAGE_VERSION, fault: 'routed back' }], 'one loop sent back to the old worker is a fault');
+  assert.deepEqual(swapFaults([[NEXT], [IMAGE_VERSION, '0.0.0']], order), [{ loop: 1, at: 1, version: '0.0.0', fault: 'unknown version' }], 'a version from neither release is a fault');
+  assert.deepEqual(swapFaults([[]], order), [], 'a loop that answered nothing reports nothing');
+});
+
 test('WEAVE_AUTO_UPDATE is opt-in: unset, "0" or "off" leave supervise as plain serve', async () => {
   for (const v of [undefined, '', '0', 'off', 'no', 'false']) assert.equal(autoUpdateFromEnv(v === undefined ? {} : { WEAVE_AUTO_UPDATE: v }), false, `WEAVE_AUTO_UPDATE=${v}`);
   for (const v of ['1', 'true', 'yes', 'on']) assert.equal(autoUpdateFromEnv({ WEAVE_AUTO_UPDATE: v }), true, `WEAVE_AUTO_UPDATE=${v}`);
@@ -124,7 +149,7 @@ test('a swap under a request loop answers every request, and the old worker exit
 
     let stop = false;
     const failures = [];
-    const versions = [];
+    const seen = Array.from({ length: LOOPS }, () => []);
     let requests = 0;
     const loop = async (i) => {
       for (let n = 0; !stop; n++) {
@@ -135,13 +160,13 @@ test('a swap under a request loop answers every request, and the old worker exit
           const body = await r.json();
           requests++;
           if (!r.ok) failures.push(`HTTP ${r.status} ${JSON.stringify(body)}`);
-          else if (body.version && versions.at(-1) !== body.version) versions.push(body.version);
+          else if (body.version && seen[i].at(-1) !== body.version) seen[i].push(body.version);
         } catch (err) {
           failures.push(err.message);
         }
       }
     };
-    const loops = Array.from({ length: 6 }, (_, i) => loop(i));
+    const loops = Array.from({ length: LOOPS }, (_, i) => loop(i));
     await new Promise((r) => setTimeout(r, 300));
     const result = await sup.check();
     await new Promise((r) => setTimeout(r, 300));
@@ -150,7 +175,9 @@ test('a swap under a request loop answers every request, and the old worker exit
 
     assert.equal(result.action, 'swapped', JSON.stringify(result));
     assert.deepEqual(failures, [], `no request failed across the swap (${requests} sent)`);
-    assert.deepEqual(versions, [IMAGE_VERSION, NEXT], 'the loop saw the old version, then the new one, never back');
+    const observed = seen.flat();
+    assert.deepEqual(swapFaults(seen, [IMAGE_VERSION, NEXT]), [], `no loop was routed back to the old worker across the swap (${JSON.stringify(seen)})`);
+    assert.ok(observed.includes(IMAGE_VERSION) && observed.includes(NEXT), `the loops saw the old version and the new one (${JSON.stringify(seen)})`);
     const after = await health(base);
     assert.equal(after.version, NEXT);
     assert.equal(after.supervisor.release, `v${NEXT}`);
