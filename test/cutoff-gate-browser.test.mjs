@@ -15,6 +15,27 @@ if (s) {
     phone: handset && { browser: handset, page: { ...phoneProfile().page, viewport: CELLS.phone.viewport } },
   };
 
+  test('long URL and date text remains reachable by scrolling (Issue #897)', async () => {
+    const page = await s.browser.newPage({ viewport: CELLS.desktop.viewport });
+    try {
+      await page.goto(`${s.base}/#/table/${s.tasks.id}`, { waitUntil: 'networkidle' });
+      for (const selector of ['.url-link', '.date-cell', '.range-cell']) {
+        const cell = page.locator(`.wv-grid tbody ${selector}`).first();
+        const result = await cell.evaluate((node) => {
+          const text = () => node.querySelector('input')?.value || node.textContent;
+          const before = text();
+          node.scrollLeft = node.scrollWidth;
+          return { before, after: text(), left: node.scrollLeft, end: node.scrollWidth - node.clientWidth, overflow: getComputedStyle(node).overflowX };
+        });
+        assert.equal(result.overflow, 'auto');
+        if (selector === '.url-link') assert.ok(result.end > 0);
+        else assert.ok(result.end >= 0);
+        assert.ok(Math.abs(result.left - result.end) <= 1);
+        assert.equal(result.after, result.before);
+      }
+    } finally { await page.close(); }
+  });
+
   for (const cell of Object.keys(CELLS)) {
     test(`${cell}: every surface opens, no new cut-off text appears, and every fixed one has left the baseline`, async (t) => {
       const m = matrix[cell];
