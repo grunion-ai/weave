@@ -1495,7 +1495,7 @@ function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) 
   pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
   dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: owns, close: () => pop.remove() });
 
-  const opts = [...pop.querySelectorAll('.chip-pop-row')];
+  const opts = [...pop.querySelectorAll('.chip-pop-row')].map((o) => (o.matches('label') ? o.querySelector('input') ?? o : o));
   const focusAt = (i) => opts[((i % opts.length) + opts.length) % opts.length].focus();
   pop.addEventListener('keydown', (ev) => {
     const i = opts.indexOf(document.activeElement);
@@ -1523,9 +1523,7 @@ function relearnRows(pop, next, refocus = null) {
   if (shape(live) === shape(next)) {
     live.forEach((node, i) => {
       if (!node.classList.contains('eye-row')) return;
-      const on = next[i].getAttribute('aria-checked') === 'true';
-      node.setAttribute('aria-checked', on ? 'true' : 'false');
-      node.querySelector('.switch')?.classList.toggle('on', on);
+      node.querySelector('input').checked = next[i].querySelector('input').checked;
     });
     return;
   }
@@ -5200,11 +5198,6 @@ function eyeGesture(hold) {
   let done = false;
   return () => { if (done) return; done = true; eyeGestures--; hold(); };
 }
-function showSwitch(node, on = node.getAttribute('aria-checked') !== 'true') {
-  node.setAttribute('aria-checked', on ? 'true' : 'false');
-  node.querySelector('.switch')?.classList.toggle('on', on);
-}
-
 function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
   let pop;
   const home = anchor.closest('#main, #dock');
@@ -5288,19 +5281,18 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       return { fields: order.filter((n) => (t.columns ?? []).includes(n)) };
     });
   };
-  const switchRow = (on, label, run, dataset = {}) => el('button', {
-    class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false', dataset,
-    onclick: (e) => { showSwitch(e.currentTarget); run(); },
-  }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
+  const checkRow = (on, label, run, dataset = {}) => el('label', { class: 'chip-pop-row eye-row', dataset },
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: run }),
+    el('span', { class: 'eye-label' }, label));
   const gap = () => el('span', { class: 'field-reorder-gap', 'aria-hidden': 'true' });
   const makeRow = (name, on) => {
-    const toggle = switchRow(on, name, () => flip(name));
+    const toggle = checkRow(on, name, () => flip(name));
     if (!db.view && !isField(name)) return el('div', { class: 'table-field-row', dataset: { field: name } }, gap(), toggle);
     const handle = el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
     const row = el('div', { class: 'table-field-row', dataset: { field: name } }, handle, toggle);
     RO().guard(row);
     row.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || e.target.closest('.switch') || db.view?.blank) return;
+      if (e.button !== 0 || e.target.closest('input') || db.view?.blank) return;
       startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
     });
     row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
@@ -5325,11 +5317,11 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       if (before) { order.splice(order.indexOf(before), 0, name); list.querySelector(`[data-field="${CSS.escape(before)}"]`).before(row); }
       else { order.push(name); list.append(row); }
     }
-    for (const r of list.querySelectorAll('.table-field-row')) showSwitch(r.querySelector('.eye-row'), shown.has(r.dataset.field));
-    const deleted = pop.querySelector('[data-deleted]');
-    if (deleted) showSwitch(deleted, showsDeleted(t));
-    const rollups = pop.querySelector('[data-rollups]');
-    if (rollups) showSwitch(rollups, showsRollups(t));
+    for (const r of list.querySelectorAll('.table-field-row')) r.querySelector('input').checked = shown.has(r.dataset.field);
+    const deleted = pop.querySelector('[data-deleted] input');
+    if (deleted) deleted.checked = showsDeleted(t);
+    const rollups = pop.querySelector('[data-rollups] input');
+    if (rollups) rollups.checked = showsRollups(t);
   };
   const shown = shownOf(liveTable());
   const rows = [tableControlHeader('Fields', () => pop?.remove()),
@@ -5341,8 +5333,8 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
     ...(rowsSection ? [el('div', { class: 'table-field-foot' },
       el('div', { class: 'eye-head' }, 'Rows'),
-      el('div', { class: 'table-field-line' }, gap(), switchRow(showsDeleted(db), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => write((t) => ({ deleted: !showsDeleted(t) })), { deleted: '' })),
-      ...(db.system ? [] : [el('div', { class: 'table-field-line' }, gap(), switchRow(showsRollups(db), 'Σ rollup row', () => write((t) => ({ rollups: !showsRollups(t) })), { rollups: '' }))]))] : []),
+      el('div', { class: 'table-field-line' }, gap(), checkRow(showsDeleted(db), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => write((t) => ({ deleted: !showsDeleted(t) })), { deleted: '' })),
+      ...(db.system ? [] : [el('div', { class: 'table-field-line' }, gap(), checkRow(showsRollups(db), 'Σ rollup row', () => write((t) => ({ rollups: !showsRollups(t) })), { rollups: '' }))]))] : []),
   ];
   pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
   if (pop) { pop.eyeOf = db.id; pop.relearnEye = refresh; }
@@ -8749,11 +8741,9 @@ async function footerPicker(anchor, db, col) {
       }
     }
   };
-  const flip = (node) => {
-    const agg = node.dataset.agg;
-    const on = node.getAttribute('aria-checked') !== 'true';
-    node.setAttribute('aria-checked', on ? 'true' : 'false');
-    node.querySelector('.switch')?.classList.toggle('on', on);
+  const flip = (box) => {
+    const agg = box.closest('.foot-row').dataset.agg;
+    const on = box.checked;
     const turn = eyeWrites.then(async () => {
       try { await write(agg, on); } catch (err) { toast(err.message, true); }
       if (eyeTails.get(tailKey) === turn) await load().catch(() => {});
@@ -8763,23 +8753,22 @@ async function footerPicker(anchor, db, col) {
     turn.then(() => {
       if (eyeTails.get(tailKey) !== turn) return;
       eyeTails.delete(tailKey);
-      if (pop.isConnected) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
+      if (pop.isConnected) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"] input`)?.focus());
       fillFooter(db, anchor.closest('tr.wv-foot'), rollups, { col });
     });
   };
   const row = (agg) => {
     const on = !!have(agg);
-    return el('button', {
-      class: 'chip-pop-row eye-row foot-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
-      dataset: { agg },
-      onclick: (e) => { e.stopPropagation(); flip(e.currentTarget); },
-    }, el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg),
-    el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
+    return el('label', {
+      class: 'chip-pop-row eye-row foot-row', dataset: { agg },
+      onclick: (e) => e.stopPropagation(),
+    }, el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: (e) => flip(e.currentTarget) }),
+    el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg));
   };
   const build = () => [
     el('div', { class: 'chip-pop-title' }, `${col} · space rollups`),
     ...aggs.map(row),
-    el('div', { class: 'chip-pop-note' }, 'Each switch is a rollup field on this space\'s row'),
+    el('div', { class: 'chip-pop-note' }, 'Each box is a rollup field on this space\'s row'),
   ];
   const opened = eyeWrites.then(load);
   eyeWrites = opened.catch(() => {});

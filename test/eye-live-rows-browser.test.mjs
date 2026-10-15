@@ -220,7 +220,7 @@ if (s) {
     assert.equal(
       await page.evaluate(() => document.querySelectorAll('.chip-pop .foot-row[data-stamp]').length),
       rowCount, 'every aggregate row is the node it was before the flip');
-    assert.equal(await page.evaluate(() => document.activeElement?.dataset?.agg), 'sum', 'the pressed row kept focus');
+    assert.equal(await page.evaluate(() => document.activeElement?.closest('.foot-row')?.dataset.agg), 'sum', 'the pressed row kept focus');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
     await page.close();

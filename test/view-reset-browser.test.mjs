@@ -59,8 +59,8 @@ if (s) {
         assert.deepEqual(await heads(page), ['Name', 'Description', 'Status', 'Cost', 'Owner']);
         assert.equal(await page.getAttribute('.wv-grid', 'data-density'), 'comfortable');
         await page.click('.eye-btn');
-        assert.equal(await page.locator('.table-fields-popover [data-deleted]').getAttribute('aria-checked'), 'false', 'Fields: Deleted rows off');
-        assert.equal(await page.locator('.table-fields-popover [data-rollups]').getAttribute('aria-checked'), 'false', 'Fields: Σ rollup row off');
+        assert.equal(await page.locator('.table-fields-popover [data-deleted] input').isChecked(), false, 'Fields: Deleted rows off');
+        assert.equal(await page.locator('.table-fields-popover [data-rollups] input').isChecked(), false, 'Fields: Σ rollup row off');
       } finally { await page.close(); }
     });
   }
@@ -100,9 +100,9 @@ if (s) {
     const page = await open(`#/table/${jobs.id}/view/${other.id}`);
     try {
       await page.click('.eye-btn');
-      await page.locator('.table-fields-popover [data-deleted]').click();
+      await page.locator('.table-fields-popover [data-deleted] input').check();
       await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row.row-deleted'));
-      await page.locator('.table-fields-popover [data-rollups]').click();
+      await page.locator('.table-fields-popover [data-rollups] input').check();
       await page.waitForSelector('#main tr.wv-foot');
       await page.waitForLoadState('networkidle');
       assert.equal(weave.tableView(`${jobs.id}/Audit`).deleted, true, 'saved into Audit');

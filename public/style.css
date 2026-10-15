@@ -1915,7 +1915,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .filter-chip-label { text-box: trim-both cap alphabetic; }
 
 .table-field-row .eye-row { cursor: grab; user-select: none; -webkit-user-select: none; }
-.table-field-row .switch { cursor: pointer; }
 .table-fields-popover .field-reorder-handle:not(:disabled) { cursor: grab; }
 html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
 :root {

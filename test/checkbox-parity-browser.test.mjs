@@ -10,7 +10,11 @@ const s = await launch('one checkbox', (weave) => {
     { name: 'Open', category: 'not-started', default: true },
     { name: 'Done', category: 'done' }] } });
   weave.addField(jobs, { name: 'Owner', type: 'text' });
-  weave.createEntity(jobs, { name: 'Alpha', values: { Status: 'Open' } });
+  weave.addField(jobs, { name: 'Hours', type: 'number' });
+  weave.createEntity(jobs, { name: 'Alpha', values: { Status: 'Open', Hours: 3 } });
+  const spaces = Object.values(weave.state.tables).find((t) => t.system === 'spaces');
+  weave.addField(spaces.id, { name: 'Job · Hours · sum', type: 'rollup', config: { via: 'Ops/Job', targetField: 'Hours', aggregate: 'sum' } });
+  weave.updateTable(jobs.id, { hideRollups: false });
 });
 
 if (s) {
@@ -36,7 +40,7 @@ if (s) {
   }, [look.toString(), checked]);
 
   for (const theme of ['light', 'dark']) {
-    test(`the grid and Filters draw the field dialog's checkbox, and Fields draws one switch per row (${theme})`, async () => {
+    test(`the grid, Fields, the Σ picker and Filters draw the field dialog's checkbox (${theme}, Issues #441, #915)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: theme });
       try {
         await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
@@ -54,12 +58,34 @@ if (s) {
             for (const k of ['w', 'h', 'radius', 'border', 'borderWidth', 'appearance', 'bg']) assert.equal(got[k], w[k], `${name} ${checked ? 'checked' : 'unchecked'}: ${k}`);
           }
         }
+        const grid = await readBox(page, surfaces.grid, true);
         await page.click('.eye-btn');
         await page.waitForSelector('.table-fields-popover .table-field-row');
         assert.equal(await page.locator('.field-visible-check').count(), 0, 'no hand-drawn box');
-        assert.equal(await page.locator('.table-fields-popover input[type="checkbox"]').count(), 0, 'no checkbox in the Fields menu (Issue #910)');
-        const rowsSwitches = await page.$$eval('.table-fields-popover .eye-row', (rows) => rows.map((r) => r.getAttribute('role') === 'switch' && !!r.querySelector('.switch .switch-knob')));
-        assert.ok(rowsSwitches.length > 3 && rowsSwitches.every(Boolean), 'every show/hide row, Deleted rows and the Σ row included, is one switch');
+        assert.equal(await page.locator('.table-fields-popover :is([role="switch"], .switch)').count(), 0, 'no switch in the Fields menu (Issue #915)');
+        for (const checked of [false, true]) {
+          const got = await readBox(page, '.table-field-row[data-field="Owner"] input[type="checkbox"]', checked);
+          assert.match(got.cls, /\bform-check-input\b/, 'Fields: the shared checkbox');
+          const w = checked ? want.on : want.off;
+          for (const k of ['w', 'h', 'radius', 'border', 'borderWidth', 'appearance', 'bg']) assert.equal(got[k], w[k], `Fields ${checked ? 'checked' : 'unchecked'}: ${k}`);
+        }
+        const fieldsOn = await readBox(page, '.table-field-row[data-field="Owner"] input[type="checkbox"]', true);
+        for (const k of ['w', 'h', 'radius', 'bg']) assert.equal(fieldsOn[k], grid[k], `Fields matches the grid row selector: ${k}`);
+        const rowsBoxes = await page.$$eval('.table-fields-popover .eye-row', (rows) => rows.map((r) => !!r.querySelector('input.form-check-input[type="checkbox"]')));
+        assert.ok(rowsBoxes.length > 3 && rowsBoxes.every(Boolean), 'every show/hide row, Deleted rows and the Σ row included, holds the checkbox');
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => !document.querySelector('.chip-pop'));
+        await page.click('thead tr.wv-foot td.foot-cell[data-col="Hours"]');
+        await page.waitForSelector('.chip-pop .foot-row');
+        assert.equal(await page.locator('.chip-pop :is([role="switch"], .switch)').count(), 0, 'no switch in the Σ picker (Issue #915)');
+        const footBoxes = await page.$$eval('.chip-pop .foot-row', (rows) => rows.map((r) => !!r.querySelector('input.form-check-input[type="checkbox"]')));
+        assert.ok(footBoxes.length > 3 && footBoxes.every(Boolean), 'every Σ picker row holds the checkbox');
+        for (const checked of [false, true]) {
+          const got = await readBox(page, '.chip-pop .foot-row[data-agg="avg"] input[type="checkbox"]', checked);
+          const w = checked ? want.on : want.off;
+          for (const k of ['w', 'h', 'radius', 'border', 'borderWidth', 'appearance', 'bg']) assert.equal(got[k], w[k], `Σ picker ${checked ? 'checked' : 'unchecked'}: ${k}`);
+        }
+        await page.locator('.chip-pop .foot-row[data-agg="avg"] input').evaluate((b) => { b.checked = false; });
         await page.keyboard.press('Escape');
         await page.click('.table-filter-btn');
         await page.waitForSelector('.table-filter-popover .filter-chip');
@@ -73,20 +99,40 @@ if (s) {
     });
   }
 
-  test('a Fields row is a labelled switch: a click on its name flips it and the grid follows (Issue #910)', async () => {
+  test('a Fields row is a labelled checkbox: a click on its name flips it and the grid follows (Issue #915)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
       await page.click('.eye-btn');
-      const box = page.getByRole('switch', { name: 'Owner', exact: true });
-      assert.equal(await box.getAttribute('aria-checked'), 'true');
+      const box = page.locator('.table-fields-popover').getByRole('checkbox', { name: 'Owner', exact: true });
+      assert.equal(await box.isChecked(), true);
       await page.locator('.table-field-row[data-field="Owner"] .eye-label').click();
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Owner'));
-      assert.equal(await box.getAttribute('aria-checked'), 'false');
+      assert.equal(await box.isChecked(), false);
       await box.focus();
       await page.keyboard.press('Space');
       await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Owner'));
-      assert.equal(await box.getAttribute('aria-checked'), 'true', 'Space flips it from the keyboard');
+      assert.equal(await box.isChecked(), true, 'Space flips it from the keyboard');
+    } finally { await page.close(); }
+  });
+
+  test('a Σ picker row is a labelled checkbox the arrow keys walk, and the settings row keeps its switch (Issue #915)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
+      await page.click('thead tr.wv-foot td.foot-cell[data-col="Hours"]');
+      const pop = page.locator('.chip-pop');
+      const sum = pop.locator('.foot-row[data-agg="sum"]').getByRole('checkbox');
+      await sum.waitFor();
+      assert.equal(await sum.isChecked(), true, 'the existing rollup reads as checked');
+      assert.equal(await page.evaluate(() => document.activeElement?.closest('.foot-row')?.dataset.agg), 'sum', 'the first checkbox takes focus on open');
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await page.evaluate(() => document.activeElement?.matches('.foot-row input[type="checkbox"]') && document.activeElement.closest('.foot-row').dataset.agg), 'avg', 'ArrowDown walks to the next checkbox');
+      await page.keyboard.press('Escape');
+      await page.locator('#ws-list .ws-icon').first().click({ button: 'right' });
+      const setting = page.locator('.ws-ctx .wv-menu-row', { hasText: 'Link preview before sign-in' });
+      await setting.waitFor();
+      assert.equal(await setting.locator('.switch .switch-knob').count(), 1, 'a setting stays a switch');
     } finally { await page.close(); }
   });
 
