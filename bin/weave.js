@@ -118,7 +118,7 @@ Schema
   ontology [--concept T] [--since E]  The schema as a short outline, one table, or what changed
   schema                              Describe spaces, tables, fields
   schema export [--out file]          The schema as an editable JSON document
-  schema apply --file doc.json [--dry-run] [--allow-destructive]
+  schema apply --file doc.json [--dry-run] [--allow-destructive] [--partial]
                                       Grow the workspace to match the document
   build <spec.json> [--dry-run] [--skip-existing-rows]
                                       Spaces, tables, fields, relations and rows in one
@@ -551,7 +551,7 @@ async function main() {
       const [sub] = args;
       if (sub === 'apply') {
         const doc = JSON.parse(readFileSync(flags.file, 'utf8'));
-        return out(w.applySchema(doc, { dryRun: !!flags['dry-run'], allowDestructive: !!flags['allow-destructive'] }));
+        return out(w.applySchema(doc, { dryRun: !!flags['dry-run'], allowDestructive: !!flags['allow-destructive'], partial: !!flags.partial }));
       }
       if (sub === 'export') {
         const json = JSON.stringify(w.describeSchema(), null, 2);
