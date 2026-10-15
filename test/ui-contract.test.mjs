@@ -178,6 +178,25 @@ test('spaces and tables have exactly one create flow', () => {
   assert.ok(rulesFor('.nav-inline-add').padding, 'the inline input must be styled as a nav row');
 });
 
+test('one tray creates a table, and every trigger opens it (Issue #778)', () => {
+  assert.doesNotMatch(APP, /function newTableDialog/, 'the Tables grid modal is gone');
+  assert.doesNotMatch(APP, /function startTableDialog/, 'the empty-workspace modal is gone');
+  assert.match(APP, /function tableTray\(/, 'one builder owns the new-table surface');
+  assert.equal((APP.match(/modal\('New table'/g) ?? []).length, 0,
+    'create happens in the right-hand tray, never a centered modal');
+  assert.equal((APP.match(/tray\('New table'/g) ?? []).length, 1,
+    'exactly one tray is titled New table');
+  const calls = (APP.match(/tableTray\(/g) ?? []).length;
+  assert.ok(calls >= 5, `the definition plus every trigger calls it, got ${calls}`);
+  assert.doesNotMatch(APP, /inlineNameInput\('New table name…'/,
+    'the sidebar space + opens the tray rather than its own inline input');
+  const fn = APP.slice(APP.indexOf('function tableTray('));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.match(body, /POST', '\/spaces'/, 'the tray still creates a missing space first');
+  assert.match(body, /POST', '\/tables'/, 'and then the table through the schema route');
+  assert.match(body, /iconButton\(/, 'the tray offers the icon the modals never did');
+});
+
 test('one popover implementation serves every anchored menu', () => {
   assert.match(APP, /function showPopover/);
   const fn = APP.slice(APP.indexOf('function showPopover'));

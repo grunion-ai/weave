@@ -1126,10 +1126,7 @@ function renderNav() {
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
         title: `New table in ${space.space}`, type: 'button',
-        onclick: () => spaceRow.after(inlineNameInput('New table name…', async (name) => {
-          await api('POST', '/tables', { space: space.space, name });
-          await loadSchema();
-        })),
+        onclick: () => tableTray({ spaceId: space.spaceId }),
       }, iconEl('+', 'wv-icon')),
       kindDots('space', space, () => ({}), { title: `${space.space} actions`, extraClass: 'nav-space-menu', head: true }));
     kindContext(spaceRow, 'space', space);
@@ -4775,7 +4772,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
       return state.inlineAdd();
     }
     try {
-      if (db.system === 'tables') return newTableDialog(db, redraw);
+      if (db.system === 'tables') return tableTray({ after: redraw });
       if (db.system === 'fields') return newFieldDialog(redraw);
       if (db.system === 'users') return newUserDialog(db, redraw);
       const seed = { name: db.system === 'spaces' ? 'New space' : '' };
@@ -8866,14 +8863,7 @@ async function showSpace(spaceId) {
       await showSpace(spaceId);
       restoreGridFocus();
     };
-    const onAdd = async () => {
-      try {
-        const made = await api('POST', `/tables/${reg.id}/entities`, { name: 'New table', values: { Space: space.space } });
-        await loadSchema();
-        await showSpace(spaceId);
-        focusNewRow(made.id, { field: 'Name', select: true });
-      } catch (err) { toast(err.message, true); }
-    };
+    const onAdd = () => tableTray({ spaceId, after: () => showSpace(spaceId) });
     await schemaDisclosure(main, async (body) => {
       const res = await api('POST', `/tables/${reg.id}/query`, {});
       const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
@@ -8924,7 +8914,7 @@ async function useTemplateDialog(space) {
 
 function spaceTablesCard(space) {
   const add = space.system ? null
-    : el('button', { class: 'btn btn-sm wv-start-new', onclick: () => startTableDialog({ spaceId: space.spaceId }) }, '+ New table');
+    : el('button', { class: 'btn btn-sm wv-start-new', onclick: () => tableTray({ spaceId: space.spaceId }) }, '+ New table');
   if (!space.tables.length) {
     return el('div', { class: 'card wv-start space-tables' },
       el('div', { class: 'card-body' }, el('p', { class: 'wv-start-lead' }, 'No tables in this space yet.'), add));
@@ -10945,19 +10935,6 @@ function quickCreate(db) {
   });
 }
 
-function newTableDialog(reg, after) {
-  const spaces = state.schema.filter((s) => !s.system);
-  if (!spaces.length) return toast('Create a space first — a table lives in one', true);
-  modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
-    pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space }),
-  ], async (fd) => {
-    const made = await api('POST', `/tables/${reg.id}/entities`, { name: fd.get('name'), values: { Space: fd.get('space') } });
-    await loadSchema();
-    await after();
-    focusNewRow(made.id, { field: 'Name' });
-  });
-}
 
 function newUserDialog(reg, after) {
   const roles = ['Editor', 'Observer', 'Architect'].map((r) => ({ id: r, label: r }));
@@ -10982,25 +10959,37 @@ function newUserDialog(reg, after) {
   });
 }
 
-function startTableDialog({ spaceId = null } = {}) {
+function tableTray({ spaceId = null, after = null } = {}) {
   const spaces = state.schema.filter((s) => !s.system);
   const fixed = spaceId ? spaces.find((s) => s.spaceId === spaceId) : null;
   const spaceInput = fixed ? null
     : spaces.length ? pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space })
       : el('input', { name: 'space', value: 'General', class: 'form-control', required: '' });
-  modal('New table', [
-    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' }),
+  let icon = '';
+  const iconSlot = el('span', { class: 'tray-name-icon' });
+  const drawIcon = () => iconSlot.replaceChildren(iconButton(icon || null, (id) => { icon = id ?? ''; drawIcon(); }));
+  drawIcon();
+  tray('New table', [
+    el('label', { class: 'form-label' }, 'Name'),
+    el('div', { class: 'tray-name-row' },
+      iconSlot,
+      el('input', { name: 'name', placeholder: 'Table name', class: 'form-control', required: '' })),
     ...(spaceInput ? [
-      el('label', { class: 'form-label wv-start-label' }, 'Space'),
+      el('label', { class: 'form-label' }, 'Space'),
       spaceInput,
       el('div', { class: 'form-hint' }, 'Every table needs a space; related tables share one.'),
     ] : []),
   ], async (fd) => {
     const space = fixed?.space ?? String(fd.get('space')).trim();
     if (!spaces.some((s) => s.space === space)) await api('POST', '/spaces', { name: space });
-    const made = await api('POST', '/tables', { space, name: String(fd.get('name')).trim() });
+    const made = await api('POST', '/tables', { space, name: String(fd.get('name')).trim(), ...(icon ? { icon } : {}) });
     await loadSchema();
-    location.hash = `#/table/${made.id}`;
+    if (!after) { location.hash = `#/table/${made.id}`; return; }
+    const reg = registryTable('tables');
+    const rows = reg ? (await api('POST', `/tables/${reg.id}/query`, {})).items : [];
+    const row = rows.find((i) => i.sysId === made.id);
+    await after();
+    if (row) focusNewRow(row.id, { field: 'Name' });
   });
 }
 
@@ -11023,7 +11012,7 @@ function emptyWorkspace() {
   return el('div', { class: 'card wv-start' },
     el('div', { class: 'card-body' },
       el('p', { class: 'wv-start-lead' }, 'A table holds rows, and you choose its fields. Start with a new table or a template.'),
-      el('button', { class: 'btn btn-primary wv-start-new', onclick: () => startTableDialog() }, '+ New table'),
+      el('button', { class: 'btn btn-primary wv-start-new', onclick: () => tableTray() }, '+ New table'),
       el('div', { class: 'wv-start-label' }, 'Templates'),
       el('div', { class: 'wv-start-templates' },
         ...WeaveStarters.TEMPLATES.map((t) => el('button', {
