@@ -780,6 +780,12 @@ export const GUIDES = [
 
 Every entity carries at least one document, and a table can give it more. This page is what a document can hold. Inline, \`:name:\` draws any icon from the set (\`:bell:\` is the bell) where an emoji shortcode would go; see the Formatting showcase.
 
+## Conditional agent writes
+
+Entity API reads include an opaque \`revision\`. Send it as \`expectedRevision\` to \`POST /api/entities/:id/conditional\`. The \`append\` operation takes \`field\` and \`markdown\`; \`state\` takes \`field\` and \`state\`. The server checks the revision under its database write lock, refuses stale input with 409, and returns the updated entity. Append preserves existing text. A retry first reads the row again and checks whether its run evidence already exists.
+
+Authenticated clients can read \`GET /api/health/build\` for the serving worker's full commit SHA, version and readiness. This response excludes filesystem paths, backup details and process identifiers. A missing full SHA makes readiness false.
+
 ## The editor is the renderer
 
 There is no edit mode, no preview pane and no save button. A heading becomes a heading as you finish typing it, and what is stored underneath is plain markdown — the same text the API returns, the same text an automation appends, the same text \`doc export\` writes out.

@@ -1042,6 +1042,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { slug, state: hub.slugState(slug), base: baseDomain }, { 'Cache-Control': 'no-store' });
         }
 
+        if (route === 'GET /api/health/build') {
+          if (!role) return deny(401, 'A workspace token is required');
+          const serving = build() ?? {};
+          const candidate = serving.servingSha ?? serving.sha;
+          const sha = /^[a-f0-9]{40}$/.test(candidate ?? '') ? candidate : null;
+          return out(200, { sha, version, ready: sha != null && serving.stale !== true }, { 'Cache-Control': 'no-store' });
+        }
         if (route === 'GET /api/health') {
           if (!mayAdminister(weave, role)) return out(200, { ok: true, name: 'weave', ...(role ? { version } : {}) });
           const nightly = backup();
@@ -1582,6 +1589,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           weave.unlink(m[1], body.field, body.targets ?? body.items);
           return out(200, weave.readEntity(m[1], { viewerZone }));
         }
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/conditional$/)) && rx.method === 'POST') return out(200, weave.conditionalWrite(m[1], body));
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/state$/)) && rx.method === 'POST') {
           weave.setState(m[1], body.field, body.state);
           return out(200, weave.readEntity(m[1], { viewerZone }));
