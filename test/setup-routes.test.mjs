@@ -73,6 +73,30 @@ test('an empty hub root lets the first sign-in create, and the owner takes its n
   } finally { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('Clerk pane: the start API offers the Clerk script only when the key names the sign-in issuer', async () => {
+  const { clerkKeyFromEnv } = await import('../src/server.js');
+  assert.equal(clerkKeyFromEnv({}), null);
+  assert.equal(clerkKeyFromEnv({ WEAVE_CLERK_PUBLISHABLE_KEY: 'sk_live_nope' }), null);
+  const liveKey = `pk_live_${Buffer.from('clerk.weave.grunion.ai$').toString('base64')}`;
+  assert.equal(clerkKeyFromEnv({ WEAVE_CLERK_PUBLISHABLE_KEY: ` ${liveKey} ` }), liveKey);
+  const idp = await startIdp();
+  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+  const main = new Weave();
+  const serveWith = async (clerkKey) => {
+    const { server, port } = await startServer(main, { port: 0, oidc, clerkKey });
+    const res = await hit(port, `localhost:${port}`, 'GET', '/api/start');
+    server.close();
+    return res.json();
+  };
+  try {
+    const matched = await serveWith(idp.publishableKey);
+    assert.deepEqual(matched.clerk, { publishableKey: idp.publishableKey, script: `${idp.issuer}/npm/@clerk/clerk-js@6/dist/clerk.browser.js` });
+    const other = await serveWith(`pk_test_${Buffer.from('clerk.someone-else.dev$').toString('base64')}`);
+    assert.equal(other.clerk, undefined, 'a key for another Clerk instance is ignored');
+    assert.equal((await serveWith(null)).clerk, undefined);
+  } finally { idp.stop(); }
+});
+
 test('env: open sign-up is off unless the operator turns it on, with a per-person limit', () => {
   assert.deepEqual(openSignupFromEnv({}), { on: false, limit: 1 });
   assert.deepEqual(openSignupFromEnv({ WEAVE_OPEN_SIGNUP: '1' }), { on: true, limit: 1 });
