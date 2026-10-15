@@ -1,1 +1,0 @@
-- A long filter value in the table filter popover wraps again. The baseline chip holds its label on one line, which a grid cell wants and a filter list does not: the widest option pushed the popover's own content wide enough to cut "Clear all" by 23px. Gate: `test/cutoff-gate-browser.test.mjs`. (Issue #769)

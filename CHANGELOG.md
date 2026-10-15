@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.95 (2026-10-14)
+
+- Buttons hover three ways, one per weight, instead of six. A quiet or icon button takes a faint neutral wash and moves its glyph to body colour, so the thirteen `.btn-ghost-secondary` buttons stop flipping to a solid slate block with white glyphs. A bordered button darkens its border to one grey, `--wv-hover-border`, in place of the two greys and the primary blue that different authors reached for. A filled primary darkens one step rather than fading to 80% alpha, so Invite, Done and Create workspace no longer wash out under the pointer. Eight hand-rolled quiet hovers collapse into one rule and the palette is two tokens, `--wv-hover-wash` and `--wv-hover-border`. Gates: `test/button-hover.test.mjs`, `test/button-hover-browser.test.mjs`. (Issue #760)
+- A filter value in the table filter popover is the same chip the grid cell draws: the baseline `.k` chip, borderless, 4px radius, 13px at weight 400 and 1px 8px of padding, tinted by its own hue or workflow category. The popover's second chip build (1px border, 5px radius, `6px 10px 6px 8px` padding, secondary font size) is gone, and a picked value now wears `--wv-chip-selected-ring`, one shared 1.5px primary ring, instead of swapping its border and jumping to weight 600. Gate: `test/filter-chip-baseline-browser.test.mjs`. (Issue #769)
+- A long filter value in the table filter popover wraps again. The baseline chip holds its label on one line, which a grid cell wants and a filter list does not: the widest option pushed the popover's own content wide enough to cut "Clear all" by 23px. Gate: `test/cutoff-gate-browser.test.mjs`. (Issue #769)
+- A picked option looks the same whichever popover is open. The picker drew its cursor chip with a 2px primary outline at 1px offset while a picked filter value tinted its fill, so the same option in the same table had two selected looks. Both now read `--wv-chip-selected-ring`, the 1.5px primary ring Issue #769 introduced. Gate: `test/selected-ring-browser.test.mjs`. (Issue #772)
+
 ## v0.4.94 (2026-10-14)
 
 - A row crumb no longer draws its table's icon a second time: on a full entity page the row wears its own record mark, and a hop into another table still shows that table's icon (Issue #746).
