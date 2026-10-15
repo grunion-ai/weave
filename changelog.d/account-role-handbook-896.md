@@ -1,0 +1,1 @@
+- The Handbook documents in-place account role changes, the last-architect guard and immediate permission updates for cached provider identities. (#896)
