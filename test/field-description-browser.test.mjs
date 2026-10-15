@@ -16,13 +16,12 @@ const s = await launch('field description', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
 
-  test('the description opens below its row and stays the column tooltip', async () => {
+  test('the description shows under its label on the page and as the column tooltip', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await page.goto(`${base}/#/entity/${order.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.entity-values .fieldrow');
-    await page.click('.fieldrow[data-field="Vendor"] .desc-info');
-    assert.equal(await page.$eval('.fieldrow[data-field="Vendor"] .fieldrow-note', (n) => n.textContent), NOTE);
-    assert.equal(await page.$('.fieldrow[data-field="Qty"] .fieldrow-note'), null, 'a field without one wears no empty line');
+    assert.equal(await page.$eval('.fieldrow[data-field="Vendor"] .fieldrow-desc', (n) => n.textContent), NOTE);
+    assert.equal(await page.$('.fieldrow[data-field="Qty"] .fieldrow-desc'), null, 'a field without one wears no empty line');
     await page.goto(`${base}/#/table/${orders.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid th.col-head');
     const titles = await page.locator('.wv-grid th.col-head').evaluateAll((ths) => ths.map((t) => [t.textContent.trim().replace(/\s.*$/, ''), t.getAttribute('title')]));
