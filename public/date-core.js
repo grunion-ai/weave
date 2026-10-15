@@ -81,9 +81,19 @@
     return { text, title };
   }
 
+  function stamp(iso, zone) {
+    const ms = iso == null || iso === '' ? NaN : Date.parse(iso);
+    if (Number.isNaN(ms)) return { text: '', title: '' };
+    const d = new Date(ms);
+    return {
+      text: formatDate(fromInstant(d.toISOString(), zone), { time: true }),
+      title: new Intl.DateTimeFormat('en-US', { timeZone: zone, dateStyle: 'long', timeStyle: 'long' }).format(d),
+    };
+  }
+
   root.weaveDateCore = {
     MONTHS, MONTHS_LONG, WEEKDAYS, DYNAMIC_DATE_DEFAULTS,
-    formatDate, formatDateRange, relativeOrShort, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
+    formatDate, formatDateRange, relativeOrShort, stamp, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
     legalFormats, toInstant, fromInstant, partsOf, storeOf, coerce, grainOf, parseClock, DATE_FORMATS, CLOCKS, ZONES,
     get DEFAULT_FORMAT() { return DG().DEFAULT_FORMAT; }, get DEFAULT_CLOCK() { return DG().DEFAULT_CLOCK; },
   };
