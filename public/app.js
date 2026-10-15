@@ -8888,7 +8888,7 @@ async function useTemplateDialog(space) {
   let list;
   try { list = await api('GET', '/workspaces'); } catch (err) { return toast(err.message, true); }
   const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
-  const here = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
+  const here = seg ? list.find((w) => w.name === seg || w.id === seg) : bareRootWs(list);
   const others = list.filter((w) => w !== here && !w.held);
   const said = el('div', { class: 'use-template-said', role: 'alert' });
   said.hidden = true;
@@ -12659,7 +12659,7 @@ async function buildWsRail() {
   try {
     const list = await api('GET', '/workspaces');
     const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
-    const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
+    const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : bareRootWs(list);
     const current = cur?.name ?? seg;
     state.wsList = list;
     state.wsCurrent = current;
@@ -12672,18 +12672,17 @@ async function buildWsRail() {
     const weaveWs = list.find((w) => w.name === 'weave');
     const pinned = $('#rail-weave');
     if (pinned) {
-      if (weaveWs) pinned.href = weaveWs.default ? '/' : (weaveWs.url ?? '/w/weave/');
+      if (weaveWs) pinned.href = wsHref(weaveWs);
       pinned.classList.toggle('active', current === 'weave');
     }
     listBox.replaceChildren(
       ...list.filter((w) => w.name !== 'weave').map((w) => {
-        const prefix = w.default ? '' : `/w/${w.id}`;
         const chip = el('a', {
           class: 'ws-icon' + (w.logo && !w.held ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : '') + (w.held ? ' ws-held' : ''),
-          href: w.held ? w.open : w.default ? '/' : (w.url ?? `/w/${w.id}/`),
+          href: w.held ? w.open : wsHref(w),
           title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
         }, w.logo && !w.held
-          ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name, onerror: (e) => {
+          ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo`, alt: w.name, onerror: (e) => {
             const host = e.currentTarget.parentElement;
             host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id)}`);
             host.replaceChildren(w.name.slice(0, 1).toUpperCase());
@@ -12733,7 +12732,10 @@ function trashedWorkspacesCard(trashed, redraw) {
         },
       }, 'Restore'))));
 }
-const wsApiPrefix = (w) => (w.default ? '' : `/w/${w.id}`) + '/api';
+const servesBareRoot = (w) => (w.host ? new URL(w.host).hostname === location.hostname : !!w.default);
+const bareRootWs = (list) => list.find(servesBareRoot);
+const wsHref = (w) => (servesBareRoot(w) ? '/' : (w.url ?? `/w/${w.id}/`));
+const wsApiPrefix = (w) => `/w/${w.id}/api`;
 async function wsApi(w, method, path, body) {
   const res = await fetch(wsApiPrefix(w) + path, {
     method,

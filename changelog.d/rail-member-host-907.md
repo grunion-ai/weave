@@ -1,0 +1,1 @@
+- On a member-workspace host such as weave.weave.grunion.ai, the default workspace's rail tile now loads its own logo, links to its own home and opens its own menu record, instead of reaching the host workspace through the bare root path. The wordmark and active tile name the host workspace. (#907)
