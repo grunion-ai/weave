@@ -52,3 +52,6 @@ test('/api/health carries the disk head beside the boot head', async () => {
     server.close();
   }
 });
+test('serving commit is captured from supervised commit directories without Git',async()=>{
+ const {servingCommit}=await import('../src/server.js');assert.equal(servingCommit(null,`/data/releases/c${sha('a')}`),sha('a'));assert.equal(servingCommit(sha('b'),`/data/releases/c${sha('a')}`),sha('b'));assert.equal(servingCommit(null,'/data/releases/v0.4.99'),null);assert.equal(servingCommit(null,`/data/releases/c${sha('a')}/other`),null);
+});

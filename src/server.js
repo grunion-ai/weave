@@ -2,7 +2,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { spawnSync, execFile } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, extname } from 'node:path';
+import { join, dirname, extname, basename } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,10 @@ const gitOut = (...a) => {
   return r.status === 0 ? r.stdout.trim() : null;
 };
 const BUILD = { head: gitOut('rev-parse', 'HEAD'), remote: gitOut('remote')?.split('\n')[0] || null, latest: null, contains: null, checkedAt: 0, disk: null, diskCheckedAt: 0 };
+export function servingCommit(head, directory) {
+  return /^[a-f0-9]{40}$/.test(head ?? '') ? head : /^c([a-f0-9]{40})$/.exec(basename(directory))?.[1] ?? null;
+}
+const SERVING_COMMIT = servingCommit(BUILD.head, ROOT);
 function refreshLatest() {
   BUILD.checkedAt = Date.now();
   if (!BUILD.remote) return;
@@ -57,7 +61,7 @@ let RELEASE = null;
 export function armReleaseCheck(check) { RELEASE = check; }
 export function buildInfo() {
   const release = RELEASE?.status() ?? null;
-  if (!BUILD.head) return release;
+  if (!BUILD.head) return SERVING_COMMIT ? { ...release, servingSha: SERVING_COMMIT } : release;
   if (Date.now() - BUILD.checkedAt > 5 * 60 * 1000) refreshLatest();
   return { ...describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest, contains: BUILD.contains }), ...release, servingSha: BUILD.head };
 }
