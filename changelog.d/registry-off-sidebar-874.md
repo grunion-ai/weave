@@ -1,1 +1,0 @@
-- The root workspace's Workspace registry space (Spaces, Tables, Fields, Views, Workflows, Workspaces, Forms, Users) no longer sits in the sidebar beside user spaces. Its tables are listed on the workspace page, under Activity, and open from there; Workflows and Users keep their pinned sidebar rows. The space itself is unchanged and still cannot be deleted. (Issue #874)

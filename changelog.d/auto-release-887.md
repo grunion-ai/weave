@@ -1,1 +1,0 @@
-- Added tested historical release recovery without moving immutable tags or latest (Issue #887).

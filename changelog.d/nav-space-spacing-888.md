@@ -1,1 +1,0 @@
-- Sidebar space icons keep a consistent gap before their labels on desktop and phone (Issue #888).
