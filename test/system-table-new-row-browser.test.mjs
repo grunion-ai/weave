@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let tasks, spacesT, tablesT, fieldsT, wfT;
+let tasks, notes, spacesT, tablesT, fieldsT, wfT;
 const s = await launch('system table new row', (weave) => {
   weave.createSpace({ name: 'Work' });
   tasks = weave.createTable({ space: 'Work', name: 'Tasks' });
   weave.addField(tasks, { name: 'Note', type: 'text' });
+  notes = weave.createTable({ space: 'Work', name: 'Notes' });
   spacesT = weave.getTable('Workspace/Spaces');
   tablesT = weave.getTable('Workspace/Tables');
   fieldsT = weave.getTable('Workspace/Fields');
@@ -132,17 +133,35 @@ if (s) {
     await page.close();
   });
 
-  test('+ New field on Workspace/Fields asks which table, then opens the field dialog for it', async () => {
+  test('+ New field on Workspace/Fields opens the tray with a Table row, no modal in front (Issue #779)', async () => {
     const page = await open(fieldsT);
     await page.click('.wv-grid .add-entity-btn');
-    await page.waitForSelector('#modal input[name="table"]', { state: 'attached' });
-    assert.equal(await page.inputValue('#modal input[name="table"]'), tasks.id, 'a user table is preselected, so Next works as is');
-    await page.click('#modal button[type="submit"]');
-    await page.waitForSelector('input[name="name"][placeholder="Field name"]');
-    await page.fill('input[name="name"][placeholder="Field name"]', 'Owner');
-    await page.click('#tray button[type="submit"], #modal button[type="submit"]');
+    await page.waitForSelector('#tray-back input[name="table"]', { state: 'attached' });
+    assert.equal(await page.locator('#modal-back').count(), 0, 'one surface, not a modal that hands off to the tray');
+    assert.equal(await page.locator('#tray-back input[name="name"][placeholder="Field name"]').count(), 1,
+      'the name and the type are on the same surface as the table');
+    assert.equal(await page.inputValue('#tray-back input[name="table"]'), tasks.id, 'a user table is preselected');
+    await page.click('#tray-back .picker-face');
+    await page.waitForSelector('.chip-pop .picker-row');
+    await page.fill('.chip-pop .picker-search', 'Notes');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction((id) => document.querySelector('#tray-back input[name="table"]')?.value === id, notes.id);
+    assert.equal(await page.locator('#modal-back').count(), 0, 'switching tables stays in the tray');
+    await page.fill('#tray-back input[name="name"][placeholder="Field name"]', 'Owner');
+    await page.click('#tray-back button[type="submit"]');
     await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid tr[data-eid] td[data-field="Name"] input')].some((i) => i.value === 'Owner'), null, { timeout: 5000 });
-    assert.ok(Object.values(weave.getTable(tasks.id).fields).some((f) => f.name === 'Owner'), 'the field landed on the chosen table');
+    assert.ok(Object.values(weave.getTable(notes.id).fields).some((f) => f.name === 'Owner'), 'the field landed on the table chosen in the tray');
+    assert.ok(!Object.values(weave.getTable(tasks.id).fields).some((f) => f.name === 'Owner'), 'and not on the one it opened with');
+    await page.close();
+  });
+
+  test('a column header opens the same tray with no Table row, since the table is known (Issue #779)', async () => {
+    const page = await open(tasks);
+    await page.click('#main .add-field-btn');
+    await page.waitForSelector('#tray-back input[name="name"][placeholder="Field name"]');
+    assert.equal(await page.locator('#modal-back').count(), 0, 'no modal in front of the tray');
+    assert.equal(await page.locator('#tray-back input[name="table"]').count(), 0,
+      'the column header already knows its table, so the tray asks for none');
     await page.close();
   });
 
