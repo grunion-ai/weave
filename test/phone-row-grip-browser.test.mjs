@@ -56,13 +56,14 @@ if (s) {
     });
   }
 
-  test('a phone field row starts its label at the row edge (Issue #806)', async () => {
+  test("a phone field row starts its label at the row's content edge (Issue #806, Issue #741)", async () => {
     const page = await phone(build(), 'light');
     const row = page.locator('.entity-values .fieldrow').first();
     const rowBox = await row.boundingBox();
     const labelBox = await row.locator('.fieldrow-label').boundingBox();
-    const indent = Math.round(labelBox.x - rowBox.x);
-    assert.ok(indent <= 2, `the label is indented ${indent}px by the empty grip column`);
+    const pad = await row.evaluate((n) => parseFloat(getComputedStyle(n).paddingLeft) || 0);
+    const indent = Math.round(labelBox.x - rowBox.x - pad);
+    assert.ok(indent <= 2, `the label is indented ${indent}px past the row's own gutter by the empty grip column`);
     await page.close();
   });
 
