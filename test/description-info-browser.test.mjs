@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { probe } from './lib/cutoff.mjs';
 
 const LONG = 'A detailed explanation of the field and the choices available to the reader. '.repeat(24);
 const s = await launch('description info', (w) => {
@@ -54,6 +55,7 @@ if (s) {
         await page.locator('.fieldrow[data-field="Short"] .desc-info').click();
         assert.equal(await page.locator('.fieldrow[data-field="Short"] .view-desc-more').count(), 0);
         await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
+        assert.deepEqual((await page.evaluate(probe, '.view-title-row')).filter((f) => f.kind === 'field-value'), []);
         const tableIcon = page.locator('.view-title-row .desc-info');
         assert.equal(await page.locator('.view-desc').isVisible(), false);
         await tableIcon.click();

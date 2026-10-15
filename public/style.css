@@ -2313,7 +2313,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .fieldrow-note { grid-column: 2 / -1; max-width: 60ch; font-size: var(--fs-grid); line-height: 1.55; color: var(--tblr-secondary); padding: 2px 0 10px; }
 .desc-clamp.clamped, .view-desc-body.desc-clamp.clamped { max-height: 3lh; overflow: hidden; mask-image: linear-gradient(to bottom, black 75%, transparent); }
 .view-description-toggle .view-title-h { flex: 0 1 auto; margin-right: 0; }
-.view-description-toggle .view-title { field-sizing: content; max-width: 100%; }
+.view-description-toggle .view-title { field-sizing: content; }
 .view-description-toggle .view-title-row { gap: 2px; }
 .view-title-row > .desc-info { align-self: flex-start; flex-shrink: 0; width: 27px; height: 27px; }
 .view-title-row > .desc-info .wv-icon, .view-title-row > .desc-info svg { width: 15px; height: 15px; }

@@ -1013,6 +1013,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     let toggle = null;
     const syncToggle = (md) => {
       if (!descriptionKey) return;
+      box.classList.toggle('view-description-toggle', !!md.trim());
       if (!md.trim()) { toggle?.remove(); toggle = null; descBox.hidden = true; }
       else if (!toggle) { toggle = descToggle(title, descBox, descriptionKey); titleRow.append(toggle); }
     };
