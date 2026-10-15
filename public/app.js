@@ -1713,16 +1713,34 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       : el('span', { class: 'picker-label' }, o.label),
     o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
     (multi ? false : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null);
+  const create = async (term) => {
+    const made = await custom(term);
+    if (!made) return;
+    if (multi) { apply(core.toggle({ ...st, options: [...st.options, made] }, made)); return; }
+    await pick(made);
+  };
+  const createRowEl = (offer) => el('button', {
+    class: 'chip-pop-row picker-row picker-create', type: 'button',
+    onclick: async () => { await create(offer.term); },
+  },
+    el('span', { class: 'picker-num' }, '+'),
+    el('span', { class: 'picker-label' }, `Create “${offer.term}”`),
+    offer.enter ? el('span', { class: 'picker-hint' }, '↵') : null);
   const draw = () => {
     if (grid) return drawGrid();
     if (groups) return drawGroups();
     const vis = core.visible(st);
-    list.replaceChildren(...core.rows(vis).map((r) => (r.kind === 'divider'
-      ? el('div', { class: 'picker-divider' }, el('span', { class: 'picker-divider-label' }, r.label))
-      : rowEl(r.option, r.index, r.quick))));
-    if (!vis.length) {
+    const offer = custom ? core.createOffer(st) : null;
+    list.replaceChildren(
+      ...(offer ? [createRowEl(offer)] : []),
+      ...core.rows(vis).map((r) => (r.kind === 'divider'
+        ? el('div', { class: 'picker-divider' }, el('span', { class: 'picker-divider-label' }, r.label))
+        : rowEl(r.option, r.index, r.quick))));
+    const bare = custom && !st.query.trim() && !st.options.some((o) => o.id !== clearId);
+    if (bare || (!vis.length && !offer)) {
       list.append(el('div', { class: 'picker-empty' },
-        multi && st.staged.length && !st.query.trim() ? 'Everything is chosen' : 'No matches'));
+        bare ? 'No options yet. Type to add one.'
+          : multi && st.staged.length && !st.query.trim() ? 'Everything is chosen' : 'No matches'));
     }
   };
   box.addEventListener('click', (ev) => {
@@ -1733,6 +1751,10 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   input.addEventListener('keydown', async (ev) => {
     const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
     const quick = ev.altKey && /^Digit[1-9]$/.test(ev.code) ? Number(ev.code.slice(5)) : null;
+    if (custom && !groups && ev.key === 'Enter') {
+      const offer = core.createOffer(st);
+      if (offer?.enter) { ev.preventDefault(); await create(offer.term); return; }
+    }
     if (groups && custom && ev.key === 'Enter' && st.query.trim()) {
       const q = st.query.trim();
       const exact = options.find((o) => o.label.toLowerCase() === q.toLowerCase() || o.id === q.toLowerCase());
@@ -1820,7 +1842,7 @@ function pickerSelect({ name, options, value = null, placeholder = 'Choose…', 
   return wrap;
 }
 
-function chipPicker({ trigger, options, current, onPick, clearId = null }) {
+function chipPicker({ trigger, options, current, onPick, clearId = null, custom = null }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1833,13 +1855,14 @@ function chipPicker({ trigger, options, current, onPick, clearId = null }) {
       options: options.map((o) => ({ id: o.id ?? o.name, label: o.label ?? o.name, cls: o.cls, group: o.group, chip: true })),
       currentId: current,
       clearId,
+      custom,
       onPick: async (o) => { if (o.id !== current) await onPick(o.id); },
     });
   });
   return trigger;
 }
 
-function chipPickerMulti({ trigger, options, selected, onCommit }) {
+function chipPickerMulti({ trigger, options, selected, onCommit, custom = null }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1848,7 +1871,7 @@ function chipPickerMulti({ trigger, options, selected, onCommit }) {
       ? { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell) }
       : null;
     searchPicker({
-      anchor: trigger, options,
+      anchor: trigger, options, custom,
       multi: { selected, onCommit },
     });
   });
@@ -3036,6 +3059,19 @@ function fileDropZone(zone, take) {
   return zone;
 }
 
+function optionCreator(db, f, decorate) {
+  if (!db || db.system || f.computed || f.readOnly) return null;
+  return async (name) => {
+    const was = f.optionsFull ?? (f.options ?? []).map((o) => ({ name: o }));
+    try {
+      const saved = await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { options: [...was, { name }] } });
+      await loadSchema();
+      fieldConfigToast(db, saved, () => refreshView());
+      const fresh = allTables().find((t) => t.id === db.id)?.fields.find((x) => x.id === f.id) ?? f;
+      return decorate(name, fresh);
+    } catch (err) { toast(err.message, true); return null; }
+  };
+}
 function optionHue(field, name) {
   const o = (field.optionsFull ?? []).find((x) => x.name === name);
   return `hue-${chipCore.hueFromHex(o?.color)}`;
@@ -3126,6 +3162,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       options: [{ name: '—' }, ...f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` }))],
       current: val ?? null,
       clearId: '—',
+      custom: optionCreator(db, f, (name, fresh) => ({ id: name, label: name, chip: true, cls: `k k-select ${optionHue(fresh, name)}` })),
       onPick: (name) => patch(name === '—' ? null : name, paint),
     });
   }
@@ -3142,6 +3179,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       trigger: box,
       options: f.options.map((o) => ({ id: o, label: o, chip: true, cls: `k k-multi ${optionHue(f, o)}` })),
       selected: current.map((v) => ({ id: v, label: v, cls: `k k-multi ${optionHue(f, v)}` })),
+      custom: optionCreator(db, f, (name, fresh) => ({ id: name, label: name, chip: true, cls: `k k-multi ${optionHue(fresh, name)}` })),
       onCommit: (ids) => (ids.join('\u0000') === current.join('\u0000') ? null : patch(ids, paint)),
     });
     return box;
@@ -12580,7 +12618,12 @@ async function buildWsRail() {
           href: w.held ? w.open : w.default ? '/' : (w.url ?? `/w/${w.id}/`),
           title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
         }, w.logo && !w.held
-          ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
+          ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name, onerror: (e) => {
+            const host = e.currentTarget.parentElement;
+            host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id)}`);
+            host.replaceChildren(w.name.slice(0, 1).toUpperCase());
+            refreshWsMarks();
+          } })
           : w.name.slice(0, 1).toUpperCase());
         if (w.held) return chip;
         const wsMenu = async (e) => {
@@ -12642,7 +12685,11 @@ function wsLogoButton(w, hasLogo) {
     type: 'button', class: `ws-logo-pick${hasLogo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id ?? w.name)}`}`,
     title: hasLogo ? 'Change the workspace logo' : 'Add a workspace logo', 'aria-label': hasLogo ? 'Change the workspace logo' : 'Add a workspace logo',
     onclick: () => uploadWorkspaceLogo(w, after),
-  }, hasLogo ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo?t=${Date.now()}`, alt: '' }) : String(w.name ?? 'w').slice(0, 1).toUpperCase());
+  }, hasLogo ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo?t=${Date.now()}`, alt: '', onerror: (e) => {
+    const host = e.currentTarget.parentElement;
+    host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id ?? w.name)}`);
+    host.replaceChildren(String(w.name ?? 'w').slice(0, 1).toUpperCase());
+  } }) : String(w.name ?? 'w').slice(0, 1).toUpperCase());
   const clear = hasLogo ? el('button', {
     type: 'button', class: 'ws-logo-clear', title: 'Remove logo', 'aria-label': 'Remove logo',
     onclick: () => removeWorkspaceLogo(w, after),

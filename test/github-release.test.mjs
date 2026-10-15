@@ -33,7 +33,7 @@ function fixture({ main = sha, tag = null, release = null, ancestor = false } = 
     release: async () => release,
     ancestor: async () => ancestor,
     createTag: async (name, commit) => { writes.push(['tag', name, commit]); tag = commit; },
-    createRelease: async (value, commit) => { writes.push(['release', value.tag, commit]); release = { draft: false, prerelease: false }; },
+    createRelease: async (value, commit, latest = true) => { writes.push(latest ? ['release', value.tag, commit] : ['release', value.tag, commit, latest]); release = { draft: false, prerelease: false }; },
   } };
 }
 
@@ -100,4 +100,16 @@ test('a gh response past the 1 MiB default buffer is read whole, so a large unre
   const size = 3 * 1024 * 1024;
   const out = capture(process.execPath, ['-e', `process.stdout.write('x'.repeat(${size}))`]);
   assert.equal(out.length, size);
+});
+
+
+test('historical recovery requires main ancestry and preserves latest', async () => {
+  const f = fixture({ main: 'b'.repeat(40) });
+  f.io.onMain = async () => true;
+  assert.equal((await publishRelease(metadata, sha, f.io, { historical: true })).state, 'published');
+  assert.deepEqual(f.writes[1], ['release', metadata.tag, sha, false]);
+  const refused = fixture({ main: 'b'.repeat(40) });
+  refused.io.onMain = async () => false;
+  await assert.rejects(publishRelease(metadata, sha, refused.io, { historical: true }), /ancestor/);
+  assert.equal(refused.writes.length, 0);
 });

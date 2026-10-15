@@ -49,11 +49,11 @@ test('workflow write permissions are confined to guarded release delivery', () =
       assert.match(job('registry'), /permissions:\n      contents: read\n      id-token: write\n/);
       assert.deepEqual(src.match(/^ +\S+: write$/gm).map((l) => l.trim()), ['contents: write', 'packages: write', 'id-token: write']);
       for (const name of ['image', 'registry']) {
-        assert.match(job(name), /if: needs.guard.outputs.current == 'true'/, `${name} runs only for the current release`);
-        assert.match(job(name), /ref: \$\{\{ needs.guard.outputs.sha \}\}/, `${name} builds the tested SHA`);
+        assert.match(job(name), /if: needs.publish.outputs.sha != ''/, `${name} requires a published immutable commit`);
+        assert.match(job(name), /ref: \$\{\{ needs.publish.outputs.sha \}\}/, `${name} builds the immutable tested tag SHA`);
       }
       assert.match(job('image'), /needs: \[guard, publish\]/);
-      assert.match(job('registry'), /needs: \[guard, image\]/);
+      assert.match(job('registry'), /needs: \[guard, publish, image\]/);
       assert.match(publish, /needs: guard/);
       assert.doesNotMatch(src, /environment:/, 'a release never deploys production; promote.yml does');
       assert.match(publish, /if: needs.guard.outputs.current == 'true'/);
@@ -94,10 +94,11 @@ test('release validates main CI before checking out the tested SHA with write cr
   assert.doesNotMatch(src, /workflow_call:|^  push:/m);
   assert.doesNotMatch(text('test.yml'), /release\.yml/);
   assert.doesNotMatch(src, /workflow_run:/);
+  assert.match(src, /HISTORICAL: \$\{\{ github.event_name == 'workflow_dispatch' && inputs.historical \}\}/);
   assert.match(src, /github.ref == 'refs\/heads\/main'/);
   assert.match(src, /node scripts\/github-release\.mjs --guard/);
   const checkouts = (src.match(/uses: actions\/checkout@/g) ?? []).length;
-  assert.equal(checkouts, 4);
+  assert.equal(checkouts, 5);
   assert.equal((src.match(/persist-credentials: false/g) ?? []).length, checkouts, 'every checkout drops its credentials');
   assert.doesNotMatch(src, /pull_request_target|download-artifact/);
 });

@@ -49,6 +49,14 @@
     return out;
   }
 
+  function createOffer(state) {
+    const q = String(state.query ?? '').trim();
+    if (!q) return null;
+    const n = norm(q);
+    if (state.options.some((o) => norm(o.label) === n || norm(o.id) === n)) return null;
+    return { term: q, enter: visible(state).length === 0 };
+  }
+
   function search(state, query) {
     return { ...state, query, active: String(query).trim() ? 0 : -1, caret: null };
   }
@@ -126,5 +134,5 @@
     return pass();
   }
 
-  root.pickerCore = { rankOptions, blank, visible, rows, ids, has, search, toggle, removeAt, removeId, keyDown };
+  root.pickerCore = { rankOptions, blank, visible, rows, createOffer, ids, has, search, toggle, removeAt, removeId, keyDown };
 })(typeof window !== 'undefined' ? window : globalThis);
