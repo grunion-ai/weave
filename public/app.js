@@ -808,7 +808,7 @@ function iconButton(current, onPick) {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     searchPicker({
-      anchor: btn, title: 'Icon', placeholder: 'Search by name or category…',
+      anchor: btn, title: 'Icon',
       options: iconCatalogue(), grid: true,
       currentId: current ?? '',
       onPick: (o) => onPick(o.id || null),
@@ -1601,7 +1601,7 @@ function restoreGridFocus({ now = false } = {}) {
 }
 
 
-function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null, grid = false, groups = false, custom = null }) {
+function searchPicker({ anchor = null, title = '', placeholder: given = null, options, currentId = null, onPick, multi = null, clearId = null, grid = false, groups = false, custom = null }) {
   document.querySelector('.chip-pop')?.remove();
   const core = globalThis.pickerCore;
   if (grid) currentId = window.weaveIconRegistry?.canonical(currentId) ?? currentId;
@@ -1612,15 +1612,16 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     currentId,
     clearId,
   });
+  const sheet = dockCoversScreen.matches;
+  const quiet = sheet && !grid && !groups && options.length <= PHONE_SHORT_LIST;
+  const heading = title || (sheet ? anchor?.dataset?.fieldTitle || anchor?.getAttribute?.('title') || '' : '');
+  const placeholder = given ?? core.hint(heading);
   const input = el('input', { class: 'search-bare picker-search', placeholder, type: 'text' });
   const chips = el('span', { class: 'picker-chips' });
   const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
   const box = el('div', { class: 'picker-box' }, chips, input, readout);
   const list = el('div', { class: 'picker-list' });
   const foot = el('div', { class: 'picker-foot', hidden: '' });
-  const sheet = dockCoversScreen.matches;
-  const quiet = sheet && !grid && !groups && options.length <= PHONE_SHORT_LIST;
-  const heading = title || (sheet ? anchor?.dataset?.fieldTitle || anchor?.getAttribute?.('title') || '' : '');
   const pop = el('div', { class: 'chip-pop picker-pop' + (quiet ? ' picker-quiet' : '') + (quiet && !multi ? ' picker-short' : '') },
     heading ? el('div', { class: 'picker-title' }, heading) : null,
     box, list, foot);
@@ -1634,7 +1635,6 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   const drawChips = () => {
     if (grid || groups) {
       chips.replaceChildren();
-      input.placeholder = placeholder;
       return;
     }
     chips.replaceChildren(...st.staged.map((x, i) => el('span', {
@@ -1648,7 +1648,6 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
           if (multi) apply(core.removeId(st, x.id)); else pick({ id: clearId, label: clearId });
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null)));
-    input.placeholder = st.staged.length ? '' : placeholder;
     const clearable = !multi && !!clearId && !!st.staged.length;
     foot.replaceChildren(...(clearable ? [el('kbd', { class: 'picker-key' }, '⌫'), ' clear'] : []));
     foot.hidden = !clearable;
@@ -1844,7 +1843,7 @@ function pickerSelect({ name, options, value = null, placeholder = 'Choose…', 
   return wrap;
 }
 
-function chipPicker({ trigger, options, current, onPick, clearId = null, custom = null }) {
+function chipPicker({ trigger, field = null, options, current, onPick, clearId = null, custom = null }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1854,6 +1853,7 @@ function chipPicker({ trigger, options, current, onPick, clearId = null, custom 
       : null;
     searchPicker({
       anchor: trigger,
+      title: field?.name,
       options: options.map((o) => ({ id: o.id ?? o.name, label: o.label ?? o.name, cls: o.cls, group: o.group, chip: true })),
       currentId: current,
       clearId,
@@ -1864,7 +1864,7 @@ function chipPicker({ trigger, options, current, onPick, clearId = null, custom 
   return trigger;
 }
 
-function chipPickerMulti({ trigger, options, selected, onCommit, custom = null }) {
+function chipPickerMulti({ trigger, field = null, options, selected, onCommit, custom = null }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1873,7 +1873,7 @@ function chipPickerMulti({ trigger, options, selected, onCommit, custom = null }
       ? { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell) }
       : null;
     searchPicker({
-      anchor: trigger, options, custom,
+      anchor: trigger, title: field?.name, options, custom,
       multi: { selected, onCommit },
     });
   });
@@ -2568,7 +2568,7 @@ const MENU_ROWS = {
     move: db.system ? null : {
       label: 'Move to space…',
       run: () => searchPicker({
-        anchor, title: `Move ${db.name} to…`, placeholder: 'Space…',
+        anchor, title: 'Space',
         options: state.schema.filter((s) => s.space !== db.space && !s.system).map((s) => ({ id: s.space, label: s.space })),
         onPick: async (o) => {
           await api('POST', `/tables/${db.id}/move`, { space: o.id });
@@ -2887,7 +2887,7 @@ function stateOptions(f) {
 }
 function statePicker(anchor, f, current, onPick) {
   searchPicker({
-    anchor, title: f.name, placeholder: 'Search states…', options: stateOptions(f),
+    anchor, title: f.name, options: stateOptions(f),
     currentId: current, clearId: '—',
     onPick: (o) => onPick(o.id === '—' ? null : o.id),
   });
@@ -3142,6 +3142,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const paint = (name) => { const next = optionChipEl(f, name); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
+      field: f,
       options: stateOptions(f),
       current: val ?? null,
       clearId: '—',
@@ -3161,6 +3162,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const paint = (v) => { const next = optionChipEl(f, v); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
+      field: f,
       options: f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` })),
       current: val ?? null,
       clearId: '—',
@@ -3179,6 +3181,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     paint(current);
     chipPickerMulti({
       trigger: box,
+      field: f,
       options: f.options.map((o) => ({ id: o, label: o, chip: true, cls: `k k-multi ${optionHue(f, o)}` })),
       selected: current.map((v) => ({ id: v, label: v, cls: `k k-multi ${optionHue(f, v)}` })),
       custom: optionCreator(db, f, (name, fresh) => ({ id: name, label: name, chip: true, cls: `k k-multi ${optionHue(fresh, name)}` })),
@@ -5505,17 +5508,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const write = (v) => runBulk('Set', 'set', { values: { [f.name]: v } });
     const title = `${f.name} on ${nRows()}`;
     if (f.type === 'workflow') {
-      return picker(anchor, { title, placeholder: 'Search states…',
+      return picker(anchor, { title, placeholder: globalThis.pickerCore.hint(f.name),
         options: f.states.map((st) => ({ id: st.name, label: stateLabel(f, st.name), cls: stateChipClass(f, st.name), chip: true })),
         onPick: (o) => write(o.id) });
     }
     if (f.type === 'select') {
-      return picker(anchor, { title, placeholder: 'Search options…',
+      return picker(anchor, { title, placeholder: globalThis.pickerCore.hint(f.name),
         options: [{ id: '—', label: '—' }, ...f.options.map((name) => ({ id: name, label: name, chip: true, cls: `k k-select hue-${chipCore.hueFromHex((f.optionsFull ?? []).find((x) => x.name === name)?.color)}` }))],
         onPick: (o) => write(o.id === '—' ? null : o.id) });
     }
     if (f.type === 'multiselect') {
-      return picker(anchor, { title, placeholder: 'Search options…',
+      return picker(anchor, { title, placeholder: globalThis.pickerCore.hint(f.name),
         options: f.options.map((name) => ({ id: name, label: name, chip: true, cls: `k k-multi hue-${chipCore.hueFromHex((f.optionsFull ?? []).find((x) => x.name === name)?.color)}` })),
         multi: { selected: [], onCommit: (ids) => write(ids) } });
     }
@@ -5558,7 +5561,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       `${SEL().countLabel(chosen().size, db.term)} — links copied`),
   };
   const more = (anchor) => picker(anchor, {
-    title: 'More', placeholder: 'Search…',
+    title: 'More', placeholder: globalThis.pickerCore.hint(''),
     options: moreCmds().map((c) => ({ id: c.id, label: c.label, lucide: MORE_ICON[c.id] })),
     onPick: (o) => MORE_CMDS[o.id](anchor),
   });
@@ -7541,7 +7544,7 @@ function huePopover(anchor, current, onPick, { reset = null, note = 'Stored as a
 }
 function glyphPopover(anchor, current, onPick) {
   searchPicker({
-    anchor, title: 'Icon', placeholder: 'Search by name or category…',
+    anchor, title: 'Icon',
     options: iconCatalogue(), grid: true, currentId: current ?? '',
     onPick: (o) => onPick(o.id || ''),
   });
@@ -7584,7 +7587,7 @@ function termSection(state, onChange) {
     draw(); onChange();
   };
   face.onclick = () => searchPicker({
-    anchor: face, title: 'Rows in this table are…', placeholder: 'Search terms, or type your own…',
+    anchor: face, title: 'Term',
     options: T.options().map((o) => ({ id: o.id, label: o.label, group: o.group })),
     currentId: state.term?.singular ?? T.DEFAULT.singular,
     groups: true,
@@ -7672,12 +7675,12 @@ function choiceDefaultControl(state, t) {
     const set = (ids) => { fdc.setChoiceDefault(state, t, ids); draw(); };
     if (multi) {
       searchPicker({
-        anchor: face, title: 'Default', placeholder: 'Search options…', options: opts,
+        anchor: face, title: 'Default', options: opts,
         multi: { selected: opts.filter((o) => list.find((x) => x.id === o.id).default), onCommit: set },
       });
     } else {
       searchPicker({
-        anchor: face, title: 'Default', placeholder: t === 'workflow' ? 'Search states…' : 'Search options…',
+        anchor: face, title: 'Default',
         options: [{ id: 'none', label: 'No default' }, ...opts],
         currentId: list.find((x) => x.default)?.id ?? 'none',
         onPick: (o) => set(o.id === 'none' ? [] : [o.id]),
@@ -12595,7 +12598,7 @@ function newRowSheet(start) {
     fieldsBox.replaceChildren(...choiceFields().map(choiceEl));
   };
   tableChip?.addEventListener('click', () => searchPicker({
-    anchor: tableChip, title: 'New row in', placeholder: 'Search tables…',
+    anchor: tableChip, title: 'Table',
     options: allTables().filter((t) => !t.system).map((t) => ({ id: t.id, label: t.name, sub: t.space })),
     currentId: db.id,
     onPick: (o) => { db = allTables().find((t) => t.id === o.id) ?? db; picked = {}; draw(); },

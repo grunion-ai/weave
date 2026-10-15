@@ -134,5 +134,7 @@
     return pass();
   }
 
-  root.pickerCore = { rankOptions, blank, visible, rows, createOffer, ids, has, search, toggle, removeAt, removeId, keyDown };
+  const hint = (title) => (title ? `Search ${String(title).toLowerCase()}…` : 'Search…');
+
+  root.pickerCore = { hint, rankOptions, blank, visible, rows, createOffer, ids, has, search, toggle, removeAt, removeId, keyDown };
 })(typeof window !== 'undefined' ? window : globalThis);

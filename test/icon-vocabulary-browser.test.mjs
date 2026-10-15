@@ -189,7 +189,7 @@ if (s) {
     assert.equal(await page.locator('.picker-clear').count(), 0, 'no footer clear survives');
     assert.equal(await cells.first().getAttribute('title'), 'No icon', 'clearing leads the grid');
     assert.ok(await cells.first().locator('.icon-ghost').count(), 'and wears the ghost ring');
-    assert.equal(await page.locator('.picker-search').getAttribute('placeholder'), 'Search by name or category…');
+    assert.equal(await page.locator('.picker-search').getAttribute('placeholder'), 'Search icon…', 'the hint derives from the Icon title (Issue #799)');
     await page.close();
   });
 

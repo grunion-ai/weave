@@ -140,4 +140,18 @@ if (s) {
       assert.equal(await page.locator('.picker-row .chip-pop-check').count(), 1, 'the current value keeps its ✓');
     } finally { await page.close(); }
   });
+  test('a field picker names its field and hints from it, with or without a value (Issue #799)', async () => {
+    const seen = async (field, values) => {
+      const page = await openPicker(freshTask(values), field);
+      try {
+        return {
+          title: (await page.locator('.picker-pop .picker-title').textContent())?.trim(),
+          hint: await page.getAttribute('.picker-search', 'placeholder'),
+        };
+      } finally { await page.close(); }
+    };
+    assert.deepEqual(await seen('Priority', { Priority: 'P1' }), { title: 'Priority', hint: 'Search priority…' }, 'a set select keeps its hint');
+    assert.deepEqual(await seen('Priority', {}), { title: 'Priority', hint: 'Search priority…' });
+    assert.deepEqual(await seen('Tags', { Tags: ['bug'] }), { title: 'Tags', hint: 'Search tags…' }, 'a multiselect is titled too');
+  });
 }
