@@ -186,7 +186,8 @@ test('start: an architect creates a workspace from a name and a slug, and become
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Acme', slug: 'acme' } })).json().code, 'slug_taken');
     const made = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Harbor Launch', slug: 'harbor-launch' } });
     assert.equal(made.status, 201);
-    assert.deepEqual(made.json(), { name: 'harbor-launch', open: '/api/start/open/harbor-launch' });
+    const { name, open, mcp, table, templateError } = made.json();
+    assert.deepEqual({ name, open, mcp, table, templateError }, { name: 'harbor-launch', open: '/api/start/open/harbor-launch', mcp: 'http://harbor-launch.weave.test/mcp', table: null, templateError: null });
     const w = new Weave({ path: join(s.dir, 'harbor-launch.db') });
     const owner = w.listAccounts()[0];
     assert.deepEqual([owner.name, Weave.roleName(owner.role), owner.identities[0].subject], ['Kyle Adriany', 'architect', 'user_kyle']);

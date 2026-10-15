@@ -258,7 +258,8 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      WEAVE_AUTO_UPDATE=1 (supervise: install each newer release from grunion-ai/weave main in place),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
      others get 421), WEAVE_BASE_DOMAIN (e.g. weave.example.com: each workspace also answers at <slug>.<base>,
-     sign-in finishes at WEAVE_ORIGIN and hands a one-time code back to the workspace host), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
+     sign-in finishes at WEAVE_ORIGIN and hands a one-time code back to the workspace host), WEAVE_OPEN_SIGNUP=1 (anyone who signs in may
+     create workspaces from /start, WEAVE_SIGNUP_LIMIT each, default 1), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
      with one OpenID Connect provider, redirect URI <origin>/api/auth/oidc/callback; /mcp then signs agents in through it),
      WEAVE_MAIL_KEY + WEAVE_MAIL_FROM (email each invite through Resend; both or neither),
      WEAVE_CLERK_SECRET_KEY + WEAVE_BILLING_SOLO_PLAN + WEAVE_BILLING_TEAM_PLAN (bill paid seats through Clerk Billing; all three or none),

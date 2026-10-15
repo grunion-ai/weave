@@ -3405,6 +3405,21 @@ export class Weave {
     return holder.onboardedAt;
   }
 
+  agentSeen(accountId) {
+    const a = this.state.meta.accounts?.[accountId];
+    return a?.agentSeenAt ? { at: a.agentSeenAt, client: a.agentClient ?? null } : null;
+  }
+
+  noteAgent(accountId, client = null) {
+    const holder = own(this.state.meta.accounts ?? {}, accountId);
+    if (!holder || holder.agentSeenAt) return holder?.agentSeenAt ?? null;
+    holder.agentSeenAt = nowISO();
+    holder.agentClient = client ? String(client).slice(0, 80) : null;
+    this.save();
+    this.#audit('agent-connected', { name: holder.name, ...(holder.agentClient ? { client: holder.agentClient } : {}) });
+    return holder.agentSeenAt;
+  }
+
   setRequireAuth(on) {
     this.state.meta.requireAuth = !!on;
     this.save();
