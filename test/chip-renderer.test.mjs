@@ -134,15 +134,10 @@ test('the segments edit: a state writes through the state route, a multiselect t
   assert.match(body, /multiselect/, 'the multiselect segment is the other');
   assert.match(body, /api\('PATCH', `\/entities\/\$\{eid\}`/, 'and it writes the chosen options to the row');
   assert.match(body, /chipView\.segHtml\(next\)/, 'both repaint through the one renderer');
-  const builder = APP.slice(APP.indexOf('function stateOptions('), APP.indexOf('function statePicker('));
-  assert.match(builder, /chipCore\.CATEGORIES/, 'the picker is ordered by the engine’s four categories');
-  assert.match(builder, /group: c\.label/, 'which it carries as the group a divider is drawn from, not as a grid heading (Issue #796)');
-  assert.match(builder, /cls: stateChipClass\(f, s\.name\)/, 'and every row wears the state chip it sets');
   const picker = APP.slice(APP.indexOf('function statePicker('));
-  assert.match(picker, /options: stateOptions\(f\)/, 'statePicker builds its options there');
-  assert.ok(!/groups: true/.test(picker.slice(0, picker.indexOf('\n}\n'))), 'and draws them as one numbered list');
-  assert.match(APP.slice(APP.indexOf("if (f.type === 'workflow') {", APP.indexOf('function editorFor('))), /options: stateOptions\(f\)/,
-    'the workflow cell builds its options from the very same list, so both call sites pass identical options (Issue #796)');
+  assert.match(picker, /chipCore\.CATEGORIES/, 'the picker is grouped by the engine’s four categories');
+  assert.match(picker, /groups: true/, 'as headings, not a flat list');
+  assert.match(picker, /cls: stateChipClass\(f, s\.name\)/, 'and every row wears the state chip it sets');
 });
 
 test('the chip inherits the type around it, so a chip in prose never grows the line', () => {

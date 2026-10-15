@@ -36,7 +36,7 @@ if (s) {
     await painted(page, `.k-rel[data-eid="${target.id}"] [data-seg="state"]`);
   };
 
-  test('the state mark in a relation cell opens the one state picker and writes the row', async () => {
+  test('the state mark in a relation cell opens a picker grouped by category and writes the row', async () => {
     const page = await browser.newPage();
     try {
       await openCell(page);
@@ -45,17 +45,17 @@ if (s) {
       assert.match(await mark.getAttribute('class'), /\bk k-state cat-not-started\b/);
 
       await mark.click();
-      await painted(page, '.chip-pop .picker-divider');
-      const groups = await page.$$eval('.chip-pop .picker-divider', (ns) => ns.map((n) => n.textContent.trim()));
-      assert.deepEqual(groups, ['Not started', 'In progress', 'Done', 'Canceled'],
-        'every category is a thin divider, in the engine’s order (Issue #796)');
-      const rows = await page.$$eval('.chip-pop .picker-row', (ns) => ns.map((n) => n.querySelector('.k, .picker-label').textContent.trim()));
-      assert.deepEqual(rows, ['—', 'Backlog', 'Triage', 'In progress', 'Shipped', 'Dropped'],
-        'the named states sit as numbered rows under their divider');
-      assert.ok(await page.$eval('.chip-pop .picker-row .k.k-state', (n) => n.classList.contains('cat-not-started')),
+      await painted(page, '.chip-pop .picker-cat');
+      const groups = await page.$$eval('.chip-pop .picker-cat', (ns) => ns.map((n) => n.textContent));
+      assert.deepEqual(groups, ['None', 'Not started', 'In progress', 'Done', 'Canceled'],
+        'every category is a heading, in the engine’s order');
+      const rows = await page.$$eval('.chip-pop .picker-term', (ns) => ns.map((n) => n.textContent));
+      assert.deepEqual(rows, ['No state', 'Backlog', 'Triage', 'In progress', 'Shipped', 'Dropped'],
+        'the named states sit under their heading');
+      assert.ok(await page.$eval('.chip-pop .picker-term .k.k-state', (n) => n.classList.contains('cat-not-started')),
         'a picker row wears the state chip it will set');
 
-      await page.locator('.chip-pop .picker-row', { hasText: 'Shipped' }).first().click();
+      await page.locator('.chip-pop .picker-term', { hasText: 'Shipped' }).first().click();
       await eventually(() => Promise.resolve(weave.readEntity(target.id).fields.State), 'Shipped');
       await eventually(() => mark.getAttribute('class').then((c) => /cat-done/.test(c)), true);
       assert.equal(await mark.textContent(), 'Shipped', 'the mark repaints without a reload');
@@ -67,7 +67,7 @@ if (s) {
     try {
       await openCell(page);
       await page.locator(`.k-rel[data-eid="${target.id}"] [data-seg="state"]`).click();
-      await painted(page, '.chip-pop .picker-divider');
+      await painted(page, '.chip-pop .picker-cat');
       assert.match(page.url(), /#\/table\//, 'the mark is the one pixel inside the chip that does not navigate');
       await page.keyboard.press('Escape');
 
@@ -76,14 +76,14 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a state chip in the picker keeps weight 400 on the checked current row (Issue #770)', async () => {
+  test('a state chip in the picker keeps weight 400 on the bold current row (Issue #770)', async () => {
     const page = await browser.newPage();
     try {
       await openCell(page);
       await page.locator(`.k-rel[data-eid="${target.id}"] [data-seg="state"]`).click();
-      await painted(page, '.chip-pop .picker-row:has(.chip-pop-check) .k.k-state');
-      const row = page.locator('.chip-pop .picker-row:has(.chip-pop-check)').first();
-      assert.equal(await row.count(), 1, 'exactly one row carries the check, and it is the state the row holds');
+      await painted(page, '.chip-pop .picker-term.on .k.k-state');
+      const row = page.locator('.chip-pop .picker-term.on').first();
+      assert.equal(await styleOf(row, 'font-weight', '600'), '600', 'the current row is bold');
       const chip = row.locator('.k.k-state').first();
       assert.equal(await styleOf(chip, 'font-weight', '400'), '400', 'the chip pins its own weight');
       const cell = page.locator(`.k-rel[data-eid="${target.id}"] [data-seg="state"]`);

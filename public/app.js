@@ -1651,28 +1651,25 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       }, `Use “${q.charAt(0).toUpperCase() + q.slice(1)}” as a custom term`));
     }
   };
-  const rowEl = (o, i, quick) => el('button', {
-    class: 'chip-pop-row picker-row' + (i === st.active ? ' active' : ''), type: 'button',
-    title: quick ? `⌥${quick}` : null,
-    onclick: async () => {
-      if (multi) { apply(core.toggle(st, o)); return; }
-      await pick(o);
-    },
-  },
-    el('span', { class: 'picker-num' }, quick ? String(quick) : ''),
-    o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label)
-      : o.lucide ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`lucide:${o.lucide}`), o.label)
-      : o.mark ? el('span', { class: 'picker-label picker-iconly' }, iconEl(o.mark), o.label)
-      : el('span', { class: 'picker-label' }, o.label),
-    o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
-    (multi ? false : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null);
   const draw = () => {
     if (grid) return drawGrid();
     if (groups) return drawGroups();
     const vis = core.visible(st);
-    list.replaceChildren(...core.rows(vis).map((r) => (r.kind === 'divider'
-      ? el('div', { class: 'picker-divider' }, el('span', { class: 'picker-divider-label' }, r.label))
-      : rowEl(r.option, r.index, r.quick))));
+    list.replaceChildren(...vis.map((o, i) => el('button', {
+      class: 'chip-pop-row picker-row' + (i === st.active ? ' active' : ''), type: 'button',
+      title: i < 9 ? `⌥${i + 1}` : null,
+      onclick: async () => {
+        if (multi) { apply(core.toggle(st, o)); return; }
+        await pick(o);
+      },
+    },
+      el('span', { class: 'picker-num' }, i < 9 ? String(i + 1) : ''),
+      o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label)
+        : o.lucide ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`lucide:${o.lucide}`), o.label)
+        : o.mark ? el('span', { class: 'picker-label picker-iconly' }, iconEl(o.mark), o.label)
+        : el('span', { class: 'picker-label' }, o.label),
+      o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
+      (multi ? false : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
     if (!vis.length) {
       list.append(el('div', { class: 'picker-empty' },
         multi && st.staged.length && !st.query.trim() ? 'Everything is chosen' : 'No matches'));
@@ -1783,7 +1780,7 @@ function chipPicker({ trigger, options, current, onPick, clearId = null }) {
       : null;
     searchPicker({
       anchor: trigger,
-      options: options.map((o) => ({ id: o.id ?? o.name, label: o.label ?? o.name, cls: o.cls, group: o.group, chip: true })),
+      options: options.map((o) => ({ id: o.name, label: o.label ?? o.name, cls: o.cls, chip: true })),
       currentId: current,
       clearId,
       onPick: async (o) => { if (o.id !== current) await onPick(o.id); },
@@ -2798,20 +2795,16 @@ document.addEventListener('click', (ev) => {
   ev.stopPropagation();
   editChipSegment(seg, chip.dataset.eid, seg.dataset.seg, seg.dataset.field);
 });
-function stateOptions(f) {
-  const options = [{ id: '—', label: '—', cls: 'k k-select hue-slate', chip: true }];
+function statePicker(anchor, f, current, onPick) {
+  const options = [{ id: '—', label: 'No state', group: 'None', cls: 'k k-select hue-slate', chip: true }];
   for (const c of chipCore.CATEGORIES) {
     for (const s of f.states ?? []) {
       if (chipCore.categoryOrDefault(s.category) !== c.id) continue;
-      options.push({ id: s.name, label: stateLabel(f, s.name), group: c.label, cls: stateChipClass(f, s.name), chip: true });
+      options.push({ id: s.name, label: s.name, group: c.label, cls: stateChipClass(f, s.name), chip: true });
     }
   }
-  return options;
-}
-function statePicker(anchor, f, current, onPick) {
   searchPicker({
-    anchor, title: f.name, placeholder: 'Search states…', options: stateOptions(f),
-    currentId: current, clearId: '—',
+    anchor, title: f.name, placeholder: 'Search states…', groups: true, options, currentId: current,
     onPick: (o) => onPick(o.id === '—' ? null : o.id),
   });
 }
@@ -3052,7 +3045,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const paint = (name) => { const next = optionChipEl(f, name); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
-      options: stateOptions(f),
+      options: [{ name: '—' }, ...f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name), label: stateLabel(f, s.name) }))],
       current: val ?? null,
       clearId: '—',
       onPick: async (picked) => {

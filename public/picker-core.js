@@ -37,18 +37,6 @@
     return state.mode === 'single' ? ranked : ranked.filter((o) => !has(state, o.id));
   };
 
-  function rows(options) {
-    const out = [];
-    let group;
-    options.forEach((o, i) => {
-      const g = o.group ?? null;
-      if (g !== group && g != null) out.push({ kind: 'divider', label: g });
-      group = g;
-      out.push({ kind: 'option', option: o, index: i, quick: i < 9 ? i + 1 : null });
-    });
-    return out;
-  }
-
   function search(state, query) {
     return { ...state, query, active: String(query).trim() ? 0 : -1, caret: null };
   }
@@ -126,5 +114,5 @@
     return pass();
   }
 
-  root.pickerCore = { rankOptions, blank, visible, rows, ids, has, search, toggle, removeAt, removeId, keyDown };
+  root.pickerCore = { rankOptions, blank, visible, ids, has, search, toggle, removeAt, removeId, keyDown };
 })(typeof window !== 'undefined' ? window : globalThis);
