@@ -7,3 +7,4 @@
 a0d74da41166f2b3fd9636ae5303151076eb702a:test/automation-actor-browser.test.mjs:generic-api-key:5
 53625f708bad8734b961d1822e3d04f551e5ec89:test/billing-gate.test.mjs:generic-api-key:43
 53625f708bad8734b961d1822e3d04f551e5ec89:test/billing-gate.test.mjs:generic-api-key:102
+c3a725d19c218ab904d3fb14ccc0f9daeea1319f:test/setup-routes.test.mjs:generic-api-key:80
