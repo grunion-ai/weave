@@ -239,7 +239,7 @@ test('every CLI command is documented in AGENTS.md', () => {
 
 test('the docs say the registry rows are schema writes', () => {
   for (const [doc, name] of [[AGENTS, 'AGENTS.md'], [README, 'README.md']]) {
-    assert.match(doc, /Workspace\/Fields/, `${name} must name the field registry`);
+    assert.match(doc, /System\/Fields/, `${name} must name the field registry`);
   }
   assert.match(AGENTS, /Definition/, 'AGENTS.md must name the Definition write');
   assert.match(AGENTS, /Field Order/, 'AGENTS.md must name the column-order write');

@@ -87,7 +87,7 @@ test('one function builds a role="menu" panel, and every action menu goes throug
   assert.equal((APP.match(/role: 'menu'/g) ?? []).length, 1, 'one role: menu in app.js');
   assert.doesNotMatch(APP, /role="menu"'|setAttribute\('role', 'menu'\)/, 'no second spelling of it');
   assert.match(fnBody('menu'), /role: 'menu'/, 'and it is the builder');
-  for (const fn of ['dotsMenu', 'crumbFoldMenu', 'accountMenu', 'fieldMenuButton', 'buildWsRail']) {
+  for (const fn of ['dotsMenu', 'crumbFoldMenu', 'personalMenu', 'fieldMenuButton', 'buildWsRail']) {
     assert.match(fnBody(fn), /\bmenu\(/, `${fn} opens through menu()`);
   }
   assert.doesNotMatch(fnBody('fieldMenuButton'), /showPopover/, 'the column menu is a menu, not a panel');

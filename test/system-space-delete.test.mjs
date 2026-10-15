@@ -9,24 +9,24 @@ const fresh = () => {
   return w;
 };
 
-test('deleteSpace on the Workspace space says it is the system space, not a registry clash', () => {
+test('deleteSpace on the System space says it is the system space, not a registry clash', () => {
   const w = fresh();
-  assert.throws(() => w.deleteSpace('Workspace'), (e) => {
+  assert.throws(() => w.deleteSpace('System'), (e) => {
     assert.equal(e.code, 'invalid');
-    assert.match(e.message, /Space 'Workspace' is the workspace's own system space and cannot be deleted/);
+    assert.match(e.message, /Space 'System' is the workspace's own system space and cannot be deleted/);
     assert.doesNotMatch(e.message, /registry/);
     return true;
   });
-  assert.throws(() => w.deleteSpace('Workspace', { hard: true }), /own system space/);
-  assert.ok(w.getSpace('Workspace'), 'the space is still there');
+  assert.throws(() => w.deleteSpace('System', { hard: true }), /own system space/);
+  assert.ok(w.getSpace('System'), 'the space is still there');
 });
 
-test('moveTable into the Workspace space says the system space takes no tables', () => {
+test('moveTable into the System space says the system space takes no tables', () => {
   const w = fresh();
   const tasks = w.getTable('Tasks');
-  assert.throws(() => w.moveTable(tasks.id, 'Workspace'), (e) => {
+  assert.throws(() => w.moveTable(tasks.id, 'System'), (e) => {
     assert.equal(e.code, 'invalid');
-    assert.match(e.message, /Space 'Workspace' is the workspace's own system space and cannot hold your tables/);
+    assert.match(e.message, /Space 'System' is the workspace's own system space and cannot hold your tables/);
     assert.doesNotMatch(e.message, /registry/);
     return true;
   });

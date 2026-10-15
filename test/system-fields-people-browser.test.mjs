@@ -10,7 +10,7 @@ let memberRow;
 
 const s = await launch('system fields read as people', (w) => {
   w.inviteIssuer = ISS;
-  const users = w.getTable('Workspace/Users');
+  const users = w.getTable('System/Users');
   const invite = w.createEntity(users.id, { name: 'Dana Quinn', values: { Email: 'dana@example.com', Role: 'Architect' } });
   w.redeemIdentityInvite(w.takeOneTime(invite.id).invite.code, { issuer: ISS, subject: 'user_dana', email: 'dana@example.com' });
   w.createAccount({ name: 'claude-code', role: 'editor' });
@@ -87,7 +87,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, timezoneId: 'UTC' });
     try {
       await page.goto(`${base}/w/member/#/entity/${memberRow.id}`, { waitUntil: 'networkidle' });
-      const bot = weave.listEntities(weave.getTable('Workspace/Users').id).find((e) => weave.entityName(e) === 'desk-bot');
+      const bot = weave.listEntities(weave.getTable('System/Users').id).find((e) => weave.entityName(e) === 'desk-bot');
       assert.ok(bot, 'the member\'s account is a registry Users row');
       const chip = page.locator('.fieldrow-system[data-field="Created By"] .k-actor a');
       await chip.waitFor();

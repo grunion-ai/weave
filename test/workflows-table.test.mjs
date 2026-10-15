@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { fresh } from './lib/fixtures.mjs';
 
-const wfTable = (w) => w.getTable('Workspace/Workflows');
+const wfTable = (w) => w.getTable('System/Workflows');
 const f = (db, name) => Object.values(db.fields).find((x) => x.name === name);
 
-test('every workspace carries Workspace/Workflows as a system table', () => {
+test('every workspace carries System/Workflows as a system table', () => {
   const w = new Weave();
   const t = wfTable(w);
   assert.equal(t.system, 'workflows');
-  assert.equal(w.getSpace('Workspace').system, 'workspace', 'it lives in the Workspace space');
+  assert.equal(w.getSpace('System').system, 'workspace', 'it lives in the System space');
   assert.throws(() => w.deleteTable(t.id), /system/i, 'not deletable');
 });
 
@@ -134,7 +134,7 @@ test('a Workflows row is ordinary data: a blank name is accepted, as on any tabl
   const w = fresh();
   const row = w.createEntity(wfTable(w).id, { name: '' });
   assert.equal(w.entityName(w.getEntity(row.id)), '');
-  assert.throws(() => w.createEntity(w.getTable('Workspace/Spaces').id, { name: '' }), /Name is required/);
+  assert.throws(() => w.createEntity(w.getTable('System/Spaces').id, { name: '' }), /Name is required/);
 });
 
 const names = (t, ids) => ids.map((id) => t.fields[id]?.name ?? id);

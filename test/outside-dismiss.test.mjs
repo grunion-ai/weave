@@ -27,7 +27,7 @@ test('no overlay dismisses itself from a hand-rolled click listener (Issue #726)
 });
 
 test('every action menu shares the builder\'s one dismiss path, none rolls its own (Issue #663)', () => {
-  for (const fn of ['dotsMenu', 'crumbFoldMenu', 'accountMenu']) {
+  for (const fn of ['dotsMenu', 'crumbFoldMenu', 'personalMenu']) {
     const src = body(fn);
     assert.match(src, /\bmenu\(/, `${fn} opens through menu()`);
     assert.doesNotMatch(src, /dismissOutside|addEventListener\('keydown'/, `${fn} has no private dismiss or key handler`);

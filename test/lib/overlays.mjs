@@ -46,7 +46,8 @@ export const OVERLAYS = [
       await page.waitForSelector('#cmdk-back mark');
     },
   },
-  { name: 'shortcuts', surface: 'home', cells: DESKTOP, root: '#modal-back', open: (page, ctx, cell) => press(page, 'button[aria-label="Keyboard shortcuts"]', cell) },
+  { name: 'shortcuts', surface: 'home', cells: DESKTOP, root: '#modal-back', open: (page, ctx, cell) => menu(page, cell, '#sidebar .nav-identity-more', 'Keyboard shortcuts') },
+  { name: 'personal-menu', surface: 'home', cells: DESKTOP, root: '.nav-personal-menu', open: (page, ctx, cell) => press(page, '#sidebar .nav-identity-more', cell) },
   { name: 'new-workspace', surface: 'home', cells: DESKTOP, root: '#tray-back', open: (page, ctx, cell) => press(page, '.ws-new', cell) },
   { name: 'workspace-menu', surface: 'home', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Workspace actions"]', cell) },
   { name: 'nav-table-menu', surface: 'home', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#nav .dots-btn[title="Task actions"]', cell) },

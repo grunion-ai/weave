@@ -1715,7 +1715,6 @@ test('no surface says "entity" to a reader where a table has a row term', () => 
   assert.match(APP, /countLabel\(sel\.size, db\.term\)/, 'the puck count');
   assert.match(APP, /Search \$\{term\.plural\} to link as/, 'relation pickers speak the target\'s plural');
   assert.match(APP, /WeaveTerm\.count\(n\.entityCount, n\.term\)/, 'relation-map nodes');
-  assert.match(APP, /WeaveTerm\.DEFAULT\.singular : WeaveTerm\.DEFAULT\.plural/, 'the workspace total speaks the default term');
   assert.doesNotMatch(APP, /\?\? 'record'/, 'no surface carries its own copy of the default noun');
 });
 

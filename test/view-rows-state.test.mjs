@@ -55,7 +55,7 @@ test('the schema document carries them and applySchema round-trips them', () => 
   assert.equal(w2.tableView('Task/Standard').deleted, true, 'export and import keep it');
 });
 
-test('the Workspace/Views row shows and writes them', () => {
+test('the System/Views row shows and writes them', () => {
   const w = fresh();
   const t = w.getTable('Views');
   const row = () => w.listEntities(t.id).map((e) => w.readEntity(e.id)).find((r) => r.name === 'Standard' && (r.fields.Table?.[0]?.name ?? r.fields.Table?.name) === 'Task');

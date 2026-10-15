@@ -376,7 +376,7 @@ A select becomes a workflow the moment its values describe progress rather than 
 
   { name: 'relation', kind: 'Relation', doc: `# relation
 
-A link between tables. One target table makes the classic bidirectional pair — the inverse field appears on the other table in the same write. A **target set** (\`targetDbs\`, two or more tables) makes a polymorphic relation: one field whose values may point at rows of ANY member table — the registry's \`Workspace/Spaces\` and \`Workspace/Tables\` are legal members, so a row can point at a space or a table as easily as at another row.
+A link between tables. One target table makes the classic bidirectional pair — the inverse field appears on the other table in the same write. A **target set** (\`targetDbs\`, two or more tables) makes a polymorphic relation: one field whose values may point at rows of ANY member table — the registry's \`System/Spaces\` and \`System/Tables\` are legal members, so a row can point at a space or a table as easily as at another row.
 
 ## Config
 
@@ -471,7 +471,7 @@ A number aggregate over a checkbox or toggle counts a tick as 1 and an empty box
 
 ## Over a whole table: the space rollup
 
-The Σ under a grid column is a rollup on the **Workspace/Spaces** row of the space that holds the table (Kyle, 2026-09-06: "all footer values live at the space level"). \`via\` names the table instead of a relation; \`where\` narrows the rows with the same clauses a query takes.
+The Σ under a grid column is a rollup on the **System/Spaces** row of the space that holds the table (Kyle, 2026-09-06: "all footer values live at the space level"). \`via\` names the table instead of a relation; \`where\` narrows the rows with the same clauses a query takes.
 
 \`\`\`json
 { "name": "Sessions · Cost · sum", "type": "rollup",
@@ -479,7 +479,7 @@ The Σ under a grid column is a rollup on the **Workspace/Spaces** row of the sp
               "where": [["Kind", "=", "scheduled"]] } }
 \`\`\`
 
-Three surfaces write that field. The Σ row's picker turns one on with a switch, \`weave field add\` / \`weave_add_field\` take the config above, and the field dialog on the **Workspace/Spaces** grid asks **Rolls up** — through a relation, or over a table — where *Over a table* picks the table, the aggregate and the column. Only the API writes a \`where\`.
+Three surfaces write that field. The Σ row's picker turns one on with a switch, \`weave field add\` / \`weave_add_field\` take the config above, and the field dialog on the **System/Spaces** grid asks **Rolls up** — through a relation, or over a table — where *Over a table* picks the table, the aggregate and the column. Only the API writes a \`where\`.
 
 A grid carries no Σ row until you ask for one: switch on **Σ rollup row** in the Fields menu's Rows section and the grid draws every space rollup in a **Σ row** pinned under the field headers — it stays while the body scrolls — and offers the aggregates on a click in that row. The box saves into the current view as its \`rollups\` (\`weave_table_view\`, never a browser setting). A view that has never set it follows the table's older \`hideRollups\` (mirrored as **Hide Rollups** on its Tables row): \`false\` is a table that opted in, \`true\` is one switched back off, and a table nobody has touched has no row. The space page draws the same rollups as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's row and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
 
@@ -612,7 +612,7 @@ The editor renders as you type — there is no edit mode and no save button. A d
 
   { name: 'field', kind: 'Meta', doc: `# field
 
-A value that **is** a field definition. This is what makes the schema editable as data: the \`Definition\` column on \`Workspace/Fields\` is a \`field\` field.
+A value that **is** a field definition. This is what makes the schema editable as data: the \`Definition\` column on \`System/Fields\` is a \`field\` field.
 
 ## Config
 
@@ -941,7 +941,7 @@ Every menu deletes the same way: **Move to trash**, one click, for a table, a sp
 
 ## The space
 
-A space is the unit of meaning in a workspace: it groups the tables of one area, such as Contact, Company and Deal in CRM. You address a table by space and table name, so CRM/Deal is the Deal table in CRM. Spaces never nest. Make a new space only when you have a table whose area no existing space covers. The Σ under a grid column is a rollup on the space's row in Workspace/Spaces. A space's schema version rises when its structure changes, so an agent can ask for only what changed. Mark a space as a template and weave_template_use copies its schema into another workspace.
+A space is the unit of meaning in a workspace: it groups the tables of one area, such as Contact, Company and Deal in CRM. You address a table by space and table name, so CRM/Deal is the Deal table in CRM. Spaces never nest. Make a new space only when you have a table whose area no existing space covers. The Σ under a grid column is a rollup on the space's row in System/Spaces. A space's schema version rises when its structure changes, so an agent can ask for only what changed. Mark a space as a template and weave_template_use copies its schema into another workspace.
 
 ## Sharing a link
 
@@ -1030,7 +1030,7 @@ The magnifier in the table's toolbar opens a search box; \`/\` opens it from a r
 
 Cells **rest as values** and open on purpose. The cursor is a ring on one cell; the arrows and Tab move it, and a cell opens when you ask. That is what gives ← and → to navigation: a text caret only owns them while a cell is open, and hands them back when you Tab, Return or Esc out.
 
-\`?\` shows these keys. Press it on a resting cell, or anywhere outside a text field and the document editor, or click the \`?\` chip at the foot of the workspace rail: a sheet lists every key below, read from the grid's own keymap so it cannot promise a key the grid has dropped (Issue #268). \`Esc\` closes it and puts focus back where it was. Inside an open cell, \`?\` is a character like any other.
+\`?\` shows these keys. Press it on a resting cell, or anywhere outside a text field and the document editor, or choose **Keyboard shortcuts** from the **⋯** menu on the identity panel at the foot of the sidebar: a sheet lists every key below, read from the grid's own keymap so it cannot promise a key the grid has dropped (Issue #268). \`Esc\` closes it and puts focus back where it was. Inside an open cell, \`?\` is a character like any other.
 
 | At rest | What it does |
 | --- | --- |
@@ -1262,7 +1262,7 @@ Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard dele
 
 ## The structure is data too
 
-\`Workspace/Spaces\`, \`Workspace/Tables\`, \`Workspace/Fields\` and \`Workspace/Workflows\` are ordinary tables whose rows **are** the structure. They live once, at the weave root — the default workspace — with a \`Workspace\` column saying which workspace each row describes (the **Registry at the root** guide). Editing a row runs the same validation as the schema verb, because it is the schema verb. So does the grid foot: \`+ New space\` births a space named "New space" with the name selected for the caret to replace; \`+ New table\` and \`+ New field\` ask for the space or the table the row needs before creating it; a Workflows row starts blank like any other row; and a create the engine refuses lands in a toast rather than in silence. That is the subject of the **Configuring a space, first time right** guide.`,
+\`System/Spaces\`, \`System/Tables\`, \`System/Fields\` and \`System/Workflows\` are ordinary tables whose rows **are** the structure. They live once, at the weave root — the default workspace — with a \`Workspace\` column saying which workspace each row describes (the **Registry at the root** guide). Editing a row runs the same validation as the schema verb, because it is the schema verb. So does the grid foot: \`+ New space\` births a space named "New space" with the name selected for the caret to replace; \`+ New table\` and \`+ New field\` ask for the space or the table the row needs before creating it; a Workflows row starts blank like any other row; and a create the engine refuses lands in a toast rather than in silence. That is the subject of the **Configuring a space, first time right** guide.`,
   },
   {
     name: 'Polymorphic relations',
@@ -1270,7 +1270,7 @@ Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard dele
     order: 10,
     doc: `# Polymorphic relations
 
-A relation field normally points at one table. In weave it can point at several, a **target set**, and two of the legal members are the workspace's own registries: \`Workspace/Spaces\` and \`Workspace/Tables\`. A bug can be scoped to a whole space. A dependency can name an entire workstream. An agenda can mix rows with the structure that holds them. This page is what a target set is, how the engine carries it, and why it was built this way rather than the way every other tool builds it.
+A relation field normally points at one table. In weave it can point at several, a **target set**, and two of the legal members are the workspace's own registries: \`System/Spaces\` and \`System/Tables\`. A bug can be scoped to a whole space. A dependency can name an entire workstream. An agenda can mix rows with the structure that holds them. This page is what a target set is, how the engine carries it, and why it was built this way rather than the way every other tool builds it.
 
 ## The classic pair
 
@@ -1285,8 +1285,8 @@ graph LR
     P1 -- "Tasks" --> T1
   end
   subgraph set["Target set: one stored field, several legal targets"]
-    B[Bug] -- "Scope" --> S[Workspace/Spaces]
-    B -- "Scope" --> Tb[Workspace/Tables]
+    B[Bug] -- "Scope" --> S[System/Spaces]
+    B -- "Scope" --> Tb[System/Tables]
     B -- "Scope" --> Pr[Sales/Project]
   end
 \`\`\`
@@ -1296,7 +1296,7 @@ One target table makes the bidirectional pair: \`Task.Project\` on one side, \`P
 ## The target set
 
 \`\`\`bash
-weave relation add Bug Scope --target-dbs 'Workspace/Spaces,Workspace/Tables,Sales/Project' --cardinality many-to-one
+weave relation add Bug Scope --target-dbs 'System/Spaces,System/Tables,Sales/Project' --cardinality many-to-one
 weave link Bug#7 Scope Sales
 \`\`\`
 
@@ -1322,8 +1322,8 @@ How one value gets in, and how a filter reads it back out:
 
 \`\`\`mermaid
 flowchart TD
-  In["link Bug#7 Scope 'Apollo'"] --> M1{"in Workspace/Spaces?"}
-  M1 -- no --> M2{"in Workspace/Tables?"}
+  In["link Bug#7 Scope 'Apollo'"] --> M1{"in System/Spaces?"}
+  M1 -- no --> M2{"in System/Tables?"}
   M2 -- no --> M3{"in Sales/Project?"}
   M3 -- yes --> Store["store Sales/Project#4"]
   M1 -- yes --> Store
@@ -1338,14 +1338,14 @@ flowchart TD
 
 The polymorphism is not a special case bolted onto relations. It falls out of the model.
 
-Every level of weave is a row. A space is a row in \`Workspace/Spaces\`, a table a row in \`Workspace/Tables\`, a field a row in \`Workspace/Fields\`; a space has an entity view, a document, comments and a public id, the same as a task does, because it is the same kind of thing. One core kind, the Entity, is the whole ontology. Workspace, Space, Table, Field and Row are levels of it rather than separate kinds, and a relation has only ever known how to point at an entity.
+Every level of weave is a row. A space is a row in \`System/Spaces\`, a table a row in \`System/Tables\`, a field a row in \`System/Fields\`; a space has an entity view, a document, comments and a public id, the same as a task does, because it is the same kind of thing. One core kind, the Entity, is the whole ontology. Workspace, Space, Table, Field and Row are levels of it rather than separate kinds, and a relation has only ever known how to point at an entity.
 
 \`\`\`mermaid
 graph TD
   subgraph reg["Registries are tables; their rows are the structure"]
-    WS["Workspace/Spaces"] --- s1["row: Sales"]
-    WT["Workspace/Tables"] --- t1["row: Sales/Project"]
-    WF["Workspace/Fields"] --- f1["row: Project.Owner"]
+    WS["System/Spaces"] --- s1["row: Sales"]
+    WT["System/Tables"] --- t1["row: Sales/Project"]
+    WF["System/Fields"] --- f1["row: Project.Owner"]
   end
   subgraph data["A user table; its rows are the data"]
     SP["Sales/Project"] --- p1["row: Apollo"]
@@ -1357,11 +1357,11 @@ graph TD
   p1 --- E2["entity view · document · comments · public id"]
 \`\`\`
 
-So a relation whose target set includes \`Workspace/Spaces\` is pointing at rows in a table, which is all a relation ever did. No second link type, no "reference to structure" field, no string that holds a space name and hopes it stays valid. Rename the space and the chip follows; delete the space and the link is pruned with the row. Airtable, Notion and Fibery weld a link field to one table and keep spaces and databases outside the data, so the same relation is structurally unavailable there.
+So a relation whose target set includes \`System/Spaces\` is pointing at rows in a table, which is all a relation ever did. No second link type, no "reference to structure" field, no string that holds a space name and hopes it stays valid. Rename the space and the chip follows; delete the space and the link is pruned with the row. Airtable, Notion and Fibery weld a link field to one table and keep spaces and databases outside the data, so the same relation is structurally unavailable there.
 
 ## Why it is one-way
 
-A classic pair has an inverse because there is exactly one far table to put it on. A target set has several, and an inverse would have to be sprayed across every member: a \`Bugs\` column appearing on \`Workspace/Spaces\`, on \`Workspace/Tables\`, on \`Sales/Project\`, each one a stored field to keep consistent, each one a surprise on a table nobody edited. \`\`\`mermaid
+A classic pair has an inverse because there is exactly one far table to put it on. A target set has several, and an inverse would have to be sprayed across every member: a \`Bugs\` column appearing on \`System/Spaces\`, on \`System/Tables\`, on \`Sales/Project\`, each one a stored field to keep consistent, each one a surprise on a table nobody edited. \`\`\`mermaid
 graph LR
   subgraph no["What an inverse would mint (refused)"]
     B1[Bug.Scope] --> X1["Spaces.Bugs"]
@@ -1407,7 +1407,7 @@ Name the field for the role the target plays (\`Scope\`, \`Blocks\`, \`Agenda\`)
 
 A target set that only ever holds one member is a classic pair wearing a costume. Drop the list and take the inverse.
 
-\`Workspace/Fields\` is a registry too, but it is not a useful member: a field's identity is its table's, and a relation into it reads as a pointer to a column definition. Reach for the \`field\` field type when a row needs to hold a field.
+\`System/Fields\` is a registry too, but it is not a useful member: a field's identity is its table's, and a relation into it reads as a pointer to a column definition. Reach for the \`field\` field type when a row needs to hold a field.
 
 MCP: \`weave_add_relation\` takes \`targetDbs\` as a list; a single-element list is the pair. REST and the CLI mirror it with \`--target-dbs\`.
 
@@ -1419,7 +1419,7 @@ Six tables in the **Showcase** space, one per use case, each with realistic rows
 | --- | --- | --- | --- |
 | Attachment target — a comment lives on anything | [[table:Showcase/Comments]] | \`On\` | Tasks · Docs · Meetings, one |
 | Audit subject — the log points at what changed | [[table:Showcase/Activity]] | \`Subject\` | every Showcase table, one |
-| Pointing at structure — a note about a row *or the table that holds it* | [[table:Showcase/Notes]] | \`Related\` | Projects · Meetings · Docs · Workspace/Tables · Workspace/Spaces, many |
+| Pointing at structure — a note about a row *or the table that holds it* | [[table:Showcase/Notes]] | \`Related\` | Projects · Meetings · Docs · System/Tables · System/Spaces, many |
 | Sign-off target — one approval workflow for three kinds of subject | [[table:Showcase/Approvals]] | \`Of\` | Expenses · Contracts · Deploys, one |
 | Many-to-many mixed set — one label across five tables, +N chip | [[table:Showcase/Tags]] | \`Applied to\` | Tasks · Docs · Projects · Meetings · Deploys, many |
 | The counter-example — a plain pair because a lookup and a rollup read through it | [[table:Showcase/Line Items]] | \`Expense\` | Expenses only; \`Expense category\` is a lookup, \`Line total\` on Expenses a sum rollup |
@@ -1436,11 +1436,13 @@ The system registry — **Spaces**, **Tables**, **Fields** and **Workflows** as 
 
 ## System rows in the sidebar
 
-Three fixed rows sit at the bottom of the sidebar, under the spaces: **Workflows** (this workspace's own workflows, opened at this workspace's address; the root lists only its own), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed row in the workspace, \`#/trash\`). A workflow belongs to the workspace whose table its rule runs on, and its row's \`Workspace\` column says which; a row made in a member workspace starts out there. \`POST /api/tables/Workflows/query\` and the Trash list answer only for the workspace you ask from, and a member cannot open another workspace's workflow by id. They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces row, and Restore on that row brings the whole structure back. A workspace you deleted from the icon rail is listed there too, under Workspaces, with its own Restore. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
+The **System** space sits at the bottom of the sidebar, under your spaces and **+ New space**, behind a hairline, and stays put however far the space list scrolls (Feature #333). It holds four built-in tables, in this order and with no counts: **Workflows** (this workspace's own workflows, opened at this workspace's address; the root lists only its own), **Users** (the accounts and invites, below), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed row in the workspace, \`#/trash\`). System folds and unfolds from its caret like any space, and the sidebar remembers the fold. Its stored name is System and its internal key stays \`workspace\`; a workspace whose system space was still called Workspace is renamed System the first time it opens, and \`Workspace/Users\` style names keep resolving to it. A workflow belongs to the workspace whose table its rule runs on, and its row's \`Workspace\` column says which; a row made in a member workspace starts out there. \`POST /api/tables/Workflows/query\` and the Trash list answer only for the workspace you ask from, and a member cannot open another workspace's workflow by id. They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces row, and Restore on that row brings the whole structure back. A workspace you deleted from the icon rail is listed there too, under Workspaces, with its own Restore. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
+
+Under System, at the very foot of the sidebar, the identity panel shows who you are here: your avatar, your name and your role in this workspace as a chip (Architect purple, Editor blue, Observer slate). A role belongs to a workspace, never to a person, so switching workspace from the rail changes the chip. Signed out of a workspace that asks for a sign-in, the panel shows **Sign in**; an open workspace with no sign-in shows **Open access**. The **⋯** button opens the personal menu: **Theme** (auto, dark and light in turn), **Keyboard shortcuts** (the \`?\` key opens the same sheet) and **Sign out** with the running version beside it, then **Sign out everywhere**. A server running an older commit than the page it served, or one behind main or the latest release, still raises its toast and shows a tinted line above the panel naming the commits.
 
 ## The Workspaces table
 
-The root's Workspace space carries one more table, **Workspaces**: one row per workspace the hub serves, the root included. It is the level-1 row — every other registry table relates back to it through a system **Workspace** column, so uno's tables and test's sit side by side in one grid, and a filter on Workspace is the slice you want.
+The root's System space carries one more table, **Workspaces**: one row per workspace the hub serves, the root included. It is the level-1 row — every other registry table relates back to it through a system **Workspace** column, so uno's tables and test's sit side by side in one grid, and a filter on Workspace is the slice you want.
 
 Workspaces are created and deleted from the hub (the rail, \`POST /api/workspaces\`, \`DELETE /api/workspaces/:id\`), never as rows. A Workspaces row's Description edits the workspace's description; its Name is edited from the workspace's own page, because the hub's name index moves with it.
 
@@ -1455,12 +1457,12 @@ Opening a row opens the structure: a row that describes another workspace deep-l
 - **Configuration as fields** (#126): Field Order, Hidden Fields, Filter, Sort and Hide Rollups on a Tables row — same columns, same verbs, now one grid for every workspace.
 - **Space rollups and the Σ row** (#233): a \`via\` rollup lives on the root **Spaces** table and may name a table in any workspace; a member's grid still draws its Σ row and its picker still adds the rollup. Ids are uuids, so one \`via\` names one table wherever it lives.
 - **Chip and Card view fields** (#175, #212) sit on the user tables themselves; unchanged.
-- **Polymorphic relations** into \`Workspace/Spaces\` and \`Workspace/Tables\`: legal at the root, where those tables are.
+- **Polymorphic relations** into \`System/Spaces\` and \`System/Tables\`: legal at the root, where those tables are.
 - A member's own API answers for its registry rows through its prefix: \`/w/<id>/api/entities/<row>\` and \`/w/<id>/api/tables/Tables/…\` fall through to the root when the member does not hold them.
 
 ## Migration
 
-A workspace that minted its own Workspace space keeps it as a **tombstone**: the space and its four tables are marked deleted, their rows kept, nothing purged. Its space rollups are re-created on the root Spaces table (a name clash gets \` (<workspace>)\` appended). \`weave serve\` on that file alone hosts the registry again; joining a hub tombstones it again. The Cloudflare Worker serves one workspace per deployment, so there the root is that workspace and nothing moves.`,
+A workspace that minted its own System space keeps it as a **tombstone**: the space and its four tables are marked deleted, their rows kept, nothing purged. Its space rollups are re-created on the root Spaces table (a name clash gets \` (<workspace>)\` appended). \`weave serve\` on that file alone hosts the registry again; joining a hub tombstones it again. The Cloudflare Worker serves one workspace per deployment, so there the root is that workspace and nothing moves.`,
   },
   {
     name: "Self-host weave: choose your door",
@@ -1628,7 +1630,7 @@ A hosted provider with open sign-up lets anyone create a user there. A sign-in a
 
 ## The Users table
 
-**Users** is a system table in the Workspace space, pinned in the sidebar under Workflows (Feature #318). Each account and each pending invite is a row with Name, Email, Role (Architect, Editor or Observer), Status (Invited or Active), Kind (Person or Agent), Identities, Last Seen and Created. The accounts stay the source of truth and the rows follow them, so an account made with \`weave account create\` or redeemed from an invite shows up here too.
+**Users** is a system table in the System space, listed in the sidebar's System group under Workflows (Feature #318, Feature #333). Each account and each pending invite is a row with Name, Email, Role (Architect, Editor or Observer), Status (Invited or Active), Kind (Person or Agent), Identities, Last Seen and Created. The accounts stay the source of truth and the rows follow them, so an account made with \`weave account create\` or redeemed from an invite shows up here too.
 
 You manage people by editing rows. A new row with an Email invites that person at the row's Role; the answer carries the one-time sign-in link as \`invite.url\`, and the row reads Invited until they sign in. A new row with Kind Agent and no Email makes an agent account; the answer carries its \`wv_\` token as \`token\`, shown once. Editing Role changes the account's role without replacing its tokens or sessions; the last architect cannot be demoted. Editing Name renames the account, and deleting the row revokes the invite or deletes the account. Email, Status, Kind, Identities, Last Seen and Created are kept by weave and refuse edits.
 
@@ -2241,7 +2243,7 @@ A form lets someone add one row to one table without write access to that table.
 
 ## A form is a row
 
-Every form is a row in \`Workspace/Forms\`, beside Spaces, Tables and Fields. The row names:
+Every form is a row in \`System/Forms\`, beside Spaces, Tables and Fields. The row names:
 
 | Column | What it holds |
 | --- | --- |
@@ -2269,7 +2271,7 @@ An **Anonymous** floor also needs the operator to allow it: start the server wit
 
 Open the table's actions menu and choose **Forms…**. The same action appears in the phone menu. An Architect can create a form, choose its fields, change labels and defaults, mark required inputs, and save it. Each form has controls to open it, copy its link, edit it or pause submissions. Editing keeps its form ID and permalink.
 
-The editor writes the existing Workspace/Forms row. Server-filled values survive edits. Advanced input keys remain stable, and old keys remain aliases. Forms created by an agent appear in the same manager.
+The editor writes the existing System/Forms row. Server-filled values survive edits. Advanced input keys remain stable, and old keys remain aliases. Forms created by an agent appear in the same manager.
 
 The audience control reports whether the server allows anonymous submissions. In a workspace with sign-in disabled, forms follow that workspace's open access. A member-workspace Architect also needs Architect access on the hub registry to manage its forms.
 
@@ -2407,7 +2409,7 @@ The footer counts what shows: **3 of 8 to-dos · 1 completed**.
 
 ## For agents
 
-One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`search\` is the table search box's text for the view (\`''\` or \`null\` clears it); pass it to \`weave_query\` as \`search\` to read the rows the grid shows. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed rows in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. The List layout takes \`layout: "list"\`, \`group\` (up to three levels, each a field name or \`{field, heading: "chip", order: "az", grain: "week"}\`; a read leaves out the defaults), \`completedBy\` (a checkbox), \`nest\` (a Parent link), \`collapsed\` (group paths such as \`"Japan › P1"\` and \`"Completed"\`) and \`order\` (the manual order as row #ids); \`null\` clears any of them. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\`, \`Sort\` or \`Search\` runs the same checks.`,
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`search\` is the table search box's text for the view (\`''\` or \`null\` clears it); pass it to \`weave_query\` as \`search\` to read the rows the grid shows. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed rows in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. The List layout takes \`layout: "list"\`, \`group\` (up to three levels, each a field name or \`{field, heading: "chip", order: "az", grain: "week"}\`; a read leaves out the defaults), \`completedBy\` (a checkbox), \`nest\` (a Parent link), \`collapsed\` (group paths such as \`"Japan › P1"\` and \`"Completed"\`) and \`order\` (the manual order as row #ids); \`null\` clears any of them. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **System/Views**, where editing \`Fields\`, \`Filter\`, \`Sort\` or \`Search\` runs the same checks.`,
   },
   {
     name: 'Chip and card anatomy',

@@ -231,7 +231,7 @@ The workspace itself
   workspace migrate --from weave://host/account[/archive] [--name N] [--workspace W] [--passphrase-env NAME]
                                       Create a cloud workspace from a stored archive; the key
                                       travels once and is never stored
-  form [list] | get <form>            The forms whose table lives here (Workspace/Forms rows)
+  form [list] | get <form>            The forms whose table lives here (System/Forms rows)
   form config <form>                 Editable form definition
   form create --definition '{json}'  Create a native table form
   form update <form> --definition '{json}'  Edit or pause; preserve its link

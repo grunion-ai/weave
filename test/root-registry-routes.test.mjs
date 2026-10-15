@@ -17,8 +17,8 @@ test('a member-scoped request for a root registry row or table falls through to 
   const { server } = await startServer(root, { port: 0, workspaces: { uno } });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const tablesT = root.getTable('Workspace/Tables');
-    const spacesT = root.getTable('Workspace/Spaces');
+    const tablesT = root.getTable('System/Tables');
+    const spacesT = root.getTable('System/Spaces');
     const byName = await json(await post(`${base}/w/uno/api/tables/Tables/query`, { where: [['Name', '=', 'Task']] }));
     assert.equal(byName.total, 1);
     const byId = await json(await post(`${base}/w/uno/api/tables/${tablesT.id}/query`, {}));

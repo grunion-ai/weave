@@ -11,7 +11,7 @@ import { normalise } from './lib/fixtures.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/weave.js', import.meta.url));
 const spacesRow = (w, name) => {
-  const t = w.getTable('Workspace/Spaces');
+  const t = w.getTable('System/Spaces');
   return w.listEntities(t.id, { includeDeleted: true }).find((e) => w.entityName(e) === name);
 };
 const templateCell = (w, name) => w.readEntity(spacesRow(w, name).id).fields.Template;
@@ -30,10 +30,10 @@ test('template is a space attribute: stored when true, absent when false', () =>
   assert.equal(w.getSpace('CRM').template, true, 'a patch that does not name it leaves it');
 });
 
-test('the Workspace/Spaces row carries a Template checkbox that mirrors the space both ways', () => {
+test('the System/Spaces row carries a Template checkbox that mirrors the space both ways', () => {
   const w = new Weave();
   w.createSpace({ name: 'CRM' });
-  const field = w.findField(w.getTable('Workspace/Spaces'), 'Template');
+  const field = w.findField(w.getTable('System/Spaces'), 'Template');
   assert.ok(field, 'the registry minted the column');
   assert.equal(field.type, 'checkbox');
   assert.equal(field.system, true);
@@ -45,7 +45,7 @@ test('the Workspace/Spaces row carries a Template checkbox that mirrors the spac
   assert.equal(templateCell(w, 'CRM'), false);
   w.updateEntity(spacesRow(w, 'CRM').id, { Template: true });
   assert.equal(w.getSpace('CRM').template, true);
-  w.createEntity(w.getTable('Workspace/Spaces').id, { name: 'Hiring', values: { Template: true } });
+  w.createEntity(w.getTable('System/Spaces').id, { name: 'Hiring', values: { Template: true } });
   assert.equal(w.getSpace('Hiring').template, true);
   assert.equal(templateCell(w, 'Hiring'), true);
 });
@@ -67,7 +67,7 @@ test('a workspace opened without the Template column gets it, and its rows say w
     old.importJSON(dump);
     old.store.close?.();
     const reopened = new Weave({ path });
-    assert.ok(reopened.findField(reopened.getTable('Workspace/Spaces'), 'Template'), 'the column is there after the open');
+    assert.ok(reopened.findField(reopened.getTable('System/Spaces'), 'Template'), 'the column is there after the open');
     assert.equal(templateCell(reopened, 'CRM'), true, 'and the row carries the space\'s value');
     reopened.store.close?.();
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -156,7 +156,7 @@ function costumed() {
   w.addField(deal.id, { name: 'Contact Employer', type: 'lookup', config: { relationField: 'Contact', targetField: 'Employer' } });
   w.addRelation(deal.id, { name: 'Ledger', targetDb: ledger.id, cardinality: 'many-to-one', inverseName: 'Deals' });
   w.addField(deal.id, { name: 'Ledger Code', type: 'lookup', config: { relationField: 'Ledger', targetField: 'Code' } });
-  w.addField(w.getTable('Workspace/Spaces').id, { name: 'Deal · Amount · sum', type: 'rollup', config: { via: deal.id, targetField: 'Amount', aggregate: 'sum' } });
+  w.addField(w.getTable('System/Spaces').id, { name: 'Deal · Amount · sum', type: 'rollup', config: { via: deal.id, targetField: 'Amount', aggregate: 'sum' } });
 
   const order = ['Name', 'Amount', 'Stage', 'State', 'Company', 'Company Name', 'Weighted', 'Close', 'Ledger', 'Ledger Code', 'Notes', 'Description'];
   w.updateTable(deal.id, { fieldOrder: [...order, ...w.getTable(deal.id).fieldOrder.map((id) => w.getTable(deal.id).fields[id].name).filter((n) => !order.includes(n))] });
@@ -202,7 +202,7 @@ test('templateDoc renames the space, drops source ids and the template mark, and
   assert.ok(!deal.hiddenFields.includes('Ledger Code'));
   assert.ok(!(deal.views.find((v) => v.name === 'Board').widths ?? {}).Ledger);
   assert.equal(templateDoc(entry).doc.space, 'CRM', 'the name defaults to the source\'s');
-  assert.throws(() => templateDoc(entryOf(w, 'Workspace')), /system space/);
+  assert.throws(() => templateDoc(entryOf(w, 'System')), /system space/);
 });
 
 test('templateDoc removes a formula that reads a skipped field, and rewrites a space rollup', () => {
@@ -249,7 +249,7 @@ test('useTemplate refuses a name the target already holds and leaves the target\
   target.createSpace({ name: 'Ops' });
   const run = target.createTable({ space: 'Ops', name: 'Run' });
   target.addField(run.id, { name: 'Cost', type: 'number' });
-  target.addField(target.getTable('Workspace/Spaces').id, { name: 'Deal · Amount · sum', type: 'rollup', config: { via: run.id, targetField: 'Cost', aggregate: 'sum' } });
+  target.addField(target.getTable('System/Spaces').id, { name: 'Deal · Amount · sum', type: 'rollup', config: { via: run.id, targetField: 'Cost', aggregate: 'sum' } });
   const theirs = JSON.stringify(entryOf(target, 'Ops'));
 
   const first = src.useTemplate('CRM', target);

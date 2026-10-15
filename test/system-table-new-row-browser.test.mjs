@@ -8,10 +8,10 @@ const s = await launch('system table new row', (weave) => {
   tasks = weave.createTable({ space: 'Work', name: 'Tasks' });
   weave.addField(tasks, { name: 'Note', type: 'text' });
   notes = weave.createTable({ space: 'Work', name: 'Notes' });
-  spacesT = weave.getTable('Workspace/Spaces');
-  tablesT = weave.getTable('Workspace/Tables');
-  fieldsT = weave.getTable('Workspace/Fields');
-  wfT = weave.getTable('Workspace/Workflows');
+  spacesT = weave.getTable('System/Spaces');
+  tablesT = weave.getTable('System/Tables');
+  fieldsT = weave.getTable('System/Fields');
+  wfT = weave.getTable('System/Workflows');
 });
 
 if (s) {
@@ -39,7 +39,7 @@ if (s) {
     return page;
   };
 
-  test('+ New space on Workspace/Spaces births "New space", selected, and the typed name renames it', async () => {
+  test('+ New space on System/Spaces births "New space", selected, and the typed name renames it', async () => {
     const page = await open(spacesT);
     const known = ids(spacesT);
     await page.click('.wv-grid .add-entity-btn');
@@ -73,7 +73,7 @@ if (s) {
     await page.close();
   });
 
-  test('+ New workflow on Workspace/Workflows adds an ordinary blank row with the caret in Name', async () => {
+  test('+ New workflow on System/Workflows adds an ordinary blank row with the caret in Name', async () => {
     const page = await open(wfT);
     const known = ids(wfT);
     await page.click('.wv-grid .add-entity-btn');
@@ -88,7 +88,7 @@ if (s) {
     await page.close();
   });
 
-  test('+ New table on Workspace/Tables opens the tray for the name and the space, then lands on the new row (Issue #778)', async () => {
+  test('+ New table on System/Tables opens the tray for the name and the space, then lands on the new row (Issue #778)', async () => {
     const page = await open(tablesT);
     const known = ids(tablesT);
     await page.click('.wv-grid .add-entity-btn');
@@ -97,7 +97,7 @@ if (s) {
     await page.click('#tray-back .picker-face');
     await page.waitForSelector('.chip-pop .picker-row');
     const spaces = await page.locator('.chip-pop .picker-row').evaluateAll((rs) => rs.map((r) => r.textContent.trim()));
-    assert.ok(!spaces.some((v) => v.includes('Workspace')), 'the system space is not on offer');
+    assert.ok(!spaces.some((v) => v.includes('System')), 'the system space is not on offer');
     assert.ok(spaces.some((v) => v.includes('Work')));
     await page.fill('.chip-pop .picker-search', 'Work');
     await page.keyboard.press('Enter');
@@ -133,7 +133,7 @@ if (s) {
     await page.close();
   });
 
-  test('+ New field on Workspace/Fields opens the tray with a Table row, no modal in front (Issue #779)', async () => {
+  test('+ New field on System/Fields opens the tray with a Table row, no modal in front (Issue #779)', async () => {
     const page = await open(fieldsT);
     await page.click('.wv-grid .add-entity-btn');
     await page.waitForSelector('#tray-back input[name="table"]', { state: 'attached' });

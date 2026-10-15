@@ -172,7 +172,7 @@ test('the doc documents structure-as-tables, and the config fields are real', ()
 test('a space is defined as the unit of meaning, in the engine and the glossary alike (Feature #278)', () => {
   const space = ONTOLOGY.levels.find((l) => l.key === 'space');
   assert.equal(space.definition,
-    'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in Workspace/Spaces is the same object seen as data.');
+    'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in System/Spaces is the same object seen as data.');
   const row = DOC.split('\n').find((l) => l.startsWith('| **Space** |'));
   assert.ok(row, 'ONTOLOGY.md has a Space row');
   assert.equal(row.split(' | ').at(-1).replace(/ \|$/, ''),
