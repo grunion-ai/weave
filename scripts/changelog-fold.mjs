@@ -69,10 +69,8 @@ export function foldRepo(root, { date = new Date().toLocaleDateString('en-CA') }
 const EM_DASH = '\u2014';
 export const VERSION_HEADING = /^## v\d+\.\d+\.\d+ \(\d{4}-\d{2}-\d{2}\)$/;
 
-export function changelogGuard({ addedLines = [], removedLines = [], versionBefore, versionAfter }) {
-  const sweepable = removedLines.filter((l) => l.includes(EM_DASH)).length;
-  const rewrites = addedLines.filter((l) => !VERSION_HEADING.test(l) && !l.includes(EM_DASH));
-  const added = addedLines.filter((l) => !VERSION_HEADING.test(l)).length - Math.min(sweepable, rewrites.length);
+export function changelogGuard({ addedLines = [], versionBefore, versionAfter }) {
+  const added = addedLines.filter((l) => !VERSION_HEADING.test(l)).length;
   if (!added || versionBefore !== versionAfter) return null;
   return `CHANGELOG.md gains ${added} line(s) but package.json stays at ${versionAfter}. `
     + 'Write changelog.d/<short-slug>-<Issue or Feature number>.md instead; only a release commit edits CHANGELOG.md, through scripts/changelog-fold.mjs.';
