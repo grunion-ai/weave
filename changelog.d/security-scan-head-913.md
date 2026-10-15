@@ -1,0 +1,1 @@
+- The security scan's gitleaks step reads only the checked-out history, so a finding on another open branch no longer fails every pull request's required check. (#913)
