@@ -3334,12 +3334,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   }
   if (f.type === 'date') {
     return dateControl({
-      value: item.raw?.[f.name] ?? '', costume: f,
+      value: item.raw?.[f.name] ?? '', title: f.name, costume: f,
       placeholder: 'type a date…', onChange: (iso) => patch(iso),
     });
   }
   if (f.type === 'daterange') {
-    return rangeControl({ value: item.raw?.[f.name] ?? null, costume: f, compact, onChange: (r) => patch(r) });
+    return rangeControl({ value: item.raw?.[f.name] ?? null, title: f.name, costume: f, compact, onChange: (r) => patch(r) });
   }
   const rawVal = item.raw?.[f.name] ?? val;
   if (rawVal != null && typeof rawVal === 'object') {
@@ -6785,7 +6785,7 @@ async function editPhoneField(anchor, db, eid, name) {
       case 'date': {
         const c = { ...f };
         const { store, local } = dateStoreFns(c);
-        return datePopover({ anchor, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) });
+        return datePopover({ anchor, title: f.name, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) });
       }
       case 'value': {
         const percent = f.type === 'number' && f.format === 'percent';
@@ -7105,7 +7105,7 @@ function textWidth(str, node) {
   measureCtx.font = font;
   return measureCtx.measureText(str).width;
 }
-function dateControl({ value = '', time = false, format = 'iso', costume = null, placeholder = 'type a date…', onChange, compact = true }) {
+function dateControl({ value = '', title = '', time = false, format = 'iso', costume = null, placeholder = 'type a date…', onChange, compact = true }) {
   const dc = weaveDateCore;
   const c = costume ? { ...costume } : { time, format };
   format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
@@ -7143,7 +7143,7 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
     type: 'button', class: 'date-pick-btn', title: timeOnly ? 'Pick a time' : 'Pick from the calendar', 'aria-label': timeOnly ? 'Pick a time' : 'Open calendar',
     onclick: (e) => {
       e.stopPropagation();
-      datePopover({ anchor: btn, value: local(), costume: c, onPick: (localIso) => {
+      datePopover({ anchor: btn, title, value: local(), costume: c, onPick: (localIso) => {
         try { set(localIso == null ? null : store(localIso)); } catch (err) { toast(err.message, true); }
       } });
     },
@@ -7166,7 +7166,7 @@ function dateStoreFns(c) {
   };
 }
 
-function rangeControl({ value = null, costume, compact = true, placeholder = 'start – end', onChange }) {
+function rangeControl({ value = null, title = '', costume, compact = true, placeholder = 'start – end', onChange }) {
   const dc = weaveDateCore;
   const c = { ...costume };
   const view = { ...c, viewerZone: LOCAL_ZONE };
@@ -7197,7 +7197,7 @@ function rangeControl({ value = null, costume, compact = true, placeholder = 'st
     onclick: (e) => {
       e.stopPropagation();
       datePopover({
-        anchor: btn, costume: c, range: true,
+        anchor: btn, title, costume: c, range: true,
         value: current ? { start: local(current.start), end: local(current.end) } : null,
         onPick: (r) => {
           try { set(r ? orderRange({ start: store(r.start), end: store(r.end) }) : null); } catch (err) { toast(err.message, true); }
@@ -7254,7 +7254,7 @@ function calendarGlyph() {
   return svg;
 }
 
-function datePopover({ anchor, value, time, format, costume = null, range = false, onPick }) {
+function datePopover({ anchor, title = '', value, time, format, costume = null, range = false, onPick }) {
   const dc = weaveDateCore;
   const c = costume ?? { time, format };
   time = !!c.time;
@@ -7372,8 +7372,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
         el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, dc.MONTHS_LONG[m - 1], lucideEl('chevron-down', 'wv-icon wv-icon-xs')),
         hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, String(y), lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span'),
         el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '↑'),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '↓')));
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '‹'),
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '›')));
       const grid = el('div', { class: 'date-grid' }, ...dc.WEEKDAYS.map((d) => el('span', { class: 'date-wd' }, d)));
       for (const week of dc.calendarMonth(y, m)) {
         for (const cell of week) {
@@ -7414,8 +7414,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
         hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, String(y), hasD ? null : lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span', { class: 'date-pop-title' }, 'Month'),
         el('span', { class: 'date-pop-spacer' }),
         ...(hasY ? [
-          el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
-          el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y++; draw(); } }, iconEl('↓'))] : [])));
+          el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous year', onclick: () => { y--; draw(); } }, '‹'),
+          el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next year', onclick: () => { y++; draw(); } }, '›')] : [])));
       body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => {
         const iso = `${y}-${pad(i + 1)}-01`;
         return el('button', {
@@ -7434,8 +7434,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
       body.append(el('div', { class: 'date-pop-head' },
         el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasM) { view = hasD ? 'days' : 'months'; draw(); } } }, `${years[0]}–${years[years.length - 1]}`),
         el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase -= 10; draw(); } }, iconEl('↑')),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase += 10; draw(); } }, iconEl('↓'))));
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous decade', onclick: () => { decadeBase -= 10; draw(); } }, '‹'),
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next decade', onclick: () => { decadeBase += 10; draw(); } }, '›')));
       body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => {
         const iso = `${yr}-01-01`;
         return el('button', {
@@ -7452,7 +7452,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   }
   draw();
   const smarts = range ? [smartFor('start'), smartFor('end')] : [smartFor('start')];
-  pop.append(...smarts, body);
+  pop.append(...(title ? [el('div', { class: 'picker-title' }, title)] : []), ...smarts, body);
   document.body.append(pop);
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
@@ -8420,14 +8420,14 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         body.append(seg);
         if (kind === 'specific') {
           body.append(dateControl({
-            value: state.default, costume: fdc.dateCostume(state.date, t), compact: false,
+            value: state.default, title: 'Default', costume: fdc.dateCostume(state.date, t), compact: false,
             onChange: (iso) => { state.default = iso ?? ''; changed(); },
           }));
         }
         kids.push(dsection('Default', body));
       } else if (t === 'daterange') {
         kids.push(dsection('Default', rangeControl({
-          value: fdc.rangeDefault(state.default), costume: fdc.dateCostume(state.date, t), compact: false,
+          value: fdc.rangeDefault(state.default), title: 'Default', costume: fdc.dateCostume(state.date, t), compact: false,
           placeholder: 'No default — pick a range',
           onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; changed(); },
         })));

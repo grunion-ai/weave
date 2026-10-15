@@ -1827,3 +1827,23 @@ test('no searchPicker call types its own placeholder, and the chip pickers title
   assert.match(fnBody('chipPickerMulti'), /title: field\?\.name/, 'chipPickerMulti titles the picker with the field name');
   assert.doesNotMatch(fnBody('searchPicker'), /st\.staged\.length \? '' : placeholder/, 'a set value keeps the hint');
 });
+
+test('the date picker steps sideways: date-pop-arrow never renders ↑ or ↓ (Issue #801)', () => {
+  const body = fnBody('datePopover');
+  const arrows = [];
+  for (let at = body.indexOf("class: 'date-pop-arrow'"); at >= 0; at = body.indexOf("class: 'date-pop-arrow'", at + 1)) {
+    const start = body.lastIndexOf("el('button'", at);
+    let depth = 0, end = start + 2;
+    for (; end < body.length; end++) {
+      if (body[end] === '(') depth++;
+      else if (body[end] === ')' && --depth === 0) break;
+    }
+    arrows.push(body.slice(start, end + 1));
+  }
+  assert.equal(arrows.length, 6, 'month, year and decade steps, back and forward');
+  for (const a of arrows) assert.doesNotMatch(a, /[↑↓]/, a);
+  assert.equal(arrows.filter((a) => a.includes("'‹'")).length, 3, 'three steps back');
+  assert.equal(arrows.filter((a) => a.includes("'›'")).length, 3, 'three steps forward');
+  assert.match(body, /'aria-label': 'Previous month'/);
+  assert.match(body, /'aria-label': 'Next month'/);
+});

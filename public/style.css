@@ -1572,7 +1572,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .date-pop-title { background: none; border: none; padding: 2px 4px; font-weight: 700; font-size: var(--fs-body); color: var(--tblr-body-color); cursor: pointer; border-radius: 4px; }
 .date-pop-title:hover { background: var(--tblr-bg-surface-secondary); }
 .date-pop-spacer { flex: 1; }
-.date-pop-arrow { background: none; border: none; width: 26px; height: 26px; border-radius: 5px; color: var(--tblr-body-color); font-size: var(--fs-doc); cursor: pointer; }
+.date-pop-arrow { display: inline-flex; align-items: center; justify-content: center; background: none; border: none; width: 26px; height: 26px; padding: 0 0 2px; border-radius: 5px; color: var(--tblr-body-color); font-size: var(--fs-title); line-height: 1; cursor: pointer; }
 .date-pop-arrow:hover { background: var(--tblr-bg-surface-secondary); }
 .date-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .date-wd { text-align: center; font-size: var(--fs-meta); font-weight: 600; color: var(--tblr-secondary); padding: 2px 0 4px; }
