@@ -4,10 +4,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
 import { startIdp } from './lib/idp.mjs';
-import { chromium, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 import { connectLikeChatApp, CHAT_APPS } from './lib/chat-client.mjs';
 
 async function hub({ open = true, limit = 2 } = {}) {
@@ -18,25 +17,28 @@ async function hub({ open = true, limit = 2 } = {}) {
   taken.setRequireAuth(true);
   taken.save();
   taken.store.close?.();
-  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  main.state.meta.name = 'Net';
-  main.createAccount({ name: 'operator', role: 'architect' });
-  main.setRequireAuth(true);
-  main.save();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const { server } = await startServer(main, { port: 0, oidc, openSignup: { on: open, limit }, limits: { options: 1000, failed: 1000, slugs: 1000 } });
-  const base = `http://localhost:${server.address().port}`;
+  const s = await launch(`setup flows, ${open ? 'open' : 'invite-only'} sign-up`, (main) => {
+    main.state.meta.name = 'Net';
+    main.createAccount({ name: 'operator', role: 'architect' });
+    main.setRequireAuth(true);
+    main.save();
+  }, {
+    weave: () => new Weave({ path: join(dir, 'workspace.db'), name: 'Net' }),
+    server: () => ({ oidc, openSignup: { on: open, limit }, limits: { options: 1000, failed: 1000, slugs: 1000 } }),
+  });
+  const stop = () => { idp.stop(); rmSync(dir, { recursive: true, force: true }); };
+  if (!s) { stop(); return null; }
+  const base = s.base.replace('127.0.0.1', 'localhost');
   const opened = (name) => new Weave({ path: join(dir, `${name}.db`) });
-  return { idp, dir, base, opened, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  return { idp, dir, base, browser: s.browser, opened, stop };
 }
 
-if (!chromium) {
-  test('setup flows (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  const browser = await chromium.launch();
-  const openHub = await hub();
-  const closedHub = await hub({ open: false });
-  test.after(async () => { await browser.close(); openHub.stop(); closedHub.stop(); });
+const openHub = await hub();
+const closedHub = openHub && await hub({ open: false });
+if (openHub) {
+  const { browser } = openHub;
+  test.after(() => { openHub.stop(); closedHub.stop(); });
 
   let people = 0;
   const person = (h, extra = {}) => {

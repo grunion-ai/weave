@@ -17,6 +17,8 @@ services:
       WEAVE_DATA: /data/workspace.db
       WEAVE_KEYSTORE: /data/keystore.json
       WEAVE_BASE_DOMAIN: ""
+      WEAVE_OPEN_SIGNUP: ""
+      WEAVE_SIGNUP_LIMIT: 1
       # Set this and no key file lands on the volume (Handbook → "Environment reference").
       # WEAVE_KEYSTORE_PASSPHRASE: change-me
       # Sign-in (Handbook → "Door C: sign in with a provider"): the origin browsers

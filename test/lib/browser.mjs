@@ -84,7 +84,7 @@ export async function launch(name, seed = () => {}, options = {}) {
   }
   const browser = await engineFor(options.phone ? phoneProfile().engine : options.engine).launch();
   if (THROTTLE) throttle(browser);
-  const weave = new Weave();
+  const weave = options.weave?.() ?? new Weave();
   let server;
   test.after(async () => {
     await browser?.close();

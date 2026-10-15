@@ -35,29 +35,29 @@ if (s) {
       const page = await open(colorScheme);
       try {
         await page.goto(`${base}/start`, { waitUntil: 'networkidle' });
-        await page.getByRole('link', { name: 'Sign in with Clerk' }).click();
+        await page.getByRole('link', { name: 'Sign up or sign in' }).click();
         await page.waitForURL(`${base}/start`);
         await page.waitForSelector('.rows li');
         assert.deepEqual(await page.locator('.rows li a').allInnerTexts(), ['Net'], 'eve opens Net');
         assert.equal(await page.locator('.rows li small').count(), 0, 'one login needs no label');
-        assert.ok(await page.getByRole('link', { name: 'Add login' }).isVisible());
+        assert.ok(await page.getByRole('link', { name: 'Add another sign-in' }).isVisible());
         assert.ok(await page.getByRole('button', { name: 'Sign out' }).isVisible());
         assert.doesNotMatch(await page.locator('main').innerText(), /\bnull\b/, 'an absent create button leaves no text behind');
 
         page.who = 'user_kyle';
-        await page.getByRole('link', { name: 'Add login' }).click();
+        await page.getByRole('link', { name: 'Add another sign-in' }).click();
         await page.waitForURL(`${base}/start`);
         await page.waitForSelector('.rows li small');
         assert.deepEqual(await page.locator('.rows li small').allInnerTexts(), ['eve'], 'with two logins each row names the login that opens it');
         assert.equal(await page.locator('.rows li').count(), 1, 'the workspace both logins open is listed once');
-        assert.ok(await page.getByRole('button', { name: 'Create workspace' }).isVisible(), 'the architect login brings the create button');
+        assert.ok(await page.getByRole('button', { name: 'Create a workspace' }).isVisible(), 'the architect login brings the create button');
 
         const fg = await page.locator('.rows li small').evaluate((n) => getComputedStyle(n).color);
         const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
         assert.notEqual(fg, bg, 'the login label is readable on the page');
 
         await page.getByRole('button', { name: 'Sign out' }).click();
-        await page.waitForSelector('a:has-text("Sign in with Clerk")');
+        await page.waitForSelector('a:has-text("Sign up or sign in")');
         assert.equal(await page.locator('.rows li').count(), 0, 'signed out, the list is gone');
       } finally { await page.close(); }
     });
@@ -66,7 +66,7 @@ if (s) {
       const page = await open(colorScheme);
       try {
         await page.goto(`${base}/start`, { waitUntil: 'networkidle' });
-        await page.getByRole('link', { name: 'Sign in with Clerk' }).click();
+        await page.getByRole('link', { name: 'Sign up or sign in' }).click();
         await page.waitForURL(`${base}/start`);
         await page.waitForSelector('.rows li a');
         await page.locator('.rows li a').first().click();
