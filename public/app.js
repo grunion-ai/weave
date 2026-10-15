@@ -11099,7 +11099,7 @@ function emptyWorkspace() {
       el('button', { class: 'btn btn-primary wv-start-new', onclick: () => tableTray() }, '+ New table'),
       el('div', { class: 'wv-start-label' }, 'Templates'),
       el('div', { class: 'wv-start-templates' },
-        ...WeaveStarters.TEMPLATES.map((t) => el('button', {
+        ...WeaveStarters.TEMPLATES.filter((t) => t.featured).map((t) => el('button', {
           class: 'wv-start-template', dataset: { template: t.id },
           onclick: (e) => {
             for (const b of e.currentTarget.closest('.wv-start').querySelectorAll('button')) b.disabled = true;
@@ -11167,7 +11167,7 @@ function onboard(defaultName) {
       focus = input;
     } else {
       body.replaceChildren(el('div', { class: 'wv-start-templates' },
-        ...WeaveStarters.TEMPLATES.map((t) => el('button', {
+        ...WeaveStarters.TEMPLATES.filter((t) => t.featured).map((t) => el('button', {
           class: 'wv-start-template', type: 'button', dataset: { template: t.id },
           onclick: () => finish({ name, template: t }),
         },
