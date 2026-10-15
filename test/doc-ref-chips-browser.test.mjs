@@ -110,6 +110,7 @@ if (s) {
       const page = await browser.newPage({ colorScheme });
       try {
         await page.goto(`${base}/#/table/${task.id}`, { waitUntil: 'networkidle' });
+        await page.click('.view-title-row .desc-info');
         await page.waitForSelector('.view-desc-body .k.k-rel');
         assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme);
         await page.$eval('.view-desc-body', (b) => b.classList.remove('clamped'));
@@ -211,6 +212,7 @@ if (s) {
       assert.equal(exported, docPage, 'the HTML export and the document page are one renderer');
 
       await page.goto(`${base}/#/table/${task.id}`, { waitUntil: 'networkidle' });
+      await page.click('.view-title-row .desc-info');
       await page.waitForSelector(`.wv-grid .k-rel[data-eid="${target.id}"]`, { timeout: 20000 });
       const cell = await page.locator(`.wv-grid .k-rel[data-eid="${target.id}"]`).first().evaluate((k) => k.outerHTML);
       assert.equal(bare(cell), bare(docPage),

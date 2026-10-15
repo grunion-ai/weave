@@ -893,10 +893,11 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   assert.doesNotMatch(CSS, /\.fieldrow\.drop-(before|after)/, 'no line on a neighbour\'s edge remains');
   assert.doesNotMatch(CSS, /\[data-block\]\.drop-target/, 'for rows or for blocks');
 
-  assert.match(body, /class: 'fieldrow-label', title: fieldDescription\(f\) \? `\$\{fieldDescription\(f\)\}\\n\\nEdit field` : 'Edit field', onclick: \(\) => editFieldDialog\(db, f\)/,
-    'the label click opens the field tray; the description rides its tooltip (Issue #209)');
-  assert.match(body, /fieldDescription\(f\) \? el\('span', \{ class: 'fieldrow-desc' \}, fieldDescription\(f\)\) : null/,
-    'and the description is drawn under the label, never an empty line');
+  assert.match(body, /class: 'fieldrow-label', title: 'Edit field', onclick: \(\) => editFieldDialog\(db, f\)/,
+    'the label opens settings without repeating the description in a tooltip');
+  assert.match(body, /note \? descToggle\(f.name, note,/,
+    'a description opens through its own toggle');
+  assert.match(body, /class: 'fieldrow-note'/, 'the note spans below the field');
   assert.match(CSS, /\.entity-fields \.fieldrow-label:hover/, 'and reads as clickable on hover');
 });
 
