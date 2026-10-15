@@ -1,0 +1,1 @@
+- The grabber on the phone picker sheet and the new-row sheet drags: it follows the finger, dismisses past a third of the sheet or on a flick, and springs back otherwise. One shared helper draws it as a 44px target on both sheets, where before the pill was decoration that promised a swipe and did nothing (Issue #808).

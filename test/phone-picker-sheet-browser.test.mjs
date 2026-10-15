@@ -39,7 +39,43 @@ if (s) {
     };
   }); };
 
+  const dragSheet = async (page, sel, dy, { step = 40 } = {}) => {
+    const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i += 1) {
+      await page.waitForTimeout(step);
+      await page.mouse.move(x, y + (dy * i) / 6);
+    }
+    await page.mouse.up();
+  };
+
   for (const theme of ['light', 'dark']) {
+    test(`the picker sheet grabber follows the finger and dismisses past a third (${theme}, Issue #808)`, async () => {
+      const page = await open({ theme });
+      try {
+        const was = await page.textContent('#dock .chip-trigger[title="Status"]');
+        await page.click('#dock .chip-trigger[title="Status"]');
+        await page.waitForSelector('.picker-pop .sheet-grip');
+        const grip = await page.locator('.picker-pop .sheet-grip').boundingBox();
+        assert.ok(Math.round(grip.height) >= 44, `the grabber is a real target, got ${Math.round(grip.height)}px tall`);
+        const h = (await page.locator('.picker-pop').boundingBox()).height;
+
+        await dragSheet(page, '.picker-pop', h * 0.12);
+        assert.ok(await page.isVisible('.picker-pop'), 'a short, slow drag springs the picker back');
+        assert.equal(await page.evaluate(() => document.querySelector('.picker-pop').style.transform), '',
+          'and leaves no transform behind');
+
+        await dragSheet(page, '.picker-pop', h * 0.5);
+        await page.waitForSelector('.picker-pop', { state: 'detached' });
+        assert.equal(await page.textContent('#dock .chip-trigger[title="Status"]'), was,
+          'dragging the picker away changes nothing');
+      } finally { await page.close(); }
+    });
+
+
     test(`on a phone a short picker opens as a bottom sheet of 56px options without the keyboard (${theme}, Feature #274)`, async () => {
       const page = await open({ theme });
       try {
