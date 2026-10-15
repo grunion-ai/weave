@@ -94,7 +94,7 @@ if (s) {
       const stack = await page.evaluate(() => {
         const y = (sel) => document.querySelector(sel).getBoundingClientRect().top;
         return {
-          order: [...document.querySelectorAll('#sidebar > *')].map((n) => n.id || n.className.split(' ')[0]),
+          order: [...document.querySelectorAll('#sidebar > :not(#nav-resize)')].map((n) => n.id || n.className.split(' ')[0]),
           strip: [...document.querySelectorAll('#sidebar .nav-pinned > *')].map((n) => n.className.split(' ')[0]),
           newSpaceAboveSystem: y('#sidebar .nav-foot') < y('#sidebar .nav-system'),
           systemBelowNav: y('#sidebar .nav-system') > y('#nav'),
