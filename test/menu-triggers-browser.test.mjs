@@ -14,7 +14,7 @@ const s = await launch('menu triggers', (weave) => {
 });
 
 const ROWS = {
-  table: ['Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Move to trash'],
+  table: ['Add description…', 'Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Move to trash'],
   record: ['Duplicate', 'Share…', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
   doc: ['Markdown', 'Mermaid', 'HTML', 'PDF'],
   space: ['Move to trash'],
@@ -54,7 +54,7 @@ if (s) {
       kind: 'table', hash: `#/table/${tableId}`, ready: '#main .wv-grid',
       triggers: {
         'header ⋮': via('#main .crumb-actions .dots-btn[title="Table actions"]'),
-        'header right-click': via('#main .view-header .view-desc', 'right'),
+        'header right-click': via('#main .view-header .view-title-row', 'right'),
         'nav row ⋮': via(`#nav .nav-db[data-db="${tableId}"] .nav-db-menu .dots-btn`),
         'nav row right-click': via(`#nav .nav-db[data-db="${tableId}"]`, 'right'),
       },
