@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
@@ -162,4 +162,28 @@ test('a reveal the engine refuses answers 403 over HTTP, not 400', async () => {
   } finally {
     server.close();
   }
+});
+
+test('renaming an account keeps the credentials it owns and the ones shared with it (Issue #884)', () => {
+  const { w } = fresh('kyle');
+  w.createAccount({ name: 'sajit', role: 'editor' });
+  w.setKey('stripe', 'sk_live_hush');
+  w.grantKey('stripe', 'sajit');
+  w.renameAccount('kyle', 'kyle.adriany');
+  w.actor = 'kyle.adriany';
+  assert.equal(w.revealKey('stripe'), 'sk_live_hush', 'the owner still reads its own credential after a rename');
+  assert.equal(w.listKeys().find((k) => k.name === 'stripe').owner, 'kyle.adriany');
+  w.createAccount({ name: 'ann', role: 'editor' });
+  w.grantKey('stripe', 'ann');
+  w.renameAccount('sajit', 'sajit.p');
+  w.actor = 'sajit.p';
+  assert.equal(w.revealKey('stripe'), 'sk_live_hush', 'a grant follows the account across its own rename');
+  w.actor = 'kyle';
+  assert.throws(() => w.revealKey('stripe'), (e) => e.code === 'forbidden', 'the old name holds nothing');
+});
+
+test('renaming an account with no keystore leaves no keystore behind (Issue #884)', () => {
+  const { w, path } = fresh('kyle');
+  w.renameAccount('kyle', 'kyle.adriany');
+  assert.equal(existsSync(path), false);
 });
