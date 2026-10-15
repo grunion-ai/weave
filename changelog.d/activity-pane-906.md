@@ -1,0 +1,1 @@
+- The record Activity panel is a pane docked to the right edge of the record view: the view's full height, square edges, one left border and no shadow. The record body and its header narrow beside it and scroll while the pane stays put, on the full page and in the peek; phones keep the full-screen sheet (#906).

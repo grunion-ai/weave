@@ -10733,6 +10733,7 @@ const activityPanel = (() => {
   let panel = null;
   let sheetBack = null;
   let fitObserver = null;
+  let viewObserver = null;
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
@@ -10903,9 +10904,14 @@ const activityPanel = (() => {
       el('div', { class: 'wv-act-head' }, el('h3', {}, 'Activity'),
         el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
       filters, list);
-    const host = st.mount?.querySelector?.(':scope > .entity-split') ?? st.mount;
-    if (panel?.parentElement === host) panel.replaceWith(next); else { panel?.remove(); host.append(next); }
+    const host = st.mount?.closest?.('#main, #dock') ?? st.mount;
+    if (panel?.parentElement === host) panel.replaceWith(next); else { panel?.remove(); host.prepend(next); }
     panel = next;
+    viewObserver?.disconnect();
+    const fitHeight = () => host.style.setProperty('--wv-act-h', `${host.clientHeight}px`);
+    fitHeight();
+    viewObserver = new ResizeObserver(fitHeight);
+    viewObserver.observe(host);
     fitObserver?.disconnect();
     fitFilters(filters);
     fitObserver = new ResizeObserver(() => fitFilters(filters));
@@ -10977,6 +10983,7 @@ const activityPanel = (() => {
       if (!back && history.state?.wvSheet === 'activity') history.back();
     }
     fitObserver?.disconnect(); fitObserver = null;
+    viewObserver?.disconnect(); viewObserver = null;
     panel?.remove(); panel = null;
     clearViews();
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
