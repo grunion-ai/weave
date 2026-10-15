@@ -74,3 +74,8 @@ jobs:
           SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
           SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}
           WEAVE_TRACKER_TOKEN: ${{ secrets.WEAVE_TRACKER_TOKEN }}
+      - name: No production workspace answers its tables anonymously
+        run: node scripts/exposure.mjs
+        env:
+          WEAVE_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}
+          PUBLIC_WORKSPACES: ${{ vars.PUBLIC_WORKSPACES }}

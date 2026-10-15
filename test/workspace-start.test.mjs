@@ -111,7 +111,10 @@ test('create: the server re-checks, so a slug lost to a race is slug_taken with 
     assert.deepEqual([bad.status, bad.json().code], [400, 'slug_invalid'], 'a given slug is checked as typed, never folded');
     const titled = await s.apex('POST', '/api/workspaces', { token: t, body: { name: 'Design Crew', slug: 'crew' } });
     assert.equal(titled.json().name, 'crew');
-    assert.equal((await s.apex('GET', '/w/crew/api/workspace')).json().title, 'Design Crew');
+    assert.equal((await s.apex('GET', '/w/crew/api/workspace')).status, 401, 'a new workspace on a public origin is walled from the start');
+    const crew = new Weave({ path: join(s.dir, 'crew.db') });
+    assert.deepEqual([crew.state.meta.title, crew.state.meta.requireAuth], ['Design Crew', true]);
+    crew.store.close?.();
     const viaMcp = await s.apex('POST', '/api/mcp', { token: t, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_workspace', arguments: { action: 'update', name: 'harbor' } } } });
     assert.equal(viaMcp.json().result.isError, true);
     assert.match(viaMcp.json().result.content[0].text, /belongs to another workspace\. Try the name of the person, team, project or mascot/);

@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync,
 import { tmpdir } from 'node:os';
 import { join, dirname, extname } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
@@ -183,7 +183,7 @@ export function openDefaultWorkspace(dataPath, { actor } = {}) {
   return w;
 }
 
-export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
+export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = false } = {}) {
   const instances = new Map();
   let defaultName = defaultWeave.state.meta.name || 'workspace';
   instances.set(defaultName, defaultWeave);
@@ -346,6 +346,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       if (from) { delete w.state.meta.title; w.state.meta.deletedAt = null; }
       if (title !== name) w.state.meta.title = title;
       w.save();
+      if (walled || defaultWeave.state.meta.requireAuth) w.setRequireAuth(true);
       instances.set(name, enroll(w));
       adoptedPaths.add(w.store.path);
       const order = defaultWeave.state.meta.workspaceOrder;
@@ -399,6 +400,7 @@ export function originFromEnv(env = process.env, name = 'WEAVE_ORIGIN') {
 }
 export const mcpOriginsFromEnv = (env = process.env) => String(env.WEAVE_MCP_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean)
   .map((o) => originFromEnv({ WEAVE_MCP_ORIGINS: o }, 'WEAVE_MCP_ORIGINS'));
+export const deployTokenFromEnv = (env = process.env) => (String(env.WEAVE_DEPLOY_TOKEN ?? '').length >= 32 ? env.WEAVE_DEPLOY_TOKEN : null);
 export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
 const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -447,8 +449,8 @@ const VENDOR_CACHE = 'public, max-age=3600';
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv() } = {}) {
-  const hub = createWorkspaceHub(defaultWeave, { workspaces });
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), deployToken = deployTokenFromEnv() } = {}) {
+  const hub = createWorkspaceHub(defaultWeave, { workspaces, walled: !!origin });
   const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
 
   const assets = createAssetVersions(PUBLIC_DIR);
@@ -517,6 +519,14 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts: answers, baseDomain })) {
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
       }
+      if (path === '/_supervisor/workspaces' && deployToken) {
+        const given = Buffer.from(String(req.headers.authorization ?? ''));
+        const want = Buffer.from(`Bearer ${deployToken}`);
+        if (given.length !== want.length || !timingSafeEqual(given, want)) return fail(res, 401, 'unauthorized', 'unauthorized');
+        if (req.method !== 'GET') return fail(res, 405, 'GET only', 'method-not-allowed');
+        res.writeHead(200, secure(req, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }));
+        return res.end(JSON.stringify(hub.list().map(({ name }) => ({ name, requireAuth: !!hub.get(name).state.meta.requireAuth }))));
+      }
       if (crossSiteWrite(req, { origin, trustProxy })) return fail(res, 403, 'Cross-site write refused', 'forbidden');
       const outcome = await handle({
         method: req.method,
@@ -539,10 +549,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain } = {}) {
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, deployToken } = {}) {
   const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length || baseDomain ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(deployToken !== undefined ? { deployToken } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

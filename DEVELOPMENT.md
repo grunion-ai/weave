@@ -235,6 +235,14 @@ deletes it or pushes a non-fast-forward, and only the promotion deploy key
 updates it. Both secrets live in the `production` environment, which has no
 required reviewer and admits main only.
 
+After a promotion passes its watch, the job runs `node scripts/exposure.mjs`
+(Issue #879). It reads every workspace name from `GET /_supervisor/workspaces`,
+which the worker answers only to `Bearer <WEAVE_DEPLOY_TOKEN>`, then asks each
+one for `GET /api/tables` with no credentials, by `/w/<name>/` and by
+`<name>.weave.grunion.ai`. Any 200 fails the run, unless the workspace is named
+in the repository variable `PUBLIC_WORKSPACES` (comma-separated). Run it by hand
+with `WEAVE_DEPLOY_TOKEN` set to the production token.
+
 Check a promotion:
 
 ```bash
