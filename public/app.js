@@ -3279,7 +3279,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'date') {
     return dateControl({
       value: item.raw?.[f.name] ?? '', costume: f,
-      placeholder: 'today, 15 sep, 9/15/26…', onChange: (iso) => patch(iso),
+      placeholder: 'type a date…', onChange: (iso) => patch(iso),
     });
   }
   if (f.type === 'daterange') {
