@@ -183,3 +183,64 @@ test('cli: account create defaults to editor and takes the old names with a note
     assert.match(run(['help']).stdout, /account create <name> \[--role architect\|editor\|observer\]/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('account role changes preserve identity and immediately constrain tokens, sessions and MCP', async () => {
+  const { w, call, t, tid } = build();
+  const before = w.listAccounts().find(a => a.name === 'ed');
+  const session = w.createSession('ed');
+  const changed = await call('PATCH', `/api/accounts/${before.id}`, { token: t.architect, body: { role: 'observer' } });
+  assert.equal(changed.status, 200);
+  assert.deepEqual(changed.json, { id: before.id, role: 'observer' });
+  assert.deepEqual(w.listAccounts().find(a => a.id === before.id), { ...before, role: 'observer' });
+  assert.equal(w.verifyToken(t.editor).role, 'observer');
+  assert.equal(w.verifySession(session.token).role, 'observer');
+  for (const auth of [{ token: t.editor }, { cookie: session.token }]) {
+    assert.equal((await call('GET', `/api/tables/${tid}/entities`, auth)).status, 200);
+    assert.equal((await call('POST', `/api/tables/${tid}/entities`, { ...auth, body: { name: 'denied' } })).status, 403);
+    assert.equal((await call('PATCH', '/api/accounts/ed', { ...auth, body: { role: 'architect' } })).status, 403);
+    const rpc = await call('POST', '/api/mcp', { ...auth, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_accounts', arguments: { action: 'set', account: 'ed', role: 'architect' } } } });
+    assert.ok(rpc.status === 403 || rpc.json?.error || rpc.json?.result?.isError);
+  }
+  const audit = w.listAudit({ limit: 50 }).find(a => a.action === 'account-role-changed');
+  assert.equal(audit.actor, 'arc');
+  assert.equal(audit.detail.role, 'observer');
+  assert.equal((await call('PATCH', '/api/accounts/ed', { token: t.architect, body: { role: 'editor' } })).status, 200);
+  assert.equal((await call('POST', `/api/tables/${tid}/entities`, { token: t.editor, body: { name: 'restored' } })).status, 201);
+});
+
+test('account role changes reject invalid roles, unauthorized actors and the last architect', async () => {
+  const { w, call, t } = build();
+  for (const token of [undefined, t.editor, t.observer]) {
+    assert.equal((await call('PATCH', '/api/accounts/ed', { token, body: { role: 'architect' } })).status, token ? 403 : 401);
+  }
+  for (const role of [undefined, null, true, 'owner']) {
+    assert.equal((await call('PATCH', '/api/accounts/ed', { token: t.architect, body: { role } })).status, 400);
+  }
+  assert.equal((await call('PATCH', '/api/accounts/missing', { token: t.architect, body: { role: 'editor' } })).status, 404);
+  assert.throws(() => w.setAccountRole('arc', 'observer'), /last architect/i);
+  assert.equal(w.verifyToken(t.architect).role, 'architect');
+  assert.equal((await call('PATCH', '/api/accounts/arc', { token: t.architect, body: { role: 'editor' } })).status, 400);
+  w.setAccountRole('arc', 'architect');
+  w.setAccountRole('ed', 'architect');
+  assert.equal((await call('PATCH', '/api/accounts/arc', { token: t.architect, body: { role: 'editor' } })).status, 200);
+  assert.equal((await call('PATCH', '/api/accounts/ed', { token: t.architect, body: { role: 'observer' } })).status, 403);
+});
+
+test('account set is available through CLI and MCP without rotating tokens', () => {
+  const w = new Weave();
+  const { account, token } = w.createAccount({ name: 'bot' });
+  assert.deepEqual(dispatchTool(w, 'weave_accounts', { action: 'set', account: account.id, role: 'observer' }), { id: account.id, role: 'observer' });
+  assert.equal(w.verifyToken(token).role, 'observer');
+  const dir = mkdtempSync(join(tmpdir(), 'weave-role-set-'));
+  try {
+    const data = join(dir, 'w.db');
+    const run = args => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
+    const made = JSON.parse(run(['account', 'create', 'bot']).stdout);
+    const set = run(['account', 'set', 'bot', '--role', 'observer']);
+    assert.equal(set.status, 0, set.stderr);
+    assert.deepEqual(JSON.parse(set.stdout), { id: made.account.id, role: 'observer' });
+    assert.equal(JSON.parse(run(['account', 'list']).stdout)[0].role, 'observer');
+    assert.notEqual(run(['account', 'set', 'bot']).status, 0);
+    assert.notEqual(run(['account', 'set', 'bot', '--role']).status, 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
