@@ -2,6 +2,17 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.96 (2026-10-14)
+
+- Added tested historical release recovery without moving immutable tags or latest (Issue #887).
+- A select or multi-select cell creates a missing option in place: type a value no option matches and the picker offers "+ Create “X”" as its first row, writes the option to the field, then picks it on a select or stages it on a multi-select. An empty one now reads "No options yet. Type to add one." instead of opening to nothing. (Issue #800)
+- Sidebar space icons keep a consistent gap before their labels on desktop and phone (Issue #888).
+- One state picker everywhere: a workflow field opens the same numbered list from a table cell, a record page field row and a chip's state mark, with thin category dividers (Not started, In progress, Done, Canceled) in place of the grouped grid the chip used to draw. (Issue #796)
+- The root workspace's Workspace registry space (Spaces, Tables, Fields, Views, Workflows, Workspaces, Forms, Users) no longer sits in the sidebar beside user spaces. Its tables are listed on the workspace page, under Activity, and open from there; Workflows and Users keep their pinned sidebar rows. The space itself is unchanged and still cannot be deleted. (Issue #874)
+- Sheriff now fails its workflow when recovery needs intervention, its revert is unarmed, or tracker credentials are missing (Issue #894).
+- A workspace created on an instance with `WEAVE_ORIGIN` set, or whose default workspace requires sign-in, starts with `requireAuth` on, so a guessable `<slug>.<domain>` host never answers an anonymous caller. After every production promotion, `scripts/exposure.mjs` asks each workspace for its tables with no credentials and fails the run on any 200 outside `PUBLIC_WORKSPACES`. (Issue #879)
+- Workspace logos that cannot load show the workspace initial in the rail and page header, while keeping the logo replacement and removal controls (Issue #889).
+
 ## v0.4.95 (2026-10-14)
 
 - Buttons hover three ways, one per weight, instead of six. A quiet or icon button takes a faint neutral wash and moves its glyph to body colour, so the thirteen `.btn-ghost-secondary` buttons stop flipping to a solid slate block with white glyphs. A bordered button darkens its border to one grey, `--wv-hover-border`, in place of the two greys and the primary blue that different authors reached for. A filled primary darkens one step rather than fading to 80% alpha, so Invite, Done and Create workspace no longer wash out under the pointer. Eight hand-rolled quiet hovers collapse into one rule and the palette is two tokens, `--wv-hover-wash` and `--wv-hover-border`. Gates: `test/button-hover.test.mjs`, `test/button-hover-browser.test.mjs`. (Issue #760)

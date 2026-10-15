@@ -1,1 +1,0 @@
-- Sheriff now fails its workflow when recovery needs intervention, its revert is unarmed, or tracker credentials are missing (Issue #894).

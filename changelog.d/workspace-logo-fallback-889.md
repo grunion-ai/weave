@@ -1,1 +1,0 @@
-- Workspace logos that cannot load show the workspace initial in the rail and page header, while keeping the logo replacement and removal controls (Issue #889).

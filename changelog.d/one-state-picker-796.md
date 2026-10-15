@@ -1,1 +1,0 @@
-- One state picker everywhere: a workflow field opens the same numbered list from a table cell, a record page field row and a chip's state mark, with thin category dividers (Not started, In progress, Done, Canceled) in place of the grouped grid the chip used to draw. (Issue #796)

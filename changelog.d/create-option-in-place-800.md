@@ -1,1 +1,0 @@
-- A select or multi-select cell creates a missing option in place: type a value no option matches and the picker offers "+ Create “X”" as its first row, writes the option to the field, then picks it on a select or stages it on a multi-select. An empty one now reads "No options yet. Type to add one." instead of opening to nothing. (Issue #800)
