@@ -237,3 +237,29 @@ test('rows repeats a divider when a category comes round again, so the label alw
   ]);
   assert.deepEqual(drawn.filter((r) => r.kind === 'divider').map((r) => r.label), ['Done', 'Not started', 'Done']);
 });
+
+test('createOffer names the term to create, and says whether Enter is the one that makes it (Issue #800)', () => {
+  const empty = core.blank({ mode: 'single', options: [] });
+  assert.equal(core.createOffer(empty), null, 'nothing typed, nothing to create');
+  const typed = core.search(empty, 'Nightly');
+  assert.deepEqual(core.createOffer(typed), { term: 'Nightly', enter: true },
+    'an empty select with a typed value offers to create it, and Enter is what does it');
+  assert.deepEqual(core.createOffer(core.search(empty, '  Nightly  ')), { term: 'Nightly', enter: true },
+    'the term is trimmed, so no option is created with its padding');
+});
+
+test('createOffer stands down on an exact match and steps aside for a partial one (Issue #800)', () => {
+  const s = core.blank({ mode: 'single', options: OPTIONS });
+  assert.equal(core.createOffer(core.search(s, 'Doing')), null, 'an option by that name already exists');
+  assert.equal(core.createOffer(core.search(s, 'doing')), null, 'and case is not a new option');
+  assert.deepEqual(core.createOffer(core.search(s, 'Do')), { term: 'Do', enter: false },
+    'a partial match still offers Do as a new option, but Enter picks the match that is armed');
+  assert.deepEqual(core.createOffer(core.search(s, 'zzz')), { term: 'zzz', enter: true },
+    'nothing matches, so Enter creates');
+});
+
+test('createOffer reads a multi picker through what is still on the list (Issue #800)', () => {
+  const m = core.blank({ mode: 'multi', options: OPTIONS, staged: [OPTIONS[2]] });
+  assert.equal(core.createOffer(core.search(m, 'Doing')), null, 'a staged option is still an option, never a new one');
+  assert.deepEqual(core.createOffer(core.search(m, 'Nightly')), { term: 'Nightly', enter: true });
+});
