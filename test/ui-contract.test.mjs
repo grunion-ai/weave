@@ -332,7 +332,7 @@ test('deleted rows are reached through the eyeball; the toolbar has no trash bad
   assert.match(fnBody('readAndDrawTable'), /trashCount: true/, 'the count still feeds the eyeball');
   assert.match(fnBody('readAndDrawTable'), /showDeleted\s*\?\s*api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/,
     'the trash list is fetched only when deleted rows are shown');
-  assert.match(fnBody('fieldVisibilityPopover'), /Deleted \$\{cur\.term\.plural\}/, 'the toggle speaks the table\'s row term');
+  assert.match(fnBody('fieldVisibilityPopover'), /Deleted \$\{db\.term\.plural\}/, 'the toggle speaks the table\'s row term');
 });
 
 test('the description block is compact', () => {
@@ -726,9 +726,10 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
     'the same eye popover as the table, redrawing the entity and without the table-only Rows section');
   assert.match(body, /!hidden\.has\(f\.name\)/, 'hidden fields are hidden here too — one hidden set per table');
   const eyeFn = fnBody('fieldVisibilityPopover');
-  assert.match(eyeFn, /redraw \? await redraw\(\) : await keepScroll/, 'the popover redraws whatever view opened it');
+  assert.match(eyeFn, /if \(redraw\) await redraw\(\);/, 'the popover redraws whatever view opened it');
   assert.match(eyeFn, /rowsSection \? \[/, 'the Rows section is optional');
-  assert.match(eyeFn, /relearnRows\(pop, buildRows\(liveTable\(\)\)/, 'a flip teaches the rows in place');
+  assert.match(eyeFn, /pop\.relearnEye = refresh/, 'a flip teaches the rows in place');
+  assert.match(eyeFn, /showSwitch\(r\.querySelector\('\.eye-row'\), shown\.has\(r\.dataset\.field\)\)/, 'each row wears the new switch state');
   assert.doesNotMatch(eyeFn, /replaceChildren/, 'and never swaps them wholesale');
   assert.doesNotMatch(eyeFn, /fieldVisibilityPopover\(again/, 'the close-and-reopen dance is gone');
   const relearn = fnBody('relearnRows');
@@ -977,8 +978,8 @@ test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #
     'the peek overlays the page instead of reflowing it');
   assert.match(CSS, /#app\.nav-collapsed #nav-hot-strip \{[^}]*position: fixed/,
     'the strip only exists while the nav is collapsed');
-  assert.match(CSS, /#sidebar \{ width: 264px/,
-    'the nav keeps its comfortable width (264px), never compacted');
+  assert.match(CSS, /#sidebar \{ width: var\(--wv-nav-width, 264px\)/,
+    'the nav keeps its comfortable width (264px) until someone drags it (Issue #905)');
 });
 
 test('horizontal overscroll is forbidden (Issue #76)', () => {
@@ -1283,33 +1284,31 @@ test('Enter in the date popover commits and closes, time kept', () => {
 
 test('the eyeball: hidden fields, system columns and deleted rows from one popover; Manage fields is gone', () => {
   const eye = fnBody('fieldVisibilityPopover');
-  assert.match(eye, /hiddenFields: \[\.\.\.next\]/, 'hidden fields persist on the table');
-  assert.match(eye, /systemFields: \[\.\.\.next\]/, 'system columns toggle from the same list');
-  assert.match(eye, /state\.showDeleted/, 'deleted rows are a session switch');
-  assert.match(eye, /hideRollups: t\.hideRollups === false/, 'the Σ row switch is table truth (Issue #233), read live (Issue #240)');
-  assert.match(eye, /row\(cur\.hideRollups === false, 'Σ rollup row'/, 'the switch reads on only when the table opted in');
+  assert.match(eye, /const key = isField\(name\) \? 'hiddenFields' : 'systemFields';/, 'hidden fields and system columns persist on the table from the same list');
+  assert.match(eye, /return \{ table: \{ \[key\]: \[\.\.\.next\] \} \};/, 'one table write per flip');
+  assert.match(eye, /deleted: !showsDeleted\(t\)/, 'deleted rows are a view switch');
+  assert.match(eye, /rollups: !showsRollups\(t\)/, 'the Σ row switch is read live from the view (Issues #240, #442)');
+  assert.match(eye, /switchRow\(showsRollups\(db\), 'Σ rollup row'/, 'the switch reads on only when the view or table opted in');
   assert.match(fnBody('renderTable'), /showsRollups\(db\) \? renderFooter\(db, cols\) : null/, 'no Σ row until the view or table opts in (Issues #249, #442)');
   assert.match(readFileSync(join(ROOT, 'public/app.js'), 'utf8'), /const showsRollups = \(db\) => !db\.system && \(db\.view && !db\.view\.blank && typeof db\.view\.rollups === 'boolean' \? db\.view\.rollups : db\.hideRollups === false\);/, 'the view decides; a silent view follows the table opt-in');
   assert.match(eye, /new Set\(t\.hiddenFields \?\? \[\]\)/, 'the hidden set is read from the table the turn hands over');
-  assert.match(eye, /new Set\(t\.systemFields \?\? \[\]\)/, 'so is the system set');
-  assert.match(eye, /eyeWrites\.then\(async \(\) => \{\s*const patch = patchOf\(liveTable\(\)\);/,
+  assert.match(eye, /new Set\(t\[key\] \?\? \[\]\)/, 'so is the system set');
+  assert.match(eye, /eyeWrites\.then\(async \(\) => \{\s*const patch = make\(liveTable\(\)\);/,
     'every switch writes through one queue, reading the table only when its turn comes');
-  assert.match(eye, /if \(patch\.view\) await gridConfigWrite\(db, null, patch\.view\);\s*else \{ await api\('PATCH', `\/tables\/\$\{db\.id\}`, patch\); await loadSchema\(\); \}/,
+  assert.match(eye, /if \(patch\.table\) \{ await api\('PATCH', `\/tables\/\$\{db\.id\}`, patch\.table\); await loadSchema\(\); \}\s*else await gridConfigWrite\(db, null, patch\);/,
     "a field flip on a view writes the view (Feature #229), inside the same queue");
-  assert.match(eye, /turn\.then\(async \(\) => \{\s*try \{\s*if \(eyeTails\.get\(db\.id\) !== turn\) return;\s*eyeTails\.delete\(db\.id\);\s*if \(painted && drawnMatches\(liveTable\(\)\)\) \{/,
+  assert.match(eye, /turn\.then\(async \(\) => \{\s*try \{\s*if \(eyeTails\.get\(db\.id\) !== turn\) return;\s*eyeTails\.delete\(db\.id\);\s*await paint\(painted\);/,
     "the paint runs off the queue, once, after the last write of a burst on this table");
   assert.match(eye, /\} finally \{ release\(\); \}/, 'and the hold it took is always let go');
-  assert.match(eye, /const painted = hides && home\?\.id === 'main' && !redraw && stillShown\(\) && dropDrawnColumn\(db\.id, hides\);/,
+  assert.match(eye, /const grid = home\?\.id === 'main' && !redraw;\s*const painted = hides && grid && stillShown\(\) && dropDrawnColumn\(db\.id, hides\);/,
     'a hide leaves the drawn grid before its write goes out (Issue #328)');
-  assert.match(fnBody('tableFieldsPopover'), /const painted = hides && here\(\) && dropDrawnColumn\(db\.id, hides\);/,
-    'and the same for the view popover');
-  assert.match(fnBody('tableFieldsPopover'), /if \(!painted \|\| !drawnMatches\(current\(\)\)\) await keepScroll/,
+  assert.match(eye, /else if \(!painted \|\| !drawnMatches\(liveTable\(\)\)\) await keepScroll/,
     'a hide reads the rows back only when the table disagrees with what was painted (Issue #328)');
   assert.match(fnBody('dropDrawnColumn'), /drawDatabase\(db, drawn\.items, drawn\.trashCount, drawn\.pager\)/,
     'the hide repaints the rows the grid already holds, with no read');
-  assert.match(eye, /if \(pop\?\.eyeOf === db\.id\) pop\.relearnEye\(\)/,
+  assert.match(eye, /if \(open\?\.eyeOf === db\.id\) open\.relearnEye\(\)/,
     "a late paint teaches only an eye on this table, never a ⋮ menu opened since");
-  assert.match(eye, /if \(stillShown\(\)\) redraw \?/, 'and redraws its page only while that page is on screen');
+  assert.match(eye, /if \(stillShown\(\)\) \{\s*if \(redraw\) await redraw\(\);/, 'and redraws its page only while that page is on screen');
   assert.match(fnBody('renderTable'), /let cols = visibleCols\(db\)/, 'the grid honours the hidden set');
   assert.match(fnBody('reorderField'), /const cols = visibleCols\(db\)/, 'reorder mirrors the same columns');
   assert.doesNotMatch(APP, /row\('⚙ Manage fields'/, 'the Manage fields row is gone');
@@ -1365,16 +1364,33 @@ test('the view controls sit on the crumb line; Fields has a bundled eye icon and
   assert.match(fnBody('fieldVisibilityPopover'), /class: 'switch' \+ \(on \? ' on' : ''\)/, 'rows are toggle switches');
   assert.match(fnBody('tableChrome'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');
   assert.match(fnBody('tableControlButton'), /lucideEl\(icon\)/, 'toolbar controls use the bundled icon renderer');
-  assert.match(fnBody('tableFieldsPopover'), /el\('input', \{ type: 'checkbox', class: 'form-check-input', checked: shown/, 'table field visibility is a real checkbox');
-  assert.doesNotMatch(fnBody('tableFieldsPopover'), /role: 'switch'|field-visible-check/, 'and no hand-drawn switch');
+  assert.doesNotMatch(fnBody('fieldVisibilityPopover'), /field-visible-check/, 'and no hand-drawn box');
   assert.ok(rulesFor('.switch.on').background?.includes('--tblr-primary'));
+});
+
+test('one builder draws the Fields menu for the table and the record, in switch rows (Issue #910)', () => {
+  assert.doesNotMatch(APP, /function tableFieldsPopover\(/, 'the second builder is gone');
+  assert.match(fnBody('tableChrome'), /fieldVisibilityPopover\(eye, ref\.db, ref\.trashCount\)/, 'the table opens it');
+  assert.match(fnBody('renderEntityView'), /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false \}\)/, 'the record opens it');
+  const eye = fnBody('fieldVisibilityPopover');
+  assert.match(eye, /tableControlPopover\(anchor, db, 'table-fields-popover'/, 'one shell for both surfaces');
+  assert.match(eye, /role: 'switch'/, 'every row is a switch');
+  assert.doesNotMatch(eye, /type: 'checkbox'/, 'and none is a checkbox');
+  assert.match(eye, /startRowDrag\(/, 'rows drag wherever field order is writable');
+  assert.match(eye, /fieldOrder: order\.filter\(isField\)/, 'the record writes the table field order');
+});
+
+test('the Fields list reserves its scrollbar gutter and insets its switches to match the grip (Issue #909)', () => {
+  const list = rulesFor('.table-field-list');
+  assert.equal(list['scrollbar-gutter'], 'stable', 'rows do not shift when the list starts scrolling');
+  assert.equal(px(list['padding-right']), px(rulesFor('.field-reorder-handle').padding), 'the right inset matches the grip inset on the left');
 });
 
 test('system columns are toggled only from the eye — not from the table ⋮ menu (Kyle, 2026-08-23)', () => {
   const draw = fnBody('drawDatabase');
   assert.doesNotMatch(draw, /Object\.keys\(SYSTEM_COLS\)\.map/, 'no Created At / Modified At rows in the table menu');
   assert.doesNotMatch(fnBody('tableChrome'), /Object\.keys\(SYSTEM_COLS\)\.map/, 'the menu lives in tableChrome since Issue #444');
-  assert.match(fnBody('fieldVisibilityPopover'), /Object\.keys\(SYSTEM_COLS\)\.map/);
+  assert.match(fnBody('fieldVisibilityPopover'), /const systemColumns = Object\.keys\(SYSTEM_COLS\);/);
 });
 
 test('every document is a column; its cell is the named chip', () => {

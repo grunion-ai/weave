@@ -60,7 +60,7 @@ if (s) {
         assert.match(c.fields, /test\/grid\.test\.mjs/, 'and its segments');
       }
       const acts = await page.$$eval('.wv-grid tbody tr.entity-row td.sys-cell', (tds) => tds.map((t) => t.textContent));
-      assert.ok(acts.length === 5 && acts.every((t) => /^\d{4}-\d{2}-\d{2}/.test(t)), `the shown system column fills from the row: ${acts.join(' ')}`);
+      assert.ok(acts.length === 5 && acts.every((t) => /^[A-Z][a-z]{2} \d{1,2}, \d{4} \d{1,2}:\d{2} [AP]M$/.test(t)), `the shown system column fills from the row: ${acts.join(' ')}`);
       assert.match(await page.textContent('.wv-grid tbody tr.entity-row td[data-field="Description"]'), /about case 0/);
       await page.close();
     });

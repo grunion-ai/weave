@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { VOCABULARY } from '../src/vocabulary.js';
+import { VOCABULARY, ICONS } from '../src/vocabulary.js';
 
 await import('../public/starter-core.js');
 const S = globalThis.WeaveStarters;
@@ -46,6 +46,7 @@ test('userTables tolerates an empty or missing schema', () => {
 const NOW = new Date(2026, 9, 3);
 function build(w, template, now = NOW) {
   const r = w.build(S.spec(template, { now }));
+  assert.ok(r.ok, `${template.id} builds`);
   assert.deepEqual(r.errors, [], `${template.id} builds without errors`);
   assert.deepEqual(r.ignored, [], `${template.id}: every icon and key is taken`);
   return r;
@@ -53,16 +54,98 @@ function build(w, template, now = NOW) {
 const byId = (id) => S.TEMPLATES.find((t) => t.id === id);
 const rows = (w, ref) => w.listEntities(w.getTable(ref).id).map((e) => { const r = w.readEntity(e.id); return { id: r.id, name: r.raw.Name, fields: r.raw }; });
 
-test('three templates: personal finance, tasks and a CRM, each titled for its space', () => {
-  assert.deepEqual(S.TEMPLATES.map((t) => t.id), ['finance', 'tasks', 'crm']);
-  assert.deepEqual(S.TEMPLATES.map((t) => t.title), ['Money', 'Work', 'People']);
+test('three featured templates: personal finance, tasks and a CRM, in that order', () => {
+  const featured = S.TEMPLATES.filter((t) => t.featured);
+  assert.deepEqual(featured.map((t) => t.id), ['finance', 'tasks', 'crm']);
+  assert.deepEqual(featured.map((t) => t.title), ['Money', 'Work', 'People']);
+  assert.deepEqual(S.TEMPLATES.slice(0, 3), featured, 'the featured three lead the catalog');
+  for (const t of S.TEMPLATES.slice(3)) assert.equal(t.featured, false, `${t.id} is in the catalog only`);
+});
+
+test('the catalog covers about fourteen kinds of work, each with one id, one space and one answer', () => {
+  assert.ok(S.TEMPLATES.length >= 14, `${S.TEMPLATES.length} templates`);
+  for (const key of ['id', 'title', 'space', 'work']) {
+    const values = S.TEMPLATES.map((t) => t[key]);
+    assert.equal(new Set(values).size, values.length, `every ${key} is distinct: ${values.join(', ')}`);
+  }
   for (const t of S.TEMPLATES) {
-    assert.ok(t.title && t.blurb && t.space, t.id);
+    for (const key of ['id', 'title', 'blurb', 'space', 'icon', 'work']) assert.equal(typeof t[key], 'string', `${t.id}.${key}`);
+    assert.equal(typeof t.tables, 'function', `${t.id}.tables`);
+    assert.equal(typeof t.featured, 'boolean', `${t.id}.featured`);
+    assert.match(t.id, /^[a-z][a-z0-9-]*$/, 'an id is a slug');
     assert.equal(t.title, t.space, 'the card and the sidebar call it one thing');
-    for (const s of [t.title, t.blurb, t.space]) assert.ok(!/\u2014/.test(s), `no em dash in user copy: ${s}`);
+    assert.match(t.work, /^[A-Z][a-z]/, `${t.work}: sentence case`);
+    assert.equal(t.work.slice(1), t.work.slice(1).toLowerCase(), `${t.work}: sentence case`);
+    assert.ok(t.blurb.length <= 60, `${t.blurb}: short`);
+    for (const s of [t.title, t.blurb, t.space, t.work]) {
+      assert.ok(!/\u2014/.test(s), `no em dash in user copy: ${s}`);
+      assert.ok(!/!/.test(s), `no exclamation mark: ${s}`);
+      assert.ok(!/\b(simply|just|easy|easily)\b/i.test(s), `no filler: ${s}`);
+    }
     assert.ok(!/\brecords?\b/i.test(t.blurb), 'row, never record (Issue #605)');
   }
 });
+
+test('every template and table icon is in the inventory', () => {
+  const icons = new Set(ICONS.map((n) => `lucide:${n}`));
+  for (const t of S.TEMPLATES) {
+    assert.ok(icons.has(t.icon), `${t.id}: ${t.icon}`);
+    for (const tb of S.spec(t, { now: NOW }).spaces[0].tables) assert.ok(icons.has(tb.icon), `${t.id}/${tb.name}: ${tb.icon}`);
+  }
+});
+
+test('every option and state hue is a named colour', () => {
+  const hues = new Set(VOCABULARY.optionColors.map((c) => c.name));
+  for (const t of S.TEMPLATES) {
+    for (const tb of S.spec(t, { now: NOW }).spaces[0].tables) {
+      for (const f of tb.fields ?? []) {
+        for (const o of [...(f.options ?? []), ...(f.states ?? [])]) {
+          if (typeof o === 'object' && o.hue) assert.ok(hues.has(o.hue), `${t.id}/${tb.name}.${f.name}: ${o.hue}`);
+        }
+      }
+    }
+  }
+});
+
+for (const template of S.TEMPLATES) {
+  test(`${template.title}: every relation, rollup and sample link resolves inside the space`, () => {
+    const tables = S.spec(template, { now: NOW }).spaces[0].tables;
+    const byName = new Map(tables.map((t) => [t.name, t]));
+    for (const t of tables) {
+      for (const f of t.fields ?? []) {
+        if (f.type === 'relation') {
+          assert.ok(byName.has(f.to), `${t.name}.${f.name} points at ${f.to}`);
+          assert.ok(f.inverseName, `${t.name}.${f.name} names its inverse`);
+        }
+        if (f.type === 'rollup') {
+          const own = t.fields.find((x) => x.name === f.relationField && x.type === 'relation');
+          const inverse = tables.find((o) => (o.fields ?? []).some((x) => x.type === 'relation' && x.to === t.name && x.inverseName === f.relationField));
+          const farName = own ? own.to : inverse?.name;
+          assert.ok(farName, `${t.name}.${f.name} rolls up through a relation of its table`);
+          if (f.aggregate !== 'count') {
+            assert.ok(byName.get(farName).fields.some((x) => x.name === f.targetField), `${t.name}.${f.name}: ${farName}.${f.targetField} exists`);
+          }
+        }
+      }
+      for (const row of t.rows ?? []) {
+        for (const f of (t.fields ?? []).filter((x) => x.type === 'relation' && row[x.name] != null)) {
+          const names = new Set((byName.get(f.to).rows ?? []).map((r) => r.Name));
+          for (const v of [row[f.name]].flat()) assert.ok(names.has(v), `${t.name} row ${row.Name}: ${f.name} names a ${f.to} row '${v}'`);
+        }
+      }
+      const rowCount = (t.rows ?? []).length;
+      if (template.featured) continue;
+      assert.ok(rowCount >= 2 && rowCount <= 4, `${t.name}: two to four sample rows, has ${rowCount}`);
+      for (const row of t.rows) {
+        for (const v of Object.values(row)) {
+          if (typeof v === 'string' && v.includes('@')) assert.match(v, /@example\.com$/, `${t.name}: example.com addresses only`);
+          if (typeof v === 'string' && /^https?:/.test(v)) assert.match(v, /^https:\/\/([a-z0-9-]+\.)*example\.(com|org)(\/|$)/, `${t.name}: example links only`);
+        }
+      }
+    }
+    if (!template.featured) assert.ok(tables.length >= 2 && tables.length <= 4, `${template.id}: two to four tables`);
+  });
+}
 
 for (const template of S.TEMPLATES) {
   test(`the ${template.title} template builds on a fresh engine in one build call`, () => {

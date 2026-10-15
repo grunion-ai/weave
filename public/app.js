@@ -4057,7 +4057,8 @@ function tableControlPopover(anchor, db, className, rows) {
   pop.tableId = db.id;
   pop.viewId = db.view?.id;
   pop.triggerSelector = selector;
-  const trigger = () => document.querySelector(`#main ${selector}`) || anchor;
+  const home = anchor.closest('#main, #dock');
+  const trigger = () => (home ?? document.querySelector('#main'))?.querySelector(selector) || anchor;
   const position = () => {
     const r = trigger().getBoundingClientRect();
     if (className === 'table-fields-popover' || className === 'table-filter-popover') pop.style.maxHeight = `${Math.max(220, innerHeight - r.bottom - 22)}px`;
@@ -4095,7 +4096,7 @@ function tableControlPopover(anchor, db, className, rows) {
   document.body.append(pop);
   trigger().setAttribute('aria-expanded', 'true');
   position();
-  off = dismissOutside({ inside: (t) => pop.contains(t) || !!t.closest?.(selector), close: () => pop.remove() });
+  off = dismissOutside({ inside: (t) => pop.contains(t) || (!!t.closest?.(selector) && t.closest(selector).closest('#main, #dock') === home), close: () => pop.remove() });
   window.addEventListener('resize', position);
   pop.querySelector('.view-tab.active .view-name,.seg-opt.on,.eye-row:not(label),.eye-row > input,.filter-chip:not(label),.filter-chip > input,.chip-pop-row:not(label)')?.focus({ preventScroll: true });
   return pop;
@@ -4343,109 +4344,6 @@ function phoneRowPopover(anchor, db) {
   let pop = null;
   pop = tableControlPopover(anchor, db, 'phone-row-popover', [tableControlHeader('Phone row', () => pop?.remove()), body]);
   return pop;
-}
-
-function tableFieldsPopover(anchor, db, trashCount) {
-  let pop;
-  const raw = () => allTables().find((t) => t.id === db.id) || db;
-  const current = () => { const t = raw(); return viewed(t, db.view?.blank ? blankView(t) : t.views.find((v) => v.id === db.view.id) || db.view); };
-  const systemColumns = Object.keys(SYSTEM_COLS);
-  let order = [...new Set([...(db.columns || []), ...raw().fields.map((f) => f.name), ...systemColumns])];
-  const movedHidden = new Set();
-  const here = () => state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id;
-  const write = (make, { hides = null } = {}) => {
-    if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
-    const painted = hides && here() && dropDrawnColumn(db.id, hides);
-    const release = eyeGesture(painted ? () => {} : gridHold());
-    const turn = eyeWrites.then(async () => {
-      const patch = make(current());
-      if (patch.table) { await api('PATCH', `/tables/${db.id}`, patch.table); await loadSchema(); }
-      else await gridConfigWrite(db, null, patch);
-    }).catch((err) => toast(err.message, true));
-    eyeWrites = turn; eyeTails.set(db.id, turn);
-    turn.then(async () => {
-      try {
-        if (eyeTails.get(db.id) !== turn) return;
-        eyeTails.delete(db.id);
-        if (!here()) return;
-        try {
-          if (!painted || !drawnMatches(current())) await keepScroll(() => showDatabase(db.id, db.view.id));
-          if (dock?.db.id === db.id) await drawDock();
-        } catch (err) { toast(err.message, true); }
-        if (pop?.isConnected) refresh(current());
-      } finally { release(); }
-    });
-  };
-  const flip = (name) => write((t) => {
-    const shown = t.columns || [];
-    if (shown.includes(name)) return { hide: [name] };
-    if (!movedHidden.has(name)) return { show: [name] };
-    movedHidden.delete(name);
-    const next = order.slice(order.indexOf(name) + 1).find((n) => shown.includes(n));
-    const previous = order.slice(0, order.indexOf(name)).reverse().find((n) => shown.includes(n));
-    return { show: [name], ...(next ? { move: { field: name, before: next } } : previous ? { move: { field: name, after: previous } } : {}) };
-  }, { hides: (current().columns || []).includes(name) ? name : null });
-  const move = (from, target, after) => {
-    if (from === target || db.view?.blank) return;
-    order = order.filter((n) => n !== from);
-    order.splice(order.indexOf(target) + (after ? 1 : 0), 0, from);
-    const list = pop.querySelector('.table-field-list');
-    for (const name of order) { const row = [...list.children].find((r) => r.dataset.field === name); if (row) list.append(row); }
-    write((t) => {
-      if (!(t.columns || []).includes(from)) movedHidden.add(from);
-      return { fields: order.filter((n) => (t.columns || []).includes(n)) };
-    });
-  };
-  const makeRow = (name, shown) => {
-    const box = el('input', { type: 'checkbox', class: 'form-check-input', checked: shown ? '' : undefined, onchange: () => flip(name) });
-    const toggle = el('label', { class: 'chip-pop-row eye-row' }, box, el('span', { class: 'eye-label' }, name));
-    const handle = el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
-    const row = el('div', { class: 'table-field-row', dataset: { field: name } }, toggle, handle);
-    RO().guard(row);
-    row.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || e.target === box || db.view?.blank) return;
-      startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
-    });
-    row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
-    handle.addEventListener('keydown', (e) => {
-      if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
-      e.preventDefault(); const i = order.indexOf(name), to = i + (e.key === 'ArrowUp' ? -1 : 1);
-      if (to >= 0 && to < order.length) { move(name, order[to], to > i); handle.focus({ preventScroll: true }); }
-    });
-    return row;
-  };
-  const refresh = (t) => {
-    if (!pop?.isConnected) return;
-    const names = new Set([...raw().fields.map((f) => f.name), ...systemColumns]);
-    const list = pop.querySelector('.table-field-list');
-    for (const row of [...list.children]) if (!names.has(row.dataset.field)) row.remove();
-    order = order.filter((n) => names.has(n));
-    for (const name of names) if (!order.includes(name)) { order.push(name); list.append(makeRow(name, (t.columns || []).includes(name))); }
-    const shown = new Set(t.columns || []);
-    for (const r of pop.querySelectorAll('.table-field-row')) r.querySelector('.eye-row input').checked = shown.has(r.dataset.field);
-    const rollups = pop.querySelector('[data-rollups] input');
-    if (rollups) rollups.checked = showsRollups(t);
-    const deleted = pop.querySelector('[data-deleted] input');
-    if (deleted) deleted.checked = showsDeleted(t);
-  };
-  const shown = new Set(db.columns || []);
-  const rows = [tableControlHeader('Fields', () => pop?.remove()),
-    el('div', { class: 'field-visibility-actions' },
-      el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => write(() => ({ fields: [...order] })) }, 'Show all'),
-      el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => write(() => ({ fields: [] })) }, 'Hide all')),
-    el('div', { class: 'table-field-legend' }, 'Show / hide', el('span', {}, 'Drag to reorder')),
-    el('div', { class: 'table-field-list' }, ...order.map((n) => makeRow(n, shown.has(n)))),
-    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
-    el('div', { class: 'eye-head' }, 'Rows'),
-    el('label', { class: 'chip-pop-row eye-row', 'data-deleted': '' },
-      el('input', { type: 'checkbox', class: 'form-check-input', checked: showsDeleted(db) ? '' : undefined, onchange: () => write((t) => ({ deleted: !showsDeleted(t) })) }),
-      el('span', { class: 'eye-label' }, `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`)),
-    ...(db.system ? [] : [el('label', { class: 'chip-pop-row eye-row', 'data-rollups': '' },
-      el('input', { type: 'checkbox', class: 'form-check-input', checked: showsRollups(db) ? '' : undefined, onchange: () => write((t) => ({ rollups: !showsRollups(t) })) }),
-      el('span', { class: 'eye-label' }, 'Σ rollup row'))]),
-  ];
-  pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
-  if (pop) { pop.eyeOf = db.id; pop.relearnEye = () => refresh(current()); }
 }
 
 const tableChromeSig = (db) => JSON.stringify([db.name, db.icon, db.description, db.space, db.spaceId, db.term?.singular, db.term?.plural]);
@@ -5308,18 +5206,47 @@ function showSwitch(node, on = node.getAttribute('aria-checked') !== 'true') {
 }
 
 function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
-  if (db.view && rowsSection) return tableFieldsPopover(anchor, db, trashCount);
-  const row = (on, label, run) => el('button', {
-    class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
-    onclick: (e) => { e.stopPropagation(); showSwitch(e.currentTarget); run(); },
-  }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
-  const save = (patchOf, { hides = null } = {}) => {
-    const painted = hides && home?.id === 'main' && !redraw && stillShown() && dropDrawnColumn(db.id, hides);
-    const release = eyeGesture(home?.id === 'main' && !painted ? gridHold() : () => {});
+  let pop;
+  const home = anchor.closest('#main, #dock');
+  const raw = () => allTables().find((d) => d.id === db.id) ?? db;
+  const liveTable = () => { const t = raw(); return db.view ? viewed(t, db.view.blank ? blankView(t) : (t.views ?? []).find((v) => v.id === db.view.id) ?? db.view) : t; };
+  const systemColumns = Object.keys(SYSTEM_COLS);
+  const isField = (name) => raw().fields.some((f) => f.name === name);
+  const shownOf = (t) => {
+    if (db.view) return new Set(t.columns ?? []);
+    const hidden = new Set(t.hiddenFields ?? []);
+    return new Set([...t.fields.filter((f) => !hidden.has(f.name)).map((f) => f.name), ...(t.systemFields ?? [])]);
+  };
+  const tidy = (names) => (db.view ? names : [...names.filter(isField), ...names.filter((n) => !isField(n))]);
+  let order = tidy([...new Set([...(db.view ? db.columns ?? [] : []), ...raw().fields.map((f) => f.name), ...systemColumns])]);
+  const movedHidden = new Set();
+  const pageOf = (r) => (r?.page === 'db' ? `db:${r.dbId}:${r.view}` : r?.page === 'entity' ? `entity:${r.id}` : r?.page);
+  const openedOn = pageOf(state.route);
+  const stillShown = () => home?.id !== 'main' || pageOf(state.route) === openedOn;
+  const paint = async (painted) => {
+    try {
+      if (stillShown()) {
+        if (redraw) await redraw();
+        else if (!painted || !drawnMatches(liveTable())) await keepScroll(() => showDatabase(db.id, state.route.view));
+      }
+      if (dock?.db.id === db.id) {
+        dock.db = raw();
+        if (redraw !== drawDock) await drawDock();
+        else if (state.route?.page === 'db' && state.route.dbId === db.id) await keepScroll(() => showDatabase(db.id, state.route.view));
+      }
+      const open = document.querySelector('.chip-pop');
+      if (open?.eyeOf === db.id) open.relearnEye();
+    } catch (err) { toast(err.message, true); }
+  };
+  const write = (make, { hides = null } = {}) => {
+    if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
+    const grid = home?.id === 'main' && !redraw;
+    const painted = hides && grid && stillShown() && dropDrawnColumn(db.id, hides);
+    const release = eyeGesture(grid && !painted ? gridHold() : () => {});
     const turn = eyeWrites.then(async () => {
-      const patch = patchOf(liveTable());
-      if (patch.view) await gridConfigWrite(db, null, patch.view);
-      else { await api('PATCH', `/tables/${db.id}`, patch); await loadSchema(); }
+      const patch = make(liveTable());
+      if (patch.table) { await api('PATCH', `/tables/${db.id}`, patch.table); await loadSchema(); }
+      else await gridConfigWrite(db, null, patch);
     }).catch((err) => toast(err.message, true));
     eyeWrites = turn;
     eyeTails.set(db.id, turn);
@@ -5327,73 +5254,99 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       try {
         if (eyeTails.get(db.id) !== turn) return;
         eyeTails.delete(db.id);
-        if (painted && drawnMatches(liveTable())) {
-          const open = document.querySelector('.chip-pop');
-          if (open?.eyeOf === db.id) open.relearnEye();
-        } else await paint();
+        await paint(painted);
       } finally { release(); }
     });
   };
-  const home = anchor.closest('#main, #dock');
-  const pageOf = (r) => (r?.page === 'db' ? `db:${r.dbId}` : r?.page === 'entity' ? `entity:${r.id}` : r?.page);
-  const openedOn = pageOf(state.route);
-  const stillShown = () => home?.id !== 'main' || pageOf(state.route) === openedOn;
-  const paint = async () => {
-    try {
-      if (stillShown()) redraw ? await redraw() : await keepScroll(() => showDatabase(db.id, state.route.view));
-      if (dock && dock.db.id === db.id) {
-        dock.db = allTables().find((d) => d.id === db.id) ?? dock.db;
-        if (redraw !== drawDock) await drawDock();
-        else if (state.route?.page === 'db' && state.route.dbId === db.id) {
-          await keepScroll(() => showDatabase(db.id, state.route.view));
-        }
-      }
-      const pop = document.querySelector('.chip-pop');
-      if (pop?.eyeOf === db.id) pop.relearnEye();
-    } catch (err) { toast(err.message, true); }
-  };
-  const liveTable = () => {
-    const raw = allTables().find((d) => d.id === db.id) ?? db;
-    return db.view ? viewed(raw, db.view.blank ? blankView(raw) : (raw.views ?? []).find((v) => v.id === db.view.id) ?? db.view) : raw;
-  };
-  const buildRows = (cur) => {
-    const hidden = new Set(cur.hiddenFields ?? []);
-    const sysOn = new Set(cur.columns ? cur.columns.filter((n) => SYSTEM_COLS[n] && !colField(cur, n)) : cur.systemFields ?? []);
-    const listed = (allTables().find((d) => d.id === cur.id) ?? cur).fields;
-    return [
-      el('div', { class: 'eye-head' }, 'Fields'),
-      ...listed.map((f) => row(!hidden.has(f.name), f.name, () => save((t) => {
-        const next = new Set(t.hiddenFields ?? []);
-        if (db.view) return { view: { [next.has(f.name) ? 'show' : 'hide']: [f.name] } };
-        if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
-        return { hiddenFields: [...next] };
-      }, { hides: visibleCols(liveTable()).includes(f.name) ? f.name : null }))),
-      el('div', { class: 'eye-head' }, 'System'),
-      ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => save((t) => {
-        if (db.view) return { view: { [(t.columns ?? []).includes(n) ? 'hide' : 'show']: [n] } };
-        const next = new Set(t.systemFields ?? []);
-        if (next.has(n)) next.delete(n); else next.add(n);
-        return { systemFields: [...next] };
-      }))),
-      ...(rowsSection ? [
-        el('div', { class: 'eye-head' }, 'Rows'),
-        row(state.showDeleted.has(cur.id), `Deleted ${cur.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => {
-          if (state.showDeleted.has(cur.id)) state.showDeleted.delete(cur.id); else state.showDeleted.add(cur.id);
-          document.querySelector('.chip-pop')?.remove();
-          keepScroll(() => showDatabase(cur.id, state.route.view));
-        }),
-        ...(cur.system ? [] : [row(cur.hideRollups === false, 'Σ rollup row', () => save((t) => ({ hideRollups: t.hideRollups === false })))]),
-      ] : []),
-    ];
-  };
-  const pop = showPopover(anchor, buildRows(db), { owns: (t) => t.closest?.('.eye-btn')?.closest('#main, #dock') === home });
-  pop.eyeOf = db.id;
-  pop.relearnEye = () => {
-    const wasFocused = document.activeElement?.closest?.('.eye-row')?.querySelector('.eye-label')?.textContent ?? null;
-    relearnRows(pop, buildRows(liveTable()), (p) => {
-      if (wasFocused != null) [...p.querySelectorAll('.eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === wasFocused)?.focus();
+  const flip = (name) => write((t) => {
+    if (!db.view) {
+      const key = isField(name) ? 'hiddenFields' : 'systemFields';
+      const next = new Set(t[key] ?? []);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return { table: { [key]: [...next] } };
+    }
+    const shown = t.columns ?? [];
+    if (shown.includes(name)) return { hide: [name] };
+    if (!movedHidden.has(name)) return { show: [name] };
+    movedHidden.delete(name);
+    const next = order.slice(order.indexOf(name) + 1).find((n) => shown.includes(n));
+    const previous = order.slice(0, order.indexOf(name)).reverse().find((n) => shown.includes(n));
+    return { show: [name], ...(next ? { move: { field: name, before: next } } : previous ? { move: { field: name, after: previous } } : {}) };
+  }, { hides: visibleCols(liveTable()).includes(name) ? name : null });
+  const showAll = (on) => write((t) => (db.view ? { fields: on ? [...order] : [] }
+    : { table: { hiddenFields: on ? [] : order.filter(isField), systemFields: on ? order.filter((n) => !isField(n)) : [] } }));
+  const move = (from, target, after) => {
+    if (from === target || db.view?.blank) return;
+    order = order.filter((n) => n !== from);
+    order.splice(order.indexOf(target) + (after ? 1 : 0), 0, from);
+    order = tidy(order);
+    const list = pop.querySelector('.table-field-list');
+    for (const name of order) { const row = [...list.children].find((r) => r.dataset.field === name); if (row) list.append(row); }
+    write((t) => {
+      if (!db.view) return { table: { fieldOrder: order.filter(isField) } };
+      if (!(t.columns ?? []).includes(from)) movedHidden.add(from);
+      return { fields: order.filter((n) => (t.columns ?? []).includes(n)) };
     });
   };
+  const switchRow = (on, label, run, dataset = {}) => el('button', {
+    class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false', dataset,
+    onclick: (e) => { showSwitch(e.currentTarget); run(); },
+  }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
+  const gap = () => el('span', { class: 'field-reorder-gap', 'aria-hidden': 'true' });
+  const makeRow = (name, on) => {
+    const toggle = switchRow(on, name, () => flip(name));
+    if (!db.view && !isField(name)) return el('div', { class: 'table-field-row', dataset: { field: name } }, gap(), toggle);
+    const handle = el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
+    const row = el('div', { class: 'table-field-row', dataset: { field: name } }, handle, toggle);
+    RO().guard(row);
+    row.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('.switch') || db.view?.blank) return;
+      startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
+    });
+    row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
+    handle.addEventListener('keydown', (e) => {
+      if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+      e.preventDefault(); const i = order.indexOf(name), to = i + (e.key === 'ArrowUp' ? -1 : 1);
+      if (to >= 0 && to < order.length && (db.view || isField(order[to]))) { move(name, order[to], to > i); handle.focus({ preventScroll: true }); }
+    });
+    return row;
+  };
+  const refresh = () => {
+    if (!pop?.isConnected) return;
+    const t = liveTable();
+    const shown = shownOf(t);
+    const names = new Set([...raw().fields.map((f) => f.name), ...systemColumns]);
+    const list = pop.querySelector('.table-field-list');
+    for (const row of [...list.children]) if (!names.has(row.dataset.field)) row.remove();
+    order = order.filter((n) => names.has(n));
+    for (const name of names) if (!order.includes(name)) {
+      const row = makeRow(name, shown.has(name));
+      const before = db.view || !isField(name) ? null : order.find((n) => !isField(n));
+      if (before) { order.splice(order.indexOf(before), 0, name); list.querySelector(`[data-field="${CSS.escape(before)}"]`).before(row); }
+      else { order.push(name); list.append(row); }
+    }
+    for (const r of list.querySelectorAll('.table-field-row')) showSwitch(r.querySelector('.eye-row'), shown.has(r.dataset.field));
+    const deleted = pop.querySelector('[data-deleted]');
+    if (deleted) showSwitch(deleted, showsDeleted(t));
+    const rollups = pop.querySelector('[data-rollups]');
+    if (rollups) showSwitch(rollups, showsRollups(t));
+  };
+  const shown = shownOf(liveTable());
+  const rows = [tableControlHeader('Fields', () => pop?.remove()),
+    el('div', { class: 'field-visibility-actions' },
+      el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => showAll(true) }, 'Show all'),
+      el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => showAll(false) }, 'Hide all')),
+    el('div', { class: 'table-field-legend' }, 'Show / hide', el('span', {}, 'Drag to reorder')),
+    el('div', { class: 'table-field-list' }, ...order.map((n) => makeRow(n, shown.has(n)))),
+    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
+    ...(rowsSection ? [el('div', { class: 'table-field-foot' },
+      el('div', { class: 'eye-head' }, 'Rows'),
+      el('div', { class: 'table-field-line' }, gap(), switchRow(showsDeleted(db), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => write((t) => ({ deleted: !showsDeleted(t) })), { deleted: '' })),
+      ...(db.system ? [] : [el('div', { class: 'table-field-line' }, gap(), switchRow(showsRollups(db), 'Σ rollup row', () => write((t) => ({ rollups: !showsRollups(t) })), { rollups: '' }))]))] : []),
+  ];
+  pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
+  if (pop) { pop.eyeOf = db.id; pop.relearnEye = refresh; }
+  return pop;
 }
 
 function dropDrawnColumn(dbId, name) {
@@ -6847,11 +6800,31 @@ async function editPhoneField(anchor, db, eid, name) {
 }
 
 const SYSTEM_COLS = {
-  'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
-  'Modified At': (e) => (e.updatedAt ?? '').slice(0, 16).replace('T', ' '),
+  'Created At': (e) => stampEl(e.createdAt),
+  'Modified At': (e) => stampEl(e.updatedAt),
   'Created By': (e) => actorChipEl(e.createdBy),
   'Modified By': (e) => actorChipEl(e.modifiedBy),
 };
+
+function stampEl(iso) {
+  const s = weaveDateCore.stamp(iso, LOCAL_ZONE);
+  return s.text ? el('span', { class: 'wv-stamp', title: s.title }, s.text) : '';
+}
+
+const usersCache = { rows: [], read: null, done: false };
+function workspaceUsers() {
+  if (usersCache.read) return usersCache;
+  const t = registryTable('users');
+  if (!t) return usersCache;
+  const here = allTables().some((d) => d.id === t.id);
+  usersCache.read = api('POST', `/tables/${t.id}/query`, {}).then((res) => {
+    usersCache.rows = (res.items ?? []).map((u) => ({
+      id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
+      workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
+    }));
+  }).catch(() => {}).finally(() => { usersCache.done = true; });
+  return usersCache;
+}
 
 function actorChipEl(actor, { link = true } = {}) {
   const a = weaveActor.parseActor(actor);
@@ -6869,10 +6842,24 @@ function actorChipEl(actor, { link = true } = {}) {
       ? el('span', { class: 'k k-rel k-actor-wf' }, inner)
       : el('span', { class: 'k k-actor-wf is-inline' }, ...body);
   }
-  return el('span', { class: 'k k-actor', title: a.via ? `${a.name} via ${a.via}` : a.name },
-    el('span', { class: `av hue-${chipCore.hueForName(a.name)}` }, chipCore.initialsFor(a.name)),
-    el('span', { class: 'k-label' }, a.name),
-    a.via ? el('span', { class: 'k-actor-via' }, `· via ${a.via}`) : null);
+  const chip = el('span', { class: 'k k-actor' });
+  const paint = (users) => {
+    const r = weaveActor.resolveActor(actor, users, { workspaceId: state.wsId });
+    const mark = r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
+      : r.kind === 'person' ? el('span', { class: `av hue-${chipCore.hueForName(r.name)}` }, chipCore.initialsFor(r.name)) : null;
+    const label = el('span', { class: 'k-label' }, r.name);
+    const via = r.via ? el('span', { class: 'k-actor-via' }, `· via ${r.via}`) : null;
+    chip.classList.toggle('is-unknown', r.kind === 'unknown');
+    chip.title = r.title;
+    const body = r.user && link
+      ? [el('a', { href: r.user.href, title: r.title, onclick: (e) => e.stopPropagation() }, mark, label)]
+      : [mark, label];
+    chip.replaceChildren(...[...body, via].filter(Boolean));
+  };
+  const people = workspaceUsers();
+  paint(people.rows);
+  if (!people.done) people.read?.then(() => paint(people.rows));
+  return chip;
 }
 
 function commentAuthorText(author) {
@@ -10699,6 +10686,7 @@ const activityPanel = (() => {
   let panel = null;
   let sheetBack = null;
   let fitObserver = null;
+  let viewObserver = null;
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
@@ -10869,9 +10857,14 @@ const activityPanel = (() => {
       el('div', { class: 'wv-act-head' }, el('h3', {}, 'Activity'),
         el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
       filters, list);
-    const host = st.mount?.querySelector?.(':scope > .entity-split') ?? st.mount;
-    if (panel?.parentElement === host) panel.replaceWith(next); else { panel?.remove(); host.append(next); }
+    const host = st.mount?.closest?.('#main, #dock') ?? st.mount;
+    if (panel?.parentElement === host) panel.replaceWith(next); else { panel?.remove(); host.prepend(next); }
     panel = next;
+    viewObserver?.disconnect();
+    const fitHeight = () => host.style.setProperty('--wv-act-h', `${host.clientHeight}px`);
+    fitHeight();
+    viewObserver = new ResizeObserver(fitHeight);
+    viewObserver.observe(host);
     fitObserver?.disconnect();
     fitFilters(filters);
     fitObserver = new ResizeObserver(() => fitFilters(filters));
@@ -10943,6 +10936,7 @@ const activityPanel = (() => {
       if (!back && history.state?.wvSheet === 'activity') history.back();
     }
     fitObserver?.disconnect(); fitObserver = null;
+    viewObserver?.disconnect(); viewObserver = null;
     panel?.remove(); panel = null;
     clearViews();
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
@@ -11065,7 +11059,7 @@ function emptyWorkspace() {
       el('button', { class: 'btn btn-primary wv-start-new', onclick: () => tableTray() }, '+ New table'),
       el('div', { class: 'wv-start-label' }, 'Templates'),
       el('div', { class: 'wv-start-templates' },
-        ...WeaveStarters.TEMPLATES.map((t) => el('button', {
+        ...WeaveStarters.TEMPLATES.filter((t) => t.featured).map((t) => el('button', {
           class: 'wv-start-template', dataset: { template: t.id },
           onclick: (e) => {
             for (const b of e.currentTarget.closest('.wv-start').querySelectorAll('button')) b.disabled = true;
@@ -11133,7 +11127,7 @@ function onboard(defaultName) {
       focus = input;
     } else {
       body.replaceChildren(el('div', { class: 'wv-start-templates' },
-        ...WeaveStarters.TEMPLATES.map((t) => el('button', {
+        ...WeaveStarters.TEMPLATES.filter((t) => t.featured).map((t) => el('button', {
           class: 'wv-start-template', type: 'button', dataset: { template: t.id },
           onclick: () => finish({ name, template: t }),
         },
@@ -12907,6 +12901,56 @@ function wireNavCollapse() {
   narrowShell.addEventListener('change', shut);
 }
 
+const NAV_WIDTH = { min: 200, max: 480, base: 264, step: 16 };
+function wireNavResize() {
+  const app = $('#app');
+  const sidebar = $('#sidebar');
+  if (!app || !sidebar) return;
+  const grip = el('div', {
+    id: 'nav-resize', role: 'separator', tabindex: '0', 'aria-orientation': 'vertical', 'aria-label': 'Resize the sidebar',
+    'aria-valuemin': String(NAV_WIDTH.min), 'aria-valuemax': String(NAV_WIDTH.max),
+  });
+  sidebar.append(grip);
+  let width = NAV_WIDTH.base;
+  const show = (px) => {
+    width = Math.min(NAV_WIDTH.max, Math.max(NAV_WIDTH.min, Math.round(px)));
+    app.style.setProperty('--wv-nav-width', `${width}px`);
+    grip.setAttribute('aria-valuenow', String(width));
+  };
+  const keep = () => localStorage.setItem('weave-nav-width', String(width));
+  const stored = Number(localStorage.getItem('weave-nav-width'));
+  show(stored > 0 ? stored : NAV_WIDTH.base);
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add('nav-resizing');
+    const left = sidebar.getBoundingClientRect().left;
+    const move = (ev) => show(ev.clientX - left);
+    const up = () => {
+      document.body.classList.remove('nav-resizing');
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      keep();
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('dblclick', () => {
+    localStorage.removeItem('weave-nav-width');
+    show(NAV_WIDTH.base);
+  });
+  grip.addEventListener('keydown', (e) => {
+    const dir = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    show(width + dir * NAV_WIDTH.step);
+    keep();
+  });
+}
+
 const railFolds = matchMedia('(max-width: 600px)');
 const NAV_KEY_OWNERS = '#modal-back, #tray-back, #cmdk-back, #fsv-back, .chip-pop, .picker-pop, .cell-pop, .date-pop, [role="menu"]';
 function wireNavHold() {
@@ -13227,4 +13271,5 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
+wireNavResize();
 wireNavHold();

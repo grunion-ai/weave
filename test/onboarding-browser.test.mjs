@@ -132,7 +132,7 @@ if (s) {
   });
 
   for (const edit of [false, true]) {
-    for (const template of [null, ...TEMPLATES]) {
+    for (const template of [null, ...TEMPLATES.filter((t) => t.featured)]) {
       test(`path: ${edit ? 'edit the name' : 'keep the name'}, then ${template ? `the ${template.id} starter` : 'start empty'}`, async () => {
         const page = await open();
         await page.keyboard.press('Enter');

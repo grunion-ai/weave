@@ -60,7 +60,7 @@ if (s) {
       assert.deepEqual(weave.tableView(narrow).views[0].fields, ['Owner', 'Name', 'Description']);
       assert.equal(await page.evaluate(() => document.documentElement.classList.contains('wv-grabbing')), false, 'the drop lets the cursor go');
       await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
-      assert.equal(await page.locator('.table-field-row[data-field="Owner"] input').isChecked(), true, 'a drag is not a click: the field still shows');
+      assert.equal(await page.locator('.table-field-row[data-field="Owner"] [role="switch"]').getAttribute('aria-checked'), 'true', 'a drag is not a click: the field still shows');
       const desc = await page.locator('.table-field-row[data-field="Description"] .eye-label').boundingBox();
       await page.mouse.move(desc.x + 4, desc.y + desc.height / 2);
       await page.mouse.down();
@@ -114,7 +114,7 @@ if (s) {
       await page.locator('.table-fields-popover').evaluate((pop) => Promise.all(pop.getAnimations().map((a) => a.finished)));
       let release;
       gate = { held: new Promise((r) => { release = r; }) };
-      await page.click('.table-field-row[data-field="Stage"] input');
+      await page.click('.table-field-row[data-field="Stage"] .switch');
       await page.waitForFunction(() => ![...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === 'Stage'), null, { timeout: 2000 });
       assert.equal(patches.length, 1, 'the hide is on the wire');
       assert.equal(queries, 0, 'the column left the grid before its PATCH answered, with no table read');
@@ -131,7 +131,7 @@ if (s) {
 
       gate = null;
       queries = 0;
-      await page.click('.table-field-row[data-field="Stage"] input');
+      await page.click('.table-field-row[data-field="Stage"] .switch');
       await page.waitForFunction(() => [...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === 'Stage'), null, { timeout: 4000 });
       await page.waitForTimeout(600);
       assert.deepEqual(await cellsOf('Stage'), ['Open', 'Open', 'Open'], 'the shown column carries its data');
@@ -167,7 +167,7 @@ if (s) {
 
       await page.click('.eye-btn');
       await page.locator('.table-fields-popover').evaluate((pop) => Promise.all(pop.getAnimations().map((a) => a.finished)));
-      await page.click(`.table-field-row[data-field="${last}"] input`);
+      await page.click(`.table-field-row[data-field="${last}"] .switch`);
       await page.waitForFunction((c) => ![...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === c), last, { timeout: 4000 });
       await page.waitForTimeout(600);
       const afterHide = await widths();
@@ -175,7 +175,7 @@ if (s) {
         assert.equal(afterHide[c], before[c], `${c} kept its width when ${last}, the last column, was hidden`);
       }
 
-      await page.click(`.table-field-row[data-field="${last}"] input`);
+      await page.click(`.table-field-row[data-field="${last}"] .switch`);
       await page.waitForFunction((c) => [...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === c), last, { timeout: 4000 });
       await page.waitForTimeout(600);
       const afterShow = await widths();
