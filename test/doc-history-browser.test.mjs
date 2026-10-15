@@ -161,6 +161,26 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a change from an empty value offers Clear value, never Revert to null (Issue #908)', async () => {
+    weave.updateEntity(lone, { Priority: 'P1' });
+    const change = weave.activityFeed({ entityId: lone }).items.find((a) => a.kind === 'field-updated' && a.detail.field === 'Priority');
+    assert.equal(change.detail.from, null, 'the change starts from an empty value');
+    const page = await open(lone);
+    try {
+      await page.click('.activity-btn');
+      await page.waitForSelector(`.wv-act-row[data-id="a${change.seq}"]`);
+      const r = row(page, `a${change.seq}`);
+      if (await r.evaluate((n) => n.classList.contains('sel'))) await pick(page, await page.locator('.wv-act-row').last().getAttribute('data-id'));
+      assert.equal(await r.locator(':scope > .wv-act-icon').getAttribute('title'), 'Clear value', 'the row icon names the action');
+      await pick(page, `a${change.seq}`);
+      assert.equal((await page.locator('.wv-act-row.sel .btn-primary').textContent()).trim(), 'Clear value');
+      assert.equal((await page.locator('.wv-act-row.sel .wv-act-val').first().textContent()).trim(), '—', 'the empty value reads as a dash beside the button');
+      assert.doesNotMatch(await page.locator('.wv-activity').textContent(), /null/);
+      await page.click('.wv-act-row.sel .btn-primary');
+      assert.equal(await eventually(async () => (await (await fetch(`${base}/api/entities/${lone}`)).json()).fields.Priority, null), null, 'Clear value empties the field');
+    } finally { await page.close(); }
+  });
+
   test('two documents stay apart: Spec compares and restores within Spec; Description is untouched', async () => {
     const page = await open();
     try {
