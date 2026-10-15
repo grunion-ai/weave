@@ -15,7 +15,7 @@ if (s) {
   const fab = (page) => page.$eval('.bug-fab', (b) => {
     const r = b.getBoundingClientRect();
     const inset = parseFloat(getComputedStyle(b).borderTopWidth) || 0;
-    return { left: r.left, top: r.top, right: r.right, width: r.width, height: r.height, face: r.width - 2 * inset, inset, vw: innerWidth };
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height, face: r.width - 2 * inset, inset, vw: innerWidth, vh: innerHeight };
   });
 
   for (const colorScheme of ['light', 'dark']) {
@@ -40,14 +40,18 @@ if (s) {
     });
   }
 
-  test('on a desktop the bug button keeps its 26px corner', async () => {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    try {
-      await page.goto(`${base}/#/table/${notes.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('.bug-fab');
-      const b = await fab(page);
-      assert.equal(Math.round(b.width), 26);
-      assert.equal(Math.round(b.vw - b.right), 12);
-    } finally { await page.close(); }
-  });
+  for (const colorScheme of ['light', 'dark']) {
+    test(`on a desktop the bug button keeps its 26px corner, equally inset from both edges, in ${colorScheme} (Issue #846)`, async () => {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, colorScheme });
+      try {
+        await page.goto(`${base}/#/table/${notes.id}`, { waitUntil: 'networkidle' });
+        await page.waitForSelector('.bug-fab');
+        assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme);
+        const b = await fab(page);
+        assert.equal(Math.round(b.width), 26);
+        assert.equal(Math.round(b.vw - b.right), 12);
+        assert.equal(Math.round(b.vh - b.bottom), Math.round(b.vw - b.right));
+      } finally { await page.close(); }
+    });
+  }
 }
