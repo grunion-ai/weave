@@ -103,7 +103,7 @@ async function main() {
   const result = await publishRelease(metadata, sha, io, { historical });
   const artifactSha = result.state === 'superseded' ? '' : result.state === 'unchanged' ? await io.tag(metadata.tag) : sha;
   if (artifactSha && !historical) gh(['release', 'edit', metadata.tag, '--repo', repo, '--latest']);
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `sha=${artifactSha}\n`);
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `sha=${artifactSha}\nstate=${result.state}\n`);
   console.log(JSON.stringify({ state: result.state, tag: result.tag, sha: artifactSha }));
 }
 
