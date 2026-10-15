@@ -1,1 +1,0 @@
-- The flicker gate ignores editor teardown inside a panel removed in the same update. Connected editor regressions and visible transient subtrees remain checked (Issue #899).
