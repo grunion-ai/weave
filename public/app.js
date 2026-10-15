@@ -947,43 +947,8 @@ function titleEdit(tag, modifier, value, attrs) {
   return node;
 }
 
-let descriptionId = 0;
-function foldDescription(body) {
-  if (!body?.isConnected || !body.clientHeight) return;
-  body.parentElement.querySelector('.view-desc-more')?.remove();
-  body.classList.add('clamped');
-  if (body.scrollHeight <= body.clientHeight + 1) { body.classList.remove('clamped'); return; }
-  const more = el('button', { class: 'view-desc-more', type: 'button', onclick: (e) => {
-    e.stopPropagation();
-    more.textContent = body.classList.toggle('clamped') ? 'Show more' : 'Show less';
-  } }, 'Show more');
-  body.after(more);
-}
-function descToggle(name, panel, key) {
-  panel.id = `description-${++descriptionId}`;
-  let open = false;
-  try { open = localStorage.getItem(key) === 'true'; } catch {}
-  const button = el('button', { class: 'desc-info', type: 'button', 'aria-controls': panel.id }, lucideEl('info'));
-  const paint = () => {
-    panel.hidden = !open;
-    button.setAttribute('aria-expanded', String(open));
-    button.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${name} description`);
-    if (open) {
-      if (panel.isConnected) foldDescription(panel.querySelector('.desc-clamp'));
-      else requestAnimationFrame(() => foldDescription(panel.querySelector('.desc-clamp')));
-    }
-  };
-  button.addEventListener('click', (e) => {
-    e.preventDefault(); e.stopPropagation(); open = !open;
-    try { localStorage.setItem(key, String(open)); } catch {}
-    paint();
-  });
-  paint();
-  return button;
-}
-
-function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page', lead = null, descriptionKey = null }) {
-  const box = el('div', { class: `view-header${descriptionKey ? ' view-description-toggle' : ''}` });
+function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page', lead = null }) {
+  const box = el('div', { class: 'view-header' });
   box.append(el('div', { class: 'crumb crumb-row' },
     navMenuButton(),
     crumbPath([...crumbs.map(crumbOfHref), { kind, label: title, icon, current: true }], {
@@ -1009,23 +974,13 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
 
   if (onSaveDescription) {
     const descBox = el('div', { class: 'view-desc' });
-    const titleRow = box.querySelector('.view-title-row');
-    let toggle = null;
-    const syncToggle = (md) => {
-      if (!descriptionKey) return;
-      box.classList.toggle('view-description-toggle', !!md.trim());
-      if (!md.trim()) { toggle?.remove(); toggle = null; descBox.hidden = true; }
-      else if (!toggle) { toggle = descToggle(title, descBox, descriptionKey); titleRow.append(toggle); }
-    };
     const showRendered = async (md) => {
       descBox.classList.remove('editing');
-      syncToggle(md);
       if (!md.trim()) {
-        descBox.replaceChildren(...(descriptionKey ? [] : [el('span', { class: 'view-desc-empty' }, 'Add description…')]));
+        descBox.replaceChildren(el('span', { class: 'view-desc-empty' }, 'Add description…'));
         return;
       }
       const body = el('div', { class: 'view-desc-body wv-prose clamped' });
-      if (descriptionKey) body.classList.add('desc-clamp');
       try {
         const { html } = await api('POST', '/markdown', { md });
         body.innerHTML = html;
@@ -1033,7 +988,6 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         body.textContent = md;
       }
       descBox.replaceChildren(body);
-      if (descriptionKey) { requestAnimationFrame(() => foldDescription(body)); return; }
       if (body.scrollHeight > body.clientHeight + 1) {
         const more = el('button', { class: 'view-desc-more', type: 'button' }, 'Show more');
         more.addEventListener('click', () => {
@@ -1049,7 +1003,6 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     const startEdit = () => {
       if (descBox.classList.contains('editing')) return;
       descBox.classList.add('editing');
-      descBox.hidden = false;
       const ta = el('textarea', { class: 'view-desc-edit', placeholder: 'Description (markdown)…' });
       ta.value = current;
       const save = async () => {
@@ -1066,7 +1019,6 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
       descBox.replaceChildren(ta);
       requestAnimationFrame(() => { ta.focus(); ta.style.height = Math.max(38, ta.scrollHeight) + 'px'; });
     };
-    box.editDescription = startEdit;
     descBox.addEventListener('click', (e) => { if (!e.target.closest('a,textarea,button')) startEdit(); });
     showRendered(current);
     box.append(descBox);
@@ -2600,11 +2552,6 @@ const MENU_ROWS = {
       }, 'Save'),
     },
     forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => formsDialog(db) } : null,
-    description: !db.description?.trim() ? { label: 'Add description…', run: async () => {
-      if (state.route?.page !== 'db' || state.route.dbId !== db.id) history.pushState(null, '', `#/table/${db.id}`);
-      await showDatabase(db.id);
-      $('#main .view-header')?.editDescription?.();
-    } } : null,
     'create-link': db.system ? null : { label: 'Copy create link', run: () => copyText(weavePrefill.link(prefillBase(db), filterSeed(db)), 'Create link copied') },
     export: globalThis.menuCore.exportSection({ name: db.name, serves: ['csv'], href: () => `${WS_PREFIX}/api/tables/${db.id}/export.csv` }),
     delete: db.system ? null : trashRow({
@@ -4617,7 +4564,6 @@ function tableChrome(db, trashCount) {
       await showDatabase(db.id, state.route.view);
     },
     description: db.description,
-    descriptionKey: `wv.desc.${db.id}.table`,
     onSaveDescription: async (md) => {
       await api('PATCH', `/tables/${db.id}`, { description: md });
       await loadSchema();
@@ -10534,12 +10480,11 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       wireBlock(f.name, section, [section.querySelector('.opt-grip'), section.querySelector('.doc-section-head')]);
       continue;
     }
-    const note = fieldDescription(f) ? el('div', { class: 'fieldrow-note' }, el('div', { class: 'desc-clamp clamped' }, fieldDescription(f))) : null;
     const node = el('div', { class: 'fieldrow' },
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
-      el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) },
-        fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null),
-      labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }), note);
+      el('label', { class: 'fieldrow-label', title: fieldDescription(f) ? `${fieldDescription(f)}\n\nEdit field` : 'Edit field', onclick: () => editFieldDialog(db, f) },
+        fieldNameLabel(f, f.name, db), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
+      labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }));
     if (f.type === 'attachments') {
       node.classList.add('attach-block');
       wireBlock(f.name, node, [node.querySelector('.opt-grip')]);

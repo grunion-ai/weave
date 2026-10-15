@@ -14,7 +14,7 @@ const s = await launch('menu triggers', (weave) => {
 });
 
 const ROWS = {
-  table: ['Add description…', 'Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Move to trash'],
+  table: ['Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Move to trash'],
   record: ['Duplicate', 'Share…', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
   doc: ['Markdown', 'Mermaid', 'HTML', 'PDF'],
   space: ['Move to trash'],
@@ -40,11 +40,7 @@ if (s) {
   };
   const via = (sel, how = 'click') => async (page) => {
     await page.waitForSelector(sel, { state: 'attached' });
-    if (how === 'corner') {
-      const target = page.locator(sel).first();
-      const bounds = await target.boundingBox();
-      await target.click({ button: 'right', position: { x: bounds.width - 2, y: bounds.height - 2 } });
-    } else if (how === 'right') await page.locator(sel).first().click({ button: 'right', force: true });
+    if (how === 'right') await page.locator(sel).first().click({ button: 'right', force: true });
     else await page.locator(sel).first().click({ force: true });
     await page.waitForSelector(MENU);
     const rows = await read(page);
@@ -58,7 +54,7 @@ if (s) {
       kind: 'table', hash: `#/table/${tableId}`, ready: '#main .wv-grid',
       triggers: {
         'header ⋮': via('#main .crumb-actions .dots-btn[title="Table actions"]'),
-        'header right-click': via('#main .view-header', 'corner'),
+        'header right-click': via('#main .view-header .view-desc', 'right'),
         'nav row ⋮': via(`#nav .nav-db[data-db="${tableId}"] .nav-db-menu .dots-btn`),
         'nav row right-click': via(`#nav .nav-db[data-db="${tableId}"]`, 'right'),
       },
