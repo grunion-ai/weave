@@ -59,9 +59,9 @@ if (s) {
     await page.waitForSelector('.chip-pop .foot-row');
     const offered = await page.locator('.chip-pop .foot-row').evaluateAll((rows) => rows.map((r) => r.dataset.agg));
     assert.deepEqual(offered, ['sum', 'avg', 'median', 'min', 'max', 'stdev', 'range', 'filled', 'empty']);
-    assert.equal(await page.getAttribute('.chip-pop .foot-row[data-agg="sum"]', 'aria-checked'), 'true', 'the existing rollup reads as on');
+    assert.equal(await page.isChecked('.chip-pop .foot-row[data-agg="sum"] input'), true, 'the existing rollup reads as on');
     await page.click('.chip-pop .foot-row[data-agg="avg"]');
-    await page.waitForFunction(() => document.querySelector('.chip-pop .foot-row[data-agg="avg"]')?.getAttribute('aria-checked') === 'true');
+    await page.waitForFunction(() => document.querySelector('.chip-pop .foot-row[data-agg="avg"] input')?.checked === true);
     assert.ok(spaceRollups().includes('Sessions · Cost · avg'), `the switch wrote a field on the Spaces row: ${spaceRollups()}`);
     await page.waitForFunction(() => document.querySelectorAll('thead tr.wv-foot td.foot-cell[data-col="Cost"] .foot-stat').length === 2);
     const vals = await footCell(page, 'Cost').locator('.foot-val').allInnerTexts();
@@ -163,7 +163,7 @@ if (s) {
     await page.click('.crumb-actions .eye-btn');
     const sw = () => page.locator('.chip-pop .eye-row', { hasText: 'Σ rollup row' });
     await sw().waitFor();
-    assert.equal(await sw().getAttribute('aria-checked'), 'true');
+    assert.equal(await sw().locator('input').isChecked(), true);
     await sw().click();
     await page.waitForFunction(() => !document.querySelector('tr.wv-foot'));
     assert.equal(await page.locator('.wv-foot, tfoot').count(), 0, 'no Σ row anywhere');
@@ -174,7 +174,7 @@ if (s) {
     assert.equal(await page.locator('tr.wv-foot').count(), 0, 'still hidden after a reload');
     await page.click('.crumb-actions .eye-btn');
     await sw().waitFor();
-    assert.equal(await sw().getAttribute('aria-checked'), 'false');
+    assert.equal(await sw().locator('input').isChecked(), false);
     await sw().click();
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     assert.equal(weave.tableView(sessions.id).views[0].rollups, true, 'shown is stored too (Issue #249)');
@@ -189,7 +189,7 @@ if (s) {
     await page.click('.crumb-actions .eye-btn');
     const sw = () => page.locator('.chip-pop .eye-row', { hasText: 'Σ rollup row' });
     await sw().waitFor();
-    assert.equal(await sw().getAttribute('aria-checked'), 'false', 'the switch reads off');
+    assert.equal(await sw().locator('input').isChecked(), false, 'the box reads off');
     await sw().click();
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     assert.equal(await footCell(page, 'Cost').locator('.foot-val').innerText(), '3');
@@ -215,7 +215,7 @@ if (s) {
     });
     return seen;
   };
-  const aria = (page, agg) => page.getAttribute(`.chip-pop .foot-row[data-agg="${agg}"]`, 'aria-checked');
+  const aria = (page, agg) => page.isChecked(`.chip-pop .foot-row[data-agg="${agg}"] input`).then(String);
   const costFigures = (page) => footCell(page, 'Cost').locator('.foot-stat').count();
 
   test('a Σ switch flips before its write answers, and only its column is read back (Issue #235)', async () => {
@@ -233,8 +233,7 @@ if (s) {
     await page.evaluate(() => { window.gridBody = document.querySelector('.wv-grid tbody'); });
     seen.length = 0;
     await page.click('.chip-pop .foot-row[data-agg="median"]');
-    assert.equal(await aria(page, 'median'), 'true', 'the switch flipped on the click');
-    assert.ok(await page.$('.chip-pop .foot-row[data-agg="median"] .switch.on'), 'and wears it');
+    assert.equal(await aria(page, 'median'), 'true', 'the box ticked on the click');
     await until(() => reads === 1, 'the read-back');
     assert.ok(spaceRollups().includes('Sessions · Cost · median'), 'the write landed while the read is still out');
     assert.equal(await aria(page, 'median'), 'true', 'still on while the figures are out');
@@ -299,8 +298,7 @@ if (s) {
     await page.click('.chip-pop .foot-row[data-agg="range"]');
     assert.equal(await aria(page, 'range'), 'true', 'optimistic: on at the click');
     release();
-    await page.waitForFunction(() => document.querySelector('.chip-pop .foot-row[data-agg="range"]')?.getAttribute('aria-checked') === 'false');
-    assert.equal(await page.$('.chip-pop .foot-row[data-agg="range"] .switch.on'), null, 'the knob went back too');
+    await page.waitForFunction(() => document.querySelector('.chip-pop .foot-row[data-agg="range"] input')?.checked === false);
     assert.match(await page.locator('.wv-toast.err').first().innerText(), /the disk is full/);
     assert.ok(!spaceRollups().includes('Sessions · Cost · range'));
     assert.equal(await costFigures(page), before, 'the footer kept its figures');

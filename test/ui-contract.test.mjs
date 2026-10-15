@@ -729,11 +729,11 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(eyeFn, /if \(redraw\) await redraw\(\);/, 'the popover redraws whatever view opened it');
   assert.match(eyeFn, /rowsSection \? \[/, 'the Rows section is optional');
   assert.match(eyeFn, /pop\.relearnEye = refresh/, 'a flip teaches the rows in place');
-  assert.match(eyeFn, /showSwitch\(r\.querySelector\('\.eye-row'\), shown\.has\(r\.dataset\.field\)\)/, 'each row wears the new switch state');
+  assert.match(eyeFn, /r\.querySelector\('input'\)\.checked = shown\.has\(r\.dataset\.field\)/, 'each row wears the new checkbox state');
   assert.doesNotMatch(eyeFn, /replaceChildren/, 'and never swaps them wholesale');
   assert.doesNotMatch(eyeFn, /fieldVisibilityPopover\(again/, 'the close-and-reopen dance is gone');
   const relearn = fnBody('relearnRows');
-  assert.match(relearn, /classList\.toggle\('on', on\)/, 'a taught row wears the new switch state');
+  assert.match(relearn, /querySelector\('input'\)\.checked = next\[i\]\.querySelector\('input'\)\.checked/, 'a taught row wears the new checkbox state');
   assert.match(relearn, /pop\.replaceChildren\(\.\.\.next\)/, 'a row set that changed is still rebuilt');
   assert.match(fnBody('footerPicker'), /relearnRows\(pop, build\(\)/, 'the Σ picker shares the one tail');
   assert.equal(rulesFor('.entity-head')['margin-bottom'], '0',
@@ -1288,7 +1288,7 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   assert.match(eye, /return \{ table: \{ \[key\]: \[\.\.\.next\] \} \};/, 'one table write per flip');
   assert.match(eye, /deleted: !showsDeleted\(t\)/, 'deleted rows are a view switch');
   assert.match(eye, /rollups: !showsRollups\(t\)/, 'the Σ row switch is read live from the view (Issues #240, #442)');
-  assert.match(eye, /switchRow\(showsRollups\(db\), 'Σ rollup row'/, 'the switch reads on only when the view or table opted in');
+  assert.match(eye, /checkRow\(showsRollups\(db\), 'Σ rollup row'/, 'the box reads checked only when the view or table opted in');
   assert.match(fnBody('renderTable'), /showsRollups\(db\) \? renderFooter\(db, cols\) : null/, 'no Σ row until the view or table opts in (Issues #249, #442)');
   assert.match(readFileSync(join(ROOT, 'public/app.js'), 'utf8'), /const showsRollups = \(db\) => !db\.system && \(db\.view && !db\.view\.blank && typeof db\.view\.rollups === 'boolean' \? db\.view\.rollups : db\.hideRollups === false\);/, 'the view decides; a silent view follows the table opt-in');
   assert.match(eye, /new Set\(t\.hiddenFields \?\? \[\]\)/, 'the hidden set is read from the table the turn hands over');
@@ -1357,30 +1357,41 @@ test('lookup / rollup pick their relation and target field from what exists; no 
   assert.doesNotMatch(fnBody('drawDatabase'), /🗑/, 'the eyeball shows deleted rows; the toolbar badge is gone');
 });
 
-test('the view controls sit on the crumb line; Fields has a bundled eye icon and visibility switches', () => {
+test('the view controls sit on the crumb line; Fields has a bundled eye icon and visibility checkboxes', () => {
   const vh = fnBody('viewHeader');
   assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.actions\.filter\(Boolean\)/, 'actions render beside the crumb');
   assert.doesNotMatch(vh, /titleInput, \.\.\.actions/, 'and no longer on the title row');
-  assert.match(fnBody('fieldVisibilityPopover'), /class: 'switch' \+ \(on \? ' on' : ''\)/, 'rows are toggle switches');
+  assert.match(fnBody('fieldVisibilityPopover'), /el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'rows are the shared checkbox (Issue #915)');
   assert.match(fnBody('tableChrome'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');
   assert.match(fnBody('tableControlButton'), /lucideEl\(icon\)/, 'toolbar controls use the bundled icon renderer');
   assert.doesNotMatch(fnBody('fieldVisibilityPopover'), /field-visible-check/, 'and no hand-drawn box');
   assert.ok(rulesFor('.switch.on').background?.includes('--tblr-primary'));
 });
 
-test('one builder draws the Fields menu for the table and the record, in switch rows (Issue #910)', () => {
+test('one builder draws the Fields menu for the table and the record, in checkbox rows (Issues #910, #915)', () => {
   assert.doesNotMatch(APP, /function tableFieldsPopover\(/, 'the second builder is gone');
   assert.match(fnBody('tableChrome'), /fieldVisibilityPopover\(eye, ref\.db, ref\.trashCount\)/, 'the table opens it');
   assert.match(fnBody('renderEntityView'), /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false \}\)/, 'the record opens it');
   const eye = fnBody('fieldVisibilityPopover');
   assert.match(eye, /tableControlPopover\(anchor, db, 'table-fields-popover'/, 'one shell for both surfaces');
-  assert.match(eye, /role: 'switch'/, 'every row is a switch');
-  assert.doesNotMatch(eye, /type: 'checkbox'/, 'and none is a checkbox');
+  assert.match(eye, /el\('label', \{ class: 'chip-pop-row eye-row', dataset \},\s*el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'every row is a label holding the shared checkbox');
+  assert.doesNotMatch(eye, /role: 'switch'|class: 'switch|showSwitch/, 'and none is a switch');
   assert.match(eye, /startRowDrag\(/, 'rows drag wherever field order is writable');
   assert.match(eye, /fieldOrder: order\.filter\(isField\)/, 'the record writes the table field order');
 });
 
-test('the Fields list reserves its scrollbar gutter and insets its switches to match the grip (Issue #909)', () => {
+test('show/hide lists in popovers use the checkbox; settings keep the switch (Issue #915)', () => {
+  const foot = fnBody('footerPicker');
+  assert.match(foot, /el\('label', \{\s*class: 'chip-pop-row eye-row foot-row'/, 'a Σ picker row is a label');
+  assert.match(foot, /el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'holding the shared checkbox');
+  assert.doesNotMatch(foot, /role: 'switch'|class: 'switch|switch-knob/, 'and no switch');
+  assert.doesNotMatch(APP, /function showSwitch\(/, 'the switch painter for show/hide rows is gone');
+  assert.match(fnBody('showPopover'), /o\.matches\('label'\) \? o\.querySelector\('input'\)/, 'the arrow keys walk the checkbox inside a label row');
+  assert.match(fnBody('menuRow'), /it\.switch != null \? el\('span', \{ class: `switch/, 'a settings row keeps its switch');
+  assert.match(fnBody('toggleSwitch'), /role: 'switch'/, 'a boolean field value keeps its switch');
+});
+
+test('the Fields list reserves its scrollbar gutter and insets its rows to match the grip (Issue #909)', () => {
   const list = rulesFor('.table-field-list');
   assert.equal(list['scrollbar-gutter'], 'stable', 'rows do not shift when the list starts scrolling');
   assert.equal(px(list['padding-right']), px(rulesFor('.field-reorder-handle').padding), 'the right inset matches the grip inset on the left');
@@ -1825,4 +1836,24 @@ test('no searchPicker call types its own placeholder, and the chip pickers title
   assert.match(fnBody('chipPicker'), /title: field\?\.name/, 'chipPicker titles the picker with the field name');
   assert.match(fnBody('chipPickerMulti'), /title: field\?\.name/, 'chipPickerMulti titles the picker with the field name');
   assert.doesNotMatch(fnBody('searchPicker'), /st\.staged\.length \? '' : placeholder/, 'a set value keeps the hint');
+});
+
+test('the date picker steps sideways: date-pop-arrow never renders ↑ or ↓ (Issue #801)', () => {
+  const body = fnBody('datePopover');
+  const arrows = [];
+  for (let at = body.indexOf("class: 'date-pop-arrow'"); at >= 0; at = body.indexOf("class: 'date-pop-arrow'", at + 1)) {
+    const start = body.lastIndexOf("el('button'", at);
+    let depth = 0, end = start + 2;
+    for (; end < body.length; end++) {
+      if (body[end] === '(') depth++;
+      else if (body[end] === ')' && --depth === 0) break;
+    }
+    arrows.push(body.slice(start, end + 1));
+  }
+  assert.equal(arrows.length, 6, 'month, year and decade steps, back and forward');
+  for (const a of arrows) assert.doesNotMatch(a, /[↑↓]/, a);
+  assert.equal(arrows.filter((a) => a.includes("'‹'")).length, 3, 'three steps back');
+  assert.equal(arrows.filter((a) => a.includes("'›'")).length, 3, 'three steps forward');
+  assert.match(body, /'aria-label': 'Previous month'/);
+  assert.match(body, /'aria-label': 'Next month'/);
 });

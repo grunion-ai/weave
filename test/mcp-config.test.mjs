@@ -168,3 +168,12 @@ test('a comment can be taken back', () => {
   call(w, 'weave_delete_comment', { entity: e.id, comment: c.id ?? call(w, 'weave_get_entity', { entity: e.id }).comments[0].id });
   assert.deepEqual(call(w, 'weave_get_entity', { entity: e.id }).comments, []);
 });
+test('weave_apply_schema with partial adds a space and leaves the existing ones, without it the same document is refused', () => {
+  const doc = [{ space: 'Design', tables: [] }];
+  assert.throws(() => call(workspace(), 'weave_apply_schema', { document: doc }), /would delete space 'Ops'/);
+  const w = workspace();
+  const { plan } = call(w, 'weave_apply_schema', { document: doc, partial: true });
+  assert.ok(plan.some((p) => p.action === 'create-space' && p.subject === 'Design'), JSON.stringify(plan));
+  assert.ok(w.getSpace('Design') && w.getSpace('Ops'));
+  assert.ok(call(w, 'weave_schema').some((s) => s.space === 'Ops' && s.tables.some((t) => t.name === 'Invoice')));
+});

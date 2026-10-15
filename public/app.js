@@ -1515,7 +1515,7 @@ function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) 
   pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
   dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: owns, close: () => pop.remove() });
 
-  const opts = [...pop.querySelectorAll('.chip-pop-row')];
+  const opts = [...pop.querySelectorAll('.chip-pop-row')].map((o) => (o.matches('label') ? o.querySelector('input') ?? o : o));
   const focusAt = (i) => opts[((i % opts.length) + opts.length) % opts.length].focus();
   pop.addEventListener('keydown', (ev) => {
     const i = opts.indexOf(document.activeElement);
@@ -1543,9 +1543,7 @@ function relearnRows(pop, next, refocus = null) {
   if (shape(live) === shape(next)) {
     live.forEach((node, i) => {
       if (!node.classList.contains('eye-row')) return;
-      const on = next[i].getAttribute('aria-checked') === 'true';
-      node.setAttribute('aria-checked', on ? 'true' : 'false');
-      node.querySelector('.switch')?.classList.toggle('on', on);
+      node.querySelector('input').checked = next[i].querySelector('input').checked;
     });
     return;
   }
@@ -1668,7 +1666,15 @@ function searchPicker({ anchor = null, title = '', placeholder: given = null, op
           if (multi) apply(core.removeId(st, x.id)); else pick({ id: clearId, label: clearId });
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null)));
-    const clearable = !multi && !!clearId && !!st.staged.length;
+    if (multi) {
+      foot.replaceChildren(
+        el('span', { class: 'picker-count', 'aria-live': 'polite' }, `${st.staged.length} selected`),
+        el('button', { class: 'picker-done', type: 'button', onclick: (ev) => { ev.stopPropagation(); commit(); } },
+          'Done ', el('kbd', { class: 'picker-key' }, '↵')));
+      foot.hidden = false;
+      return;
+    }
+    const clearable = !!clearId && !!st.staged.length;
     foot.replaceChildren(...(clearable ? [el('kbd', { class: 'picker-key' }, '⌫'), ' clear'] : []));
     foot.hidden = !clearable;
   };
@@ -3354,12 +3360,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   }
   if (f.type === 'date') {
     return dateControl({
-      value: item.raw?.[f.name] ?? '', costume: f,
+      value: item.raw?.[f.name] ?? '', title: f.name, costume: f,
       placeholder: 'type a date…', onChange: (iso) => patch(iso),
     });
   }
   if (f.type === 'daterange') {
-    return rangeControl({ value: item.raw?.[f.name] ?? null, costume: f, compact, onChange: (r) => patch(r) });
+    return rangeControl({ value: item.raw?.[f.name] ?? null, title: f.name, costume: f, compact, onChange: (r) => patch(r) });
   }
   const rawVal = item.raw?.[f.name] ?? val;
   if (rawVal != null && typeof rawVal === 'object') {
@@ -5223,11 +5229,6 @@ function eyeGesture(hold) {
   let done = false;
   return () => { if (done) return; done = true; eyeGestures--; hold(); };
 }
-function showSwitch(node, on = node.getAttribute('aria-checked') !== 'true') {
-  node.setAttribute('aria-checked', on ? 'true' : 'false');
-  node.querySelector('.switch')?.classList.toggle('on', on);
-}
-
 function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
   let pop;
   const home = anchor.closest('#main, #dock');
@@ -5311,19 +5312,18 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       return { fields: order.filter((n) => (t.columns ?? []).includes(n)) };
     });
   };
-  const switchRow = (on, label, run, dataset = {}) => el('button', {
-    class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false', dataset,
-    onclick: (e) => { showSwitch(e.currentTarget); run(); },
-  }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
+  const checkRow = (on, label, run, dataset = {}) => el('label', { class: 'chip-pop-row eye-row', dataset },
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: run }),
+    el('span', { class: 'eye-label' }, label));
   const gap = () => el('span', { class: 'field-reorder-gap', 'aria-hidden': 'true' });
   const makeRow = (name, on) => {
-    const toggle = switchRow(on, name, () => flip(name));
+    const toggle = checkRow(on, name, () => flip(name));
     if (!db.view && !isField(name)) return el('div', { class: 'table-field-row', dataset: { field: name } }, gap(), toggle);
     const handle = el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
     const row = el('div', { class: 'table-field-row', dataset: { field: name } }, handle, toggle);
     RO().guard(row);
     row.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || e.target.closest('.switch') || db.view?.blank) return;
+      if (e.button !== 0 || e.target.closest('input') || db.view?.blank) return;
       startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
     });
     row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
@@ -5348,11 +5348,11 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       if (before) { order.splice(order.indexOf(before), 0, name); list.querySelector(`[data-field="${CSS.escape(before)}"]`).before(row); }
       else { order.push(name); list.append(row); }
     }
-    for (const r of list.querySelectorAll('.table-field-row')) showSwitch(r.querySelector('.eye-row'), shown.has(r.dataset.field));
-    const deleted = pop.querySelector('[data-deleted]');
-    if (deleted) showSwitch(deleted, showsDeleted(t));
-    const rollups = pop.querySelector('[data-rollups]');
-    if (rollups) showSwitch(rollups, showsRollups(t));
+    for (const r of list.querySelectorAll('.table-field-row')) r.querySelector('input').checked = shown.has(r.dataset.field);
+    const deleted = pop.querySelector('[data-deleted] input');
+    if (deleted) deleted.checked = showsDeleted(t);
+    const rollups = pop.querySelector('[data-rollups] input');
+    if (rollups) rollups.checked = showsRollups(t);
   };
   const shown = shownOf(liveTable());
   const rows = [tableControlHeader('Fields', () => pop?.remove()),
@@ -5364,8 +5364,8 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
     ...(rowsSection ? [el('div', { class: 'table-field-foot' },
       el('div', { class: 'eye-head' }, 'Rows'),
-      el('div', { class: 'table-field-line' }, gap(), switchRow(showsDeleted(db), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => write((t) => ({ deleted: !showsDeleted(t) })), { deleted: '' })),
-      ...(db.system ? [] : [el('div', { class: 'table-field-line' }, gap(), switchRow(showsRollups(db), 'Σ rollup row', () => write((t) => ({ rollups: !showsRollups(t) })), { rollups: '' }))]))] : []),
+      el('div', { class: 'table-field-line' }, gap(), checkRow(showsDeleted(db), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => write((t) => ({ deleted: !showsDeleted(t) })), { deleted: '' })),
+      ...(db.system ? [] : [el('div', { class: 'table-field-line' }, gap(), checkRow(showsRollups(db), 'Σ rollup row', () => write((t) => ({ rollups: !showsRollups(t) })), { rollups: '' }))]))] : []),
   ];
   pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
   if (pop) { pop.eyeOf = db.id; pop.relearnEye = refresh; }
@@ -6805,7 +6805,7 @@ async function editPhoneField(anchor, db, eid, name) {
       case 'date': {
         const c = { ...f };
         const { store, local } = dateStoreFns(c);
-        return datePopover({ anchor, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) });
+        return datePopover({ anchor, title: f.name, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) });
       }
       case 'value': {
         const percent = f.type === 'number' && f.format === 'percent';
@@ -7125,7 +7125,7 @@ function textWidth(str, node) {
   measureCtx.font = font;
   return measureCtx.measureText(str).width;
 }
-function dateControl({ value = '', time = false, format = 'iso', costume = null, placeholder = 'type a date…', onChange, compact = true }) {
+function dateControl({ value = '', title = '', time = false, format = 'iso', costume = null, placeholder = 'type a date…', onChange, compact = true }) {
   const dc = weaveDateCore;
   const c = costume ? { ...costume } : { time, format };
   format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
@@ -7163,7 +7163,7 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
     type: 'button', class: 'date-pick-btn', title: timeOnly ? 'Pick a time' : 'Pick from the calendar', 'aria-label': timeOnly ? 'Pick a time' : 'Open calendar',
     onclick: (e) => {
       e.stopPropagation();
-      datePopover({ anchor: btn, value: local(), costume: c, onPick: (localIso) => {
+      datePopover({ anchor: btn, title, value: local(), costume: c, onPick: (localIso) => {
         try { set(localIso == null ? null : store(localIso)); } catch (err) { toast(err.message, true); }
       } });
     },
@@ -7186,7 +7186,7 @@ function dateStoreFns(c) {
   };
 }
 
-function rangeControl({ value = null, costume, compact = true, placeholder = 'start – end', onChange }) {
+function rangeControl({ value = null, title = '', costume, compact = true, placeholder = 'start – end', onChange }) {
   const dc = weaveDateCore;
   const c = { ...costume };
   const view = { ...c, viewerZone: LOCAL_ZONE };
@@ -7217,7 +7217,7 @@ function rangeControl({ value = null, costume, compact = true, placeholder = 'st
     onclick: (e) => {
       e.stopPropagation();
       datePopover({
-        anchor: btn, costume: c, range: true,
+        anchor: btn, title, costume: c, range: true,
         value: current ? { start: local(current.start), end: local(current.end) } : null,
         onPick: (r) => {
           try { set(r ? orderRange({ start: store(r.start), end: store(r.end) }) : null); } catch (err) { toast(err.message, true); }
@@ -7274,7 +7274,7 @@ function calendarGlyph() {
   return svg;
 }
 
-function datePopover({ anchor, value, time, format, costume = null, range = false, onPick }) {
+function datePopover({ anchor, title = '', value, time, format, costume = null, range = false, onPick }) {
   const dc = weaveDateCore;
   const c = costume ?? { time, format };
   time = !!c.time;
@@ -7392,8 +7392,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
         el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, dc.MONTHS_LONG[m - 1], lucideEl('chevron-down', 'wv-icon wv-icon-xs')),
         hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, String(y), lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span'),
         el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '↑'),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '↓')));
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '‹'),
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '›')));
       const grid = el('div', { class: 'date-grid' }, ...dc.WEEKDAYS.map((d) => el('span', { class: 'date-wd' }, d)));
       for (const week of dc.calendarMonth(y, m)) {
         for (const cell of week) {
@@ -7434,8 +7434,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
         hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, String(y), hasD ? null : lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span', { class: 'date-pop-title' }, 'Month'),
         el('span', { class: 'date-pop-spacer' }),
         ...(hasY ? [
-          el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
-          el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y++; draw(); } }, iconEl('↓'))] : [])));
+          el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous year', onclick: () => { y--; draw(); } }, '‹'),
+          el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next year', onclick: () => { y++; draw(); } }, '›')] : [])));
       body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => {
         const iso = `${y}-${pad(i + 1)}-01`;
         return el('button', {
@@ -7454,8 +7454,8 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
       body.append(el('div', { class: 'date-pop-head' },
         el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasM) { view = hasD ? 'days' : 'months'; draw(); } } }, `${years[0]}–${years[years.length - 1]}`),
         el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase -= 10; draw(); } }, iconEl('↑')),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase += 10; draw(); } }, iconEl('↓'))));
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous decade', onclick: () => { decadeBase -= 10; draw(); } }, '‹'),
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next decade', onclick: () => { decadeBase += 10; draw(); } }, '›')));
       body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => {
         const iso = `${yr}-01-01`;
         return el('button', {
@@ -7472,7 +7472,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   }
   draw();
   const smarts = range ? [smartFor('start'), smartFor('end')] : [smartFor('start')];
-  pop.append(...smarts, body);
+  pop.append(...(title ? [el('div', { class: 'picker-title' }, title)] : []), ...smarts, body);
   document.body.append(pop);
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
@@ -8440,14 +8440,14 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         body.append(seg);
         if (kind === 'specific') {
           body.append(dateControl({
-            value: state.default, costume: fdc.dateCostume(state.date, t), compact: false,
+            value: state.default, title: 'Default', costume: fdc.dateCostume(state.date, t), compact: false,
             onChange: (iso) => { state.default = iso ?? ''; changed(); },
           }));
         }
         kids.push(dsection('Default', body));
       } else if (t === 'daterange') {
         kids.push(dsection('Default', rangeControl({
-          value: fdc.rangeDefault(state.default), costume: fdc.dateCostume(state.date, t), compact: false,
+          value: fdc.rangeDefault(state.default), title: 'Default', costume: fdc.dateCostume(state.date, t), compact: false,
           placeholder: 'No default — pick a range',
           onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; changed(); },
         })));
@@ -8772,11 +8772,9 @@ async function footerPicker(anchor, db, col) {
       }
     }
   };
-  const flip = (node) => {
-    const agg = node.dataset.agg;
-    const on = node.getAttribute('aria-checked') !== 'true';
-    node.setAttribute('aria-checked', on ? 'true' : 'false');
-    node.querySelector('.switch')?.classList.toggle('on', on);
+  const flip = (box) => {
+    const agg = box.closest('.foot-row').dataset.agg;
+    const on = box.checked;
     const turn = eyeWrites.then(async () => {
       try { await write(agg, on); } catch (err) { toast(err.message, true); }
       if (eyeTails.get(tailKey) === turn) await load().catch(() => {});
@@ -8786,23 +8784,22 @@ async function footerPicker(anchor, db, col) {
     turn.then(() => {
       if (eyeTails.get(tailKey) !== turn) return;
       eyeTails.delete(tailKey);
-      if (pop.isConnected) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
+      if (pop.isConnected) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"] input`)?.focus());
       fillFooter(db, anchor.closest('tr.wv-foot'), rollups, { col });
     });
   };
   const row = (agg) => {
     const on = !!have(agg);
-    return el('button', {
-      class: 'chip-pop-row eye-row foot-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
-      dataset: { agg },
-      onclick: (e) => { e.stopPropagation(); flip(e.currentTarget); },
-    }, el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg),
-    el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
+    return el('label', {
+      class: 'chip-pop-row eye-row foot-row', dataset: { agg },
+      onclick: (e) => e.stopPropagation(),
+    }, el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: (e) => flip(e.currentTarget) }),
+    el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg));
   };
   const build = () => [
     el('div', { class: 'chip-pop-title' }, `${col} · space rollups`),
     ...aggs.map(row),
-    el('div', { class: 'chip-pop-note' }, 'Each switch is a rollup field on this space\'s row'),
+    el('div', { class: 'chip-pop-note' }, 'Each box is a rollup field on this space\'s row'),
   ];
   const opened = eyeWrites.then(load);
   eyeWrites = opened.catch(() => {});

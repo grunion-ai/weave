@@ -66,6 +66,7 @@ export function foldRepo(root, { date = new Date().toLocaleDateString('en-CA') }
   return { version, folded: names.length, changed: after !== before };
 }
 
+const EM_DASH = '\u2014';
 export const VERSION_HEADING = /^## v\d+\.\d+\.\d+ \(\d{4}-\d{2}-\d{2}\)$/;
 
 export function changelogGuard({ addedLines = [], versionBefore, versionAfter }) {
@@ -79,8 +80,13 @@ const CODE_PATH = /^(?:src|public|bin|scripts)\//;
 const SUBJECT_ROW = /\((?:Issue|Feature)s? #\d+/;
 const NO_CHANGELOG = /^No-changelog:[ \t]*\S/m;
 
-export function fragmentGuard({ subject = '', message = '', files = [], fragmentsAdded = 0, versionBefore, versionAfter }) {
+export function fragmentGuard({ subject = '', message = '', files = [], fragmentsAdded = 0, addedFragments = [], versionBefore, versionAfter }) {
   if (versionBefore !== versionAfter) return null;
+  const dashed = addedFragments.filter((f) => f.text.includes(EM_DASH));
+  if (dashed.length) {
+    return `${dashed.map((f) => `changelog.d/${f.name}`).join(', ')} carries U+2014 (the em dash), which the house prose rule bans in release notes. `
+      + 'Rewrite each one with a comma, colon, parentheses or a hyphen, whichever reads right in its own sentence.';
+  }
   if (fragmentsAdded || !SUBJECT_ROW.test(subject) || NO_CHANGELOG.test(message)) return null;
   const code = files.find((f) => CODE_PATH.test(f));
   if (!code) return null;
