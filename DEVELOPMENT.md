@@ -76,8 +76,14 @@ red shard, and CI owns verification. Never invoke bare `node --test`; empty
 selections must fail before Node starts. The shared test manager serializes
 local browser work across worktrees.
 Use `npm test -- --status` to inspect the queue and cancel only your own job.
-Browser assertions use `styleOf` or `settled` from `test/lib/browser.mjs`, never
-fixed sleeps. `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
+Browser assertions use `styleOf`, `settled` or `atRest` from
+`test/lib/browser.mjs`, never fixed sleeps. `settled` reads the animations
+running right now, so it answers at once when the interaction has cleared an
+inline transform and the transition it starts has not been resolved yet.
+`atRest(locator)` is the wait for that: it holds until the element has no
+running animation, its transform is identity and its box has stayed put for a
+frame (Issue #901).
+`WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
 Retries remain visible in test output; repeated flakiness gets a tracker issue.
 
 ### Sheriff
