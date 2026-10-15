@@ -86,6 +86,7 @@ if (s) {
     weave.tableView(`${table.id}/Standard`, { fields: ['Name', 'Description', 'Owner', 'Status'], filters: {}, sort: [], search: '', density: 'comfortable' });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/#/table/${table.id}${view}`, { waitUntil: 'networkidle' });
+    await page.click('.view-title-row .desc-info');
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.waitForSelector('.view-desc .view-desc-body');
     await page.route('**/markdown', async (route) => { await new Promise((r) => setTimeout(r, 120)); await route.continue(); });

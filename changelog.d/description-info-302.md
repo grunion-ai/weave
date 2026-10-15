@@ -1,0 +1,2 @@
+- Table and field descriptions open from a raised info icon, fold after three lines, and remember each viewer's open notes. Empty table descriptions start from Add description in the table menu (Feature #302).
+- Long grid URLs and date values stay reachable by horizontal scrolling, including when compact table headers expose more rows (Issue #897).
