@@ -8,7 +8,7 @@ const s = await launch('activity panel placement', (weave) => {
   const t = weave.createTable({ space: 'Dev', name: 'Issue' });
   weave.addField(t, { name: 'Severity', type: 'select', config: { options: ['Low', 'High'] } });
   tableId = t.id;
-  rowId = weave.createEntity(t, { name: 'Panel placement', doc: 'a description long enough to fill the body of the record', values: { Severity: 'Low' } }).id;
+  rowId = weave.createEntity(t, { name: 'Panel placement', doc: ['a description long enough to fill the body of the record', ...Array.from({ length: 40 }, (_, n) => `Paragraph ${n} keeps the record taller than the view.`)].join('\n\n'), values: { Severity: 'Low' } }).id;
   weave.updateEntity(rowId, { Severity: 'High' });
   for (let n = 0; n < 6; n++) weave.createEntity(t, { name: `Row ${n}`, values: { Severity: 'Low' } });
 });
@@ -32,6 +32,38 @@ const measure = (page, mountSel) => page.evaluate((sel) => {
     hit: !!document.elementFromPoint(aside.getBoundingClientRect().left + 20, aside.getBoundingClientRect().top + 20)?.closest('aside.wv-activity'),
   };
 }, mountSel);
+
+const docked = (page, viewSel) => page.evaluate((sel) => {
+  const view = document.querySelector(sel);
+  const aside = view.querySelector(':scope > aside.wv-activity');
+  const vr = view.getBoundingClientRect();
+  const inner = { left: vr.left + view.clientLeft, top: vr.top + view.clientTop, width: view.clientWidth, height: view.clientHeight };
+  inner.right = inner.left + inner.width; inner.bottom = inner.top + inner.height;
+  const cs = getComputedStyle(aside);
+  const values = [...view.querySelectorAll('.fieldrow > :not(.fieldrow-label), .entity-grid, .view-header .btn, .view-header textarea')].map((n) => n.getBoundingClientRect().toJSON()).filter((r) => r.width && r.height);
+  return {
+    view: inner, pane: aside.getBoundingClientRect().toJSON(), values,
+    radius: cs.borderTopLeftRadius, borders: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth], shadow: cs.boxShadow,
+    scrollable: view.scrollHeight - view.clientHeight,
+  };
+}, viewSel);
+
+const assertDocked = (m, where) => {
+  const near = (a, b) => Math.abs(a - b) <= 1;
+  assert.ok(near(m.pane.right, m.view.right), `${where}: the pane's right edge is the view's (${m.pane.right} vs ${m.view.right})`);
+  assert.ok(near(m.pane.top, m.view.top), `${where}: the pane starts at the view's top (${m.pane.top} vs ${m.view.top})`);
+  assert.ok(near(m.pane.height, m.view.height), `${where}: the pane is the view's full height (${m.pane.height} vs ${m.view.height})`);
+  assert.equal(m.radius, '0px', `${where}: square edges`);
+  assert.deepEqual(m.borders, ['0px', '0px', '0px', '1px'], `${where}: one left border`);
+  assert.equal(m.shadow, 'none', `${where}: no shadow`);
+  const under = m.values.filter((r) => overlap(r, m.pane) > 0);
+  assert.deepEqual(under, [], `${where}: no field value, header control or record body passes under the pane`);
+};
+
+const scrollEnd = async (page, viewSel) => {
+  await page.evaluate((sel) => { const v = document.querySelector(sel); v.scrollTop = v.scrollHeight; }, viewSel);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+};
 
 if (s) {
   const { browser, base } = s;
@@ -62,6 +94,32 @@ if (s) {
     } finally { await p.close(); }
   });
 
+  test('on the full record page the Activity panel is a right-anchored pane, full height, square, and stays docked while the record scrolls (Issue #906)', async () => {
+    const p = await page(`#/entity/${rowId}`);
+    try {
+      await p.waitForSelector('#main textarea.name-edit');
+      await p.click('#main .activity-btn');
+      await p.waitForSelector('aside.wv-activity .wv-act-row');
+      const top = await docked(p, '#main');
+      assert.ok(top.scrollable > 100, `the record is taller than the view (${top.scrollable}px to scroll)`);
+      assertDocked(top, 'at the top');
+      await scrollEnd(p, '#main');
+      assertDocked(await docked(p, '#main'), 'scrolled to the end');
+    } finally { await p.close(); }
+  });
+
+  test('in the peek the Activity panel is the same right-anchored pane, full height of the peek (Issue #906)', async () => {
+    const p = await page(`#/table/${tableId}?e=${rowId}`);
+    try {
+      await p.waitForSelector('#dock:not([hidden]) textarea.name-edit');
+      await p.click('#dock .activity-btn');
+      await p.waitForSelector('aside.wv-activity .wv-act-row');
+      assertDocked(await docked(p, '#dock'), 'peek, at the top');
+      await scrollEnd(p, '#dock');
+      assertDocked(await docked(p, '#dock'), 'peek, scrolled to the end');
+    } finally { await p.close(); }
+  });
+
   test('in the peek beside a table the Activity panel mounts inside the peek and covers neither the record nor the table (Issue #871)', async () => {
     const p = await page(`#/table/${tableId}?e=${rowId}`);
     try {
@@ -69,7 +127,7 @@ if (s) {
       const tableBefore = await p.locator('#main .table-wrap').evaluate((n) => n.getBoundingClientRect().toJSON());
       await p.click('#dock .activity-btn');
       await p.waitForSelector('aside.wv-activity .wv-act-row');
-      const m = await measure(p, '#dock .dock-entity');
+      const m = await measure(p, '#dock');
       assert.equal(m.parentIsBody, false, 'the panel is not hung on the page body');
       assert.ok(m.insideMount, 'the panel sits inside the peek');
       assert.notEqual(m.position, 'fixed');
@@ -90,7 +148,7 @@ if (s) {
       await p.waitForSelector('aside.wv-activity .wv-act-row');
       await p.click('#main button[title="Collapse (⌘⇧E)"]');
       await p.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      assert.equal(await eventually(() => p.locator('#dock .dock-entity aside.wv-activity').count(), 1), 1, 'the panel moved into the peek');
+      assert.equal(await eventually(() => p.locator('#dock > aside.wv-activity').count(), 1), 1, 'the panel moved into the peek');
       assert.equal(await p.locator('aside.wv-activity').count(), 1, 'one panel');
       assert.equal(await p.locator('#dock .activity-btn').getAttribute('aria-pressed'), 'true');
     } finally { await p.close(); }
