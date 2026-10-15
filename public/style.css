@@ -954,7 +954,6 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .entity-split { display: flex; align-items: flex-start; gap: 24px; }
 .entity-split > .entity-grid { flex: 1 1 0; min-width: 0; }
 :is(#main, #dock) { --wv-act-w: 328px; }
-#dock { --wv-act-w: clamp(240px, 45%, 328px); }
 .wv-activity { position: sticky; top: calc(-1 * var(--wv-pane-pad, 0px)); z-index: 7; flex: none; box-sizing: border-box; width: var(--wv-act-w, 328px); height: var(--wv-act-h, 100%);
   margin: calc(-1 * var(--wv-pane-pad, 0px)) calc(-1 * var(--wv-pane-pad-x, 0px)) calc(var(--wv-pane-pad, 0px) - var(--wv-act-h, 0px)) auto;
   display: flex; flex-direction: column; background: var(--tblr-bg-surface); border: 0; border-left: 1px solid var(--tblr-border-color); border-radius: 0; box-shadow: none; color: var(--tblr-body-color); font-size: var(--fs-body); }
@@ -1239,7 +1238,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .filter-label { font-size: var(--fs-meta); text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); margin-right: 2px; }
 .filter-chip { cursor: pointer; }
 .filter-chip.on { box-shadow: var(--wv-chip-selected-ring); }
-#dock { --wv-pane-pad: 14px; --wv-pane-pad-x: 28px; flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); position: relative; }
+#dock { --wv-pane-pad: 14px; --wv-pane-pad-x: 28px; --wv-act-w: clamp(240px, 45%, 328px); flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); position: relative; }
 #dock-gutter { flex: none; width: 16px; margin: 8px 0; cursor: col-resize; position: relative; touch-action: none; }
 #dock-gutter[hidden] { display: none; }
 #main:has(+ #dock-gutter:not([hidden])) { margin-right: 0; }
