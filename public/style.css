@@ -1677,7 +1677,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-toggle-label-row { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; margin: 0; }
 .chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
 
-.bug-fab { position: fixed; right: 12px; bottom: 40px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
+.bug-fab { position: fixed; right: 12px; bottom: 12px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
 .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--wv-hover-border); }
 @media (hover: hover) { .bug-fab:hover { opacity: 1; border-color: var(--wv-hover-border); } }
 body:has(#tray-back) .bug-fab { bottom: 72px; }

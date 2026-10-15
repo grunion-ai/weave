@@ -104,7 +104,7 @@ if (s) {
       const b = await bar(page);
       assert.equal(b.bar, false);
       assert.equal(Math.round(b.fab.width), 26);
-      assert.equal(Math.round(b.vh - b.fab.bottom), 40);
+      assert.equal(Math.round(b.vh - b.fab.bottom), 12);
     } finally { await page.close(); }
   });
 }
