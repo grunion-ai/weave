@@ -2,6 +2,18 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.97 (2026-10-15)
+
+- Restored automatic release publication after successful same-repository main CI; existing published versions skip duplicate image and registry publication (Issue #887).
+- Table and field descriptions open from a raised info icon, fold after three lines, and remember each viewer's open notes. Empty table descriptions start from Add description in the table menu (Feature #302).
+- Temporarily restore inline descriptions while the info-icon feature receives additional phone-menu verification (Feature #302).
+- Preserve horizontal access to long grid URLs and date ranges without changing regular date sizing (Issue #897).
+- Select and state pickers list real values only. The empty "—" row is gone, so Option+1 is the first option anyone wants rather than a blank one, and clearing moved to where it already worked: Backspace on an empty search, or the ✕ on the chip in the search box. A single picker holding a value now names that key in its footer, and every row's quick-pick hint is spelled "Option+1" instead of a bare glyph. (Issue #797)
+- Creating a field from the Fields system table opens the field tray directly, with a Table row at the top instead of a centered modal that collected one value and handed off. A column header still opens the tray with no Table row, since the table is known (Issue #779).
+- Creating a table happens in one right-hand tray with Name, Space and icon, opened by the Tables grid +, the empty-workspace + New table, the sidebar space + and the space page add. The two centered New table modals are gone, and a table is named before it is created rather than landing as a row called "New table" (Issue #778).
+- The grabber on the phone picker sheet and the new-row sheet drags: it follows the finger, dismisses past a third of the sheet or on a flick, and springs back otherwise. One shared helper draws it as a 44px target on both sheets, where before the pill was decoration that promised a swipe and did nothing (Issue #808).
+- The reorder grip on a view in the Views menu is a 44x44 target on a touch screen, pulled back with negative margins so the view name and the popover keep their width (Issue #804).
+
 ## v0.4.96 (2026-10-14)
 
 - Added tested historical release recovery without moving immutable tags or latest (Issue #887).

@@ -1,2 +1,0 @@
-- Temporarily restore inline descriptions while the info-icon feature receives additional phone-menu verification (Feature #302).
-- Preserve horizontal access to long grid URLs and date ranges without changing regular date sizing (Issue #897).

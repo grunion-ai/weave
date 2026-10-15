@@ -1,1 +1,0 @@
-- Restored automatic release publication after successful same-repository main CI; existing published versions skip duplicate image and registry publication (Issue #887).
