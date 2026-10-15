@@ -52,14 +52,14 @@ if (s) {
     try {
       await page.goto(`${base}/#/space/${root.getSpace('CRM').id}`, { waitUntil: 'load' });
       await page.click('.use-template-btn');
-      await page.waitForSelector('#modal');
-      assert.equal((await page.locator('#modal .picker-face').innerText()).trim(), 'acme', 'the one other workspace is offered');
-      assert.equal(await page.locator('#modal input[name="name"]').inputValue(), 'CRM', 'the name starts as the space\'s');
-      await page.fill('#modal input[name="name"]', 'Sales');
-      await page.click('#modal button[type="submit"]');
+      await page.waitForSelector('#tray');
+      assert.equal((await page.locator('#tray .picker-face').innerText()).trim(), 'acme', 'the one other workspace is offered');
+      assert.equal(await page.locator('#tray input[name="name"]').inputValue(), 'CRM', 'the name starts as the space\'s');
+      await page.fill('#tray input[name="name"]', 'Sales');
+      await page.click('#tray button[type="submit"]');
       await page.waitForSelector('.wv-toast', { state: 'attached' });
       assert.match(await page.locator('.wv-toast').last().innerText(), /Sales is in acme/);
-      assert.equal(await page.locator('#modal').count(), 0, 'success closes the dialog');
+      assert.equal(await page.locator('#tray').count(), 0, 'success closes the dialog');
       const made = acme.getSpace('Sales');
       assert.equal(acme.getTable('Sales/Deal').fieldOrder.length, root.getTable('CRM/Deal').fieldOrder.length);
       assert.equal(acme.listEntities(acme.getTable('Sales/Deal').id).length, 0, 'no rows travel');
@@ -67,13 +67,13 @@ if (s) {
       assert.ok(schema.find((x) => x.spaceId === made.id), 'the target serves the new space');
 
       await page.click('.use-template-btn');
-      await page.waitForSelector('#modal');
-      await page.fill('#modal input[name="name"]', 'Sales');
-      await page.click('#modal button[type="submit"]');
-      const said = page.locator('#modal .use-template-said');
+      await page.waitForSelector('#tray');
+      await page.fill('#tray input[name="name"]', 'Sales');
+      await page.click('#tray button[type="submit"]');
+      const said = page.locator('#tray .use-template-said');
       await said.waitFor({ state: 'visible' });
       assert.match(await said.innerText(), /already has a space named 'Sales'/);
-      assert.equal(await page.locator('#modal').count(), 1, 'the dialog stays open');
+      assert.equal(await page.locator('#tray').count(), 1, 'the dialog stays open');
     } finally { await page.close(); }
   });
 
@@ -96,8 +96,8 @@ if (s) {
       });
       await page.goto(`${base}/#/space/${root.getSpace('CRM').id}`, { waitUntil: 'load' });
       await page.click('.use-template-btn');
-      await page.waitForSelector('#modal .use-template-none');
-      assert.equal(await page.locator('#modal button[type="submit"]').isDisabled(), true);
+      await page.waitForSelector('#tray .use-template-none');
+      assert.equal(await page.locator('#tray button[type="submit"]').isDisabled(), true);
     } finally { await page.close(); }
   });
 
@@ -109,15 +109,15 @@ if (s) {
         await page.goto(`${base}/#/space/${root.getSpace('CRM').id}`, { waitUntil: 'load' });
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         await page.click('.use-template-btn');
-        await page.waitForSelector('#modal');
-        await page.fill('#modal input[name="name"]', 'Sales');
-        await page.click('#modal button[type="submit"]');
-        await page.locator('#modal .use-template-said').waitFor({ state: 'visible' });
+        await page.waitForSelector('#tray');
+        await page.fill('#tray input[name="name"]', 'Sales');
+        await page.click('#tray button[type="submit"]');
+        await page.locator('#tray .use-template-said').waitFor({ state: 'visible' });
         const box = await page.evaluate(() => {
-          const r = document.querySelector('#modal').getBoundingClientRect();
-          const said = getComputedStyle(document.querySelector('#modal .use-template-said'));
-          const modal = getComputedStyle(document.querySelector('#modal'));
-          return { left: r.left, right: r.right, vw: innerWidth, scroll: document.documentElement.scrollWidth, color: said.color, bg: modal.backgroundColor };
+          const r = document.querySelector('#tray').getBoundingClientRect();
+          const said = getComputedStyle(document.querySelector('#tray .use-template-said'));
+          const panel = getComputedStyle(document.querySelector('#tray'));
+          return { left: r.left, right: r.right, vw: innerWidth, scroll: document.documentElement.scrollWidth, color: said.color, bg: panel.backgroundColor };
         });
         assert.ok(box.left >= 0 && box.right <= box.vw, `the dialog sits on screen: ${JSON.stringify(box)}`);
         assert.ok(box.scroll <= box.vw, 'no sideways scroll');
