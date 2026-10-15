@@ -210,3 +210,19 @@ test('methods: /mcp answers POST only; GET is 405 so a client does not wait on a
     assert.equal(res.headers.get('allow'), 'POST');
   } finally { s.stop(); }
 });
+
+test('cached provider identity uses the current account role after demotion', async () => {
+  const s = await serve();
+  try {
+    const token = s.idp.mint(KYLE);
+    const create = () => s.rpc('/mcp', token, 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Task', name: 'allowed' } });
+    assert.equal((await create()).data.result.isError, undefined);
+    const calls = s.idp.seen.userinfo;
+    const changed = await s.rpc('/api/mcp', s.admin, 'tools/call', { name: 'weave_accounts', arguments: { action: 'set', account: 'kyle', role: 'observer' } });
+    assert.equal(changed.res.status, 200);
+    assert.equal(changed.data.result.isError, undefined);
+    assert.equal(s.w.listAccounts().find(a => a.name === 'kyle').role, 'observer');
+    assert.equal((await create()).res.status, 403);
+    assert.equal(s.idp.seen.userinfo, calls, 'provider identity remains cached; account permissions do not');
+  } finally { s.stop(); }
+});

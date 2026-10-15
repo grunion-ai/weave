@@ -1,0 +1,1 @@
+- Change an account's role with `account set --role`, `weave_accounts` action `set`, or `PATCH /api/accounts/:ref`. Existing tokens and sessions keep their identity and immediately use the new role; every door, including Users rows, refuses to demote the last architect. (#896)

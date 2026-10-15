@@ -499,6 +499,7 @@ Notes that save round trips:
 - **Deletes are recoverable.** `weave_delete_entity` is a soft delete by
   default; `weave_trash` lists what is recoverable and `weave_restore_entity`
   brings it back. Schema deletes are not: a dropped column takes its values.
+- **Change roles without replacing accounts.** `weave account set <name> --role observer|editor|architect`, `weave_accounts` with `action: set`, `account` and `role`, or `PATCH /api/accounts/:ref` with `{role}` changes the same account shown in the Users table. Architects only; the last architect cannot be demoted. Existing tokens and sessions keep their identity and use the new role on the next request.
 - **People sign in through a provider; agents keep the token.** With
   `requireAuth` on, a browser needs a `wv_session` cookie (minted when a
   linked person signs in at the provider from `/auth`) or a Bearer token; the
