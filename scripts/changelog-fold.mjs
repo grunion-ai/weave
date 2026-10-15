@@ -66,10 +66,13 @@ export function foldRepo(root, { date = new Date().toLocaleDateString('en-CA') }
   return { version, folded: names.length, changed: after !== before };
 }
 
+const EM_DASH = '\u2014';
 export const VERSION_HEADING = /^## v\d+\.\d+\.\d+ \(\d{4}-\d{2}-\d{2}\)$/;
 
-export function changelogGuard({ addedLines = [], versionBefore, versionAfter }) {
-  const added = addedLines.filter((l) => !VERSION_HEADING.test(l)).length;
+export function changelogGuard({ addedLines = [], removedLines = [], versionBefore, versionAfter }) {
+  const sweepable = removedLines.filter((l) => l.includes(EM_DASH)).length;
+  const rewrites = addedLines.filter((l) => !VERSION_HEADING.test(l) && !l.includes(EM_DASH));
+  const added = addedLines.filter((l) => !VERSION_HEADING.test(l)).length - Math.min(sweepable, rewrites.length);
   if (!added || versionBefore !== versionAfter) return null;
   return `CHANGELOG.md gains ${added} line(s) but package.json stays at ${versionAfter}. `
     + 'Write changelog.d/<short-slug>-<Issue or Feature number>.md instead; only a release commit edits CHANGELOG.md, through scripts/changelog-fold.mjs.';
@@ -79,8 +82,13 @@ const CODE_PATH = /^(?:src|public|bin|scripts)\//;
 const SUBJECT_ROW = /\((?:Issue|Feature)s? #\d+/;
 const NO_CHANGELOG = /^No-changelog:[ \t]*\S/m;
 
-export function fragmentGuard({ subject = '', message = '', files = [], fragmentsAdded = 0, versionBefore, versionAfter }) {
+export function fragmentGuard({ subject = '', message = '', files = [], fragmentsAdded = 0, addedFragments = [], versionBefore, versionAfter }) {
   if (versionBefore !== versionAfter) return null;
+  const dashed = addedFragments.filter((f) => f.text.includes(EM_DASH));
+  if (dashed.length) {
+    return `${dashed.map((f) => `changelog.d/${f.name}`).join(', ')} carries U+2014 (the em dash), which the house prose rule bans in release notes. `
+      + 'Rewrite each one with a comma, colon, parentheses or a hyphen, whichever reads right in its own sentence.';
+  }
   if (fragmentsAdded || !SUBJECT_ROW.test(subject) || NO_CHANGELOG.test(message)) return null;
   const code = files.find((f) => CODE_PATH.test(f));
   if (!code) return null;
