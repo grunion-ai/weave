@@ -61,7 +61,7 @@ if (s) {
     const cell = page.locator(`tr[data-eid="${rows[0].id}"] td[data-sys="Created By"] .k-actor`);
     await cell.waitFor();
     assert.equal(await cell.locator('.k-label').textContent(), 'Kyle', 'the name, not the handle');
-    assert.equal(await cell.locator('.av').count(), 0, 'no Users row for kyle: a quiet chip, no initials (Feature #326)');
+    assert.equal(await cell.locator('.av').textContent(), 'K', 'an initial, on the name\'s hue');
     assert.match(await cell.locator('.k-actor-via').textContent(), /via MCP/);
     assert.doesNotMatch(await page.locator('body').innerText(), new RegExp(TOKEN), 'the grid prints no token id');
     await page.goto(`${base}/#/entity/${rows[0].id}`, { waitUntil: 'networkidle' });

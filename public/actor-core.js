@@ -19,22 +19,6 @@
     return a.via ? `${a.name} via ${a.via}` : String(actor).trim();
   };
 
-  const resolveActor = (actor, users, { workspaceId = null } = {}) => {
-    const a = parseActor(actor);
-    if (a.kind !== 'person') return a;
-    const via = a.via ? ` · via ${a.via}` : '';
-    const user = (Array.isArray(users) ? users : [])
-      .find((u) => u.name === a.handle && (!u.workspaceId || !workspaceId || u.workspaceId === workspaceId)) ?? null;
-    if (!user) return { ...a, kind: 'unknown', user: null, title: a.name + via };
-    return {
-      ...a,
-      kind: String(user.kind).toLowerCase() === 'agent' ? 'agent' : 'person',
-      name: user.name,
-      user,
-      title: [user.name, user.role, user.email].filter(Boolean).join(' · ') + via,
-    };
-  };
-
   const workflowOf = (a) => /^workflow:(.+)$/.exec(a?.actor ?? '')?.[1] ?? null;
   const isAutomation = (a) => !!workflowOf(a) || a?.kind === 'automation-ran';
 
@@ -63,5 +47,5 @@
     return { runs, fields, seq };
   };
 
-  globalThis.weaveActor = { displayName, parseActor, actorText, resolveActor, automationWrites };
+  globalThis.weaveActor = { displayName, parseActor, actorText, automationWrites };
 })();
