@@ -160,6 +160,20 @@ export async function settled(locator, { timeout = 10000 } = {}) {
   await locator.page().waitForFunction((n) => n.getAnimations({ subtree: true }).every((a) => a.playState !== 'running'), handle, { timeout });
 }
 
+export async function atRest(locator, { timeout = 10000 } = {}) {
+  const handle = await locator.elementHandle();
+  await locator.page().waitForFunction((n) => {
+    if (n.getAnimations({ subtree: true }).some((a) => a.playState === 'running')) return false;
+    if (!new DOMMatrix(getComputedStyle(n).transform).isIdentity) return false;
+    const box = n.getBoundingClientRect();
+    const now = `${Math.round(box.height)},${Math.round(box.top)}`;
+    const seen = (window.__atRest ??= new WeakMap());
+    const was = seen.get(n);
+    seen.set(n, now);
+    return was === now;
+  }, handle, { timeout });
+}
+
 export async function eventually(read, want, { timeout = 10000, every = 50 } = {}) {
   const { isDeepStrictEqual } = await import('node:util');
   const end = Date.now() + timeout;

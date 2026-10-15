@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, settled, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, settled, atRest, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const MANY = Array.from({ length: 12 }, (_, i) => `Area ${i + 1}`);
 
@@ -52,6 +52,25 @@ if (s) {
     await page.mouse.up();
   };
 
+  test('atRest waits for a transform that has not started yet (Issue #901)', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        const n = document.createElement('div');
+        n.id = 'rest-probe';
+        n.style.cssText = 'position:fixed;left:0;bottom:0;width:80px;height:80px;background:#000;transform:translateY(40px)';
+        document.body.append(n);
+        let frames = 6;
+        const tick = () => (frames-- > 0 ? requestAnimationFrame(tick) : (n.style.transition = 'transform 300ms linear', n.style.transform = ''));
+        tick();
+      });
+      await settled(page.locator('#rest-probe'));
+      await atRest(page.locator('#rest-probe'));
+      assert.equal(await page.locator('#rest-probe').evaluate((n) => new DOMMatrix(getComputedStyle(n).transform).isIdentity), true,
+        'the probe starts its transition six frames after the wait begins, so an empty animation set is not rest');
+    } finally { await page.close(); }
+  });
+
   for (const theme of ['light', 'dark']) {
     test(`the picker sheet grabber follows the finger and dismisses past a third (${theme}, Issue #808)`, async () => {
       const page = await open({ theme });
@@ -59,13 +78,13 @@ if (s) {
         const was = await page.textContent('#dock .chip-trigger[title="Status"]');
         await page.click('#dock .chip-trigger[title="Status"]');
         await page.waitForSelector('.picker-pop .sheet-grip');
-        await settled(page.locator('.picker-pop'));
+        await atRest(page.locator('.picker-pop'));
         const grip = await page.locator('.picker-pop .sheet-grip').boundingBox();
         assert.ok(Math.round(grip.height) >= 44, `the grabber is a real target, got ${Math.round(grip.height)}px tall`);
         const h = (await page.locator('.picker-pop').boundingBox()).height;
 
         await dragSheet(page, '.picker-pop', h * 0.12);
-        await settled(page.locator('.picker-pop'));
+        await atRest(page.locator('.picker-pop'));
         assert.ok(await page.isVisible('.picker-pop'), 'a short, slow drag springs the picker back');
         assert.equal(await page.evaluate(() => document.querySelector('.picker-pop').style.transform), '',
           'and leaves no transform behind');

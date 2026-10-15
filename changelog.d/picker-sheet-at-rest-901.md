@@ -1,0 +1,1 @@
+- `atRest` joins `styleOf` and `settled` in `test/lib/browser.mjs`: it waits for an element whose transform is identity, whose box has not moved for a frame, and which has no running animation, so a case cannot read a sheet whose spring-back transition has not started yet. The phone picker sheet case waits on it instead of `settled` alone (Issue #901).
