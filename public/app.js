@@ -10701,7 +10701,7 @@ const activityPanel = (() => {
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
-  const val = (v, cls = '') => el('span', { class: `wv-act-val ${cls}`.trim() }, String(v ?? '—'));
+  const val = (v, cls = '') => el('span', { class: `wv-act-val ${cls}`.trim() }, H().valueText(v));
   const arrow = () => el('span', { class: 'wv-act-arr' }, iconEl('lucide:arrow-right', 'wv-icon'));
   const byId = (id) => st?.items.find((it) => it.id === id);
   const revsOf = (field) => st.items.filter((it) => it.kind === 'rev' && it.field === field);
@@ -10793,7 +10793,7 @@ const activityPanel = (() => {
         : el('div', { class: 'wv-act-tray' }, btn('Restore', 'lucide:undo', () => restore(it), true), cmpSelect(it));
     }
     if (it.kind === 'undo' || it.undone) return null;
-    return el('div', { class: 'wv-act-tray' }, btn(`Revert to ${it.from}`, 'lucide:undo', () => revert(it), true));
+    return el('div', { class: 'wv-act-tray' }, btn(H().revertLabel(it.from), 'lucide:undo', () => revert(it), true));
   }
   function row(it) {
     const on = st.sel === it.id;
@@ -10812,7 +10812,7 @@ const activityPanel = (() => {
       icon = it.kind === 'undo' ? 'lucide:undo' : it.kind === 'state' ? 'lucide:workflow' : 'lucide:pencil';
       what = [el('span', { class: 'name' }, it.field), val(it.from), arrow(), val(it.to, 'new')];
       if (it.undone) who += ' · undone';
-      if (!on && !it.undone && it.kind !== 'undo') act = { title: `Revert to ${it.from}`, icon: 'lucide:undo', run: () => revert(it) };
+      if (!on && !it.undone && it.kind !== 'undo') act = { title: H().revertLabel(it.from), icon: 'lucide:undo', run: () => revert(it) };
     }
     const node = el('div', { class: `wv-act-row${on ? ' sel' : ''}${it.undone ? ' undone' : ''}`, tabindex: '0', 'data-id': it.id },
       el('span', { class: 'wv-act-kind' }, iconEl(icon, 'wv-icon')),
