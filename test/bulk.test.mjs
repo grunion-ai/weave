@@ -117,7 +117,7 @@ test('bulk refuses an unknown op, an empty selection, and moving to a system tab
   const { w, ids } = build();
   assert.throws(() => w.bulk(ids, 'explode', {}), /Unknown bulk op/);
   assert.throws(() => w.bulk([], 'set', { values: {} }), /ids is required/);
-  const r = w.bulk(ids, 'move', { table: 'Workspace/Tables' });
+  const r = w.bulk(ids, 'move', { table: 'System/Tables' });
   assert.equal(r.done.length, 0);
   assert.match(r.failed[0].error, /system table/);
 });

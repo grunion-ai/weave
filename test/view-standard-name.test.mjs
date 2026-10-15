@@ -33,7 +33,7 @@ test('a workspace saved with "Default" views opens with them named Standard, reg
     w = new Weave({ path });
     assert.deepEqual(w.tableView(t.id).views.map((v) => v.name), ['Standard', 'Open']);
     assert.deepEqual(w.tableView(other.id).views.map((v) => v.name), ['Standard']);
-    const rows = w.query('Workspace/Views').items.map((e) => e.name);
+    const rows = w.query('System/Views').items.map((e) => e.name);
     assert.ok(!rows.includes('Default'), `no Views row is still named Default (${rows.join(', ')})`);
     assert.ok(rows.filter((n) => n === 'Standard').length >= 2, 'both first views read Standard on their rows');
     w.tableView(`${t.id}/Default`, { from: 'blank' });

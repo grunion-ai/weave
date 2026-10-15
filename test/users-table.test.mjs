@@ -19,7 +19,7 @@ function fresh() {
   w.inviteIssuer = ISS;
   return w;
 }
-const users = (w) => w.getTable('Workspace/Users');
+const users = (w) => w.getTable('System/Users');
 const row = (w, name) => w.readEntity(w.findEntity(users(w).id, name).id);
 
 test('engine: Users is a system table in the Workspace space with the account columns', () => {

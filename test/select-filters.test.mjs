@@ -79,7 +79,7 @@ test('countAll answers the undeleted table, before where and search', async () =
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('the Workspace/Views row speaks select filters in its Filter text', () => {
+test('the System/Views row speaks select filters in its Filter text', () => {
   const { w } = bugs();
   w.tableView('Bug/Standard', { filters: { Severity: ['High'], Symptom: ['Slow', 'Error'] } });
   const t = w.getTable('Views');

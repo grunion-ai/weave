@@ -27,7 +27,7 @@ function hub() {
   root.createAutomation('Ops/Ticket', { name: 'root rule', ...rule });
   a.createAutomation('Work/Lead', { name: 'alpha rule', ...rule });
   b.createAutomation('Work/Bug', { name: 'beta rule', ...rule });
-  return { root, a, b, wf: root.getTable('Workspace/Workflows') };
+  return { root, a, b, wf: root.getTable('System/Workflows') };
 }
 
 const names = (res) => res.items.map((i) => i.name).sort();
@@ -53,7 +53,7 @@ test('a workflow belongs to the workspace its rule runs in, and old rows without
   root.save();
   assert.equal(root.workflowWorkspace(blank.id), root.state.meta.id, 'a row with no rule and no key stays with the root');
   assert.ok(!names(root.query(wf.id, { workspace: b.state.meta.id })).includes('draft'));
-  assert.equal(root.workflowWorkspace(root.getTable('Workspace/Tables').id), undefined, 'only workflow rows answer');
+  assert.equal(root.workflowWorkspace(root.getTable('System/Tables').id), undefined, 'only workflow rows answer');
 });
 
 test('a member route lists, creates and reads only its own workflows (Issue #875)', async () => {
@@ -66,7 +66,7 @@ test('a member route lists, creates and reads only its own workflows (Issue #875
   const { server } = await startServer(root, { port: 0, workspaces: { alpha: a, beta: b } });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const wf = root.getTable('Workspace/Workflows');
+    const wf = root.getTable('System/Workflows');
     root.createAutomation('Ops/Ticket', { name: 'root rule', ...rule });
     a.createAutomation('Work/Lead', { name: 'alpha rule', ...rule });
     const betaRule = b.createAutomation('Work/Bug', { name: 'beta rule', ...rule });

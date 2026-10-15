@@ -30,8 +30,8 @@ if (s) {
       rail: rect('#ws-rail'),
       railRow: getComputedStyle(document.querySelector('#ws-rail')).flexDirection,
       close: rect('#nav-collapse'),
-      stats: rect('#sidebar .nav-stats'),
-      health: rect('#sidebar .nav-health'),
+      identity: rect('#sidebar .nav-identity'),
+      more: rect('#sidebar .nav-identity .nav-identity-more'),
       rows: [...document.querySelectorAll('#sidebar a.nav-db')].map((a) => Math.round(a.getBoundingClientRect().height)),
       scrollWidth: document.documentElement.scrollWidth,
       vw: innerWidth, vh: innerHeight,
@@ -40,7 +40,7 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`on a phone the menu covers the whole screen with 44px rows, a close button top right and the stats at the foot (${theme}, Feature #269)`, async () => {
+    test(`on a phone the menu covers the whole screen with 44px rows, a close button top right and the identity panel at the foot (${theme}, Feature #269, Feature #333)`, async () => {
       const page = await open({ theme });
       try {
         await page.click('#main .nav-menu');
@@ -51,13 +51,13 @@ if (s) {
         assert.deepEqual([m.sidebar.left, m.sidebar.top, m.sidebar.width], [0, 0, m.vw], 'the menu spans the screen from the top-left corner');
         assert.equal(m.rail.bottom, m.vh, 'the workspace bar sits on the bottom edge');
         assert.equal(m.rail.width, m.vw, 'and runs the full width');
-        assert.equal(m.railRow, 'row', 'its workspaces, theme and help lie in a row');
+        assert.equal(m.railRow, 'row', 'its workspaces lie in a row');
         assert.ok(m.sidebar.bottom <= m.rail.top + 1, `the menu ends above the bar (${m.sidebar.bottom} vs ${m.rail.top})`);
         assert.ok(m.close.width >= 44 && m.close.height >= 44, `the close button is ${m.close.width}x${m.close.height}`);
         assert.ok(m.close.right >= m.sidebar.left + m.inner - 24 && m.close.top <= 24, `the close button sits top right (${m.close.right}, ${m.close.top})`);
         assert.ok(m.rows.length >= 3 && m.rows.every((h) => h >= 44), `every table row is 44px: ${m.rows}`);
-        assert.ok(m.stats.bottom <= m.rail.top + 1 && m.stats.bottom >= m.rail.top - 4, `the records, size and version sit at the foot of the menu (${m.stats.bottom} vs ${m.rail.top})`);
-        assert.ok(m.health.height > 0, 'the version chip shows');
+        assert.ok(m.identity.bottom <= m.rail.top + 1 && m.identity.bottom >= m.rail.top - 4, `the identity panel sits at the foot of the menu (${m.identity.bottom} vs ${m.rail.top})`);
+        assert.ok(m.more.width >= 44 && m.more.height >= 44, `its menu button is a 44px target: ${m.more.width}x${m.more.height}`);
         assert.ok(m.scrollWidth <= m.vw, `the open menu does not widen the page (${m.scrollWidth})`);
         await page.click('#nav-collapse');
         assert.equal((await menu(page)).open, false, 'the close button shuts it');

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-import { APP, liftFunction } from './lib/source.mjs';
+import { APP } from './lib/source.mjs';
 
 function seeded(path = null) {
   const w = new Weave(path ? { path } : undefined);
@@ -51,18 +51,9 @@ test('/api/health carries entities + sizeBytes for the scoped workspace', async 
 });
 
 
-test('fmtSize speaks GB and TB, never MB', () => {
-  const fmtSize = liftFunction('fmtSize');
-  assert.equal(fmtSize(0), '0.00 GB');
-  assert.equal(fmtSize(52_400_000), '0.05 GB');
-  assert.equal(fmtSize(2_400_000_000), '2.4 GB');
-  assert.equal(fmtSize(250_000_000_000), '250 GB');
-  assert.equal(fmtSize(1_500_000_000_000), '1.50 TB');
-});
-
 test('the strip pins to the sidebar bottom and style.css dresses it', () => {
-  assert.ok(APP.includes("class: 'nav-stats'"), 'renderNav builds the records line');
-  assert.ok(APP.includes("class: 'nav-pinned'"), 'and the strip that pins it, with New space and the system tables, to the bottom');
+  assert.ok(!APP.includes("class: 'nav-stats'"), 'renderNav builds no rows and size line (Feature #333)');
+  assert.ok(APP.includes("class: 'nav-pinned'"), 'the strip that pins New space, System and the identity panel to the bottom');
   assert.ok(APP.includes("$('#sidebar').append(el('div', { class: 'nav-pinned' }"), 'the strip is a sidebar sibling after #nav, not a foot child');
   const CSS = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   const rule = CSS.match(/\.nav-pinned\s*{([^}]*)}/)?.[1] ?? '';

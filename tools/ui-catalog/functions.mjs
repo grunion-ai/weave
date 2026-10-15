@@ -1,6 +1,6 @@
 export const FUNCTIONS = [
   { id: 'object-actions', title: "Open an object's actions", blurb: 'The ⋮ buttons, header menus and right-click menus that list what you can do to a row, table, space or workspace.', match: [
-    { cat: 'button', sig: /dots-btn|nav-menu-btn|more-btn|crumb-more|field-menu/ },
+    { cat: 'button', sig: /dots-btn|nav-menu-btn|more-btn|crumb-more|field-menu|nav-identity-more/ },
     { cat: 'menu' },
     { cat: 'colmenu' },
     { cat: 'button', text: /^More\b|actions$/i },
@@ -95,7 +95,7 @@ export const FUNCTIONS = [
     { text: /^(back|forward)\b|open navigation/i },
   ] },
   { id: 'switch-workspace', title: 'Switch workspace', blurb: 'The workspace rail and its tiles.', match: [
-    { sig: /ws-icon|ws-rail|nav-account|workspace/ },
+    { sig: /ws-icon|ws-rail|nav-account|nav-identity|workspace/ },
     { land: /Workspace rail/ },
   ] },
   { id: 'set-icon', title: 'Set an icon', blurb: 'The icon button beside a page title, with no icon set and with one set, the icon picker it opens and the workspace logo.', match: [

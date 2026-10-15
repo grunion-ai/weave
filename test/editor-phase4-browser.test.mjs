@@ -78,8 +78,7 @@ if (s) {
         document.querySelector('.vditor-ir__preview code.hljs')?.querySelectorAll('span').length > 2);
       for (const theme of ['light', 'dark']) {
         await page.evaluate((want) => {
-          const btn = document.querySelector('#theme-toggle');
-          for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== want; i++) btn.click();
+          for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== want; i++) cycleTheme();
         }, theme);
         await page.waitForTimeout(120);
         const worst = await worstTokenContrast(page, '.vditor-ir__preview code.hljs');

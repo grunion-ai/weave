@@ -87,20 +87,21 @@ if (s) {
     });
   }
 
-  test('the version chip lives in the sidebar under the stats line', async () => {
+  test('a healthy instance shows no version chip; the version sits in the identity panel menu (Feature #333)', async () => {
     const page = await open(1440, 900);
     try {
       const g = await page.evaluate(() => {
         const chip = document.querySelector('.nav-health');
-        return { inSidebar: !!chip.closest('#sidebar'), inCorner: !!chip.closest('#hub-foot'), count: document.querySelectorAll('.nav-health').length,
-          stats: document.querySelector('.nav-stats-line').getBoundingClientRect().bottom, chip: chip.getBoundingClientRect().top, title: chip.title };
+        return { inSidebar: !!chip.closest('#sidebar'), inCorner: !!chip.closest('#hub-foot'), count: document.querySelectorAll('.nav-health').length, hidden: chip.hidden, title: chip.title };
       });
-      assert.deepEqual([g.inSidebar, g.inCorner, g.count], [true, false, 1]);
-      assert.ok(g.chip >= g.stats, 'under the stats line');
-      assert.match(g.title, /weave instance/, 'the tooltip survives the move');
+      assert.deepEqual([g.inSidebar, g.inCorner, g.count, g.hidden], [true, false, 1, true]);
+      assert.match(g.title, /weave instance/);
       await page.evaluate(() => loadSchema());
-      assert.equal(await page.locator('#sidebar .nav-health').count(), 1);
+      assert.equal(await page.locator('#sidebar .nav-health').count(), 1, 'a redraw never stacks a second chip');
       assert.equal(await page.locator('#hub-foot .nav-health').count(), 0);
+      await page.click('#sidebar .nav-identity .nav-identity-more');
+      const version = (await page.evaluate(() => fetch('/api/health').then((r) => r.json()))).version;
+      assert.match(await page.locator('.nav-personal-menu').innerText(), new RegExp(`v${version.replace(/\./g, '\\.')}`));
     } finally { await page.close(); }
   });
 
@@ -109,10 +110,10 @@ if (s) {
     try {
       const g = await page.evaluate(() => {
         const side = document.querySelector('#sidebar').getBoundingClientRect();
-        const foot = document.querySelector('.nav-stats').getBoundingClientRect();
+        const foot = document.querySelector('.nav-identity').getBoundingClientRect();
         const below = document.elementFromPoint(foot.x + 40, side.bottom - 3);
         return { footBottom: foot.bottom, sideBottom: side.bottom, scrolls: document.querySelector('#sidebar').scrollHeight > document.querySelector('#sidebar').clientHeight,
-          below: below?.closest('.nav-stats') ? 'foot' : (below?.className || below?.tagName) };
+          below: below?.closest('.nav-identity') ? 'foot' : (below?.className || below?.tagName) };
       });
       assert.ok(g.scrolls, 'the seed makes the nav scroll');
       assert.ok(g.footBottom >= g.sideBottom - 0.5, `the foot reaches the sidebar's bottom edge (${g.footBottom} vs ${g.sideBottom})`);
