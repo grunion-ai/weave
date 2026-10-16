@@ -144,8 +144,8 @@ test('full-width grid rows derive their span from one column count', () => {
   assert.match(APP, /const colCount = cols\.length \+ 3;/, 'the table view derives it once');
   assert.match(APP, /const colCount = cols\.length \+ 2;/, 'so does the embedded related grid, from its own columns');
   assert.doesNotMatch(APP, /colspan: String\(cols\.length/, 'never restated at a use site');
-  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 4,
-    'the table view\'s spacer rows (one builder), its pending row and its new-entity row, plus the related grid\'s add row');
+  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 5,
+    'the table view\'s spacer rows (one builder), its pending row, its load-more row and its new-entity row, plus the related grid\'s add row');
 });
 
 test('grid create controls are styled', () => {
