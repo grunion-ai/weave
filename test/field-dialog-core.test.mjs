@@ -821,3 +821,27 @@ test('an edit sends the colour lane, so going back to ink clears it', () => {
   rs.rating.color = 'ink';
   assert.equal(core.editPatchConfig(rat, core.definitionFromState(rs), rs).color, null);
 });
+
+test('an edit sends the recipe of a lookup or a relation rollup, never of a space rollup', () => {
+  const rollup = { type: 'rollup', via: 'Deals', targetField: 'Fit', aggregate: 'avg' };
+  const def = core.definitionFromFieldView(rollup);
+  assert.deepEqual(core.editPatchConfig(rollup, def, {}), { relationField: 'Deals', targetField: 'Fit', aggregate: 'avg' });
+  const count = { ...def, config: { ...def.config, targetField: '', aggregate: 'count' } };
+  assert.deepEqual(core.editPatchConfig(rollup, count, {}), { relationField: 'Deals', targetField: null, aggregate: 'count' });
+  const lookup = { type: 'lookup', via: 'Deals', targetField: 'Fit' };
+  assert.deepEqual(core.editPatchConfig(lookup, core.definitionFromFieldView(lookup), {}), { relationField: 'Deals', targetField: 'Fit' });
+  const space = { type: 'rollup', viaTable: 'Deal', targetField: 'Fit', aggregate: 'avg' };
+  assert.deepEqual(core.editPatchConfig(space, core.definitionFromFieldView(space), {}), {});
+});
+
+test('recipeResult names the kind of value a recipe gives, so the tray can warn when it changes', () => {
+  assert.equal(core.recipeResult('lookup', null, 'number'), 'list');
+  assert.equal(core.recipeResult('rollup', 'join', 'number'), 'text');
+  assert.equal(core.recipeResult('rollup', 'count', null), 'number');
+  assert.equal(core.recipeResult('rollup', 'avg', 'rating'), 'number');
+  assert.equal(core.recipeResult('rollup', 'max', 'date'), 'date');
+  assert.equal(core.recipeResult('rollup', 'min', 'text'), 'text');
+  assert.equal(core.recipeChangeNote('Score', 'number', 'number'), null);
+  assert.equal(core.recipeChangeNote('Score', 'number', 'text'),
+    'Score gives text instead of a number after this change: a filter, a sort or a formula that reads it may stop matching.');
+});

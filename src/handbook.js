@@ -427,7 +427,7 @@ Renders on a tinted background marked \`↗\`. Nothing writes to it.
 
 A lookup of a relation draws the far row's chip, the way the relation column draws it: \`Contact › Company\` shows the company's chip, which opens the company. A to-many path draws one chip per far row, each row once. The API answers \`{id, publicId, name, db}\` per row (a list when either hop is to-many), a filter and a formula read the name, and \`raw\` keeps the ids (Issue #643).
 
-The field's settings tray shows the recipe as read-only **Relation** and **Field** rows, and a **Shows as** line naming the display it inherits: a lookup of a rating reads \`Drawn as the rating on People › Skill: 5 stars.\`, with a link to that field's settings, where the look is changed. The recipe is set when the lookup is created (Issue #387).
+The field's settings tray shows the recipe as **Relation** and **Target field** pickers, and a **Shows as** line naming the display it inherits: a lookup of a rating reads \`Drawn as the rating on People › Skill: 5 stars.\`, with a link to that field's settings, where the look is changed. Pick another relation or another field and save to repoint the lookup in place: the column keeps its name, width, description and place in every view, and every cell reads the new recipe at once. From the terminal: \`weave field update Team Skills --config '{"targetField":"Age"}'\` (Feature #241).
 
 ## Gotchas
 
@@ -485,7 +485,7 @@ A grid carries no Σ row until you ask for one: tick **Σ rollup row** in the Fi
 
 ## Usage
 
-The field's settings tray shows the recipe as read-only **Relation**, **Field** and **Aggregate** rows, a **Result** line with the value on a row of the table, and a **Shows as** line naming the display it inherits from the field it reads (a rating's icons, or a number's bar, ring or heat), with a link to that field's settings. The recipe is set when the rollup is created (Issue #387).
+The field's settings tray shows the recipe as **Relation**, **Target field** and **Aggregate** pickers, a **Result** line with the value on a row of the table, and a **Shows as** line naming the display it inherits from the field it reads (a rating's icons, or a number's bar, ring or heat), with a link to that field's settings. Change any of the three and save to repoint the rollup in place: it keeps its name, width, description and place in every view. The edit runs the same check a create runs, so a new relation needs a field of its own table and any aggregate but count needs a field to read. When the result changes kind (a number becomes text, say) the tray warns before you save, and the save names every formula of the table that now fails on it. The repoint is one entry in Activity, naming the old and the new recipe, and Undo puts the old one back. A space rollup (one made from the grid's Σ row) keeps its recipe read-only (Feature #241).
 
 Renders on a tinted background marked \`Σ\`, wearing the target column's costume: a sum of dollars is dollars, the \`max\` of a date column is a date; a mean of whole numbers shows two decimals. \`join\` accepts a \`separator\`; the default is \`, \`.
 

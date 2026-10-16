@@ -8355,32 +8355,24 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         })));
       } else if (t === 'lookup' || t === 'rollup') {
         const fixedRow = (name, value) => el('input', { class: 'form-control wv-fixed', name, readonly: '', tabindex: '-1', value: value ?? '' });
-        const throughRelation = (fixed = false) => {
+        const throughRelation = () => {
           const out = [];
           const rels = db.fields.filter((x) => x.type === 'relation');
           const relLabel = (r) => `${r.name} → ${r.targetDb}`;
-          if (!fixed) state.relationField = state.relationField || (rels[0]?.name ?? '');
+          state.relationField = state.relationField || (rels[0]?.name ?? '');
           const rel = rels.find((r) => r.name === state.relationField);
-          if (fixed) out.push(dsection('Relation', fixedRow('relationField', rel ? relLabel(rel) : state.relationField)));
-          else {
-            const relSel = pickerSelect({ name: 'relationField', options: rels.map((r) => ({ id: r.name, label: relLabel(r) })), value: state.relationField || null });
-            relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; state.targetField = ''; drawCfg(); changed(); });
-            out.push(dsection('Relation', rels.length ? relSel : el('div', { class: 'modal-note' }, 'This table has no relations yet — add one first')));
-          }
+          const relSel = pickerSelect({ name: 'relationField', options: rels.map((r) => ({ id: r.name, label: relLabel(r) })), value: state.relationField || null });
+          relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; state.targetField = ''; drawCfg(); changed(); });
+          out.push(dsection('Relation', rels.length ? relSel : el('div', { class: 'modal-note' }, 'This table has no relations yet — add one first')));
           const target = rel && allTables().find((d) => d.id === rel.targetDbId);
           const targets = (target?.fields ?? []).filter((x) => x.type !== 'document');
-          const needsTarget = t === 'lookup' || (state.aggregate ?? 'count') !== 'count';
-          if (needsTarget && fixed) {
-            const tf = targets.find((x) => x.name === state.targetField);
-            out.push(dsection('Field', fixedRow('targetField', tf ? `${tf.name} · ${tf.type}` : state.targetField)));
-          } else if (needsTarget && target) {
+          if ((t === 'lookup' || (state.aggregate ?? 'count') !== 'count') && target) {
             const tSel = pickerSelect({ name: 'targetField', placeholder: `Field of ${target.name}…`, options: targets.map((x) => ({ id: x.name, label: `${x.name} · ${x.type}` })), value: state.targetField || null });
-            tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; changed(); });
+            tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; if (isEdit) drawCfg(); changed(); });
             out.push(dsection('Target field', tSel));
           }
           if (t === 'rollup') {
-            out.push(dsection('Aggregate', fixed ? fixedRow('aggregate', state.aggregate ?? 'count')
-              : segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
+            out.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
           }
           return out;
         };
@@ -8408,8 +8400,18 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
             kids.push(dsection('Table', fixedRow('via', existing.viaTable)));
             if (existing.targetField) kids.push(dsection('Field', fixedRow('targetField', existing.targetField)));
             kids.push(dsection('Aggregate', fixedRow('aggregate', existing.aggregate ?? 'count')));
-          } else kids.push(...throughRelation(true));
-          kids.push(el('div', { class: 'modal-note full' }, `The recipe is set when the ${t} is created and cannot be changed here.`));
+            kids.push(el('div', { class: 'modal-note full' }, 'A space rollup is set from the grid’s Σ row, so its recipe is read-only here.'));
+          } else {
+            kids.push(...throughRelation());
+            const resultOf = (via, targetField, aggregate) => {
+              const rel = db.fields.find((x) => x.type === 'relation' && x.name === via);
+              const far = rel && allTables().find((d) => d.id === rel.targetDbId);
+              return fdc.recipeResult(t, aggregate ?? 'count', far?.fields.find((x) => x.name === targetField)?.type ?? null);
+            };
+            const note = fdc.recipeChangeNote(existing.name, resultOf(existing.via, existing.targetField, existing.aggregate),
+              resultOf(state.relationField, state.targetField, state.aggregate));
+            if (note) kids.push(el('div', { class: 'modal-note full recipe-warn' }, iconEl('lucide:triangle-alert', 'wv-icon wv-icon-xs'), ' ', note));
+          }
           kids.push(...computedShowsAs(db, existing, after));
         } else {
           if (overs.length) {
@@ -8570,6 +8572,9 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
 
 function fieldConfigToast(db, res, redraw) {
   if (!res?.activity) return;
+  if (res.formulas?.length) {
+    toast(`${res.name} changed. ${res.formulas.map((f) => f.field).join(', ')} now ${res.formulas.length === 1 ? 'fails' : 'fail'} on some rows: open ${res.formulas.length === 1 ? 'it' : 'them'} to fix the expression.`, true);
+  }
   toast(res.lossy ? `${res.name} is now ${res.type}` : `${res.name} updated`, false, {
     label: 'Undo',
     run: async () => {
