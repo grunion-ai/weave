@@ -465,7 +465,10 @@ test('a symptom is a toggle, not a radio', () => {
 
 test('the button becomes the receipt', () => {
   const body = APP.slice(APP.indexOf('function openBugPanel'), APP.indexOf('// The loader is fetched'));
-  assert.match(body, /send\.textContent = 'Sent'/);
+  assert.match(body, /sendLabel\.textContent = 'Reported'/);
+  assert.match(body, /class: 'bug-send-label' \}, 'Report issue'/, 'and it names the action before it is pressed');
+  assert.match(body, /class: 'bug-kbd bug-send-kbd' \}, '⌘↵'/, 'with ⌘↵ inside the button, not beside it (Issue #847)');
+  assert.match(CSS, /\.bug-send-kbd\s*{/, 'and the key is styled for the primary button');
   assert.match(CSS, /\.bug-send\.sent/, 'and it is styled as a confirmation, not a dead control');
 });
 

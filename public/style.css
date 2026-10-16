@@ -1765,8 +1765,9 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 
 .bug-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
 .bug-captured { flex: 1; min-width: 0; font-size: var(--fs-meta); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bug-send { padding: 2px 10px; font-size: var(--fs-secondary); }
+.bug-send { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; font-size: var(--fs-secondary); }
 .bug-kbd { flex: 0 0 auto; font-size: var(--fs-meta); }
+.bug-send-kbd { background: rgba(255,255,255,.24); color: inherit; }
 .bug-mail { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-meta); line-height: 1.2; color: var(--tblr-secondary); text-decoration: none; padding: 2px 6px; border: 1px solid transparent; border-radius: 5px; white-space: nowrap; }
 .bug-mail:hover, .bug-mail:focus-visible { color: var(--tblr-primary); border-color: var(--tblr-border-color); outline: none; }
 .bug-mail-icon { width: var(--wv-icon-sm); height: var(--wv-icon-sm); color: currentColor; }
