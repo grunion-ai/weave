@@ -51,15 +51,13 @@
     agent: {
       title: 'Your own agent',
       lead: 'weave is AI native, and you bring the agent. We at weave do not believe you need another tool-specific agent, so weave does not ship one. Connect the agent you already use through a sign-in. weave never asks for or stores an API key.',
-      limits: 'Custom connectors in ChatGPT, the Gemini app and Perplexity need a paid business plan or an admin, or are limited by region, so most accounts cannot finish setup there. This page lists the agents most people can set up, and anyone using another agent can paste the setup prompt.',
+      limits: 'ChatGPT and the Gemini app allow custom connectors only on some plans and accounts, and their steps say which. Any other agent can use the setup prompt.',
       chat: 'Chat apps',
-      tools: 'Editors and terminals',
+      harnesses: 'Harnesses',
       change: 'Change app',
       copyAddress: 'Copy address',
       copyCommand: 'Copy command',
-      copySetting: 'Copy setting',
       copyPrompt: 'Copy setup prompt',
-      install: 'Add to {tool}',
       waiting: 'Waiting for {tool} to connect. This page updates on its own.',
       connected: '{tool} is connected to {title}.',
       connectedSub: 'Your first message is ready below.',
@@ -596,15 +594,14 @@
           appTile(t), make('span', { class: 'app-text' }, make('b', {}, t.name), make('small', {}, t.pitch ?? t.where)))))] : [];
       };
       return [make('h1', {}, COPY.agent.title), make('p', { class: 'lead' }, COPY.agent.lead), errorBox(s.error),
-        ...group(COPY.agent.chat, ['chat']), ...group(COPY.agent.tools, ['editor', 'terminal', 'other']),
+        ...group(COPY.agent.chat, ['chat']), ...group(COPY.agent.harnesses, ['harness', 'other']),
         make('p', { class: 'muted limits' }, COPY.agent.limits),
         make('div', { class: 'actions' }, skip)];
     }
-    const kind = { prompt: COPY.agent.copyPrompt, command: COPY.agent.copyCommand, url: COPY.agent.copyAddress }[g.copy] ?? COPY.agent.copySetting;
-    const block = g.copy === 'url' || g.copy === 'command' ? 'code' : 'pre';
+    const kind = { prompt: COPY.agent.copyPrompt, command: COPY.agent.copyCommand, codex: COPY.agent.copyCommand, url: COPY.agent.copyAddress }[g.copy];
+    const block = g.copy === 'prompt' ? 'pre' : 'code';
     const action = make('div', { class: 'step-action' },
-      make('div', { class: `copybox${block === 'pre' ? ' stacked' : ''}` }, make(block, { 'aria-label': g.copy === 'prompt' ? 'setup prompt' : 'address', class: g.copy === 'prompt' ? 'prompt' : null }, g.value), copyButton(g.value, 'address', kind, 'btn btn-primary')),
-      g.install ? make('a', { class: 'btn', href: g.install, 'data-go': 'install' }, fill(COPY.agent.install, { tool: g.name })) : null);
+      make('div', { class: `copybox${block === 'pre' ? ' stacked' : ''}` }, make(block, { 'aria-label': g.copy === 'prompt' ? 'setup prompt' : 'address', class: g.copy === 'prompt' ? 'prompt' : null }, g.value), copyButton(g.value, 'address', kind, 'btn btn-primary')));
     const at = Math.max(0, g.steps.findIndex((x) => /below/i.test(x)));
     const steps = make('ol', { class: 'steps' }, g.steps.map((x, i) => make('li', { 'data-at': i === at ? '' : null }, make('span', { class: 'step-text' }, x), i === at ? action : null)));
     const connected = !!s.connected;
