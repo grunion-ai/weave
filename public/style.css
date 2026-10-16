@@ -976,9 +976,9 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
   display: flex; flex-direction: column; background: var(--tblr-bg-surface); border: 0; border-left: 1px solid var(--tblr-border-color); border-radius: 0; box-shadow: none; color: var(--tblr-body-color); font-size: var(--fs-body); }
 @media (min-width: 601px) {
   :is(#main, #dock):has(> aside.wv-activity) { padding-bottom: 0; }
-  #main:has(> aside.wv-activity) > :not(aside.wv-activity):not(.view-header) { margin-right: var(--wv-act-w); padding-bottom: var(--wv-pane-pad, 0px); }
+  #main > aside.wv-activity ~ :not(aside.wv-activity):not(.view-header) { margin-right: var(--wv-act-w); padding-bottom: var(--wv-pane-pad, 0px); }
   #main > aside.wv-activity:first-child + .view-header { margin: calc(-1 * var(--wv-pane-pad, 0px)) calc(var(--wv-act-w) - var(--wv-pane-pad-x, 0px)) 0 calc(-1 * var(--wv-pane-pad-x, 0px)); padding: var(--wv-pane-pad, 0px) var(--wv-pane-pad-x, 0px) 16px; }
-  #dock:has(> aside.wv-activity) > .dock-entity { margin-right: var(--wv-act-w); padding-bottom: 24px; }
+  #dock > aside.wv-activity ~ .dock-entity { margin-right: var(--wv-act-w); padding-bottom: 24px; }
 }
 .wv-act-head { display: flex; align-items: center; gap: 2px; padding: 12px 10px 6px 16px; }
 .wv-act-head h3 { margin: 0; font-size: var(--fs-body); font-weight: 600; flex: 1; }
