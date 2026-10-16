@@ -31,28 +31,29 @@ if (s) {
   };
 
   for (const colorScheme of ['light', 'dark']) {
-    test(`start page: one sign-in, then Add login, then Sign out (${colorScheme})`, async () => {
+    test(`start page: one sign-in, then Use another account, then Sign out (${colorScheme})`, async () => {
       const page = await open(colorScheme);
       try {
         await page.goto(`${base}/start`, { waitUntil: 'networkidle' });
         await page.getByRole('link', { name: 'Sign up or sign in' }).click();
         await page.waitForURL(`${base}/start`);
         await page.waitForSelector('.rows li');
-        assert.deepEqual(await page.locator('.rows li a').allInnerTexts(), ['Net'], 'eve opens Net');
-        assert.equal(await page.locator('.rows li small').count(), 0, 'one login needs no label');
-        assert.ok(await page.getByRole('link', { name: 'Add another sign-in' }).isVisible());
+        assert.deepEqual(await page.locator('.rows li .ws-title').allInnerTexts(), ['Net'], 'eve opens Net');
+        assert.equal(await page.locator('.rows .ws-login').count(), 0, 'one login needs no label');
+        assert.match(await page.locator('.signed-in').innerText(), /^Signed in as \S/, 'the page names the account it lists (Issue #964)');
+        assert.ok(await page.getByRole('link', { name: 'Use another account' }).isVisible());
         assert.ok(await page.getByRole('button', { name: 'Sign out' }).isVisible());
         assert.doesNotMatch(await page.locator('main').innerText(), /\bnull\b/, 'an absent create button leaves no text behind');
 
         page.who = 'user_kyle';
-        await page.getByRole('link', { name: 'Add another sign-in' }).click();
+        await page.getByRole('link', { name: 'Use another account' }).click();
         await page.waitForURL(`${base}/start`);
-        await page.waitForSelector('.rows li small');
-        assert.deepEqual(await page.locator('.rows li small').allInnerTexts(), ['eve'], 'with two logins each row names the login that opens it');
+        await page.waitForSelector('.rows .ws-login');
+        assert.deepEqual(await page.locator('.rows .ws-login').allInnerTexts(), ['eve'], 'with two logins each row names the login that opens it');
         assert.equal(await page.locator('.rows li').count(), 1, 'the workspace both logins open is listed once');
         assert.ok(await page.getByRole('button', { name: 'Create a workspace' }).isVisible(), 'the architect login brings the create button');
 
-        const fg = await page.locator('.rows li small').evaluate((n) => getComputedStyle(n).color);
+        const fg = await page.locator('.rows .ws-login').evaluate((n) => getComputedStyle(n).color);
         const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
         assert.notEqual(fg, bg, 'the login label is readable on the page');
 

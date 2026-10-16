@@ -171,12 +171,23 @@
   @keyframes grow { from { transform: scaleX(0); } }
   @keyframes breathe { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--hue) 16%, transparent); } }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
-  .rows { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; }
-  .rows li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
-  .rows li + li { border-top: 1px solid var(--line); }
-  .rows a { color: var(--ink); text-decoration: none; font-weight: 600; flex: 1; }
-  .rows a:hover { color: var(--accent); }
-  .rows small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
+  .signed-in strong { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+  .rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .ws-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); text-decoration: none; }
+  a.ws-row:hover { background: var(--sunk); }
+  a.ws-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ws-tile { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 10px; overflow: hidden; background: var(--sunk); }
+  .ws-tile img { width: 100%; height: 100%; object-fit: cover; }
+  .ws-letter { --hue: var(--muted); color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, var(--panel)); font-weight: 700; font-size: 17px; }
+  .ws-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .ws-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-meta, .ws-login { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-go { color: var(--muted); }
+  a.ws-row:hover .ws-go { color: var(--ink); }
+  .ws-row .btn { min-height: 44px; }
+  .ws-actions .btn { min-height: 44px; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 18px; }
+  .foot-links .btn-link { display: inline-flex; align-items: center; min-height: 44px; }
   .checklist { list-style: none; margin: 0; padding: 0; }
   .checklist li { display: flex; gap: 10px; align-items: center; padding: 5px 0; color: var(--muted); }
   .checklist li[data-done] { color: var(--ink); }
@@ -208,6 +219,7 @@
     .cards { grid-template-columns: minmax(0, 1fr); }
   }
 </style>
+<script src="/chip-core.js"></script>
 <script src="/slug-core.js"></script>
 <script src="/slug-form.js"></script>
 <script src="/starter-core.js"></script>
