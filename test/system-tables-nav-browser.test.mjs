@@ -36,6 +36,15 @@ if (s) {
     requestAnimationFrame(() => requestAnimationFrame(() => main.replaceChildren(...held)));
   }));
 
+  const twoFrames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const heldGap = (page) => page.evaluate(() => {
+    const main = document.querySelector('#main');
+    const held = [...main.children];
+    main.replaceChildren();
+    window.__refill = () => { main.replaceChildren(...held); delete window.__refill; };
+  });
+  const refill = (page) => page.evaluate(() => window.__refill());
+
   test('browser: four fixed rows under the spaces; Trash opens the workspace trash', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
@@ -169,9 +178,11 @@ if (s) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${wfId}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main input.view-title');
-    await repaintGap(page);
+    await heldGap(page);
+    await twoFrames(page);
     await assert.rejects(() => page.$eval('#main input.view-title', (i) => i.readOnly), /Failed to find element/,
-      'a selector resolved once lands in the gap the repaint opens and throws');
+      'a selector resolved once lands in the gap the repaint opens and throws, however long the read takes to arrive');
+    await refill(page);
     await page.waitForSelector('#main input.view-title');
     await repaintGap(page);
     assert.equal(await page.locator('#main input.view-title').first().evaluate((i) => i.readOnly), true,
