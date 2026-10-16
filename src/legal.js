@@ -221,3 +221,80 @@ If you have a question about any of these Terms, please contact us at [weave@gru
 
 Adapted from the Basecamp open-source policies ([github.com/basecamp/policies](https://github.com/basecamp/policies)), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 `;
+
+export const SUPPORT = `# Support
+
+weave is an open-source (MIT), self-hosted work platform in which AI agents are first-class users. The weave team takes support requests by email and on the public GitHub issue tracker.
+
+## Bug reports
+
+File bugs on the issue tracker at https://github.com/grunion-ai/weave/issues. Inside the app, the Report issue button files a bug report, and its Email instead option opens a prefilled email to weave@grunion.ai.
+
+## Email support
+
+Write to [weave@grunion.ai](mailto:weave@grunion.ai) with questions about weave or the hosted instance at https://weave.grunion.ai.
+
+## Agent setup
+
+The [Connect an agent](/docs) page covers the MCP URL, browser sign-in and the commands for Claude Code and other MCP clients.
+
+## Source code and reference
+
+The source is public at https://github.com/grunion-ai/weave. The full agent reference is in [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md).
+
+## Privacy and terms
+
+- [Privacy policy](/privacy)
+- [Terms of Service](/terms)
+`;
+
+export const AGENT_DOCS = `# Connect an agent
+
+weave is an open-source (MIT), self-hosted work platform in which AI agents are first-class users. Workspaces hold spaces, spaces hold tables, and tables hold rows that link through relations and carry markdown documents. The MCP server, REST API, CLI and browser UI run the same engine.
+
+## MCP URL
+
+This instance serves MCP over streamable HTTP at this URL:
+
+\`\`\`
+{{MCP_URL}}
+\`\`\`
+
+The URL above serves one workspace. Another workspace on the same host is served at \`/w/<name>/mcp\`.
+
+## Sign-in
+
+The first call opens a browser sign-in (OAuth 2.1 with PKCE and dynamic client registration), so there is no token to paste. The account needs the Architect role on the workspace, because the MCP server carries the schema tools.
+
+## Claude Code
+
+\`\`\`
+claude mcp add --scope user --transport http weave {{MCP_URL}}
+\`\`\`
+
+## Other MCP clients
+
+Claude, ChatGPT, Codex, Gemini CLI and any other client that supports remote MCP servers with OAuth take the same URL. Add {{MCP_URL}} as a remote server, then finish the browser sign-in on the first call.
+
+## Self-hosted server over stdio
+
+\`\`\`
+claude mcp add weave -- node /path/to/weave/bin/weave.js mcp --data /path/to/workspace.db
+\`\`\`
+
+## First calls
+
+Read the \`weave_ontology\` outline first. Then build the workspace in one \`weave_build\` call: run it with \`dryRun: true\`, then for real.
+
+## Tool set
+
+The server has 65 tools. By default it lists the 17 a workspace build uses, including \`weave_build\`, and \`weave_call\` runs any of the other 48 by name. A self-hosted server lists all 65 when started with \`weave mcp --tools all\` or with \`WEAVE_MCP_TOOLS=all\` set.
+
+Every tool carries MCP annotations: a title, \`readOnlyHint\`, \`destructiveHint\` and \`openWorldHint\`. Only the automation tools reach outside the workspace, because an automation rule can call a webhook URL. \`weave_call\` can run the automation tools, so it reaches outside the workspace too. A delete moves items to a trash, where they can be restored; a hard delete purges them.
+
+## Reference and help
+
+The full agent reference is in [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md). For questions and bug reports, see [Support](/support).
+
+The table below lists each tool with its title and whether it is read-only or destructive.
+`;

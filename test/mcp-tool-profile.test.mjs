@@ -44,7 +44,7 @@ test('the core list costs well under half the full one', () => withEnv(null, () 
   const core = JSON.stringify(rpc(w, 'tools/list').result).length;
   const all = JSON.stringify(rpc(w, 'tools/list', {}, { tools: 'all' }).result).length;
   assert.ok(core * 2.5 < all, `core ${core} bytes vs all ${all}`);
-  assert.ok(core < 15400, `core tools/list is ${core} bytes`);
+  assert.ok(core < 17400, `core tools/list is ${core} bytes; the Feature #331 annotations raised the Issue #857 budget from 15400`);
 }));
 
 test('--tools all, WEAVE_MCP_TOOLS=all and listTools("all") list every tool', () => {

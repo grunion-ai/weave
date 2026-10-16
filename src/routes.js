@@ -6,11 +6,11 @@ import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
-import { handleMcpMessage, mayAdminister } from './mcp.js';
+import { handleMcpMessage, mayAdminister, toolTable } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.js';
-import { PRIVACY, TERMS } from './legal.js';
+import { PRIVACY, TERMS, SUPPORT, AGENT_DOCS } from './legal.js';
 import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import { BillingUnavailable, PAID_ROLES } from './billing.js';
@@ -416,7 +416,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path + (carried ? `?${carried}` : ''))}`;
     const wallPage = () => out(401, wallPageHtml(authHref, oidc?.name), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
-    const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms');
+    const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms' || path === '/support' || path === '/docs');
     const previewLogo = path === '/api/workspace/logo' && ['GET', 'HEAD'].includes(rx.method) && !!weave.state.meta.linkPreview;
     const startDoor = path === '/start' || path === '/api/start' || path.startsWith('/api/start/');
     const formDoor = (['GET', 'HEAD'].includes(rx.method) && /^\/(?:f|api\/forms)\/[^/]+$/.test(path)) || (rx.method === 'POST' && /^\/api\/forms\/[^/]+\/submit$/.test(path));
@@ -523,6 +523,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         scopes_supported: ['openid'],
         bearer_methods_supported: ['header'],
       });
+    }
+    if (path === '/.well-known/openai-apps-challenge' && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+      const token = globalThis.process?.env?.WEAVE_OPENAI_APPS_CHALLENGE?.trim();
+      if (!token) return notFound({ error: 'No apps challenge is configured', code: 'not-found' });
+      return out(200, token, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (path === '/mcp') {
       if (oidc) mcpChallenge = `Bearer resource_metadata="${hostOrigin ?? mcpOrigin(rx)}/.well-known/oauth-protected-resource${wsPrefix}/mcp"`;
@@ -857,7 +862,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (legalPage) {
-        const [title, markdown] = path === '/privacy' ? ['Privacy policy', PRIVACY] : ['Terms of Service', TERMS];
+        const [title, markdown] = {
+          '/privacy': ['Privacy policy', PRIVACY],
+          '/terms': ['Terms of Service', TERMS],
+          '/support': ['Support', SUPPORT],
+          '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`)}\n\n## Tools\n\n${toolTable()}\n`],
+        }[path];
         return out(200, renderDocumentPage({ title, subtitle: 'weave', markdown }), { 'Content-Type': 'text/html; charset=utf-8' });
       }
 
