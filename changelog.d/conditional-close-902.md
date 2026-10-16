@@ -1,1 +1,0 @@
-- A conditional write can now carry both halves of a close: `operation: "close"` appends evidence through `field`/`markdown` and moves the workflow field named by `stateField` in one transaction, after one revision check, so an agent closing a row no longer leaves a window a person's edit can land in and lose (Issue #902).
