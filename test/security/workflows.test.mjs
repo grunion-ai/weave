@@ -125,3 +125,13 @@ test('dev.yml gates ready pull requests in seconds and swaps dev on every main p
   assert.match(deploy, /_supervisor\/check/);
   assert.match(deploy, /\.supervisor\.commit/);
 });
+
+test('dev.yml waits for dev to report the commit instead of failing on a check error', () => {
+  const script = text('dev.yml').split('run: |').at(-1);
+  assert.doesNotMatch(script, /\|\| body=''\n\s*echo/, 'an unanswered check is no longer the whole verdict');
+  assert.match(script, /for round in/, 'the check is retried in rounds');
+  assert.match(script, /seq 12/, 'each round polls dev for a minute before checking again');
+  const fail = script.slice(script.indexOf('exit 1'));
+  assert.match(script, /= skipped \]/, 'a skipped verdict still fails at once');
+  assert.ok(fail.length > 0);
+});
