@@ -1,0 +1,1 @@
+- Automations take an `upsert-row` action: it creates or updates a row of a target table matched on a key field holding an external id, with a field mapping from source paths (`row.<Field>`, `event.type`) to target fields, so a repeated fire never makes a duplicate (Feature #309).
