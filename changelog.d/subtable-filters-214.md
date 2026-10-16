@@ -1,1 +1,0 @@
-- The eye on a relation subtable shows and hides the target's fields and filters the linked rows with the table filter's chips. The setting lives on the relation field as `config.subtable` (`fields`, `filter` as `where` triples, `sort`), so one edit narrows that subtable on every record, and a filtered subtable counts `shown / total` in its header (Feature #214).

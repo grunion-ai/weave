@@ -1,1 +1,0 @@
-- The catalog adds `basic`, one plain Items table under a new Start simple category that the gallery search falls back to, and `WeaveStarters.searchText(template)` returns the lower-case words a search should match: title, kind of work, blurb, details, category and table names. (Feature #328)

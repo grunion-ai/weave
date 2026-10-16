@@ -1,1 +1,0 @@
-- On a phone, focusing the setup gallery's search field scrolls it to the top of the screen, so the matches show above the keyboard, and the page stays put once focus leaves the field. (#324)
