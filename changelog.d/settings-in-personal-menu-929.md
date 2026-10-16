@@ -1,0 +1,1 @@
+- Settings opens from the personal menu (the ⋯ beside your name at the foot of the sidebar), between Keyboard shortcuts and Sign out. The System group keeps only Workflows, Users, Activity and Trash, as Feature #333 rules (Issue #929).

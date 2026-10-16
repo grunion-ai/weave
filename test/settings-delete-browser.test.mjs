@@ -119,12 +119,14 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the sidebar System group opens Settings', async () => {
+  test('the personal menu opens Settings, and the System group keeps only its four tables', async () => {
     const page = await open('#/');
     try {
-      await page.click('#sidebar .nav-system a[href="#/settings"]');
+      assert.equal(await page.locator('#sidebar .nav-system a[href="#/settings"]').count(), 0, 'Settings is not a System row');
+      await page.click('#sidebar .nav-identity .nav-identity-more');
+      await page.locator('.nav-personal-menu [role="menuitem"]', { hasText: 'Settings' }).click();
       await page.waitForSelector('#main .settings-purge');
-      assert.ok(await page.locator('#sidebar .nav-system a[href="#/settings"].active').count(), 'the row marks itself current');
+      assert.equal(await page.evaluate(() => location.hash), '#/settings');
     } finally { await page.close(); }
   });
 }

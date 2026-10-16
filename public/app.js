@@ -1178,7 +1178,6 @@ function renderNav() {
       ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
       sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
-      sysRow('#/settings', 'sliders-horizontal', 'Settings', state.route?.page === 'settings'),
     ]));
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
@@ -1302,6 +1301,7 @@ async function personalMenu(btn) {
   menu([
     { label: 'Theme', hint: THEME_LABELS[pref], icon: THEME_ICONS[pref], section: 'settings', className: 'nav-theme-row', title: `Theme: ${pref}, choose to switch`, run: cycleTheme },
     { label: 'Keyboard shortcuts', hint: '?', icon: 'lucide:circle-question-mark', section: 'settings', run: openKeySheet },
+    { label: 'Settings', icon: 'lucide:sliders-horizontal', section: 'settings', className: 'nav-settings-row', run: () => { location.hash = '#/settings'; } },
     ...(signedIn ? [
       { label: 'Sign out', hint: version, icon: 'lucide:log-out', section: 'organize', title: `Sign out of ${ws}`, run: () => signOutOf([WS_PREFIX]) },
       { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutOf(everywhere) },
