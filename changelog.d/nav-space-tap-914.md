@@ -1,1 +1,0 @@
-- On a phone every space header in the left nav is a 44px tap target again; the System head and the space links share one phone rule that outranks the 900px one (Issue #914).

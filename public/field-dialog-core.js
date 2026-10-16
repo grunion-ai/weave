@@ -629,6 +629,11 @@
       patch.states = (c.states ?? []).filter((s) => s.name && s.name.trim());
     }
     if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
+    if ((existing.type === 'lookup' || existing.type === 'rollup') && !existing.viaTable) {
+      patch.relationField = c.relationField;
+      patch.targetField = c.targetField || null;
+      if (existing.type === 'rollup') patch.aggregate = c.aggregate ?? 'count';
+    }
     if (existing.type === 'text') patch.literal = !!state.literal;
     if (existing.type === 'attachments') {
       patch.multiple = state.multiple !== false;
@@ -644,6 +649,19 @@
     return patch;
   }
 
+  const RESULT_WORDS = { list: 'a list', text: 'text', number: 'a number', date: 'a date' };
+  function recipeResult(type, aggregate, targetType) {
+    if (type === 'lookup') return 'list';
+    if (aggregate === 'join') return 'text';
+    if (aggregate !== 'min' && aggregate !== 'max') return 'number';
+    if (targetType === 'date' || targetType === 'daterange') return 'date';
+    return ['number', 'rating', 'rollup', 'formula'].includes(targetType) ? 'number' : 'text';
+  }
+  function recipeChangeNote(name, was, now) {
+    if (!was || !now || was === now) return null;
+    return `${name} gives ${RESULT_WORDS[now]} instead of ${RESULT_WORDS[was]} after this change: a filter, a sort or a formula that reads it may stop matching.`;
+  }
+
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, sortLabels, SYSTEM_SORT, migrateState, moveItem,
@@ -651,6 +669,6 @@
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS,
     blankState, definitionFromState, stateFromDefinition, choiceItems, setChoiceDefault,
-    definitionFromFieldView, editPatchConfig,
+    definitionFromFieldView, editPatchConfig, recipeResult, recipeChangeNote,
   };
 })(globalThis);

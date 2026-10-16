@@ -15,6 +15,7 @@ const s = await launch('rollup recipe tray', (weave) => {
   weave.addField(teams, { name: 'Peer skills', type: 'lookup', config: { relationField: 'Peers', targetField: 'Skill' } });
   weave.addField(teams, { name: 'Peer count', type: 'rollup', config: { relationField: 'Peers', aggregate: 'count' } });
   weave.addField(teams, { name: 'Peer age', type: 'rollup', config: { relationField: 'Peers', targetField: 'Age', aggregate: 'avg' } });
+  for (const scheme of ['light', 'dark']) weave.addField(teams, { name: `Mean age ${scheme}`, type: 'rollup', config: { relationField: 'Peers', targetField: 'Age', aggregate: 'avg' } });
   weave.addField(teams, { name: 'Peer score', type: 'rollup', config: { relationField: 'Peers', targetField: 'Score', aggregate: 'sum' } });
   const a = weave.createEntity(people, { name: 'Ada', values: { Skill: 4, Age: 30, Score: 3 } });
   const b = weave.createEntity(people, { name: 'Bo', values: { Skill: 2, Age: 40, Score: 5 } });
@@ -38,7 +39,15 @@ if (s) {
     await page.waitForSelector('.tray-form');
   }
   const section = (page, label) => page.locator('.tray-form .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: new RegExp(`^${label}$`) }) });
-  const valueOf = (page, label) => section(page, label).locator('input').inputValue();
+  const faceOf = (page, label) => section(page, label).locator('.picker-face').innerText();
+  const aggOf = (page) => section(page, 'Aggregate').locator('.seg-opt.on').innerText();
+  const cellOf = (page, field) => page.evaluate((name) => {
+    const heads = [...document.querySelectorAll('.wv-grid thead th.col-head')];
+    const i = heads.findIndex((h) => h.textContent.trim().replace(/\W*$/, '') === name);
+    const th = heads[i];
+    const row = document.querySelector('.wv-grid tbody tr.entity-row');
+    return row.children[th.cellIndex].textContent.trim();
+  }, field);
 
   for (const colorScheme of ['light', 'dark']) {
     test(`a rollup's tray names its relation, field, aggregate and display (${colorScheme})`, async () => {
@@ -46,17 +55,16 @@ if (s) {
       try {
         await openTray(page, 'Peer skill');
         const text = await page.textContent('.tray-form');
-        assert.doesNotMatch(text, /delete and recreate/, 'the dead end is gone');
-        assert.match(await valueOf(page, 'Relation'), /^Peers\b/);
-        assert.match(await valueOf(page, 'Relation'), /People/, 'the relation names the table it reaches');
-        assert.match(await valueOf(page, 'Field'), /^Skill\b/);
-        assert.equal(await valueOf(page, 'Aggregate'), 'avg');
-        for (const label of ['Relation', 'Field', 'Aggregate']) {
-          const input = section(page, label).locator('input');
-          assert.equal(await input.getAttribute('readonly'), '', `${label} is read-only`);
-          const box = await input.boundingBox();
+        assert.doesNotMatch(text, /delete and recreate|cannot be changed here/, 'the dead end is gone');
+        assert.match(await faceOf(page, 'Relation'), /^Peers → .*People$/, 'the relation names the table it reaches');
+        assert.match(await faceOf(page, 'Target field'), /^Skill · rating/);
+        assert.equal(await aggOf(page), 'avg');
+        for (const label of ['Relation', 'Target field']) {
+          const face = section(page, label).locator('.picker-face');
+          assert.equal(await face.isEnabled(), true, `${label} can be changed`);
+          const box = await face.boundingBox();
           assert.ok(box && box.width > 40 && box.height > 10, `${label} is drawn`);
-          const [fg, bg] = await input.evaluate((n) => [getComputedStyle(n).color, getComputedStyle(n).backgroundColor]);
+          const [fg, bg] = await face.evaluate((n) => [getComputedStyle(n).color, getComputedStyle(n).backgroundColor]);
           assert.notEqual(fg, bg, `${label} reads against its ground`);
         }
         await section(page, 'Result').locator('.wv-rating[data-value="3"]').waitFor();
@@ -76,11 +84,42 @@ if (s) {
       const page = await grid(colorScheme);
       try {
         await openTray(page, 'Peer skills');
-        assert.match(await valueOf(page, 'Relation'), /^Peers\b/);
-        assert.match(await valueOf(page, 'Field'), /^Skill\b/);
+        assert.match(await faceOf(page, 'Relation'), /^Peers\b/);
+        assert.match(await faceOf(page, 'Target field'), /^Skill\b/);
         assert.equal(await section(page, 'Aggregate').count(), 0);
         assert.match(await section(page, 'Shows as').textContent(), /rating on People › Skill: 5 stars/);
         assert.doesNotMatch(await page.textContent('.tray-form'), /delete and recreate/);
+      } finally { await page.close(); }
+    });
+
+    test(`a rollup repoints from its tray and the cell redraws (${colorScheme})`, async () => {
+      const page = await grid(colorScheme);
+      const field = `Mean age ${colorScheme}`;
+      try {
+        assert.equal(await cellOf(page, field), '35');
+        await openTray(page, field);
+        await section(page, 'Aggregate').locator('.seg-opt', { hasText: /^max$/ }).click();
+        assert.equal(await page.locator('.tray-form .recipe-warn').count(), 0, 'a max of a number is still a number');
+        await section(page, 'Target field').locator('.picker-face').click();
+        await page.locator('.picker-pop .picker-row', { has: page.locator('.picker-label', { hasText: /^Score · number$/ }) }).click();
+        await page.locator('.tray-form button[type="submit"]').click();
+        await page.waitForFunction(() => !document.querySelector('.tray-form'));
+        await page.waitForFunction((name) => {
+          const heads = [...document.querySelectorAll('.wv-grid thead th.col-head')];
+          const th = heads.find((h) => h.textContent.trim().replace(/\W*$/, '') === name);
+          return document.querySelector('.wv-grid tbody tr.entity-row').children[th.cellIndex].textContent.trim() === '5';
+        }, field);
+        await openTray(page, field);
+        assert.match(await faceOf(page, 'Target field'), /^Score · number/);
+        assert.equal(await aggOf(page), 'max');
+        await section(page, 'Aggregate').locator('.seg-opt', { hasText: /^join$/ }).click();
+        const warn = page.locator('.tray-form .recipe-warn');
+        await warn.waitFor();
+        assert.match(await warn.textContent(), new RegExp(`${field} gives text instead of a number after this change`));
+        const [fg, bg] = await warn.evaluate((n) => [getComputedStyle(n).color, getComputedStyle(document.querySelector('.tray-form')).backgroundColor]);
+        assert.notEqual(fg, bg, 'the warning reads against the tray');
+        if (shots) await page.locator('.tray-form').screenshot({ path: `${shots}/rollup-repoint-${colorScheme}.png` });
+        await page.locator('.tray-close').click();
       } finally { await page.close(); }
     });
   }
@@ -88,8 +127,8 @@ if (s) {
   test('a count reads no field, a bar rollup draws its bar, and a plain number rollup names the field it reads', async () => {
     for (const [field, check] of [
       ['Peer count', async (page) => {
-        assert.equal(await section(page, 'Field').count(), 0, 'a count reads no field');
-        assert.equal(await valueOf(page, 'Aggregate'), 'count');
+        assert.equal(await section(page, 'Target field').count(), 0, 'a count reads no field');
+        assert.equal(await aggOf(page), 'count');
         assert.match(await section(page, 'Shows as').textContent(), /count/i);
       }],
       ['Peer score', async (page) => {

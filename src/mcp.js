@@ -231,7 +231,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_automation',
-    description: 'Create an automation rule as a System/Workflows row; its Script holds the rule as JSON. enabled (default true) is the row\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url}] — text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) templates.',
+    description: 'Create an automation rule as a System/Workflows row; its Script holds the rule as JSON. enabled (default true) is the row\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a row of another table matched on its key field (text, number, url or email); source paths read row.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) templates.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' }, enabled: { type: 'boolean' } },
@@ -796,8 +796,12 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return { table: args.db, deleted: true, hard: Boolean(args.hard) };
     case 'weave_restore_table':
       return weave.restoreTable(args.db);
-    case 'weave_update_field':
-      return guided(weave, 'field', weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config'])), args.type == null ? args.config : {});
+    case 'weave_update_field': {
+      const seq = weave.state.meta.activitySeq ?? 0;
+      const field = weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config']));
+      const formulas = weave.fieldChangeSince(args.db, field.id, seq)?.detail.formulas;
+      return { ...guided(weave, 'field', field, args.type == null ? args.config : {}), ...(formulas ? { formulas } : {}) };
+    }
     case 'weave_rollback_field':
       return weave.rollbackFieldConfig(args.activity, { table: args.db ?? null, field: args.field ?? null });
     case 'weave_delete_field':

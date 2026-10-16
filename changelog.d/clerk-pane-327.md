@@ -1,1 +1,0 @@
-- With `WEAVE_CLERK_PUBLISHABLE_KEY` set for the same Clerk instance as the sign-in issuer, the setup page mounts Clerk's sign-up and sign-in form in its left pane, in weave's colours, so creating an account no longer leaves the page. If Clerk's script does not load, the page falls back to the provider button (Feature #327, Issue #910).

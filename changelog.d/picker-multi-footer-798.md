@@ -1,1 +1,0 @@
-- A multi-select picker shows a footer with "N selected" on the left and "Done ↵" on the right, so an empty multi picker no longer looks like a single select and its save on close is visible. Done commits what is staged; picked options still leave the list as chips, with no checkboxes. (#798)

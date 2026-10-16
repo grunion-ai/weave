@@ -1,1 +1,0 @@
-- Every field picker opens titled with its field name, and its search hint reads from that title ("Search priority…") instead of one of four hand-typed strings. A set value keeps the hint in place of an empty box. The icon, table, space and term pickers title themselves "Icon", "Table", "Space" and "Term". (#799)

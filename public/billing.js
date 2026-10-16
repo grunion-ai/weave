@@ -20,17 +20,21 @@ const loadClerk = async (key) => {
   if (clerk) return clerk;
   const host = frontendApi(key);
   if (!host) return null;
-  await new Promise((resolve, reject) => {
+  const inject = (src, data = {}) => new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = `https://${host}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`;
+    script.src = src;
     script.async = true;
     script.crossOrigin = 'anonymous';
-    script.dataset.clerkPublishableKey = key;
+    Object.assign(script.dataset, data);
     script.onload = resolve;
     script.onerror = () => reject(new Error('Clerk checkout did not load'));
     document.head.append(script);
   });
-  await window.Clerk.load();
+  await Promise.all([
+    inject(`https://${host}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, { clerkPublishableKey: key }),
+    inject(`https://${host}/npm/@clerk/ui@1/dist/ui.browser.js`),
+  ]);
+  await window.Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
   clerk = window.Clerk;
   return clerk;
 };

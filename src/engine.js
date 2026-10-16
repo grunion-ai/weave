@@ -309,6 +309,16 @@ const WORKFLOW_STATES = [
 ];
 const workflowActor = (rowId) => `workflow:${rowId}`;
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
+const UPSERT_KEY_TYPES = ['text', 'number', 'url', 'email'];
+const blankSource = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
+export function sourcePath(source, path) {
+  let at = source;
+  for (const part of String(path).split('.')) {
+    if (at == null || typeof at !== 'object' || RESERVED_NAMES.has(part) || !Object.hasOwn(at, part)) return undefined;
+    at = at[part];
+  }
+  return at;
+}
 
 const { HUE_HEX, HUES, hueName } = globalThis.chipCore;
 function hueOf(o, { strict = false, fallback = 'slate' } = {}) {
@@ -341,6 +351,7 @@ class CycleSignal extends Error {
   constructor(marker) { super(marker); this.marker = marker; }
 }
 const FORMULA_SCAN_CAP = 200;
+const RECIPE_KEYS = ['relationField', 'relation', 'targetField', 'aggregate'];
 
 export const DEFINABLE_TYPES = [
   'text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email',
@@ -451,7 +462,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.entities',
-      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
+      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
@@ -4880,11 +4891,7 @@ export class Weave {
     if (['select', 'multiselect', 'workflow', 'field', 'number', 'rating', 'date', 'daterange', 'attachments', 'document', 'key', 'text', 'toggle'].includes(type)) {
       field.config = normalizeSelfContainedConfig(type, config, { strict: true });
     } else if (type === 'lookup') {
-      const rel = this.getField(db.id, config.relationField ?? config.relation);
-      if (rel.type !== 'relation') throw new WeaveError('Lookup must point at a relation field', 'invalid');
-      if (rel.config.targetDbs) throw new WeaveError('Lookup needs a single-target relation', 'invalid');
-      const target = this.getField(rel.config.targetDb, config.targetField);
-      field.config = { relationField: rel.id, targetField: target.id };
+      field.config = this.#recipe(db, 'lookup', config);
     } else if (type === 'rollup') {
       const aggregate = config.aggregate ?? 'count';
       if (!AGGREGATES.includes(aggregate)) throw new WeaveError(`Invalid aggregate '${aggregate}' (use ${AGGREGATES.join(', ')})`, 'invalid');
@@ -4899,15 +4906,7 @@ export class Weave {
         if (where) hit.owner.#checkWhere(viaT, where);
         field.config = { via: viaT.id, targetField: targetFieldId, aggregate, ...(where ? { where } : {}) };
       } else {
-        const rel = this.getField(db.id, config.relationField ?? config.relation);
-        if (rel.type !== 'relation') throw new WeaveError('Rollup must point at a relation field', 'invalid');
-        if (rel.config.targetDbs) throw new WeaveError('Rollup needs a single-target relation', 'invalid');
-        let targetFieldId = null;
-        if (aggregate !== 'count') {
-          const target = this.getField(rel.config.targetDb, config.targetField);
-          targetFieldId = target.id;
-        }
-        field.config = { relationField: rel.id, targetField: targetFieldId, aggregate };
+        field.config = this.#recipe(db, 'rollup', { ...config, aggregate });
       }
       if (config.separator != null) field.config.separator = String(config.separator);
       Object.assign(field.config, rollupCostume(config));
@@ -5015,8 +5014,75 @@ export class Weave {
     return out.map((key) => key === VALUES_BLOCK ? VALUES_BLOCK : db.fields[key].name);
   }
 
+  #recipe(db, type, config) {
+    const what = type === 'lookup' ? 'Lookup' : 'Rollup';
+    const rel = this.getField(db.id, config.relationField ?? config.relation);
+    if (rel.type !== 'relation') throw new WeaveError(`${what} must point at a relation field`, 'invalid');
+    if (rel.config.targetDbs) throw new WeaveError(`${what} needs a single-target relation`, 'invalid');
+    const aggregate = type === 'lookup' ? null : config.aggregate ?? 'count';
+    if (aggregate && !AGGREGATES.includes(aggregate)) throw new WeaveError(`Invalid aggregate '${aggregate}' (use ${AGGREGATES.join(', ')})`, 'invalid');
+    if (aggregate !== 'count' && (config.targetField == null || config.targetField === '')) {
+      throw new WeaveError(type === 'lookup' ? 'A lookup needs a targetField to read' : `A rollup that runs ${aggregate} needs a targetField to read`, 'invalid');
+    }
+    if (type === 'lookup') return { relationField: rel.id, targetField: this.getField(rel.config.targetDb, config.targetField).id };
+    const targetField = aggregate === 'count' ? null : this.getField(rel.config.targetDb, config.targetField).id;
+    return { relationField: rel.id, targetField, aggregate };
+  }
+
+  #refuseSpaceRepoint(field, c) {
+    const sent = (k) => k in c && c[k] !== undefined;
+    const far = this.#tableAnywhere(field.config.via);
+    const target = !sent('targetField') || (c.targetField ?? null) === field.config.targetField
+      || (c.targetField != null && far?.owner.findField(far.table, c.targetField)?.id === field.config.targetField);
+    if (sent('relationField') || sent('relation') || (sent('aggregate') && c.aggregate !== field.config.aggregate) || !target) {
+      throw new WeaveError(`${field.name} is a space rollup: its recipe is set from the grid's Σ row, not here`, 'invalid');
+    }
+  }
+
+  #repoint(db, field, c) {
+    const relRef = c.relationField ?? c.relation;
+    if (relRef != null && !('targetField' in c) && field.config.targetField) {
+      const nextTable = this.state.tables[this.getField(db.id, relRef).config.targetDb];
+      const oldTable = this.state.tables[db.fields[field.config.relationField]?.config.targetDb];
+      if (nextTable && !nextTable.fields[field.config.targetField]) {
+        const oldName = oldTable?.fields[field.config.targetField]?.name ?? field.config.targetField;
+        throw new WeaveError(`'${oldName}' is a field of ${oldTable?.name ?? 'the old table'}, not ${nextTable.name}: name the targetField to read there`, 'invalid');
+      }
+    }
+    return this.#recipe(db, field.type, {
+      relationField: relRef ?? field.config.relationField,
+      targetField: 'targetField' in c ? c.targetField : field.config.targetField,
+      aggregate: c.aggregate ?? field.config.aggregate,
+    });
+  }
+
+  #formulasBroken(before, after) {
+    const was = new Map(before.map((h) => [h.field, h]));
+    return after.filter((h) => {
+      const prior = was.get(h.field) ?? { ok: true, errors: 0, nulls: 0 };
+      return (prior.ok && !h.ok) || h.errors > prior.errors || h.nulls > prior.nulls;
+    }).map(({ field, rows, errors, nulls, error }) => ({ field, rows, errors, nulls, ...(error ? { error } : {}) }));
+  }
+
+  #formulaHealth(db, field) {
+    const reads = (f) => {
+      try { return formulaReferences(f.config.expression ?? '').some((n) => String(n).toLowerCase() === field.name.toLowerCase()); } catch { return false; }
+    };
+    return Object.values(db.fields).filter((f) => f.type === 'formula' && reads(f)).map((f) => {
+      const checked = this.checkFormula(db.id, f.config.expression, { excludeField: f.id, scan: true });
+      const scan = checked.scan ?? { rows: 0, errors: 0, nulls: 0, sampleByOutcome: {} };
+      return { field: f.name, ok: checked.ok, rows: scan.rows, errors: scan.errors, nulls: scan.nulls,
+        error: checked.ok ? scan.sampleByOutcome.error?.error ?? null : checked.error };
+    });
+  }
+
   updateField(dbRef, fieldRef, patch) {
     return this.#updateField(dbRef, fieldRef, patch, null).field;
+  }
+
+  fieldChangeSince(dbRef, fieldId, seq) {
+    const [last] = this.activityFeed({ entityId: this.getTable(dbRef).id, kinds: ['field-config-updated'], limit: 1 }).items;
+    return last && last.seq > seq && last.detail.fieldId === fieldId ? last : null;
   }
 
   #updateField(dbRef, fieldRef, patch, undo, restore = null) {
@@ -5024,6 +5090,10 @@ export class Weave {
     const field = this.getField(db.id, fieldRef);
     const before = fieldDefinition(field);
     const touchedBefore = this.#spacesTouching(db, field);
+    const recipeSent = (patch.type == null || patch.type === field.type) && (field.type === 'lookup' || field.type === 'rollup')
+      && patch.config && RECIPE_KEYS.some((k) => k in patch.config);
+    if (recipeSent && field.config.via) this.#refuseSpaceRepoint(field, patch.config);
+    const nextRecipe = recipeSent && !field.config.via ? this.#repoint(db, field, patch.config) : null;
     let renamed = false;
     if (patch.name != null) refuseReserved('field', patch.name);
     if (patch.name != null && patch.name !== field.name) {
@@ -5038,6 +5108,8 @@ export class Weave {
       throw new WeaveError(`The ${field.config.shape} is fixed as a view — rename or reconfigure it`, 'invalid');
     }
     let migrated = null;
+    let healthBefore = null;
+    let recipeBefore = null;
     if (patch.type != null && patch.type !== field.type) {
       migrated = this.#migrateFieldType(db, field, patch.type, patch.config ?? {}, { force: !!undo, restore });
       if (!undo) {
@@ -5046,6 +5118,10 @@ export class Weave {
       }
     }
     if (patch.config) {
+      if ('subtable' in patch.config) {
+        const sub = this.#subtableConfig(field, patch.config.subtable);
+        if (sub) field.config.subtable = sub; else delete field.config.subtable;
+      }
       if ('term' in patch.config) {
         if (field.id !== db.nameFieldId) throw new WeaveError('The row term lives on the Name field', 'invalid');
         this.#setTerm(db, patch.config.term, { save: false });
@@ -5078,6 +5154,11 @@ export class Weave {
             else field.config[k] = costume[k];
           }
         }
+      }
+      if (nextRecipe) {
+        healthBefore = this.#formulaHealth(db, field);
+        recipeBefore = this.#ontologyComputed(db, field, () => '');
+        Object.assign(field.config, nextRecipe);
       }
       if (field.type === 'rollup' && ROLLUP_COSTUME_KEYS.some((k) => k in patch.config)) {
         const merged = { ...field.config, ...patch.config };
@@ -5150,8 +5231,12 @@ export class Weave {
     if (renamed) this.#syncTableRow(db);
     const after = fieldDefinition(field);
     const changed = definitionChanges(before, after);
+    const recipeMoved = !!nextRecipe && RECIPE_KEYS.some((k) => changed.includes(k));
+    const recipe = recipeMoved ? { before: recipeBefore, after: this.#ontologyComputed(db, field, () => '') } : null;
+    const broken = recipeMoved ? this.#formulasBroken(healthBefore, this.#formulaHealth(db, field)) : [];
     const logged = !db.system && !this.#fieldLogQuiet && changed.length
       ? { table: this.qualifiedName(db), tableId: db.id, fieldId: field.id, field: field.name, changed, before, after, seq: this.#nextSeq(),
+        ...(recipe ? { recipe } : {}), ...(broken.length ? { formulas: broken } : {}),
         ...(before.type !== after.type ? { lossy: true } : {}), ...(migrated ? { snapshot: migrated.rows } : {}),
         ...(undo ?? {}), ...(restore && migrated ? migrated.counts : {}) }
       : null;
@@ -5161,6 +5246,36 @@ export class Weave {
       if (migrated) this.#dropOlderSnapshots(field.id, logged.seq);
     } else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) }, changed.length ? [...touchedBefore, ...this.#spacesTouching(db, field)] : null);
     return { field, counts: migrated?.counts ?? null };
+  }
+
+  #subtableConfig(field, raw) {
+    if (field.type !== 'relation') throw new WeaveError('A subtable belongs on a relation field', 'invalid');
+    if (raw == null) return null;
+    if (typeof raw !== 'object' || Array.isArray(raw)) throw new WeaveError('A subtable is an object of fields, filter and sort', 'invalid');
+    const target = field.config.targetDbs ? null : this.state.tables[field.config.targetDb];
+    if (!target) throw new WeaveError('A subtable needs a relation with one target table', 'invalid');
+    const named = (n) => {
+      const f = typeof n === 'string' ? this.findField(target, n) : null;
+      if (!f) throw new WeaveError(`Field '${n}' not found in table '${target.name}'`, 'not-found');
+      return f.name;
+    };
+    const list = (key) => {
+      if (raw[key] == null) return null;
+      if (!Array.isArray(raw[key])) throw new WeaveError(`A subtable ${key} is a list`, 'invalid');
+      return raw[key];
+    };
+    const out = {};
+    const fields = list('fields');
+    if (fields) out.fields = fields.map(named);
+    const filter = list('filter');
+    if (filter?.length) { this.#checkWhere(target, filter); out.filter = structuredClone(filter); }
+    const sort = (list('sort') ?? []).map((s) => {
+      const { field: name, dir = 'asc' } = typeof s === 'string' ? { field: s } : s ?? {};
+      if (dir !== 'asc' && dir !== 'desc') throw new WeaveError('A subtable sort runs asc or desc', 'invalid');
+      return { field: Object.hasOwn(SYSTEM_SORT_KEYS, name) ? name : named(name), dir };
+    });
+    if (sort.length) out.sort = sort;
+    return Object.keys(out).length ? out : null;
   }
 
   #dropOlderSnapshots(fieldId, keepSeq) {
@@ -5300,7 +5415,7 @@ export class Weave {
     const temp = { id: '__preview', name: '__preview', type: 'formula', config: { expression } };
     const nameOf = (row) => String(row.values[db.nameFieldId] ?? '');
     const kindOf = (v) => (v == null ? 'null' : typeof v === 'string' && (v.startsWith('#ERR: ') || isCycle(v)) ? 'error'
-      : Array.isArray(v) ? 'list' : typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'text');
+      : Array.isArray(v) ? 'list' : Number.isNaN(v) ? 'error' : typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'text');
     const preview = this.#resolve(e, db, temp, 0);
     const result = { ok: true, preview, previewEntity: nameOf(e), type: kindOf(preview) };
     if (!scan) return result;
@@ -5311,7 +5426,7 @@ export class Weave {
       const v = this.#resolve(row, db, temp, 0);
       const kind = kindOf(v);
       if (kind === 'null') { out.nulls++; out.sampleByOutcome.null ??= { entity: nameOf(row), id: row.id }; }
-      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: isCycle(v) ? v : v.slice(6) }; }
+      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: isCycle(v) ? v : Number.isNaN(v) ? 'not a number' : v.slice(6) }; }
       else { types[kind] = (types[kind] ?? 0) + 1; out.sampleByOutcome.ok ??= { entity: nameOf(row), id: row.id, value: v }; }
     }
     const dominant = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
@@ -7308,10 +7423,28 @@ export class Weave {
         if (!/^https?:\/\//.test(a.url ?? '')) throw new WeaveError('Webhook action needs an http(s) url', 'invalid');
         return { type: 'webhook', url: a.url };
       }
+      if (a?.type === 'upsert-row') return this.#compileUpsert(a);
       throw new WeaveError(`Unknown automation action '${a?.type}'`, 'invalid');
     });
     if (!acts.length) throw new WeaveError('Automation needs at least one action', 'invalid');
     return { dbId: db.id, trigger: t, actions: acts };
+  }
+
+  #compileUpsert(a) {
+    if (a.table == null || a.table === '') throw new WeaveError('The upsert-row action names no target table', 'invalid');
+    const target = this.getTable(a.table);
+    if (a.key == null || a.key === '') throw new WeaveError('The upsert-row action needs a key field holding the external id', 'invalid');
+    const key = this.getField(target.id, a.key);
+    if (!UPSERT_KEY_TYPES.includes(key.type)) throw new WeaveError(`Key field '${key.name}' is a ${key.type} field: a key holds text, a number, a url or an email`, 'invalid');
+    if (!a.fields || typeof a.fields !== 'object' || Array.isArray(a.fields)) throw new WeaveError('The upsert-row fields map each target field to a source path, as an object', 'invalid');
+    const fields = Object.entries(a.fields).map(([name, path]) => {
+      const f = this.getField(target.id, name);
+      if (COMPUTED_TYPES.includes(f.type)) throw new WeaveError(`Field '${f.name}' is computed (${f.type}) and cannot be written`, 'invalid');
+      if (typeof path !== 'string' || !path.trim()) throw new WeaveError(`Field '${f.name}' needs a source path such as row.Name`, 'invalid');
+      return [f.id, path.trim()];
+    });
+    if (!fields.some(([fid]) => fid === key.id)) throw new WeaveError(`The upsert-row fields map no source path to the key field '${key.name}'`, 'invalid');
+    return { type: 'upsert-row', dbId: target.id, keyFieldId: key.id, fields };
   }
 
   #checkFits(f, value) {
@@ -7345,6 +7478,15 @@ export class Weave {
         if (a.type === 'set-field') return { type: a.type, field: fname(a.fieldId), value: a.value };
         if (a.type === 'append-doc') return { type: a.type, ...(a.fieldId ? { field: fname(a.fieldId) } : {}), text: a.text };
         if (a.type === 'add-comment') return { type: a.type, text: a.text, ...(a.author ? { author: a.author } : {}) };
+        if (a.type === 'upsert-row') {
+          const target = own(this.state.tables, a.dbId);
+          if (!target || target.deletedAt) throw new WeaveError(`Table '${a.dbId}' not found`, 'not-found');
+          const tname = (fid) => {
+            if (!own(target.fields, fid)) throw new WeaveError(`Field '${fid}' not found`, 'not-found');
+            return target.fields[fid].name;
+          };
+          return { type: a.type, table: this.qualifiedName(target), key: tname(a.keyFieldId), fields: Object.fromEntries(a.fields.map(([fid, path]) => [tname(fid), path])) };
+        }
         return { type: a.type, url: a.url };
       });
       return { table: this.qualifiedName(db), trigger, actions };
@@ -7553,6 +7695,10 @@ export class Weave {
           if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId) };
           if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : (db ? this.descriptionField(db)?.name ?? null : null) };
           if (a.type === 'webhook') return { type: a.type, url: a.url };
+          if (a.type === 'upsert-row') {
+            const target = this.state.tables[a.dbId];
+            return { type: a.type, table: target ? this.qualifiedName(target) : null, key: target?.fields[a.keyFieldId]?.name ?? null };
+          }
           return { type: a.type };
         }),
       };
@@ -7681,6 +7827,8 @@ export class Weave {
       const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db), createdAt: nowISO() };
       e.comments.push(comment);
       this.#recordUndo('comment-add', e, { commentId: comment.id });
+    } else if (action.type === 'upsert-row') {
+      this.#upsertRow(action, this.#upsertSource(e, db, event), depth);
     } else if (action.type === 'webhook') {
       if (this.#noWebhooks) return;
       const payload = {
@@ -7707,6 +7855,39 @@ export class Weave {
         .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${url.host}: ${why}`); })
         .catch(() => {});
     }
+  }
+
+  #upsertSource(e, db, event) {
+    const row = { PublicId: e.publicId };
+    for (const [name, v] of Object.entries(this.#readEntityIn(e.id).fields)) {
+      const chip = (x) => (x && typeof x === 'object' && 'publicId' in x ? x.name : x);
+      row[name] = Array.isArray(v) ? v.map(chip) : chip(v);
+    }
+    const field = event.fieldId ? db.fields[event.fieldId] : null;
+    const toState = event.toStateId ? field?.config.states?.find((s) => s.id === event.toStateId)?.name : null;
+    return { row, event: { type: event.type, ...(field ? { field: field.name } : {}), ...(toState ? { toState } : {}), ...(event.payload ?? {}) } };
+  }
+
+  #upsertRow(action, source, depth) {
+    const target = own(this.state.tables, action.dbId);
+    if (!target || target.deletedAt) throw new WeaveError('The upsert-row target table is gone', 'invalid');
+    const key = target.fields[action.keyFieldId];
+    const values = {};
+    for (const [fid, path] of action.fields) {
+      const f = target.fields[fid];
+      const v = sourcePath(source, path);
+      if (!f || blankSource(v)) continue;
+      this.#checkFits(f, v);
+      values[f.name] = v;
+    }
+    if (!key || values[key.name] === undefined) throw new WeaveError(`The upsert-row source has no value for the key field '${key?.name ?? action.keyFieldId}'`, 'invalid');
+    const want = String(this.#validateValue(key, values[key.name]));
+    const hit = this.listEntities(target.id)
+      .filter((x) => x.values[key.id] != null && String(x.values[key.id]) === want)
+      .sort((x, y) => x.publicId - y.publicId)[0];
+    if (!hit) return this.createEntity(target.id, { values }, { depth: depth + 1 });
+    delete values[key.name];
+    return this.updateEntity(hit.id, values, { depth: depth + 1 });
   }
 
   #webhookFailed(id, run, reason) {
@@ -7822,7 +8003,7 @@ export class Weave {
     const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
     if (!String(text ?? '').trim()) {
       return ids.flatMap((id) => this.listEntities(id))
-        .filter((e) => !e.deletedAt)
+        .filter((e) => this.#liveEntity(e.id))
         .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
         .slice(0, limit)
         .map((e) => hit(e));
@@ -8252,6 +8433,7 @@ export class Weave {
             out.many = f.config.many;
             out.inverseFieldId = f.config.inverseFieldId;
             out.inverseField = target.fields[f.config.inverseFieldId]?.name ?? null;
+            if (f.config.subtable) out.subtable = structuredClone(f.config.subtable);
           }
           if (f.type === 'rollup' && f.config.via) {
             const tdb = this.#tableAnywhere(f.config.via)?.table;
