@@ -1,1 +1,0 @@
-- The bug panel's submit button now says **Report issue** instead of Send, and carries `⌘↵` inside the button rather than as a grey chip beside it, so the shortcut is visible where the action is. A filed report turns the same button into **Reported**. (Issue #847)
