@@ -1,1 +1,0 @@
-- The plain `wv_session` cookie from before per-workspace sessions is no longer read: it opens nothing and is cleared with `Max-Age=0` on the next response. Sign in again if a browser still held only that cookie. (#717)

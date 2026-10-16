@@ -1,1 +1,0 @@
-- The Activity panel wraps a long field value inside its row instead of cutting it at the panel edge, keeps its filter chips on one line and puts the document chips that do not fit under a More menu. The cut-off sweep and gate walk a new Activity-panel journey on desktop and phone (#907).
