@@ -1320,7 +1320,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return {
               plan: s.plan, trial: s.trial ?? null, seats: s.seats, orgId: s.orgId, soloPlan: billing.soloPlan, teamPlan: billing.teamPlan, publishableKey: billing.publishableKey,
               me: accountName, architect,
-              members: accounts.map((a) => ({ name: a.name, role: Weave.roleName(a.role), paid: PAID_ROLES.has(Weave.roleName(a.role)), seated: s.seated(a.name) })),
+              members: accounts.map((a) => {
+                const mail = a.identities?.find((i) => i.verifiedEmail)?.verifiedEmail ?? null;
+                return { name: a.name, role: Weave.roleName(a.role), paid: PAID_ROLES.has(Weave.roleName(a.role)), seated: s.seated(a.name), ...(architect && mail ? { email: mail } : {}) };
+              }),
             };
           };
           const answer = async (extra = {}) => {

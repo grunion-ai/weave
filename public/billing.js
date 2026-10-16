@@ -72,15 +72,27 @@ const render = (state) => {
     : state.seats === 0 ? 'Nobody here takes a paid seat yet.' : `No plan covers this workspace, so its ${state.seats === 1 ? 'Editor or Architect works' : `${state.seats} Editors and Architects work`} as Observers until one is bought.`;
   $('seats').replaceChildren(...state.members.map((m) => {
     const li = document.createElement('li');
+    const id = document.createElement('span');
+    id.className = 'seat-id';
     const who = document.createElement('span');
-    who.textContent = m.name;
+    const name = document.createElement('span');
+    name.className = 'seat-who';
+    name.textContent = m.name;
     const role = document.createElement('small');
+    role.className = 'seat-role';
     role.textContent = ` ${m.role}`;
-    who.append(role);
+    who.append(name, role);
+    id.append(who);
+    if (m.email) {
+      const mail = document.createElement('small');
+      mail.className = 'seat-mail';
+      mail.textContent = m.email;
+      id.append(mail);
+    }
     const mark = document.createElement('span');
     mark.className = !m.paid ? 'muted' : m.seated ? 'state-ok' : 'state-bad';
     mark.textContent = !m.paid ? 'Free' : m.seated ? 'Seat covered' : 'Needs a seat';
-    li.append(who, mark);
+    li.append(id, mark);
     return li;
   }));
   const needsTeam = state.plan !== 'comped' && !state.orgId && state.seats > 1;

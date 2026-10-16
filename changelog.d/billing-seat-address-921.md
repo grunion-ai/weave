@@ -1,0 +1,1 @@
+- The Billing page says who holds which seat. Under each name the seats list prints that person's verified sign-in address, so a team workspace is readable when account names do not match the people behind them. `GET /api/billing` carries the address only for an architect, the same gate Members uses; every other member reads the seats as before (Issue #921).

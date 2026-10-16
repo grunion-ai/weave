@@ -188,3 +188,22 @@ test('an unseated Architect keeps an AI app that reads; its writes come back as 
   assert.equal(w.listTables().filter((x) => !x.system).length, 1);
   assert.equal((await mcp(call, t.ob, 'initialize', {})).status, 403, 'an Observer by role still has no MCP');
 });
+
+test('GET /api/billing gives an architect every seat holder\'s address and gives a member none (Issue #921)', async () => {
+  const { w, call, t } = build();
+  for (const [name, subject] of [['arc', 'user_arc'], ['ed', 'user_ed'], ['ob', 'user_ob']]) {
+    assert.equal(w.accountForIdentity({ issuer: ISSUER, subject, email: `${name}@example.com` }).name, name);
+  }
+  const mine = await call('GET', '/api/billing', { token: t.arc });
+  assert.equal(mine.status, 200);
+  assert.deepEqual(mine.json.members.map((m) => [m.name, m.email]).sort(), [['arc', 'arc@example.com'], ['ed', 'ed@example.com'], ['ob', 'ob@example.com']]);
+  const theirs = await call('GET', '/api/billing', { token: t.ob });
+  assert.equal(theirs.status, 200);
+  assert.deepEqual(theirs.json.members.map((m) => m.email), [undefined, undefined, undefined], 'only an architect reads addresses, as in Members');
+});
+
+test('GET /api/billing leaves out the address of an account that has never signed in (Issue #921)', async () => {
+  const { call, t } = build();
+  const res = await call('GET', '/api/billing', { token: t.arc });
+  assert.deepEqual(res.json.members.map((m) => m.email), [undefined, undefined, undefined]);
+});
