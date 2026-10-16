@@ -2209,15 +2209,15 @@ The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOS
 
 The bug glyph in the bottom-right corner of every page opens a small panel beside it. The page stays visible while the report is written, because reporting a bug must not cover the bug. Type a sentence, pick any of the four symptoms — **Slow**, **Looks broken**, **Wrong data**, **Error** — and there are two ways to send it.
 
-## Send: an Issue on this instance
+## Report issue: an Issue on this instance
 
-**Send**, or \`⌘Return\` from the note (the \`⌘↵\` beside the button says so), files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current.
+**Report issue**, or \`⌘Return\` from the note (the \`⌘↵\` on the button says so), files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current.
 
 That row lives where the instance lives. On the canonical instance it is read every night. On a self-hosted weave it is on your disk, and an instance without a docs workspace cannot file it at all.
 
 ## Email instead: the way out of any instance
 
-**Email instead**, at Send's left, opens your mail app with the report filled in, addressed to \`weave@grunion.ai\`, from your own address. Read it, edit it, add a screenshot, then send. Nothing transits the weave server. The address is receive-only; a reply comes from a person's own mailbox to yours.
+**Email instead**, at Report issue's left, opens your mail app with the report filled in, addressed to \`weave@grunion.ai\`, from your own address. Read it, edit it, add a screenshot, then send. Nothing transits the weave server. The address is receive-only; a reply comes from a person's own mailbox to yours.
 
 A page that did not load offers the same link under its message as **Report by email**, with the error folded in.
 

@@ -131,10 +131,10 @@ if (s) {
         const hint = await page.$eval('#bug-panel .bug-foot', (foot) => {
           const k = foot.querySelector('kbd');
           const r = k?.getBoundingClientRect();
-          return k ? { text: k.textContent, shown: r.width > 0 && r.height > 0, nextIsSend: k.nextElementSibling?.classList.contains('bug-send') } : null;
+          return k ? { text: k.textContent, shown: r.width > 0 && r.height > 0, insideSend: !!k.closest('.bug-send') } : null;
         });
-        assert.deepEqual(hint, { text: '⌘↵', shown: true, nextIsSend: true }, 'a visible ⌘↵ beside Send');
-        assert.match(await page.$eval('#bug-panel .bug-send', (b) => b.title), /⌘Return/, 'and Send names its key');
+        assert.deepEqual(hint, { text: '⌘↵', shown: true, insideSend: true }, 'a visible ⌘↵ inside Report issue');
+        assert.match(await page.$eval('#bug-panel .bug-send', (b) => b.title), /⌘Return/, 'and the button names its key');
       } finally { await page.close(); }
     });
   }

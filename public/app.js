@@ -13383,7 +13383,9 @@ function openBugPanel(fab) {
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
-  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: keyHint('Send (⌘Return)') }, 'Send');
+  const sendLabel = el('span', { class: 'bug-send-label' }, 'Report issue');
+  const sendKey = el('kbd', { class: 'bug-kbd bug-send-kbd' }, '⌘↵');
+  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: keyHint('Report issue (⌘Return)') }, sendLabel, sendKey);
   const note = el('textarea', {
     class: 'form-control form-control-sm bug-note', rows: '2', maxlength: '600',
     placeholder: 'What went wrong?',
@@ -13433,7 +13435,6 @@ function openBugPanel(fab) {
     el('div', { class: 'bug-foot' },
       el('span', { class: 'bug-captured', title: 'Recent routes, clicks, requests and errors — never anything you typed into a field' },
         `${c.actions + c.errors + c.failedRequests} steps captured`),
-      el('kbd', { class: 'bug-kbd', title: '⌘Return (Ctrl+Return) sends the report' }, '⌘↵'),
       send),
     el('div', { class: 'bug-mail-row' }, mailLink, el('span', { class: 'bug-addr' }, bugCore.REPORT_MAIL)));
 
@@ -13441,7 +13442,8 @@ function openBugPanel(fab) {
     e.preventDefault();
     if (send.disabled) return;
     send.disabled = true;
-    send.textContent = 'Sending…';
+    sendKey.remove();
+    sendLabel.textContent = 'Reporting…';
     try {
       const filed = await api('POST', '/bug-report', {
         categories: picked,
@@ -13450,14 +13452,15 @@ function openBugPanel(fab) {
         client: bugCore.clientContext(),
       });
       bugDraft = { note: '', categories: [] };
-      send.textContent = 'Sent';
+      sendLabel.textContent = 'Reported';
       send.classList.add('sent');
       panel.classList.add('sent');
       toast(`Issue #${filed.publicId}`, false, { label: 'Open', run: () => { location.href = filed.url; } });
       setTimeout(closeBugPanel, 1100);
     } catch (err) {
       send.disabled = false;
-      send.textContent = 'Send';
+      sendLabel.textContent = 'Report issue';
+      send.append(sendKey);
       toast(err.message, true);
     }
   });
