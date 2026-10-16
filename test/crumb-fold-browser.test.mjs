@@ -4,7 +4,7 @@ import { launch } from './lib/browser.mjs';
 
 let steps, chain;
 const s = await launch('crumb fold', (weave) => {
-  weave.createSpace({ name: 'Ops', icon: 'lucide:layers' });
+  weave.createSpace({ name: 'Ops', icon: 'lucide:folder-kanban' });
   steps = weave.createTable({ space: 'Ops', name: 'Steps', icon: 'lucide:rocket' });
   weave.addRelation(steps, { name: 'Next', targetDb: steps.id, cardinality: 'many-to-one', inverseName: 'Previous' });
   chain = [];

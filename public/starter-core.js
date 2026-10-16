@@ -19,7 +19,7 @@
 
   const CATEGORIES = [
     { id: 'start', label: 'Start simple', icon: 'lucide:file-plus', blurb: 'One plain table to shape as you go' },
-    { id: 'projects', label: 'Projects and tasks', icon: 'lucide:layers', blurb: 'Tasks, projects, meetings and goals' },
+    { id: 'projects', label: 'Projects and tasks', icon: 'lucide:folder-kanban', blurb: 'Tasks, projects, meetings and goals' },
     { id: 'money', label: 'Personal money', icon: 'lucide:wallet', blurb: 'Spending, subscriptions and savings goals' },
     { id: 'sales', label: 'Sales and customers', icon: 'lucide:funnel', blurb: 'Contacts, deals and support tickets' },
     { id: 'marketing', label: 'Marketing and events', icon: 'lucide:send', blurb: 'Content, campaigns, social posts and events' },
@@ -264,7 +264,7 @@
       tables: (m) => [
         {
           name: 'Projects',
-          icon: 'lucide:layers',
+          icon: 'lucide:folder-kanban',
           fields: [
             { name: 'Status', type: 'workflow', states: [
               state('Planned', 'not-started', 'slate', true),
