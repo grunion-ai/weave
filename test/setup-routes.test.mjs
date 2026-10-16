@@ -109,7 +109,7 @@ test('open sign-up: a stranger creates one workspace from a template, owns it, a
     const w = s.open('ada-sales');
     const owner = w.listAccounts()[0];
     assert.deepEqual([owner.name, Weave.roleName(owner.role), owner.identities[0].subject], ['ada.park', 'architect', 'user_new']);
-    assert.ok(w.onboardedAt(owner.id), 'setup counts as onboarding, so the in-app modal stays shut (Issue #912)');
+    assert.ok(w.onboardedAt(owner.id), 'setup counts as onboarding, so the in-app modal stays shut (Issue #911)');
     assert.ok(w.listTables().some((t) => t.id === body.table));
     assert.equal(w.state.meta.requireAuth, true);
     w.store.close?.();
