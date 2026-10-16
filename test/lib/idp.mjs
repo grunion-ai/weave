@@ -11,10 +11,14 @@ export function signJwt(payload, { privateKey, kid = 'k1', alg = 'RS256' } = {})
   return `${head}.${sig}`;
 }
 
-export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cret', claimsInIdToken = true, endSession = false } = {}) {
+const page = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui;margin:24px">${body}</body>`;
+const cookieIn = (req, name) => new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(req.headers.cookie ?? '')?.[1] ?? null;
+
+export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cret', claimsInIdToken = true, endSession = false, sessions = false, host = '127.0.0.1' } = {}) {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const codes = new Map();
-  const seen = { token: [], userinfo: 0, discovery: 0, jwks: 0, registered: [], authorized: 0 };
+  const live = new Map();
+  const seen = { token: [], userinfo: 0, discovery: 0, jwks: 0, registered: [], authorized: 0, signInPages: 0, signIns: 0, consentPages: 0 };
   const clients = new Map();
   let issuer = '';
   let tamper = null;
@@ -31,6 +35,15 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, issuer);
     const json = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+    const html = (status, body) => { res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(body); };
+    if (sessions && url.pathname === '/sign-in' && req.method === 'GET') {
+      if (!browserLogin) return json(401, { error: 'login_required' });
+      seen.signIns += 1;
+      const id = randomBytes(16).toString('hex');
+      live.set(id, browserLogin);
+      res.writeHead(302, { Location: url.searchParams.get('return') ?? '/', 'Set-Cookie': `__client=${id}; Path=/; HttpOnly; SameSite=Lax` });
+      return res.end();
+    }
     if (url.pathname === '/.well-known/openid-configuration') {
       seen.discovery += 1;
       return json(200, {
@@ -68,6 +81,21 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       if (q.get('client_id') !== clientId && !dyn) return json(400, { error: 'invalid_client' });
       if (dyn && !dyn.redirectUris.includes(q.get('redirect_uri'))) return json(400, { error: 'invalid_redirect_uri' });
       if (q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge')) return json(400, { error: 'invalid_request', error_description: 'PKCE S256 required' });
+      if (sessions) {
+        const who = live.get(cookieIn(req, '__client'));
+        if (!who) {
+          seen.signInPages += 1;
+          return html(200, page('Sign in', `<h1>Sign in to weave</h1><a id="idp-sign-in" href="/sign-in?return=${encodeURIComponent(url.href)}">Continue</a>`));
+        }
+        if (dyn && q.get('consented') !== '1') {
+          seen.consentPages += 1;
+          const allow = new URL(url.href);
+          allow.searchParams.set('consented', '1');
+          return html(200, page('Allow access', `<h1>${String(dyn.name ?? 'An app').replace(/[<>&"]/g, '')} wants to access weave</h1><a id="idp-allow" href="${allow.pathname}${allow.search}">Allow</a>`));
+        }
+        res.writeHead(302, { Location: grant(q, who).href });
+        return res.end();
+      }
       if (!browserLogin) return json(401, { error: 'login_required' });
       if (browserLogin.deny) {
         const back = new URL(q.get('redirect_uri'));
@@ -95,7 +123,8 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
           google.textContent = 'Continue with Google';
           google.dataset.fakeClerk = 'google';
           google.style.cssText = 'padding:9px 12px;border:1px solid color-mix(in srgb, ' + (v.colorNeutral ?? '#24292e') + ' 22%, transparent)' + ';border-radius:' + (v.borderRadius ?? '8px') + ';background:' + (v.colorBackground ?? '#fff') + ';color:inherit;font:inherit;font-weight:600;cursor:pointer';
-          google.onclick = () => { location.href = o.forceRedirectUrl; };
+          const viaIdp = ${sessions ? JSON.stringify(issuer) : 'null'};
+          google.onclick = () => { location.href = viaIdp ? viaIdp + '/sign-in?return=' + encodeURIComponent(new URL(o.forceRedirectUrl, location.href).href) : o.forceRedirectUrl; };
           const or = document.createElement('div');
           or.textContent = 'or';
           or.style.cssText = 'text-align:center;font-size:13px;color:' + (v.colorTextSecondary ?? 'gray');
@@ -174,7 +203,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
     json(404, { error: 'not_found' });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  issuer = `http://127.0.0.1:${server.address().port}`;
+  issuer = `http://${host}:${server.address().port}`;
 
   return {
     issuer, clientId, clientSecret, seen, privateKey,

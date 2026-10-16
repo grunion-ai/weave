@@ -57,6 +57,10 @@
       copyPrompt: 'Copy setup prompt',
       waiting: 'Waiting for {tool} to connect.',
       connected: '{tool} is connected to {title}.',
+      handback: 'Connecting opens a weave sign-in tab. Click Allow there, then come back to this setup tab.',
+      tabTitle: '✓ {tool} connected',
+      notifyTitle: '{tool} connected to {title}',
+      notifyBody: 'Come back to the weave setup tab to copy a first message for {tool}.',
       payoffTitle: 'First message',
       payoffHint: 'Paste it into a new {tool} chat.',
       copyMessage: 'Copy message',
@@ -667,6 +671,7 @@
       errorBox(s.error),
       steps,
       g.note ? make('p', { class: 'muted note' }, g.note) : null,
+      connected ? null : make('p', { class: 'muted handback' }, COPY.agent.handback),
       link,
       payoff,
       make('div', { class: 'actions' }, skip, make('span', { class: 'grow' }),
@@ -694,6 +699,13 @@
   }
 
   const VIEWS = { account, list, closed, workspace, work, build, agent, done };
+  const PAGE_TITLE = document.title;
+
+  function notifyConnected() {
+    const tool = TOOLS.find((t) => t.id === s.data.tool);
+    if (!tool || typeof Notification !== 'function' || Notification.permission !== 'granted') return;
+    try { new Notification(fill(COPY.agent.notifyTitle, { tool: tool.name, title: s.made?.title ?? s.data.name }), { body: fill(COPY.agent.notifyBody, { tool: tool.name }), tag: 'weave-setup-connected' }); } catch {}
+  }
 
   function render() {
     clearInterval(poll);
@@ -702,6 +714,8 @@
     onResize = null;
     main.dataset.step = s.step;
     main.replaceChildren(...VIEWS[s.step]().filter(Boolean));
+    const tool = s.connected && TOOLS.find((t) => t.id === s.data.tool);
+    document.title = tool ? fill(COPY.agent.tabTitle, { tool: tool.name }) : PAGE_TITLE;
     if (s.step !== 'build') donut(progress(s));
     else if (!main.querySelector('.checklist [data-done]')) donut(progress(s), fill(COPY.steps.building, { title: workspaceTitle() }));
     if (s.step === 'agent' && s.data.tool && !s.connected) {
@@ -709,7 +723,10 @@
       poll = setInterval(async () => {
         try {
           const seen = await getJson(`/api/start/workspaces/${slug}/agent`);
-          if (seen.connected) dispatch({ type: 'connected', at: seen.at });
+          if (seen.connected) {
+            dispatch({ type: 'connected', at: seen.at });
+            notifyConnected();
+          }
         } catch {}
       }, 2000);
     }
