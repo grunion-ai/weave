@@ -41,7 +41,6 @@
       skip: 'Skip this step',
     },
     done: { title: '{title} is ready', withAgent: 'Your AI app is connected. Open the workspace, then ask your AI app for a tour.', withoutAgent: 'To connect an AI app later, add this connection address to it: {mcp}', open: 'Open workspace' },
-    stage: { big: 'Own your work.', lines: ['Tables, documents and links between them, in one workspace.', 'Your AI app reads and updates the same records you do.', 'Export everything, any time. Open source, MIT licensed.'] },
     errors: {
       signin_failed: 'Sign-in did not finish. Try again, or use a different account.',
       signin_unverified: 'weave could not verify that sign-in. Try again.',
@@ -117,20 +116,9 @@
     return box;
   }
 
-  const say = () => make('div', { class: 'say' },
-    make('p', { class: 'big' }, COPY.stage.big),
-    make('p', { class: 'say-line' }, COPY.stage.lines[0]));
-
-  const ART = '<div class="art-document"><div class="art-document-top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7zM14 3v5h4M10 12h5M10 16h5"/></svg><span>Launch brief</span></div><h3>Customer pilot</h3><div class="art-line long"></div><div class="art-line"></div><div class="art-line short"></div><div class="art-note"><span>Decision</span>Start with the customer pilot.</div></div>'
-    + '<div class="art-project"><div class="art-project-top"><span class="art-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2-3h8v16H4zM8 11h8M8 15h5"/></svg></span><span>PROJECT</span><span class="art-dot"></span></div><h2>Autumn launch</h2><div class="art-meta"><span class="art-avatar">AL</span>Alex Lee<span class="art-progress">In progress</span></div>'
-    + '<div class="art-task"><span class="art-check done">\u2713</span><span>Customer interviews</span><span class="art-owner">JL</span></div><div class="art-task"><span class="art-check"></span><span>Launch checklist</span><span class="art-owner">AL</span></div><div class="art-task"><span class="art-check"></span><span>Website refresh</span><span class="art-owner">MK</span></div>'
-    + '<div class="art-project-foot"><span>3 linked tasks</span><span>1 document</span></div><div class="art-agent"><div class="art-agent-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4m8-8 4 4-4 4m-3-10-2 20"/></svg></div><div><span>External AI agent</span><strong>Launch checklist updated.</strong></div><span class="art-check done">\u2713</span></div></div>'
-    + '<figcaption>Example workspace \u00b7 Connected tables, documents and agents</figcaption>';
-  const workspaceArt = () => {
-    const figure = make('figure', { class: 'workspace-art', 'aria-label': 'Example connected workspace: a launch project, its brief and an update from an external AI agent' });
-    figure.innerHTML = ART;
-    return figure;
-  };
+  const radiate = () => make('picture', { class: 'radiate' },
+    make('source', { srcset: '/brand/weave-radiate-dark.svg', media: '(prefers-color-scheme: dark)' }),
+    make('img', { src: '/brand/weave-radiate-light.svg', alt: 'The weave mark with rings radiating to every edge' }));
 
   let s = null;
   let me = null;
@@ -351,7 +339,7 @@
       const tool = TOOLS.find((t) => t.id === s.data.tool)?.name;
       art = loom([{ label: tool ? `weave and ${tool}` : 'weave and your AI app', n: 12, tick: !!s.connected }], { waiting: !!tool && !s.connected });
     } else art = null;
-    stage.replaceChildren(...(art ? [art] : [say(), workspaceArt()]));
+    stage.replaceChildren(art ?? radiate());
     stage.dataset.step = s.step;
   }
 
