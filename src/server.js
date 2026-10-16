@@ -73,6 +73,7 @@ export const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.ico': 'image/x-icon',
   '.json': 'application/json',
 };
 
@@ -466,6 +467,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   const assets = createAssetVersions(PUBLIC_DIR);
   const serveStatic = (path, rx, { head = null } = {}) => {
     const file = path === '/' ? '/index.html'
+      : path === '/favicon.ico' ? '/brand/favicon.ico'
       : path === '/vendor/vditor/dist/js/mermaid/mermaid.min.js' ? '/vendor/mermaid.min.js'
       : path;
     const full = join(PUBLIC_DIR, file.replace(/\.\./g, ''));
