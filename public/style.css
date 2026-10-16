@@ -1881,7 +1881,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 }
 
 .crumb-actions .table-search { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); gap: 0; }
-.crumb-actions .table-search-btn { border: 0; background: none; }
+.crumb-actions .table-search-btn, .crumb-actions .table-search-btn:is(:hover, :focus, :focus-visible, :active) { border: 0; background: none; box-shadow: none; }
 .crumb-actions .table-search-input { display: block; width: 140px; min-width: 0; padding-left: 2px; }
 .crumb-actions .table-search:focus-within { outline: 2px solid rgba(var(--tblr-primary-rgb), .45); outline-offset: 1px; }
 .crumb-actions :is(.table-view-btn,.table-density-btn,.eye-btn,.table-filter-btn,.table-sort-btn) { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
