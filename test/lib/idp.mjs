@@ -79,6 +79,19 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       res.writeHead(302, { Location: grant(q, browserLogin).href });
       return res.end();
     }
+    if (url.pathname === '/npm/@clerk/clerk-js@6/dist/clerk.browser.js') {
+      seen.clerkScript = (seen.clerkScript ?? 0) + 1;
+      res.writeHead(200, { 'Content-Type': 'text/javascript', 'Access-Control-Allow-Origin': '*' });
+      return res.end(`window.Clerk = { user: null, load: async () => {}, unmountSignIn: (el) => el.replaceChildren(), mountSignIn: (el, o) => {
+        window.__clerkOptions = o;
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = 'Continue with Google';
+        b.dataset.fakeClerk = 'google';
+        b.onclick = () => { location.href = o.forceRedirectUrl; };
+        el.replaceChildren(b);
+      } };`);
+    }
     if (url.pathname === '/jwks') {
       seen.jwks += 1;
       return json(200, { keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'k1', use: 'sig', alg: 'RS256' }] });
@@ -130,6 +143,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
 
   return {
     issuer, clientId, clientSecret, seen, privateKey,
+    get publishableKey() { return `pk_test_${Buffer.from(`${new URL(issuer).host}$`).toString('base64')}`; },
     tamper: (what) => { tamper = what; },
     signInBrowserAs: (claims) => { browserLogin = claims; },
     approve(authorizeUrl, claims) {
