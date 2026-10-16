@@ -11355,7 +11355,7 @@ function subtablePopover(anchor, ownerId, f, target, eligible, shown, redraw) {
       await loadSchema();
       await redraw();
     });
-    return subtableWrites.catch((err) => toast(err.message, true));
+    return subtableWrites;
   };
   const visible = new Set(shown);
   const fieldRow = (c) => el('div', { class: 'table-field-row', dataset: { field: c.name } },
@@ -11363,7 +11363,7 @@ function subtablePopover(anchor, ownerId, f, target, eligible, shown, redraw) {
     el('label', { class: 'chip-pop-row eye-row' },
       el('input', { type: 'checkbox', class: 'form-check-input', checked: visible.has(c.name) ? '' : undefined, onchange: (e) => {
         if (e.target.checked) visible.add(c.name); else visible.delete(c.name);
-        write(() => ({ fields: eligible.filter((x) => visible.has(x.name)).map((x) => x.name) }));
+        write(() => ({ fields: eligible.filter((x) => visible.has(x.name)).map((x) => x.name) })).catch((err) => toast(err.message, true));
       } }),
       el('span', { class: 'eye-label' }, c.name)));
   const strip = filterStrip(target, null, {
