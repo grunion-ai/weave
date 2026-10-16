@@ -500,7 +500,7 @@
       const box = search.closest('.search');
       scrollTo({ top: Math.max(0, box.getBoundingClientRect().top + scrollY - 12), behavior: 'instant' });
     };
-    search.addEventListener('focus', () => { lift(); setTimeout(lift, 300); });
+    search.addEventListener('focus', () => { lift(); setTimeout(() => { if (document.activeElement === search) lift(); }, 300); });
     gallery.addEventListener('keydown', (ev) => {
       const at = ev.target.closest?.('.card');
       if (!at) return;
