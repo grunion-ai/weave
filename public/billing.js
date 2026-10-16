@@ -61,6 +61,8 @@ const render = (state) => {
   const seated = state.members.filter((m) => m.paid && m.seated).length;
   $('summary').textContent = state.plan === 'comped'
     ? 'This workspace was made before billing began, so it is never charged.'
+    : state.plan === 'trial'
+    ? `This workspace is on its free trial until ${new Date(state.trial.endsAt).toLocaleDateString()} (${state.trial.daysLeft === 1 ? 'less than a day' : `${state.trial.daysLeft} days`} left). Everyone can create and edit until then; after it, Editors and Architects need a plan to keep editing. Your rows stay either way.`
     : state.plan
     ? `This workspace is on ${PLAN_NAMES[state.plan] ?? state.plan}. ${seated} of ${state.seats} paid ${state.seats === 1 ? 'seat is' : 'seats are'} covered.`
     : state.seats === 0 ? 'Nobody here takes a paid seat yet.' : `No plan covers this workspace, so its ${state.seats === 1 ? 'Editor or Architect works' : `${state.seats} Editors and Architects work`} as Observers until one is bought.`;

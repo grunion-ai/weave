@@ -655,6 +655,7 @@ export function mayAdminister(on, role) {
   return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
 }
 const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root', weave_shares: 'workspace' };
+export const SEATLESS_TOOLS = new Set(['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_trash', 'weave_stats', 'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_relation_map', 'weave_add_comment']);
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 function checkRowArgs(name, args, required) {
@@ -667,6 +668,7 @@ function checkRowArgs(name, args, required) {
 }
 
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
+  if (caller?.seat && !SEATLESS_TOOLS.has(name)) throw new Error(caller.seat);
   if (caller && ADMIN_TOOLS[name]) {
     const atRoot = ADMIN_TOOLS[name] === 'root';
     if (!mayAdminister(atRoot ? caller.root ?? weave : weave, atRoot ? caller.rootRole : caller.role)) {

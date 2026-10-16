@@ -4,6 +4,8 @@ export const CLERK_API = 'https://api.clerk.com/v1';
 export const PAID_ROLES = new Set(['editor', 'architect']);
 export const FRESH_MS = 60_000;
 export const STALE_MS = 15 * 60_000;
+export const DAY_MS = 86_400_000;
+export const TRIAL_DAYS = 14;
 const ORG_ROLE = { architect: 'org:admin', editor: 'org:member' };
 const PAGE = 500;
 
@@ -33,12 +35,22 @@ export function billingFromEnv(env = process.env, opts = {}) {
   const rawSince = String(env.WEAVE_BILLING_SINCE ?? '').trim();
   const since = rawSince ? Date.parse(rawSince) : 0;
   if (Number.isNaN(since)) throw new WeaveError(`WEAVE_BILLING_SINCE must be a date like 2026-10-16T00:00:00Z (got '${rawSince}')`, 'invalid');
+  const rawDays = String(env.WEAVE_TRIAL_DAYS ?? '').trim();
+  const trialDays = rawDays ? Number(rawDays) : TRIAL_DAYS;
+  if (!Number.isInteger(trialDays) || trialDays < 0) throw new WeaveError(`WEAVE_TRIAL_DAYS must be a whole number of days, 0 for no trial (got '${rawDays}')`, 'invalid');
   const issuer = String(env.WEAVE_OIDC_ISSUER ?? '').trim().replace(/\/+$/, '');
   const publishableKey = String(env.WEAVE_CLERK_PUBLISHABLE_KEY ?? '').trim() || null;
-  return createBilling({ secretKey, soloPlan, teamPlan, since, issuer, publishableKey, ...opts });
+  return createBilling({ secretKey, soloPlan, teamPlan, since, trialDays, issuer, publishableKey, ...opts });
 }
 
-export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, issuer = '', publishableKey = null, fetch = globalThis.fetch, now = Date.now }) {
+export function trialOf(workspace, trialDays, at) {
+  const from = Date.parse(workspace?.trialFrom ?? '');
+  if (!trialDays || Number.isNaN(from)) return null;
+  const ends = from + trialDays * DAY_MS;
+  return at < ends ? { endsAt: new Date(ends).toISOString(), daysLeft: Math.ceil((ends - at) / DAY_MS) } : null;
+}
+
+export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, trialDays = TRIAL_DAYS, issuer = '', publishableKey = null, fetch = globalThis.fetch, now = Date.now }) {
   const cache = new Map();
 
   async function api(method, path, body) {
@@ -100,7 +112,7 @@ export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, issuer
       orgId: null,
       seated(name) {
         const account = byName.get(name);
-        if (!account || !PAID_ROLES.has(account.role) || plan === 'comped') return true;
+        if (!account || !PAID_ROLES.has(account.role) || plan === 'comped' || plan === 'trial') return true;
         const subject = subjectOf(account);
         return !subject || seatedSubjects.has(subject);
       },
@@ -112,9 +124,13 @@ export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, issuer
     teamPlan,
     publishableKey,
     subjectOf,
+    trialDays,
+    trial: (workspace) => trialOf(workspace, trialDays, now()),
     async standing({ workspace, accounts }) {
       const created = Date.parse(workspace.createdAt ?? '');
-      if (!Number.isNaN(created) && created < since) return { ...shape({ plan: 'comped', seats: seatsOf(accounts).length, seatedSubjects: new Set() }, accounts), orgId: workspace.billing?.orgId ?? null };
+      const orgId = workspace.billing?.orgId ?? null;
+      if (!Number.isNaN(created) && created < since) return { ...shape({ plan: 'comped', seats: seatsOf(accounts).length, seatedSubjects: new Set() }, accounts), orgId, trial: null };
+      const trial = trialOf(workspace, trialDays, now());
       const key = `${workspace.slug ?? ''}\u0000${workspace.billing?.orgId ?? ''}\u0000${seatsOf(accounts).map(subjectOf).sort().join(',')}`;
       const hit = cache.get(key);
       let value;
@@ -125,11 +141,13 @@ export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, issuer
           if (cache.size > 10_000) cache.clear();
           cache.set(key, { at: now(), value });
         } catch (error) {
-          if (!hit || now() - hit.at > STALE_MS) throw new BillingUnavailable(error);
-          value = hit.value;
+          if (hit && now() - hit.at <= STALE_MS) value = hit.value;
+          else if (trial) value = { plan: null, seats: seatsOf(accounts).length, seatedSubjects: new Set() };
+          else throw new BillingUnavailable(error);
         }
       }
-      return { ...shape(value, accounts), orgId: workspace.billing?.orgId ?? null };
+      if (value.plan == null && trial) return { ...shape({ ...value, plan: 'trial' }, accounts), orgId, trial };
+      return { ...shape(value, accounts), orgId, trial: null };
     },
     forget() { cache.clear(); },
     async ensureOrg({ workspace, createdBy }) {

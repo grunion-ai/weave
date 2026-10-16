@@ -264,6 +264,7 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      WEAVE_MAIL_KEY + WEAVE_MAIL_FROM (email each invite through Resend; both or neither),
      WEAVE_CLERK_SECRET_KEY + WEAVE_BILLING_SOLO_PLAN + WEAVE_BILLING_TEAM_PLAN (bill paid seats through Clerk Billing; all three or none),
      WEAVE_CLERK_PUBLISHABLE_KEY (checkout on the billing page), WEAVE_BILLING_SINCE (workspaces made before it are never billed),
+     WEAVE_TRIAL_DAYS (free trial for a workspace made at /start, default 14, 0 for none),
      WEAVE_WEBHOOK_ALLOW_PRIVATE=1 (let workflow webhooks post to loopback, link-local and private addresses;
      off, those deliveries are refused and the rule's Health says so),
      WEAVE_MCP_ORIGINS (comma-separated other origins the /mcp door answers on), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides

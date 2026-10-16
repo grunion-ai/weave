@@ -110,6 +110,51 @@ test('an account with no identity under the Clerk issuer is not a seat and is ne
   assert.equal(s.seated('deploy-check'), true);
 });
 
+const trialing = (daysAgo) => ({ ...fresh, slug: `t${daysAgo}`, trialFrom: new Date(NOW - daysAgo * DAY).toISOString() });
+
+test('billingFromEnv: WEAVE_TRIAL_DAYS sets the trial length, 14 by default, 0 for none', async () => {
+  const days = async (extra) => (await billingFromEnv({ ...env, ...extra }, { fetch: clerkFake({}).f, now: () => NOW }).standing({ workspace: trialing(0), accounts: [human('kyle', 'architect', 'user_k')] })).trial;
+  assert.equal((await days({})).daysLeft, 14);
+  assert.equal((await days({ WEAVE_TRIAL_DAYS: '30' })).daysLeft, 30);
+  assert.equal(await days({ WEAVE_TRIAL_DAYS: '0' }), null);
+  assert.throws(() => billingFromEnv({ ...env, WEAVE_TRIAL_DAYS: 'lots' }), /WEAVE_TRIAL_DAYS/);
+  assert.throws(() => billingFromEnv({ ...env, WEAVE_TRIAL_DAYS: '-3' }), /WEAVE_TRIAL_DAYS/);
+});
+
+test('a workspace on its trial seats every paid role, and says when the trial ends', async () => {
+  const { billing } = make({});
+  const ws = trialing(2);
+  const s = await billing.standing({ workspace: ws, accounts: [human('kyle', 'architect', 'user_k'), human('ana', 'editor', 'user_a')] });
+  assert.equal(s.plan, 'trial');
+  assert.equal(s.seated('kyle'), true);
+  assert.equal(s.seated('ana'), true);
+  assert.deepEqual(s.trial, { endsAt: new Date(Date.parse(ws.trialFrom) + 14 * DAY).toISOString(), daysLeft: 12 });
+});
+
+test('a plan bought during the trial wins over the trial', async () => {
+  const { billing } = make({ 'GET /users/user_k/billing/subscription': [200, sub('solo')] });
+  const s = await billing.standing({ workspace: trialing(2), accounts: [human('kyle', 'architect', 'user_k')] });
+  assert.deepEqual([s.plan, s.trial], ['solo', null]);
+});
+
+test('after the trial the workspace needs a plan again', async () => {
+  const { billing } = make({});
+  const s = await billing.standing({ workspace: trialing(15), accounts: [human('kyle', 'architect', 'user_k')] });
+  assert.deepEqual([s.plan, s.trial, s.seated('kyle')], [null, null, false]);
+});
+
+test('Clerk down during a trial keeps the trial working', async () => {
+  const { billing } = make({ 'GET /users/user_k/billing/subscription': [500, {}] });
+  const s = await billing.standing({ workspace: trialing(1), accounts: [human('kyle', 'architect', 'user_k')] });
+  assert.deepEqual([s.plan, s.seated('kyle'), s.trial.daysLeft], ['trial', true, 13]);
+});
+
+test('a workspace made before WEAVE_BILLING_SINCE stays comped, with no trial', async () => {
+  const { billing } = make({});
+  const s = await billing.standing({ workspace: { createdAt: '2026-09-01T00:00:00Z', trialFrom: '2026-09-01T00:00:00Z', billing: {} }, accounts: [human('kyle', 'architect', 'user_k')] });
+  assert.deepEqual([s.plan, s.trial], ['comped', null]);
+});
+
 test('standing is cached for a minute, and a stale answer stands in while Clerk is down', async () => {
   let up = true;
   const { f } = clerkFake({ 'GET /users/user_k/billing/subscription': () => (up ? [200, sub('solo')] : [500, {}]) });

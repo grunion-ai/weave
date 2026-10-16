@@ -1,0 +1,5 @@
+- A workspace made at `/start` opens on a free trial: for `WEAVE_TRIAL_DAYS` days (14 by default, `0` for none) every Editor and Architect creates and edits, and the AI app works over OAuth MCP and `wv_` tokens. After it, a paid seat is needed again and every row stays. `GET /api/billing` and the `/api/start` workspace rows carry `trial: { endsAt, daysLeft }`, and the sidebar links to Billing over the last 3 days. (Feature #329, Issue #918)
+- The setup page's agent step reports an AI app as connected only after weave answered one of its MCP calls, never a call it refused. (Issue #915)
+- An Architect without a seat keeps an AI app that reads: `/mcp` answers `initialize`, `tools/list` and the read tools, and write tools return a tool error with the seat-required words and the billing address. (Issue #916)
+- The seat-required refusal is worded for the reader's role, and the app shows it as one toast with an Open billing action instead of one toast per refused write. (Issue #917)
+- `GET /api/start` names the workspace waiting on a plan as `waiting` beside `canCreate`, and the `plan-required` refusal carries that workspace's billing address. (Issue #920)
