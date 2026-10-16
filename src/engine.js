@@ -309,6 +309,16 @@ const WORKFLOW_STATES = [
 ];
 const workflowActor = (rowId) => `workflow:${rowId}`;
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
+const UPSERT_KEY_TYPES = ['text', 'number', 'url', 'email'];
+const blankSource = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
+export function sourcePath(source, path) {
+  let at = source;
+  for (const part of String(path).split('.')) {
+    if (at == null || typeof at !== 'object' || RESERVED_NAMES.has(part) || !Object.hasOwn(at, part)) return undefined;
+    at = at[part];
+  }
+  return at;
+}
 
 const { HUE_HEX, HUES, hueName } = globalThis.chipCore;
 function hueOf(o, { strict = false, fallback = 'slate' } = {}) {
@@ -452,7 +462,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.entities',
-      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
+      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
@@ -7379,10 +7389,28 @@ export class Weave {
         if (!/^https?:\/\//.test(a.url ?? '')) throw new WeaveError('Webhook action needs an http(s) url', 'invalid');
         return { type: 'webhook', url: a.url };
       }
+      if (a?.type === 'upsert-row') return this.#compileUpsert(a);
       throw new WeaveError(`Unknown automation action '${a?.type}'`, 'invalid');
     });
     if (!acts.length) throw new WeaveError('Automation needs at least one action', 'invalid');
     return { dbId: db.id, trigger: t, actions: acts };
+  }
+
+  #compileUpsert(a) {
+    if (a.table == null || a.table === '') throw new WeaveError('The upsert-row action names no target table', 'invalid');
+    const target = this.getTable(a.table);
+    if (a.key == null || a.key === '') throw new WeaveError('The upsert-row action needs a key field holding the external id', 'invalid');
+    const key = this.getField(target.id, a.key);
+    if (!UPSERT_KEY_TYPES.includes(key.type)) throw new WeaveError(`Key field '${key.name}' is a ${key.type} field: a key holds text, a number, a url or an email`, 'invalid');
+    if (!a.fields || typeof a.fields !== 'object' || Array.isArray(a.fields)) throw new WeaveError('The upsert-row fields map each target field to a source path, as an object', 'invalid');
+    const fields = Object.entries(a.fields).map(([name, path]) => {
+      const f = this.getField(target.id, name);
+      if (COMPUTED_TYPES.includes(f.type)) throw new WeaveError(`Field '${f.name}' is computed (${f.type}) and cannot be written`, 'invalid');
+      if (typeof path !== 'string' || !path.trim()) throw new WeaveError(`Field '${f.name}' needs a source path such as row.Name`, 'invalid');
+      return [f.id, path.trim()];
+    });
+    if (!fields.some(([fid]) => fid === key.id)) throw new WeaveError(`The upsert-row fields map no source path to the key field '${key.name}'`, 'invalid');
+    return { type: 'upsert-row', dbId: target.id, keyFieldId: key.id, fields };
   }
 
   #checkFits(f, value) {
@@ -7416,6 +7444,15 @@ export class Weave {
         if (a.type === 'set-field') return { type: a.type, field: fname(a.fieldId), value: a.value };
         if (a.type === 'append-doc') return { type: a.type, ...(a.fieldId ? { field: fname(a.fieldId) } : {}), text: a.text };
         if (a.type === 'add-comment') return { type: a.type, text: a.text, ...(a.author ? { author: a.author } : {}) };
+        if (a.type === 'upsert-row') {
+          const target = own(this.state.tables, a.dbId);
+          if (!target || target.deletedAt) throw new WeaveError(`Table '${a.dbId}' not found`, 'not-found');
+          const tname = (fid) => {
+            if (!own(target.fields, fid)) throw new WeaveError(`Field '${fid}' not found`, 'not-found');
+            return target.fields[fid].name;
+          };
+          return { type: a.type, table: this.qualifiedName(target), key: tname(a.keyFieldId), fields: Object.fromEntries(a.fields.map(([fid, path]) => [tname(fid), path])) };
+        }
         return { type: a.type, url: a.url };
       });
       return { table: this.qualifiedName(db), trigger, actions };
@@ -7624,6 +7661,10 @@ export class Weave {
           if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId) };
           if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : (db ? this.descriptionField(db)?.name ?? null : null) };
           if (a.type === 'webhook') return { type: a.type, url: a.url };
+          if (a.type === 'upsert-row') {
+            const target = this.state.tables[a.dbId];
+            return { type: a.type, table: target ? this.qualifiedName(target) : null, key: target?.fields[a.keyFieldId]?.name ?? null };
+          }
           return { type: a.type };
         }),
       };
@@ -7752,6 +7793,8 @@ export class Weave {
       const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db), createdAt: nowISO() };
       e.comments.push(comment);
       this.#recordUndo('comment-add', e, { commentId: comment.id });
+    } else if (action.type === 'upsert-row') {
+      this.#upsertRow(action, this.#upsertSource(e, db, event), depth);
     } else if (action.type === 'webhook') {
       if (this.#noWebhooks) return;
       const payload = {
@@ -7778,6 +7821,39 @@ export class Weave {
         .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${url.host}: ${why}`); })
         .catch(() => {});
     }
+  }
+
+  #upsertSource(e, db, event) {
+    const row = { PublicId: e.publicId };
+    for (const [name, v] of Object.entries(this.#readEntityIn(e.id).fields)) {
+      const chip = (x) => (x && typeof x === 'object' && 'publicId' in x ? x.name : x);
+      row[name] = Array.isArray(v) ? v.map(chip) : chip(v);
+    }
+    const field = event.fieldId ? db.fields[event.fieldId] : null;
+    const toState = event.toStateId ? field?.config.states?.find((s) => s.id === event.toStateId)?.name : null;
+    return { row, event: { type: event.type, ...(field ? { field: field.name } : {}), ...(toState ? { toState } : {}), ...(event.payload ?? {}) } };
+  }
+
+  #upsertRow(action, source, depth) {
+    const target = own(this.state.tables, action.dbId);
+    if (!target || target.deletedAt) throw new WeaveError('The upsert-row target table is gone', 'invalid');
+    const key = target.fields[action.keyFieldId];
+    const values = {};
+    for (const [fid, path] of action.fields) {
+      const f = target.fields[fid];
+      const v = sourcePath(source, path);
+      if (!f || blankSource(v)) continue;
+      this.#checkFits(f, v);
+      values[f.name] = v;
+    }
+    if (!key || values[key.name] === undefined) throw new WeaveError(`The upsert-row source has no value for the key field '${key?.name ?? action.keyFieldId}'`, 'invalid');
+    const want = String(this.#validateValue(key, values[key.name]));
+    const hit = this.listEntities(target.id)
+      .filter((x) => x.values[key.id] != null && String(x.values[key.id]) === want)
+      .sort((x, y) => x.publicId - y.publicId)[0];
+    if (!hit) return this.createEntity(target.id, { values }, { depth: depth + 1 });
+    delete values[key.name];
+    return this.updateEntity(hit.id, values, { depth: depth + 1 });
   }
 
   #webhookFailed(id, run, reason) {
@@ -7893,7 +7969,7 @@ export class Weave {
     const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
     if (!String(text ?? '').trim()) {
       return ids.flatMap((id) => this.listEntities(id))
-        .filter((e) => !e.deletedAt)
+        .filter((e) => this.#liveEntity(e.id))
         .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
         .slice(0, limit)
         .map((e) => hit(e));

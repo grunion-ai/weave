@@ -1239,6 +1239,15 @@ weave automation create Task --name 'Log completion' \\
 
 Triggers fire on create, update, and state change. Actions set fields, move state, append to a document, add a comment, or POST a webhook. A webhook that answers non-2xx, does not answer within 5 seconds, or cannot connect marks its Workflows row Failed with the reason; the write that fired it still lands. \`{{Field}}\` placeholders read the row; an empty one reads \`(no Field)\`.
 
+An \`upsert-row\` action writes a row of another table instead of the one that fired, matched on a key field that holds an id from the other system:
+
+\`\`\`json
+{ "type": "upsert-row", "table": "Billing/Account", "key": "Stripe Id",
+  "fields": { "Stripe Id": "row.Customer", "Name": "row.Company", "Plan": "row.Tier" } }
+\`\`\`
+
+When a row of the target table already holds that key, the action updates it; otherwise it creates one, so a repeated delivery never makes a duplicate. The key is a text, number, url or email field and must be mapped. Each source path reads the firing row (\`row.<Field>\`, \`row.PublicId\`) or the trigger (\`event.type\`, \`event.field\`, \`event.toState\`). A select takes its option name and a relation the target row's Name, as the entities API does. A path that finds nothing leaves its field as it was, and an empty key marks the Workflows row Failed. An upsert into its own table is held by the same depth limit as every automation write.
+
 ## Decks
 
 A deck is a read over slide rows, composed on request — the rows stay editable data and the deck is generated from them. See the **Decks: composing slides** guide.
