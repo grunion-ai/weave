@@ -112,7 +112,7 @@ if (s) {
         const side = document.querySelector('#sidebar').getBoundingClientRect();
         const foot = document.querySelector('.nav-identity').getBoundingClientRect();
         const below = document.elementFromPoint(foot.x + 40, side.bottom - 3);
-        return { footBottom: foot.bottom, sideBottom: side.bottom, scrolls: document.querySelector('#sidebar').scrollHeight > document.querySelector('#sidebar').clientHeight,
+        return { footBottom: foot.bottom, sideBottom: side.bottom, scrolls: document.querySelector('#nav').scrollHeight > document.querySelector('#nav').clientHeight,
           below: below?.closest('.nav-identity') ? 'foot' : (below?.className || below?.tagName) };
       });
       assert.ok(g.scrolls, 'the seed makes the nav scroll');

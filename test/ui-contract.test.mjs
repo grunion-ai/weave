@@ -1398,6 +1398,24 @@ test('the Fields list reserves its scrollbar gutter and insets its rows to match
   assert.equal(px(list['padding-right']), px(rulesFor('.field-reorder-handle').padding), 'the right inset matches the grip inset on the left');
 });
 
+test('one thin scroll bar spec overrides Tabler in every engine (Issue #956)', () => {
+  assert.equal(rulesFor('*')['scrollbar-width'], 'thin', 'Chromium, Firefox and a WebKit that reads scrollbar-width draw the native thin bar and skip the pseudo rules');
+  for (const scope of ['', '.modal-body', 'pre']) {
+    const bar = rulesFor(`${scope}::-webkit-scrollbar`);
+    assert.equal(bar.width, '8px', `${scope || 'every element'}: a WebKit without scrollbar-width gets 8px in place of Tabler's 1rem`);
+    assert.equal(bar.height, '8px');
+    assert.equal(rulesFor(`${scope}::-webkit-scrollbar-thumb`)['box-shadow'], 'none', `${scope || 'every element'}: Tabler's inset shadow thumb is gone`);
+  }
+  const thumb = rulesFor('::-webkit-scrollbar-thumb');
+  assert.equal(thumb['background-clip'], 'padding-box', 'the transparent border insets the thumb');
+  assert.match(thumb['background-color'] ?? '', /20%/, 'the thumb matches Tabler\'s 20% mix');
+  assert.match(rulesFor(':hover::-webkit-scrollbar-thumb')['background-color'] ?? '', /40%/, 'and darkens to 40% on hover');
+  for (const hidden of ['#ws-rail', '.doc-rail-track', '.view-strip']) {
+    assert.equal(rulesFor(hidden)['scrollbar-width'], 'none', `${hidden} still hides its bar in Chromium`);
+    assert.equal(rulesFor(`${hidden}::-webkit-scrollbar`).display, 'none', `${hidden} still hides its bar in WebKit`);
+  }
+});
+
 test('system columns are toggled only from the eye — not from the table ⋮ menu (Kyle, 2026-08-23)', () => {
   const draw = fnBody('drawDatabase');
   assert.doesNotMatch(draw, /Object\.keys\(SYSTEM_COLS\)\.map/, 'no Created At / Modified At rows in the table menu');

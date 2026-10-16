@@ -75,7 +75,7 @@ if (s) {
       await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
       await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#sidebar .nav-system a');
-      const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
+      const spare = await page.evaluate(() => { const n = document.querySelector('#nav'); return n.scrollHeight - n.clientHeight; });
       assert.ok(spare > 200, `the nav has more spaces than room, so anything unpinned would scroll away: ${spare}`);
 
       const SEEN = ['#ws-name', '#search-btn', '#sidebar .nav-foot button', '#sidebar .nav-system a[href="#/trash"]', '#sidebar .nav-identity .nav-identity-more'];
@@ -91,7 +91,7 @@ if (s) {
 
       const atTop = await look();
       for (const sel of SEEN) assert.ok(atTop[sel].within, `${sel} is in the sidebar's window unscrolled: ${JSON.stringify(atTop[sel])}`);
-      await page.evaluate(() => { const n = document.querySelector('#sidebar'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
+      await page.evaluate(() => { const n = document.querySelector('#nav'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
       await page.waitForTimeout(150);
       const atEnd = await look();
       for (const sel of SEEN) {
@@ -107,15 +107,12 @@ if (s) {
           strip: [...document.querySelectorAll('#sidebar .nav-pinned > *')].filter((n) => !n.hidden).map((n) => n.className.split(' ')[0]),
           newSpaceAboveSystem: y('#sidebar .nav-foot') < y('#sidebar .nav-system'),
           systemBelowNav: y('#sidebar .nav-system') > y('#nav'),
-          opaque: getComputedStyle(document.querySelector('.nav-head')).backgroundColor,
-          canvas: getComputedStyle(document.querySelector('#sidebar')).getPropertyValue('--wv-canvas').trim(),
         };
       });
       assert.deepEqual(stack.order, ['nav-head', 'nav', 'nav-pinned'], 'head, scrolling list, pinned strip');
       assert.deepEqual(stack.strip, ['nav-foot', 'nav-system', 'nav-identity'], 'New space, then the System space, then the identity panel (Feature #333)');
       assert.ok(stack.newSpaceAboveSystem, 'New space sits above the system tables');
       assert.ok(stack.systemBelowNav, 'the system tables sit below the spaces');
-      assert.notEqual(stack.opaque, 'rgba(0, 0, 0, 0)', `the head is opaque, so rows scroll under it: ${stack.opaque}`);
       await page.close();
     });
   }

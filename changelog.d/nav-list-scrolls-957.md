@@ -1,0 +1,1 @@
+- The left nav's scroll bar runs only beside the space list. The list scrolls inside the sidebar between the search head and the pinned foot, its bar sits at the panel edge, and the head and foot no longer ride sticky offsets, in the sidebar, the hover peek and the phone drawer alike. (Issue #957)
