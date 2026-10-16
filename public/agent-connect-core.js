@@ -33,12 +33,49 @@
       note: 'On Team and Enterprise plans, an owner does steps 1 to 4 first, and you start at step 5. The Free plan allows one custom connector.',
     },
     {
+      id: 'chatgpt',
+      hue: '#10a37f',
+      name: 'ChatGPT',
+      where: 'chatgpt.com on the web',
+      pitch: 'Plugins, Add custom MCP server, paste the weave address, sign in. Needs a Business, Enterprise or Edu workspace, where an admin adds it. Pro can only read.',
+      kind: 'chat',
+      icon: 'lucide:message-circle',
+      copy: 'url',
+      steps: [
+        'Open chatgpt.com on a computer and go to Plugins.',
+        'Click the + button, then Add custom MCP server.',
+        'Name it weave and paste the address below under Connection.',
+        'Set authentication to OAuth, tick I understand and want to continue, and click Create as a plugin.',
+        'Sign in to your weave account when ChatGPT asks.',
+        'In a new chat, type @ and pick weave.',
+      ],
+      note: 'Reading and writing needs a Business, Enterprise or Edu workspace, where an admin or owner adds weave. Pro accounts can connect it to read only. Plus and Free cannot add custom MCP servers. Web only, not the mobile app.',
+    },
+    {
+      id: 'gemini',
+      hue: '#7b6be6',
+      name: 'Gemini',
+      where: 'gemini.google.com',
+      pitch: 'Settings, Connected Apps, Add a custom app, paste the weave address, sign in. Personal Google accounts in the US only.',
+      kind: 'chat',
+      icon: 'lucide:message-square',
+      copy: 'url',
+      steps: [
+        'Open gemini.google.com on a computer and click Settings, then Connected Apps.',
+        'Under Custom apps, click Add a custom app.',
+        'Paste the address below and click Next.',
+        'Follow the prompts and sign in to your weave account.',
+        'In a chat, type @ and pick weave.',
+      ],
+      note: 'Needs a personal Google account, age 18 or over, in the US, in English, with Keep Activity on. Work and school accounts cannot add it yet. Add it on the web, and it then works in the mobile app too.',
+    },
+    {
       id: 'claude-code',
       hue: '#c4683f',
       name: 'Claude Code',
       where: 'a terminal',
       pitch: 'Paste the setup prompt, run /mcp, choose Authenticate.',
-      kind: 'terminal',
+      kind: 'harness',
       icon: 'lucide:terminal',
       copy: 'prompt',
       steps: [
@@ -48,36 +85,36 @@
       ],
     },
     {
-      id: 'cursor',
+      id: 'codex',
       hue: '#5b6b82',
-      name: 'Cursor',
-      where: 'the Cursor editor',
-      pitch: 'Paste the setup prompt, reload, sign in.',
-      kind: 'editor',
+      name: 'Codex',
+      where: 'the Codex CLI, app or IDE extension',
+      pitch: 'Run one command, then codex mcp login weave and sign in.',
+      kind: 'harness',
       icon: 'lucide:code-xml',
-      copy: 'prompt',
-      install: 'cursor',
+      copy: 'codex',
       steps: [
-        'Click Add to Cursor below, or paste the setup prompt below into Cursor\'s agent.',
-        'Reload Cursor when it asks.',
-        'Sign in to your weave account.',
+        'Run the command below in a terminal.',
+        'Run codex mcp login weave and sign in to your weave account.',
+        'Start Codex and run /mcp to check weave is listed.',
       ],
+      note: 'The Codex app and IDE extension read the same settings. There, click Authenticate next to weave in place of step 2.',
     },
     {
-      id: 'vscode',
+      id: 'antigravity',
       hue: '#2f80ed',
-      name: 'VS Code',
-      where: 'GitHub Copilot in VS Code',
-      pitch: 'Trust the server after pasting the setup prompt, then sign in.',
-      kind: 'editor',
-      icon: 'lucide:code',
+      name: 'Antigravity',
+      where: 'the Antigravity app, IDE or CLI',
+      pitch: 'Paste the setup prompt, click Authenticate in Settings, paste the sign-in code back.',
+      kind: 'harness',
+      icon: 'lucide:rocket',
       copy: 'prompt',
-      install: 'vscode',
       steps: [
-        'Click Add to VS Code below, or paste the setup prompt below into Copilot Chat in Agent mode.',
-        'Trust the weave server when VS Code asks.',
-        'Sign in to your weave account.',
+        'Paste the setup prompt below into the Antigravity agent.',
+        'Open Settings with Cmd + , (Ctrl + , on Windows and Linux), go to Customizations and click Authenticate next to weave.',
+        'Sign in to your weave account, copy the code it shows, paste it back and click Submit.',
       ],
+      note: 'The app, IDE and CLI share ~/.gemini/config/mcp_config.json. weave goes there with serverUrl set to the address.',
     },
     {
       id: 'gemini-cli',
@@ -85,7 +122,7 @@
       name: 'Gemini CLI',
       where: 'a terminal',
       pitch: 'Run /mcp auth weave after pasting the setup prompt.',
-      kind: 'terminal',
+      kind: 'harness',
       icon: 'lucide:star',
       copy: 'prompt',
       steps: [
@@ -111,22 +148,14 @@
   ];
 
   const TOOL_IDS = new Set(TOOLS.map((t) => t.id));
-  const b64 = (text) => (typeof btoa === 'function' ? btoa(text) : Buffer.from(text).toString('base64'));
 
   const setupPrompt = (url) => SETUP_PROMPT.replace('{URL}', url);
 
   function snippet(tool, url, name = 'weave') {
     if (tool.copy === 'prompt') return setupPrompt(url);
     if (tool.copy === 'command') return `claude mcp add --transport http --scope user ${name} ${url}`;
-    if (tool.copy === 'cursor') return JSON.stringify({ mcpServers: { [name]: { url } } }, null, 2);
-    if (tool.copy === 'vscode') return JSON.stringify({ servers: { [name]: { type: 'http', url } } }, null, 2);
+    if (tool.copy === 'codex') return `codex mcp add ${name} --url ${url}`;
     return url;
-  }
-
-  function installLink(tool, url, name = 'weave') {
-    if (tool.install === 'cursor') return `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent(name)}&config=${encodeURIComponent(b64(JSON.stringify({ url })))}`;
-    if (tool.install === 'vscode') return `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name, type: 'http', url }))}`;
-    return null;
   }
 
   function firstMessage({ workspace, template = null, other = '' } = {}) {
@@ -139,8 +168,8 @@
   function guide(toolId, { url, workspace, template = null, other = '' }) {
     const tool = TOOLS.find((t) => t.id === toolId);
     if (!tool) return null;
-    return { ...tool, value: snippet(tool, url), install: installLink(tool, url), message: firstMessage({ workspace, template, other }) };
+    return { ...tool, value: snippet(tool, url), message: firstMessage({ workspace, template, other }) };
   }
 
-  root.WeaveAgentConnect = { TOOLS, TOOL_IDS, SETUP_PROMPT, setupPrompt, snippet, installLink, firstMessage, guide };
+  root.WeaveAgentConnect = { TOOLS, TOOL_IDS, SETUP_PROMPT, setupPrompt, snippet, firstMessage, guide };
 })(globalThis);

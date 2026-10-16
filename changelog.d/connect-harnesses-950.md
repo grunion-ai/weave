@@ -1,0 +1,1 @@
+- The connect page lists Claude, ChatGPT and Gemini under Chat apps, and Claude Code, Codex, Antigravity, Gemini CLI and Something else under Harnesses. Cursor and VS Code are gone, along with their install links. ChatGPT and Gemini say which plans and accounts can add a custom MCP server. (Issue #950)
