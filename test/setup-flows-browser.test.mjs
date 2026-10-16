@@ -127,8 +127,12 @@ if (openHub) {
     assert.deepEqual(await listed(0), ['Claude', 'ChatGPT', 'Gemini'], 'Claude leads the chat apps');
     assert.deepEqual(await listed(1), ['Claude Code', 'Codex', 'Antigravity', 'Gemini CLI', 'Something else']);
     assert.equal(await p.locator('.app[data-tool="cursor"], .app[data-tool="vscode"], .app[data-tool="perplexity"]').count(), 0, 'Cursor and VS Code are gone');
-    assert.match(await p.locator('main .limits').textContent(), /ChatGPT and the Gemini app/, 'the page says the chat apps gate custom connectors');
-    assert.match(await p.locator('main .lead').textContent(), /you bring the agent/);
+    assert.equal(await p.locator('main .limits').count(), 0, 'no page-wide plan note: each tile says its own limit (Issue #954)');
+    assert.match(await p.locator('.app[data-tool="chatgpt"] small').textContent(), /Business, Enterprise or Edu/, 'the ChatGPT tile names its plans');
+    assert.match(await p.locator('.app[data-tool="gemini"] small').textContent(), /US only/, 'the Gemini tile names its accounts');
+    const lead = await p.locator('main .lead').textContent();
+    assert.match(lead, /agent you already use/);
+    assert.ok(lead.trim().split(/\s+/).length <= 16, `the lead is one short line (${lead})`);
     assert.equal(await p.locator('main [data-go="next"]').count(), 0, 'no way forward but a tool or skip');
     await p.click('.app[data-tool="claude"]');
     assert.equal(await p.locator('.chosen b').textContent(), 'Claude', 'the chosen app heads the step');
@@ -240,6 +244,113 @@ if (openHub) {
     await go(p, 'skip');
     await step(p, 'done');
     assert.match(await p.locator('main .lead').textContent(), /To connect an AI app later, add this connection address to it: http:\/\/localhost:\d+\/w\/no-agent\/mcp/);
+    await p.context().close();
+  });
+
+  const artCover = (p) => p.evaluate(() => {
+    const stage = document.getElementById('stage');
+    const page = document.documentElement;
+    if (getComputedStyle(stage).display === 'none') return { hidden: true, fits: page.scrollWidth <= innerWidth };
+    const img = stage.querySelector('img');
+    const s = stage.getBoundingClientRect();
+    const i = img.getBoundingClientRect();
+    const pane = document.querySelector('.pane').getBoundingClientRect();
+    const style = getComputedStyle(img);
+    return {
+      hidden: false,
+      column: s.left <= pane.right + 1 && s.top <= 0 && s.right >= innerWidth - 1 && s.bottom >= Math.max(innerHeight, page.scrollHeight) - 1,
+      art: i.left <= s.left + 0.5 && i.top <= s.top + 0.5 && i.right >= s.right - 0.5 && i.bottom >= s.bottom - 0.5,
+      fit: style.objectFit,
+      at: style.objectPosition,
+    };
+  });
+  const scrollAll = (p, end) => p.evaluate(async (end) => {
+    for (const n of [document.scrollingElement, ...document.querySelectorAll('.setup, .pane')]) n.scrollTop = end ? n.scrollHeight : 0;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  }, end);
+  const artInView = (p) => p.evaluate(() => {
+    const s = document.getElementById('stage').getBoundingClientRect();
+    return s.top <= 1 && s.bottom >= innerHeight - 1 ? true : JSON.stringify({ top: s.top, bottom: s.bottom, view: innerHeight });
+  });
+
+  test('the art fills its whole panel, centered, on every setup step at every desktop size, and hides on a phone (Issue #954)', async () => {
+    const p = await page();
+    person(openHub);
+    const check = async (where) => {
+      await p.waitForFunction(() => { const i = document.querySelector('#stage img'); return i.complete && i.naturalWidth > 0; });
+      for (const [width, height] of [[1440, 900], [1280, 720], [1440, 1200]]) {
+        await p.setViewportSize({ width, height });
+        await scrollAll(p, false);
+        assert.deepEqual(await artCover(p), { hidden: false, column: true, art: true, fit: 'cover', at: '50% 50%' }, `${where} at ${width}x${height}: the art covers its column from the top of the page to the bottom`);
+        await scrollAll(p, true);
+        assert.equal(await artInView(p), true, `${where} at ${width}x${height}: scrolled to the end, the art still fills the view`);
+        await scrollAll(p, false);
+      }
+      await p.setViewportSize({ width: 375, height: 812 });
+      assert.deepEqual(await artCover(p), { hidden: true, fits: true }, `${where}: a 375 px phone hides the art and nothing scrolls sideways`);
+      await p.setViewportSize({ width: 1280, height: 860 });
+    };
+    await p.goto(`${openHub.base}/start`);
+    await step(p, 'account');
+    await check('account');
+    await go(p, 'signin');
+    await step(p, 'workspace');
+    await check('workspace');
+    await nameIt(p, 'Art Check', 'art-check');
+    await step(p, 'work');
+    await p.click('.card[data-template="crm"]');
+    await check('work');
+    await go(p, 'next');
+    await step(p, 'agent');
+    await check('agent');
+    await p.click('.app[data-tool="chatgpt"]');
+    await check('agent, ChatGPT chosen');
+    await p.context().close();
+  });
+
+  test('every link on the connect step has a real target, internal ones resolve to the page they name, and the address is the MCP server (Issue #954)', async () => {
+    const p = await page();
+    person(openHub);
+    await signIn(p, openHub);
+    await nameIt(p, 'Link Check', 'link-check');
+    await pickWork(p, 'tasks');
+    await step(p, 'agent');
+    const ids = await p.locator('.app[data-tool]').evaluateAll((b) => b.map((x) => x.dataset.tool));
+    const read = () => p.evaluate(() => ({
+      anchors: [...document.querySelectorAll('a')].map((a) => ({ text: a.textContent.trim() || a.getAttribute('aria-label') || '', href: a.getAttribute('href') ?? '', abs: a.href })),
+      unlabelled: [...document.querySelectorAll('main button')].filter((b) => !(b.textContent.trim() || b.getAttribute('aria-label'))).length,
+    }));
+    const anchors = new Map();
+    const views = [['list', await read()]];
+    for (const id of ids) {
+      await p.click(`.app[data-tool="${id}"]`);
+      await p.waitForSelector('.chosen');
+      views.push([id, await read()]);
+      if (['claude', 'chatgpt', 'gemini'].includes(id)) {
+        assert.equal((await p.locator('.steps li[data-at] code').textContent()).trim(), `${openHub.base}/w/link-check/mcp`, `${id} shows this workspace's MCP address`);
+      }
+      await go(p, 'change');
+      await p.waitForSelector('.app[data-tool]');
+    }
+    for (const [view, { anchors: list, unlabelled }] of views) {
+      assert.equal(unlabelled, 0, `${view}: every button says what it does`);
+      for (const a of list) {
+        assert.ok(a.text, `${view}: ${a.href} has a label`);
+        assert.ok(a.href && a.href !== '#' && !/^javascript:/i.test(a.href), `${view}: "${a.text}" has a real href`);
+        anchors.set(a.abs, a.text);
+      }
+    }
+    const promise = { weave: /weave/i, Privacy: /<title>Privacy/, Terms: /<title>Terms/ };
+    for (const [abs, text] of anchors) {
+      if (new URL(abs).origin !== new URL(openHub.base).origin) continue;
+      const res = await p.request.get(abs);
+      assert.ok(res.status() < 400, `"${text}" (${abs}) answers ${res.status()}`);
+      assert.match(await res.text(), promise[text] ?? /./, `"${text}" lands on the page it names`);
+    }
+    assert.deepEqual([...anchors.values()].sort(), ['Privacy', 'Terms', 'weave'], 'the step links home, Privacy and Terms, and nothing else');
+    const mcp = await p.request.get(`${openHub.base}/w/link-check/mcp`);
+    assert.equal(mcp.status(), 401, 'the address answers as an MCP server asking for sign-in');
+    assert.match(mcp.headers()['www-authenticate'] ?? '', /resource_metadata=/);
     await p.context().close();
   });
 
