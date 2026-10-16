@@ -138,7 +138,9 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
     assert.deepEqual([eve.res.status, eve.res.headers.location], [302, '/start']);
     assert.match([eve.res.headers['set-cookie']].flat().join('\n'), /wv_start=[\w-]{40,}; HttpOnly; SameSite=Lax; Path=\/; Max-Age=1800/);
     const list = (await s.apex('GET', '/api/start', { cookie: eve.cookie })).json();
-    assert.deepEqual(list.rows, [{ kind: 'workspace', name: 'acme', title: 'acme', login: 'eve', open: '/api/start/open/acme', trial: null }]);
+    const acmeId = list.rows[0]?.id;
+    assert.match(String(acmeId), /^[0-9a-f-]{36}$/, 'each row carries the workspace id the rail tints its letter tile from');
+    assert.deepEqual(list.rows, [{ kind: 'workspace', name: 'acme', id: acmeId, title: 'acme', login: 'eve', host: 'acme.weave.test', role: 'editor', logo: null, seenAt: null, open: '/api/start/open/acme', trial: null }]);
     assert.deepEqual([list.signedIn, list.canCreate, list.accountName, list.base], [true, false, 'eve', 'weave.test']);
 
     const open = await s.apex('GET', list.rows[0].open, { cookie: eve.cookie });
@@ -155,6 +157,42 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
     const empty = (await s.apex('GET', '/api/start', { cookie: nobody.cookie })).json();
     assert.deepEqual([empty.rows, empty.canCreate], [[], false], 'with billing off a stranger still cannot create');
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: nobody.cookie, body: { name: 'Mine', slug: 'mine' } })).status, 403);
+  } finally { s.stop(); }
+});
+
+test('start: rows name host and role, show the logo through the start door, and the last opened sorts first (Issue #964)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    for (const [name, slug] of [['Harbor', 'harbor'], ['Dock', 'dock']]) {
+      assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name, slug } })).status, 201);
+    }
+    const before = (await s.apex('GET', '/api/start', { cookie: kyle.cookie })).json().rows;
+    const row = (rows, name) => rows.find((r) => r.name === name);
+    assert.deepEqual([row(before, 'harbor').role, row(before, 'harbor').host, row(before, 'harbor').title], ['architect', 'harbor.weave.test', 'Harbor']);
+    assert.equal(row(before, 'acme').role, 'architect', 'a hub-root architect opens acme as an architect');
+    assert.ok(before.every((r) => r.seenAt === null), 'nothing opened yet');
+
+    const opened = await s.apex('GET', row(before, 'harbor').open, { cookie: kyle.cookie });
+    await s.follow(opened.headers.location);
+    const after = (await s.apex('GET', '/api/start', { cookie: kyle.cookie })).json().rows;
+    assert.equal(after[0].name, 'harbor', 'the workspace opened last leads the list');
+    assert.match(after[0].seenAt, /^\d{4}-\d\d-\d\dT/);
+    assert.deepEqual(after.slice(1).map((r) => r.name), before.filter((r) => r.name !== 'harbor').map((r) => r.name), 'the rest keep their order');
+
+    const acme = new Weave({ path: join(s.dir, 'acme.db') });
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    acme.setWorkspaceLogo({ name: 'logo.png', mime: 'image/png', bytes: png.toString('base64') });
+    acme.store.close?.();
+    const eve = await s.signInAtStart('user_eve');
+    const [acmeRow] = (await s.apex('GET', '/api/start', { cookie: eve.cookie })).json().rows;
+    assert.match(acmeRow.logo, /^\/api\/start\/logo\/acme\?v=[0-9a-f]{8}$/);
+    const logo = await s.apex('GET', acmeRow.logo, { cookie: eve.cookie });
+    assert.deepEqual([logo.status, logo.headers['content-type']], [200, 'image/png']);
+    const nobody = await s.signInAtStart('user_nobody');
+    assert.equal((await s.apex('GET', acmeRow.logo, { cookie: nobody.cookie })).status, 403, 'only a sign-in that opens the workspace sees its logo');
+    assert.equal((await s.apex('GET', acmeRow.logo)).status, 401);
+    assert.equal((await s.apex('GET', '/api/start/logo/harbor', { cookie: kyle.cookie })).status, 404, 'no logo, no bytes');
   } finally { s.stop(); }
 });
 

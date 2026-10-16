@@ -437,9 +437,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const opener = (w) => logins.find((me) => accountFor(w, me)) ?? null;
       const label = (me) => me.email ?? live.map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? me.subject;
       const title = (name, w) => w.state.meta.title ?? name;
+      const seenOn = (w, account) => (account.viaRoot ? null : w.listSessions(account.id)[0]?.lastSeenAt ?? null);
+      const logoOf = (name, w) => (w.state.meta.logo ? `/api/start/logo/${encodeURIComponent(name)}?v=${w.state.meta.logo.id.slice(0, 8)}` : null);
       const rows = [
         ...live.filter(([, w]) => opener(w))
-          .map(([name, w]) => ({ kind: 'workspace', name, title: title(name, w), login: label(opener(w)), open: `/api/start/open/${encodeURIComponent(name)}` })),
+          .map(([name, w]) => {
+            const me = opener(w);
+            const account = accountFor(w, me);
+            return { kind: 'workspace', name, id: w.state.meta.id, title: title(name, w), login: label(me), host: baseDomain ? `${name.toLowerCase()}.${baseDomain}` : null, role: Weave.roleName(account.role), logo: logoOf(name, w), seenAt: seenOn(w, account), open: `/api/start/open/${encodeURIComponent(name)}` };
+          })
+          .sort((a, b) => (b.seenAt ?? '').localeCompare(a.seenAt ?? '')),
         ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
           .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
       ];
@@ -1102,6 +1109,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
             return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+          }
+          if ((m = path.match(/^\/api\/start\/logo\/([^/]+)$/)) && rx.method === 'GET') {
+            const w = hub.bySlug(String(m[1]).toLowerCase());
+            if (!(w && accountIn(w))) return deny(403, 'This sign-in opens no account on that workspace');
+            if (!w.state.meta.logo) return notFound({ error: 'This workspace has no logo', code: 'not-found' });
+            const { bytes } = w.getWorkspaceLogo();
+            return out(200, bytes, { 'Content-Type': logoType(bytes), 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "sandbox; default-src 'none'" });
           }
           if ((m = path.match(/^\/api\/start\/invites\/([^/]+)\/([A-Za-z0-9_-]+)$/)) && rx.method === 'POST') {
             const w = hub.bySlug(String(m[1]).toLowerCase());

@@ -394,7 +394,25 @@ if (openHub) {
     openHub.idp.signInBrowserAs(who);
     await p.goto(`${openHub.base}/start`);
     await step(p, 'list');
-    assert.deepEqual(await p.locator('.rows a').allTextContents(), ['twice']);
+    assert.deepEqual(await p.locator('.rows .ws-title').allTextContents(), ['twice']);
+    const row = await p.locator('.rows a.ws-row').evaluate((a) => ({
+      tile: !!a.querySelector('.ws-tile img, .ws-tile.ws-letter'),
+      meta: a.querySelector('.ws-meta').textContent,
+      chevron: !!a.querySelector('.ws-go.glyph'),
+      height: a.getBoundingClientRect().height,
+    }));
+    assert.ok(row.tile && row.chevron, 'each row shows the workspace tile and an open affordance (Issue #964)');
+    assert.match(row.meta, /\/w\/twice · Architect$/, 'and its address and role');
+    assert.ok(row.height >= 44, `the row is a 44px target: ${row.height}`);
+    assert.match(await p.locator('.signed-in').textContent(), /Signed in as twice@example\.com/);
+    assert.equal(await p.locator('main .btn-primary').count(), 1, 'one primary action');
+    await p.setViewportSize({ width: 375, height: 812 });
+    const phone = await p.evaluate(() => ({
+      overflow: document.documentElement.scrollWidth > innerWidth,
+      small: [...document.querySelectorAll('main a, main button')].filter((n) => n.getBoundingClientRect().height < 44).map((n) => n.textContent.trim()),
+    }));
+    assert.deepEqual(phone, { overflow: false, small: [] }, 'at 375px nothing scrolls sideways and every target is 44px tall');
+    await p.setViewportSize({ width: 1280, height: 860 });
     await go(p, 'new');
     await step(p, 'workspace');
     await p.click('main button:has-text("Back")');

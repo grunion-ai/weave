@@ -24,7 +24,7 @@
       loading: 'Loading sign-up',
     },
     steps: { of: 'Step {n} of {total}', building: 'Building {title}' },
-    list: { title: 'Your workspaces', empty: 'This sign-in has no workspaces yet.', create: 'Create a workspace', limit: 'This sign-in has reached the server\'s workspace limit. Open one of the workspaces above.' },
+    list: { title: 'Your workspaces', signedIn: 'Signed in as', and: ' and ', empty: 'This sign-in has no workspaces yet.', create: 'Create a workspace', limit: 'This sign-in has reached the server\'s workspace limit. Open one of the workspaces above.' },
     closed: { title: 'This server is invite only', lead: 'Ask the owner of a workspace for an invite link. Opening it adds you to their workspace.' },
     workspace: { title: 'Workspace name and address', lead: 'The name is what people see. The address is the link that opens the workspace.' },
     waiting: { text: '{name} needs a plan before you can start another workspace.', link: 'Open billing' },
@@ -76,7 +76,7 @@
       build_failed: 'Setup did not finish. Try again, or skip setup to start an empty workspace.',
       network: 'Setup did not finish because weave did not answer. Try again.',
     },
-    copied: 'Copied', back: 'Back', next: 'Continue', skip: 'Skip setup', signOut: 'Sign out', addLogin: 'Add another sign-in', accept: SLUG.start.accept,
+    copied: 'Copied', back: 'Back', next: 'Continue', skip: 'Skip setup', signOut: 'Sign out', addLogin: 'Use another account', accept: SLUG.start.accept,
   };
 
   const make = (tag, attrs = {}, ...kids) => {
@@ -271,30 +271,46 @@
   }
 
   function foot() {
-    return make('p', { class: 'muted', style: 'margin-top:22px' },
-      make('a', { class: 'btn-link', href: '/api/auth/oidc/start?start=1&fresh=1' }, COPY.addLogin), ' · ',
+    return make('p', { class: 'muted foot-links' },
+      make('a', { class: 'btn-link', href: '/api/auth/oidc/start?start=1&fresh=1' }, COPY.addLogin),
       make('button', { type: 'button', class: 'btn-link', 'data-go': 'signout', onclick: async () => {
         await post('/api/start/signout').catch(() => {});
         await boot();
       } }, COPY.signOut));
   }
 
+  const roleLabel = (role) => (role ? role[0].toUpperCase() + role.slice(1) : null);
+  const meta = (...parts) => make('small', { class: 'ws-meta' }, parts.filter(Boolean).join(' · '));
+  function wsTile(r) {
+    const core = globalThis.chipCore;
+    const hue = core ? core.HUE_HEX[core.hueForName(r.id ?? r.name)] : '';
+    const letter = () => make('span', { class: 'ws-tile ws-letter', style: hue ? `--hue:${hue}` : null, 'aria-hidden': 'true' }, r.name.slice(0, 1).toUpperCase());
+    if (!r.logo) return letter();
+    return make('span', { class: 'ws-tile', 'aria-hidden': 'true' },
+      make('img', { src: r.logo, alt: '', onerror: (e) => e.currentTarget.parentElement.replaceWith(letter()) }));
+  }
+
   function list() {
-    const several = (me.logins ?? []).length > 1;
+    const logins = me.logins ?? [];
+    const several = logins.length > 1;
+    const login = (r) => (several ? make('small', { class: 'ws-login' }, r.login) : null);
     const rows = (me.rows ?? []).map((r) => (r.kind === 'invite'
-      ? make('li', { class: 'invite' },
-        make('span', {}, r.title, make('small', {}, fill(SLUG.start.inviteLead, { role: r.role }) + (several ? ` · ${r.login}` : ''))),
+      ? make('li', { class: 'invite' }, make('div', { class: 'ws-row' }, wsTile(r),
+        make('span', { class: 'ws-text' }, make('span', { class: 'ws-title' }, r.title), meta(fill(SLUG.start.inviteLead, { role: r.role })), login(r)),
         make('button', { type: 'button', class: 'btn', onclick: async (ev) => {
           ev.currentTarget.disabled = true;
           try { location.href = (await post(r.accept)).open; } catch (err) { ev.currentTarget.disabled = false; dispatch({ type: 'fail', code: err.code, message: err.message }); }
-        } }, COPY.accept))
-      : make('li', {}, make('a', { href: r.open }, r.title, r.title !== r.name ? make('small', {}, r.name) : null, several ? make('small', {}, r.login) : null))));
+        } }, COPY.accept)))
+      : make('li', {}, make('a', { class: 'ws-row', href: r.open }, wsTile(r),
+        make('span', { class: 'ws-text' }, make('span', { class: 'ws-title' }, r.title), meta(r.host ?? `${location.host}/w/${r.name}`, roleLabel(r.role)), login(r)),
+        glyph('chevron-right', 'glyph ws-go')))));
     return [
       make('h1', {}, COPY.list.title),
+      logins.length ? make('p', { class: 'lead signed-in' }, `${COPY.list.signedIn} `, make('strong', {}, logins.join(COPY.list.and))) : null,
       errorBox(s.error),
       waitingNote(),
       rows.length ? make('ul', { class: 'rows' }, rows) : make('p', { class: 'muted' }, COPY.list.empty),
-      me.canCreate && !me.waiting ? make('div', { class: 'actions' }, make('button', { type: 'button', class: 'btn btn-primary', 'data-go': 'new', onclick: () => dispatch({ type: 'new' }) }, COPY.list.create))
+      me.canCreate && !me.waiting ? make('div', { class: 'actions ws-actions' }, make('button', { type: 'button', class: 'btn btn-primary', 'data-go': 'new', onclick: () => dispatch({ type: 'new' }) }, COPY.list.create))
         : me.openSignup && !me.waiting ? make('p', { class: 'muted' }, COPY.list.limit) : null,
       foot(),
     ];
