@@ -285,7 +285,7 @@ if (s) {
       await page.setInputFiles('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', [png, pdf, txt]);
       await page.waitForFunction(() => {
         const v = window.__weaveEditors.values().next().value.getValue();
-        return v.includes('![dot.png](') && v.includes('title="note.pdf"') && v.includes('[read.txt](');
+        return v.includes('![](') && v.includes('title="note.pdf"') && v.includes('[read.txt](');
       }, null, { timeout: 20000 });
       const v = await value(page);
       assert.match(v, /<iframe class="wv-file"[^>]*title="note.pdf">/, 'the pdf embeds a viewer, not a bare link');
@@ -298,6 +298,47 @@ if (s) {
       }
       const entity = weave.readEntity(id);
       assert.equal(entity.files.length, 3, 'all three files attached to the entity');
+    } finally { await page.close(); }
+  });
+
+  test('an uploaded image carries no alt text, so a file name never lands in the document', async () => {
+    const id = entityWithDoc('Alt', 'alt target paragraph\n');
+    const page = await openEntity(id);
+    const dir = mkdtempSync(join(tmpdir(), 'weave-alt-'));
+    const png = join(dir, 'Trip wishlist.png');
+    writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==', 'base64'));
+    try {
+      await selectStart(page, 6);
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', { timeout: 20000 });
+      await page.setInputFiles('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', [png]);
+      await page.waitForFunction(() => window.__weaveEditors.values().next().value.getValue().includes('![]('), null, { timeout: 20000 });
+      const v = await value(page);
+      assert.equal(v.includes('Trip wishlist'), false, 'the file name is not written into the document');
+      assert.match(v, /!\[\]\(\/api\/files\/[a-f0-9-]+\)/, 'the embed carries the served url and an empty alt');
+      assert.equal(weave.readEntity(id).files[0].name, 'Trip wishlist.png', 'the attachment still keeps its name');
+    } finally { await page.close(); }
+  });
+
+  test('an upload that never lands writes nothing into the document', async () => {
+    const id = entityWithDoc('Failed', 'failure target paragraph\n');
+    const page = await openEntity(id);
+    const dir = mkdtempSync(join(tmpdir(), 'weave-fail-'));
+    const png = join(dir, 'Trip wishlist.png');
+    writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==', 'base64'));
+    try {
+      await page.route('**/api/entities/*/files', (route) => route.fulfill({
+        status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'the store is down' }),
+      }));
+      const before = await value(page);
+      await selectStart(page, 6);
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', { timeout: 20000 });
+      await page.setInputFiles('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', [png]);
+      await page.waitForFunction(() => document.querySelector('.vditor-tip')?.textContent?.includes('Upload failed'), null, { timeout: 20000 });
+      const after = await value(page);
+      assert.equal(after, before, 'the document is byte for byte what it was');
+      assert.equal(after.includes('!['), false, 'no embed was inserted');
+      assert.equal(after.includes('Trip wishlist'), false, 'and the file name did not leak in');
+      assert.equal(weave.readEntity(id).files.length, 0, 'nothing was attached');
     } finally { await page.close(); }
   });
 
