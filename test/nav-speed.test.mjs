@@ -84,5 +84,5 @@ test('the 404 page is self-contained and theme-aware', () => {
   const page = readFileSync(join(ROOT, 'public/404.html'), 'utf8');
   assert.doesNotMatch(page, /https?:\/\//, 'no external hosts — the page must render offline');
   assert.match(page, /prefers-color-scheme: dark/, 'both themes, like every weave surface');
-  assert.match(page, /\/brand\/weave-mark/, 'the mark identifies whose 404 this is');
+  assert.match(page, /<span data-mark="n"[^>]*aria-label="weave"><svg class="mark-light"/, 'the inline brand mark identifies whose 404 this is (Issue #963)');
 });
