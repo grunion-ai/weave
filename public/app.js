@@ -1301,6 +1301,7 @@ async function personalMenu(btn) {
   menu([
     { label: 'Theme', hint: THEME_LABELS[pref], icon: THEME_ICONS[pref], section: 'settings', className: 'nav-theme-row', title: `Theme: ${pref}, choose to switch`, run: cycleTheme },
     { label: 'Keyboard shortcuts', hint: '?', icon: 'lucide:circle-question-mark', section: 'settings', run: openKeySheet },
+    { label: 'Settings', icon: 'lucide:sliders-horizontal', section: 'settings', className: 'nav-settings-row', run: () => { location.hash = '#/settings'; } },
     ...(signedIn ? [
       { label: 'Sign out', hint: version, icon: 'lucide:log-out', section: 'organize', title: `Sign out of ${ws}`, run: () => signOutOf([WS_PREFIX]) },
       { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutOf(everywhere) },
@@ -1585,7 +1586,7 @@ function holdToConfirm(label, onConfirm, {
   let armed = false;
   let press = 0;
   const start = (e) => {
-    if (armed) return;
+    if (armed || btn.disabled) return;
     armed = true;
     press++;
     if (e?.pointerId != null) { try { btn.setPointerCapture(e.pointerId); } catch {} }
@@ -3491,7 +3492,6 @@ async function showTrash(dbId) {
     return;
   }
   const rows = el('tbody');
-  const purgeAt = (path) => api('DELETE', `${path}?hard=1`);
   for (const item of items) {
     rows.append(el('tr', {},
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
@@ -3509,15 +3509,7 @@ async function showTrash(dbId) {
               showTrash(dbId);
             } catch (err) { toast(err.message, true); }
           },
-        }, 'Restore'),
-        holdToConfirm('Delete forever', async () => {
-          try {
-            await purgeAt(`/entities/${item.id}`);
-            toast('Purged');
-            await loadSchema();
-            showTrash(dbId);
-          } catch (err) { toast(err.message, true); }
-        }, { holdingLabel: 'Hold to purge…' }))));
+        }, 'Restore'))));
   }
   for (const v of views) {
     const act = (run, done) => async () => {
@@ -3533,8 +3525,7 @@ async function showTrash(dbId) {
       el('td', { class: 'trash-table' }, 'Share page'),
       el('td', { class: 'trash-when' }, whenEl(v.deletedAt)),
       el('td', { class: 'trash-acts' },
-        el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'),
-        holdToConfirm('Delete forever', act(() => purgeAt(`/views/${v.id}`), 'Purged'), { holdingLabel: 'Hold to purge…' }))));
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'))));
   }
   if (items.length || views.length) main.append(el('div', { class: 'card table-wrap' },
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
@@ -3544,6 +3535,122 @@ async function showTrash(dbId) {
         el('th', {}, 'Deleted'), el('th', {}, ''))),
       rows)));
   if (wsTrashed.length) main.append(trashedWorkspacesCard(wsTrashed, () => showTrash(dbId)));
+}
+
+function typedHold(name, prompt, row) {
+  const hold = menuRow(row, () => {});
+  hold.setAttribute('role', 'button');
+  hold.removeAttribute('tabindex');
+  hold.disabled = true;
+  const input = el('input', {
+    class: 'form-control form-control-sm purge-name', autocomplete: 'off', spellcheck: 'false',
+    placeholder: name, 'aria-label': `Type ${name} to confirm`,
+  });
+  input.addEventListener('input', () => { hold.disabled = input.value !== name; });
+  const box = el('div', { class: 'purge-confirm-box' },
+    el('span', { class: 'text-secondary' }, `${prompt} Type `, el('code', {}, name), ' to confirm.'), input, hold);
+  return { box, input };
+}
+
+function confirmToggle(after, build) {
+  return () => {
+    const was = !!after.nextElementSibling?.classList.contains('purge-confirm');
+    for (const shut of document.querySelectorAll('#main .purge-confirm')) shut.remove();
+    if (was) return;
+    const { node, input } = build();
+    node.classList.add('purge-confirm');
+    after.after(node);
+    input.focus();
+  };
+}
+
+async function showSettings() {
+  state.route = { page: 'settings' };
+  renderNav();
+  const [trash, list] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => [])]);
+  const main = $('#main');
+  main.replaceChildren();
+  main.append(viewHeader({
+    crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
+    permalink: `${location.origin}${WS_PREFIX}/#/settings`,
+    title: 'Settings',
+  }));
+  const gone = [
+    ...trash.items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views')
+      .map((i) => ({ name: i.name || `#${i.publicId}`, where: i.db, deletedAt: i.deletedAt, path: `/entities/${i.id}` })),
+    ...(trash.views ?? []).map((v) => ({ name: v.name, where: 'Share page', deletedAt: v.deletedAt, path: `/views/${v.id}` })),
+  ];
+  const purge = el('div', { class: 'card settings-purge' },
+    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Delete forever')),
+    el('p', { class: 'settings-note' }, 'Rows and share pages in the trash. Deleting one forever cannot be undone, and Activity cannot restore it.'));
+  if (!gone.length) purge.append(el('div', { class: 'empty-note' }, 'Nothing in the trash.'));
+  else {
+    const rows = el('tbody');
+    for (const g of gone) {
+      const tr = el('tr', { class: 'purge-row' },
+        el('td', {}, g.name),
+        el('td', { class: 'trash-table' }, g.where),
+        el('td', { class: 'trash-when' }, whenEl(g.deletedAt)),
+        el('td', { class: 'trash-acts' }));
+      if (trash.purge) {
+        tr.lastChild.append(el('button', {
+          class: 'btn btn-sm btn-outline-danger purge-open', type: 'button',
+          onclick: confirmToggle(tr, () => {
+            const { box, input } = typedHold(g.name, 'This cannot be undone.', {
+              label: 'Delete forever', hold: true, holdingLabel: 'Hold to purge…',
+              run: async () => {
+                try {
+                  await api('DELETE', `${g.path}?hard=1`);
+                  toast(`${g.name} deleted forever`);
+                  await loadSchema();
+                  showSettings();
+                } catch (err) { toast(err.message, true); }
+              },
+            });
+            return { node: el('tr', {}, el('td', { colspan: 4 }, box)), input };
+          }),
+        }, 'Delete forever…'));
+      }
+      rows.append(tr);
+    }
+    purge.append(el('div', { class: 'table-wrap' },
+      el('table', { class: 'table table-sm table-vcenter card-table' },
+        el('thead', {}, el('tr', {}, el('th', {}, 'Name'), el('th', {}, 'Table'), el('th', {}, 'Deleted'), el('th', {}, ''))),
+        rows)));
+  }
+  main.append(purge);
+  const deletable = list.filter((w) => w.deletable);
+  if (!deletable.length) return;
+  main.append(el('div', { class: 'card settings-workspaces' },
+    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Workspaces')),
+    el('p', { class: 'settings-note' }, 'A workspace moved to the trash keeps its file. Restore brings it back from Trash in the sidebar.'),
+    ...deletable.map((w) => {
+      const row = el('div', { class: 'list-row' },
+        el('span', { class: 'list-row-name' }, w.name),
+        el('span', { class: 'text-secondary' }, `${w.tables ?? 0} tables, ${w.entities ?? 0} entities`),
+        el('span', { class: 'spacer' }));
+      row.append(el('button', {
+        class: 'btn btn-sm btn-outline-danger purge-open', type: 'button',
+        onclick: confirmToggle(row, () => {
+          const { box, input } = typedHold(w.name, `Its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities move with it.`, {
+            label: 'Move to trash', hold: true, holdingLabel: 'Hold to move to trash…',
+            run: async () => {
+              try {
+                await api('DELETE', `/workspaces/${w.id}`);
+                if (w.name === state.wsCurrent) { location.href = '/'; return; }
+                toast(`Workspace ${w.name} moved to the trash`, false, {
+                  label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); showSettings(); },
+                });
+                buildWsRail();
+                showSettings();
+              } catch (err) { toast(err.message, true); }
+            },
+          });
+          return { node: el('div', {}, box), input };
+        }),
+      }, 'Move to trash…'));
+      return row;
+    })));
 }
 
 const BLANK_READ_ONLY = 'The raw table is read-only. Open Views and choose + Add view, or Duplicate a view.';
@@ -12529,6 +12636,7 @@ function dispatchRoute() {
   }
   let m;
   if (hash === '#/trash') return showTrash(null);
+  if (hash === '#/settings') return showSettings();
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)\/new(?:\?(.*))?$/))) {
     const [, id, query] = m;

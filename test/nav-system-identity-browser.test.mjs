@@ -113,8 +113,7 @@ if (s) {
     const menu = page.locator('.nav-personal-menu');
     await menu.waitFor();
     const labels = (await menu.locator('[role="menuitem"] .wv-menu-label').allInnerTexts()).map((t) => t.trim());
-    assert.deepEqual(labels, ['Theme', 'Keyboard shortcuts', 'Sign out', 'Sign out everywhere']);
-    assert.doesNotMatch(await menu.innerText(), /settings/i, 'nothing is labelled Settings');
+    assert.deepEqual(labels, ['Theme', 'Keyboard shortcuts', 'Settings', 'Sign out', 'Sign out everywhere']);
     const version = (await page.evaluate(() => fetch('/api/health').then((r) => r.json()))).version;
     const signOut = menu.locator('[role="menuitem"]', { hasText: 'Sign out' }).first();
     assert.equal((await signOut.locator('.wv-menu-hint').innerText()).trim(), `v${version}`, 'the version sits quietly beside Sign out');
@@ -137,7 +136,7 @@ if (s) {
     assert.ok(box.height >= 28, `the panel holds its row: ${box.height}px`);
     await panel.locator('.nav-identity-more').click();
     const labels = (await page.locator('.nav-personal-menu [role="menuitem"] .wv-menu-label').allInnerTexts()).map((t) => t.trim());
-    assert.deepEqual(labels, ['Theme', 'Keyboard shortcuts']);
+    assert.deepEqual(labels, ['Theme', 'Keyboard shortcuts', 'Settings']);
     await ctx.close();
   });
 

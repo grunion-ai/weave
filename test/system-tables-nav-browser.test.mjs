@@ -45,7 +45,7 @@ if (s) {
   });
   const refill = (page) => page.evaluate(() => window.__refill());
 
-  test('browser: four fixed rows under the spaces; Trash opens the workspace trash', async () => {
+  test('browser: five fixed rows under the spaces; Trash opens the workspace trash', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
