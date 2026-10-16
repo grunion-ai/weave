@@ -106,26 +106,7 @@
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  function ropeD(x0, y, n, P, A, from = 0, to = n) {
-    const yA = (i) => (i % 2 ? y + A : y - A);
-    let d = `M${x0 + from * P},${yA(from)}`;
-    for (let i = from; i < to; i++) d += ` C${x0 + i * P + P / 2},${yA(i)} ${x0 + i * P + P / 2},${yA(i + 1)} ${x0 + (i + 1) * P},${yA(i + 1)}`;
-    return d;
-  }
-  const mirror = (d, y) => d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (all, x, yy) => `${x},${2 * y - Number(yy)}`);
-
-  function rope(target, { x0, y, n, P = 8, A = 4, halo = null }) {
-    const a = ropeD(x0, y, n, P, A);
-    target.append(svg('path', { class: 'strand a', d: a }), svg('path', { class: 'strand b', d: mirror(a, y) }));
-    for (let k = 0; k < n; k++) {
-      const seg = ropeD(x0, y, n, P, A, k, k + 1);
-      const over = k % 2 ? 'a' : 'b';
-      const d = over === 'a' ? seg : mirror(seg, y);
-      target.append(svg('path', { class: 'strand cross halo', d, pathLength: 1, style: halo ? `stroke:${halo}` : null }), svg('path', { class: `strand cross ${over}`, d, pathLength: 1 }));
-    }
-    return target;
-  }
-  const mark = (halo) => rope(svg('svg', { viewBox: '8 12 32 24', 'aria-hidden': 'true' }), { x0: 12, y: 24, n: 3, P: 8, A: 4, halo });
+  const mark = () => document.getElementById('weave-mark').content.firstElementChild.cloneNode(true);
 
   const radiate = () => make('picture', { class: 'radiate' },
     make('source', { srcset: '/brand/weave-radiate-dark.svg', media: '(prefers-color-scheme: dark)' }),
@@ -656,7 +637,7 @@
     const connected = !!s.connected;
     const link = make('div', { class: 'link', role: 'status', 'data-state': connected ? 'connected' : 'waiting' },
       make('div', { class: 'link-ends' },
-        make('span', { class: 'app-tile weave-tile' }, mark('var(--sunk)')),
+        make('span', { class: 'app-tile weave-tile' }, mark()),
         make('span', { class: 'wire', 'aria-hidden': 'true' }, make('span', { class: 'pulse' }), make('span', { class: 'check' })),
         appTile(g)),
       make('p', { class: 'link-text status', 'data-state': connected ? 'connected' : 'waiting' }, connected ? fill(COPY.agent.connected, { tool: g.name, title }) : fill(COPY.agent.waiting, { tool: g.name })));
@@ -740,7 +721,6 @@
     render();
   }
 
-  document.getElementById('brand-mark').replaceWith(Object.assign(mark('var(--panel)'), { id: 'brand-mark' }));
   stage.replaceChildren(radiate());
   boot();
 })();

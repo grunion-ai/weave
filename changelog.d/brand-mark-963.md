@@ -1,0 +1,1 @@
+- The setup page, its weave tile, the sign-in card and the 404 page draw the brand rope. They each drew their own mark, and the setup page's read as three closed loops; all four now take the masked h3 mark from `src/mark.js`, inline, in both themes. (Issue #963)

@@ -1,4 +1,5 @@
 import { escapeHtml as esc } from './markdown.js';
+import { markPair } from './mark.js';
 
 const CSS = `
 :root{
@@ -36,6 +37,8 @@ li:first-child{border-top:0}
 a{color:var(--accent)}
 a.provider{display:block;text-align:center;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 16px;margin-top:10px;font-weight:600}
 .mark{display:block;width:40px;height:40px;margin:0 0 14px}
+.mark-dark{display:none}
+@media (prefers-color-scheme: dark){.mark-light{display:none}.mark-dark{display:block}}
 .legal{text-align:center;margin-top:14px;font-size:12.5px}
 .legal a{color:var(--muted)}
 `;
@@ -103,7 +106,7 @@ const JS = `
 })();
 `;
 
-const MARK = '<svg class="mark" viewBox="0 0 48 48" role="img" aria-label="weave"><path d="M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg>';
+const MARK = markPair('a', { cls: 'mark' });
 
 export function renderRefusalPage({ title, lines = [], actions = [] } = {}) {
   return `<!doctype html>
