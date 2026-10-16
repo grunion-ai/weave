@@ -351,6 +351,7 @@ class CycleSignal extends Error {
   constructor(marker) { super(marker); this.marker = marker; }
 }
 const FORMULA_SCAN_CAP = 200;
+const RECIPE_KEYS = ['relationField', 'relation', 'targetField', 'aggregate'];
 
 export const DEFINABLE_TYPES = [
   'text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email',
@@ -4890,11 +4891,7 @@ export class Weave {
     if (['select', 'multiselect', 'workflow', 'field', 'number', 'rating', 'date', 'daterange', 'attachments', 'document', 'key', 'text', 'toggle'].includes(type)) {
       field.config = normalizeSelfContainedConfig(type, config, { strict: true });
     } else if (type === 'lookup') {
-      const rel = this.getField(db.id, config.relationField ?? config.relation);
-      if (rel.type !== 'relation') throw new WeaveError('Lookup must point at a relation field', 'invalid');
-      if (rel.config.targetDbs) throw new WeaveError('Lookup needs a single-target relation', 'invalid');
-      const target = this.getField(rel.config.targetDb, config.targetField);
-      field.config = { relationField: rel.id, targetField: target.id };
+      field.config = this.#recipe(db, 'lookup', config);
     } else if (type === 'rollup') {
       const aggregate = config.aggregate ?? 'count';
       if (!AGGREGATES.includes(aggregate)) throw new WeaveError(`Invalid aggregate '${aggregate}' (use ${AGGREGATES.join(', ')})`, 'invalid');
@@ -4909,15 +4906,7 @@ export class Weave {
         if (where) hit.owner.#checkWhere(viaT, where);
         field.config = { via: viaT.id, targetField: targetFieldId, aggregate, ...(where ? { where } : {}) };
       } else {
-        const rel = this.getField(db.id, config.relationField ?? config.relation);
-        if (rel.type !== 'relation') throw new WeaveError('Rollup must point at a relation field', 'invalid');
-        if (rel.config.targetDbs) throw new WeaveError('Rollup needs a single-target relation', 'invalid');
-        let targetFieldId = null;
-        if (aggregate !== 'count') {
-          const target = this.getField(rel.config.targetDb, config.targetField);
-          targetFieldId = target.id;
-        }
-        field.config = { relationField: rel.id, targetField: targetFieldId, aggregate };
+        field.config = this.#recipe(db, 'rollup', { ...config, aggregate });
       }
       if (config.separator != null) field.config.separator = String(config.separator);
       Object.assign(field.config, rollupCostume(config));
@@ -5025,8 +5014,75 @@ export class Weave {
     return out.map((key) => key === VALUES_BLOCK ? VALUES_BLOCK : db.fields[key].name);
   }
 
+  #recipe(db, type, config) {
+    const what = type === 'lookup' ? 'Lookup' : 'Rollup';
+    const rel = this.getField(db.id, config.relationField ?? config.relation);
+    if (rel.type !== 'relation') throw new WeaveError(`${what} must point at a relation field`, 'invalid');
+    if (rel.config.targetDbs) throw new WeaveError(`${what} needs a single-target relation`, 'invalid');
+    const aggregate = type === 'lookup' ? null : config.aggregate ?? 'count';
+    if (aggregate && !AGGREGATES.includes(aggregate)) throw new WeaveError(`Invalid aggregate '${aggregate}' (use ${AGGREGATES.join(', ')})`, 'invalid');
+    if (aggregate !== 'count' && (config.targetField == null || config.targetField === '')) {
+      throw new WeaveError(type === 'lookup' ? 'A lookup needs a targetField to read' : `A rollup that runs ${aggregate} needs a targetField to read`, 'invalid');
+    }
+    if (type === 'lookup') return { relationField: rel.id, targetField: this.getField(rel.config.targetDb, config.targetField).id };
+    const targetField = aggregate === 'count' ? null : this.getField(rel.config.targetDb, config.targetField).id;
+    return { relationField: rel.id, targetField, aggregate };
+  }
+
+  #refuseSpaceRepoint(field, c) {
+    const sent = (k) => k in c && c[k] !== undefined;
+    const far = this.#tableAnywhere(field.config.via);
+    const target = !sent('targetField') || (c.targetField ?? null) === field.config.targetField
+      || (c.targetField != null && far?.owner.findField(far.table, c.targetField)?.id === field.config.targetField);
+    if (sent('relationField') || sent('relation') || (sent('aggregate') && c.aggregate !== field.config.aggregate) || !target) {
+      throw new WeaveError(`${field.name} is a space rollup: its recipe is set from the grid's Σ row, not here`, 'invalid');
+    }
+  }
+
+  #repoint(db, field, c) {
+    const relRef = c.relationField ?? c.relation;
+    if (relRef != null && !('targetField' in c) && field.config.targetField) {
+      const nextTable = this.state.tables[this.getField(db.id, relRef).config.targetDb];
+      const oldTable = this.state.tables[db.fields[field.config.relationField]?.config.targetDb];
+      if (nextTable && !nextTable.fields[field.config.targetField]) {
+        const oldName = oldTable?.fields[field.config.targetField]?.name ?? field.config.targetField;
+        throw new WeaveError(`'${oldName}' is a field of ${oldTable?.name ?? 'the old table'}, not ${nextTable.name}: name the targetField to read there`, 'invalid');
+      }
+    }
+    return this.#recipe(db, field.type, {
+      relationField: relRef ?? field.config.relationField,
+      targetField: 'targetField' in c ? c.targetField : field.config.targetField,
+      aggregate: c.aggregate ?? field.config.aggregate,
+    });
+  }
+
+  #formulasBroken(before, after) {
+    const was = new Map(before.map((h) => [h.field, h]));
+    return after.filter((h) => {
+      const prior = was.get(h.field) ?? { ok: true, errors: 0, nulls: 0 };
+      return (prior.ok && !h.ok) || h.errors > prior.errors || h.nulls > prior.nulls;
+    }).map(({ field, rows, errors, nulls, error }) => ({ field, rows, errors, nulls, ...(error ? { error } : {}) }));
+  }
+
+  #formulaHealth(db, field) {
+    const reads = (f) => {
+      try { return formulaReferences(f.config.expression ?? '').some((n) => String(n).toLowerCase() === field.name.toLowerCase()); } catch { return false; }
+    };
+    return Object.values(db.fields).filter((f) => f.type === 'formula' && reads(f)).map((f) => {
+      const checked = this.checkFormula(db.id, f.config.expression, { excludeField: f.id, scan: true });
+      const scan = checked.scan ?? { rows: 0, errors: 0, nulls: 0, sampleByOutcome: {} };
+      return { field: f.name, ok: checked.ok, rows: scan.rows, errors: scan.errors, nulls: scan.nulls,
+        error: checked.ok ? scan.sampleByOutcome.error?.error ?? null : checked.error };
+    });
+  }
+
   updateField(dbRef, fieldRef, patch) {
     return this.#updateField(dbRef, fieldRef, patch, null).field;
+  }
+
+  fieldChangeSince(dbRef, fieldId, seq) {
+    const [last] = this.activityFeed({ entityId: this.getTable(dbRef).id, kinds: ['field-config-updated'], limit: 1 }).items;
+    return last && last.seq > seq && last.detail.fieldId === fieldId ? last : null;
   }
 
   #updateField(dbRef, fieldRef, patch, undo, restore = null) {
@@ -5034,6 +5090,10 @@ export class Weave {
     const field = this.getField(db.id, fieldRef);
     const before = fieldDefinition(field);
     const touchedBefore = this.#spacesTouching(db, field);
+    const recipeSent = (patch.type == null || patch.type === field.type) && (field.type === 'lookup' || field.type === 'rollup')
+      && patch.config && RECIPE_KEYS.some((k) => k in patch.config);
+    if (recipeSent && field.config.via) this.#refuseSpaceRepoint(field, patch.config);
+    const nextRecipe = recipeSent && !field.config.via ? this.#repoint(db, field, patch.config) : null;
     let renamed = false;
     if (patch.name != null) refuseReserved('field', patch.name);
     if (patch.name != null && patch.name !== field.name) {
@@ -5048,6 +5108,8 @@ export class Weave {
       throw new WeaveError(`The ${field.config.shape} is fixed as a view — rename or reconfigure it`, 'invalid');
     }
     let migrated = null;
+    let healthBefore = null;
+    let recipeBefore = null;
     if (patch.type != null && patch.type !== field.type) {
       migrated = this.#migrateFieldType(db, field, patch.type, patch.config ?? {}, { force: !!undo, restore });
       if (!undo) {
@@ -5088,6 +5150,11 @@ export class Weave {
             else field.config[k] = costume[k];
           }
         }
+      }
+      if (nextRecipe) {
+        healthBefore = this.#formulaHealth(db, field);
+        recipeBefore = this.#ontologyComputed(db, field, () => '');
+        Object.assign(field.config, nextRecipe);
       }
       if (field.type === 'rollup' && ROLLUP_COSTUME_KEYS.some((k) => k in patch.config)) {
         const merged = { ...field.config, ...patch.config };
@@ -5160,8 +5227,12 @@ export class Weave {
     if (renamed) this.#syncTableRow(db);
     const after = fieldDefinition(field);
     const changed = definitionChanges(before, after);
+    const recipeMoved = !!nextRecipe && RECIPE_KEYS.some((k) => changed.includes(k));
+    const recipe = recipeMoved ? { before: recipeBefore, after: this.#ontologyComputed(db, field, () => '') } : null;
+    const broken = recipeMoved ? this.#formulasBroken(healthBefore, this.#formulaHealth(db, field)) : [];
     const logged = !db.system && !this.#fieldLogQuiet && changed.length
       ? { table: this.qualifiedName(db), tableId: db.id, fieldId: field.id, field: field.name, changed, before, after, seq: this.#nextSeq(),
+        ...(recipe ? { recipe } : {}), ...(broken.length ? { formulas: broken } : {}),
         ...(before.type !== after.type ? { lossy: true } : {}), ...(migrated ? { snapshot: migrated.rows } : {}),
         ...(undo ?? {}), ...(restore && migrated ? migrated.counts : {}) }
       : null;
@@ -5310,7 +5381,7 @@ export class Weave {
     const temp = { id: '__preview', name: '__preview', type: 'formula', config: { expression } };
     const nameOf = (row) => String(row.values[db.nameFieldId] ?? '');
     const kindOf = (v) => (v == null ? 'null' : typeof v === 'string' && (v.startsWith('#ERR: ') || isCycle(v)) ? 'error'
-      : Array.isArray(v) ? 'list' : typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'text');
+      : Array.isArray(v) ? 'list' : Number.isNaN(v) ? 'error' : typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'text');
     const preview = this.#resolve(e, db, temp, 0);
     const result = { ok: true, preview, previewEntity: nameOf(e), type: kindOf(preview) };
     if (!scan) return result;
@@ -5321,7 +5392,7 @@ export class Weave {
       const v = this.#resolve(row, db, temp, 0);
       const kind = kindOf(v);
       if (kind === 'null') { out.nulls++; out.sampleByOutcome.null ??= { entity: nameOf(row), id: row.id }; }
-      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: isCycle(v) ? v : v.slice(6) }; }
+      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: isCycle(v) ? v : Number.isNaN(v) ? 'not a number' : v.slice(6) }; }
       else { types[kind] = (types[kind] ?? 0) + 1; out.sampleByOutcome.ok ??= { entity: nameOf(row), id: row.id, value: v }; }
     }
     const dominant = Object.entries(types).sort((a, b) => b[1] - a[1])[0];

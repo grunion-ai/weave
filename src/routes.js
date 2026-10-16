@@ -1625,9 +1625,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'PATCH') {
             const seq = weave.state.meta.activitySeq ?? 0;
             const field = weave.updateField(m[1], m[2], body);
-            const [last] = weave.activityFeed({ entityId: weave.getTable(m[1]).id, kinds: ['field-config-updated'], limit: 1 }).items;
-            const entry = last && last.seq > seq && last.detail.fieldId === field.id ? last : null;
-            return out(200, { ...guided(weave, 'field', field, body?.type == null ? body?.config : {}), activity: entry?.id ?? null, lossy: !!entry?.detail.lossy });
+            const entry = weave.fieldChangeSince(m[1], field.id, seq);
+            return out(200, { ...guided(weave, 'field', field, body?.type == null ? body?.config : {}), activity: entry?.id ?? null, lossy: !!entry?.detail.lossy,
+              ...(entry?.detail.formulas ? { formulas: entry.detail.formulas } : {}) });
           }
           if (rx.method === 'DELETE') {
             weave.deleteField(m[1], m[2], { hard: ['1', 'true'].includes(rx.searchParams.get('hard') ?? '') });

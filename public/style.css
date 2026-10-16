@@ -466,6 +466,7 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .wv-col-readout { position: fixed; z-index: 1080; pointer-events: none; transform: translateX(-50%); padding: 2px 8px; border-radius: var(--tblr-border-radius); background: var(--tblr-dark, #182433); color: #fff; font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); white-space: nowrap; }
 [data-bs-theme="dark"] .wv-col-readout { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); border: 1px solid var(--tblr-border-color); }
 .modal-note { color: var(--tblr-secondary); font-size: var(--fs-secondary); margin-top: 2px; }
+.modal-note.recipe-warn { color: var(--wv-warn-text); }
 
 .wv-grid:has(th.add-field-head) { width: max-content; }
 .wv-grid th.add-field-head { white-space: nowrap; padding-left: 4px; padding-right: 8px; cursor: default; }

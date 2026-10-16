@@ -796,8 +796,12 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return { table: args.db, deleted: true, hard: Boolean(args.hard) };
     case 'weave_restore_table':
       return weave.restoreTable(args.db);
-    case 'weave_update_field':
-      return guided(weave, 'field', weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config'])), args.type == null ? args.config : {});
+    case 'weave_update_field': {
+      const seq = weave.state.meta.activitySeq ?? 0;
+      const field = weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config']));
+      const formulas = weave.fieldChangeSince(args.db, field.id, seq)?.detail.formulas;
+      return { ...guided(weave, 'field', field, args.type == null ? args.config : {}), ...(formulas ? { formulas } : {}) };
+    }
     case 'weave_rollback_field':
       return weave.rollbackFieldConfig(args.activity, { table: args.db ?? null, field: args.field ?? null });
     case 'weave_delete_field':
