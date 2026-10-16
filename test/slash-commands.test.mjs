@@ -21,6 +21,20 @@ if (s) {
   const { base, browser, weave } = s;
   test.after(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
 
+  async function docHtmlWith(page, id, pattern) {
+    let html = '';
+    for (let i = 0; i < 40 && !pattern.test(html); i++) {
+      await page.waitForTimeout(50);
+      await page.evaluate(() => window.__weaveFlushDocSaves?.());
+      html = await (await fetch(`${base}/e/${id}/doc.html`)).text();
+    }
+    if (!pattern.test(html)) {
+      const md = await (await fetch(`${base}/e/${id}/doc.md`)).text();
+      assert.fail(`doc.html never matched ${pattern} after 40 passes; stored markdown was ${JSON.stringify(md)}`);
+    }
+    return html;
+  }
+
   function freshEntity(name = 'Slash case') {
     return weave.createEntity(tableRef, { name }).id;
   }
@@ -166,12 +180,7 @@ if (s) {
     assert.match(markdown, /\[\[[^\]]+#\d+(\|[^\]]+)?\]\]/,
       `expected a [[Table#id]] reference, got: ${JSON.stringify(markdown)}`);
 
-    await page.evaluate(() => window.__weaveFlushDocSaves());
-    let html = '';
-    for (let i = 0; i < 40 && !html.includes('mention'); i++) {
-      await page.waitForTimeout(50);
-      html = await (await fetch(`${base}/e/${linkEntity}/doc.html`)).text();
-    }
+    const html = await docHtmlWith(page, linkEntity, /class="mention mention-entity"/);
     const stored = await (await fetch(`${base}/e/${linkEntity}/doc.md`)).text();
     assert.match(html, /class="mention mention-entity"/,
       `the picked reference must render as a live entity chip; stored markdown was ${JSON.stringify(stored)}`);
@@ -475,12 +484,7 @@ if (s) {
       window.__weaveEditors.values().next().value.getValue());
     assert.match(markdown, /\[\[table:[^\]]+\]\]/, `expected a table reference, got ${JSON.stringify(markdown)}`);
 
-    let html = '';
-    for (let i = 0; i < 40 && !html.includes('mention'); i++) {
-      await page.waitForTimeout(50);
-      await page.evaluate(() => window.__weaveFlushDocSaves?.());
-      html = await (await fetch(`${base}/e/${id}/doc.html`)).text();
-    }
+    const html = await docHtmlWith(page, id, /class="mention mention-table"/);
     assert.match(html, /class="mention mention-table"/, 'the reference must render as a live table chip');
     assert.doesNotMatch(html, /class="mention broken"/);
     await page.close();
