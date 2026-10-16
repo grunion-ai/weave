@@ -1,0 +1,1 @@
+- The billing page loads Clerk's UI bundle beside clerk-js 6 and passes it to `Clerk.load`, so the pricing table mounts instead of failing with "Clerk was not loaded with Ui components". (Issue #922)
