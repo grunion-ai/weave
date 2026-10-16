@@ -178,15 +178,18 @@ test('the fifteen original starters keep their ids and their first tables', () =
   assert.equal(S.firstTable(byId('crm')), 'Companies');
 });
 
-test('every template carries details: two or three plain sentences', () => {
+test('every template carries one line on who it is for and one line on what it is like (Issue #949)', () => {
   for (const t of S.TEMPLATES) {
     assert.equal(typeof t.details, 'string', `${t.id}.details`);
-    const sentences = t.details.split(/(?<=\.)\s+/).filter(Boolean);
-    assert.ok(sentences.length >= 2 && sentences.length <= 3, `${t.id}: two or three sentences, has ${sentences.length}`);
-    for (const s of sentences) assert.match(s, /^[A-Z].*\.$/, `${t.id}: a full sentence: ${s}`);
-    assert.ok(t.details.length <= 320, `${t.id}: details stay short`);
+    assert.match(t.details, /^[A-Z][^.]*\.$/, `${t.id}: one sentence: ${t.details}`);
+    assert.ok(t.details.length <= 64, `${t.id}: one short line, has ${t.details.length}: ${t.details}`);
+    assert.equal(typeof t.like, 'string', `${t.id}.like`);
+    assert.match(t.like, /^Like \S/, `${t.id}: names what it is like: ${t.like}`);
+    assert.ok(t.like.length <= 26, `${t.id}: like stays short: ${t.like}`);
     copyRules(t.details, t.id);
+    copyRules(t.like, t.id);
   }
+  assert.equal(byId('projects').like, 'Like Asana');
 });
 
 test('every template and table icon is in the inventory', () => {

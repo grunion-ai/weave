@@ -34,8 +34,6 @@
       all: 'All',
       more: 'More',
       tables: 'Tables',
-      count: '{tables} tables, {rows} sample rows',
-      countOne: '1 table, {rows} sample rows',
       choose: 'Start with {title}',
       search: 'Search setups',
       searchPlaceholder: 'Search: sales, recipes, hiring',
@@ -373,19 +371,67 @@
     if (globalThis.WeaveStarters.searchText) return fold(globalThis.WeaveStarters.searchText(t));
     const cat = CATEGORIES.find((c) => c.id === t.category)?.label;
     const tables = spec(t).spaces[0].tables.map((x) => x.name);
-    return fold([t.title, t.work, t.blurb, t.details, cat, ...tables].filter(Boolean).join(' '));
+    return fold([t.title, t.work, t.blurb, t.details, t.like, cat, ...tables].filter(Boolean).join(' '));
   }
   const matches = (hay, query) => fold(query).split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
 
-  function about(t) {
+  function links(tables) {
+    const names = tables.map((x) => x.name);
+    const edges = [];
+    for (const x of tables) {
+      for (const f of x.fields ?? []) {
+        if (f.type !== 'relation' || f.to === x.name || !names.includes(f.to)) continue;
+        if (!edges.some((e) => e.includes(x.name) && e.includes(f.to))) edges.push([x.name, f.to]);
+      }
+    }
+    const linked = (a, b) => edges.some((e) => e.includes(a) && e.includes(b));
+    const degree = (n) => edges.filter((e) => e.includes(n)).length;
+    const seen = new Set();
+    const levels = [];
+    for (const start of [...names].sort((a, b) => degree(b) - degree(a))) {
+      if (seen.has(start)) continue;
+      seen.add(start);
+      for (let level = [start]; level.length;) {
+        levels.push(level);
+        level = names.filter((m) => !seen.has(m) && level.some((n) => linked(n, m)));
+        for (const m of level) seen.add(m);
+      }
+    }
+    return { levels, edges };
+  }
+
+  function tableMap(t) {
     const tables = spec(t).spaces[0].tables;
-    const rows = tables.reduce((n, x) => n + (x.rows?.length ?? 0), 0);
-    return {
-      details: t.details ?? t.blurb,
-      tables: tables.map((x) => ({ name: x.name, icon: x.icon, fields: (x.fields ?? []).slice(0, 4).map((f) => f.name) })),
-      count: fill(tables.length === 1 ? COPY.work.countOne : COPY.work.count, { tables: tables.length, rows }),
-      rows,
+    const { levels, edges } = links(tables);
+    const icon = new Map(tables.map((x) => [x.name, x.icon ?? t.icon]));
+    const node = (name) => make('li', { class: 'map-node', 'data-table': name }, glyph(icon.get(name)), name);
+    const rows = levels.map((level, i) => [i ? make('li', { class: 'map-break', role: 'presentation', 'aria-hidden': 'true' }) : null, ...level.map(node)]);
+    const lines = svg('svg', { class: 'map-lines', 'aria-hidden': 'true' });
+    const list = make('ul', { class: 'map-nodes', 'aria-label': COPY.work.tables }, rows.flat());
+    const nodes = [...list.querySelectorAll('.map-node')];
+    const map = make('div', { class: 'map', 'data-edges': edges.length }, lines, list);
+    const draw = () => {
+      const box = map.getBoundingClientRect();
+      if (!box.width) return;
+      const at = new Map(nodes.map((n) => {
+        const r = n.getBoundingClientRect();
+        return [n.dataset.table, { x: r.left - box.left + r.width / 2, y: r.top - box.top + r.height / 2, top: r.top - box.top, bottom: r.bottom - box.top }];
+      }));
+      const between = (p, q) => [...at.values()].some((o) => o !== p && o !== q && Math.abs(o.top - p.top) < 2 && o.x > Math.min(p.x, q.x) && o.x < Math.max(p.x, q.x));
+      lines.replaceChildren(...edges.map(([a, b]) => {
+        const [p, q] = [at.get(a), at.get(b)].sort((u, v) => u.top - v.top || u.x - v.x);
+        const d = Math.abs(p.top - q.top) >= 2
+          ? `M${p.x} ${p.bottom} C${p.x} ${p.bottom + 10} ${q.x} ${q.top - 10} ${q.x} ${q.top}`
+          : between(p, q)
+            ? `M${p.x} ${p.bottom} C${p.x} ${p.bottom + 14} ${q.x} ${q.bottom + 14} ${q.x} ${q.bottom}`
+            : `M${p.x} ${p.y} L${q.x} ${q.y}`;
+        return svg('path', { d, 'data-edge': `${a}|${b}` });
+      }));
     };
+    const watch = new ResizeObserver(draw);
+    watch.observe(map);
+    for (const n of nodes) watch.observe(n);
+    return map;
   }
 
   let choice = null;
@@ -437,11 +483,11 @@
       }
       const t = TEMPLATES.find((x) => x.id === choice);
       if (!t) { details.replaceChildren(); return; }
-      const a = about(t);
-      details.replaceChildren(
-        make('p', { class: 'details-lead' }, a.details),
-        make('ul', { class: 'tables', 'aria-label': COPY.work.tables }, a.tables.map((x) => make('li', {}, glyph(x.icon ?? t.icon), make('span', {}, make('b', {}, x.name), x.fields.length ? make('small', {}, x.fields.join(', ')) : null)))),
-        make('p', { class: 'muted details-count', 'data-rows': a.rows }, a.count));
+      details.replaceChildren(...[
+        make('p', { class: 'details-lead' }, t.details ?? t.blurb),
+        t.like ? make('p', { class: 'details-like' }, t.like) : null,
+        tableMap(t),
+      ].filter(Boolean));
     }
 
     const columns = (grid) => Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length);
