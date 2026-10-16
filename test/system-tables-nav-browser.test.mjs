@@ -45,12 +45,12 @@ if (s) {
   });
   const refill = (page) => page.evaluate(() => window.__refill());
 
-  test('browser: five fixed rows under the spaces; Trash opens the workspace trash', async () => {
+  test('browser: four fixed rows under the spaces; Trash opens the workspace trash', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href'), !!a.querySelector('.nav-db-menu')]));
-    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`, false], ['Users', `#/table/${usersId}`, false], ['Activity', '#/activity', false], ['Trash', '#/trash', false], ['Settings', '#/settings', false]]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`, false], ['Users', `#/table/${usersId}`, false], ['Activity', '#/activity', false], ['Trash', '#/trash', false]]);
     const inList = await page.$$eval('#nav .nav-db', (as) => as.map((a) => a.textContent.trim()));
     assert.ok(!inList.includes('Workflows') && !inList.includes('Users'), 'Workflows and Users are not listed twice');
     const below = await page.evaluate(() => {
@@ -148,7 +148,7 @@ if (s) {
     await page.goto(`${base}/w/${member.state.meta.id}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`], ['Users', `/#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash'], ['Settings', '#/settings']]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`], ['Users', `/#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
     await page.close();
   });
 

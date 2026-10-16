@@ -1193,11 +1193,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
           const rail = oidc ? String(cookies.wv_rail ?? '').split(',').filter(Boolean) : [];
           const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
-          const hubRoot = hub.get(hub.defaultName);
-          const manages = mayAdminister(hubRoot, roleOn(hubRoot));
           return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
             .map((x) => ({
-              ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && manages } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
+              ...(canOpen(hub.get(x.name)) ? x : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
               ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : {}),
             })));
         }
@@ -1683,7 +1681,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (path === '/api/trash' && rx.method === 'GET') {
           const items = weave.listTrash(null, { workspace: member.state.meta.id });
-          return out(200, { total: items.length, items, views: weave.listViews({ trash: true }), purge: !cap || cap === 'architect' || cap === 'editor' });
+          return out(200, { total: items.length, items, views: weave.listViews({ trash: true }) });
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/trash$/)) && rx.method === 'GET') {
           const items = weave.listTrash(m[1], { workspace: member.state.meta.id });
