@@ -23,6 +23,24 @@ export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+const EMPTY_EMBED = /(?<!\\)!\[[^\]\n]*\]\(\s*\)/g;
+
+function outsideCode(line) {
+  return line.split(/(`+[^`]*`+)/).map((part, i) => (i % 2 ? part : part.replace(EMPTY_EMBED, ''))).join('');
+}
+
+export function stripEmptyEmbeds(markdown) {
+  const text = String(markdown ?? '');
+  if (!text.includes(']()') && !/\]\(\s+\)/.test(text)) return text;
+  const lines = text.split('\n');
+  let fenced = false;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/^\s*```/.test(lines[i])) { fenced = !fenced; continue; }
+    if (!fenced) lines[i] = outsideCode(lines[i]);
+  }
+  return lines.join('\n');
+}
+
 const ENTITY = { colon: ':', tab: '\t', newline: '\n', amp: '&', sol: '/', period: '.', lpar: '(', rpar: ')' };
 function decodeEntities(s) {
   for (let n = 0; n < 4; n++) {

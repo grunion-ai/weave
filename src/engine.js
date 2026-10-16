@@ -13,6 +13,7 @@ import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
+import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
 import * as Shares from './shares.js';
@@ -5858,11 +5859,11 @@ export class Weave {
     };
     if (input.doc) {
       const f = this.#resolveDocField(db);
-      e.docs[f.id] = String(input.doc);
+      e.docs[f.id] = stripEmptyEmbeds(input.doc);
     }
     for (const [fieldName, md] of Object.entries(input.docs ?? {})) {
       const f = this.#resolveDocField(db, fieldName);
-      e.docs[f.id] = String(md);
+      e.docs[f.id] = stripEmptyEmbeds(md);
     }
     const named = new Set();
     for (const key of Object.keys(values)) {
@@ -5931,7 +5932,7 @@ export class Weave {
         continue;
       }
       if (field.type === 'document') {
-        const md = String(raw ?? '');
+        const md = stripEmptyEmbeds(raw);
         const before = e.docs[field.id] ?? '';
         if (before === md) continue;
         const prior = { at: e.updatedAt, by: e.modifiedBy };
@@ -7037,7 +7038,7 @@ export class Weave {
 
   #docText(markdown, verb) {
     if (markdown == null) throw new WeaveError(`A document ${verb} needs its text: pass the markdown, '' to clear the document. Nothing was passed.`, 'invalid');
-    return String(markdown);
+    return stripEmptyEmbeds(markdown);
   }
 
   setDoc(entityId, markdown, fieldRef = null) {
@@ -7667,7 +7668,7 @@ export class Weave {
       if (docField) {
         e.docs = e.docs ?? {};
         const before = e.docs[docField.id] ?? '';
-        const after = (before ? before.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
+        const after = (before ? before.replace(/\n*$/, '\n\n') : '') + stripEmptyEmbeds(this.#template(action.text, e, db));
         const prior = { at: e.updatedAt, by: e.modifiedBy };
         this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: before } } });
         e.docs[docField.id] = after;

@@ -9621,7 +9621,7 @@ async function uploadDocFiles(files, entityId, getEditor, onInput) {
     } catch (e) { return `Upload failed: ${e.message}`; }
     const url = `${WS_PREFIX}/api/files/${meta.id}`;
     const mime = f.type || '';
-    const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![${f.name}](${url})`
+    const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![](${url})`
       : mime === 'application/pdf'
         ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
         : `[${f.name}](${url})`;
