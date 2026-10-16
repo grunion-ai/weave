@@ -65,8 +65,8 @@ if (s) {
     await menu.waitFor();
     assert.equal(await chip.getAttribute('aria-expanded'), 'true');
     const rows = menu.locator('[role="menuitem"]');
-    assert.deepEqual((await rows.locator('.wv-menu-label').allInnerTexts()).map((t) => t.trim()), ['Theme', 'Keyboard shortcuts', 'Sign out', 'Sign out everywhere']);
-    assert.equal(await rows.nth(2).getAttribute('title'), 'Sign out of root');
+    assert.deepEqual((await rows.locator('.wv-menu-label').allInnerTexts()).map((t) => t.trim()), ['Theme', 'Keyboard shortcuts', 'Settings', 'Sign out', 'Sign out everywhere']);
+    assert.equal(await rows.nth(3).getAttribute('title'), 'Sign out of root');
     assert.equal(await rows.nth(0).evaluate((n) => n === document.activeElement), true);
     await page.keyboard.press('ArrowDown');
     assert.equal(await rows.nth(1).evaluate((n) => n === document.activeElement), true);
