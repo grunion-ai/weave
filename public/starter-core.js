@@ -18,6 +18,7 @@
   const state = (name, category, hue, isDefault = false) => ({ name, category, hue, ...(isDefault ? { default: true } : {}) });
 
   const CATEGORIES = [
+    { id: 'start', label: 'Start simple', icon: 'lucide:file-plus', blurb: 'One plain table to shape as you go' },
     { id: 'projects', label: 'Projects and tasks', icon: 'lucide:layers', blurb: 'Tasks, projects, meetings and goals' },
     { id: 'money', label: 'Personal money', icon: 'lucide:wallet', blurb: 'Spending, subscriptions and savings goals' },
     { id: 'sales', label: 'Sales and customers', icon: 'lucide:funnel', blurb: 'Contacts, deals and support tickets' },
@@ -105,7 +106,7 @@
       icon: 'lucide:list-checks',
       work: 'Personal tasks',
       category: 'projects',
-      details: 'Every task carries a status, a due date and a priority. For a person who wants one place for what to do next.',
+      details: 'Every task carries a status, a due date and a priority. For a person who wants one to-do list for what comes next.',
       featured: true,
       tables: (m) => [{
         name: 'Tasks',
@@ -133,7 +134,7 @@
       icon: 'lucide:users',
       work: 'Sales and clients',
       category: 'sales',
-      details: 'Companies move from lead to customer, and each contact links to the company they work at. For a founder or small sales team keeping track of who they talk to.',
+      details: 'A small CRM where companies move from lead to customer, and each contact links to the company they work at. For a founder or small sales team keeping track of who they talk to.',
       featured: true,
       tables: () => [
         {
@@ -156,6 +157,36 @@
           rows: [{ Name: 'Ada Park', Email: 'ada@example.com', Company: 'Acme' }],
         },
       ],
+    },
+    {
+      id: 'basic',
+      title: 'Basic',
+      blurb: 'One table of items with a status, owner and due date',
+      space: 'Basic',
+      icon: 'lucide:table',
+      work: 'General list',
+      category: 'start',
+      details: 'A starting point with one Items table: a status, an owner, a due date and notes on every row. Rename it, add fields and shape it around what you track. For anyone whose work fits no other template, or who wants a plain to-do list.',
+      featured: false,
+      tables: (m) => [{
+        name: 'Items',
+        icon: 'lucide:list',
+        fields: [
+          { name: 'Status', type: 'workflow', states: [
+            state('To do', 'not-started', 'slate', true),
+            state('Doing', 'in-progress', 'blue'),
+            state('Done', 'done', 'green'),
+          ] },
+          { name: 'Owner', type: 'text' },
+          { name: 'Due', type: 'date' },
+          { name: 'Notes', type: 'text' },
+        ],
+        rows: [
+          { Name: 'Rename this table', Owner: 'Ana Ruiz', Due: m.after(1), Notes: 'Call it what you track' },
+          { Name: 'Add a field you need', Status: 'Doing', Owner: 'Ana Ruiz', Due: m.after(3), Notes: 'Dates, numbers, links and more' },
+          { Name: 'Invite a teammate', Owner: 'Sam Lee', Due: m.after(7) },
+        ],
+      }],
     },
     {
       id: 'recruiting',
@@ -346,7 +377,7 @@
       icon: 'lucide:calendar',
       work: 'Content calendar',
       category: 'marketing',
-      details: 'Posts move from idea to published, each with a publish date, a channel and a writer. For a marketing team or a creator planning what goes out each week.',
+      details: 'Posts for a blog, newsletter or video channel move from idea to published, each with a publish date, a channel and a writer. For a marketing team or a creator planning what goes out each week.',
       featured: false,
       tables: (m) => [
         {
@@ -882,7 +913,7 @@
       icon: 'lucide:gauge',
       work: 'Goals and key results',
       category: 'projects',
-      details: 'Each goal has an owner, a quarter and a status such as on track or behind. Key results link to their goal with a target and a current number. For a team or a person setting quarterly goals.',
+      details: 'Each goal has an owner, a quarter and a status such as on track or behind. Key results link to their goal with a target and a current number. For a team or a person setting quarterly goals and OKRs.',
       featured: false,
       tables: () => [
         {
@@ -1282,7 +1313,7 @@
       icon: 'lucide:sun',
       work: 'Time off and leave',
       category: 'people',
-      details: 'Requests carry a kind, dates and a number of days, and move from requested to approved or declined. Each person totals the days taken against their allowance. For a small team keeping leave in one place.',
+      details: 'Requests carry a kind such as vacation or sick leave, dates and a number of days, and move from requested to approved or declined. Each person totals the days taken against their allowance. For a small team keeping leave in one place.',
       featured: false,
       tables: (m) => [
         {
@@ -1945,7 +1976,7 @@
       icon: 'lucide:award',
       work: 'School and courses',
       category: 'learning',
-      details: 'Courses carry a teacher, a term and credits, and assignments link to their course with a due date and a status from not started to graded. Each course averages its grades. For a student keeping a term on track.',
+      details: 'Courses carry a teacher, a term and credits, and assignments, from homework to exams, link to their course with a due date and a status from not started to graded. Each course averages its grades. For a student keeping a term on track.',
       featured: false,
       tables: (m) => [
         {
@@ -2029,6 +2060,12 @@
     },
   ];
 
+  function searchText(template) {
+    const category = CATEGORIES.find((c) => c.id === template.category)?.label ?? '';
+    const tables = template.tables(month()).map((t) => t.name);
+    return [template.title, template.work, template.blurb, template.details, category, ...tables].join(' ').toLowerCase();
+  }
+
   function spec(template, { now } = {}) {
     return { spaces: [{ name: template.space, icon: template.icon, tables: template.tables(month(now)) }] };
   }
@@ -2043,5 +2080,5 @@
       .replace(/^[-_]+/, '').slice(0, 48).replace(/[-_]+$/, '');
   }
 
-  root.WeaveStarters = { userTables, CATEGORIES, TEMPLATES, spec, firstTable, workspaceName };
+  root.WeaveStarters = { userTables, CATEGORIES, TEMPLATES, searchText, spec, firstTable, workspaceName };
 })(globalThis);

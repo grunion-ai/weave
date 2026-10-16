@@ -94,9 +94,14 @@ const copyRules = (s, where) => {
   assert.ok(!/\brecords?\b/i.test(s), `${where}: row, never record (Issue #605): ${s}`);
 };
 
-test('the gallery holds nine to twelve categories, each with an id, a sentence-case label, an icon and a blurb', () => {
+const START = 'start';
+const topics = () => S.CATEGORIES.filter((c) => c.id !== START);
+
+test('the gallery holds nine to twelve topic categories after Start simple, each with an id, a sentence-case label, an icon and a blurb', () => {
   assert.ok(Array.isArray(S.CATEGORIES), 'CATEGORIES is exported');
-  assert.ok(S.CATEGORIES.length >= 9 && S.CATEGORIES.length <= 12, `${S.CATEGORIES.length} categories`);
+  assert.equal(S.CATEGORIES[0].id, START, 'Start simple leads the gallery');
+  assert.equal(S.CATEGORIES[0].label, 'Start simple');
+  assert.ok(topics().length >= 9 && topics().length <= 12, `${topics().length} topic categories`);
   const icons = new Set(ICONS.map((n) => `lucide:${n}`));
   for (const key of ['id', 'label']) {
     const values = S.CATEGORIES.map((c) => c[key]);
@@ -114,14 +119,55 @@ test('the gallery holds nine to twelve categories, each with an id, a sentence-c
   }
 });
 
-test('every template sits in one category, and every category holds three or four templates', () => {
+test('every template sits in one category, every topic category holds three or four, and Start simple holds only basic', () => {
   const ids = new Set(S.CATEGORIES.map((c) => c.id));
   for (const t of S.TEMPLATES) assert.ok(ids.has(t.category), `${t.id}: category ${t.category} is listed`);
-  for (const c of S.CATEGORIES) {
+  for (const c of topics()) {
     const n = S.TEMPLATES.filter((t) => t.category === c.id).length;
     assert.ok(n >= 3 && n <= 4, `${c.id}: three or four templates, has ${n}`);
   }
-  assert.ok(S.TEMPLATES.length >= 36 && S.TEMPLATES.length <= 48, `${S.TEMPLATES.length} templates`);
+  assert.deepEqual(S.TEMPLATES.filter((t) => t.category === START).map((t) => t.id), ['basic']);
+  const topical = S.TEMPLATES.filter((t) => t.category !== START).length;
+  assert.ok(topical >= 36 && topical <= 48, `${topical} topic templates`);
+});
+
+test('basic is one general table with status, owner, due date and notes, kept out of the featured three', () => {
+  const basic = byId('basic');
+  assert.ok(basic, 'basic is in the catalog');
+  assert.equal(basic.featured, false);
+  const tables = S.spec(basic, { now: NOW }).spaces[0].tables;
+  assert.equal(tables.length, 1, 'one table');
+  const [items] = tables;
+  for (const [name, type] of [['Status', 'workflow'], ['Owner', 'text'], ['Due', 'date'], ['Notes', 'text']]) {
+    assert.equal(items.fields.find((f) => f.name === name)?.type, type, `${items.name}.${name}`);
+  }
+  assert.ok(items.rows.length >= 2 && items.rows.length <= 4, 'a few sample rows');
+  assert.match(basic.details, /starting point/i, 'details say it is a starting point');
+});
+
+test('searchText gathers the words a search should match: title, work, blurb, details, category and table names', () => {
+  const freelance = byId('freelance');
+  const text = S.searchText(freelance);
+  for (const word of ['freelance', 'invoices', 'clients and bookings', 'jobs']) assert.ok(text.includes(word), `${word} in ${text}`);
+  assert.equal(text, text.toLowerCase(), 'lower case, ready to match');
+});
+
+const SEARCHES = {
+  crm: ['crm'], invoice: ['freelance'], budget: ['finance', 'budgets'], expense: ['expenses'], subscription: ['subscriptions'],
+  saving: ['savings'], okr: ['goals'], meeting: ['meetings'], bug: ['bugs'], sprint: ['sprints'],
+  roadmap: ['roadmap'], interview: ['recruiting', 'user-research'], hiring: ['recruiting'], onboarding: ['onboarding'],
+  vacation: ['time-off'], pipeline: ['deals'], ticket: ['support'], newsletter: ['content'], campaign: ['campaigns'],
+  social: ['social'], event: ['events'], investor: ['fundraising'], inventory: ['inventory'], equipment: ['assets'],
+  'purchase order': ['vendors'], appointment: ['bookings'], tenant: ['rentals'], landlord: ['rentals'], donor: ['nonprofit'],
+  grant: ['nonprofit'], volunteer: ['volunteers'], club: ['members'], chore: ['home'], habit: ['habits'], workout: ['workouts'],
+  recipe: ['recipes'], 'meal plan': ['recipes'], homework: ['courses'], book: ['reading'], notes: ['research', 'basic'],
+  'to-do': ['tasks', 'basic'],
+};
+test('common searches find the template people mean', () => {
+  for (const [query, want] of Object.entries(SEARCHES)) {
+    const hits = S.TEMPLATES.filter((t) => S.searchText(t).includes(query)).map((t) => t.id);
+    for (const id of want) assert.ok(hits.includes(id), `"${query}" finds ${id}; found ${hits.join(', ') || 'nothing'}`);
+  }
 });
 
 test('the fifteen original starters keep their ids and their first tables', () => {
@@ -200,7 +246,7 @@ for (const template of S.TEMPLATES) {
         }
       }
     }
-    if (!template.featured) assert.ok(tables.length >= 2 && tables.length <= 4, `${template.id}: two to four tables`);
+    if (!template.featured && template.id !== 'basic') assert.ok(tables.length >= 2 && tables.length <= 4, `${template.id}: two to four tables`);
   });
 }
 
