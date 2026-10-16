@@ -1,3 +1,5 @@
+import { countClicks } from './clicks.mjs';
+
 export const ROWS = 400;
 
 export function seed(weave) {
@@ -248,17 +250,19 @@ export async function walk(browser, journey, ctx, { probe, record = null, engine
   if (engine && engine !== ran) throw new Error(`${journey.name} wants ${engine} and was handed ${ran}`);
   const page = await browser.newPage({ viewport: CELLS.desktop.viewport, ...options });
   try {
-    await probe.install(page);
+    const clicks = await countClicks(page);
+    await probe?.install(page);
     if (journey.setup) await journey.setup(page, ctx);
     else await page.goto('about:blank');
-    await probe.reset(page);
+    await probe?.reset(page);
+    clicks.reset();
     const rec = record ? await record(page) : null;
     await journey.run(page, ctx);
-    await page.waitForTimeout(600);
+    if (probe) await page.waitForTimeout(600);
     await frames(page, 2);
-    const events = await probe.read(page);
-    const inputs = probe.inputs ? await probe.inputs(page) : [];
-    return { events, inputs, frames: rec ? await rec.stop() : [] };
+    const events = probe ? await probe.read(page) : [];
+    const inputs = probe?.inputs ? await probe.inputs(page) : [];
+    return { events, inputs, clicks: clicks.count, frames: rec ? await rec.stop() : [] };
   } finally {
     await page.close();
   }

@@ -45,6 +45,7 @@ export function validate(manifest, results, commit) {
 }
 
 export const SMOKE = [
+  'test/click-budget-browser.test.mjs',
   'test/doc-title-browser.test.mjs',
   'test/entity-dock-browser.test.mjs',
   'test/first-run-browser.test.mjs',
