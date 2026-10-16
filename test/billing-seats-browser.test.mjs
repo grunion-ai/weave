@@ -33,7 +33,7 @@ if (s) {
     await page.waitForSelector('#seats li', { state: 'attached' });
     return { ctx, page };
   };
-  const seatRows = (page) => page.$$eval('#seats li', (ls) => ls.map((li) => ({
+  const seatRows = (page) => page.locator('#seats li').evaluateAll((ls) => ls.map((li) => ({
     name: li.querySelector('.seat-who')?.textContent?.trim() ?? '',
     mail: li.querySelector('.seat-mail')?.textContent?.trim() ?? '',
   })));
