@@ -1669,7 +1669,7 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 .crumb-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
 .crumb-row > .crumb-actions { margin-bottom: 0; }
 @media (min-width: 601px) {
-  .crumb-actions .table-sort-btn .table-control-label { display: none; }
+  .crumb-actions :is(.table-view-btn, .table-density-btn, .eye-btn, .table-sort-btn) .table-control-label { display: none; }
   #dock .crumb-row > .crumb-actions { gap: 2px; }
   #dock .crumb-row > .crumb-actions > :is(.activity-btn, .eye-btn, .pose-btn, .dock-close) { padding: 4px 5px; }
 }

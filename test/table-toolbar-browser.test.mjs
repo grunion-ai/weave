@@ -32,6 +32,20 @@ if (s) {
       assert.equal(await page.locator('.table-view-popover .view-clear').isVisible(), true);
     } finally { await page.close(); }
   });
+  test('view, density, fields and sort show as icons with a tooltip on desktop', async () => {
+    const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
+      for (const selector of ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-sort-btn']) {
+        const btn = page.locator(`#main ${selector}`);
+        assert.equal(await btn.locator('.table-control-label').isVisible(), false, `${selector} hides its label`);
+        assert.ok((await btn.boundingBox()).width < 60, `${selector} is icon width`);
+        assert.equal(await btn.getAttribute('title'), await btn.getAttribute('aria-label'), `${selector} names itself in a tooltip`);
+      }
+      assert.equal(await page.getAttribute('#main .table-density-btn', 'title'), 'Row density: Comfortable');
+      assert.equal(await page.getAttribute('#main .table-view-btn', 'title'), 'View: Standard');
+    } finally { await page.close(); }
+  });
   test('Fields reorders with keyboard, hides independently, and both New field controls open the field tray', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
