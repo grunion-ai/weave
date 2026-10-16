@@ -45,7 +45,6 @@
   h1 { color: var(--ink); font-size: 26px; line-height: 1.2; letter-spacing: -.01em; margin: 0 0 8px; }
   main h2 { color: var(--ink); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; margin: 22px 0 8px; }
   .lead { margin: 0 0 20px; color: var(--body); }
-  .kicker { margin: 0 0 6px; color: var(--accent); font-size: 12.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
   .muted { color: var(--muted); font-size: 13.5px; }
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
   .btn:hover { border-color: var(--muted); }
@@ -110,7 +109,9 @@
   .btn-link.strong { color: var(--accent); font-size: 14px; font-weight: 600; text-decoration: none; }
   .btn-link.strong:hover { text-decoration: underline; color: var(--accent); }
   .bypass { margin-top: 22px; }
-  .apps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .apps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .limits { margin: 16px 0 0; font-size: 12.5px; }
+  .copybox pre.prompt { max-height: 11.5em; overflow: auto; font: 13px/1.5 var(--app); word-break: normal; overflow-wrap: anywhere; }
   .app { display: flex; gap: 12px; align-items: center; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font: inherit; color: var(--body); cursor: pointer; transition: border-color .15s, transform .15s; }
   .app:hover { border-color: var(--muted); transform: translateY(-1px); }
   .app:focus-visible, .card:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -203,7 +204,6 @@
     .pane:has(#work-search:focus) .actions.sticky { position: static; }
   }
   @media (max-width: 420px) {
-    .apps { grid-template-columns: minmax(0, 1fr); }
     .cards { grid-template-columns: minmax(0, 1fr); }
   }
 </style>
