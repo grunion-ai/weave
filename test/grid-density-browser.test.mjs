@@ -372,7 +372,6 @@ if (s) {
     const page = await open(narrow);
     try {
       await pickDensity(page, 'comfortable');
-      await page.evaluate(() => document.querySelector('#main .table-wrap').wvScrollToRow(400).then(() => true));
       await scrollTo(page, 400 * ROW.comfortable);
       const before = await view(page);
       assert.ok(Math.abs(before.top - 400) <= 3, `the reader stands at row 400: ${JSON.stringify(before)}`);

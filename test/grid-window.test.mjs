@@ -7,7 +7,7 @@ const GW = globalThis.WeaveGridWindow;
 const win = (over = {}) => GW.windowFor({ scrollTop: 0, viewportH: 600, rowH: 30, total: 2087, ...over });
 
 test('an empty table is an empty window with no spacers', () => {
-  assert.deepEqual(win({ total: 0 }), { start: 0, end: 0, topPad: 0, bottomPad: 0 });
+  assert.deepEqual(win({ total: 0 }), { start: 0, end: 0, topPad: 0, bottomPad: 0, prefetchOffset: null });
 });
 
 test('a table shorter than the viewport is drawn whole', () => {
@@ -31,12 +31,18 @@ test('the buffer is never fewer than 20 rows, however short the viewport', () =>
   assert.equal(w.end, 3 + 2 * 20);
 });
 
-test('Issue #961: scrolled down the middle, the window holds two buffers on both sides', () => {
-  const w = win({ scrollTop: 30 * 1000 });
-  assert.equal(w.start, 1000 - 40, 'two behind, so a reversal mid-fling still lands on drawn rows');
+test('scrolled down the middle, the buffer leads in the direction of travel', () => {
+  const w = win({ scrollTop: 30 * 1000, direction: 1 });
+  assert.equal(w.start, 1000 - 20, 'one buffer behind');
   assert.equal(w.end, 1000 + 20 + 40, 'two ahead');
   assert.equal(w.topPad, w.start * 30);
   assert.equal(w.bottomPad, (2087 - w.end) * 30);
+});
+
+test('scrolling up flips the buffer: two behind the eye, one ahead', () => {
+  const w = win({ scrollTop: 30 * 1000, direction: -1 });
+  assert.equal(w.start, 1000 - 40);
+  assert.equal(w.end, 1000 + 20 + 20);
 });
 
 test('at the bottom the window ends on the last row and the bottom spacer is zero', () => {
@@ -62,10 +68,28 @@ test('an unmeasured row height (0, NaN, missing) falls back to the density defau
 
 test('the spacers and the drawn rows always add up to the whole table', () => {
   for (const scrollTop of [0, 300, 29_999, 30 * 2000, 30 * 2087]) {
-    const w = win({ scrollTop });
-    assert.equal(w.topPad + (w.end - w.start) * 30 + w.bottomPad, 2087 * 30, `at ${scrollTop}`);
-    assert.ok(w.start <= w.end);
+    for (const direction of [1, -1]) {
+      const w = win({ scrollTop, direction });
+      assert.equal(w.topPad + (w.end - w.start) * 30 + w.bottomPad, 2087 * 30, `at ${scrollTop} going ${direction}`);
+      assert.ok(w.start <= w.end);
+    }
   }
+});
+
+test('pagesFor names every page the window touches', () => {
+  assert.deepEqual(GW.pagesFor({ start: 0, end: 60 }, 200, 2087), [0]);
+  assert.deepEqual(GW.pagesFor({ start: 180, end: 260 }, 200, 2087), [0, 200]);
+  assert.deepEqual(GW.pagesFor({ start: 1990, end: 2087 }, 200, 2087), [1800, 2000]);
+  assert.deepEqual(GW.pagesFor({ start: 0, end: 0 }, 200, 0), []);
+});
+
+test('prefetchOffset is the page past the leading edge, in the direction of travel', () => {
+  assert.equal(win().prefetchOffset, 200);
+  assert.equal(win({ scrollTop: 30 * 1000, direction: 1 }).prefetchOffset, 1200);
+  assert.equal(win({ scrollTop: 30 * 1000, direction: -1 }).prefetchOffset, 600);
+  assert.equal(win({ scrollTop: 30 * 2087 }).prefetchOffset, null);
+  assert.equal(win({ scrollTop: 0, direction: -1 }).prefetchOffset, null);
+  assert.equal(win({ total: 150 }).prefetchOffset, null);
 });
 
 test('scrollTopFor puts a row inside the viewport with the least motion', () => {
@@ -76,16 +100,13 @@ test('scrollTopFor puts a row inside the viewport with the least motion', () => 
   assert.equal(GW.scrollTopFor({ index: 10, rowH, viewportH, headH, scrollTop: 290 }), 10 * rowH - headH, 'a row under the sticky header is not in view');
 });
 
-test('Issue #962: the feed asks for the next page once the loaded rows end within three screens', () => {
-  const feed = (over = {}) => GW.feedFor({ scrollTop: 0, viewportH: 600, rowH: 30, loaded: 200, total: 900, ...over });
-  assert.equal(feed(), null, 'at the top of 200 loaded rows there are nine screens left');
-  assert.equal(feed({ scrollTop: 200 * 30 - 4 * 600 }), 200, 'three screens left: ask for the rows from 200');
-  assert.equal(feed({ scrollTop: 200 * 30 - 5 * 600 }), null, 'four screens left: not yet');
-  assert.equal(feed({ loaded: 900 }), null, 'every row is here');
-  assert.equal(feed({ loaded: 50, total: 900, viewportH: 2000 }), 50, 'a tall viewport past its rows asks at once');
-});
-
-test('Issue #961: a refresh batch is whole pages and stays under the server cap of 500 rows', () => {
-  assert.equal(GW.BATCH % GW.PAGE, 0);
-  assert.ok(GW.BATCH <= 500);
+test('travelFor reads a direction from a row of travel, never from a pixel (Issue #317)', () => {
+  const rowH = 30;
+  assert.deepEqual(GW.travelFor({ scrollTop: 973, lastTop: 1000, direction: 1, rowH }), { direction: 1, lastTop: 1000 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 969, lastTop: 1000, direction: 1, rowH }), { direction: -1, lastTop: 969 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 1030, lastTop: 1000, direction: -1, rowH }), { direction: 1, lastTop: 1030 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 940, lastTop: 1000, direction: 1, rowH }), { direction: -1, lastTop: 940 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 1000, lastTop: 1000, direction: -1, rowH }), { direction: -1, lastTop: 1000 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 20, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 0 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 50, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 50 });
 });

@@ -4173,9 +4173,6 @@ function gridPager(db, query, first) {
     pager.total = res.total;
     res.items.forEach((e, i) => { rows[offset + i] = e; });
     rows.length = res.total;
-    let r = Math.min(pager.reach, rows.length);
-    while (r < rows.length && rows[r]) r++;
-    pager.reach = r;
   };
   const fetch = (offset) => {
     if (pages.has(offset)) return pages.get(offset);
@@ -4185,20 +4182,17 @@ function gridPager(db, query, first) {
     return p;
   };
   const pager = {
-    rows, total: first.total, reach: 0, page: GW.PAGE, search: query.search ?? '',
+    rows, total: first.total, page: GW.PAGE, search: query.search ?? '',
+    window: { start: 0, end: 0 },
     has: (offset) => pages.has(offset),
     fetch,
     pageOf: (i) => Math.floor(i / GW.PAGE) * GW.PAGE,
-    through: (i) => Promise.all(Array.from({ length: Math.floor(Math.min(i, pager.total - 1) / GW.PAGE) + 1 }, (_, k) => fetch(k * GW.PAGE))),
     refresh: async () => {
-      const limit = Math.max(GW.PAGE, Math.ceil(pager.reach / GW.PAGE) * GW.PAGE);
-      const at = Array.from({ length: Math.ceil(limit / GW.BATCH) }, (_, k) => k * GW.BATCH);
-      const got = await Promise.all(at.map((offset) => api('POST', `/tables/${db.id}/query`, { ...query, limit: Math.min(GW.BATCH, limit - offset), offset })));
+      const want = GW.pagesFor(pager.window, GW.PAGE, pager.total);
       pages.clear();
       rows.length = 0;
-      pager.reach = 0;
-      got.forEach((res, k) => put(at[k], graftChips(db, res)));
-      for (let o = 0; o < limit; o += GW.PAGE) pages.set(o, Promise.resolve());
+      await Promise.all((want.length ? want : [0]).map(fetch));
+      rows.length = pager.total;
     },
     indexOf: async (id) => {
       const found = () => rows.findIndex((r) => r && r.id === id);
@@ -4848,7 +4842,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
       await redraw();
       if (pager) {
         const i = await pager.indexOf(created.id);
-        if (i >= 0) await main.querySelector('.table-wrap')?.wvScrollToRow?.(i);
+        if (i >= 0) main.querySelector('.table-wrap')?.wvScrollToRow?.(i);
       }
       focusNewRow(created.id, { field: nameFieldOf(db)?.name, select: !!seed.name });
     } catch (err) { toast(err.message, true); }
@@ -5812,10 +5806,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   };
 
   const GW = () => globalThis.WeaveGridWindow;
-  let table = null, tbody = null, topSpacer = null, bottomSpacer = null, loadedNote = null, loadMore = null;
+  let table = null, tbody = null, topSpacer = null, bottomSpacer = null, loadedNote = null;
   const live = new Map();
   const built = new Map();
-  const win = { start: 0, end: 0 };
+  const win = { start: 0, end: 0, lastTop: 0, dir: 1 };
 
   const CR = globalThis.WeaveColumnResize;
   const gid = `g${++GRID_SEQ}`;
@@ -6268,17 +6262,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (px <= 0) return tr.remove();
     if (tr.isConnected) return;
     if (tr === topSpacer) tbody.prepend(tr);
-    else tbody.insertBefore(tr, tbody.querySelector('tr.wv-load-more, tr.add-entity-row'));
-  };
-  const reach = () => (pager ? Math.min(pager.reach, total()) : total());
-  const paintLoadMore = () => {
-    if (!loadMore) return;
-    const want = reach() < total();
-    if (!want) return loadMore.remove();
-    const rope = $('#page-loader > .loader-mark');
-    const mark = loadMore.querySelector('.wv-load-more-mark');
-    if (rope && !mark.querySelector('.rope-a') && rope.querySelector('.rope-a')) mark.replaceChildren(rope.cloneNode(true));
-    if (!loadMore.isConnected) tbody.insertBefore(loadMore, tbody.querySelector('tr.add-entity-row'));
+    else tbody.insertBefore(tr, tbody.querySelector('tr.add-entity-row'));
   };
   const rowFor = (i) => {
     const item = itemAt(i);
@@ -6316,7 +6300,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       cursor = tr;
     }
     win.start = w.start; win.end = w.end;
-    paintLoadMore();
+    if (pager) pager.window = { start: w.start, end: w.end };
     if (loadedNote) {
       const n = loadedIds().length;
       const note = n < total() ? `${n.toLocaleString()} of ${total().toLocaleString()} loaded`
@@ -6330,10 +6314,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const rewindow = () => {
     if (!tbody?.isConnected) return;
     const g = geometry();
-    const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: reach() });
+    const travel = GW().travelFor({ scrollTop: g.scrollTop, lastTop: win.lastTop, direction: win.dir, rowH: rowH() });
+    win.dir = travel.direction; win.lastTop = travel.lastTop;
+    const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: total(), direction: win.dir });
     if (pager) {
-      const next = GW().feedFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), loaded: reach(), total: total() });
-      if (next != null && !pager.has(next)) pager.fetch(next).then(schedule, () => {});
+      const want = GW().pagesFor(w, pager.page, pager.total);
+      if (w.prefetchOffset != null && win.travelled) want.push(w.prefetchOffset);
+      for (const o of want) if (!pager.has(o)) pager.fetch(o).then(schedule, () => {});
     }
     paint(w);
   };
@@ -6341,12 +6328,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; rewindow(); }); };
   const onScroll = (e) => {
     if (!wrap.isConnected) return document.removeEventListener('scroll', onScroll, true);
-    if (e.target === document || e.target === wrap || e.target === paneOf(wrap)) schedule();
+    if (e.target === document || e.target === wrap || e.target === paneOf(wrap)) { win.travelled = true; schedule(); }
   };
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
   const scrollToRow = (i) => {
     if (!tbody?.isConnected) return;
-    rewindow();
     const g = geometry();
     const want = GW().scrollTopFor({ index: i, rowH: rowH(), viewportH: g.viewportH, headH: g.headH, scrollTop: g.scrollTop });
     if (want !== g.scrollTop) (g.box ?? window).scrollBy({ top: want - g.scrollTop, left: 0, behavior: 'instant' });
@@ -6354,7 +6340,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   };
   const ensureRow = async (i) => {
     if (i < 0 || i >= total()) return null;
-    if (pager && i >= reach()) await pager.through(i);
+    if (pager && !itemAt(i)) await pager.fetch(pager.pageOf(i));
     scrollToRow(i);
     return live.get(i) ?? null;
   };
@@ -6418,12 +6404,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const off = r.top + into * r.height - topEdge(g);
       if (Math.abs(off) < 1) break;
       (g.box ?? window).scrollBy({ top: off, left: 0, behavior: 'instant' });
+      win.lastTop = geometry().scrollTop;
       rewindow();
     }
     markClippedCells(table);
   };
   wrap.wvRewindow = rewindow;
-  wrap.wvScrollToRow = ensureRow;
+  wrap.wvScrollToRow = scrollToRow;
   wrap.wvSetDensity = setDensity;
   wrap.wvPatchRows = patchRows;
   wrap.wvRefresh = () => onSaved?.();
@@ -6453,14 +6440,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       });
     }
     live.clear(); built.clear();
-    win.start = 0; win.end = 0;
+    win.start = 0; win.end = 0; win.lastTop = 0; win.dir = 1;
     tbody = el('tbody');
     topSpacer = spacer(); bottomSpacer = spacer();
-    loadMore = pager ? el('tr', { class: 'wv-load-more', role: 'status' },
-      el('td', { colspan: String(colCount) },
-        el('span', { class: 'wv-load-more-in' },
-          el('span', { class: 'wv-load-more-mark', 'aria-hidden': 'true' }, el('span', { class: 'wv-load-more-dot' })),
-          `Loading more ${db.term.plural}`))) : null;
     loadedNote = null;
     if (onAdd) {
       loadedNote = pager ? el('span', { class: 'wv-loaded', 'aria-live': 'polite' }) : null;
