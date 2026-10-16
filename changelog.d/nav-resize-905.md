@@ -1,1 +1,0 @@
-- Drag the left nav's right edge to resize it between 200px and 480px; the width is remembered, a double-click restores 264px, and the arrow keys nudge it 16px at a time. The narrow drawer and phone layouts keep their width. (#905)

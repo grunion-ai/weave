@@ -1,1 +1,0 @@
-- The system tables nav test that checks a once-resolved selector against a repaint holds the gap open until the read has run, instead of racing a two-frame refill, so a slow evaluate round trip no longer fails the shard (#837).

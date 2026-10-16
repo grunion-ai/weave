@@ -1,1 +1,0 @@
-- On a phone, a workflow state or select option row in the field tray wraps: grip, icon and a name box at least 140px wide on the first line, and category, colour, preview and a 44px delete button on a second line. (#842)
