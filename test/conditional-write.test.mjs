@@ -20,3 +20,31 @@ test('observer cannot use conditional mutations and invalid operations leave row
 test('revision changes for named document and field edits even with equal timestamps',()=>{
  const w=new Weave();w.createSpace({name:'Dev'});w.createTable({space:'Dev',name:'Task'});w.addField('Task',{name:'Notes',type:'document'});const e=w.createEntity('Task',{name:'One'});const before=w.readEntity(e.id);w.appendDoc(e.id,'New notes','Notes');w.getEntity(e.id).updatedAt=before.updatedAt;const notes=w.readEntity(e.id);assert.equal(notes.updatedAt,before.updatedAt);assert.notEqual(notes.revision,before.revision);w.updateEntity(e.id,{Name:'Changed'});w.getEntity(e.id).updatedAt=before.updatedAt;assert.notEqual(w.readEntity(e.id).revision,notes.revision);
 });
+test('one conditional write files evidence and moves state together',async()=>{
+ const w=new Weave();w.createSpace({name:'Dev'});w.createTable({space:'Dev',name:'Task'});w.addField('Task',{name:'Status',type:'workflow',config:{states:[{name:'Open',default:true},{name:'Done'}]}});const e=w.createEntity('Task',{name:'One'});w.setDoc(e.id,'User text');const before=w.readEntity(e.id);
+ const {server,port}=await startServer(w,{port:0});const call=async body=>{const r=await fetch(`http://127.0.0.1:${port}/api/entities/${e.id}/conditional`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
+ try{const both=await call({expectedRevision:before.revision,operation:'close',field:'Description',markdown:'Run evidence',stateField:'Status',state:'Done'});assert.equal(both.status,200);assert.match(both.body.doc,/User text/);assert.match(both.body.doc,/Run evidence/);assert.equal(both.body.fields.Status,'Done');assert.notEqual(both.body.revision,before.revision);const read=w.readEntity(e.id);assert.match(read.doc,/User text/);assert.match(read.doc,/Run evidence/);assert.equal(read.fields.Status,'Done');}finally{server.close();}
+});
+test('a stale close leaves both the document and the state untouched',async()=>{
+ const w=new Weave();w.createSpace({name:'Dev'});w.createTable({space:'Dev',name:'Task'});w.addField('Task',{name:'Status',type:'workflow',config:{states:[{name:'Open',default:true},{name:'Done'}]}});const e=w.createEntity('Task',{name:'One'});w.setDoc(e.id,'User text');const stale=w.readEntity(e.id).revision;w.appendDoc(e.id,'Human edit');
+ const {server,port}=await startServer(w,{port:0});
+ try{const r=await fetch(`http://127.0.0.1:${port}/api/entities/${e.id}/conditional`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedRevision:stale,operation:'close',markdown:'Agent evidence',stateField:'Status',state:'Done'})});assert.equal(r.status,409);const read=w.readEntity(e.id);assert.match(read.doc,/Human edit/);assert.doesNotMatch(read.doc,/Agent evidence/);assert.equal(read.fields.Status,'Open');}finally{server.close();}
+});
+test('a close that cannot move the state keeps its evidence out of the document',async()=>{
+ const {mkdtempSync,rmSync}=await import('node:fs');const {tmpdir}=await import('node:os');const {join}=await import('node:path');const dir=mkdtempSync(join(tmpdir(),'weave-close-'));const path=join(dir,'case.db');
+ const w=new Weave({path});w.createSpace({name:'Dev'});w.createTable({space:'Dev',name:'Task'});w.addField('Task',{name:'Status',type:'workflow',config:{states:[{name:'Open',default:true},{name:'Done'}]}});const e=w.createEntity('Task',{name:'One',doc:'User text'});const rev=w.readEntity(e.id).revision;
+ assert.throws(()=>w.conditionalWrite(e.id,{expectedRevision:rev,operation:'close',markdown:'Agent evidence',stateField:'Status',state:'Nope'}),/'Nope' is not a state/);
+ const read=w.readEntity(e.id);assert.doesNotMatch(read.doc,/Agent evidence/);assert.equal(read.fields.Status,'Open');assert.equal(read.revision,rev);
+ w.store.close();rmSync(dir,{recursive:true,force:true});
+});
+test('a close needs a workflow field and nonempty evidence, and undo takes back both halves',()=>{
+ const w=new Weave();w.createSpace({name:'Dev'});w.createTable({space:'Dev',name:'Task'});w.addField('Task',{name:'Status',type:'workflow',config:{states:[{name:'Open',default:true},{name:'Done'}]}});const e=w.createEntity('Task',{name:'One',doc:'User text'});
+ const rev=()=>w.readEntity(e.id).revision;
+ assert.throws(()=>w.conditionalWrite(e.id,{expectedRevision:rev(),operation:'close',markdown:'Evidence',state:'Done'}),/close requires stateField/);
+ assert.throws(()=>w.conditionalWrite(e.id,{expectedRevision:rev(),operation:'close',markdown:'  ',stateField:'Status',state:'Done'}),/nonempty markdown/);
+ assert.throws(()=>w.conditionalWrite(e.id,{expectedRevision:rev(),operation:'close',markdown:'Evidence',stateField:'Status'}),/requires the state it moves to/);
+ assert.equal(w.readEntity(e.id).fields.Status,'Open');assert.equal(w.readEntity(e.id).doc,'User text');
+ w.conditionalWrite(e.id,{expectedRevision:rev(),operation:'close',markdown:'Evidence',stateField:'Status',state:'Done'});
+ w.undo();assert.equal(w.readEntity(e.id).fields.Status,'Open');assert.match(w.readEntity(e.id).doc,/Evidence/);
+ w.undo();assert.equal(w.readEntity(e.id).doc,'User text');
+});
