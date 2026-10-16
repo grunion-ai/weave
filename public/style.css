@@ -2021,7 +2021,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E") center / contain no-repeat;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E") center / contain no-repeat; }
   #sidebar .search-like { min-height: 44px; font-size: var(--fs-doc); border-radius: 22px; }
-  #sidebar .nav-db, #sidebar .nav-space { min-height: 44px; font-size: var(--fs-doc); }
+  #sidebar .nav-db, #sidebar a.nav-space, #sidebar button.nav-space { min-height: 44px; font-size: var(--fs-doc); }
   #sidebar .nav-db { gap: 10px; padding: 0 10px; }
   #sidebar .nav-space-row { margin-top: 12px; }
   #sidebar .nav-space { font-size: var(--fs-grid); }
