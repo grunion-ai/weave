@@ -62,8 +62,8 @@ test('three featured templates: personal finance, tasks and a CRM, in that order
   for (const t of S.TEMPLATES.slice(3)) assert.equal(t.featured, false, `${t.id} is in the catalog only`);
 });
 
-test('the catalog covers about fourteen kinds of work, each with one id, one space and one answer', () => {
-  assert.ok(S.TEMPLATES.length >= 14, `${S.TEMPLATES.length} templates`);
+test('the catalog covers about forty kinds of work, each with one id, one space and one answer', () => {
+  assert.ok(S.TEMPLATES.length >= 36, `${S.TEMPLATES.length} templates`);
   for (const key of ['id', 'title', 'space', 'work']) {
     const values = S.TEMPLATES.map((t) => t[key]);
     assert.equal(new Set(values).size, values.length, `every ${key} is distinct: ${values.join(', ')}`);
@@ -83,6 +83,63 @@ test('the catalog covers about fourteen kinds of work, each with one id, one spa
       assert.ok(!/\b(simply|just|easy|easily)\b/i.test(s), `no filler: ${s}`);
     }
     assert.ok(!/\brecords?\b/i.test(t.blurb), 'row, never record (Issue #605)');
+  }
+});
+
+const ORIGINAL = ['finance', 'tasks', 'crm', 'recruiting', 'projects', 'roadmap', 'content', 'support', 'freelance', 'research', 'fundraising', 'events', 'inventory', 'nonprofit', 'home'];
+const copyRules = (s, where) => {
+  assert.ok(!/—/.test(s), `${where}: no em dash: ${s}`);
+  assert.ok(!/!/.test(s), `${where}: no exclamation mark: ${s}`);
+  assert.ok(!/\b(simply|just|easy|easily)\b/i.test(s), `${where}: no filler: ${s}`);
+  assert.ok(!/\brecords?\b/i.test(s), `${where}: row, never record (Issue #605): ${s}`);
+};
+
+test('the gallery holds nine to twelve categories, each with an id, a sentence-case label, an icon and a blurb', () => {
+  assert.ok(Array.isArray(S.CATEGORIES), 'CATEGORIES is exported');
+  assert.ok(S.CATEGORIES.length >= 9 && S.CATEGORIES.length <= 12, `${S.CATEGORIES.length} categories`);
+  const icons = new Set(ICONS.map((n) => `lucide:${n}`));
+  for (const key of ['id', 'label']) {
+    const values = S.CATEGORIES.map((c) => c[key]);
+    assert.equal(new Set(values).size, values.length, `every category ${key} is distinct: ${values.join(', ')}`);
+  }
+  for (const c of S.CATEGORIES) {
+    assert.deepEqual(Object.keys(c).sort(), ['blurb', 'icon', 'id', 'label']);
+    assert.match(c.id, /^[a-z][a-z0-9-]*$/, `${c.id}: a slug`);
+    assert.match(c.label, /^[A-Z][a-z]/, `${c.label}: sentence case`);
+    assert.equal(c.label.slice(1), c.label.slice(1).toLowerCase(), `${c.label}: sentence case`);
+    assert.ok(c.label.length <= 28, `${c.label}: short`);
+    assert.ok(icons.has(c.icon), `${c.id}: ${c.icon} is in the inventory`);
+    assert.ok(c.blurb.length > 0 && c.blurb.length <= 60, `${c.blurb}: short`);
+    for (const s of [c.label, c.blurb]) copyRules(s, c.id);
+  }
+});
+
+test('every template sits in one category, and every category holds three or four templates', () => {
+  const ids = new Set(S.CATEGORIES.map((c) => c.id));
+  for (const t of S.TEMPLATES) assert.ok(ids.has(t.category), `${t.id}: category ${t.category} is listed`);
+  for (const c of S.CATEGORIES) {
+    const n = S.TEMPLATES.filter((t) => t.category === c.id).length;
+    assert.ok(n >= 3 && n <= 4, `${c.id}: three or four templates, has ${n}`);
+  }
+  assert.ok(S.TEMPLATES.length >= 36 && S.TEMPLATES.length <= 48, `${S.TEMPLATES.length} templates`);
+});
+
+test('the fifteen original starters keep their ids and their first tables', () => {
+  const ids = S.TEMPLATES.map((t) => t.id);
+  for (const id of ORIGINAL) assert.ok(ids.includes(id), `${id} is still in the catalog`);
+  assert.equal(S.firstTable(byId('finance')), 'Transactions');
+  assert.equal(S.firstTable(byId('tasks')), 'Tasks');
+  assert.equal(S.firstTable(byId('crm')), 'Companies');
+});
+
+test('every template carries details: two or three plain sentences', () => {
+  for (const t of S.TEMPLATES) {
+    assert.equal(typeof t.details, 'string', `${t.id}.details`);
+    const sentences = t.details.split(/(?<=\.)\s+/).filter(Boolean);
+    assert.ok(sentences.length >= 2 && sentences.length <= 3, `${t.id}: two or three sentences, has ${sentences.length}`);
+    for (const s of sentences) assert.match(s, /^[A-Z].*\.$/, `${t.id}: a full sentence: ${s}`);
+    assert.ok(t.details.length <= 320, `${t.id}: details stay short`);
+    copyRules(t.details, t.id);
   }
 });
 
