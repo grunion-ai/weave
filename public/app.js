@@ -5320,7 +5320,7 @@ function groupPopoverRows(db, close, save) {
   ];
 }
 function tableGroupButton(ref) {
-  const btn = tableControlButton('table-group-btn', 'Group', 'layers');
+  const btn = tableControlButton('table-group-btn', 'Group', 'group');
   btn.label = () => {
     const names = (ref.db.view?.group ?? []).map((l) => l.field);
     const text = names.length ? `Group: ${names.join(listCore.SEP)}` : 'Group';
@@ -5607,7 +5607,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const BUILT = ['fields', 'link', 'dup', 'more', 'trash'];
   const MORE_BUILT = ['move', 'rollup', 'copy'];
   const CMD_ICON = { fields: 'lucide:pencil', link: 'lucide:arrow-left-right', dup: '⧉', more: 'lucide:ellipsis', trash: 'lucide:trash-2' };
-  const MORE_ICON = { move: 'send', rollup: 'layers', copy: 'link' };
+  const MORE_ICON = { move: 'send', rollup: 'sigma', copy: 'link' };
   const puck = el('div', { class: 'sel-puck-wrap' });
 
   const runOnSelection = async (verb, each, undoable = null) => {
@@ -10816,7 +10816,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       deckBtn('deck-model', 'Open the composed model .json', 'braces', { href: `${WS_PREFIX}/e/${id}/deck.json`, target: '_blank', rel: 'noopener' }),
       ...(deckRole === 'slide' ? [
         deckBtn('deck-new-version', 'New version', 'file-plus', { onclick: () => newVersion(false) }),
-        deckBtn('deck-promote', 'New version, promoted into its decks', 'layers', { onclick: () => newVersion(true) }),
+        deckBtn('deck-promote', 'New version, promoted into its decks', 'copy-plus', { onclick: () => newVersion(true) }),
       ] : []),
     ];
     const section = el('section', { class: 'doc-section deck-section' },
@@ -11984,7 +11984,7 @@ function paletteIcon(hit, group) {
   const name = hit.kind === 'table' ? 'table'
     : hit.kind === 'view' ? 'eye'
     : hit.kind === 'space' ? 'layout-grid'
-    : hit.kind === 'workspace' ? 'layers'
+    : hit.kind === 'workspace' ? 'house'
     : PERSON_TABLE.test(String(hit.db ?? '').split('/').pop()) ? 'user'
     : group === 'docs' ? 'file-text' : 'file';
   return iconEl(`lucide:${name}`, 'wv-icon cmdk-ic');

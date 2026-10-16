@@ -400,6 +400,10 @@
           "sha256": "7cbbbdbfadd9503483a261c1098f89d88a712bbc97d7ec0da36a5af01d335e86"
         },
         {
+          "path": "public/vendor/icons/copy-plus.svg",
+          "sha256": "a9a50f61dec7e01e3ac27399f43ab8f3f170d13c9374fbb7615bb123d1fd1af4"
+        },
+        {
           "path": "public/vendor/icons/copy.svg",
           "sha256": "ed19ce50d38c9cd18bbd6dde57c5e92314798e5d5b6db47408c697d693a4aa4a"
         },
@@ -476,6 +480,10 @@
           "sha256": "47a3c8c9264f97782bfc177752206d035d7ae104968507ee18e1581457184365"
         },
         {
+          "path": "public/vendor/icons/folder-kanban.svg",
+          "sha256": "f6de54636f101813c985ea9ce59d7cd8c650e50546c1ca1afafb9c3f2af94ae7"
+        },
+        {
           "path": "public/vendor/icons/folder.svg",
           "sha256": "7cc0d1df2485069bf0629589ab3cb203ff470ad0fb261b08e025da1482f5756a"
         },
@@ -494,6 +502,10 @@
         {
           "path": "public/vendor/icons/grip-vertical.svg",
           "sha256": "e45f1ef5e73f4b7f1a9e956f684b31d3e70f7552e0719f29e07d89e1a7f721f3"
+        },
+        {
+          "path": "public/vendor/icons/group.svg",
+          "sha256": "960f7e8509e44003a8e37cdfb5b124b0bb48dbd8a3b42d1516f649a6c0205d43"
         },
         {
           "path": "public/vendor/icons/hash.svg",
@@ -550,10 +562,6 @@
         {
           "path": "public/vendor/icons/landmark.svg",
           "sha256": "7d6fb2da1bbb863872d1aff9b95ff165319efb978b6b6c13b4dc661e9526456e"
-        },
-        {
-          "path": "public/vendor/icons/layers.svg",
-          "sha256": "647e3f4aa93c0368cc4dbe578f154bc8c81e4245a3f94675f158caf65758fa0c"
         },
         {
           "path": "public/vendor/icons/layout-grid.svg",
@@ -768,6 +776,10 @@
           "sha256": "09f339a8a5651bdf12726f8825516a9ac1d3e5ad566a57e77d23f9eaca086cf2"
         },
         {
+          "path": "public/vendor/icons/sigma.svg",
+          "sha256": "a8a86745ec66f398d7511b1b1ea6aa024bb97e91487841b945fd4bb37f4e7f05"
+        },
+        {
           "path": "public/vendor/icons/sliders-horizontal.svg",
           "sha256": "1ae62fed7e1d5aa63dec66620cbe14d2e5bd84bfe5f9c7b664009fe1219d5428"
         },
@@ -921,11 +933,11 @@
         },
         {
           "path": "public/vendor/lucide-moving.css",
-          "sha256": "a305a67f9dd61be0746fbf731bf78e6ffa9ccaa2d6b4df62d1a79403c8720639"
+          "sha256": "9c8b906e3126e1a0d38e2fb410b70c4f8040a82435c60525adf37c897a839830"
         },
         {
           "path": "public/vendor/lucide-moving.js",
-          "sha256": "3d71ab8a77a322be128490e4f24601393ccf1578244853417681e84fddd2c8cf"
+          "sha256": "bc601e407921bd9448994d1b7c8a6407d25aa4dc0273620e2999380ed64e56e8"
         }
       ]
     },

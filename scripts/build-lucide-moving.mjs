@@ -33,6 +33,7 @@ const ALIAS = {
   volumedown: ['volume-1'], volumeoff: ['volume-x'], volumeup: ['volume-2'], wallet: ['wallet'], work: ['briefcase'],
   dollar: ['dollar-sign'], euro: ['euro'], card: ['credit-card'], coins: ['coins'], invoice: ['receipt'], bank: ['landmark'], trend: ['trending-up'], percent: ['percent'],
 };
+const RETIRED = { layers: ['folder-kanban'] };
 const MARK_TWINS = {
   '✓': ['check'], '✕': ['x'], '★': ['star'], '!': ['circle-alert'], '?': ['circle-question-mark', 'circle-help'],
   '▶': ['play'], '⏸': ['pause'], '⊘': ['ban', 'circle-slash'], '⚑': ['flag'], '◎': ['target'], '⛓': ['link'], '⌁': ['zap'],
@@ -128,6 +129,8 @@ const resolve = (cands, what) => {
 };
 const ALIASES = Object.fromEntries(Object.entries(ALIAS).map(([k, c]) => [k, resolve(c, `alias ${k}`)]));
 const TWINS = Object.fromEntries(Object.entries(MARK_TWINS).map(([k, c]) => [k, resolve(c, `mark ${k}`)]));
+const RETIRED_TO = Object.fromEntries(Object.entries(RETIRED).map(([k, c]) => [k, resolve(c, `retired ${k}`)]));
+for (const k of Object.keys(RETIRED)) if (SVG[k]) throw new Error(`retired: ${k} is still in the inventory`);
 const NAMES = Object.keys(SVG).sort();
 const RING_ALIASES = { '○': 'ring-empty', '◔': 'ring-quarter', '◐': 'ring-half-left', '◑': 'ring-half', '◕': 'ring-three-quarters', '●': 'ring-full' };
 const ICON_DIR = path.join(OUT, 'public/vendor/icons');
@@ -149,11 +152,12 @@ const registry = `(function (root) {
   const MOTION = ${JSON.stringify(Object.fromEntries(NAMES.map((n) => [n, MOTION[n]])))};
   const ALIASES = ${JSON.stringify(ALIASES)};
   const MARK_TWINS = ${JSON.stringify(TWINS)};
+  const RETIRED = ${JSON.stringify(RETIRED_TO)};
   const SET = new Set(NAMES);
   const resolve = (value) => {
     const m = /^(lucide|iconly):(.+)$/.exec(String(value ?? ''));
     if (!m) return null;
-    const name = m[1] === 'iconly' ? ALIASES[m[2]] : m[2];
+    const name = m[1] === 'iconly' ? ALIASES[m[2]] : (RETIRED[m[2]] ?? m[2]);
     return name && SET.has(name) ? name : '';
   };
   const canonical = (value) => { const n = resolve(value); return n ? \`lucide:\${n}\` : value; };
@@ -161,7 +165,7 @@ const registry = `(function (root) {
   const RING_BY_ALIAS = Object.fromEntries(Object.entries(MARK_ALIASES).map(([ch, a]) => [a, ch]));
   const inline = (token) => { const name = resolve(\`lucide:\${token}\`); if (name) return { name }; const mark = RING_BY_ALIAS[token]; return mark ? { mark } : null; };
   const emojiTable = () => Object.fromEntries([...NAMES, ...Object.values(MARK_ALIASES)].map((n) => [n, '/vendor/icons/' + n + '.svg']));
-  root.weaveIconRegistry = { NAMES, CATEGORY, MOTION, ALIASES, MARK_TWINS, MARK_ALIASES, resolve, canonical, inline, emojiTable };
+  root.weaveIconRegistry = { NAMES, CATEGORY, MOTION, ALIASES, MARK_TWINS, RETIRED, MARK_ALIASES, resolve, canonical, inline, emojiTable };
 })(globalThis);
 `;
 fs.writeFileSync(path.join(OUT, 'public/icon-registry.js'), registry);
