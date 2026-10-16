@@ -4,8 +4,8 @@ import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export { PALETTE, rope, H3, px, stroke, markParts } from "../src/mark.js";
-import { PALETTE, rope, H3, px, stroke, markParts } from "../src/mark.js";
+export { PALETTE, rope, H3, px, stroke, markParts, markPair } from "../src/mark.js";
+import { PALETTE, rope, H3, px, stroke, markParts, markPair } from "../src/mark.js";
 
 export function weaveSvg({ c1, c2, sw = 3.5, viewBox = "0 0 48 48" }) {
   const { defs, body } = markParts({ c1, c2, sw });
@@ -290,6 +290,11 @@ export function shellWithBootMark(html) {
   return html.replace(SHELL_LOADER, SHELL_LOADER_HOST + loaderBootHtml() + "</div>");
 }
 
+const MARK_HOST = /(<span data-mark="(\w+)"(?: data-viewbox="([^"]+)")?[^>]*>)[\s\S]*?(<\/span>)/g;
+export const fillMarks = (html) =>
+  html.replace(MARK_HOST, (all, open, prefix, viewBox, close) => open + markPair(prefix, viewBox ? { viewBox } : {}) + close);
+export const MARK_PAGES = ["start.html", "404.html"];
+
 export const LOADERS = {
   travel: { label: "Travel — endless rope through a fading window", fn: loaderTravel },
   twist: { label: "Twist-in — flat strands twist into the mark", fn: loaderTwist },
@@ -355,5 +360,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const served = process.argv[3] || join(here, "..", "public", "brand");
   const shell = process.argv[4] || join(here, "..", "public", "index.html");
   const files = build(assets, served, shell);
+  for (const page of MARK_PAGES) {
+    const file = join(here, "..", "public", page);
+    writeFileSync(file, fillMarks(readFileSync(file, "utf8")));
+    files.push(file);
+  }
   console.log(`wrote ${files.length} files:\n  ` + files.join("\n  "));
 }

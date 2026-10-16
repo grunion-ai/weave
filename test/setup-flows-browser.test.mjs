@@ -302,6 +302,10 @@ if (openHub) {
     await check('agent');
     await p.click('.app[data-tool="chatgpt"]');
     await check('agent, ChatGPT chosen');
+    const marks = await p.evaluate(() => [...document.querySelectorAll('#brand-mark svg, .weave-tile svg')]
+      .filter((s) => s.getBoundingClientRect().width > 0)
+      .map((s) => ({ theme: s.classList.contains('mark-dark') ? 'dark' : 'light', masks: s.querySelectorAll('mask').length, width: Math.round(s.getBoundingClientRect().width) })));
+    assert.deepEqual(marks, [{ theme, masks: 2, width: 34 }, { theme, masks: 2, width: 30 }], 'the header and the weave tile each show one masked brand mark in the page theme (Issue #963)');
     await p.context().close();
   });
 
