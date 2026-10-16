@@ -1,0 +1,1 @@
+- The Environment reference row for `WEAVE_APPLET_PASSCODE` now describes the gate the applet runs: eight wrong answers inside ten minutes refuse every later attempt with `429`, the right passcode among them, and an unset passcode leaves no applet at `/t` instead of opening one to anyone (Issue #814).

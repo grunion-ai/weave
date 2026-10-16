@@ -8,8 +8,8 @@ import { esc } from './mail.js';
 const COOKIE = 'wv_applet';
 const YEAR = 31536000;
 
-const MAX_TRIES = 8;
-const WINDOW_MS = 10 * 60 * 1000;
+export const MAX_TRIES = 8;
+export const WINDOW_MS = 10 * 60 * 1000;
 const tries = new WeakMap();
 
 const passcodeOf = () => (process.env.WEAVE_APPLET_PASSCODE ?? '').trim();
