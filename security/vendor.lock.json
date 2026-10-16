@@ -982,6 +982,44 @@
           "sha256": "1abf435f48cd2b24835d0045e05ad0f85440af19e845c648b0c48e249964b6a3"
         }
       ]
+    },
+    {
+      "name": "lobehub-icons",
+      "npm": "@lobehub/icons-static-svg",
+      "version": "1.95.1",
+      "license": "MIT",
+      "versionSource": "downloaded from https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.95.1/icons/ on 2026-10-16",
+      "files": [
+        {
+          "path": "public/vendor/brands/antigravity-color.svg",
+          "sha256": "652128cf55a28bb958563ee372d0bd00208d9e6fd446f523f77aafd811eef8ca"
+        },
+        {
+          "path": "public/vendor/brands/claude-color.svg",
+          "sha256": "a3101f3047a119aa11825ad9369510f0c472428c8c52d420e31bc62db44a8364"
+        },
+        {
+          "path": "public/vendor/brands/claudecode-color.svg",
+          "sha256": "670b3d8d749d0815ad8f7e62a59d51cb5e2053cb19403f3541a8aed7036a877f"
+        },
+        {
+          "path": "public/vendor/brands/codex-color.svg",
+          "sha256": "4a2f43ce46b5b6e3722c95088f88d26ef91e6a8c2e598e70642a1c54367386e4"
+        },
+        {
+          "path": "public/vendor/brands/gemini-color.svg",
+          "sha256": "8ab0a9bafec11f7e69bcb9fc4ffd8f1bc927d1ddcbbb6ff36dee5ae8b5a9d602"
+        },
+        {
+          "path": "public/vendor/brands/geminicli-color.svg",
+          "sha256": "c2f54ebaa4c3b9191c6a07f7b0c66bc78e4abe486003dc564469cf650672663e"
+        },
+        {
+          "path": "public/vendor/brands/openai.svg",
+          "sha256": "a595df6b423920c67a7f8f73c063e4bfb72d415948097b6cac063a2366bb5186"
+        }
+      ],
+      "build": "Copied as shipped: claude-color, claudecode-color, openai, codex-color, gemini-color, geminicli-color and antigravity-color. Brand marks of Anthropic, OpenAI and Google, used to name each agent on the connect step."
     }
   ]
 }

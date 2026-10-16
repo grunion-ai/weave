@@ -625,7 +625,9 @@
     setTimeout(() => { delete b.dataset.copied; b.textContent = text; }, 1600);
   } }, text);
 
-  const appTile = (t, size = '') => make('span', { class: `app-tile${size}`, style: `--hue:${t.hue}`, 'aria-hidden': 'true' }, glyph(t.icon));
+  const appTile = (t, size = '') => t.logo
+    ? make('span', { class: `app-tile${size} has-logo`, 'aria-hidden': 'true' }, make('img', { class: 'logo', src: `/vendor/brands/${t.logo}.svg`, alt: '', width: '20', height: '20', decoding: 'async' }))
+    : make('span', { class: `app-tile${size}`, style: `--hue:${t.hue}`, 'aria-hidden': 'true' }, glyph(t.icon));
 
   function agent() {
     const title = s.made?.title ?? s.data.name;
