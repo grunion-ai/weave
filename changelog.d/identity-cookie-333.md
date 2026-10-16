@@ -1,0 +1,1 @@
+- The nav identity panel's browser suite signs in with the per-workspace session cookie, so it no longer reads as signed out after the legacy `wv_session` cookie stopped opening workspaces (Issue #717).

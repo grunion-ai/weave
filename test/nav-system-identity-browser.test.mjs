@@ -26,7 +26,7 @@ if (s) {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     if (account) {
       await ctx.addCookies([
-        { name: 'wv_session', value: root.createSession(account.id).token, url: base },
+        { name: `wv_session_${root.state.meta.id}`, value: root.createSession(account.id).token, url: base },
         { name: `wv_session_${uno.state.meta.id}`, value: uno.createSession(unoAda.id).token, url: base },
       ]);
     }
