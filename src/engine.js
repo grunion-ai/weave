@@ -6849,17 +6849,38 @@ export class Weave {
     return createHash('sha256').update(JSON.stringify(this.getEntity(id))).digest('hex');
   }
 
-  conditionalWrite(id, { expectedRevision, operation, field, markdown, state } = {}) {
-    if (!/^[a-f0-9]{64}$/.test(expectedRevision ?? '') || !['append', 'state'].includes(operation)) throw new WeaveError('A conditional write requires expectedRevision and append or state operation', 'invalid');
-    return this.store.batch(() => {
-      this.maybeRefresh();
-      if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('Row revision changed; read it again before writing', 'conflict');
-      if (operation === 'append') {
-        if (typeof markdown !== 'string' || !markdown.trim()) throw new WeaveError('An append requires nonempty markdown', 'invalid');
-        this.appendDoc(id, markdown, field);
-      } else this.setState(id, field, state);
-      return this.readEntity(id);
-    });
+  conditionalWrite(id, { expectedRevision, operation, field, markdown, state, stateField } = {}) {
+    if (!/^[a-f0-9]{64}$/.test(expectedRevision ?? '') || !['append', 'state', 'close'].includes(operation)) throw new WeaveError('A conditional write requires expectedRevision and an append, state or close operation', 'invalid');
+    if (operation === 'close' && !stateField) throw new WeaveError('A close requires stateField naming the workflow field it moves', 'invalid');
+    if (operation === 'close' && (state == null || state === '')) throw new WeaveError('A close requires the state it moves to; clear a workflow field with the state operation', 'invalid');
+    let attempted = false;
+    try {
+      return this.store.batch(() => {
+        this.maybeRefresh();
+        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('Row revision changed; read it again before writing', 'conflict');
+        if (operation === 'state') {
+          attempted = true;
+          this.setState(id, field, state);
+        } else {
+          if (typeof markdown !== 'string' || !markdown.trim()) throw new WeaveError('An append requires nonempty markdown', 'invalid');
+          attempted = true;
+          this.appendDoc(id, markdown, field);
+          if (operation === 'close') this.setState(id, stateField, state);
+        }
+        return this.readEntity(id);
+      });
+    } catch (err) {
+      if (attempted) this.#adoptRolledBack();
+      throw err;
+    }
+  }
+
+  #adoptRolledBack() {
+    const loaded = this.store.reload();
+    if (!loaded) return;
+    this.state = loaded;
+    this.#schemaVersion = null;
+    this.#scales.clear();
   }
 
   readEntity(id, { viewerZone = null } = {}) {

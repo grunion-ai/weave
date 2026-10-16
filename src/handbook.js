@@ -784,7 +784,7 @@ Every entity carries at least one document, and a table can give it more. This p
 
 ## Conditional agent writes
 
-Entity API reads include an opaque \`revision\`. Send it as \`expectedRevision\` to \`POST /api/entities/:id/conditional\`. The \`append\` operation takes \`field\` and \`markdown\`; \`state\` takes \`field\` and \`state\`. The server checks the revision under its database write lock, refuses stale input with 409, and returns the updated entity. Append preserves existing text. A retry first reads the row again and checks whether its run evidence already exists.
+Entity API reads include an opaque \`revision\`. Send it as \`expectedRevision\` to \`POST /api/entities/:id/conditional\`. The \`append\` operation takes \`field\` and \`markdown\`; \`state\` takes \`field\` and \`state\`; \`close\` takes both halves at once, \`markdown\` with its \`field\` and \`state\` with its \`stateField\`, so a worker files its evidence and moves the row in one write with one revision check. A refused \`close\` writes neither half. The server checks the revision under its database write lock, refuses stale input with 409, and returns the updated entity. Append preserves existing text. A retry first reads the row again and checks whether its run evidence already exists.
 
 Authenticated clients can read \`GET /api/health/build\` for the serving worker's full commit SHA, version and readiness. This response excludes filesystem paths, backup details and process identifiers. A missing full SHA makes readiness false.
 
