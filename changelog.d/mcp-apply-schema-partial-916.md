@@ -1,1 +1,0 @@
-- The `weave_apply_schema` MCP tool takes `partial`, as `PUT /api/schema` and `weave schema apply --partial` already do: a document carrying only a new space adds it and leaves the other spaces in place, so an agent no longer restates the whole workspace to add one (Issue #916).
