@@ -78,7 +78,7 @@ const OPEN = (method, path) => path === '/api/health' || path === '/auth' || pat
   || /^\/api\/auth\/(oidc\/(start|callback)|handoff)$/.test(path)
   || path === '/api/auth/logout' || path === '/.well-known/openai-apps-challenge'
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || (path.startsWith('/t/') && !/^\/t\/[0-9a-f-]{36}\/new$/.test(path))
-    || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)));
+    || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path) || /^\/brand\/[\w-]+\.html$/.test(path)));
 
 test('with requireAuth on, every route the dispatcher serves refuses an anonymous caller — except the doors', async () => {
   const { w, task, view, share, call, stop } = await serve();
@@ -115,6 +115,23 @@ test('with requireAuth on, every route the dispatcher serves refuses an anonymou
     assert.equal((await call('GET', `${ws}/auth`)).status, 200);
     assert.match(await (await call('GET', `/e/${task.id}/doc.html`)).text(), /href="\/auth\?next=/);
     assert.match(await (await call('GET', `${ws}/e/${task.id}/doc.html`)).text(), new RegExp(`href="${ws}/auth\\?next=`));
+  } finally {
+    stop();
+  }
+});
+
+test('Issue #960: the loader rope fragment is a brand asset every visitor gets, while other pages stay behind the wall', async () => {
+  const { w, call, stop } = await serve();
+  try {
+    const ws = `/w/${w.state.meta.name}`;
+    for (const p of ['/brand/weave-loader-rope.html', `${ws}/brand/weave-loader-rope.html`]) {
+      const res = await call('GET', p);
+      assert.equal(res.status, 200, `${p} answered ${res.status} to nobody, so the loader shows a still mark`);
+      assert.match(await res.text(), /^<style>[\s\S]*rope-head/, `${p} is the rope, not a sign-in page`);
+    }
+    for (const p of ['/index.html', '/404.html', '/billing.html', '/brand/../index.html']) {
+      assert.equal((await call('GET', p)).status, 401, `${p} stays behind the wall`);
+    }
   } finally {
     stop();
   }

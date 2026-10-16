@@ -421,7 +421,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const startDoor = path === '/start' || path === '/api/start' || path.startsWith('/api/start/');
     const formDoor = (['GET', 'HEAD'].includes(rx.method) && /^\/(?:f|api\/forms)\/[^/]+$/.test(path)) || (rx.method === 'POST' && /^\/api\/forms\/[^/]+\/submit$/.test(path));
     const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || previewLogo || startDoor || formDoor
-      || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
+      || (['GET', 'HEAD'].includes(rx.method) && (/\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path) || /^\/brand\/[\w-]+\.html$/.test(path)));
     let role = null;
     let session = null;
     let accountName = null;

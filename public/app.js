@@ -12360,6 +12360,10 @@ async function initPageLoader() {
   if (!html || !mark) return;
   mark.innerHTML = html;
   loading.ready = true;
+  const grid = gridLoaderNode();
+  if (!grid) return;
+  for (const m of grid.querySelectorAll(':scope > .loader-mark')) m.innerHTML = html;
+  if (gridWait.shownAt) keepLoader(grid, gridWait);
 }
 
 function showPageLoader() {
