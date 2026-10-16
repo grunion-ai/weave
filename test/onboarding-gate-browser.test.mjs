@@ -94,10 +94,11 @@ async function walk(ctx, { who, name, slug }) {
   assert.match(await setup.locator('.status').textContent(), new RegExp(`Claude is connected to ${name}`), 'the connected confirmation stays');
   const titleAfter = await setup.title();
   assert.notEqual(titleAfter, titleBefore, 'the setup tab retitles itself once connected');
-  assert.match(titleAfter, /Claude/);
+  assert.equal(titleAfter, '✓ Claude connected');
   const notified = await setup.evaluate(() => window.__notified ?? []);
   assert.equal(notified.length, 1, 'one notification when connected');
-  assert.match(notified[0].title, /Claude/);
+  assert.equal(notified[0].title, `Claude connected to ${name}`);
+  assert.match(notified[0].body, /weave setup tab/);
 
   return {
     carried: !askedToSignIn,

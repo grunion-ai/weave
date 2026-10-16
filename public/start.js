@@ -57,10 +57,10 @@
       copyPrompt: 'Copy setup prompt',
       waiting: 'Waiting for {tool} to connect.',
       connected: '{tool} is connected to {title}.',
-      handback: 'Connecting opens a weave sign-in tab. After you click Allow, come back to this tab.',
-      tabTitle: '✓ {tool} connected · weave',
-      notifyTitle: '{tool} is connected to {title}',
-      notifyBody: 'Come back to the setup tab to finish.',
+      handback: 'Connecting opens a weave sign-in tab. Click Allow there, then come back to this setup tab.',
+      tabTitle: '✓ {tool} connected',
+      notifyTitle: '{tool} connected to {title}',
+      notifyBody: 'Come back to the weave setup tab to copy a first message for {tool}.',
       payoffTitle: 'First message',
       payoffHint: 'Paste it into a new {tool} chat.',
       copyMessage: 'Copy message',
@@ -702,7 +702,7 @@
   function notifyConnected() {
     const tool = TOOLS.find((t) => t.id === s.data.tool);
     if (!tool || typeof Notification !== 'function' || Notification.permission !== 'granted') return;
-    try { new Notification(fill(COPY.agent.notifyTitle, { tool: tool.name, title: s.made?.title ?? s.data.name }), { body: COPY.agent.notifyBody, tag: 'weave-setup-connected' }); } catch {}
+    try { new Notification(fill(COPY.agent.notifyTitle, { tool: tool.name, title: s.made?.title ?? s.data.name }), { body: fill(COPY.agent.notifyBody, { tool: tool.name }), tag: 'weave-setup-connected' }); } catch {}
   }
 
   function render() {
