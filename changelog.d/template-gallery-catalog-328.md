@@ -1,0 +1,1 @@
+- The starter catalog grows to 40 templates in 12 categories for the setup gallery: `WeaveStarters.CATEGORIES` lists each category with a label, icon and blurb, and every template carries a `category` and two or three sentences of `details`. The 15 earlier starters keep their ids and tables. (Feature #328)
