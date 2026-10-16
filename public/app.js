@@ -1208,13 +1208,13 @@ function renderNav() {
     }).catch(() => {});
   }
   if (!state.trialChip) {
-    const chip = state.trialChip = el('a', { class: 'nav-health nav-trial', href: `${WS_PREFIX}/billing` });
+    const chip = state.trialChip = el('a', { class: 'nav-trial', href: `${WS_PREFIX}/billing` });
     chip.hidden = true;
     api('GET', '/billing').then((b) => {
       const left = b.trial?.daysLeft;
       if (!left || left > TRIAL_NOTICE_DAYS) return;
       chip.textContent = left === 1 ? 'Free trial ends today' : `Free trial ends in ${left} days`;
-      chip.title = `Editing stays open until ${new Date(b.trial.endsAt).toLocaleString()}. Subscribe on the billing page to keep it.`;
+      chip.title = `Editing stays open until ${new Date(b.trial.endsAt).toLocaleDateString()}. Subscribe on the billing page to keep it.`;
       chip.hidden = false;
     }).catch(() => {});
   }
