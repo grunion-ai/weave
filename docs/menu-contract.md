@@ -58,9 +58,9 @@ Every delete row is `trashRow`, labelled **Move to trash**. One click moves the 
 
 The multi-select toolbar trash uses the same verb, `TRASHED`, and the same Undo; its toast adds the count.
 
-A hold is for permanent delete only. The builder keeps `hold: true` rows for it, and no kind's definition uses one. **Delete forever** lives in Settings (`#/settings`, Feature #295): a typed name arms the builder's hold row, and the Trash page only restores.
+A hold is for permanent delete only. The builder keeps `hold: true` rows for it, and no kind's definition uses one today. **Delete forever** on the Trash page keeps its hold until Settings takes permanent delete (Feature #295).
 
-Workspace delete lives in Settings beside it (Feature #297), behind the same typed name and hold, and no menu carries it. `DELETE /api/workspaces/:id` trashes a workspace and the Trash page restores it.
+Workspace delete has left the interface until Settings takes it (Feature #297). Its routes stay: `DELETE /api/workspaces/:id` trashes a workspace and the Trash page restores it.
 
 ## Triggers
 
