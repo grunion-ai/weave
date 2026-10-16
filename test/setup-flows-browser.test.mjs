@@ -127,6 +127,8 @@ if (openHub) {
     assert.deepEqual(await listed(0), ['Claude', 'ChatGPT', 'Gemini'], 'Claude leads the chat apps');
     assert.deepEqual(await listed(1), ['Claude Code', 'Codex', 'Antigravity', 'Gemini CLI', 'Something else']);
     assert.equal(await p.locator('.app[data-tool="cursor"], .app[data-tool="vscode"], .app[data-tool="perplexity"]').count(), 0, 'Cursor and VS Code are gone');
+    const logos = await p.locator('.app[data-tool]').evaluateAll((apps) => apps.map((a) => { const img = a.querySelector('.app-tile img.logo'); return [a.dataset.tool, img ? img.complete && img.naturalWidth > 0 && new URL(img.src).pathname : null]; }));
+    assert.deepEqual(Object.fromEntries(logos), { claude: '/vendor/brands/claude-color.svg', chatgpt: '/vendor/brands/openai.svg', gemini: '/vendor/brands/gemini-color.svg', 'claude-code': '/vendor/brands/claudecode-color.svg', codex: '/vendor/brands/codex-color.svg', antigravity: '/vendor/brands/antigravity-color.svg', 'gemini-cli': '/vendor/brands/geminicli-color.svg', other: null }, 'each named tool shows its own loaded logo; Something else keeps a glyph (Issue #958)');
     assert.equal(await p.locator('main .limits').count(), 0, 'no page-wide plan note: each tile says its own limit (Issue #954)');
     assert.match(await p.locator('.app[data-tool="chatgpt"] small').textContent(), /Business, Enterprise or Edu/, 'the ChatGPT tile names its plans');
     assert.match(await p.locator('.app[data-tool="gemini"] small').textContent(), /US only/, 'the Gemini tile names its accounts');

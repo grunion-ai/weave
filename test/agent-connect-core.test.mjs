@@ -95,3 +95,15 @@ test('first message: tailored to the template, the free-text answer, or an empty
   assert.match(firstMessage({ workspace: 'harbor' }), /Ask me what I want to track/);
   assert.match(firstMessage({ workspace: 'harbor', other: 'dog adoptions.' }), /for this: dog adoptions\. Propose/, 'no doubled full stop');
 });
+test('every named agent shows its own vendored logo mark; Something else keeps a glyph', () => {
+  const expected = { claude: 'claude-color', chatgpt: 'openai', gemini: 'gemini-color', 'claude-code': 'claudecode-color', codex: 'codex-color', antigravity: 'antigravity-color', 'gemini-cli': 'geminicli-color' };
+  assert.deepEqual(Object.fromEntries(TOOLS.filter((t) => t.logo).map((t) => [t.id, t.logo])), expected);
+  assert.equal(TOOLS.find((t) => t.id === 'other').logo, undefined);
+  for (const name of Object.values(expected)) {
+    const file = new URL(`../public/vendor/brands/${name}.svg`, import.meta.url);
+    assert.ok(existsSync(file), `${name} is vendored`);
+    const svg = readFileSync(file, 'utf8');
+    assert.match(svg, /^<svg[\s>]/, `${name} is an svg`);
+    assert.ok(!/<script|<!--|\son[a-z]+=|href=/i.test(svg), `${name} carries no script, comment, handler or link`);
+  }
+});

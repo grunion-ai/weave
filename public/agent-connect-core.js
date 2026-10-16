@@ -21,6 +21,7 @@
       pitch: 'Any plan. On Team or Enterprise, an owner adds it.',
       kind: 'chat',
       icon: 'lucide:sparkles',
+      logo: 'claude-color',
       copy: 'url',
       steps: [
         'On claude.ai, open Customize, then Connectors.',
@@ -40,6 +41,7 @@
       pitch: 'Business, Enterprise or Edu. Pro can only read.',
       kind: 'chat',
       icon: 'lucide:message-circle',
+      logo: 'openai',
       copy: 'url',
       steps: [
         'On chatgpt.com, open Plugins.',
@@ -59,6 +61,7 @@
       pitch: 'Personal Google accounts in the US only.',
       kind: 'chat',
       icon: 'lucide:message-square',
+      logo: 'gemini-color',
       copy: 'url',
       steps: [
         'On gemini.google.com, open Settings, then Connected Apps.',
@@ -77,6 +80,7 @@
       pitch: 'Paste the setup prompt, then run /mcp.',
       kind: 'harness',
       icon: 'lucide:terminal',
+      logo: 'claudecode-color',
       copy: 'prompt',
       steps: [
         'Paste the setup prompt below into Claude Code.',
@@ -92,6 +96,7 @@
       pitch: 'Run one command, then sign in.',
       kind: 'harness',
       icon: 'lucide:code-xml',
+      logo: 'codex-color',
       copy: 'codex',
       steps: [
         'Run the command below.',
@@ -108,6 +113,7 @@
       pitch: 'Paste the setup prompt, then sign in.',
       kind: 'harness',
       icon: 'lucide:rocket',
+      logo: 'antigravity-color',
       copy: 'prompt',
       steps: [
         'Paste the setup prompt below into the agent.',
@@ -123,6 +129,7 @@
       pitch: 'Paste the setup prompt, then run /mcp auth.',
       kind: 'harness',
       icon: 'lucide:star',
+      logo: 'geminicli-color',
       copy: 'prompt',
       steps: [
         'Paste the setup prompt below into Gemini CLI.',
