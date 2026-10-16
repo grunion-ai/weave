@@ -10,7 +10,7 @@ import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
 import { packTar } from '../src/backup.js';
 import { Weave, deferMigrations, runDeferredMigrations } from '../src/engine.js';
-import { startSupervisor, autoUpdateFromEnv, trackFromEnv, unpackRelease, pruneReleases, REPO_API } from '../src/supervisor.js';
+import { startSupervisor, autoUpdateFromEnv, trackFromEnv, unpackRelease, pruneReleases, shaFromRefs, rateLimitReset, REPO_API, REPO_GIT, REPO_CODELOAD } from '../src/supervisor.js';
 import { RELEASES_URL } from '../src/update-check.js';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -43,6 +43,21 @@ function releaseTarball(version, { bin = null } = {}) {
   return gzipSync(readFileSync(file));
 }
 
+const REFS_URL = `${REPO_GIT}/info/refs?service=git-upload-pack`;
+
+function advertisement(heads) {
+  const pkt = (s) => (s.length + 4).toString(16).padStart(4, '0') + s;
+  const out = [pkt('# service=git-upload-pack\n'), '0000'];
+  let first = true;
+  for (const [branch, sha] of Object.entries(heads)) {
+    out.push(pkt(`${sha} refs/heads/${branch}${first ? '\0multi_ack thin-pack side-band ofs-delta\n' : '\n'}`));
+    first = false;
+  }
+  return out.join('') + '0000';
+}
+
+const limited = (reset) => new Response('rate limited', { status: 403, headers: { 'x-ratelimit-remaining': '0', ...(reset ? { 'x-ratelimit-reset': String(reset) } : {}) } });
+
 function fakeGitHub({ version = NEXT, compare = 'ahead', tarball = () => releaseTarball(version) } = {}) {
   const calls = [];
   let tgz = null;
@@ -51,7 +66,7 @@ function fakeGitHub({ version = NEXT, compare = 'ahead', tarball = () => release
     calls.push(url);
     if (url === RELEASES_URL) return Response.json({ tag_name: `v${version}` });
     if (url === `${REPO_API}/compare/v${version}...main`) return Response.json({ status: compare, base_commit: { sha: SHA } });
-    if (url === `${REPO_API}/tarball/${SHA}`) return new Response((tgz ??= tarball()));
+    if (url === `${REPO_CODELOAD}/tar.gz/${SHA}`) return new Response((tgz ??= tarball()));
     return new Response('not found', { status: 404 });
   };
   return { fetch, calls };
@@ -328,7 +343,7 @@ test('a release whose health check fails leaves the old worker serving, and is n
     assert.equal(after.supervisor.lastSwap.to, `v${NEXT}`);
     assert.deepEqual(after.supervisor.failed, [NEXT]);
     assert.ok(!events.some((e) => e.type === 'switched'), 'no request ever went to it');
-    const tarballs = () => gh.calls.filter((u) => u.includes('/tarball/')).length;
+    const tarballs = () => gh.calls.filter((u) => u.includes('/tar.gz/')).length;
     assert.equal(tarballs(), 1);
     const again = await sup.check();
     assert.equal(again.action, 'skipped', 'the same release is not tried twice');
@@ -348,7 +363,7 @@ test('a tag whose commit is not on main is refused before anything is downloaded
       const result = await sup.check();
       assert.equal(result.action, 'failed');
       assert.match(result.reason, /not on grunion-ai\/weave main/);
-      assert.ok(!gh.calls.some((u) => u.includes('/tarball/')), 'no tarball was fetched');
+      assert.ok(!gh.calls.some((u) => u.includes('/tar.gz/')), 'no tarball was fetched');
       assert.ok(!existsSync(join(dataPath, '..', 'releases', `v${NEXT}`)), 'nothing unpacked');
       const h = await health(base);
       assert.equal(h.version, IMAGE_VERSION);
@@ -451,9 +466,8 @@ function fakeMain({ heads, tarball = () => releaseTarball(NEXT) }) {
   const fetch = async (url) => {
     url = String(url);
     calls.push(url);
-    const branch = url.startsWith(`${REPO_API}/commits/`) ? url.slice(`${REPO_API}/commits/`.length) : null;
-    if (branch && heads[branch]) return Response.json({ sha: heads[branch] });
-    const sha = /\/tarball\/([0-9a-f]{40})$/.exec(url)?.[1];
+    if (url === REFS_URL) return new Response(advertisement(heads));
+    const sha = /\/tar\.gz\/([0-9a-f]{40})$/.exec(url)?.[1];
     if (sha) return new Response(tgz.get(sha) ?? tgz.set(sha, tarball(sha)).get(sha));
     return new Response('not found', { status: 404 });
   };
@@ -639,8 +653,8 @@ test('tracking a promotion branch follows that branch, never main, and the deplo
     assert.equal(h.supervisor.commit, MAIN_B);
     assert.equal(h.supervisor.release, `c${MAIN_B}`);
     assert.equal(h.supervisor.track, 'production');
-    assert.ok(gh.calls.includes(`${REPO_API}/commits/production`));
-    assert.ok(!gh.calls.includes(`${REPO_API}/commits/main`), 'main is never asked');
+    assert.ok(gh.calls.includes(REFS_URL));
+    assert.ok(!gh.calls.some((u) => u.startsWith(REPO_API)), 'the rate-limited REST API is never asked');
     heads.production = MAIN_C;
     const hook = await fetch(`${base}/_supervisor/check`, { method: 'POST', headers: { authorization: `Bearer ${'k'.repeat(32)}` } });
     const body = await hook.json();
@@ -820,5 +834,58 @@ test('a boot that fails falls back to the newest good release folder before the 
     assert.deepEqual(s.failed, ['9.9.9']);
   } finally {
     await b.sup.close();
+  }
+});
+
+test('shaFromRefs reads a branch head out of a git ref advertisement, capabilities and all', () => {
+  const refs = advertisement({ main: MAIN_A, production: MAIN_B });
+  assert.equal(shaFromRefs(refs, 'refs/heads/main'), MAIN_A);
+  assert.equal(shaFromRefs(refs, 'refs/heads/production'), MAIN_B);
+  assert.equal(shaFromRefs(refs, 'refs/heads/absent'), null);
+  assert.equal(shaFromRefs('', 'refs/heads/main'), null);
+});
+
+test('rateLimitReset names the reset only for a spent quota', () => {
+  const at = 1792150992;
+  assert.equal(rateLimitReset(403, limited(at).headers), new Date(at * 1000).toISOString());
+  assert.equal(rateLimitReset(429, limited(at).headers), new Date(at * 1000).toISOString());
+  assert.equal(rateLimitReset(403, limited(null).headers), '');
+  assert.equal(rateLimitReset(403, new Response('nope', { status: 403 }).headers), null, 'a plain 403 is not a rate limit');
+  assert.equal(rateLimitReset(404, limited(at).headers), null);
+});
+
+test('tracking main reads the head through the git protocol, so a spent REST quota still swaps dev', async () => {
+  const dataPath = dataDir('track-ratelimited');
+  const heads = { main: MAIN_A };
+  const inner = fakeMain({ heads });
+  const calls = inner.calls;
+  const fetch = (url) => (String(url).startsWith(REPO_API) ? Promise.resolve(limited(1792150992)) : inner.fetch(url));
+  const { sup, base } = await supervise(dataPath, { fetch, calls }, { env: TRACK });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    assert.equal((await health(base)).supervisor.commit, MAIN_A);
+    assert.ok(calls.includes(REFS_URL), 'the ref advertisement is what names the head');
+    assert.ok(!calls.some((u) => u.startsWith(REPO_API)), 'api.github.com is never asked for the commit or the tarball');
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a rate-limited REST call is retried and its error names the reset', async () => {
+  const dataPath = dataDir('reset-named');
+  const at = 1792150992;
+  const gh = fakeGitHub();
+  const calls = gh.calls;
+  const fetch = (url) => (String(url).includes('/compare/') ? (calls.push(String(url)), Promise.resolve(limited(at))) : gh.fetch(url));
+  const { sup } = await supervise(dataPath, { fetch, calls }, { retryMs: 1 });
+  try {
+    const r = await sup.check();
+    assert.equal(r.action, 'failed');
+    assert.equal(r.retry, true);
+    assert.match(r.reason, /HTTP 403/);
+    assert.match(r.reason, new RegExp(`rate limit resets ${new Date(at * 1000).toISOString()}`));
+    assert.equal(calls.filter((u) => u.includes('/compare/')).length, 3, 'the rate-limited call is tried three times');
+  } finally {
+    await sup.close();
   }
 });
