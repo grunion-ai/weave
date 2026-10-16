@@ -850,6 +850,16 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 
 .fielddef-clear { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--tblr-border-color); }
 .fielddef-clear .hold-btn { display: inline-flex; width: auto; }
+.settings-workspaces { margin-top: 12px; }
+.settings-purge td.trash-table, .settings-purge td.trash-when { color: var(--tblr-secondary); }
+.settings-purge td.trash-acts { white-space: nowrap; text-align: right; }
+.settings-note { margin: 0; padding: 12px 16px 4px; color: var(--tblr-secondary); }
+.purge-confirm-box { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; }
+.purge-confirm-box .purge-name { width: 220px; max-width: 100%; }
+.purge-confirm-box .hold-btn { width: auto; }
+.hold-btn:disabled { opacity: .45; cursor: not-allowed; }
+.settings-workspaces .list-row { cursor: default; }
+.settings-workspaces .list-row:hover { background: none; }
 
 .copy-btn { margin-left: auto; }
 
