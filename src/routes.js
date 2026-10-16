@@ -1087,7 +1087,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const engine = account.viaRoot ? hubRoot : w;
             const host = String(w.state.meta.name).toLowerCase();
             const table = String(rx.searchParams?.get('table') ?? '');
-            const land = /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
+            const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
+              : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
             if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
             return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };

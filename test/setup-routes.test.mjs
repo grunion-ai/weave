@@ -234,6 +234,8 @@ test('billing on: a workspace made at /start opens on a trial, the AI app works,
     assert.equal(after.waiting, 'ada-sales', 'the person learns about the one-trial limit before naming a second workspace');
     assert.equal(after.rows[0].trial.daysLeft, 14);
     assert.ok(Date.parse(after.rows[0].trial.endsAt) > Date.now());
+    const handed = await s.apex('GET', `${after.rows[0].open}?to=billing`, { cookie });
+    assert.equal((await s.follow(handed.headers.location)).headers.location, '/billing', 'the waiting notice opens the workspace on its billing page');
 
     const host = s.at('ada-sales.weave.test');
     const token = s.idp.mint({ sub: 'user_ada' });

@@ -2,4 +2,4 @@
 - The setup page's agent step reports an AI app as connected only after weave answered one of its MCP calls, never a call it refused. (Issue #915)
 - An Architect without a seat keeps an AI app that reads: `/mcp` answers `initialize`, `tools/list` and the read tools, and write tools return a tool error with the seat-required words and the billing address. (Issue #916)
 - The seat-required refusal is worded for the reader's role, and the app shows it as one toast with an Open billing action instead of one toast per refused write. (Issue #917)
-- `GET /api/start` names the workspace waiting on a plan as `waiting` beside `canCreate`, and the `plan-required` refusal carries that workspace's billing address. (Issue #920)
+- `GET /api/start` names the workspace waiting on a plan as `waiting` beside `canCreate`, the `plan-required` refusal carries that workspace's billing address, and `/api/start/open/<name>?to=billing` lands on that workspace's billing page. (Issue #920)
