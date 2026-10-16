@@ -57,9 +57,9 @@ if (openHub) {
   const step = (p, name) => p.waitForSelector(`main[data-step="${name}"]`, { timeout: 15000 });
   const go = (p, what) => p.click(`main [data-go="${what}"]`);
   const signIn = async (p, h, how = 'signin') => {
-    await p.goto(`${h.base}/start`);
+    await p.goto(`${h.base}/start${how === 'bypass' ? '?setup=skip' : ''}`);
     await step(p, 'account');
-    await go(p, how);
+    await go(p, 'signin');
   };
   const nameIt = async (p, name, slug) => {
     await step(p, 'workspace');
@@ -195,10 +195,15 @@ if (openHub) {
     await p.close();
   });
 
-  test('bypass: "set it up myself" skips every managed step and opens an empty workspace', async () => {
+  test('login cannot be skipped: the sign-in step offers no skip, and /start?setup=skip still asks for sign-in first, then opens an empty workspace', async () => {
     const p = await page();
     const who = person(openHub, { email: 'bypass@example.com' });
-    await signIn(p, openHub, 'bypass');
+    await p.goto(`${openHub.base}/start`);
+    await step(p, 'account');
+    assert.equal(await p.locator('main [data-go="bypass"], main [data-go="skip"]').count(), 0, 'nothing on the sign-in step skips it');
+    await p.goto(`${openHub.base}/start?setup=skip`);
+    await step(p, 'account');
+    await go(p, 'signin');
     await p.waitForURL(/\/w\/bypass\/$/, { timeout: 15000 });
     const w = openHub.opened('bypass');
     assert.equal(w.listTables().filter((t) => !t.system).length, 0);
@@ -321,34 +326,31 @@ if (openHub) {
     });
   }
 
-  test('Clerk in the pane: account creation renders inside the left pane, styled, switches to sign-in and returns to the next step', async () => {
+  test('Clerk in the pane: sign-in comes first, first-time SSO creates the account, Create an account switches forms, and it returns to the next step', async () => {
     const p = await page();
     person(clerkHub);
-    await p.goto(`${clerkHub.base}/start`);
+    await p.goto(`${clerkHub.base}/start#/settings`);
     await step(p, 'account');
-    await p.waitForSelector('.pane #clerk-pane [data-fake-clerk="signup"]');
+    await p.waitForSelector('.pane #clerk-pane [data-fake-clerk="signin"]');
+    assert.equal(await p.evaluate(() => location.hash), '', 'a leftover hash is cleared before Clerk mounts (Issue #933)');
     assert.equal(await p.locator('main [data-go="signin"]').isHidden(), true, 'the provider button steps aside for the mounted form');
     const options = () => p.evaluate(() => ({ mounted: window.__clerkMounted, ...window.__clerkOptions, appearance: !!window.__clerkOptions.appearance?.variables?.colorPrimary, footer: window.__clerkOptions.appearance?.elements?.footerAction?.display }));
-    const up = await options();
-    assert.deepEqual([up.mounted, up.appearance, up.footer], ['signup', true, 'none'], 'account creation first, in weave colours, with weave\'s own switch');
-    assert.equal(await p.evaluate(() => window.__clerkLoadedWithUi), true, 'clerk-js 6 is loaded with its UI bundle (Issue #922)');
-    assert.match(up.forceRedirectUrl, /^\/api\/auth\/oidc\/start\?start=1&next=%2Fstart$/);
-    assert.equal(up.signInForceRedirectUrl, up.forceRedirectUrl);
-    const h1 = await p.locator('main h1').textContent();
-    assert.equal(await p.locator('main [data-go="switch"]').getAttribute('data-to'), 'signin');
-    await p.click('main [data-go="switch"]');
-    await p.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
     const inn = await options();
-    assert.equal(inn.mounted, 'signin');
+    assert.deepEqual([inn.mounted, inn.withSignUp, inn.routing, inn.appearance, inn.footer], ['signin', true, 'virtual', true, 'none'], 'sign-in first; a first-time SSO login becomes a sign-up; Clerk never reads the page hash');
+    assert.equal(await p.evaluate(() => window.__clerkLoadedWithUi), true, 'clerk-js 6 is loaded with its UI bundle (Issue #922)');
+    assert.match(inn.forceRedirectUrl, /^\/api\/auth\/oidc\/start\?start=1&next=%2Fstart$/);
     assert.equal(inn.signUpForceRedirectUrl, inn.forceRedirectUrl);
-    assert.notEqual(await p.locator('main h1').textContent(), h1, 'the heading follows the form');
+    assert.equal(await p.locator('main h1').textContent(), 'Sign in to weave');
+    assert.equal(await p.locator('main [data-go="switch"]').textContent(), 'Create an account');
+    assert.equal(await p.locator('main [data-go="bypass"], main [data-go="skip"]').count(), 0, 'login cannot be skipped');
     await p.click('main [data-go="switch"]');
     await p.waitForSelector('#clerk-pane [data-fake-clerk="signup"]');
-    await p.click('main [data-go="bypass"]');
-    await p.waitForFunction(() => /setup%3Dskip/.test(window.__clerkOptions.forceRedirectUrl));
-    assert.equal(await p.evaluate(() => window.__clerkMounted), 'signup', 'the bypass keeps the form the person chose');
-    await p.click('main [data-go="bypass"]');
-    await p.waitForFunction(() => !/setup%3Dskip/.test(window.__clerkOptions.forceRedirectUrl));
+    const up = await options();
+    assert.deepEqual([up.mounted, up.routing], ['signup', 'virtual']);
+    assert.equal(up.signInForceRedirectUrl, up.forceRedirectUrl);
+    assert.equal(await p.locator('main h1').textContent(), 'Create your weave account');
+    await p.click('main [data-go="switch"]');
+    await p.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
     await p.click('#clerk-pane [data-fake-clerk="google"]');
     await step(p, 'workspace');
     assert.equal((await donut(p)).at, 50);
