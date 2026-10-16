@@ -2,6 +2,14 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.103 (2026-10-16)
+
+- The Billing page says who holds which seat. Under each name the seats list prints that person's verified sign-in address, so a team workspace is readable when account names do not match the people behind them. `GET /api/billing` carries the address only for an architect, the same gate Members uses; every other member reads the seats as before (Issue #921).
+- The setup page's art now fills its whole panel at every window size. The form column scrolls inside the page, so the art never ends early and leaves a gray band below it, and a phone still hides it. The connect step reads shorter: each tile says in one line what it takes or which plans can connect, the steps run a dozen words or fewer, the page-wide plan note is gone, and the step's links (home, Privacy, Terms) are checked by a test. (Issue #954)
+- Every MCP tool now carries annotations: a title plus `readOnlyHint`, `destructiveHint` and `openWorldHint`, so clients and connector directories can tell reads from deletes. `/support` and `/docs` (agent setup, with every tool and its marks) answer without sign-in, and `/.well-known/openai-apps-challenge` serves the token in `WEAVE_OPENAI_APPS_CHALLENGE` as plain text, or a 404 when it is unset. The default `tools/list` grows from 15,389 to 17,218 bytes (Feature #331).
+- The left nav's scroll bar runs only beside the space list. The list scrolls inside the sidebar between the search head and the pinned foot, its bar sits at the panel edge, and the head and foot no longer ride sticky offsets, in the sidebar, the hover peek and the phone drawer alike. (Issue #957)
+- Safari draws the same thin scroll bar as Chrome. Tabler's 16px WebKit bar, which Safari kept on every pane while Chrome ignored it, gives way to one weave spec: `scrollbar-width: thin` for Chromium and Firefox, and an 8px WebKit bar with a 2px inset thumb at Tabler's 20% tint, 40% on hover. The nav, the main panel, the dock and every doc table get their 8px back. (Issue #956)
+
 ## v0.4.102 (2026-10-16)
 
 - The personal menu's keyboard test now expects the Settings row that Features #295 and #297 added, so main is green again. (Issue #931)
