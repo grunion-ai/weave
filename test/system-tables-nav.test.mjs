@@ -64,19 +64,18 @@ test('the sidebar anchors its name and search at the top, and pins New space the
     'the workspace name and the search button share one head block, so one rule anchors both');
   const head = rulesFor('.nav-head');
   const pinned = rulesFor('.nav-pinned');
-  assert.equal(head.position, 'sticky', 'the head holds the sidebar\'s top edge');
-  assert.equal(pinned.position, 'sticky', 'the pinned strip holds its bottom edge');
-  assert.equal(head.top, '-14px', 'it sticks past the sidebar\'s own padding, as the strip already does');
-  assert.equal(pinned.bottom, '-14px');
+  const list = rulesFor('#nav');
+  assert.equal(rulesFor('#sidebar').overflow, 'hidden', 'the sidebar frame never scrolls, so its bar cannot run beside the head or the foot (Issue #957)');
+  assert.equal(list['overflow-y'], 'auto', 'the space list is the one scroll container (Issues #451, #957)');
+  assert.equal(list['min-height'], '0', 'the list shrinks below its content, so the head and the foot keep their room');
+  assert.equal(list['overscroll-behavior'], 'contain', 'a wheel past the list end stops there (Issue #451)');
+  assert.equal(list['scrollbar-gutter'], 'stable', 'the list keeps its width when overflow comes and goes');
   for (const [name, rules] of [['.nav-head', head], ['.nav-pinned', pinned]]) {
-    assert.match(rules.background ?? '', /--wv-canvas/, `${name} paints the canvas, so rows scroll under it rather than through it`);
+    assert.notEqual(rules.position, 'sticky', `${name} sits outside the scroll box, so it needs no sticky offset`);
+    assert.equal(rules['flex-shrink'], '0', `${name} keeps its height while the list gives way`);
   }
-  assert.equal(rulesFor('#sidebar')['overflow-y'], 'auto', 'the sidebar stays the one scroll container (Issue #451)');
-  for (const [sidebar, nav] of [['#sidebar', '#sidebar .nav-head'], ['#app.nav-peek #sidebar', '#app.nav-peek #sidebar .nav-head']]) {
-    const pad = rulesFor(sidebar)['padding-top'] ?? rulesFor(sidebar).padding?.split(/\s+/)[0];
-    if (!pad) continue;
-    assert.equal(rulesFor(nav)['padding-top'], pad, `${nav} covers the ${pad} the sidebar pads at that size`);
-    assert.equal(rulesFor(nav).top, `-${pad}`, `${nav} sticks flush with the sidebar's own edge there`);
+  for (const sel of ['#sidebar .nav-head', '#app.nav-peek #sidebar .nav-head']) {
+    assert.equal(rulesFor(sel).top, undefined, `${sel} carries no sticky offset at any size`);
   }
 
   const nav = fnBodyOf('renderNav');

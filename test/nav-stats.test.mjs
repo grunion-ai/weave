@@ -57,11 +57,8 @@ test('the strip pins to the sidebar bottom and style.css dresses it', () => {
   assert.ok(APP.includes("$('#sidebar').append(el('div', { class: 'nav-pinned' }"), 'the strip is a sidebar sibling after #nav, not a foot child');
   const CSS = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   const rule = CSS.match(/\.nav-pinned\s*{([^}]*)}/)?.[1] ?? '';
-  assert.ok(/position:\s*sticky/.test(rule), 'sticky');
-  const pad = CSS.match(/#sidebar\s*{[^}]*padding:\s*(\d+)px/)[1];
-  assert.match(rule, new RegExp(`bottom:\\s*-${pad}px`), "stuck to the sidebar's outer bottom edge");
   assert.ok(/margin-top:\s*auto/.test(rule), 'pushed to the bottom when the nav is short');
-  const head = CSS.match(/\.nav-head\s*{([^}]*)}/)?.[1] ?? '';
-  assert.ok(/position:\s*sticky/.test(head), 'the name and search are pinned the same way, at the top (Issue #854)');
-  assert.match(head, new RegExp(`top:\\s*-${pad}px`), "stuck to the sidebar's outer top edge");
+  const sidebar = CSS.match(/#sidebar\s*{([^}]*)}/)?.[1] ?? '';
+  assert.match(sidebar, /padding:\s*\d+px\s+\d+px\s+0\s*;/, "no bottom padding, so the strip reaches the sidebar's outer bottom edge");
+  assert.match(CSS.match(/#nav\s*{([^}]*)}/)?.[1] ?? '', /flex:\s*1/, 'the list takes the room between the head and the strip (Issue #957)');
 });

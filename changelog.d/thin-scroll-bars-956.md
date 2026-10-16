@@ -1,0 +1,1 @@
+- Safari draws the same thin scroll bar as Chrome. Tabler's 16px WebKit bar, which Safari kept on every pane while Chrome ignored it, gives way to one weave spec: `scrollbar-width: thin` for Chromium and Firefox, and an 8px WebKit bar with a 2px inset thumb at Tabler's 20% tint, 40% on hover. The nav, the main panel, the dock and every doc table get their 8px back. (Issue #956)
