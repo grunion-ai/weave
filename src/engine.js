@@ -7822,7 +7822,7 @@ export class Weave {
     const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
     if (!String(text ?? '').trim()) {
       return ids.flatMap((id) => this.listEntities(id))
-        .filter((e) => !e.deletedAt)
+        .filter((e) => this.#liveEntity(e.id))
         .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
         .slice(0, limit)
         .map((e) => hit(e));
