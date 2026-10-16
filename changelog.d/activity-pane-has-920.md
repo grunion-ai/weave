@@ -1,0 +1,1 @@
+- A table whose row holds a long relation cell opens without an 11 s stall: the Activity pane's layout rules select from the pane forward instead of through `:has()` on the view (Issue #920).

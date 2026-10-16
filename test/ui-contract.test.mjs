@@ -1857,3 +1857,8 @@ test('the date picker steps sideways: date-pop-arrow never renders ↑ or ↓ (I
   assert.match(body, /'aria-label': 'Previous month'/);
   assert.match(body, /'aria-label': 'Next month'/);
 });
+
+test('the view panes style their children without :has(), which stalled a 1,200-chip cell for 11 s (Issue #920)', () => {
+  const costly = CSS.match(/#(?:main|dock)\b[^{},]*:has\([^)]*\)\s*(?:[>~+]|\s(?=[^\s{]))[^{]*\{/g) ?? [];
+  assert.deepEqual(costly, []);
+});
