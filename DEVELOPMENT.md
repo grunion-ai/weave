@@ -382,6 +382,29 @@ there unchecked. Hold a frame finding with a `frameFlashes` case in
 `test/flicker-core.test.mjs` built from the frames on the Issue row, and mark
 the row Fixed naming that case.
 
+## Click budget
+
+Every journey in `test/lib/journeys.mjs` is an action a person takes, and
+`walk` counts the clicks it takes: trusted primary pointer presses (mouse
+clicks and taps) during the run phase. Setup clicks, keys and scripted
+`element.click()` calls count nothing. `test/click-budget.json` holds the
+budget per `journey|cell`.
+
+`test/click-budget-browser.test.mjs` walks every journey on every PR (it is in
+`SMOKE`) and logs `clicks <journey|cell> <count> budget <n>` as a test
+diagnostic. Budgets only ratchet down:
+
+- a count above its budget fails: remove the extra click;
+- a count below its budget fails until the same change lowers the budget, so
+  the saving holds;
+- a new journey adds its own `journey|cell` entry with its measured count.
+
+Raising a budget is the one way to merge an action that takes more clicks.
+`test/click-budget.test.mjs` compares the file with `HEAD^1` and refuses a
+raised number unless the same change writes a new reason under
+`raised["<journey|cell>"]`. The reason names the Issue or Feature that needs
+the click.
+
 ## Cut-off loop
 
 Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page

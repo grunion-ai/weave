@@ -1,0 +1,23 @@
+{
+  "clicks": {
+    "load-home|desktop": 0,
+    "load-home|phone": 0,
+    "open-table|desktop": 0,
+    "open-table|phone": 0,
+    "scroll-grid|desktop": 0,
+    "scroll-grid|phone": 0,
+    "edit-cell|desktop": 1,
+    "open-row|desktop": 2,
+    "switch-view|desktop": 4,
+    "type-doc|desktop": 1,
+    "type-doc|phone": 1,
+    "trash-undo|desktop": 4,
+    "theme|desktop": 0,
+    "phone-search|phone": 2,
+    "phone-menu|phone": 2,
+    "phone-table-sheet|phone": 2,
+    "phone-picker|phone": 2,
+    "phone-open-row|phone": 1
+  },
+  "raised": {}
+}
