@@ -122,7 +122,7 @@ const START_TTL_MS = 30 * 60 * 1000;
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, billing = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, billing = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const challenges = new Map();
   const handoffs = new Map();
   const remirror = async (w) => {
@@ -438,8 +438,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       ];
       const names = live.filter(([, w]) => opener(w) && !isDocsWorkspace(w)).map(([name]) => name.toLowerCase());
       const creator = logins.find((me) => mayAdminister(hubRoot, rootOf(me)?.role)) ?? null;
-      const owner = creator ?? (billing ? logins[0] ?? null : null);
-      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@')) ?? (owner?.email?.split('@')[0] || null);
+      const signedUp = (me) => live.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
+      const signup = !creator && openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
+      const owner = creator ?? signup ?? (billing ? logins[0] ?? null : null);
+      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@'))
+        ?? logins.map((me) => me.email?.split('@')[0]).find(Boolean) ?? null;
       const unpaid = async (me) => {
         for (const [name, w] of live) {
           if (Weave.roleName(w.accountForIdentity(me)?.role) !== 'architect') continue;
@@ -447,7 +450,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         return null;
       };
-      return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, creator, owner, canCreate: !!owner, accountName, hubRoot, unpaid };
+      return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, creator, signup, owner, canCreate: !!owner, accountName, hubRoot, unpaid };
     };
     const heldStart = async () => {
       prune(starts);
@@ -530,6 +533,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const engine = [weave, root].find((e) => (account = e.accountForIdentity(who)));
         if (!engine) return deny(403, `This ${oidc.name} sign-in opens no account on this workspace. Ask an operator for an invite (weave account link <name>) and open it in a browser once; then sign in here again.`);
         oauth = { account, engine };
+        engine.noteAgent(account.id, rx.header('user-agent'));
       }
       path = '/api/mcp';
       mcpDoor = true;
@@ -935,16 +939,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               const c = takeChallenge(String(rx.searchParams?.get('state') ?? ''), 'oidc');
               if (!c || !cookies.wv_oidc || cookies.wv_oidc !== c.binder) { noteFailure(ip); return refusal(400, 'This sign-in expired or was already used', 'Start again from the sign-in page, in the browser you want to sign in.'); }
               mount = c.mount ?? '';
-              if (rx.searchParams.get('error') || !rx.searchParams.get('code')) return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? rx.searchParams.get('error') ?? 'No authorization code came back.'));
+              const toStart = (code) => ({ status: 302, headers: { Location: `/start?error=${code}`, 'Cache-Control': 'no-store' }, body: '' });
+              if (rx.searchParams.get('error') || !rx.searchParams.get('code')) {
+                if (c.start) return toStart('signin_failed');
+                return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? rx.searchParams.get('error') ?? 'No authorization code came back.'));
+              }
               let who;
               try {
                 who = await oidc.redeem({ code: rx.searchParams.get('code'), redirectUri, verifier: c.verifier, nonce: c.nonce });
               } catch (err) {
                 noteFailure(ip);
-                if (!(err instanceof WeaveError)) return refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
-                return refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
+                if (!(err instanceof WeaveError)) return c.start ? toStart('provider_down') : refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
+                return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
               }
-              if (c.start) return { status: 302, headers: { Location: '/start', 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
+              if (c.start) {
+                const back = /^\/start(?:[?#]|$)/.test(c.next) ? c.next : '/start';
+                return { status: 302, headers: { Location: back, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
+              }
               const root = hub.get(hub.defaultName);
               let account = null;
               const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
@@ -1035,7 +1046,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const { hubRoot, accountIn } = found;
           if (route === 'GET /api/start') {
             const { rows, canCreate, accountName } = found;
-            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, accountName, base: baseDomain }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
+            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, openSignup: openSignup.on, accountName, base: baseDomain }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/start/slug') {
             if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
@@ -1048,9 +1059,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (!account) return deny(403, 'This sign-in opens no account on that workspace');
             const engine = account.viaRoot ? hubRoot : w;
             const host = String(w.state.meta.name).toLowerCase();
-            if (baseDomain) return handOff(engine, account.id, '/', host);
+            const table = String(rx.searchParams?.get('table') ?? '');
+            const land = /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
+            if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
-            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
           }
           if ((m = path.match(/^\/api\/start\/invites\/([^/]+)\/([A-Za-z0-9_-]+)$/)) && rx.method === 'POST') {
             const w = hub.bySlug(String(m[1]).toLowerCase());
@@ -1060,10 +1073,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             await remirror(w);
             return out(200, { name: w.state.meta.name, account: account.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
           }
+          if ((m = path.match(/^\/api\/start\/workspaces\/([^/]+)\/agent$/)) && rx.method === 'GET') {
+            const w = hub.bySlug(String(m[1]).toLowerCase());
+            const account = w && accountIn(w);
+            if (!account) return deny(403, 'This sign-in opens no account on that workspace');
+            const seen = (account.viaRoot ? hubRoot : w).agentSeen(account.id);
+            return out(200, { connected: !!seen, at: seen?.at ?? null, client: seen?.client ?? null }, { 'Cache-Control': 'no-store' });
+          }
           if (route === 'POST /api/start/workspaces') {
             const me = found.owner;
-            if (!me) return deny(403, 'Creating a workspace needs an architect on the hub root');
-            if (!found.creator) {
+            if (!me) {
+              if (openSignup.on) return out(403, { error: 'This sign-in has made as many workspaces as this server allows.', code: 'signup_limit' });
+              return out(403, { error: 'Creating a workspace here needs an invite from the operator.', code: 'signup_closed' });
+            }
+            if (!found.creator && billing) {
               let waiting;
               try { waiting = await found.unpaid(me); } catch (error) {
                 if (!(error instanceof BillingUnavailable)) throw error;
@@ -1071,10 +1094,40 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               }
               if (waiting) return out(402, { error: `${waiting} is still waiting on a plan. Subscribe to the solo plan on its billing page, then start another workspace.`, code: 'plan-required', waiting }, { 'Cache-Control': 'no-store' });
             }
-            const w = hub.create(body?.name, { slug: body?.slug ?? null });
-            const owner = w.createAccount({ name: found.accountName ?? 'Architect', role: 'architect' }).account;
+            const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
+            if (body?.template && !template) return out(400, { error: `Unknown template '${body.template}'`, code: 'invalid' });
+            const ownerName = (found.creator && hubRoot.accountForIdentity(me)?.name) || found.accountName || 'owner';
+            let asked = body?.name;
+            let slug = body?.slug ?? null;
+            if (body?.quick) {
+              asked = String(asked || ownerName);
+              const base = WeaveSlugs.slugify(asked) || 'workspace';
+              slug = [base, ...Array.from({ length: 50 }, (_, i) => `${base}-${i + 2}`)].find((s) => hub.slugState(s) === 'available') ?? null;
+            }
+            const w = hub.create(asked, { slug });
+            const owner = w.createAccount({ name: ownerName, role: 'architect' }).account;
             w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
-            return out(201, { name: w.state.meta.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
+            if (!found.creator) {
+              w.state.meta.signup = { issuer: me.issuer, subject: me.subject };
+              w.save();
+            }
+            let table = null;
+            let templateError = null;
+            const built = { space: template?.space ?? null, tables: [] };
+            if (template) {
+              try {
+                const spec = WeaveStarters.spec(template);
+                const done = w.build(spec);
+                if (!done.ok) throw new Error(done.errors.map((e) => e.error).join('; '));
+                built.tables = spec.spaces[0].tables.map((t) => t.name);
+                table = w.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
+              } catch (err) { templateError = err.message; }
+            }
+            w.markOnboarded(owner.id);
+            const name = w.state.meta.name;
+            const host = String(name).toLowerCase();
+            const mcp = baseDomain ? `${scheme}//${host}.${baseDomain}/mcp` : `${originFor(rx)}/w/${encodeURIComponent(name)}/mcp`;
+            return out(201, { name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}`, table, mcp, built, templateError });
           }
           return notFound({ error: 'Not found', code: 'not-found' });
         }

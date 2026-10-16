@@ -189,7 +189,8 @@ test('start: an architect creates a workspace from a name and a slug, and become
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Acme', slug: 'acme' } })).json().code, 'slug_taken');
     const made = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Harbor Launch', slug: 'harbor-launch' } });
     assert.equal(made.status, 201);
-    assert.deepEqual(made.json(), { name: 'harbor-launch', open: '/api/start/open/harbor-launch' });
+    const { name, open, mcp, table, templateError } = made.json();
+    assert.deepEqual({ name, open, mcp, table, templateError }, { name: 'harbor-launch', open: '/api/start/open/harbor-launch', mcp: 'http://harbor-launch.weave.test/mcp', table: null, templateError: null });
     const w = new Weave({ path: join(s.dir, 'harbor-launch.db') });
     const owner = w.listAccounts()[0];
     assert.deepEqual([owner.name, Weave.roleName(owner.role), owner.identities[0].subject], ['Kyle Adriany', 'architect', 'user_kyle']);
@@ -215,7 +216,7 @@ test('start: with billing on, a new person creates a first workspace and is its 
     assert.deepEqual([list.rows, list.canCreate, list.accountName], [[], true, 'dana']);
     const made = await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Dana Desk', slug: 'dana-desk' } });
     assert.equal(made.status, 201);
-    assert.deepEqual(made.json(), { name: 'dana-desk', open: '/api/start/open/dana-desk' });
+    assert.deepEqual([made.json().name, made.json().open], ['dana-desk', '/api/start/open/dana-desk']);
     const w = new Weave({ path: join(s.dir, 'dana-desk.db') });
     const owner = w.listAccounts()[0];
     assert.deepEqual([w.listAccounts().length, owner.name, Weave.roleName(owner.role), owner.identities[0].subject], [1, 'dana', 'architect', 'user_dana']);

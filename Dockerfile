@@ -15,6 +15,8 @@ COPY . .
 #   WEAVE_OIDC_CLIENT_ID       the client id that provider issued; set with the issuer (unset)
 #   WEAVE_OIDC_CLIENT_SECRET   the client secret; unset = public client, PKCE alone (unset)
 #   WEAVE_OIDC_NAME            the word on the sign-in link                (issuer's host)
+#   WEAVE_OPEN_SIGNUP          1 lets anyone who signs in create a workspace from /start (unset = invite only)
+#   WEAVE_SIGNUP_LIMIT         workspaces one sign-in may create under WEAVE_OPEN_SIGNUP (1)
 #   WEAVE_MAIL_KEY             a Resend API key; with WEAVE_MAIL_FROM, invites are emailed (unset = off)
 #   WEAVE_MAIL_FROM            the sender, on a domain Resend has verified (unset)
 #   WEAVE_CLERK_SECRET_KEY     a Clerk Backend API key; with both plan slugs, billing is on (unset = off)
