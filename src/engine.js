@@ -5056,6 +5056,10 @@ export class Weave {
       }
     }
     if (patch.config) {
+      if ('subtable' in patch.config) {
+        const sub = this.#subtableConfig(field, patch.config.subtable);
+        if (sub) field.config.subtable = sub; else delete field.config.subtable;
+      }
       if ('term' in patch.config) {
         if (field.id !== db.nameFieldId) throw new WeaveError('The row term lives on the Name field', 'invalid');
         this.#setTerm(db, patch.config.term, { save: false });
@@ -5171,6 +5175,36 @@ export class Weave {
       if (migrated) this.#dropOlderSnapshots(field.id, logged.seq);
     } else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) }, changed.length ? [...touchedBefore, ...this.#spacesTouching(db, field)] : null);
     return { field, counts: migrated?.counts ?? null };
+  }
+
+  #subtableConfig(field, raw) {
+    if (field.type !== 'relation') throw new WeaveError('A subtable belongs on a relation field', 'invalid');
+    if (raw == null) return null;
+    if (typeof raw !== 'object' || Array.isArray(raw)) throw new WeaveError('A subtable is an object of fields, filter and sort', 'invalid');
+    const target = field.config.targetDbs ? null : this.state.tables[field.config.targetDb];
+    if (!target) throw new WeaveError('A subtable needs a relation with one target table', 'invalid');
+    const named = (n) => {
+      const f = typeof n === 'string' ? this.findField(target, n) : null;
+      if (!f) throw new WeaveError(`Field '${n}' not found in table '${target.name}'`, 'not-found');
+      return f.name;
+    };
+    const list = (key) => {
+      if (raw[key] == null) return null;
+      if (!Array.isArray(raw[key])) throw new WeaveError(`A subtable ${key} is a list`, 'invalid');
+      return raw[key];
+    };
+    const out = {};
+    const fields = list('fields');
+    if (fields) out.fields = fields.map(named);
+    const filter = list('filter');
+    if (filter?.length) { this.#checkWhere(target, filter); out.filter = structuredClone(filter); }
+    const sort = (list('sort') ?? []).map((s) => {
+      const { field: name, dir = 'asc' } = typeof s === 'string' ? { field: s } : s ?? {};
+      if (dir !== 'asc' && dir !== 'desc') throw new WeaveError('A subtable sort runs asc or desc', 'invalid');
+      return { field: Object.hasOwn(SYSTEM_SORT_KEYS, name) ? name : named(name), dir };
+    });
+    if (sort.length) out.sort = sort;
+    return Object.keys(out).length ? out : null;
   }
 
   #dropOlderSnapshots(fieldId, keepSeq) {
@@ -8328,6 +8362,7 @@ export class Weave {
             out.many = f.config.many;
             out.inverseFieldId = f.config.inverseFieldId;
             out.inverseField = target.fields[f.config.inverseFieldId]?.name ?? null;
+            if (f.config.subtable) out.subtable = structuredClone(f.config.subtable);
           }
           if (f.type === 'rollup' && f.config.via) {
             const tdb = this.#tableAnywhere(f.config.via)?.table;
