@@ -618,6 +618,51 @@ TOOLS.push({
   },
 });
 
+const TITLES = {
+  weave_ontology: 'Read schema outline', weave_schema: 'Read full schema', weave_query: 'Query rows',
+  weave_get_entity: 'Read row', weave_create_entity: 'Create row', weave_update_entity: 'Update row',
+  weave_delete_entity: 'Delete row', weave_restore_entity: 'Restore row', weave_trash: 'List trash',
+  weave_stats: 'Summarize table', weave_undo: 'Undo edits', weave_bulk: 'Edit rows in bulk',
+  weave_set_state: 'Set workflow state', weave_link: 'Link rows', weave_unlink: 'Unlink rows',
+  weave_get_doc: 'Read document', weave_set_doc: 'Write document', weave_doc_revisions: 'List document revisions',
+  weave_doc_restore: 'Restore document revision', weave_add_comment: 'Add comment', weave_delete_comment: 'Delete comment',
+  weave_search: 'Search workspace', weave_create_space: 'Create space', weave_create_table: 'Create table',
+  weave_add_field: 'Add field', weave_check_formula: 'Check formula', weave_add_relation: 'Add relation',
+  weave_create_automation: 'Create automation', weave_export_csv: 'Export table as CSV', weave_import_csv: 'Import CSV rows',
+  weave_attach_file: 'Attach file', weave_vocabulary: 'Look up allowed values', weave_update_space: 'Update space',
+  weave_template_list: 'List templates', weave_template_use: 'Use template', weave_delete_space: 'Delete space',
+  weave_restore_space: 'Restore space', weave_update_table: 'Update table', weave_table_view: 'Read or write table views',
+  weave_move_table: 'Move table', weave_duplicate_table: 'Duplicate table', weave_delete_table: 'Delete table',
+  weave_restore_table: 'Restore table', weave_update_field: 'Update field', weave_rollback_field: 'Roll back field config',
+  weave_delete_field: 'Delete field', weave_restore_field: 'Restore field', weave_apply_schema: 'Apply schema document',
+  weave_build: 'Build workspace', weave_views: 'Manage saved views', weave_shares: 'Manage share links',
+  weave_automations: 'Manage automations', weave_activity: 'Read activity feed', weave_audit: 'Read audit log',
+  weave_workspace: 'Read or update workspace', weave_accounts: 'Manage accounts', weave_keys: 'Manage credential keys',
+  weave_files: 'Read or delete files', weave_registry: 'Check workspace registry', weave_relation_map: 'Draw relation map',
+  weave_export_json: 'Export workspace as JSON', weave_forms: 'Manage forms', weave_form_submit: 'Submit form',
+  weave_import_json: 'Replace workspace from JSON', weave_call: 'Call any weave tool',
+};
+const READ_ONLY = new Set([
+  'weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_stats', 'weave_trash',
+  'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_export_json',
+  'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_audit', 'weave_relation_map',
+]);
+const DESTRUCTIVE = new Set([
+  'weave_delete_entity', 'weave_delete_comment', 'weave_delete_space', 'weave_delete_table', 'weave_delete_field',
+  'weave_bulk', 'weave_undo', 'weave_set_doc', 'weave_doc_restore', 'weave_update_field', 'weave_rollback_field',
+  'weave_apply_schema', 'weave_import_json', 'weave_automations', 'weave_accounts', 'weave_keys', 'weave_files',
+  'weave_views', 'weave_shares', 'weave_workspace', 'weave_call',
+]);
+const OPEN_WORLD = new Set(['weave_create_automation', 'weave_automations', 'weave_call']);
+for (const t of TOOLS) {
+  t.annotations = { title: TITLES[t.name], readOnlyHint: READ_ONLY.has(t.name), destructiveHint: DESTRUCTIVE.has(t.name), openWorldHint: OPEN_WORLD.has(t.name) };
+}
+
+export function toolTable() {
+  const effect = (a) => [a.readOnlyHint ? 'Read-only' : a.destructiveHint ? 'Destructive' : 'Adds or edits', ...(a.openWorldHint ? ['can call a webhook'] : [])].join(', ');
+  return ['| Tool | What it does | Effect |', '| --- | --- | --- |', ...TOOLS.map((t) => `| \`${t.name}\` | ${t.annotations.title} | ${effect(t.annotations)} |`)].join('\n');
+}
+
 export function toolProfile(env = globalThis.process?.env ?? {}) {
   return env.WEAVE_MCP_TOOLS === 'all' ? 'all' : 'core';
 }
