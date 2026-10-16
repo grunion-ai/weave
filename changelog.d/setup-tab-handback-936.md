@@ -1,0 +1,1 @@
+- The AI app step on the setup page says up front that connecting opens a weave sign-in tab and to come back after Allow. Once the app connects, the setup tab retitles itself with the app's name, so it stands out among the open tabs, and fires a notification when notifications are already allowed. (Issue #936)
