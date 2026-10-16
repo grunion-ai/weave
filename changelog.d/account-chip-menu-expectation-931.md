@@ -1,0 +1,1 @@
+- The personal menu's keyboard test now expects the Settings row that Features #295 and #297 added, so main is green again. (Issue #931)
