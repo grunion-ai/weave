@@ -396,6 +396,8 @@ weave unlink Task#5 Project 'Project#1'
 
 Renders as chips carrying the target's name, each with a \`×\`, plus a \`+ link\` control that opens the ⌘K search scoped to the relation's target tables (Issue #703). It matches a row by name, \`#id\`, any text field or a document, and shows the linked rows checked. A to-one relation replaces its value on a pick and closes; a to-many relation toggles rows and saves on \`Esc\` or \`Return\` in an empty box. The last row, \`+ New <term>\`, creates a row named from what you typed and links it. **+ Link existing** under a related grid and the selection bar's **Link to…** open the same search.
 
+On a record page each to-many relation shows its linked rows as a subtable. The eye in the subtable header picks which target fields the subtable shows and filters its rows with the same chips as the table filter (Feature #214). Both land on the relation field as \`config.subtable\`, shaped \`{ fields, filter, sort }\` with the filter in \`where\` triples, so every record of the table shares one setting and one edit changes them all. A filtered subtable counts \`shown / total\` in its header, and the field dialog shows the stored JSON. Reading the record through the API still returns every linked row.
+
 ## Query
 
 Traverse with a dotted path: \`[["Project.Name", "=", "Apollo"]]\`.

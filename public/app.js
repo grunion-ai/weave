@@ -3908,7 +3908,9 @@ function setFilterTotal(db, x, n) {
   out.classList.remove('stale');
 }
 function filterWhere(db) {
-  const active = tableFilters(db);
+  return filterTriples(db, tableFilters(db));
+}
+function filterTriples(db, active) {
   const conds = Object.entries(active)
     .map(([field, states]) => [db.fields.find((f) => f.name === field), states])
     .filter(([f, states]) => f && isFilterField(f) && states?.length)
@@ -3919,14 +3921,14 @@ function filterWhere(db) {
 }
 const FILTER_DEBOUNCE = 250;
 let filterWrites = Promise.resolve();
-function filterStrip(db, onChange) {
+function filterStrip(db, onChange, { filters = tableFilters(db), save = null } = {}) {
   const wfFields = db.fields.filter(isFilterField);
   if (!wfFields.length) return null;
-  const active = Object.fromEntries(Object.entries(tableFilters(db)).map(([k, v]) => [k, [...v]]));
+  const active = Object.fromEntries(Object.entries(filters).map(([k, v]) => [k, [...v]]));
   const strip = el('div', { class: 'filter-strip' });
   const chips = [];
   let timer = 0, dirty = false, inflight = 0, release = null;
-  const hold = () => { release ??= gridHold(); };
+  const hold = () => { if (!save) release ??= gridHold(); };
   const note = el('span', { class: 'filter-total', role: 'status', 'aria-live': 'polite' });
   const clear = el('button', { class: 'btn btn-sm btn-ghost-primary tiny filter-clear', type: 'button', onclick: () => {
     if (db.view?.blank) return toast(BLANK_READ_ONLY, true);
@@ -3940,7 +3942,7 @@ function filterStrip(db, onChange) {
     }
     const count = Object.values(active).filter((v) => v.length).length;
     clear.disabled = !count;
-    setFilterCount(document.querySelector('#main .table-filter-btn'), count);
+    if (!save) setFilterCount(document.querySelector('#main .table-filter-btn'), count);
   };
   const flush = () => {
     clearTimeout(timer);
@@ -3950,17 +3952,18 @@ function filterStrip(db, onChange) {
     note.classList.add('stale'); strip.setAttribute('aria-busy', 'true');
     inflight += 1;
     filterWrites = filterWrites.catch(() => {}).then(async () => {
+      if (save) { await save(next); filters = next; return; }
       await setTableFilters(db, next);
       if (state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id) await onChange();
     }).catch((err) => {
       toast(err.message, true);
       const view = allTables().find((t) => t.id === db.id)?.views?.find((v) => v.id === db.view?.id);
-      if (!dirty) { for (const k of Object.keys(active)) delete active[k]; Object.assign(active, view?.filters || {}); paint(); }
+      if (!dirty) { for (const k of Object.keys(active)) delete active[k]; Object.assign(active, structuredClone(save ? filters : view?.filters || {})); paint(); }
     }).finally(() => {
       inflight -= 1;
       if (dirty || inflight) return;
       strip.setAttribute('aria-busy', 'false');
-      setFilterTotal(db);
+      if (!save) setFilterTotal(db);
       release?.(); release = null;
     });
     return filterWrites;
@@ -3989,7 +3992,7 @@ function filterStrip(db, onChange) {
     row.append(values); scroll.append(row);
   }
   strip.append(scroll, el('div', { class: 'filter-footer' }, note, clear)); paint();
-  queueMicrotask(() => setFilterTotal(db));
+  if (!save) queueMicrotask(() => setFilterTotal(db));
   return strip;
 }
 
@@ -4183,8 +4186,7 @@ function gridPager(db, query, first) {
   return pager;
 }
 
-function tableControlPopover(anchor, db, className, rows) {
-  const selector = `.${[...anchor.classList].find((c) => /^table-.*-btn$/.test(c)) || 'eye-btn'}`;
+function tableControlPopover(anchor, db, className, rows, { selector = `.${[...anchor.classList].find((c) => /^table-.*-btn$/.test(c)) || 'eye-btn'}` } = {}) {
   const old = document.querySelector('.chip-pop');
   const same = old?.classList.contains(className) && old.tableId === db.id;
   old?.remove();
@@ -4197,7 +4199,7 @@ function tableControlPopover(anchor, db, className, rows) {
   const trigger = () => (home ?? document.querySelector('#main'))?.querySelector(selector) || anchor;
   const position = () => {
     const r = trigger().getBoundingClientRect();
-    if (className === 'table-fields-popover' || className === 'table-filter-popover') pop.style.maxHeight = `${Math.max(220, innerHeight - r.bottom - 22)}px`;
+    if (['table-fields-popover', 'table-filter-popover', 'subtable-popover'].includes(className)) pop.style.maxHeight = `${Math.max(220, innerHeight - r.bottom - 22)}px`;
     pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
     pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
   };
@@ -8378,6 +8380,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
       } else if (t === 'relation') {
         if (isEdit) {
           kids.push(el('div', { class: 'modal-note full' }, `→ ${existing.targetDb}${existing.many ? ' (many)' : ''} — repoint by deleting and recreating`));
+          if (existing.subtable) kids.push(dsection('Subtable', el('pre', { class: 'subtable-config' }, JSON.stringify({ subtable: existing.subtable }, null, 2))));
         } else {
           const r = state.relation;
           const tables = allTables();
@@ -11340,12 +11343,24 @@ async function relatedGrid(entity, f, onSaved) {
   if (!target) return null;
   const val = entity.fields[f.name];
   const linked = (Array.isArray(val) ? val : [val]).filter(Boolean);
+  const sub = subtableOf(f, target);
   const rows = linked.length
-    ? (await api('POST', `/tables/${target.id}/query`, { where: [['id', 'in', linked.map((s) => s.id)]] })).items
+    ? (await api('POST', `/tables/${target.id}/query`, { where: [['id', 'in', linked.map((s) => s.id)], ...sub.filter], ...(sub.sort.length ? { sort: sub.sort } : {}) })).items
     : [];
-  const shownCols = new Set(visibleCols(target));
-  const cols = target.fields.filter((c) => shownCols.has(c.name) && c.type !== 'document' && c.name !== f.inverseField);
+  const eligible = target.fields.filter((c) => c.type !== 'document' && c.name !== f.inverseField);
+  const shownCols = new Set(sub.fields ?? visibleCols(target));
+  const cols = eligible.filter((c) => shownCols.has(c.name));
   const colCount = cols.length + 2;
+  const filtered = sub.filter.length > 0;
+  const tally = filtered ? `${rows.length} / ${linked.length}` : `${rows.length}`;
+  const openPop = document.querySelector('.subtable-popover');
+  if (openPop?.subtableOf === f.id) openPop.querySelector('.filter-total')?.replaceChildren(`${rows.length} of ${linked.length} ${target.term.plural}`);
+  const eye = el('button', { class: 'btn btn-sm btn-ghost-secondary eye-btn', type: 'button', title: `Show / hide fields and filter ${f.name}`, 'aria-label': `Show, hide and filter ${f.name}` }, eyeGlyph());
+  eye.addEventListener('click', (e) => {
+    e.stopPropagation();
+    subtablePopover(eye, entity.dbId, f, target, eligible, [...shownCols], onSaved)
+      ?.querySelector('.filter-total')?.replaceChildren(`${rows.length} of ${linked.length} ${target.term.plural}`);
+  });
 
   const link = async (targets) => {
     await api('POST', `/entities/${entity.id}/link`, { field: f.name, targets });
@@ -11404,10 +11419,11 @@ async function relatedGrid(entity, f, onSaved) {
           }),
         }, '+ Link existing'))));
 
-  return el('section', { class: 'related-section' },
+  return el('section', { class: 'related-section', dataset: { field: f.id } },
     el('div', { class: 'related-head' },
       el('span', { class: 'related-name' }, f.name),
-      el('span', { class: 'related-count' }, `${rows.length}`),
+      el('span', { class: 'related-count', title: filtered ? `${rows.length} of ${linked.length} ${target.term.plural} match the subtable filter` : null }, tally),
+      eye,
       el('a', { class: 'panel-link', href: `#/table/${target.id}` }, `${target.qualified} →`)),
     rows.length
       ? el('div', { class: 'card' },
@@ -11421,6 +11437,62 @@ async function relatedGrid(entity, f, onSaved) {
         el('table', { class: 'table table-sm wv-grid' }, body)));
 }
 
+function subtableOf(f, target) {
+  const sub = f.subtable ?? {};
+  const known = (name) => name === 'id' || name === 'publicId' || target.fields.some((c) => c.name === String(name).split('.')[0]);
+  return {
+    fields: Array.isArray(sub.fields) ? sub.fields : null,
+    filter: (sub.filter ?? []).filter((t) => !Array.isArray(t) || typeof t[0] !== 'string' || known(t[0])),
+    sort: sub.sort ?? [],
+  };
+}
+const chipTriple = (target, t) => Array.isArray(t) && t[1] === 'in' && Array.isArray(t[2])
+  && target.fields.some((c) => c.name === t[0] && isFilterField(c));
+function subtableChips(target, filter) {
+  const out = {};
+  for (const t of filter) {
+    if (!chipTriple(target, t)) continue;
+    const c = target.fields.find((x) => x.name === t[0]);
+    out[c.name] = c.type === 'toggle' ? filterStates(c).filter((st) => t[2].includes(st.on)).map((st) => st.name) : [...t[2]];
+  }
+  return out;
+}
+let subtableWrites = Promise.resolve();
+function subtablePopover(anchor, ownerId, f, target, eligible, shown, redraw) {
+  const live = () => allTables().find((d) => d.id === ownerId)?.fields.find((x) => x.id === f.id) ?? f;
+  const write = (patch) => {
+    subtableWrites = subtableWrites.catch(() => {}).then(async () => {
+      const next = { ...(live().subtable ?? {}), ...patch(live().subtable ?? {}) };
+      await api('PATCH', `/tables/${ownerId}/fields/${encodeURIComponent(f.id)}`, { config: { subtable: next } });
+      await loadSchema();
+      await redraw();
+    });
+    return subtableWrites;
+  };
+  const visible = new Set(shown);
+  const fieldRow = (c) => el('div', { class: 'table-field-row', dataset: { field: c.name } },
+    el('span', { class: 'field-reorder-gap', 'aria-hidden': 'true' }),
+    el('label', { class: 'chip-pop-row eye-row' },
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: visible.has(c.name) ? '' : undefined, onchange: (e) => {
+        if (e.target.checked) visible.add(c.name); else visible.delete(c.name);
+        write(() => ({ fields: eligible.filter((x) => visible.has(x.name)).map((x) => x.name) })).catch((err) => toast(err.message, true));
+      } }),
+      el('span', { class: 'eye-label' }, c.name)));
+  const strip = filterStrip(target, null, {
+    filters: subtableChips(target, f.subtable?.filter ?? []),
+    save: (next) => write((cur) => ({ filter: [...(cur.filter ?? []).filter((t) => !chipTriple(target, t)), ...(filterTriples(target, next) ?? [])] })),
+  });
+  const rows = [tableControlHeader(f.name, () => pop?.remove()),
+    el('div', { class: 'eye-head' }, 'Fields'),
+    el('div', { class: 'table-field-list' }, ...eligible.map(fieldRow)),
+    ...(strip ? [el('hr'), el('div', { class: 'eye-head' }, 'Filter'), strip] : [])];
+  const pop = tableControlPopover(anchor, { id: f.id }, 'subtable-popover', rows, { selector: `.related-section[data-field="${CSS.escape(f.id)}"] .eye-btn` });
+  if (!pop) return null;
+  pop.subtableOf = f.id;
+  pop.classList.add('table-fields-popover', 'table-filter-popover');
+  pop.reposition();
+  return pop;
+}
 
 function droppedText(n) {
   return `${n} older ${n === 1 ? 'entry' : 'entries'} not kept`;

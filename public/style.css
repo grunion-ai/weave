@@ -921,6 +921,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .related-head { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; }
 .related-name { font-size: var(--fs-secondary); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .related-count { font-size: var(--fs-meta); color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); border-radius: 999px; padding: 0 6px; }
+.related-head .eye-btn { padding: 2px 4px; min-height: 0; }
 .related-section .add-entity-row td { display: flex; }
 .related-section .wv-grid tr.add-entity-row td { position: static; }
 .related-section .add-entity-btn { width: auto; }
@@ -2419,3 +2420,5 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .desc-info, .view-title-row > .desc-info { min-width: 44px; min-height: 44px; }
   .view-title-row > .icon-btn { margin-right: 6px; }
 }
+.subtable-popover { overflow-y: auto; }
+.subtable-config { margin: 0; padding: 8px 10px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); font-size: var(--fs-meta); white-space: pre-wrap; }
