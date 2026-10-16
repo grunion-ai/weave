@@ -4144,6 +4144,7 @@ function tableViewButton(ref) {
     const name = ref.db.view?.name || 'Standard';
     btn.querySelector('.table-control-label').textContent = name;
     btn.setAttribute('aria-label', `View: ${name}`);
+    btn.title = btn.getAttribute('aria-label');
   };
   btn.label();
   btn.addEventListener('click', () => {
@@ -4200,6 +4201,7 @@ function tableDensityButton(ref) {
   btn.label = (mode = gridDensity(ref.db)) => {
     btn.querySelector('.table-control-label').textContent = DENSITY_LABELS[mode];
     btn.setAttribute('aria-label', `Row density: ${DENSITY_LABELS[mode]}`);
+    btn.title = btn.getAttribute('aria-label');
   };
   btn.label();
   btn.addEventListener('click', () => {
@@ -4558,6 +4560,7 @@ function tableChrome(db, trashCount) {
       (() => {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
         eye.setAttribute('aria-label', 'Show or hide fields');
+        eye.title = 'Show or hide fields';
         eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db)
           ? phoneRowPopover(eye, ref.db) : fieldVisibilityPopover(eye, ref.db, ref.trashCount)));
         return eye;
