@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 await import('../public/setup-core.js');
-const { begin, reduce, railState, STEPS } = globalThis.WeaveSetup;
+const { begin, reduce, progress, STEPS, STEP_NAMES } = globalThis.WeaveSetup;
 
 const WS = { kind: 'workspace', name: 'acme' };
 const INVITE = { kind: 'invite', name: 'acme' };
@@ -127,8 +127,28 @@ test('back never re-runs a build and never leaves a signed-in person on the acco
   }
 });
 
-test('rail: four labels, done before the current one', () => {
-  const s = reduce(reduce(begin(PEOPLE.newcomer), { type: 'next', name: 'H', slug: 'h' }), { type: 'next' });
-  assert.deepEqual(railState(s).map((r) => [r.label, r.state]), [['Account', 'done'], ['Workspace', 'done'], ['Template', 'on'], ['Agent', 'todo']]);
-  assert.deepEqual(railState({ step: 'done' }).map((r) => r.state), ['done', 'done', 'done', 'done']);
+test('progress: the donut starts at a quarter and moves a quarter a step', () => {
+  const ws = begin(PEOPLE.newcomer);
+  const work = reduce(ws, { type: 'next', name: 'H', slug: 'h' });
+  const built = reduce(reduce(work, { type: 'next', template: 'crm' }), { type: 'built', made: { name: 'h' } });
+  assert.deepEqual([begin(PEOPLE.stranger), ws, work, built, reduce(built, { type: 'skip' })].map((s) => progress(s).at), [0.25, 0.5, 0.75, 1, 1]);
+  assert.deepEqual([begin(PEOPLE.stranger), ws, work, built].map((s) => progress(s).n), [1, 2, 3, 4]);
+  assert.deepEqual(progress(work), { at: 0.75, n: 3, of: 4, id: 'work', label: STEP_NAMES.work });
+});
+
+test('progress: the build carries the donut from three quarters to full as its checklist lands', () => {
+  const build = reduce(reduce(reduce(begin(PEOPLE.newcomer), { type: 'next', name: 'H', slug: 'h' }), { type: 'next', template: 'crm' }), { type: 'skip' });
+  assert.equal(build.step, 'build');
+  assert.deepEqual([0, 1, 2, 4].map((done) => progress(build, { done, of: 4 }).at), [0.75, 0.8125, 0.875, 1]);
+  assert.equal(progress(build).at, 0.75, 'no checklist yet');
+});
+
+test('progress: list and closed pages carry no donut', () => {
+  assert.equal(progress(begin(PEOPLE.returning)), null);
+  assert.equal(progress(begin(PEOPLE.closed)), null);
+});
+
+test('no step is called Template', () => {
+  assert.ok(!Object.values(STEP_NAMES).some((n) => /template/i.test(n)));
+  assert.deepEqual(Object.keys(STEP_NAMES), ['account', 'workspace', 'work', 'agent']);
 });

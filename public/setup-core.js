@@ -1,10 +1,7 @@
 (function (root) {
-  const RAIL = [
-    { id: 'account', label: 'Account' },
-    { id: 'workspace', label: 'Workspace' },
-    { id: 'work', label: 'Template' },
-    { id: 'agent', label: 'Agent' },
-  ];
+  const STEP_NAMES = { account: 'Account', workspace: 'Workspace', work: 'Your work', agent: 'AI app' };
+  const ORDER = Object.keys(STEP_NAMES);
+  const AT = { account: 'account', workspace: 'workspace', work: 'work', build: 'work', agent: 'agent', done: 'agent' };
   const STEPS = ['account', 'list', 'closed', 'workspace', 'work', 'build', 'agent', 'done'];
   const SLUG_CODES = new Set(['slug_taken', 'slug_reserved', 'slug_invalid']);
   const SIGNIN_CODES = new Set(['signin_failed', 'signin_unverified', 'provider_down', 'signin_expired']);
@@ -59,10 +56,12 @@
     }
   }
 
-  function railState(s) {
-    const order = RAIL.map((r) => r.id);
-    const pos = { account: 0, list: 1, closed: 1, workspace: 1, work: 2, build: 2, agent: 3, done: 4 }[s.step];
-    return order.map((id, i) => ({ id, label: RAIL[i].label, state: i < pos ? 'done' : i === pos ? 'on' : 'todo' }));
+  function progress(s, build = null) {
+    const id = AT[s.step];
+    if (!id) return null;
+    const n = ORDER.indexOf(id) + 1;
+    const extra = s.step === 'build' && build?.of ? Math.min(1, build.done / build.of) / ORDER.length : 0;
+    return { at: n / ORDER.length + extra, n, of: ORDER.length, id, label: STEP_NAMES[id] };
   }
 
   function exits(s) {
@@ -74,5 +73,5 @@
     return out;
   }
 
-  root.WeaveSetup = { RAIL, STEPS, begin, reduce, railState, exits };
+  root.WeaveSetup = { STEP_NAMES, STEPS, begin, reduce, progress, exits };
 })(globalThis);

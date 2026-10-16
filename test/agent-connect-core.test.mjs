@@ -14,6 +14,7 @@ test('catalog: chat apps come first, every tool has steps, an icon and something
   for (const t of TOOLS) {
     assert.ok(t.steps.length >= 2, t.id);
     assert.match(t.icon, /^lucide:[a-z0-9-]+$/, t.id);
+    assert.match(t.hue, /^#[0-9a-f]{6}$/, `${t.id} carries its tile colour as data`);
     assert.ok(guide(t.id, { url: URL_, workspace: 'harbor' }).value.includes(URL_), `${t.id} copies the address`);
     for (const line of [...t.steps, t.note ?? '']) {
       assert.ok(!/—|!|\bsimply\b|\bjust\b|\beasy\b/i.test(line), `${t.id}: ${line}`);
