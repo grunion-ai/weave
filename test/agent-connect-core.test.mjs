@@ -39,13 +39,32 @@ test('chat apps copy the bare address, Codex copies its add command, every other
 
 test('plan limits are said plainly where a vendor gates custom MCP servers', () => {
   const note = (id) => TOOLS.find((t) => t.id === id).note;
+  const pitch = (id) => TOOLS.find((t) => t.id === id).pitch;
   assert.match(note('chatgpt'), /Business, Enterprise or Edu/);
-  assert.match(note('chatgpt'), /Pro .*read/);
+  assert.match(note('chatgpt'), /Pro reads only/);
   assert.match(note('chatgpt'), /Plus and Free cannot/);
-  assert.match(note('gemini'), /personal Google account/);
+  assert.match(note('gemini'), /Personal Google accounts only/);
   assert.match(note('gemini'), /Work and school accounts cannot/);
+  assert.match(pitch('chatgpt'), /^Business, Enterprise or Edu\. Pro can only read\.$/, 'the ChatGPT tile names the plans that can connect');
+  assert.match(pitch('gemini'), /^Personal Google accounts in the US only\.$/, 'the Gemini tile names the accounts that can connect');
+  assert.match(pitch('claude'), /Any plan/);
   assert.match(TOOLS.find((t) => t.id === 'antigravity').steps.join(' '), /Authenticate/);
   assert.match(TOOLS.find((t) => t.id === 'codex').steps.join(' '), /codex mcp login weave/);
+});
+
+const words = (text) => String(text ?? '').trim().split(/\s+/).filter(Boolean).length;
+
+test('the connect step reads short: a one-line tile pitch, steps of a dozen words, a note of twenty (Issue #954)', () => {
+  for (const t of TOOLS) {
+    assert.ok(words(t.pitch) <= 10, `${t.id} pitch: ${t.pitch}`);
+    assert.ok(words(t.where) <= 5, `${t.id} where: ${t.where}`);
+    assert.ok(t.steps.length <= 6, `${t.id} has at most six steps`);
+    for (const step of t.steps) assert.ok(words(step) <= 12, `${t.id} step: ${step}`);
+    if (t.note) assert.ok(words(t.note) <= 20, `${t.id} note: ${t.note}`);
+    for (const line of [t.where, t.pitch, ...t.steps, t.note ?? '']) assert.ok(!/\u2014|\u2013/.test(line), `${t.id}: no em or en dash in ${line}`);
+  }
+  const all = TOOLS.reduce((n, t) => n + words(t.where) + words(t.pitch) + t.steps.reduce((m, x) => m + words(x), 0) + words(t.note), 0);
+  assert.ok(all <= 370, `the catalog stays at 370 words or fewer, down from 608 (${all})`);
 });
 
 test('setup prompt: the text the eval tested, with only the address filled in', () => {

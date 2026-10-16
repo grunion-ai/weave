@@ -28,7 +28,7 @@
   [hidden] { display: none !important; }
   html, body { height: 100%; }
   body { margin: 0; background: var(--canvas); color: var(--body); font: 15px/1.5 var(--app); -webkit-font-smoothing: antialiased; }
-  .setup { min-height: 100%; display: grid; grid-template-columns: minmax(380px, 520px) minmax(0, 1fr); }
+  .setup { height: 100vh; overflow-y: auto; display: grid; align-items: start; grid-template-columns: minmax(380px, 520px) minmax(0, 1fr); }
   .pane { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 100vh; padding: 28px 40px 20px; }
   .brand { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; font-weight: 600; font-size: 20px; letter-spacing: -.02em; }
   .brand svg { width: 34px; height: 34px; }
@@ -42,7 +42,7 @@
   .progress-text { display: flex; flex-direction: column; line-height: 1.3; }
   .progress-of { color: var(--muted); font-size: 12.5px; }
   .progress-name { color: var(--ink); font-size: 15px; font-weight: 600; }
-  main { flex: 1; padding: 28px 0 12px; }
+  main { flex: 1 0 auto; padding: 28px 0 12px; }
   h1 { color: var(--ink); font-size: 26px; line-height: 1.2; letter-spacing: -.01em; margin: 0 0 8px; }
   main h2 { color: var(--ink); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; margin: 22px 0 8px; }
   .lead { margin: 0 0 20px; color: var(--body); }
@@ -113,7 +113,6 @@
   .btn-link.strong:hover { text-decoration: underline; color: var(--accent); }
   .bypass { margin-top: 22px; }
   .apps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .limits { margin: 16px 0 0; font-size: 12.5px; }
   .copybox pre.prompt { max-height: 11.5em; overflow: auto; font: 13px/1.5 var(--app); word-break: normal; overflow-wrap: anywhere; }
   .app { display: flex; gap: 12px; align-items: center; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font: inherit; color: var(--body); cursor: pointer; transition: border-color .15s, transform .15s; }
   .app:hover { border-color: var(--muted); transform: translateY(-1px); }
@@ -156,7 +155,6 @@
   .link[data-state="waiting"] .app-tile:last-child { animation: breathe 1.8s ease-in-out infinite; }
   .link-text { margin: 0; color: var(--body); font-size: 14px; }
   .link[data-state="connected"] .link-text { color: var(--ok); font-weight: 600; font-size: 15px; }
-  .link-sub { margin: 2px 0 0; }
   .payoff { margin: 0 0 4px; padding: 16px; border-radius: 12px; background: var(--sunk); opacity: .72; transition: opacity .3s; }
   .payoff[data-ready] { opacity: 1; background: color-mix(in srgb, var(--accent) 9%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); animation: rise .4s ease-out .2s both; }
   .payoff h2 { margin: 0 0 2px; color: var(--ink); font-size: 15px; text-transform: none; letter-spacing: 0; }
@@ -198,7 +196,7 @@
     .app, .card { transition: none; }
   }
   @media (max-width: 860px) {
-    .setup { grid-template-columns: minmax(0, 1fr); }
+    .setup { height: auto; overflow: visible; grid-template-columns: minmax(0, 1fr); }
     .stage { display: none; }
     .pane { min-height: 100vh; border-right: 0; padding: 20px 20px 16px; }
     .chips { margin: 0 -20px 14px; padding: 2px 20px 4px; }

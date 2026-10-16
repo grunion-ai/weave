@@ -45,20 +45,18 @@
     },
     build: { claim: 'Claim {address}', table: 'Create {table}', rows: 'Add sample rows', door: 'Allow your AI app in', empty: 'Start an empty workspace' },
     agent: {
-      title: 'Your own agent',
-      lead: 'weave is AI native, and you bring the agent. We at weave do not believe you need another tool-specific agent, so weave does not ship one. Connect the agent you already use through a sign-in. weave never asks for or stores an API key.',
-      limits: 'ChatGPT and the Gemini app allow custom connectors only on some plans and accounts, and their steps say which. Any other agent can use the setup prompt.',
+      title: 'Your agent',
+      lead: 'Connect the agent you already use. You sign in; weave never asks for an API key.',
       chat: 'Chat apps',
       harnesses: 'Harnesses',
       change: 'Change app',
       copyAddress: 'Copy address',
       copyCommand: 'Copy command',
       copyPrompt: 'Copy setup prompt',
-      waiting: 'Waiting for {tool} to connect. This page updates on its own.',
+      waiting: 'Waiting for {tool} to connect.',
       connected: '{tool} is connected to {title}.',
-      connectedSub: 'Your first message is ready below.',
-      payoffTitle: 'Your first message',
-      payoffHint: 'Paste it into a new chat in {tool}.',
+      payoffTitle: 'First message',
+      payoffHint: 'Paste it into a new {tool} chat.',
       copyMessage: 'Copy message',
       skip: 'Skip for now',
     },
@@ -629,7 +627,6 @@
       };
       return [make('h1', {}, COPY.agent.title), make('p', { class: 'lead' }, COPY.agent.lead), errorBox(s.error),
         ...group(COPY.agent.chat, ['chat']), ...group(COPY.agent.harnesses, ['harness', 'other']),
-        make('p', { class: 'muted limits' }, COPY.agent.limits),
         make('div', { class: 'actions' }, skip)];
     }
     const kind = { prompt: COPY.agent.copyPrompt, command: COPY.agent.copyCommand, codex: COPY.agent.copyCommand, url: COPY.agent.copyAddress }[g.copy];
@@ -644,8 +641,7 @@
         make('span', { class: 'app-tile weave-tile' }, mark('var(--sunk)')),
         make('span', { class: 'wire', 'aria-hidden': 'true' }, make('span', { class: 'pulse' }), make('span', { class: 'check' })),
         appTile(g)),
-      make('p', { class: 'link-text status', 'data-state': connected ? 'connected' : 'waiting' }, connected ? fill(COPY.agent.connected, { tool: g.name, title }) : fill(COPY.agent.waiting, { tool: g.name })),
-      connected ? make('p', { class: 'muted link-sub' }, COPY.agent.connectedSub) : null);
+      make('p', { class: 'link-text status', 'data-state': connected ? 'connected' : 'waiting' }, connected ? fill(COPY.agent.connected, { tool: g.name, title }) : fill(COPY.agent.waiting, { tool: g.name })));
     const payoff = make('section', { class: 'payoff', 'data-ready': connected ? '' : null },
       make('h2', {}, COPY.agent.payoffTitle),
       make('p', { class: 'muted' }, fill(COPY.agent.payoffHint, { tool: g.name })),
