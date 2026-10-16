@@ -1,1 +1,0 @@
-- The tab shows the weave mark in Safari: the server answers `/favicon.ico` with the built icon and serves every `.ico` as `image/x-icon`, and the setup, billing and not-found pages name the ICO beside the SVG icon the way the app shell does. (Issue #848)
