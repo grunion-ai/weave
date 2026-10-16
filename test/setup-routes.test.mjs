@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer, openSignupFromEnv } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
+import { createBilling, CLERK_API } from '../src/billing.js';
 import { startIdp } from './lib/idp.mjs';
 
 const hit = (port, host, method, path, { cookie, body, token, ua } = {}) => new Promise((resolve, reject) => {
@@ -25,7 +26,7 @@ const hit = (port, host, method, path, { cookie, body, token, ua } = {}) => new 
 });
 const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith(`${name}=`))?.split(';')[0];
 
-async function serve({ openSignup = { on: false } } = {}) {
+async function serve({ openSignup = { on: false }, billing = null } = {}) {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const dir = mkdtempSync(join(tmpdir(), 'weave-setup-'));
@@ -40,7 +41,7 @@ async function serve({ openSignup = { on: false } } = {}) {
   main.redeemIdentityInvite(main.linkIdentity('Kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
   main.setRequireAuth(true);
   main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, openSignup, limits: { options: 1000, failed: 1000, slugs: 1000 } });
+  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, openSignup, billing, limits: { options: 1000, failed: 1000, slugs: 1000 } });
   const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
   const apex = at('weave.test');
   const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
@@ -210,5 +211,61 @@ test('start sign-in: failures come back to the setup pane as a code, and next ke
     s.idp.tamper('signature');
     const forged = await s.signIn({ sub: 'user_k' });
     assert.deepEqual([forged.res.status, forged.res.headers.location], [302, '/start?error=signin_unverified']);
+  } finally { s.stop(); }
+});
+
+const clerkAt = (routes) => async (url, init = {}) => {
+  const hit = routes[`${init.method ?? 'GET'} ${String(url).slice(CLERK_API.length).split('?')[0]}`];
+  const [status, body] = hit ?? [404, { errors: [{ code: 'resource_not_found' }] }];
+  return new Response(JSON.stringify(body), { status });
+};
+const rpc = (method, params = {}) => ({ jsonrpc: '2.0', id: 1, method, params });
+
+test('billing on: a workspace made at /start opens on a trial, the AI app works, and /api/start names the trial and the wait', async () => {
+  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', fetch: clerkAt({}) });
+  const s = await serve({ openSignup: { on: true, limit: 1 }, billing });
+  try {
+    const { cookie } = await s.signIn({ sub: 'user_ada', email: 'ada@example.com', email_verified: true });
+    const before = (await s.apex('GET', '/api/start', { cookie })).json();
+    assert.deepEqual([before.canCreate, before.waiting], [true, null]);
+    const made = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Ada Sales', slug: 'ada-sales', template: 'crm' } });
+    assert.equal(made.status, 201, made.text);
+    const after = (await s.apex('GET', '/api/start', { cookie })).json();
+    assert.equal(after.waiting, 'ada-sales', 'the person learns about the one-trial limit before naming a second workspace');
+    assert.equal(after.rows[0].trial.daysLeft, 14);
+    assert.ok(Date.parse(after.rows[0].trial.endsAt) > Date.now());
+    const handed = await s.apex('GET', `${after.rows[0].open}?to=billing`, { cookie });
+    assert.equal((await s.follow(handed.headers.location)).headers.location, '/billing', 'the waiting notice opens the workspace on its billing page');
+
+    const host = s.at('ada-sales.weave.test');
+    const token = s.idp.mint({ sub: 'user_ada' });
+    assert.equal((await host('POST', '/mcp', { token, ua: 'Claude-User', body: rpc('initialize') })).status, 200);
+    const wrote = await host('POST', '/mcp', { token, body: rpc('tools/call', { name: 'weave_create_entity', arguments: { db: made.json().table, name: 'Acme Corp' } }) });
+    assert.equal(wrote.status, 200, wrote.text);
+    assert.notEqual(wrote.json().result.isError, true, wrote.text);
+    assert.equal((await s.apex('GET', '/api/start/workspaces/ada-sales/agent', { cookie })).json().connected, true);
+
+    const second = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Second', slug: 'ada-two' } });
+    assert.deepEqual([second.status, second.json().code, second.json().waiting, second.json().billing], [402, 'plan-required', 'ada-sales', 'http://ada-sales.weave.test/billing']);
+  } finally { s.stop(); }
+});
+
+test('agent step: a call weave refused never counts as a connected AI app (Issue #915)', async () => {
+  const routes = { 'GET /users/user_bo/billing/subscription': [500, {}] };
+  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', trialDays: 0, fetch: clerkAt(routes) });
+  const s = await serve({ openSignup: { on: true, limit: 1 }, billing });
+  try {
+    const { cookie } = await s.signIn({ sub: 'user_bo', email: 'bo@example.com', email_verified: true });
+    assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Bo', slug: 'bo' } })).status, 201);
+    const host = s.at('bo.weave.test');
+    const token = s.idp.mint({ sub: 'user_bo' });
+    const seen = async () => (await s.apex('GET', '/api/start/workspaces/bo/agent', { cookie })).json().connected;
+    assert.equal((await host('POST', '/mcp', { token, body: rpc('initialize') })).status, 503);
+    assert.equal(await seen(), false, 'a 503 is not a connection');
+    delete routes['GET /users/user_bo/billing/subscription'];
+    billing.forget();
+    const read = await host('POST', '/mcp', { token, body: rpc('tools/list') });
+    assert.equal(read.status, 200, 'after the trial an unseated Architect\'s agent still reads (Issue #916)');
+    assert.equal(await seen(), true);
   } finally { s.stop(); }
 });

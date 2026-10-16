@@ -453,7 +453,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const unpaid = async (me) => {
         for (const [name, w] of live) {
           if (Weave.roleName(w.accountForIdentity(me)?.role) !== 'architect') continue;
-          if ((await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() })).plan == null) return name;
+          const { plan } = await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() });
+          if (plan == null || plan === 'trial') return name;
         }
         return null;
       };
@@ -540,7 +541,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const engine = [weave, root].find((e) => (account = e.accountForIdentity(who)));
         if (!engine) return deny(403, `This ${oidc.name} sign-in opens no account on this workspace. Ask an operator for an invite (weave account link <name>) and open it in a browser once; then sign in here again.`);
         oauth = { account, engine };
-        engine.noteAgent(account.id, rx.header('user-agent'));
       }
       path = '/api/mcp';
       mcpDoor = true;
@@ -591,6 +591,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return wall();
     }
     let unseated = null;
+    const seatRequired = () => {
+      const ws = weave.state.meta.name;
+      const ended = weave.state.meta.trialFrom && billing?.trialDays ? `The free trial of ${ws} has ended, so creating and editing there needs a paid seat.` : `Creating and editing in ${ws} needs a paid seat.`;
+      return unseated === 'architect'
+        ? `${ended} Reading and commenting stay free. Subscribe on the billing page to keep editing.`
+        : `${ended} Reading and commenting stay free. Ask an architect of ${ws} to subscribe on the billing page.`;
+    };
     if (billing && PAID_ROLES.has(role) && accountName && !['GET', 'HEAD', 'OPTIONS'].includes(rx.method) && !path.startsWith('/api/billing') && !path.startsWith('/api/auth/')) {
       try {
         if (!(await billing.standing({ workspace: weave.billing(), accounts: weave.listAccounts() })).seated(accountName)) { unseated = role; role = 'observer'; }
@@ -606,6 +613,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (cap && cap !== 'architect') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
+        || (unseated === 'architect' && path === '/api/mcp')
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
         || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
       const schemaWrite = !read && (
@@ -638,7 +646,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       })());
       const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
       if (observer && !read && !ownComment && !submits) {
-        if (unseated) return out(402, { error: `Creating and editing in ${weave.state.meta.name} needs a paid seat. Reading and commenting stay free; an architect can subscribe on the billing page.`, code: 'seat-required', billing: `${wsPrefix}/billing` }, { 'Cache-Control': 'no-store' });
+        if (unseated) return out(402, { error: seatRequired(), code: 'seat-required', billing: `${wsPrefix}/billing` }, { 'Cache-Control': 'no-store' });
         return role ? deny(403, 'An observer may read and comment, nothing else') : deny(401, 'This workspace has accounts: send a token or sign in to write');
       }
       if (cap === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
@@ -1052,8 +1060,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const found = findWorkspaces(logins);
           const { hubRoot, accountIn } = found;
           if (route === 'GET /api/start') {
-            const { rows, canCreate, accountName } = found;
-            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, openSignup: openSignup.on, accountName, base: baseDomain }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
+            const { canCreate, accountName } = found;
+            const trialOn = async (name) => {
+              const w = billing && hub.get(name);
+              if (!w || !billing.trial(w.billing())) return null;
+              return (await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() })).trial;
+            };
+            const rows = await Promise.all(found.rows.map(async (r) => (r.kind === 'workspace' ? { ...r, trial: await trialOn(r.name) } : r)));
+            let waiting = null;
+            if (billing && !found.creator && found.owner) {
+              try { waiting = await found.unpaid(found.owner); } catch (error) {
+                if (!(error instanceof BillingUnavailable)) throw error;
+              }
+            }
+            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/start/slug') {
             if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
@@ -1067,7 +1087,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const engine = account.viaRoot ? hubRoot : w;
             const host = String(w.state.meta.name).toLowerCase();
             const table = String(rx.searchParams?.get('table') ?? '');
-            const land = /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
+            const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
+              : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
             if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
             return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
@@ -1099,7 +1120,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 if (!(error instanceof BillingUnavailable)) throw error;
                 return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
               }
-              if (waiting) return out(402, { error: `${waiting} is still waiting on a plan. Subscribe to the solo plan on its billing page, then start another workspace.`, code: 'plan-required', waiting }, { 'Cache-Control': 'no-store' });
+              if (waiting) {
+                const at = baseDomain ? `${scheme}//${String(waiting).toLowerCase()}.${baseDomain}/billing` : `/w/${encodeURIComponent(waiting)}/billing`;
+                return out(402, { error: `${waiting} is still waiting on a plan. Subscribe to the solo plan on its billing page, then start another workspace.`, code: 'plan-required', waiting, billing: at }, { 'Cache-Control': 'no-store' });
+              }
             }
             const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
             if (body?.template && !template) return out(400, { error: `Unknown template '${body.template}'`, code: 'invalid' });
@@ -1118,6 +1142,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               w.state.meta.signup = { issuer: me.issuer, subject: me.subject };
               w.save();
             }
+            w.startTrial();
             let table = null;
             let templateError = null;
             const built = { space: template?.space ?? null, tables: [] };
@@ -1281,7 +1306,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const accounts = weave.listAccounts();
             const s = await billing.standing({ workspace: weave.billing(), accounts });
             return {
-              plan: s.plan, seats: s.seats, orgId: s.orgId, soloPlan: billing.soloPlan, teamPlan: billing.teamPlan, publishableKey: billing.publishableKey,
+              plan: s.plan, trial: s.trial ?? null, seats: s.seats, orgId: s.orgId, soloPlan: billing.soloPlan, teamPlan: billing.teamPlan, publishableKey: billing.publishableKey,
               me: accountName, architect,
               members: accounts.map((a) => ({ name: a.name, role: Weave.roleName(a.role), paid: PAID_ROLES.has(Weave.roleName(a.role)), seated: s.seated(a.name) })),
             };
@@ -1444,8 +1469,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'POST /api/mcp') {
           const msgs = Array.isArray(body) ? body : [body];
           const root = hub.get(hub.defaultName);
-          const caller = { role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto };
+          const seat = unseated ? `${seatRequired()} Billing: ${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/billing` : null;
+          const caller = { role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto, seat };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
+          if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0]);
         }

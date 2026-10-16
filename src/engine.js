@@ -3462,7 +3462,15 @@ export class Weave {
 
   billing() {
     const m = this.state.meta;
-    return { slug: m.name, name: m.title || m.name, createdAt: m.createdAt ?? null, billing: { orgId: m.billing?.orgId ?? null } };
+    return { slug: m.name, name: m.title || m.name, createdAt: m.createdAt ?? null, trialFrom: m.trialFrom ?? null, billing: { orgId: m.billing?.orgId ?? null } };
+  }
+
+  startTrial(at = nowISO()) {
+    if (!this.state.meta.trialFrom) {
+      this.state.meta.trialFrom = at;
+      this.save();
+    }
+    return this.state.meta.trialFrom;
   }
 
   linkBillingOrg(orgId) {

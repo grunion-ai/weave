@@ -88,6 +88,10 @@ async function api(method, path, body, { signal } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
+  if (!res.ok && data.code === 'seat-required') {
+    seatToast(data);
+    throw Object.assign(new Error(data.error), { status: res.status, code: data.code, shown: true });
+  }
   if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code });
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
@@ -131,11 +135,16 @@ function toastLayer() {
   return layer;
 }
 
-function toast(msg, isErr = false, action = null, { kind } = {}) {
+function seatToast(data) {
+  const href = data.billing ?? `${WS_PREFIX}/billing`;
+  return toast(data.error, true, { label: 'Open billing', run: () => { location.href = href; } }, { key: 'seat' });
+}
+
+function toast(msg, isErr = false, action = null, { kind, key = null } = {}) {
   kind ??= isErr ? 'err' : action ? 'success' : 'info';
   const text = String(msg);
   const layer = toastLayer();
-  const same = !action && toastsUp.find((t) => !t.action && t.kind === kind && t.msg === text);
+  const same = toastsUp.find((t) => t.kind === kind && t.msg === text && (key ? t.key === key : t.key || (!action && !t.action)));
   if (same) {
     same.count += 1;
     same.countEl.textContent = `×${same.count}`;
@@ -150,7 +159,7 @@ function toast(msg, isErr = false, action = null, { kind } = {}) {
   const node = el('div', { class: `wv-toast ${kind}` },
     iconEl(TOAST_ICON[kind], 'wv-toast-icon'),
     el('span', { class: 'wv-toast-msg' }, text, countEl));
-  const item = { msg: text, kind, action, node, countEl, count: 1, life, left: life };
+  const item = { msg: text, kind, action, key, node, countEl, count: 1, life, left: life };
   if (action) {
     node.append(el('button', {
       class: 'wv-toast-action', type: 'button',
@@ -1198,12 +1207,24 @@ function renderNav() {
       }
     }).catch(() => {});
   }
+  if (!state.trialChip) {
+    const chip = state.trialChip = el('a', { class: 'nav-trial', href: `${WS_PREFIX}/billing` });
+    chip.hidden = true;
+    api('GET', '/billing').then((b) => {
+      const left = b.trial?.daysLeft;
+      if (!left || left > TRIAL_NOTICE_DAYS) return;
+      chip.textContent = left === 1 ? 'Free trial ends today' : `Free trial ends in ${left} days`;
+      chip.title = `Editing stays open until ${new Date(b.trial.endsAt).toLocaleDateString()}. Subscribe on the billing page to keep it.`;
+      chip.hidden = false;
+    }).catch(() => {});
+  }
   const identity = el('div', { class: 'nav-identity' }, accountSlot(), personalMenuButton());
   document.querySelector('#sidebar .nav-pinned')?.remove();
-  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, state.healthChip, identity));
+  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, state.healthChip, state.trialChip, identity));
 }
 
 const SYSTEM_FOLD_KEY = 'system';
+const TRIAL_NOTICE_DAYS = 3;
 
 const ACCOUNT_ROLE_LABELS = { architect: 'Architect', editor: 'Editor', observer: 'Observer', admin: 'Architect', writer: 'Editor', reader: 'Observer' };
 
@@ -11752,7 +11773,8 @@ async function showHome() {
 const ROLE_LABELS = { editor: 'Editor, paid seat', observer: 'Observer, free', architect: 'Architect, paid' };
 function seatNote(billing) {
   if (!billing || billing.plan === 'comped') return null;
-  const lead = billing.plan === 'team' ? 'Inviting an Editor or Architect adds a seat to the team plan.'
+  const lead = billing.plan === 'trial' ? `The free trial runs until ${new Date(billing.trial.endsAt).toLocaleDateString()}: everyone can create and edit. After it, Editors and Architects need a plan.`
+    : billing.plan === 'team' ? 'Inviting an Editor or Architect adds a seat to the team plan.'
     : billing.plan === 'solo' ? 'The solo plan covers one paid seat: a second Editor or Architect needs the team plan.'
     : 'No plan covers this workspace yet, so Editors and Architects work as Observers.';
   return el('div', { class: 'wv-invite-note wv-seat-note' }, `${lead} Observers stay free. `, el('a', { href: `${WS_PREFIX}/billing` }, 'Billing'));

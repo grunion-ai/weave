@@ -138,7 +138,7 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
     assert.deepEqual([eve.res.status, eve.res.headers.location], [302, '/start']);
     assert.match([eve.res.headers['set-cookie']].flat().join('\n'), /wv_start=[\w-]{40,}; HttpOnly; SameSite=Lax; Path=\/; Max-Age=1800/);
     const list = (await s.apex('GET', '/api/start', { cookie: eve.cookie })).json();
-    assert.deepEqual(list.rows, [{ kind: 'workspace', name: 'acme', title: 'acme', login: 'eve', open: '/api/start/open/acme' }]);
+    assert.deepEqual(list.rows, [{ kind: 'workspace', name: 'acme', title: 'acme', login: 'eve', open: '/api/start/open/acme', trial: null }]);
     assert.deepEqual([list.signedIn, list.canCreate, list.accountName, list.base], [true, false, 'eve', 'weave.test']);
 
     const open = await s.apex('GET', list.rows[0].open, { cookie: eve.cookie });
@@ -208,7 +208,7 @@ const SOLO = [200, { subscription_items: [{ status: 'active', plan: { slug: 'sol
 
 test('start: with billing on, a new person creates a first workspace and is its Observer-only Architect until the solo plan', async () => {
   const routes = {};
-  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', fetch: clerkAt(routes) });
+  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', trialDays: 0, fetch: clerkAt(routes) });
   const s = await serve({ billing });
   try {
     const dana = await s.signInAtStart('user_dana', { email: 'dana@example.com', email_verified: true });

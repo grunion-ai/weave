@@ -24,6 +24,7 @@ COPY . .
 #   WEAVE_BILLING_SOLO_PLAN    slug of the Clerk Billing user plan for one paid seat (unset)
 #   WEAVE_BILLING_TEAM_PLAN    slug of the per-seat Clerk Billing organization plan (unset)
 #   WEAVE_BILLING_SINCE        workspaces created before this date are never billed (unset)
+#   WEAVE_TRIAL_DAYS           free trial for a workspace made at /start, 0 for none (14)
 #   WEAVE_MCP_ORIGINS          other origins the /mcp door answers on, comma separated (unset)
 #   WEAVE_ALLOWED_HOSTS        extra Host names served besides loopback and WEAVE_ORIGIN's host; others get 421 (unset)
 #   WEAVE_BASE_DOMAIN          each workspace also answers at <slug>.<base domain>     (unset)

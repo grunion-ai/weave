@@ -43,6 +43,7 @@ services:
       # WEAVE_BILLING_SOLO_PLAN: solo
       # WEAVE_BILLING_TEAM_PLAN: team
       # WEAVE_BILLING_SINCE: 2026-10-16T00:00:00Z
+      # WEAVE_TRIAL_DAYS: "14"
       # With a provider set, /mcp signs agents in through the browser; a second
       # domain for it on this service is listed here (Handbook, Door C).
       # WEAVE_MCP_ORIGINS: https://mcp.weave.example.com
