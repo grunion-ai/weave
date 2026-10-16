@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderMarkdown, renderDocumentPage, parseBlocks } from '../src/markdown.js';
 
 test('headings and paragraphs', () => {
@@ -101,4 +103,12 @@ test('hard line breaks: two trailing spaces or a backslash become <br>', () => {
   assert.match(renderMarkdown('> a  \n> b'), /a<br>/);
   assert.doesNotMatch(renderMarkdown('a\nb'), /<br>/);
   assert.doesNotMatch(renderMarkdown('a  '), /<br>/);
+});
+
+test('a mention-free document page carries no mention class, so no wait may key on the bare word', () => {
+  const page = renderDocumentPage({ title: 'T', subtitle: 'S', markdown: 'A plain paragraph with no chips.' });
+  assert.match(page, /mention/, 'the page script names .mention-caret even with nothing to mention');
+  assert.doesNotMatch(page, /class="mention/, 'and nothing on it is a chip');
+  const waiter = readFileSync(join(import.meta.dirname, 'slash-commands.test.mjs'), 'utf8');
+  assert.doesNotMatch(waiter, /includes\('mention'\)/, 'a doc.html wait on the bare word never waits, so the GET races the PUT');
 });
