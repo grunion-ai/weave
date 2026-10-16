@@ -82,15 +82,50 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
     if (url.pathname === '/npm/@clerk/clerk-js@6/dist/clerk.browser.js') {
       seen.clerkScript = (seen.clerkScript ?? 0) + 1;
       res.writeHead(200, { 'Content-Type': 'text/javascript', 'Access-Control-Allow-Origin': '*' });
-      return res.end(`window.Clerk = { user: null, load: async () => {}, unmountSignIn: (el) => el.replaceChildren(), mountSignIn: (el, o) => {
-        window.__clerkOptions = o;
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.textContent = 'Continue with Google';
-        b.dataset.fakeClerk = 'google';
-        b.onclick = () => { location.href = o.forceRedirectUrl; };
-        el.replaceChildren(b);
-      } };`);
+      return res.end(`(() => {
+        const form = (kind) => (el, o) => {
+          window.__clerkOptions = o;
+          window.__clerkMounted = kind;
+          const v = o.appearance?.variables ?? {};
+          const box = document.createElement('div');
+          box.dataset.fakeClerk = kind;
+          box.style.cssText = 'display:grid;gap:12px;font-family:' + (v.fontFamily ?? 'inherit') + ';color:' + (v.colorText ?? 'inherit');
+          const google = document.createElement('button');
+          google.type = 'button';
+          google.textContent = 'Continue with Google';
+          google.dataset.fakeClerk = 'google';
+          google.style.cssText = 'padding:9px 12px;border:1px solid color-mix(in srgb, ' + (v.colorNeutral ?? '#24292e') + ' 22%, transparent)' + ';border-radius:' + (v.borderRadius ?? '8px') + ';background:' + (v.colorBackground ?? '#fff') + ';color:inherit;font:inherit;font-weight:600;cursor:pointer';
+          google.onclick = () => { location.href = o.forceRedirectUrl; };
+          const or = document.createElement('div');
+          or.textContent = 'or';
+          or.style.cssText = 'text-align:center;font-size:13px;color:' + (v.colorTextSecondary ?? 'gray');
+          const label = document.createElement('label');
+          label.textContent = 'Email address';
+          label.style.cssText = 'display:grid;gap:4px;font-size:14px;font-weight:600';
+          const input = document.createElement('input');
+          input.type = 'email';
+          input.style.cssText = 'padding:9px 11px;border:1px solid color-mix(in srgb, ' + (v.colorNeutral ?? '#24292e') + ' 22%, transparent)' + ';border-radius:' + (v.borderRadius ?? '8px') + ';background:' + (v.colorInputBackground ?? '#fff') + ';color:inherit;font:inherit';
+          label.append(input);
+          const go = document.createElement('button');
+          go.type = 'button';
+          go.textContent = 'Continue';
+          go.style.cssText = 'padding:10px 12px;border:0;border-radius:' + (v.borderRadius ?? '8px') + ';background:' + (v.colorPrimary ?? '#3a5bc7') + ';color:' + (v.colorTextOnPrimaryBackground ?? '#fff') + ';font:inherit;font-weight:600';
+          box.append(google, or, label, go);
+          el.replaceChildren(box);
+        };
+        const unmount = (el) => { el.replaceChildren(); window.__clerkMounted = null; };
+        let ui = null;
+        const needsUi = (mount) => (el, o) => {
+          if (!ui) throw new Error('Clerk was not loaded with Ui components');
+          return mount(el, o);
+        };
+        window.Clerk = { user: null, load: async (o) => { ui = o?.ui?.ClerkUI ?? null; window.__clerkLoadedWithUi = !!ui; }, mountSignIn: needsUi(form('signin')), mountSignUp: needsUi(form('signup')), unmountSignIn: unmount, unmountSignUp: unmount };
+      })();`);
+    }
+    if (url.pathname === '/npm/@clerk/ui@1/dist/ui.browser.js') {
+      seen.clerkUi = (seen.clerkUi ?? 0) + 1;
+      res.writeHead(200, { 'Content-Type': 'text/javascript', 'Access-Control-Allow-Origin': '*' });
+      return res.end('window.__internal_ClerkUICtor = function ClerkUI() {};');
     }
     if (url.pathname === '/jwks') {
       seen.jwks += 1;

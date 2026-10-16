@@ -70,30 +70,62 @@ if (openHub) {
   };
   const pickWork = async (p, id) => {
     await step(p, 'work');
-    await p.click(`.pick[data-template="${id}"]`);
+    await p.click(`.card[data-template="${id}"]`);
     await go(p, 'next');
   };
+  const donut = (p) => p.locator('#progress').evaluate((n) => (n.hidden ? null : { at: Number(n.getAttribute('aria-valuenow')), name: n.querySelector('.progress-name').textContent }));
+  const stageArt = (p) => p.locator('#stage').evaluate((n) => n.innerHTML);
+  const catalog = (p, edit) => p.route('**/starter-core.js', async (r) => {
+    const res = await r.fetch();
+    await r.fulfill({ response: res, body: `${await res.text()}\n(${edit})(globalThis.WeaveStarters);` });
+  });
 
   test('guided, desktop: sign up, name, pick sales, watch the build, connect Claude like claude.ai does, land on the first table', async () => {
     const p = await page({ motion: 'no-preference' });
     person(openHub);
-    await signIn(p, openHub);
+    await p.goto(`${openHub.base}/start`);
+    await step(p, 'account');
+    const art = await stageArt(p);
+    assert.match(art, /picture class="radiate"/, 'the right pane carries the radiating-rings asset');
+    assert.deepEqual(await donut(p), { at: 25, name: 'Account' }, 'the donut starts at a quarter');
+    await go(p, 'signin');
     await nameIt(p, 'Ada Sales', 'ada-sales');
     await step(p, 'work');
-    assert.match(await p.locator('main h1').textContent(), /What kind of work will you track/);
-    assert.match(await p.locator('main .lead').textContent(), /template/, 'the step says it is a template setup');
-    assert.ok(await p.locator('.pick[data-template]').count() >= 4, 'a list of kinds of work, not three cards');
-    await p.click('.pick[data-template="crm"]');
-    assert.equal(await p.locator('#stage picture.radiate img[src="/brand/weave-radiate-light.svg"]').count(), 1, 'the non-workflow pane carries the radiating-rings marketing asset');
+    assert.equal((await donut(p)).at, 75);
+    assert.ok(!/template/i.test(await p.locator('#progress').textContent()), 'the step is not called Template');
+    assert.ok(await p.locator('.card[data-template]').count() >= 4, 'a gallery of kinds of work');
+    assert.equal(await p.locator('#work-details').count(), 0, 'no details before a pick');
+    await p.click('.card[data-template="crm"]');
+    const details = p.locator('#work-details');
+    await details.waitFor();
+    assert.deepEqual(await details.locator('.tables b').allTextContents(), ['Companies', 'Contacts'], 'the details list the tables the pick creates');
+    assert.match(await details.locator('.tables li').first().textContent(), /Website, Stage/, 'with their key fields');
+    assert.equal(await details.locator('.details-count').getAttribute('data-rows'), '2', 'and the sample-row count');
+    assert.match(await p.locator('main [data-go="next"]').textContent(), /Sales and clients/, 'the primary button names the pick');
+    assert.ok(await p.locator('main [data-go="next"]').isVisible(), 'Continue stays in view under a long gallery');
+    assert.equal(await stageArt(p), art, 'the right pane never changes');
     assert.equal(await p.locator('#stage img').evaluate((n) => n.complete && n.naturalWidth > 0), true, 'and it loads');
     await go(p, 'next');
     await step(p, 'build');
-    assert.equal(await p.locator('#stage .loom.weaving').count(), 1, 'the weave setup animation runs while the workspace builds');
+    assert.equal(await stageArt(p), art, 'no build animation on the right');
+    await p.waitForSelector('.checklist li[data-done]');
+    const mid = await donut(p);
+    assert.ok(mid.at > 75 && mid.at <= 100, `the donut carries the build (${mid.at})`);
+    assert.match(mid.name, /Ada Sales/);
     await step(p, 'agent');
-    const chat = await p.locator('.pick[data-tool]').evaluateAll((ns) => ns.slice(0, 2).map((n) => n.dataset.tool));
+    assert.equal((await donut(p)).at, 100);
+    assert.equal(await stageArt(p), art);
+    const chat = await p.locator('.app[data-tool]').evaluateAll((ns) => ns.slice(0, 2).map((n) => n.dataset.tool));
     assert.deepEqual(chat, ['claude', 'chatgpt'], 'chat apps lead the list');
     assert.equal(await p.locator('main [data-go="next"]').count(), 0, 'no way forward but a tool or skip');
-    await p.click('.pick[data-tool="claude"]');
+    await p.click('.app[data-tool="claude"]');
+    assert.equal(await p.locator('.chosen b').textContent(), 'Claude', 'the chosen app heads the step');
+    await p.click('main [data-go="change"]');
+    await p.click('.app[data-tool="claude"]');
+    assert.equal(await p.locator('main .btn-primary[data-copy]').count(), 1, 'one primary copy action before the connection');
+    assert.equal(await p.locator('.steps li[data-at] [data-copy="address"]').count(), 1, 'the copy sits on the step that asks for the address');
+    assert.equal(await p.locator('main [data-go="skip"]').count(), 1, 'one way to skip');
+    assert.equal(await p.locator('.payoff[data-ready]').count(), 0, 'the first message waits for the connection');
     const url = (await p.locator('.copybox code').first().textContent()).trim();
     assert.equal(url, `${openHub.base}/w/ada-sales/mcp`);
     assert.match(await p.locator('.copybox code').nth(1).textContent(), /walk me through the Sales|walk me through the People|walk me through/);
@@ -105,6 +137,9 @@ if (openHub) {
     assert.ok(!seen.schema?.isError, 'and can read the workspace');
     await p.waitForSelector('.status[data-state="connected"]', { timeout: 10000 });
     assert.match(await p.locator('.status').textContent(), /Claude is connected to Ada Sales/);
+    await p.waitForSelector('.link .check', { state: 'visible' });
+    assert.equal(await p.locator('.payoff[data-ready] .btn-primary[data-copy="first message"]').count(), 1, 'the first message is the payoff once connected');
+    assert.equal(await stageArt(p), art);
     await go(p, 'next');
     await step(p, 'done');
     await go(p, 'open');
@@ -120,18 +155,23 @@ if (openHub) {
     await signIn(p, openHub);
     await nameIt(p, 'Dog Rescue', 'dog-rescue');
     await step(p, 'work');
-    await p.click('.pick[data-template="other"]');
-    await go(p, 'next');
-    assert.equal(await p.locator('#work-other[aria-invalid="true"]').count(), 1, 'an empty description is refused in place');
+    await p.click('.card[data-template="empty"]');
+    assert.equal(await p.locator('#work-details #work-other').count(), 1, 'Empty opens an optional description inside its details');
     await p.fill('#work-other', 'dog adoptions, with families and visits');
     await go(p, 'next');
     await step(p, 'agent');
-    await p.click('.pick[data-tool="chatgpt"]');
+    const fits = () => p.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+    assert.ok(await fits(), 'the app grid fits the phone');
+    await p.click('.app[data-tool="chatgpt"]');
     assert.match(await p.locator('ol.steps').textContent(), /Add custom MCP server/);
+    assert.ok(await fits(), 'the steps fit the phone');
+    const copy = await p.locator('main [data-copy="address"]').boundingBox();
+    assert.ok(copy.x + copy.width <= p.viewportSize().width, 'the copy button fits the phone');
     assert.match(await p.locator('.copybox code').nth(1).textContent(), /for this: dog adoptions, with families and visits/);
     const w = await connectLikeChatApp(`${openHub.base}/w/dog-rescue/mcp`, CHAT_APPS.chatgpt);
     assert.equal(w.trace[0], 'initialize 401');
     await p.waitForSelector('.status[data-state="connected"]', { timeout: 10000 });
+    assert.ok(await fits(), 'the connected state fits the phone');
     await go(p, 'next');
     await step(p, 'done');
     const box = await p.locator('main [data-go="open"]').boundingBox();
@@ -171,7 +211,7 @@ if (openHub) {
     await nameIt(p, 'No Agent', 'no-agent');
     await pickWork(p, 'tasks');
     await step(p, 'agent');
-    await p.click('.pick[data-tool="cursor"]');
+    await p.click('.app[data-tool="cursor"]');
     assert.match(await p.locator('main [data-go="install"]').getAttribute('href'), /^cursor:\/\/anysphere\.cursor-deeplink\/mcp\/install\?name=weave&config=/);
     await go(p, 'skip');
     await step(p, 'done');
@@ -197,11 +237,12 @@ if (openHub) {
     await go(p, 'next');
     await step(p, 'work');
     await p.route('**/api/start/workspaces', (r) => r.abort());
-    await p.click('.pick[data-template="tasks"]');
+    await p.click('.card[data-template="tasks"]');
     await go(p, 'next');
     await step(p, 'work');
     assert.match(await p.locator('.alert').textContent(), /weave did not answer/);
-    assert.equal(await p.locator('.pick[data-template="tasks"]').getAttribute('aria-pressed'), 'true', 'the choice survives');
+    assert.equal(await p.locator('.card[data-template="tasks"]').getAttribute('aria-pressed'), 'true', 'the choice survives');
+    await p.waitForSelector('#work-details .tables');
     await p.unroute('**/api/start/workspaces');
     await p.route('**/api/start/workspaces', async (r) => {
       const res = await r.fetch();
@@ -235,7 +276,7 @@ if (openHub) {
     await signIn(p, closedHub);
     await step(p, 'closed');
     assert.match(await p.locator('main h1').textContent(), /invite only/);
-    assert.equal(await p.locator('#rail').isHidden(), true);
+    assert.equal(await p.locator('#progress').isHidden(), true, 'no donut off the setup steps');
     await p.context().close();
   });
 
@@ -261,22 +302,61 @@ if (openHub) {
     });
   }
 
-  test('Clerk in the pane: sign-up renders inside the left pane, styled, and returns to the next step', async () => {
+  test('Clerk in the pane: account creation renders inside the left pane, styled, switches to sign-in and returns to the next step', async () => {
     const p = await page();
     person(clerkHub);
     await p.goto(`${clerkHub.base}/start`);
     await step(p, 'account');
-    await p.waitForSelector('.pane #clerk-pane [data-fake-clerk="google"]');
+    await p.waitForSelector('.pane #clerk-pane [data-fake-clerk="signup"]');
     assert.equal(await p.locator('main [data-go="signin"]').isHidden(), true, 'the provider button steps aside for the mounted form');
-    const options = await p.evaluate(() => ({ ...window.__clerkOptions, appearance: !!window.__clerkOptions.appearance?.variables?.colorPrimary }));
-    assert.deepEqual([options.withSignUp, options.appearance], [true, true], 'one form signs up and signs in, in weave colours');
-    assert.match(options.forceRedirectUrl, /^\/api\/auth\/oidc\/start\?start=1&next=%2Fstart$/);
+    const options = () => p.evaluate(() => ({ mounted: window.__clerkMounted, ...window.__clerkOptions, appearance: !!window.__clerkOptions.appearance?.variables?.colorPrimary, footer: window.__clerkOptions.appearance?.elements?.footerAction?.display }));
+    const up = await options();
+    assert.deepEqual([up.mounted, up.appearance, up.footer], ['signup', true, 'none'], 'account creation first, in weave colours, with weave\'s own switch');
+    assert.equal(await p.evaluate(() => window.__clerkLoadedWithUi), true, 'clerk-js 6 is loaded with its UI bundle (Issue #922)');
+    assert.match(up.forceRedirectUrl, /^\/api\/auth\/oidc\/start\?start=1&next=%2Fstart$/);
+    assert.equal(up.signInForceRedirectUrl, up.forceRedirectUrl);
+    const h1 = await p.locator('main h1').textContent();
+    assert.equal(await p.locator('main [data-go="switch"]').getAttribute('data-to'), 'signin');
+    await p.click('main [data-go="switch"]');
+    await p.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
+    const inn = await options();
+    assert.equal(inn.mounted, 'signin');
+    assert.equal(inn.signUpForceRedirectUrl, inn.forceRedirectUrl);
+    assert.notEqual(await p.locator('main h1').textContent(), h1, 'the heading follows the form');
+    await p.click('main [data-go="switch"]');
+    await p.waitForSelector('#clerk-pane [data-fake-clerk="signup"]');
     await p.click('main [data-go="bypass"]');
     await p.waitForFunction(() => /setup%3Dskip/.test(window.__clerkOptions.forceRedirectUrl));
+    assert.equal(await p.evaluate(() => window.__clerkMounted), 'signup', 'the bypass keeps the form the person chose');
     await p.click('main [data-go="bypass"]');
     await p.waitForFunction(() => !/setup%3Dskip/.test(window.__clerkOptions.forceRedirectUrl));
     await p.click('#clerk-pane [data-fake-clerk="google"]');
     await step(p, 'workspace');
+    assert.equal((await donut(p)).at, 50);
+    await p.context().close();
+  });
+
+  test('Clerk in the pane: a Clerk build with no sign-up form mounts sign-in and hides the switch', async () => {
+    const p = await page();
+    person(clerkHub);
+    await p.route('**/clerk.browser.js', async (r) => {
+      const res = await r.fetch();
+      await r.fulfill({ response: res, body: `${await res.text()}\ndelete window.Clerk.mountSignUp;` });
+    });
+    await p.goto(`${clerkHub.base}/start`);
+    await p.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
+    assert.equal(await p.locator('main [data-go="switch"]').isHidden(), true);
+    await p.context().close();
+  });
+
+  test('Clerk in the pane: without the UI bundle Clerk cannot mount, so the provider button stays (Issue #922)', async () => {
+    const p = await page();
+    person(clerkHub);
+    await p.route('**/ui.browser.js', (r) => r.abort());
+    await p.goto(`${clerkHub.base}/start`);
+    await step(p, 'account');
+    await p.waitForSelector('main [data-go="signin"]:visible');
+    assert.equal(await p.locator('#clerk-pane').isHidden(), true);
     await p.context().close();
   });
 
@@ -288,8 +368,172 @@ if (openHub) {
     await step(p, 'account');
     await p.waitForSelector('main [data-go="signin"]:visible');
     assert.equal(await p.locator('#clerk-pane').isHidden(), true);
+    assert.equal(await p.locator('main [data-go="switch"]').isHidden(), true, 'no switch without the form');
     await go(p, 'signin');
     await step(p, 'workspace');
     await p.context().close();
+  });
+
+  test('gallery: categories become chips, a chip narrows the cards, and the details follow the pick', async () => {
+    const p = await page();
+    await catalog(p, `(S) => {
+      S.CATEGORIES = [{ id: 'personal', label: 'Personal', icon: 'lucide:user', blurb: 'Your own life' }, { id: 'team', label: 'Teams', icon: 'lucide:users', blurb: 'Work with others' }];
+      S.TEMPLATES.forEach((t, i) => { t.category = i % 2 ? 'team' : 'personal'; t.details = 'Details for ' + t.id + '.'; });
+    }`);
+    person(openHub);
+    await signIn(p, openHub);
+    await nameIt(p, 'Gallery', 'gallery-chips');
+    await step(p, 'work');
+    assert.deepEqual(await p.locator('.chip').allTextContents(), ['All', 'Personal', 'Teams']);
+    assert.deepEqual(await p.locator('.shelf:not(.fallback) h2').allTextContents(), ['Personal', 'Teams'], 'All shows each category as its own shelf');
+    const all = await p.locator('.card[data-template]:visible').count();
+    await p.click('.chip[data-category="team"]');
+    const team = await p.locator('.card[data-template]:visible').count();
+    assert.ok(team < all && team > 1, `${team} of ${all} cards`);
+    assert.equal(await p.locator('.shelf[data-category="personal"]').isHidden(), true);
+    await p.click('.shelf[data-category="team"] .card[data-template]');
+    const picked = await p.locator('.card[aria-pressed="true"]').getAttribute('data-template');
+    assert.equal(await p.locator('#work-details .details-lead').textContent(), `Details for ${picked}.`, 'the details text comes from the catalog');
+    await p.click('.chip[data-category="all"]');
+    assert.equal(await p.locator('#work-details').isVisible(), true, 'the pick stays open across chips');
+    await go(p, 'next');
+    await step(p, 'build');
+    await p.context().close();
+  });
+
+  test('gallery: a catalog without categories shows one shelf, no chips, and the blurb as details', async () => {
+    const p = await page();
+    await catalog(p, `(S) => { delete S.CATEGORIES; S.TEMPLATES.forEach((t) => { delete t.category; delete t.details; }); }`);
+    person(openHub);
+    await signIn(p, openHub);
+    await nameIt(p, 'Plain', 'gallery-plain');
+    await step(p, 'work');
+    assert.equal(await p.locator('.chip').count(), 0);
+    assert.equal(await p.locator('.shelf:not(.fallback)').count(), 1);
+    await p.click('.card[data-template="tasks"]');
+    assert.equal(await p.locator('#work-details .details-lead').textContent(), 'Tasks with status, due date and priority');
+    await p.context().close();
+  });
+
+  test('billing: a workspace waiting on a plan shows before the next one is named, and the trial shows on the last step', async () => {
+    const p = await page();
+    const who = person(openHub, { email: 'waits@example.com' });
+    await signIn(p, openHub, 'bypass');
+    await p.waitForURL(/\/w\/waits\/$/, { timeout: 15000 });
+    openHub.idp.signInBrowserAs(who);
+    await p.route('**/api/start', async (r) => {
+      const res = await r.fetch();
+      await r.fulfill({ response: res, json: { ...(await res.json()), waiting: 'waits' } });
+    });
+    await p.goto(`${openHub.base}/start`);
+    await step(p, 'list');
+    const note = p.locator('.alert[data-code="waiting"]');
+    assert.match(await note.textContent(), /waits needs a plan/);
+    assert.match(await note.locator('a[data-go="billing"]').getAttribute('href'), /^\/api\/start\/open\/waits\?to=billing$/);
+    assert.equal(await p.locator('main [data-go="new"]').count(), 0, 'no create while the first workspace waits');
+    await p.goto(`${openHub.base}/start?setup=new`);
+    await step(p, 'workspace');
+    assert.equal(await p.locator('.alert[data-code="waiting"]').count(), 1);
+    assert.equal(await p.locator('input[name="name"]').count(), 0, 'nothing to name until the plan is in');
+    await p.unroute('**/api/start');
+    await p.route('**/api/start/workspaces', async (r) => {
+      const res = await r.fetch();
+      await r.fulfill({ response: res, json: { ...(await res.json()), trial: { endsAt: '2026-10-30T00:00:00Z', daysLeft: 13 } } });
+    });
+    await p.goto(`${openHub.base}/start?setup=new`);
+    await nameIt(p, 'Trial', 'trial-days');
+    await pickWork(p, 'tasks');
+    await step(p, 'agent');
+    await go(p, 'skip');
+    await step(p, 'done');
+    assert.equal(await p.locator('.trial').textContent(), '13 days left in your trial');
+    await p.context().close();
+  });
+
+  const visibleCards = (p) => p.locator('.card[data-template]:visible').evaluateAll((ns) => ns.map((n) => n.dataset.template));
+
+  test('gallery search: words match across titles, blurbs, categories and table names, ignoring case and accents, and keep the grouping', async () => {
+    const p = await page();
+    await catalog(p, `(S) => {
+      S.CATEGORIES = [{ id: 'personal', label: 'Personal', icon: 'lucide:user', blurb: 'Your own life' }, { id: 'business', label: 'Business', icon: 'lucide:briefcase', blurb: 'Work' }];
+      S.TEMPLATES.forEach((t) => { t.category = ['finance', 'tasks', 'home'].includes(t.id) ? 'personal' : 'business'; });
+      delete S.searchText;
+    }`);
+    person(openHub);
+    await signIn(p, openHub);
+    await nameIt(p, 'Search', 'gallery-search');
+    await step(p, 'work');
+    const all = (await visibleCards(p)).length;
+    await p.fill('#work-search', 'RÉCRUITING interviews');
+    const hits = (await visibleCards(p)).filter((id) => id !== 'empty' && id !== 'basic');
+    assert.ok(hits.includes('recruiting') && hits.length < all - 2, `every word must match, case and accents folded, table names included (${hits})`);
+    assert.ok(!hits.includes('finance') && !hits.includes('tasks'));
+    assert.ok((await p.locator('.shelf:not(.fallback):visible h2').allTextContents()).every((h) => h === 'Business'), 'matches keep their category');
+    await p.fill('#work-search', 'personal');
+    assert.ok((await visibleCards(p)).includes('finance'), 'the category label is searchable');
+    await p.press('#work-search', 'Escape');
+    assert.equal(await p.inputValue('#work-search'), '');
+    assert.equal((await visibleCards(p)).length, all, 'Escape clears the search');
+    assert.equal((await visibleCards(p)).at(-1 - (await p.locator('.card[data-template="basic"]').count())), 'empty', 'the fallbacks stay pinned at the end');
+    await p.context().close();
+  });
+
+  test('gallery search: no match leaves only Empty and Basic, and Empty carries the query', async () => {
+    const p = await page();
+    await catalog(p, `(S) => { S.TEMPLATES.push({ ...S.TEMPLATES.find((t) => t.id === 'tasks'), id: 'basic', title: 'Basic', work: 'Basic', blurb: 'Notes and tasks in one table' }); }`);
+    person(openHub);
+    await signIn(p, openHub);
+    await nameIt(p, 'Nothing', 'gallery-nothing');
+    await step(p, 'work');
+    assert.equal(await p.locator('.shelf:not(.fallback) .card[data-template="basic"]').count(), 0, 'Basic sits with the fallbacks, not in a category');
+    await p.fill('#work-search', 'submarine sonar');
+    assert.deepEqual(await visibleCards(p), ['empty', 'basic'], 'only the two fallbacks');
+    assert.match(await p.locator('.no-match').textContent(), /submarine sonar/);
+    await p.click('.card[data-template="empty"]');
+    assert.equal(await p.inputValue('#work-other'), 'submarine sonar', 'the query becomes the description');
+    await go(p, 'next');
+    await step(p, 'build');
+    await p.context().close();
+  });
+
+  test('gallery search: a catalog without Basic shows Empty alone as the fallback', async () => {
+    const p = await page();
+    await catalog(p, `(S) => { S.TEMPLATES.splice(0, S.TEMPLATES.length, ...S.TEMPLATES.filter((t) => t.id !== 'basic')); }`);
+    person(openHub);
+    await signIn(p, openHub);
+    await nameIt(p, 'No basic', 'gallery-nobasic');
+    await step(p, 'work');
+    await p.fill('#work-search', 'zzzz');
+    assert.deepEqual(await visibleCards(p), ['empty']);
+    await p.context().close();
+  });
+
+  test('gallery search: pick from the keyboard, Enter picks the first match and arrows move between cards', async () => {
+    const p = await page({ phone: true });
+    person(openHub);
+    await signIn(p, openHub);
+    await nameIt(p, 'Keys', 'gallery-keys');
+    await step(p, 'work');
+    await p.focus('#work-search');
+    await p.waitForFunction(() => { const top = document.getElementById('work-search').getBoundingClientRect().top; return top >= 0 && top < innerHeight / 3; });
+    await p.keyboard.type('candidates');
+    assert.ok(await p.locator('.card[data-template]:visible').first().evaluate((n) => n.getBoundingClientRect().top < innerHeight * 0.55), 'the first match shows above where the keyboard rises');
+    const top = (await visibleCards(p))[0];
+    await p.keyboard.press('Enter');
+    assert.equal(await p.locator('.card[aria-pressed="true"]').getAttribute('data-template'), top, 'Enter picks the first match');
+    assert.equal(await p.evaluate(() => document.activeElement.dataset.template), top);
+    await p.keyboard.press('ArrowDown');
+    assert.notEqual(await p.evaluate(() => document.activeElement.dataset.template), top, 'ArrowDown moves on');
+    await p.keyboard.press('ArrowUp');
+    await p.keyboard.press('ArrowUp');
+    assert.equal(await p.evaluate(() => document.activeElement.id), 'work-search', 'ArrowUp from the first card returns to the search');
+    await p.keyboard.press('Escape');
+    await p.keyboard.press('ArrowDown');
+    const first = await p.evaluate(() => document.activeElement.dataset.template);
+    await p.keyboard.press('Enter');
+    assert.equal(await p.locator('.card[aria-pressed="true"]').getAttribute('data-template'), first, 'Enter on a card picks it');
+    await go(p, 'next');
+    await step(p, 'build');
+    await p.close();
   });
 }

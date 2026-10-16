@@ -2,6 +2,7 @@
   const TOOLS = [
     {
       id: 'claude',
+      hue: '#d97757',
       name: 'Claude',
       where: 'claude.ai or the Claude app',
       kind: 'chat',
@@ -19,6 +20,7 @@
     },
     {
       id: 'chatgpt',
+      hue: '#10a37f',
       name: 'ChatGPT',
       where: 'chatgpt.com',
       kind: 'chat',
@@ -36,6 +38,7 @@
     },
     {
       id: 'gemini',
+      hue: '#4c7dea',
       name: 'Gemini',
       where: 'gemini.google.com',
       kind: 'chat',
@@ -51,6 +54,7 @@
     },
     {
       id: 'perplexity',
+      hue: '#20808d',
       name: 'Perplexity',
       where: 'perplexity.ai',
       kind: 'chat',
@@ -66,6 +70,7 @@
     },
     {
       id: 'cursor',
+      hue: '#5b6b82',
       name: 'Cursor',
       where: 'the Cursor editor',
       kind: 'editor',
@@ -80,6 +85,7 @@
     },
     {
       id: 'vscode',
+      hue: '#2f80ed',
       name: 'VS Code',
       where: 'GitHub Copilot in VS Code',
       kind: 'editor',
@@ -94,6 +100,7 @@
     },
     {
       id: 'claude-code',
+      hue: '#c4683f',
       name: 'Claude Code',
       where: 'a terminal',
       kind: 'terminal',
@@ -106,6 +113,7 @@
     },
     {
       id: 'other',
+      hue: '#6b7280',
       name: 'Something else',
       where: 'any AI app that accepts custom connectors',
       kind: 'other',
