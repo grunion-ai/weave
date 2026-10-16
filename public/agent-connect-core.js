@@ -1,10 +1,24 @@
 (function (root) {
+  const SETUP_PROMPT = [
+    "Connect yourself to my weave workspace.",
+    "",
+    "Its MCP address is {URL}",
+    "",
+    "weave is a remote MCP server (Streamable HTTP). It signs people in with OAuth, so there is no API key and you must never ask me for a token or password. Do not run the server locally and do not install anything.",
+    "",
+    "1. Work out which app you are running in.",
+    "2. If you can change your own MCP settings, add one server named \"weave\" with the address above. Use your app's own add-server command when it has one, otherwise edit its MCP config file. Use that app's real config format and the key it uses for a Streamable HTTP URL. Do not guess a format from memory if you can check it. After you finish, read the setting back to confirm it is saved.",
+    "3. If you cannot change your own settings (a chat app in a browser or on a phone), do not pretend. Tell me the exact clicks to add a custom connector or MCP server in your app today, as a short numbered list with the address in it. Say plainly if my plan or my organization's admin must allow it first.",
+    "4. Finish by telling me the one thing left for me to do, which is signing in to weave when the app asks, and how to check that it worked."
+  ].join('\n');
+
   const TOOLS = [
     {
       id: 'claude',
       hue: '#d97757',
       name: 'Claude',
       where: 'claude.ai or the Claude app',
+      pitch: 'About seven clicks: Settings, Connectors, Add custom connector, paste the weave address, sign in. Works on every plan. On Team and Enterprise an owner adds it first.',
       kind: 'chat',
       icon: 'lucide:sparkles',
       copy: 'url',
@@ -19,68 +33,34 @@
       note: 'On Team and Enterprise plans, an owner does steps 1 to 4 first, and you start at step 5. The Free plan allows one custom connector.',
     },
     {
-      id: 'chatgpt',
-      hue: '#10a37f',
-      name: 'ChatGPT',
-      where: 'chatgpt.com',
-      kind: 'chat',
-      icon: 'lucide:message-circle',
-      copy: 'url',
+      id: 'claude-code',
+      hue: '#c4683f',
+      name: 'Claude Code',
+      where: 'a terminal',
+      pitch: 'Paste the setup prompt, run /mcp, choose Authenticate.',
+      kind: 'terminal',
+      icon: 'lucide:terminal',
+      copy: 'prompt',
       steps: [
-        'Open chatgpt.com and go to Plugins. Older menus call it Settings, then Apps.',
-        'Click the + button and pick Add custom MCP server.',
-        'Name it weave and paste the address below as the server URL.',
-        'Choose OAuth for authentication, accept the custom server warning, and create it.',
-        'Sign in to your weave account.',
-        'In a chat, type @weave to use it.',
-      ],
-      note: 'Needs a Business, Enterprise or Edu workspace. An admin may need to allow custom servers.',
-    },
-    {
-      id: 'gemini',
-      hue: '#4c7dea',
-      name: 'Gemini',
-      where: 'gemini.google.com',
-      kind: 'chat',
-      icon: 'lucide:star',
-      copy: 'url',
-      steps: [
-        'Open gemini.google.com and go to Settings, then Connected apps.',
-        'Under Custom apps, click Add a custom app.',
-        'Paste the address below and click Next.',
+        'Start Claude Code and paste the setup prompt below.',
+        'Run /mcp, pick weave and choose Authenticate.',
         'Sign in to your weave account.',
       ],
-      note: 'Before you start: custom apps need a personal Google account in the US, set to English, with Keep Activity turned on.',
-    },
-    {
-      id: 'perplexity',
-      hue: '#20808d',
-      name: 'Perplexity',
-      where: 'perplexity.ai',
-      kind: 'chat',
-      icon: 'lucide:search',
-      copy: 'url',
-      steps: [
-        'Open perplexity.ai and go to Connectors.',
-        'Click Add custom and pick Connector. Then click Add MCP connector and choose Remote.',
-        'Name it weave, paste the address below, and pick OAuth 2.0.',
-        'Click Add and sign in to your weave account.',
-      ],
-      note: 'In an organization, an admin must first turn on the setting named Allow members to add custom connectors.',
     },
     {
       id: 'cursor',
       hue: '#5b6b82',
       name: 'Cursor',
       where: 'the Cursor editor',
+      pitch: 'Paste the setup prompt, reload, sign in.',
       kind: 'editor',
       icon: 'lucide:code-xml',
-      copy: 'cursor',
+      copy: 'prompt',
       install: 'cursor',
       steps: [
-        'Click Add to Cursor below, or paste the setting into ~/.cursor/mcp.json.',
-        'Cursor opens a browser window. Sign in to your weave account.',
-        'Ask Cursor to use weave.',
+        'Click Add to Cursor below, or paste the setup prompt below into Cursor\'s agent.',
+        'Reload Cursor when it asks.',
+        'Sign in to your weave account.',
       ],
     },
     {
@@ -88,40 +68,44 @@
       hue: '#2f80ed',
       name: 'VS Code',
       where: 'GitHub Copilot in VS Code',
+      pitch: 'Trust the server after pasting the setup prompt, then sign in.',
       kind: 'editor',
       icon: 'lucide:code',
-      copy: 'vscode',
+      copy: 'prompt',
       install: 'vscode',
       steps: [
-        'Click Add to VS Code below, or run MCP: Add Server from the command palette and paste the address.',
-        'Sign in to your weave account when VS Code asks.',
-        'In Copilot Chat, switch to Agent mode and ask it to use weave.',
+        'Click Add to VS Code below, or paste the setup prompt below into Copilot Chat in Agent mode.',
+        'Trust the weave server when VS Code asks.',
+        'Sign in to your weave account.',
       ],
     },
     {
-      id: 'claude-code',
-      hue: '#c4683f',
-      name: 'Claude Code',
+      id: 'gemini-cli',
+      hue: '#4c7dea',
+      name: 'Gemini CLI',
       where: 'a terminal',
+      pitch: 'Run /mcp auth weave after pasting the setup prompt.',
       kind: 'terminal',
-      icon: 'lucide:terminal',
-      copy: 'command',
+      icon: 'lucide:star',
+      copy: 'prompt',
       steps: [
-        'Paste the command below into a terminal.',
-        'Start Claude Code, type /mcp, pick weave and sign in.',
+        'Start Gemini CLI and paste the setup prompt below.',
+        'Run /mcp auth weave.',
+        'Sign in to your weave account.',
       ],
     },
     {
       id: 'other',
       hue: '#6b7280',
       name: 'Something else',
-      where: 'any AI app that accepts custom connectors',
+      where: 'any agent that edits its settings',
+      pitch: 'Paste the setup prompt into any agent that edits settings or lists the clicks.',
       kind: 'other',
       icon: 'lucide:link',
-      copy: 'url',
+      copy: 'prompt',
       steps: [
-        'Find the place where your AI app adds a custom connector or MCP server.',
-        'Paste the address below. weave asks you to sign in, so you do not need a key.',
+        'Paste the setup prompt below into your agent.',
+        'Follow what it tells you, then sign in to your weave account.',
       ],
     },
   ];
@@ -129,7 +113,10 @@
   const TOOL_IDS = new Set(TOOLS.map((t) => t.id));
   const b64 = (text) => (typeof btoa === 'function' ? btoa(text) : Buffer.from(text).toString('base64'));
 
+  const setupPrompt = (url) => SETUP_PROMPT.replace('{URL}', url);
+
   function snippet(tool, url, name = 'weave') {
+    if (tool.copy === 'prompt') return setupPrompt(url);
     if (tool.copy === 'command') return `claude mcp add --transport http --scope user ${name} ${url}`;
     if (tool.copy === 'cursor') return JSON.stringify({ mcpServers: { [name]: { url } } }, null, 2);
     if (tool.copy === 'vscode') return JSON.stringify({ servers: { [name]: { type: 'http', url } } }, null, 2);
@@ -155,5 +142,5 @@
     return { ...tool, value: snippet(tool, url), install: installLink(tool, url), message: firstMessage({ workspace, template, other }) };
   }
 
-  root.WeaveAgentConnect = { TOOLS, TOOL_IDS, snippet, installLink, firstMessage, guide };
+  root.WeaveAgentConnect = { TOOLS, TOOL_IDS, SETUP_PROMPT, setupPrompt, snippet, installLink, firstMessage, guide };
 })(globalThis);

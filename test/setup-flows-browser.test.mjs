@@ -116,7 +116,10 @@ if (openHub) {
     assert.equal((await donut(p)).at, 100);
     assert.equal(await stageArt(p), art);
     const chat = await p.locator('.app[data-tool]').evaluateAll((ns) => ns.slice(0, 2).map((n) => n.dataset.tool));
-    assert.deepEqual(chat, ['claude', 'chatgpt'], 'chat apps lead the list');
+    assert.deepEqual(chat, ['claude', 'claude-code'], 'Claude leads the list');
+    assert.equal(await p.locator('.app[data-tool="chatgpt"], .app[data-tool="perplexity"], .app[data-tool="gemini"]').count(), 0, 'agents most accounts cannot finish are cut');
+    assert.match(await p.locator('main .limits').textContent(), /ChatGPT, the Gemini app and Perplexity/, 'and the page says why');
+    assert.match(await p.locator('main .lead').textContent(), /you bring the agent/);
     assert.equal(await p.locator('main [data-go="next"]').count(), 0, 'no way forward but a tool or skip');
     await p.click('.app[data-tool="claude"]');
     assert.equal(await p.locator('.chosen b').textContent(), 'Claude', 'the chosen app heads the step');
@@ -149,7 +152,7 @@ if (openHub) {
     await p.context().close();
   });
 
-  test('guided, phone: something else, ChatGPT steps and its own first message, connect, open', async () => {
+  test('guided, phone: Empty with a description, Claude Code and the setup prompt, connect like ChatGPT, open', async () => {
     const p = await page({ phone: true });
     person(openHub);
     await signIn(p, openHub);
@@ -162,12 +165,16 @@ if (openHub) {
     await step(p, 'agent');
     const fits = () => p.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
     assert.ok(await fits(), 'the app grid fits the phone');
-    await p.click('.app[data-tool="chatgpt"]');
-    assert.match(await p.locator('ol.steps').textContent(), /Add custom MCP server/);
+    await p.click('.app[data-tool="claude-code"]');
+    assert.match(await p.locator('ol.steps').textContent(), /Run \/mcp/);
+    const prompt = await p.locator('.steps pre.prompt').textContent();
+    assert.match(prompt, /^Connect yourself to my weave workspace\./);
+    assert.ok(prompt.includes(`Its MCP address is ${openHub.base}/w/dog-rescue/mcp`), 'the setup prompt carries this workspace address');
+    assert.equal(await p.locator('main .btn-primary[data-copy="address"]').textContent(), 'Copy setup prompt');
     assert.ok(await fits(), 'the steps fit the phone');
     const copy = await p.locator('main [data-copy="address"]').boundingBox();
     assert.ok(copy.x + copy.width <= p.viewportSize().width, 'the copy button fits the phone');
-    assert.match(await p.locator('.copybox code').nth(1).textContent(), /for this: dog adoptions, with families and visits/);
+    assert.match(await p.locator('.copybox code.message').textContent(), /for this: dog adoptions, with families and visits/);
     const w = await connectLikeChatApp(`${openHub.base}/w/dog-rescue/mcp`, CHAT_APPS.chatgpt);
     assert.equal(w.trace[0], 'initialize 401');
     await p.waitForSelector('.status[data-state="connected"]', { timeout: 10000 });
