@@ -707,7 +707,10 @@ async function main() {
         if (flags.default != null) config.default = flags.default === 'null' ? null : flags.default;
         if (flags.description != null) config.description = flags.description === 'null' ? null : String(flags.description);
         if (Object.keys(config).length) patch.config = config;
-        return out(guided(w, 'field', w.updateField(db, name, patch), patch.type == null ? patch.config : {}));
+        const seq = w.state.meta.activitySeq ?? 0;
+        const field = w.updateField(db, name, patch);
+        const formulas = w.fieldChangeSince(db, field.id, seq)?.detail.formulas;
+        return out({ ...guided(w, 'field', field, patch.type == null ? patch.config : {}), ...(formulas ? { formulas } : {}) });
       }
       if (sub === 'rollback') return out(w.rollbackFieldConfig(flags.activity, { table: db ?? null, field: name ?? null }));
       if (sub === 'delete') return out(w.deleteField(db, name, { hard: Boolean(flags.hard) }));

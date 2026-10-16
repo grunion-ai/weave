@@ -396,6 +396,8 @@ weave unlink Task#5 Project 'Project#1'
 
 Renders as chips carrying the target's name, each with a \`×\`, plus a \`+ link\` control that opens the ⌘K search scoped to the relation's target tables (Issue #703). It matches a row by name, \`#id\`, any text field or a document, and shows the linked rows checked. A to-one relation replaces its value on a pick and closes; a to-many relation toggles rows and saves on \`Esc\` or \`Return\` in an empty box. The last row, \`+ New <term>\`, creates a row named from what you typed and links it. **+ Link existing** under a related grid and the selection bar's **Link to…** open the same search.
 
+On a record page each to-many relation shows its linked rows as a subtable. The eye in the subtable header picks which target fields the subtable shows and filters its rows with the same chips as the table filter (Feature #214). Both land on the relation field as \`config.subtable\`, shaped \`{ fields, filter, sort }\` with the filter in \`where\` triples, so every record of the table shares one setting and one edit changes them all. A filtered subtable counts \`shown / total\` in its header, and the field dialog shows the stored JSON. Reading the record through the API still returns every linked row.
+
 ## Query
 
 Traverse with a dotted path: \`[["Project.Name", "=", "Apollo"]]\`.
@@ -427,7 +429,7 @@ Renders on a tinted background marked \`↗\`. Nothing writes to it.
 
 A lookup of a relation draws the far row's chip, the way the relation column draws it: \`Contact › Company\` shows the company's chip, which opens the company. A to-many path draws one chip per far row, each row once. The API answers \`{id, publicId, name, db}\` per row (a list when either hop is to-many), a filter and a formula read the name, and \`raw\` keeps the ids (Issue #643).
 
-The field's settings tray shows the recipe as read-only **Relation** and **Field** rows, and a **Shows as** line naming the display it inherits: a lookup of a rating reads \`Drawn as the rating on People › Skill: 5 stars.\`, with a link to that field's settings, where the look is changed. The recipe is set when the lookup is created (Issue #387).
+The field's settings tray shows the recipe as **Relation** and **Target field** pickers, and a **Shows as** line naming the display it inherits: a lookup of a rating reads \`Drawn as the rating on People › Skill: 5 stars.\`, with a link to that field's settings, where the look is changed. Pick another relation or another field and save to repoint the lookup in place: the column keeps its name, width, description and place in every view, and every cell reads the new recipe at once. From the terminal: \`weave field update Team Skills --config '{"targetField":"Age"}'\` (Feature #241).
 
 ## Gotchas
 
@@ -485,7 +487,7 @@ A grid carries no Σ row until you ask for one: tick **Σ rollup row** in the Fi
 
 ## Usage
 
-The field's settings tray shows the recipe as read-only **Relation**, **Field** and **Aggregate** rows, a **Result** line with the value on a row of the table, and a **Shows as** line naming the display it inherits from the field it reads (a rating's icons, or a number's bar, ring or heat), with a link to that field's settings. The recipe is set when the rollup is created (Issue #387).
+The field's settings tray shows the recipe as **Relation**, **Target field** and **Aggregate** pickers, a **Result** line with the value on a row of the table, and a **Shows as** line naming the display it inherits from the field it reads (a rating's icons, or a number's bar, ring or heat), with a link to that field's settings. Change any of the three and save to repoint the rollup in place: it keeps its name, width, description and place in every view. The edit runs the same check a create runs, so a new relation needs a field of its own table and any aggregate but count needs a field to read. When the result changes kind (a number becomes text, say) the tray warns before you save, and the save names every formula of the table that now fails on it. The repoint is one entry in Activity, naming the old and the new recipe, and Undo puts the old one back. A space rollup (one made from the grid's Σ row) keeps its recipe read-only (Feature #241).
 
 Renders on a tinted background marked \`Σ\`, wearing the target column's costume: a sum of dollars is dollars, the \`max\` of a date column is a date; a mean of whole numbers shows two decimals. \`join\` accepts a \`separator\`; the default is \`, \`.
 
@@ -933,11 +935,11 @@ weave workspace require-auth
 weave workspace link-preview        # or --off
 \`\`\`
 
-The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for the workspace menu, the same one the **⋮** on the workspace page opens: the **Link preview before sign-in** switch. **Delete workspace** has left the app until Settings takes it (Feature #297). \`DELETE /api/workspaces/<id>\` still moves one to the trash, and the Trash row in the sidebar lists it under Workspaces with a Restore; the default and the \`weave\` docs workspaces cannot be deleted. **Click the logo** at the left of the workspace page's title to pick an image, whether or not the workspace has one yet; **Remove logo**, the small **×** beside it, clears it. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
+The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for the workspace menu, the same one the **⋮** on the workspace page opens: the **Link preview before sign-in** switch. The menu carries no delete. **Delete workspace** lives in **Settings**, in the sidebar's System group: choose **Move to trash…** on the workspace, type its name, then hold the row until it fills. \`DELETE /api/workspaces/<id>\` does the same, and the Trash row in the sidebar lists it under Workspaces with a Restore. The section shows only to an architect on the hub root, the right the route checks; the default and the \`weave\` docs workspaces cannot be deleted. **Click the logo** at the left of the workspace page's title to pick an image, whether or not the workspace has one yet; **Remove logo**, the small **×** beside it, clears it. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
 
 ## Deleting
 
-Every menu deletes the same way: **Move to trash**, one click, for a table, a space, a record, a share page or a field. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu deletes for good. **Delete forever** lives on the Trash page and asks you to hold it.
+Every menu deletes the same way: **Move to trash**, one click, for a table, a space, a record, a share page or a field. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu or on the Trash page deletes for good; the Trash page restores. **Delete forever** lives in **Settings**, in the sidebar's System group: choose it on a row, type the row's name, then hold the button until it fills. An observer sees the list without the button.
 
 ## The space
 
@@ -1238,6 +1240,15 @@ weave automation create Task --name 'Log completion' \\
 \`\`\`
 
 Triggers fire on create, update, and state change. Actions set fields, move state, append to a document, add a comment, or POST a webhook. A webhook that answers non-2xx, does not answer within 5 seconds, or cannot connect marks its Workflows row Failed with the reason; the write that fired it still lands. \`{{Field}}\` placeholders read the row; an empty one reads \`(no Field)\`.
+
+An \`upsert-row\` action writes a row of another table instead of the one that fired, matched on a key field that holds an id from the other system:
+
+\`\`\`json
+{ "type": "upsert-row", "table": "Billing/Account", "key": "Stripe Id",
+  "fields": { "Stripe Id": "row.Customer", "Name": "row.Company", "Plan": "row.Tier" } }
+\`\`\`
+
+When a row of the target table already holds that key, the action updates it; otherwise it creates one, so a repeated delivery never makes a duplicate. The key is a text, number, url or email field and must be mapped. Each source path reads the firing row (\`row.<Field>\`, \`row.PublicId\`) or the trigger (\`event.type\`, \`event.field\`, \`event.toState\`). A select takes its option name and a relation the target row's Name, as the entities API does. A path that finds nothing leaves its field as it was, and an empty key marks the Workflows row Failed. An upsert into its own table is held by the same depth limit as every automation write.
 
 ## Decks
 

@@ -1,1 +1,0 @@
-- Serving-commit proof recognizes supervised commit tarballs that do not include Git metadata (Issue #902).
