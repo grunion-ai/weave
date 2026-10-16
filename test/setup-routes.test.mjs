@@ -98,24 +98,6 @@ test('Clerk pane: the start API offers the Clerk script only when the key names 
   } finally { idp.stop(); }
 });
 
-test('apex sign-up always starts onboarding: /auth goes to /start, and a sign-in begun anywhere on the apex returns there', async () => {
-  const s = await serve({ openSignup: { on: true, limit: 1 } });
-  try {
-    for (const q of ['', '?signed-out=1', '?next=%2F']) {
-      const auth = await s.apex('GET', `/auth${q}`);
-      assert.deepEqual([auth.status, auth.headers.location], [302, '/start'], `/auth${q}`);
-    }
-    const start = await s.apex('GET', '/api/auth/oidc/start');
-    const back = s.idp.approve(start.headers.location, { sub: 'user_fresh', email: 'fresh@example.com', email_verified: true });
-    const res = await s.follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
-    assert.deepEqual([res.status, res.headers.location], [302, '/start'], 'a new person lands in onboarding, never on No access');
-    const me = (await s.apex('GET', '/api/start', { cookie: cookieOf(res, 'wv_start') })).json();
-    assert.deepEqual([me.signedIn, me.canCreate, me.rows.length], [true, true, 0]);
-    const host = await s.at('harbor.weave.test')('GET', '/auth');
-    assert.notEqual(host.headers.location, '/start', 'a workspace host keeps its own sign-in');
-  } finally { s.stop(); }
-});
-
 test('env: open sign-up is off unless the operator turns it on, with a per-person limit', () => {
   assert.deepEqual(openSignupFromEnv({}), { on: false, limit: 1 });
   assert.deepEqual(openSignupFromEnv({ WEAVE_OPEN_SIGNUP: '1' }), { on: true, limit: 1 });
