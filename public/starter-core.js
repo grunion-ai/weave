@@ -42,7 +42,8 @@
       icon: 'lucide:wallet',
       work: 'Personal money',
       category: 'money',
-      details: 'Purchases go in Transactions and paychecks in Income, and the Months table totals what came in and went out. Accounts and recurring bills link to their transactions. For anyone keeping a personal budget.',
+      details: 'For anyone keeping a personal budget, month by month.',
+      like: 'Like YNAB',
       featured: true,
       tables: (m) => [
         {
@@ -106,7 +107,8 @@
       icon: 'lucide:list-checks',
       work: 'Personal tasks',
       category: 'projects',
-      details: 'Every task carries a status, a due date and a priority. For a person who wants one to-do list for what comes next.',
+      details: 'For one person who wants a single to-do list.',
+      like: 'Like Todoist',
       featured: true,
       tables: (m) => [{
         name: 'Tasks',
@@ -134,7 +136,8 @@
       icon: 'lucide:users',
       work: 'Sales and clients',
       category: 'sales',
-      details: 'A small CRM where companies move from lead to customer, and each contact links to the company they work at. For a founder or small sales team keeping track of who they talk to.',
+      details: 'For a founder or small sales team who wants a simple CRM.',
+      like: 'Like HubSpot CRM',
       featured: true,
       tables: () => [
         {
@@ -166,7 +169,8 @@
       icon: 'lucide:table',
       work: 'General list',
       category: 'start',
-      details: 'A starting point with one Items table: a status, an owner, a due date and notes on every row. Rename it, add fields and shape it around what you track. For anyone whose work fits no other template, or who wants a plain to-do list.',
+      details: 'A starting point for any to-do list, notes or tracker.',
+      like: 'Like a spreadsheet',
       featured: false,
       tables: (m) => [{
         name: 'Items',
@@ -196,7 +200,8 @@
       icon: 'lucide:user-plus',
       work: 'Recruiting and hiring',
       category: 'people',
-      details: 'Candidates move through a hiring workflow from applied to hired, linked to the role they applied for. Interviews hold dates, interviewers and scores, and each role counts its candidates. For a hiring manager running a search.',
+      details: 'For a hiring manager running a search.',
+      like: 'Like Greenhouse',
       featured: false,
       tables: (m) => [
         {
@@ -259,7 +264,8 @@
       icon: 'lucide:kanban',
       work: 'Team projects',
       category: 'projects',
-      details: 'Projects carry a status, a lead and a due date, and count the tasks inside them. Members link to the projects they lead and the tasks they own. For a team running several projects at once.',
+      details: 'For a team running several projects at once.',
+      like: 'Like Asana',
       featured: false,
       tables: (m) => [
         {
@@ -323,7 +329,8 @@
       icon: 'lucide:route',
       work: 'Product roadmap',
       category: 'product',
-      details: 'Features move from idea to shipped and link to the release they land in. Customer feedback links to the feature it asks for, so each feature counts the feedback that asks for it. For a product manager deciding what to build next.',
+      details: 'For a product manager deciding what to build next.',
+      like: 'Like Productboard',
       featured: false,
       tables: (m) => [
         {
@@ -377,7 +384,8 @@
       icon: 'lucide:calendar',
       work: 'Content calendar',
       category: 'marketing',
-      details: 'Posts for a blog, newsletter or video channel move from idea to published, each with a publish date, a channel and a writer. For a marketing team or a creator planning what goes out each week.',
+      details: 'For a team or creator planning posts, newsletters and videos.',
+      like: 'Like CoSchedule',
       featured: false,
       tables: (m) => [
         {
@@ -430,7 +438,8 @@
       icon: 'lucide:ticket',
       work: 'Customer support',
       category: 'sales',
-      details: 'Tickets carry a priority and a status from new to solved, and each one links to the customer who opened it. Customers count their tickets. For a small team answering customer questions.',
+      details: 'For a small team answering customer questions.',
+      like: 'Like Zendesk',
       featured: false,
       tables: (m) => [
         {
@@ -477,7 +486,8 @@
       icon: 'lucide:briefcase',
       work: 'Freelance clients',
       category: 'services',
-      details: 'Clients carry an hourly rate, and jobs and invoices link to the client they are for. Each client totals what you have invoiced. For a freelancer or a one-person studio.',
+      details: 'For a freelancer or one-person studio billing clients.',
+      like: 'Like FreshBooks',
       featured: false,
       tables: (m) => [
         {
@@ -531,7 +541,8 @@
       icon: 'lucide:bookmark',
       work: 'Research and reading',
       category: 'learning',
-      details: 'Sources carry a kind, an author, a reading status and a rating. Notes link to the source they came from and the topic they belong to. For a student or writer gathering material on a subject.',
+      details: 'For a student or writer gathering sources on a subject.',
+      like: 'Like Zotero',
       featured: false,
       tables: (m) => [
         {
@@ -578,7 +589,8 @@
       icon: 'lucide:trending-up',
       work: 'Fundraising and investors',
       category: 'finance',
-      details: 'Investors move from researching to committed, with check sizes, firms and meetings. Each firm totals its investors\' check sizes. For a founder raising a round.',
+      details: 'For a founder raising a round.',
+      like: 'Like Affinity',
       featured: false,
       tables: (m) => [
         {
@@ -639,7 +651,8 @@
       icon: 'lucide:calendar-range',
       work: 'Events and guests',
       category: 'marketing',
-      details: 'Events carry a date, a budget and a venue, and guests link to the event with their RSVP. Each event counts its guests. For anyone planning meetups, dinners or launches.',
+      details: 'For anyone planning meetups, dinners or launches.',
+      like: 'Like Luma',
       featured: false,
       tables: (m) => [
         {
@@ -694,7 +707,8 @@
       icon: 'lucide:shopping-bag',
       work: 'Inventory and orders',
       category: 'operations',
-      details: 'Products carry a SKU, a price and a stock count, and a formula values the stock on hand. Orders move from new to delivered, and suppliers link to the products they make. For a small shop selling physical goods.',
+      details: 'For a small shop selling physical goods.',
+      like: 'Like Sortly',
       featured: false,
       tables: (m) => [
         {
@@ -755,7 +769,8 @@
       icon: 'lucide:heart',
       work: 'Nonprofit donors and grants',
       category: 'community',
-      details: 'Each donor totals the gifts they have given, and grants move from research to awarded. For a nonprofit team tracking gifts and grant deadlines.',
+      details: 'For a nonprofit team tracking gifts and grant deadlines.',
+      like: 'Like Bloomerang',
       featured: false,
       tables: (m) => [
         {
@@ -815,7 +830,8 @@
       icon: 'lucide:house',
       work: 'Home and personal life',
       category: 'home',
-      details: 'Chores repeat by day, week or month, and each repair carries a status and a cost. Rooms total what their repairs cost. For a household sharing the upkeep.',
+      details: 'For a household sharing chores and repairs.',
+      like: 'Like OurHome',
       featured: false,
       tables: (m) => [
         {
@@ -866,7 +882,8 @@
       icon: 'lucide:message-square',
       work: 'Team meetings',
       category: 'projects',
-      details: 'Each meeting has a date, a kind and notes, and action items link back to the meeting that raised them. Action items carry an owner, a due date and a status. For a team that wants decisions to turn into follow-ups.',
+      details: 'For a team that wants decisions to turn into follow-ups.',
+      like: 'Like Fellow',
       featured: false,
       tables: (m) => [
         {
@@ -913,7 +930,8 @@
       icon: 'lucide:gauge',
       work: 'Goals and key results',
       category: 'projects',
-      details: 'Each goal has an owner, a quarter and a status such as on track or behind. Key results link to their goal with a target and a current number. For a team or a person setting quarterly goals and OKRs.',
+      details: 'For a team or a person setting quarterly goals and OKRs.',
+      like: 'Like Lattice',
       featured: false,
       tables: () => [
         {
@@ -960,7 +978,8 @@
       icon: 'lucide:bug',
       work: 'Bug tracking',
       category: 'product',
-      details: 'Bugs move from reported to fixed with a severity, a reporter and the part of the product they hit. Each component counts its bugs. For an engineering team deciding what to fix first.',
+      details: 'For an engineering team deciding what to fix first.',
+      like: 'Like Jira',
       featured: false,
       tables: (m) => [
         {
@@ -1008,7 +1027,8 @@
       icon: 'lucide:timer',
       work: 'Agile sprints',
       category: 'product',
-      details: 'Stories carry points, an assignee and a status from backlog to done. Each sprint has start and end dates and totals the points planned into it. For a software team working in short sprints.',
+      details: 'For a software team working in short sprints.',
+      like: 'Like Linear',
       featured: false,
       tables: (m) => [
         {
@@ -1056,7 +1076,8 @@
       icon: 'lucide:search',
       work: 'User research',
       category: 'product',
-      details: 'Each interview links to the participant you spoke with and to the insights it produced. Each insight carries a theme and a confidence level. For a product team that wants findings tied to real conversations.',
+      details: 'For a product team tying findings to real conversations.',
+      like: 'Like Dovetail',
       featured: false,
       tables: (m) => [
         {
@@ -1109,7 +1130,8 @@
       icon: 'lucide:dollar-sign',
       work: 'Sales pipeline',
       category: 'sales',
-      details: 'Deals move through stages from qualified to won or lost, each with a value, a close date and a rep. Calls, emails and meetings link to the deal they moved forward, and each rep totals their pipeline. For a sales team forecasting the month.',
+      details: 'For a sales team forecasting the month.',
+      like: 'Like Pipedrive',
       featured: false,
       tables: (m) => [
         {
@@ -1171,7 +1193,8 @@
       icon: 'lucide:send',
       work: 'Marketing campaigns',
       category: 'marketing',
-      details: 'Each campaign has dates, a budget and a status, and totals the cost and clicks of its placements. Each placement carries a channel. For a marketer comparing where the money went.',
+      details: 'For a marketer comparing where the money went.',
+      like: 'Like monday.com',
       featured: false,
       tables: (m) => [
         {
@@ -1220,7 +1243,8 @@
       icon: 'lucide:camera',
       work: 'Social media',
       category: 'marketing',
-      details: 'Posts move from draft to posted on a schedule, each tied to the account it goes out on. Reach and likes add up per account. For a small brand running a few social accounts.',
+      details: 'For a small brand running a few social accounts.',
+      like: 'Like Buffer',
       featured: false,
       tables: (m) => [
         {
@@ -1266,7 +1290,8 @@
       icon: 'lucide:user-cog',
       work: 'Employee onboarding',
       category: 'people',
-      details: 'Each new hire has a start date, a team and a manager, and onboarding steps link to the new hire they are for. Steps carry an owner and a due date. For a people team or manager getting someone ready for day one.',
+      details: 'For a manager getting a new hire ready for day one.',
+      like: 'Like BambooHR',
       featured: false,
       tables: (m) => [
         {
@@ -1313,7 +1338,8 @@
       icon: 'lucide:sun',
       work: 'Time off and leave',
       category: 'people',
-      details: 'Requests carry a kind such as vacation or sick leave, dates and a number of days, and move from requested to approved or declined. Each person totals the days taken against their allowance. For a small team keeping leave in one place.',
+      details: 'For a small team keeping vacation and leave in one place.',
+      like: 'Like Timetastic',
       featured: false,
       tables: (m) => [
         {
@@ -1361,7 +1387,8 @@
       icon: 'lucide:receipt',
       work: 'Business expenses',
       category: 'finance',
-      details: 'Each expense has an amount, a date, a category and the person who spent it, and moves from submitted to paid back. Each person totals what they have claimed. For a small company paying people back for work costs.',
+      details: 'For a small company paying people back for work costs.',
+      like: 'Like Expensify',
       featured: false,
       tables: (m) => [
         {
@@ -1407,7 +1434,8 @@
       icon: 'lucide:chart-pie',
       work: 'Team budgets',
       category: 'finance',
-      details: 'Each budget sets an amount for a team and a quarter, and spending links to the budget it draws from. A formula shows what remains. For a finance lead or team head watching costs through the quarter.',
+      details: 'For a finance lead watching team spend through the quarter.',
+      like: 'Like a budget spreadsheet',
       featured: false,
       tables: (m) => [
         {
@@ -1450,7 +1478,8 @@
       icon: 'lucide:cpu',
       work: 'Equipment and assets',
       category: 'operations',
-      details: 'Each asset has a serial number, a cost, a purchase date and a warranty end, and links to the person holding it. Status runs from in stock to retired. For an office or IT lead keeping track of who has what.',
+      details: 'For an office or IT lead tracking who has what.',
+      like: 'Like Snipe-IT',
       featured: false,
       tables: (m) => [
         {
@@ -1498,7 +1527,8 @@
       icon: 'lucide:shopping-cart',
       work: 'Vendors and purchasing',
       category: 'operations',
-      details: 'Vendors carry a category, a contact email and a website, and purchase orders link to the vendor they go to. Orders move from draft to received, and each vendor totals its spend. For an operations lead buying supplies.',
+      details: 'For an operations lead buying supplies.',
+      like: 'Like Procurify',
       featured: false,
       tables: (m) => [
         {
@@ -1546,7 +1576,8 @@
       icon: 'lucide:clock',
       work: 'Appointments and bookings',
       category: 'services',
-      details: 'Appointments link a client to a service on a date and move from booked to completed. Services carry a price and a length, and clients count their appointments. For a salon, studio or practice that books by the hour.',
+      details: 'For a salon, studio or practice that books by the hour.',
+      like: 'Like Acuity Scheduling',
       featured: false,
       tables: (m) => [
         {
@@ -1605,7 +1636,8 @@
       icon: 'lucide:key-round',
       work: 'Rental properties',
       category: 'services',
-      details: 'Each property has an address, a monthly rent and an occupancy status, with tenants and rent payments linked to it. Properties total the rent collected. For a landlord with a few units.',
+      details: 'For a landlord with a few units.',
+      like: 'Like Buildium',
       featured: false,
       tables: (m) => [
         {
@@ -1659,7 +1691,8 @@
       icon: 'lucide:users-round',
       work: 'Volunteer programs',
       category: 'community',
-      details: 'Shifts carry a date, a role and a number of spots, and each sign-up links a volunteer to a shift with attendance and hours. Each volunteer totals their hours. For a nonprofit or community group that runs on volunteers.',
+      details: 'For a group that runs on volunteers.',
+      like: 'Like SignUpGenius',
       featured: false,
       tables: (m) => [
         {
@@ -1718,7 +1751,8 @@
       icon: 'lucide:id-card',
       work: 'Clubs and memberships',
       category: 'community',
-      details: 'Each member has a join date, a tier and a status, and dues payments link to the member who paid. Members total their dues. For a club, association or community group collecting dues.',
+      details: 'For a club or association collecting dues.',
+      like: 'Like Wild Apricot',
       featured: false,
       tables: (m) => [
         {
@@ -1760,7 +1794,8 @@
       icon: 'lucide:refresh-cw',
       work: 'Subscriptions and renewals',
       category: 'money',
-      details: 'Each subscription carries a cost, a billing period, a renewal date and the card it bills to. Cards total what they are charged. For anyone who wants to catch a renewal before it bills.',
+      details: 'For anyone who wants to catch a renewal before it bills.',
+      like: 'Like Rocket Money',
       featured: false,
       tables: (m) => [
         {
@@ -1801,7 +1836,8 @@
       icon: 'lucide:coins',
       work: 'Savings goals',
       category: 'money',
-      details: 'Each goal has a target amount and date, and deposits link to the goal they go toward. A formula shows how much is left to save. For a person or household saving for something specific.',
+      details: 'For a person or household saving for something specific.',
+      like: 'Like Qapital',
       featured: false,
       tables: (m) => [
         {
@@ -1843,7 +1879,8 @@
       icon: 'lucide:sun-moon',
       work: 'Daily habits',
       category: 'home',
-      details: 'Each habit has a weekly target and an area of life, and daily check-ins link back to it. Habits count their check-ins. For a person building a routine day by day.',
+      details: 'For a person building a routine day by day.',
+      like: 'Like Streaks',
       featured: false,
       tables: (m) => [
         {
@@ -1886,7 +1923,8 @@
       icon: 'lucide:activity',
       work: 'Fitness and workouts',
       category: 'home',
-      details: 'Each workout has a date, a kind, a length and a status, and sets link to the workout with reps and weight. Workouts count their sets. For anyone logging training to see progress over time.',
+      details: 'For anyone logging training to see progress.',
+      like: 'Like Strong',
       featured: false,
       tables: (m) => [
         {
@@ -1931,7 +1969,8 @@
       icon: 'lucide:clipboard',
       work: 'Recipes and meal plans',
       category: 'home',
-      details: 'Recipes carry a cuisine, a cooking time, servings and a rating, and the meal plan links each meal to a recipe. Recipes count how often they are planned. For a household planning the week of cooking.',
+      details: 'For a household planning the week of cooking.',
+      like: 'Like Paprika',
       featured: false,
       tables: (m) => [
         {
@@ -1976,7 +2015,8 @@
       icon: 'lucide:award',
       work: 'School and courses',
       category: 'learning',
-      details: 'Courses carry a teacher, a term and credits, and assignments, from homework to exams, link to their course with a due date and a status from not started to graded. Each course averages its grades. For a student keeping a term on track.',
+      details: 'For a student keeping homework and exams on track.',
+      like: 'Like MyStudyLife',
       featured: false,
       tables: (m) => [
         {
@@ -2023,7 +2063,8 @@
       icon: 'lucide:star',
       work: 'Reading list',
       category: 'learning',
-      details: 'Books move from want-to-read to finished, each with an author, a genre, a page count and a rating. Authors count their books on the list. For a reader keeping track of what to read next.',
+      details: 'For a reader keeping track of what to read next.',
+      like: 'Like Goodreads',
       featured: false,
       tables: (m) => [
         {
@@ -2063,7 +2104,7 @@
   function searchText(template) {
     const category = CATEGORIES.find((c) => c.id === template.category)?.label ?? '';
     const tables = template.tables(month()).map((t) => t.name);
-    return [template.title, template.work, template.blurb, template.details, category, ...tables].join(' ').toLowerCase();
+    return [template.title, template.work, template.blurb, template.details, template.like, category, ...tables].filter(Boolean).join(' ').toLowerCase();
   }
 
   function spec(template, { now } = {}) {

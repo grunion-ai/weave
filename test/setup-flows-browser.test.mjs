@@ -73,6 +73,10 @@ if (openHub) {
     await p.click(`.card[data-template="${id}"]`);
     await go(p, 'next');
   };
+  const mapped = (p) => p.waitForFunction(() => {
+    const m = document.querySelector('#work-details .map');
+    return !!m && m.querySelectorAll('.map-lines path').length === Number(m.dataset.edges);
+  });
   const donut = (p) => p.locator('#progress').evaluate((n) => (n.hidden ? null : { at: Number(n.getAttribute('aria-valuenow')), name: n.querySelector('.progress-name').textContent }));
   const stageArt = (p) => p.locator('#stage').evaluate((n) => n.innerHTML);
   const catalog = (p, edit) => p.route('**/starter-core.js', async (r) => {
@@ -98,9 +102,12 @@ if (openHub) {
     await p.click('.card[data-template="crm"]');
     const details = p.locator('#work-details');
     await details.waitFor();
-    assert.deepEqual(await details.locator('.tables b').allTextContents(), ['Companies', 'Contacts'], 'the details list the tables the pick creates');
-    assert.match(await details.locator('.tables li').first().textContent(), /Website, Stage/, 'with their key fields');
-    assert.equal(await details.locator('.details-count').getAttribute('data-rows'), '2', 'and the sample-row count');
+    await mapped(p);
+    assert.deepEqual((await details.locator('.map-node').allTextContents()).sort(), ['Companies', 'Contacts'], 'the preview maps the tables the pick creates');
+    assert.equal(await details.locator('.map-lines path').count(), 1, 'one line for the one relation');
+    assert.equal(await details.locator('.details-like').textContent(), 'Like HubSpot CRM', 'and it says what the template is like');
+    assert.equal(await details.locator('.tables, .details-count, small').count(), 0, 'no field lists and no counts');
+    assert.doesNotMatch(await details.textContent(), /Website|Stage|sample rows/, 'no field names or stats');
     assert.match(await p.locator('main [data-go="next"]').textContent(), /Sales and clients/, 'the primary button names the pick');
     assert.ok(await p.locator('main [data-go="next"]').isVisible(), 'Continue stays in view under a long gallery');
     assert.equal(await stageArt(p), art, 'the right pane never changes');
@@ -249,7 +256,7 @@ if (openHub) {
     await step(p, 'work');
     assert.match(await p.locator('.alert').textContent(), /weave did not answer/);
     assert.equal(await p.locator('.card[data-template="tasks"]').getAttribute('aria-pressed'), 'true', 'the choice survives');
-    await p.waitForSelector('#work-details .tables');
+    await p.waitForSelector('#work-details .map');
     await p.unroute('**/api/start/workspaces');
     await p.route('**/api/start/workspaces', async (r) => {
       const res = await r.fetch();
@@ -406,6 +413,46 @@ if (openHub) {
     await go(p, 'next');
     await step(p, 'build');
     await p.context().close();
+  });
+
+  test('the pick preview is a small table map that fits above the Start button on desktop and on a 375 px phone (Issue #949)', async () => {
+    for (const phone of [false, true]) {
+      const p = await page({ phone });
+      if (phone) await p.setViewportSize({ width: 375, height: 812 });
+      const where = phone ? 'phone' : 'desktop';
+      person(openHub);
+      await signIn(p, openHub);
+      await nameIt(p, `Map ${where}`, `map-${where}`);
+      await step(p, 'work');
+      for (const id of ['projects', 'finance', 'tasks']) {
+        await p.click(`.card[data-template="${id}"]`);
+        const details = p.locator('#work-details');
+        await details.waitFor();
+        await mapped(p);
+        const box = await p.evaluate(() => {
+          const r = (n) => n.getBoundingClientRect();
+          const d = r(document.getElementById('work-details'));
+          const bar = r(document.querySelector('main .actions.sticky'));
+          const nodes = [...document.querySelectorAll('#work-details .map-node')].map(r);
+          return { top: d.top, bottom: d.bottom, left: d.left, right: d.right, bar: bar.top, nodes, wide: document.documentElement.scrollWidth, vw: innerWidth };
+        });
+        assert.ok(box.top >= 0 && box.bottom <= box.bar + 0.5, `${where} ${id}: the whole preview shows above the Start button (${Math.round(box.top)}..${Math.round(box.bottom)}, bar at ${Math.round(box.bar)})`);
+        assert.ok(box.nodes.every((n) => n.left >= box.left && n.right <= box.right && n.bottom <= box.bottom), `${where} ${id}: every table sits inside the preview`);
+        assert.ok(box.wide <= box.vw, `${where} ${id}: no sideways scroll`);
+        assert.equal(await details.locator('.tables, .details-count, small').count(), 0, `${where} ${id}: no field lists and no counts`);
+      }
+      await p.click('.card[data-template="projects"]');
+      await mapped(p);
+      const details = p.locator('#work-details');
+      assert.deepEqual((await details.locator('.map-node').allTextContents()).sort(), ['Members', 'Projects', 'Tasks']);
+      assert.equal(await details.locator('.map-lines path').count(), 3, 'Projects, Tasks and Members link to each other');
+      assert.equal(await details.locator('.map-node .glyph').count(), 3, 'each table shows its icon');
+      assert.equal(await details.locator('.details-lead').textContent(), 'For a team running several projects at once.');
+      assert.equal(await details.locator('.details-like').textContent(), 'Like Asana');
+      assert.doesNotMatch(await details.textContent(), /Task count|Status|Lead/, 'no field names');
+      assert.ok(await p.locator('main [data-go="next"]').isVisible(), 'Start stays in view');
+      await p.context().close();
+    }
   });
 
   test('gallery: a catalog without categories shows one shelf, no chips, and the blurb as details', async () => {
