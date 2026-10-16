@@ -45,6 +45,19 @@ if (s) {
     const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
     return box.scrollHeight - box.clientHeight;
   });
+  const feedTo = async (page, i) => {
+    const there = (n) => !!document.querySelector(`.wv-grid tbody tr.entity-row[data-i="${n}"]`);
+    const loaded = () => document.querySelector('.wv-grid .wv-loaded')?.textContent ?? '';
+    for (let k = 0; k < 60; k++) {
+      if (await page.evaluate(there, i)) return;
+      const before = await page.evaluate(loaded);
+      await scrollTo(page, await scrollMax(page));
+      await page.waitForFunction(([n, was]) => !!document.querySelector(`.wv-grid tbody tr.entity-row[data-i="${n}"]`)
+        || (document.querySelector('.wv-grid .wv-loaded')?.textContent ?? '') !== was, [i, before], { timeout: 5000 });
+      await frames(page, 2);
+    }
+    throw new Error(`the feed never reached row ${i}`);
+  };
   const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
 
   test('the Case table opens with fewer than 200 rows drawn and no task over a second', async () => {
@@ -57,19 +70,21 @@ if (s) {
       const g = await page.evaluate(() => {
         const tbody = document.querySelector('.wv-grid tbody');
         const row = tbody.querySelector('tr.entity-row');
-        return { body: tbody.getBoundingClientRect().height, row: row.getBoundingClientRect().height };
+        const more = tbody.querySelector('tr.wv-load-more');
+        return { body: tbody.getBoundingClientRect().height, row: row.getBoundingClientRect().height, more: more ? more.getBoundingClientRect().height : 0 };
       });
-      assert.ok(Math.abs(g.body - g.row * N) < g.row * 3, `the body stands ${N} rows tall (${g.body}px at ${g.row}px a row)`);
+      assert.ok(g.more > 0, 'a load-more row stands under the loaded rows');
+      assert.ok(Math.abs(g.body - (g.row * 200 + g.more)) < g.row * 3, `the body stands as tall as the 200 loaded rows and the load-more row, never the ${N} the table holds (${g.body}px at ${g.row}px a row)`);
       const note = await page.evaluate(() => document.querySelector('.wv-grid .wv-loaded')?.textContent);
       assert.match(note, /^200 of 1,200 loaded$/, 'the foot says how much of the table is here');
     } finally { await page.close(); }
   });
 
-  test('a fast scroll to the middle leaves no blank band: every row under the viewport is drawn after one frame', async () => {
+  test('feeding to the middle leaves no blank band: every row under the viewport is drawn after one frame', async () => {
     const page = await open();
     try {
-      const max = await scrollMax(page);
-      await scrollTo(page, Math.round(max / 2));
+      await feedTo(page, 600);
+      await scrollTo(page, 600 * 44 - 200);
       await frames(page, 2);
       const gap = await page.evaluate(() => {
         const wrap = document.querySelector('.table-wrap');
@@ -90,12 +105,12 @@ if (s) {
   test('scrolling to the end draws the last row; the foot counts what is loaded', async () => {
     const page = await open();
     try {
-      await scrollTo(page, await scrollMax(page));
-      await page.waitForSelector(`tr[data-eid="${ids[N - 1]}"]`, { timeout: 5000 });
+      await feedTo(page, N - 1);
       const n = await drawn(page);
       assert.ok(n < 200, `${n} rows drawn at the end`);
       const note = await page.evaluate(() => document.querySelector('.wv-grid .wv-loaded')?.textContent);
-      assert.match(note, /^\d{3} of 1,200 loaded$/, `two pages in: ${note}`);
+      assert.equal(note, '', `every row is here, so the foot has nothing left to count: ${note}`);
+      assert.equal(await page.locator('.wv-grid tbody tr.wv-load-more').count(), 0, 'and the load-more row is gone');
     } finally { await page.close(); }
   });
 
@@ -238,8 +253,7 @@ if (s) {
     try {
       assert.equal(await scrollBox(narrow), 'wrap');
       for (const page of [narrow, wide]) {
-        await scrollTo(page, await scrollMax(page));
-        await page.waitForSelector(`tr[data-eid="${ids[N - 1]}"]`, { timeout: 5000 });
+        await feedTo(page, N - 1);
         assert.ok((await drawn(page)) < 200);
       }
     } finally { await narrow.close(); await wide.close(); }
