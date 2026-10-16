@@ -495,9 +495,12 @@
       else if (ev.key === 'ArrowDown') { ev.preventDefault(); visible()[0]?.focus(); }
       else if (ev.key === 'Enter') { ev.preventDefault(); const first = visible()[0]; if (first) { select(first.dataset.template); first.focus(); } }
     });
-    search.addEventListener('focus', () => {
-      if (matchMedia('(max-width: 860px)').matches) setTimeout(() => search.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' }), 250);
-    });
+    const lift = () => {
+      if (!matchMedia('(max-width: 860px)').matches) return;
+      const box = search.closest('.search');
+      scrollTo({ top: Math.max(0, box.getBoundingClientRect().top + scrollY - 12), behavior: 'instant' });
+    };
+    search.addEventListener('focus', () => { lift(); setTimeout(lift, 300); });
     gallery.addEventListener('keydown', (ev) => {
       const at = ev.target.closest?.('.card');
       if (!at) return;

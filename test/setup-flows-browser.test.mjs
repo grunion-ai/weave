@@ -514,7 +514,7 @@ if (openHub) {
     await signIn(p, openHub);
     await nameIt(p, 'Keys', 'gallery-keys');
     await step(p, 'work');
-    await p.click('#work-search');
+    await p.focus('#work-search');
     await p.waitForFunction(() => { const top = document.getElementById('work-search').getBoundingClientRect().top; return top >= 0 && top < innerHeight / 3; });
     await p.keyboard.type('candidates');
     assert.ok(await p.locator('.card[data-template]:visible').first().evaluate((n) => n.getBoundingClientRect().top < innerHeight * 0.55), 'the first match shows above where the keyboard rises');
