@@ -1,0 +1,48 @@
+name: signup-e2e
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PLAYWRIGHT_VERSION: "1.62.1"
+
+jobs:
+  signup:
+    name: Production sign-up from grunion.ai
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: signup-e2e
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - name: Install pinned browser driver
+        run: |
+          npm ci --ignore-scripts --prefix .github/test-tools
+          ln -s .github/test-tools/node_modules node_modules
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}-chromium
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Sign up from grunion.ai
+        run: node scripts/signup-e2e.mjs signup-e2e-shots
+        env:
+          WEAVE_E2E_CLERK_SECRET_KEY: ${{ secrets.WEAVE_E2E_CLERK_SECRET_KEY }}
+          WEAVE_E2E_ADMIN_TOKEN: ${{ secrets.WEAVE_E2E_ADMIN_TOKEN }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: signup-e2e-shots
+          path: signup-e2e-shots
+          if-no-files-found: ignore
+          retention-days: 30
