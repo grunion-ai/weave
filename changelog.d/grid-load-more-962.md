@@ -1,1 +1,0 @@
-- Scrolling down a long table stops at the rows that are loaded, on a **Loading more** row that runs the weave loader, and the next page is asked for three screens before the reader gets there. A fast flick no longer lands on blank grey rows. Jumping to a row that is not loaded yet (End, a new row) loads every page up to it first (Issue #962).

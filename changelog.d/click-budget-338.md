@@ -1,1 +1,0 @@
-- **Click budget for every journey** (Feature #338): the human-simulating journeys now count the clicks each action takes and log them on every PR. `test/click-budget.json` holds the budget per journey and cell; budgets only ratchet down, and a change that adds a click fails unless it raises the budget with a written reason under `raised`.
