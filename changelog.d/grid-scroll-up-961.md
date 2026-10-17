@@ -1,0 +1,1 @@
+- Scrolling back up a long table never redraws a row you already saw. A refresh used to keep only the pages under the window, so rows above came back blank and waited on a fetch; it now re-reads every loaded row in batches of 400 and swaps them in at once (Issue #961).
