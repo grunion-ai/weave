@@ -11,17 +11,15 @@
 
   const COPY = {
     account: {
-      title: 'Your weave account',
-      signInTitle: 'weave sign-in',
+      title: 'Create your weave account',
+      signInTitle: 'Sign in to weave',
       lead: 'One account opens every workspace you make or join.',
-      go: 'Sign up or sign in',
+      go: 'Sign in',
       haveAccount: 'Already have an account?',
       signIn: 'Sign in',
       newHere: 'New to weave?',
       signUp: 'Create an account',
-      bypass: 'Skip the guided steps and start an empty workspace',
-      bypassOn: 'You\'ll start in an empty workspace. Turn the guided steps back on',
-      loading: 'Loading sign-up',
+      loading: 'Loading sign-in',
     },
     steps: { of: 'Step {n} of {total}', building: 'Building {title}' },
     list: { title: 'Your workspaces', signedIn: 'Signed in as', and: ' and ', empty: 'This sign-in has no workspaces yet.', create: 'Create a workspace', limit: 'This sign-in has reached the server\'s workspace limit. Open one of the workspaces above.' },
@@ -214,17 +212,16 @@
   }
 
   function account() {
-    let skipping = false;
-    let mode = 'signup';
+    let mode = 'signin';
     const pane = me.clerk;
-    const title = make('h1', {}, COPY.account.title);
-    const button = make('a', { class: 'btn btn-primary btn-wide', href: signInHref('/start'), 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
+    const next = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : '/start');
+    const title = make('h1', {}, COPY.account.signInTitle);
+    const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
     const switchLead = make('span', {});
     const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; show(); } });
     const toggle = make('p', { class: 'switch', hidden: true }, switchLead, ' ', switchGo);
     const show = async () => {
-      const next = signInHref(skipping ? '/start?setup=skip' : '/start');
       title.textContent = mode === 'signup' ? COPY.account.title : COPY.account.signInTitle;
       switchLead.textContent = mode === 'signup' ? COPY.account.haveAccount : COPY.account.newHere;
       switchGo.textContent = mode === 'signup' ? COPY.account.signIn : COPY.account.signUp;
@@ -238,26 +235,17 @@
         mount.removeAttribute('aria-busy');
         mount.dataset.mode = mode;
         const appearance = clerkAppearance();
-        if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { forceRedirectUrl: next, signInForceRedirectUrl: next, appearance });
-        else c.mountSignIn(mount, { forceRedirectUrl: next, signUpForceRedirectUrl: next, appearance });
+        if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: next, signInForceRedirectUrl: next, appearance });
+        else c.mountSignIn(mount, { routing: 'virtual', withSignUp: true, forceRedirectUrl: next, signUpForceRedirectUrl: next, appearance });
         toggle.hidden = !c.mountSignUp;
       } catch {
         mount.replaceChildren();
         mount.hidden = true;
         toggle.hidden = true;
         button.hidden = false;
-        title.textContent = COPY.account.title;
+        title.textContent = COPY.account.signInTitle;
       }
     };
-    const bypass = make('a', { class: 'btn-link', href: signInHref('/start?setup=skip'), 'data-go': 'bypass', onclick: (ev) => {
-      if (!pane || mount.hidden) return;
-      ev.preventDefault();
-      skipping = !skipping;
-      ev.currentTarget.textContent = skipping ? COPY.account.bypassOn : COPY.account.bypass;
-      ev.currentTarget.setAttribute('aria-pressed', String(skipping));
-      button.href = signInHref(skipping ? '/start?setup=skip' : '/start');
-      show();
-    } }, COPY.account.bypass);
     if (pane) queueMicrotask(show);
     return [
       title,
@@ -266,7 +254,6 @@
       mount,
       button,
       toggle,
-      make('p', { class: 'muted bypass' }, bypass),
     ];
   }
 
@@ -436,6 +423,7 @@
   let choice = null;
   let shelf = 'all';
   let query = '';
+  let entry = {};
   function work() {
     choice = s.data.other ? EMPTY : s.data.template ?? choice;
     const groups = shelves();
@@ -732,8 +720,9 @@
   async function boot() {
     const q = Object.fromEntries(new URLSearchParams(location.search));
     try { me = await getJson('/api/start'); } catch (err) { main.textContent = err.message; return; }
+    entry = q;
     s = begin(me, q);
-    if (location.search) history.replaceState(null, '', '/start');
+    if (location.search || location.hash) history.replaceState(null, '', '/start');
     render();
   }
 
