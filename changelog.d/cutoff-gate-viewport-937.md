@@ -1,1 +1,0 @@
-- The cut-off text gate reads only what the viewport shows, so a grid's off-screen buffer rows no longer decide the baseline counts ([[Issue#937]]).

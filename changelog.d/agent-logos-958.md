@@ -1,1 +1,0 @@
-- Each agent on the connect step shows its own logo: Claude, ChatGPT, Gemini, Claude Code, Codex, Antigravity and Gemini CLI. (Issue #958)
