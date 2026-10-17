@@ -31,29 +31,20 @@ test('the buffer is never fewer than 20 rows, however short the viewport', () =>
   assert.equal(w.end, 3 + 2 * 20);
 });
 
-test('scrolled down the middle, the buffer leads in the direction of travel', () => {
-  const w = win({ scrollTop: 30 * 1000, direction: 1 });
-  assert.equal(w.start, 1000 - 20, 'one buffer behind');
+test('Issue #938: scrolled down the middle, the window holds two buffers on both sides', () => {
+  const w = win({ scrollTop: 30 * 1000 });
+  assert.equal(w.start, 1000 - 40, 'two buffers behind');
   assert.equal(w.end, 1000 + 20 + 40, 'two ahead');
   assert.equal(w.topPad, w.start * 30);
   assert.equal(w.bottomPad, (2087 - w.end) * 30);
 });
 
-test('scrolling up flips the buffer: two behind the eye, one ahead', () => {
-  const w = win({ scrollTop: 30 * 1000, direction: -1 });
-  assert.equal(w.start, 1000 - 40);
-  assert.equal(w.end, 1000 + 20 + 20);
-});
-
-test('travelFor reads a direction from a row of travel, never from a pixel (Issue #317)', () => {
-  const rowH = 30;
-  assert.deepEqual(GW.travelFor({ scrollTop: 973, lastTop: 1000, direction: 1, rowH }), { direction: 1, lastTop: 1000 });
-  assert.deepEqual(GW.travelFor({ scrollTop: 969, lastTop: 1000, direction: 1, rowH }), { direction: -1, lastTop: 969 });
-  assert.deepEqual(GW.travelFor({ scrollTop: 1030, lastTop: 1000, direction: -1, rowH }), { direction: 1, lastTop: 1030 });
-  assert.deepEqual(GW.travelFor({ scrollTop: 940, lastTop: 1000, direction: 1, rowH }), { direction: -1, lastTop: 940 });
-  assert.deepEqual(GW.travelFor({ scrollTop: 1000, lastTop: 1000, direction: -1, rowH }), { direction: -1, lastTop: 1000 });
-  assert.deepEqual(GW.travelFor({ scrollTop: 20, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 0 });
-  assert.deepEqual(GW.travelFor({ scrollTop: 50, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 50 });
+test('Issue #938: a reversal reaches the rows already drawn, so the window carries no direction', () => {
+  assert.equal(GW.travelFor, undefined, 'the direction state went with the asymmetric window');
+  const flat = win({ scrollTop: 30 * 1000 });
+  for (const direction of [1, -1, 0, undefined]) {
+    assert.deepEqual(win({ scrollTop: 30 * 1000, direction }), flat, `direction ${direction} moved the window`);
+  }
 });
 
 test('at the bottom the window ends on the last row and the bottom spacer is zero', () => {
@@ -79,11 +70,9 @@ test('an unmeasured row height (0, NaN, missing) falls back to the density defau
 
 test('the spacers and the drawn rows always add up to the whole table', () => {
   for (const scrollTop of [0, 300, 29_999, 30 * 2000, 30 * 2087]) {
-    for (const direction of [1, -1]) {
-      const w = win({ scrollTop, direction });
-      assert.equal(w.topPad + (w.end - w.start) * 30 + w.bottomPad, 2087 * 30, `at ${scrollTop} going ${direction}`);
-      assert.ok(w.start <= w.end);
-    }
+    const w = win({ scrollTop });
+    assert.equal(w.topPad + (w.end - w.start) * 30 + w.bottomPad, 2087 * 30, `at ${scrollTop}`);
+    assert.ok(w.start <= w.end);
   }
 });
 
