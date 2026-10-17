@@ -73,7 +73,7 @@ async function serve() {
   return { w, task, view, share, admin, writer, reader, call, stop };
 }
 
-const OPEN = (method, path) => path === '/api/health' || path === '/auth' || path === '/start' || /^\/api\/start(\/|$)/.test(path)
+const OPEN = (method, path) => path === '/api/health' || path === '/auth' || path === '/ingest' || path.startsWith('/ingest/') || path === '/start' || /^\/api\/start(\/|$)/.test(path)
   || (method === 'GET' && (path === '/privacy' || path === '/terms' || path === '/support' || path === '/docs'))
   || /^\/api\/auth\/(oidc\/(start|callback)|handoff)$/.test(path)
   || path === '/api/auth/logout' || path === '/.well-known/openai-apps-challenge'

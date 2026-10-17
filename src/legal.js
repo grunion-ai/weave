@@ -1,6 +1,6 @@
 export const PRIVACY = `# Privacy policy
 
-*Effective date: 2026-10-08*
+*Effective date: 2026-10-16*
 
 The privacy of your data (and it is your data, not ours!) is a big deal to us. In this policy, we lay out: what data we collect and why; how your data is handled; and your rights with respect to your data. We promise we never sell your data: never have, never will.
 
@@ -32,7 +32,15 @@ We record the browser description (user agent) and the times of each signed-in s
 
 ### Cookies
 
-We use first-party cookies to keep you signed in and to complete a sign-in with the sign-in provider. Clerk, our sign-in provider, sets its own cookies during sign-in.
+We use first-party cookies to keep you signed in and to complete a sign-in with the sign-in provider. Clerk, our sign-in provider, sets its own cookies during sign-in. We also keep your cookie choice in a first-party cookie on the .grunion.ai domain, so one choice covers both weave.grunion.ai and grunion.ai.
+
+We use PostHog Cloud (US region) for product analytics, and we load it only after you click Accept on the cookie banner. PostHog then sets a first-party cookie on .grunion.ai so it can recognize the same browser on grunion.ai and in weave. We record these analytics events: the pages you view, which call to action you click, the referring site, and the campaign tags in the link that brought you to us (utm parameters, plus the gclid and fbclid ad click ids from Google and Meta). In weave we also record which onboarding step you have reached: account, workspace, template or agent connected. Events from signed-in users carry the Clerk user id. No event carries an email address, workspace content or form input, and session replay is off.
+
+We use this data to count how many visitors move through each onboarding step and which ads and pages brought them.
+
+If you click Decline, we set no analytics cookies and send no analytics events. You can change your choice from the Cookies link in the footer.
+
+A self-hosted weave instance sends nothing to PostHog unless its operator sets their own PostHog key.
 
 A cookie is a piece of text stored by your browser. It may help remember login information and site preferences. You can adjust cookie retention settings and accept or block individual cookies in your browser settings, although weave won't work and other aspects of our service may not function properly if you turn cookies off.
 
@@ -49,6 +57,7 @@ We also store information you may volunteer, for example, written responses to s
 * **Clerk** handles sign-in and account authentication, including Google sign-in through Clerk.
 * **Railway** hosts the weave application and stores its data.
 * **Cloudflare** provides DNS for weave.grunion.ai.
+* **PostHog** (PostHog Inc., US) provides product analytics, only with your consent through the cookie banner.
 
 We may disclose your information at your direction if you integrate a third-party service into your use of weave.
 

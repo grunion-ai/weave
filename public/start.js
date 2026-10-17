@@ -160,8 +160,21 @@
   let building = false;
   let onResize = null;
 
+  const capture = (name, props) => globalThis.WeaveConsent?.capture(name, props);
+  let viewed = null;
+
+  function milestone(e, was) {
+    if (e.type === 'built' && was.step === 'build') {
+      capture('workspace_created');
+      if (!was.skipped && was.data.template && !e.made?.templateError) capture('template_built', { template: was.data.template });
+    }
+    if (e.type === 'connected' && was.step === 'agent' && !was.connected) capture('agent_connected', { tool: was.data.tool });
+  }
+
   function dispatch(e) {
+    const was = s;
     s = reduce(s, e);
+    milestone(e, was);
     render();
   }
 
@@ -699,6 +712,11 @@
     onResize = null;
     main.dataset.step = s.step;
     main.replaceChildren(...VIEWS[s.step]().filter(Boolean));
+    if (viewed !== s.step) {
+      viewed = s.step;
+      capture('onboarding_step_viewed', { step: s.step });
+      if (s.step === 'done') capture('onboarding_completed');
+    }
     const tool = s.connected && TOOLS.find((t) => t.id === s.data.tool);
     document.title = tool ? fill(COPY.agent.tabTitle, { tool: tool.name }) : PAGE_TITLE;
     if (s.step !== 'build') donut(progress(s));
@@ -723,9 +741,12 @@
     entry = q;
     s = begin(me, q);
     if (location.search || location.hash) history.replaceState(null, '', '/start');
+    globalThis.WeaveConsent?.start(me.analytics);
     render();
+    if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');
   }
 
+  addEventListener('grunion:consent-granted', () => { if (s) capture('onboarding_step_viewed', { step: s.step }); });
   stage.replaceChildren(radiate());
   boot();
 })();

@@ -126,7 +126,7 @@ ${[].concat(lines).map((l) => `    <p class="sub">${esc(l)}</p>\n`).join('')}${a
 </body></html>`;
 }
 
-export function renderAuthPage({ mount = '', workspace = 'weave', provider = null } = {}) {
+export function renderAuthPage({ mount = '', workspace = 'weave', provider = null, analyticsKey = null } = {}) {
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -160,8 +160,9 @@ ${provider ? `      <p class="sub">Your account here is linked to your ${esc(pro
     </section>
     <div id="msg" class="msg" role="status"></div>
   </div>
-  <p class="sub legal"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
+  <p class="sub legal"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>${analyticsKey ? ' · <a href="/privacy#cookies" data-consent-open>Cookies</a>' : ''}</p>
 </main>
 <script>${JS}</script>
+${analyticsKey ? `<script src="/consent.js" data-posthog-key="${esc(analyticsKey)}"></script>\n` : ''}
 </body></html>`;
 }

@@ -29,7 +29,7 @@ test('with requireAuth on, an anonymous visitor reads /privacy and /terms', asyn
       assert.match(html, new RegExp(`<h1>${heading}</h1>`), `${path} lacks its heading`);
       assert.match(html, new RegExp(`<title>${heading}`), `${path} lacks its title`);
       assert.match(html, ATTRIBUTION, `${path} lacks the CC BY attribution`);
-      assert.match(html, path === '/privacy' ? /Effective date: 2026-10-08/ : /Effective date: 2026-10-02/);
+      assert.match(html, path === '/privacy' ? /Effective date: 2026-10-16/ : /Effective date: 2026-10-02/);
       assert.ok(html.includes('[Entity name]'), `${path} lost the entity placeholder`);
       assert.ok(!html.includes('[Contact email]'), `${path} still shows the contact email slot`);
       assert.ok(!html.includes('[Address]'), `${path} still shows the address slot`);
@@ -94,5 +94,5 @@ test('the legal text names the contact address, keeps the entity slot and carrie
     assert.ok(!/37signals|Basecamp(?! open-source policies)/.test(md.replace(/github\.com\/basecamp\/policies/g, '')), `${name} still names the source company`);
   }
   assert.ok(PRIVACY.includes('please contact us at [weave@grunion.ai](mailto:weave@grunion.ai). If an authorized agent'), 'privacy contact sentence lost its address clause');
-  for (const vendor of ['Clerk', 'Railway', 'Cloudflare']) assert.ok(PRIVACY.includes(vendor), `privacy lacks ${vendor}`);
+  for (const vendor of ['Clerk', 'Railway', 'Cloudflare', 'PostHog']) assert.ok(PRIVACY.includes(vendor), `privacy lacks ${vendor}`);
 });
