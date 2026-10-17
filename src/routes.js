@@ -119,10 +119,12 @@ const HANDOFF_TTL_MS = 60 * 1000;
 const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
 const LIMITS = { options: 10, failed: 5, slugs: 60 };
 const START_TTL_MS = 30 * 60 * 1000;
+const INGEST_MAX_BYTES = 2 * 1024 * 1024;
+const INGEST_HEADERS = ['content-type', 'content-encoding', 'user-agent'];
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const clerkPane = (() => {
     if (!clerkKey || !oidc) return null;
     let host;
@@ -240,6 +242,25 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const page = isPage ? serveStatic('/404.html') : null;
       return page ? { ...page, status: 404 } : out(404, json);
     };
+
+    if (path === '/ingest' || path.startsWith('/ingest/')) {
+      if (!posthog || !rx.readBytes) return out(404, { error: 'Not found', code: 'not-found' });
+      const rest = path.slice('/ingest'.length) || '/';
+      const query = rx.searchParams?.toString();
+      const target = `${/^\/(?:static|array)\//.test(rest) ? posthog.assets : posthog.host}${rest}${query ? `?${query}` : ''}`;
+      const headers = Object.fromEntries(INGEST_HEADERS.map((h) => [h, rx.header(h)]).filter(([, v]) => v));
+      headers['x-forwarded-for'] = clientIp(rx);
+      let res;
+      try {
+        const body = ['GET', 'HEAD'].includes(rx.method) ? undefined : await rx.readBytes(INGEST_MAX_BYTES);
+        res = await fetch(target, { method: rx.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(10000) });
+      } catch (err) {
+        if (err instanceof WeaveError) return out(statusFor(err), errorBody(err));
+        return out(502, { error: 'PostHog is not answering', code: 'bad-gateway' });
+      }
+      const kept = Object.fromEntries(['content-type', 'cache-control'].map((h) => [h, res.headers.get(h)]).filter(([, v]) => v).map(([h, v]) => [h === 'content-type' ? 'Content-Type' : 'Cache-Control', v]));
+      return { status: res.status, headers: { 'Content-Type': 'application/octet-stream', ...kept }, body: new Uint8Array(await res.arrayBuffer()) };
+    }
 
     let weave = hub.get(hub.defaultName);
     let wsPrefix = '';
@@ -853,7 +874,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const next = n ? `?next=${encodeURIComponent(n)}` : '';
           return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
         }
-        return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null, analyticsKey: posthog?.key ?? null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
 
       if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
@@ -875,7 +896,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           '/support': ['Support', SUPPORT],
           '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`)}\n\n## Tools\n\n${toolTable()}\n`],
         }[path];
-        return out(200, renderDocumentPage({ title, subtitle: 'weave', markdown }), { 'Content-Type': 'text/html; charset=utf-8' });
+        const html = renderDocumentPage({ title, subtitle: 'weave', markdown });
+        return out(200, path === '/privacy' ? html.replace('<h3>Cookies</h3>', '<h3 id="cookies">Cookies</h3>') : html, { 'Content-Type': 'text/html; charset=utf-8' });
       }
 
       if (path === '/api/backups' || (m = path.match(/^\/api\/backups\/([^/]+)$/))) {
@@ -1073,7 +1095,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (held) starts.delete(held.key);
             return out(200, { ok: true }, { 'Set-Cookie': [clearCookie('wv_start', rx), clearRail()], 'Cache-Control': 'no-store' });
           }
-          if (route === 'GET /api/start' && !logins.length) return out(200, { signedIn: false, provider: oidc.name, ...(clerkPane ? { clerk: clerkPane } : {}) }, { 'Cache-Control': 'no-store' });
+          if (route === 'GET /api/start' && !logins.length) return out(200, { signedIn: false, provider: oidc.name, ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key } } : {}) }, { 'Cache-Control': 'no-store' });
           if (!logins.length) return deny(401, 'Sign in first');
           const found = findWorkspaces(logins);
           const { hubRoot, accountIn } = found;
@@ -1091,7 +1113,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 if (!(error instanceof BillingUnavailable)) throw error;
               }
             }
-            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
+            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain, ...(posthog ? { analytics: { key: posthog.key, user: logins[0].subject } } : {}) }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/start/slug') {
             if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
