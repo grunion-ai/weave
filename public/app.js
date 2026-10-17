@@ -12362,7 +12362,7 @@ async function initPageLoader() {
   loading.ready = true;
   const grid = gridLoaderNode();
   if (!grid) return;
-  for (const m of grid.querySelectorAll(':scope > .loader-mark')) m.innerHTML = html;
+  for (const m of grid.querySelectorAll(':scope > .loader-mark')) m.replaceWith(mark.cloneNode(true));
   if (gridWait.shownAt) keepLoader(grid, gridWait);
 }
 
