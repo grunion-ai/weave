@@ -843,6 +843,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path === '/auth') {
+        if (baseDomain && oidc && !hostOrigin && !wsPrefix) return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
         if (oidc && !session && !role && !rx.searchParams?.has('signed-out')) {
           const q = rx.searchParams?.toString() ?? '';
           if (!origin && String(rx.header('host') ?? '').split(':')[0] === '127.0.0.1') {
@@ -961,7 +962,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               let trip;
               try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
               const binder = newChallenge();
-              const start = !hostOrigin && !wsPrefix && rx.searchParams?.has('start');
+              const start = !hostOrigin && !wsPrefix && (rx.searchParams?.has('start') || !!baseDomain);
               putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix, handoff, start }, trip.state);
               const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
               return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
