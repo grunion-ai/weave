@@ -1,5 +1,6 @@
 import '../public/vendor/lucide-moving.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { renderMarkdown } from './markdown.js';
 import { markParts, PALETTE } from './mark.js';
 import { fileHeaders, WeaveError } from './engine.js';
@@ -219,6 +220,12 @@ const HEAD = (mount, title, extra) => `<!doctype html>
 <style>${CSS}${extra ?? ''}</style>
 </head><body>`;
 
+const CHIP_CSS = readFileSync(new URL('../public/chip.css', import.meta.url), 'utf8');
+const hueRules = (dark) => [...CHIP_CSS.matchAll(/^(\[data-bs-theme="dark"\] )?\.hue-([a-z]+)\s*\{([^}]*)\}/gm)]
+  .filter((m) => !!m[1] === dark)
+  .map((m) => `.k.${m[2]}{background:${m[3].match(/--fill:\s*([^;]+);/)[1]}; color:${m[3].match(/--text:\s*([^;]+);/)[1]}}`)
+  .join('\n');
+const HUE_CSS = `${hueRules(false)}\n@media (prefers-color-scheme: dark){\n${hueRules(true)}\n}`;
 const CSS = `
 :root{
   --ground:#eceff3; --surface:#ffffff; --sunk:#e2e6ec;
@@ -331,11 +338,7 @@ button,input,textarea{font:inherit; color:inherit}
 
 .k{font-size:11.5px; line-height:18px; padding:1px 8px; border-radius:4px; display:inline-flex;
   align-items:center; gap:4px; white-space:nowrap; border:0; font-family:inherit}
-.k.slate{background:var(--slate-soft); color:var(--slate)}
-.k.blue{background:var(--accent-soft); color:var(--accent)}
-.k.green{background:var(--ok-soft); color:var(--ok)}
-.k.amber{background:var(--warn-soft); color:var(--warn)}
-.k.red{background:var(--bad-soft); color:var(--bad)}
+${HUE_CSS}
 .k.ghost{background:none; color:var(--muted); padding:1px 0}
 .k.pointer{background:none; color:var(--accent); padding:1px 0}
 .k.pointer::after{content:"\\2197"; font-size:9px; opacity:.6; margin-left:1px}
