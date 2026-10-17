@@ -1881,3 +1881,16 @@ test('the view panes style their children without :has(), which stalled a 1,200-
   const costly = CSS.match(/#(?:main|dock)\b[^{},]*:has\([^)]*\)\s*(?:[>~+]|\s(?=[^\s{]))[^{]*\{/g) ?? [];
   assert.deepEqual(costly, []);
 });
+
+test('one meta tag style names a field type, in the sans face, with layout from the parent (Issue #773)', () => {
+  const tag = rulesFor('.wv-tag');
+  assert.equal(tag['font-family'], 'var(--tblr-font-sans-serif)', 'the type word names the sans face, so no second tag class can drift to mono');
+  assert.equal(tag['font-size'], 'var(--fs-meta)', 'the type word is 11px wherever it appears');
+  assert.equal(tag.color, 'var(--tblr-secondary)', 'the type word reads as meta, not as content');
+  assert.ok(!tag.flex && !tag['text-align'], `layout belongs to the parent, not the tag: ${JSON.stringify(tag)}`);
+  assert.deepEqual(rulesFor('.term-tag'), {}, '.term-tag is gone: one name for the type word');
+  assert.ok(!APP.includes('term-tag'), 'app.js builds no .term-tag');
+  const plural = rulesFor('.term-plural-row .wv-tag');
+  assert.equal(plural.flex, '0 0 44px', 'the plural row keeps its 44px column through its parent rule');
+  assert.equal(plural['text-align'], 'right', 'and keeps its right edge through that same rule');
+});

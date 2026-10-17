@@ -7807,7 +7807,7 @@ function termSection(state, onChange) {
   draw();
   return dsection('Rows in this table are…',
     el('div', { class: 'term-row' }, face, reset),
-    el('div', { class: 'term-row term-plural-row' }, el('span', { class: 'term-tag' }, 'plural'), plur),
+    el('div', { class: 'term-row term-plural-row' }, el('span', { class: 'wv-tag' }, 'plural'), plur),
     preview);
 }
 
