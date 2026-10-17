@@ -151,4 +151,62 @@ if (s) {
       assert.ok(reread.length >= 1 && reread.length <= 2, `the refresh re-read the loaded rows in ${reread.length} batch requests: ${JSON.stringify(asked)}`);
     } finally { await page.close(); }
   });
+
+  test('Issue #938: the drawn rows reach as far behind the reader as ahead, whichever way the reader came', async () => {
+    const page = await open();
+    try {
+      const drawn = () => page.evaluate(() => {
+        const wrap = document.querySelector('.table-wrap');
+        const el = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
+        const r = el.getBoundingClientRect();
+        const head = document.querySelector('.wv-grid thead th').getBoundingClientRect().bottom;
+        const top = Math.max(r.top, head);
+        const rows = [...document.querySelectorAll('.wv-grid tbody tr.entity-row')];
+        const index = (tr) => Number(tr.dataset.i);
+        const onScreen = rows.filter((tr) => {
+          const b = tr.getBoundingClientRect();
+          return b.height > 0 && b.bottom > top + 1 && b.top < r.bottom - 1;
+        }).map(index);
+        return {
+          first: Math.min(...rows.map(index)),
+          last: Math.max(...rows.map(index)),
+          seenFirst: Math.min(...onScreen),
+          seenLast: Math.max(...onScreen),
+          top: el.scrollTop,
+        };
+      });
+      for (let k = 0; k < 40; k++) {
+        await scrollTo(page, 'max');
+        const v = await view(page);
+        if (v.rows.some((i) => i >= 700)) break;
+        await page.waitForTimeout(150);
+      }
+      const deep = await drawn();
+      const target = Math.round(deep.top / 2);
+      await scrollTo(page, target);
+      await scrollTo(page, target);
+      const up = await drawn();
+      await scrollTo(page, 0);
+      for (let top = 0; top <= target; top += 400) await scrollTo(page, Math.min(top, target));
+      await scrollTo(page, target);
+      const down = await drawn();
+
+      assert.equal(up.top, down.top, 'both approaches rest at the same scroll position');
+      assert.deepEqual(
+        { first: up.first, last: up.last },
+        { first: down.first, last: down.last },
+        `the window depends on the direction of travel: arriving from below drew ${up.first}-${up.last}, from above ${down.first}-${down.last}`,
+      );
+      for (const [way, v] of [['from below', up], ['from above', down]]) {
+        const behind = v.seenFirst - v.first;
+        const ahead = v.last - v.seenLast;
+        assert.ok(behind >= 20, `arriving ${way} left only ${behind} rows drawn behind the reader`);
+        assert.ok(ahead >= 20, `arriving ${way} left only ${ahead} rows drawn ahead of the reader`);
+        assert.ok(
+          Math.min(behind, ahead) * 2 >= Math.max(behind, ahead),
+          `arriving ${way} the window leans: ${behind} rows behind against ${ahead} ahead`,
+        );
+      }
+    } finally { await page.close(); }
+  });
 }

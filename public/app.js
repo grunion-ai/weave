@@ -5844,7 +5844,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let table = null, tbody = null, topSpacer = null, bottomSpacer = null, loadedNote = null, loadMore = null;
   const live = new Map();
   const built = new Map();
-  const win = { start: 0, end: 0, lastTop: 0, dir: 1 };
+  const win = { start: 0, end: 0 };
 
   const CR = globalThis.WeaveColumnResize;
   const gid = `g${++GRID_SEQ}`;
@@ -6359,9 +6359,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const rewindow = () => {
     if (!tbody?.isConnected) return;
     const g = geometry();
-    const travel = GW().travelFor({ scrollTop: g.scrollTop, lastTop: win.lastTop, direction: win.dir, rowH: rowH() });
-    win.dir = travel.direction; win.lastTop = travel.lastTop;
-    const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: reach(), direction: win.dir });
+    const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: reach() });
     if (pager) {
       const next = GW().feedFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), loaded: reach(), total: total() });
       if (next != null && !pager.has(next)) pager.fetch(next).then(schedule, () => {});
@@ -6449,7 +6447,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const off = r.top + into * r.height - topEdge(g);
       if (Math.abs(off) < 1) break;
       (g.box ?? window).scrollBy({ top: off, left: 0, behavior: 'instant' });
-      win.lastTop = geometry().scrollTop;
       rewindow();
     }
     markClippedCells(table);
@@ -6485,7 +6482,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       });
     }
     live.clear(); built.clear();
-    win.start = 0; win.end = 0; win.lastTop = 0; win.dir = 1;
+    win.start = 0; win.end = 0;
     tbody = el('tbody');
     topSpacer = spacer(); bottomSpacer = spacer();
     loadMore = pager ? el('tr', { class: 'wv-load-more', role: 'status' },
