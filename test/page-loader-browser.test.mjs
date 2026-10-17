@@ -347,4 +347,87 @@ if (s) {
     assert.equal(seen.status, false, 'the status text stayed hidden, so the next wait announces nothing');
     await page.close();
   });
+
+  async function coldBoot(browser, base, theme, rope) {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
+    if (rope === 'blocked') await page.route('**/brand/weave-loader-rope.html', (route) => route.abort());
+    else await page.route('**/brand/weave-loader-rope.html', async (route) => {
+      await new Promise((r) => setTimeout(r, 6000));
+      await route.continue();
+    });
+    await page.route('**/api/schema', async (route) => {
+      await new Promise((r) => setTimeout(r, 2500));
+      await route.continue();
+    });
+    await page.goto(`${base}/`, { waitUntil: 'commit' });
+    await page.waitForFunction(() => !!document.documentElement.dataset.bsTheme
+      && !!document.querySelector('#page-loader')
+      && getComputedStyle(document.querySelector('#page-loader')).animationName !== 'none');
+    await eventually(() => page.evaluate(() => Number(getComputedStyle(
+      document.querySelector('#page-loader')).opacity)), 1, { timeout: 8000, every: 25 });
+    return page;
+  }
+
+  function bootMotion(page) {
+    return page.evaluate(() => {
+      const host = document.querySelector('#page-loader');
+      const mark = host.querySelector('.loader-mark');
+      const running = mark.getAnimations({ subtree: true }).filter((a) => a.playState === 'running');
+      const moving = running.filter((a) => a.effect.getKeyframes().some((k) => 'transform' in k));
+      return {
+        theme: document.documentElement.dataset.bsTheme,
+        at: Math.round(performance.now()),
+        opacity: Number(getComputedStyle(host).opacity),
+        rope: mark.querySelectorAll('.rope-a').length,
+        moving: moving.length,
+        names: [...new Set(moving.map((a) => a.animationName || '?'))],
+        props: [...new Set(moving.flatMap((a) => a.effect.getKeyframes().flatMap((k) => Object.keys(k))))]
+          .filter((k) => !['offset', 'computedOffset', 'easing', 'composite'].includes(k)),
+      };
+    });
+  }
+
+  for (const theme of ['light', 'dark']) {
+    test(`a loader the rope has not reached yet moves on its own (${theme}, Issue #904)`, async (t) => {
+      const page = await coldBoot(browser, base, theme, 'slow');
+      const seen = await bootMotion(page);
+      t.diagnostic(`${seen.theme}: visible at +${seen.at} ms, rope spans ${seen.rope}, moving ${seen.moving} (${seen.names.join(', ') || 'none'})`);
+      assert.equal(seen.theme, theme, 'the page must be in the theme under test');
+      assert.equal(seen.opacity, 1, 'this case is about the loader the reporter can see');
+      assert.equal(seen.rope, 0, 'the rope is still in flight: this is the window Issue #904 reported');
+      assert.ok(seen.moving >= 1,
+        `the boot mark sat still for the whole visible wait: ${seen.moving} moving animations at +${seen.at} ms`);
+      assert.deepEqual(seen.props, ['transform'],
+        'the boot mark moves by transform only, like the rope it stands in for');
+      await page.close();
+    });
+
+    test(`a rope that never arrives leaves the loader moving, not frozen (${theme}, Issue #904)`, async (t) => {
+      const page = await coldBoot(browser, base, theme, 'blocked');
+      const seen = await bootMotion(page);
+      t.diagnostic(`${seen.theme}: visible at +${seen.at} ms, rope spans ${seen.rope}, moving ${seen.moving} (${seen.names.join(', ') || 'none'})`);
+      assert.equal(seen.rope, 0, 'the fetch was blocked for this page: nothing may come from it');
+      assert.ok(seen.moving >= 1,
+        `a failed rope fetch froze the mark with no fallback: ${seen.moving} moving animations at +${seen.at} ms`);
+      await page.close();
+    });
+  }
+
+  test('the rope takes the mark back from the boot animation when it lands (Issue #904)', async (t) => {
+    const page = await openWithRope(browser, base, 'light');
+    const seen = await page.evaluate(() => {
+      const mark = document.querySelector('#page-loader .loader-mark');
+      const running = mark.getAnimations({ subtree: true }).filter((a) => a.playState === 'running');
+      return {
+        rope: mark.querySelectorAll('.rope-a').length,
+        names: [...new Set(running.map((a) => a.animationName || '?'))],
+      };
+    });
+    t.diagnostic(`rope spans ${seen.rope}, running ${seen.names.join(', ')}`);
+    assert.ok(seen.rope >= 1, 'this case is about the loader after the rope has landed');
+    assert.deepEqual(seen.names.filter((n) => !n.startsWith('rope-')), [],
+      'the boot breathe outlived the rope and now scales the wipe it stood in for');
+    await page.close();
+  });
 }
