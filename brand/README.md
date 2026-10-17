@@ -126,6 +126,10 @@ Consumers:
 - The lockup wordmark is Outfit 600; the SVG falls back to the system stack if
   Outfit isn't loaded.
 
+## Marketing kit
+
+The badge, posters and patterns for the website, email, social, print and merch live in [kit/](kit/README.md). Agents read [kit/manifest.json](kit/manifest.json) to pick an asset by family and use; the kit README has a recipe table for each channel. The badge ring words are DATA · AGENTS over SYSTEMS (Feature #347).
+
 ## Rebuilding
 
 ```
