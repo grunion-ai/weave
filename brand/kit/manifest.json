@@ -1,0 +1,694 @@
+{
+  "badgeWords": {
+    "top": "DATA · AGENTS",
+    "bottom": "SYSTEMS"
+  },
+  "regenerate": "node brand/kit/build-kit.mjs && node brand/kit/render-kit-png.mjs",
+  "assets": [
+    {
+      "code": "B5",
+      "id": "badge-footer-light",
+      "name": "Footer badge, light",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-footer-light.svg",
+      "png": "png/badge-footer-light.png",
+      "width": 156,
+      "height": 40,
+      "ground": "white or light page",
+      "use": [
+        "foot of public forms under Send (src/forms.js)",
+        "foot of shared views"
+      ],
+      "note": null
+    },
+    {
+      "code": "B5",
+      "id": "badge-footer-dark",
+      "name": "Footer badge, dark",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-footer-dark.svg",
+      "png": "png/badge-footer-dark.png",
+      "width": 156,
+      "height": 40,
+      "ground": "dark page",
+      "use": [
+        "foot of public forms and shared views in dark mode"
+      ],
+      "note": null
+    },
+    {
+      "code": "B3",
+      "id": "badge-release",
+      "name": "Release badge",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-release.svg",
+      "png": "png/badge-release.png",
+      "width": 140,
+      "height": 140,
+      "ground": "any; the badge carries its own ink disc",
+      "use": [
+        "beside each version in release notes and GitHub Releases"
+      ],
+      "note": null
+    },
+    {
+      "code": "M1",
+      "id": "pattern-contour-light",
+      "name": "Contour field",
+      "family": "pattern",
+      "theme": "light",
+      "svg": "svg/pattern-contour-light.svg",
+      "png": "png/pattern-contour-light.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "site hero background",
+        "deck section break",
+        "half-letter print"
+      ],
+      "note": "Radiate contours from a half-drop grid of marks; the rings meet between marks and close into cells."
+    },
+    {
+      "code": "M1",
+      "id": "pattern-contour-dark",
+      "name": "Contour field",
+      "family": "pattern",
+      "theme": "dark",
+      "svg": "svg/pattern-contour-dark.svg",
+      "png": "png/pattern-contour-dark.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "dark site hero background",
+        "dark deck section break"
+      ],
+      "note": "Radiate contours from a half-drop grid of marks; the rings meet between marks and close into cells."
+    },
+    {
+      "code": "M2",
+      "id": "pattern-rope-light",
+      "name": "Endless rope",
+      "family": "pattern",
+      "theme": "light",
+      "svg": "svg/pattern-rope-light.svg",
+      "png": "png/pattern-rope-light.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "merch all-over print",
+        "packaging",
+        "deck background"
+      ],
+      "note": "The mark’s own strand curve run edge to edge, row on row, every crossing cut over and under as the mark cuts it."
+    },
+    {
+      "code": "M2",
+      "id": "pattern-rope-dark",
+      "name": "Endless rope",
+      "family": "pattern",
+      "theme": "dark",
+      "svg": "svg/pattern-rope-dark.svg",
+      "png": "png/pattern-rope-dark.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "dark merch print",
+        "dark deck background"
+      ],
+      "note": "The mark’s own strand curve run edge to edge, row on row, every crossing cut over and under as the mark cuts it."
+    },
+    {
+      "code": "I6",
+      "id": "icon-product",
+      "name": "Product and engineering",
+      "family": "icon",
+      "theme": null,
+      "svg": "svg/icon-product.svg",
+      "png": "png/icon-product.png",
+      "width": 48,
+      "height": 48,
+      "ground": "any",
+      "use": [
+        "Product and engineering starter category (public/starter-core.js)"
+      ],
+      "note": null
+    },
+    {
+      "code": "X1",
+      "id": "poster-og",
+      "name": "Link preview, blue",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-og.svg",
+      "png": "png/poster-og.png",
+      "width": 1200,
+      "height": 630,
+      "ground": "self-contained",
+      "use": [
+        "grunion.ai/weave og:image",
+        "link previews in Slack, iMessage, LinkedIn"
+      ],
+      "note": null
+    },
+    {
+      "code": "X2",
+      "id": "poster-og-ink",
+      "name": "Link preview, ink",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-og-ink.svg",
+      "png": "png/poster-og-ink.png",
+      "width": 1200,
+      "height": 630,
+      "ground": "self-contained",
+      "use": [
+        "link preview on dark timelines"
+      ],
+      "note": null
+    },
+    {
+      "code": "X3",
+      "id": "poster-og-slate",
+      "name": "Link preview, slate",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-og-slate.svg",
+      "png": "png/poster-og-slate.png",
+      "width": 1200,
+      "height": 630,
+      "ground": "self-contained",
+      "use": [
+        "link preview on light timelines"
+      ],
+      "note": null
+    },
+    {
+      "code": "X4",
+      "id": "poster-square",
+      "name": "Square post, blue",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-square.svg",
+      "png": "png/poster-square.png",
+      "width": 1080,
+      "height": 1080,
+      "ground": "self-contained",
+      "use": [
+        "Instagram and LinkedIn square posts"
+      ],
+      "note": null
+    },
+    {
+      "code": "X5",
+      "id": "poster-banner",
+      "name": "Profile banner, ink",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-banner.svg",
+      "png": "png/poster-banner.png",
+      "width": 1584,
+      "height": 396,
+      "ground": "self-contained",
+      "use": [
+        "LinkedIn and X profile headers"
+      ],
+      "note": null
+    },
+    {
+      "code": "X6",
+      "id": "poster-og-contour",
+      "name": "Link preview, contour field",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-og-contour.svg",
+      "png": "png/poster-og-contour.png",
+      "width": 1200,
+      "height": 630,
+      "ground": "self-contained",
+      "use": [
+        "primary link preview with the contour field",
+        "launch announcements"
+      ],
+      "note": null
+    },
+    {
+      "code": "M1a",
+      "id": "pattern-contour-dense",
+      "name": "Dense grid",
+      "family": "pattern",
+      "theme": null,
+      "svg": "svg/pattern-contour-dense.svg",
+      "png": "png/pattern-contour-dense.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "fine texture behind copy",
+        "packaging"
+      ],
+      "note": "Axis: density. Five columns of small marks; the contours turn into a fine texture."
+    },
+    {
+      "code": "M1c",
+      "id": "pattern-contour-peaks",
+      "name": "Hidden peaks",
+      "family": "pattern",
+      "theme": null,
+      "svg": "svg/pattern-contour-peaks.svg",
+      "png": "png/pattern-contour-peaks.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "single-mark hero with relief map",
+        "print poster"
+      ],
+      "note": "Axis: what shows. The same relief map with only the largest mark drawn; the rest are rope-shaped peaks in the lines."
+    },
+    {
+      "code": "M1e",
+      "id": "pattern-contour-blue",
+      "name": "On brand blue",
+      "family": "pattern",
+      "theme": null,
+      "svg": "svg/pattern-contour-blue.svg",
+      "png": "png/pattern-contour-blue.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "brand blue hero background",
+        "event backdrops"
+      ],
+      "note": "Axis: colour. The M1 grid on a blue field with ice lines and the white mark."
+    },
+    {
+      "code": "M2d",
+      "id": "pattern-rope-twill",
+      "name": "Twill",
+      "family": "pattern",
+      "theme": null,
+      "svg": "svg/pattern-rope-twill.svg",
+      "png": "png/pattern-rope-twill.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "textile and merch print",
+        "tote bags"
+      ],
+      "note": "Axis: offset. Each row slides two units further, so the crossings run on a diagonal, as in twill cloth."
+    },
+    {
+      "code": "M2e",
+      "id": "pattern-rope-blue",
+      "name": "On brand blue",
+      "family": "pattern",
+      "theme": null,
+      "svg": "svg/pattern-rope-blue.svg",
+      "png": "png/pattern-rope-blue.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "brand blue merch print",
+        "event lanyards"
+      ],
+      "note": "Axis: colour. M2 in cream and ice on blue, with the white mark."
+    },
+    {
+      "code": "M3c",
+      "id": "pattern-dots-vignette",
+      "name": "Vignette",
+      "family": "pattern",
+      "theme": null,
+      "svg": "svg/pattern-dots-vignette.svg",
+      "png": "png/pattern-dots-vignette.png",
+      "width": 1200,
+      "height": 800,
+      "ground": "self-contained",
+      "use": [
+        "brand blue background behind a centred mark",
+        "app splash",
+        "video intro"
+      ],
+      "note": "Axis: direction. Dots grow toward the edges instead of the mark; cream on brand blue."
+    },
+    {
+      "code": "X6a",
+      "id": "poster-contour-light",
+      "name": "X6, light",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-contour-light.svg",
+      "png": "png/poster-contour-light.png",
+      "width": 1200,
+      "height": 630,
+      "ground": "self-contained",
+      "use": [
+        "link preview, light",
+        "blog post header"
+      ],
+      "note": "Axis: colour. Light contour field, white pill, ink wordmark."
+    },
+    {
+      "code": "X6b",
+      "id": "poster-contour-blue",
+      "name": "X6, brand blue",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-contour-blue.svg",
+      "png": "png/poster-contour-blue.png",
+      "width": 1200,
+      "height": 630,
+      "ground": "self-contained",
+      "use": [
+        "link preview, brand blue",
+        "event pages"
+      ],
+      "note": "Axis: colour. Ice contours on blue, ink seal, cream wordmark."
+    },
+    {
+      "code": "X6c",
+      "id": "poster-contour-topo",
+      "name": "X6, topography",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-contour-topo.svg",
+      "png": "png/poster-contour-topo.png",
+      "width": 1200,
+      "height": 630,
+      "ground": "self-contained",
+      "use": [
+        "link preview, topographic field",
+        "changelog posts"
+      ],
+      "note": "Axis: field. The M1c relief map behind the X6 layout."
+    },
+    {
+      "code": "X6d",
+      "id": "poster-contour-square",
+      "name": "X6, square",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-contour-square.svg",
+      "png": "png/poster-contour-square.png",
+      "width": 1080,
+      "height": 1080,
+      "ground": "self-contained",
+      "use": [
+        "Instagram and LinkedIn square posts, contour field"
+      ],
+      "note": "Axis: format. 1080 square post; seal over wordmark in a tall pill."
+    },
+    {
+      "code": "X6e",
+      "id": "poster-contour-banner",
+      "name": "X6, banner",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-contour-banner.svg",
+      "png": "png/poster-contour-banner.png",
+      "width": 1584,
+      "height": 396,
+      "ground": "self-contained",
+      "use": [
+        "LinkedIn and X profile headers, contour field"
+      ],
+      "note": "Axis: format. 1584 × 396 profile header over the M1f row field."
+    },
+    {
+      "code": "X7b",
+      "id": "poster-story-contour",
+      "name": "Story, contour field",
+      "family": "poster",
+      "theme": null,
+      "svg": "svg/poster-story-contour.svg",
+      "png": "png/poster-story-contour.png",
+      "width": 1080,
+      "height": 1920,
+      "ground": "self-contained",
+      "use": [
+        "Instagram and LinkedIn stories"
+      ],
+      "note": "Axis: field. X7 with the M1 contour field in place of the woven rings."
+    },
+    {
+      "code": "B1",
+      "id": "badge-blue",
+      "name": "Blue",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-blue.svg",
+      "png": "png/badge-blue.png",
+      "width": 240,
+      "height": 240,
+      "ground": "white, slate or any light surface",
+      "use": [
+        "grunion.ai/weave hero",
+        "posters on light fields",
+        "social avatar",
+        "stickers"
+      ],
+      "note": "Default. Light pages, stickers, posters on slate."
+    },
+    {
+      "code": "B2",
+      "id": "badge-ink",
+      "name": "Ink",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-ink.svg",
+      "png": "png/badge-ink.png",
+      "width": 240,
+      "height": 240,
+      "ground": "brand blue #2563eb or photography",
+      "use": [
+        "posters on brand blue (X1, X4)",
+        "banners",
+        "merch on blue"
+      ],
+      "note": "On brand blue fields and photography."
+    },
+    {
+      "code": "B6",
+      "id": "badge-cream",
+      "name": "Cream",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-cream.svg",
+      "png": "png/badge-cream.png",
+      "width": 240,
+      "height": 240,
+      "ground": "ink #0c1b33 or night #0f1115",
+      "use": [
+        "dark site sections",
+        "dark slides",
+        "dark email footers"
+      ],
+      "note": "On ink or night surfaces where blue would sink."
+    },
+    {
+      "code": "B7",
+      "id": "badge-mono-blue",
+      "name": "One colour, blue",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-mono-blue.svg",
+      "png": "png/badge-mono-blue.png",
+      "width": 240,
+      "height": 240,
+      "ground": "white or uncoated paper",
+      "use": [
+        "one-colour print",
+        "rubber stamp",
+        "embossing die"
+      ],
+      "note": "Print and stamps. Ring type and rays are knocked out to whatever is behind."
+    },
+    {
+      "code": "B8",
+      "id": "badge-mono-ink",
+      "name": "One colour, ink",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-mono-ink.svg",
+      "png": "png/badge-mono-ink.png",
+      "width": 240,
+      "height": 240,
+      "ground": "white or uncoated paper",
+      "use": [
+        "invoices",
+        "letterhead",
+        "packing slips",
+        "single-ink print"
+      ],
+      "note": "Single-ink print: invoices, letterhead, packing slips."
+    },
+    {
+      "code": "B9",
+      "id": "badge-mono-cream",
+      "name": "One colour, cream",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-mono-cream.svg",
+      "png": "png/badge-mono-cream.png",
+      "width": 240,
+      "height": 240,
+      "ground": "dark photography or video",
+      "use": [
+        "video end cards",
+        "photo overlays"
+      ],
+      "note": "Over dark photography or video."
+    },
+    {
+      "code": "B10",
+      "id": "badge-mono-white",
+      "name": "One colour, white",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-mono-white.svg",
+      "png": "png/badge-mono-white.png",
+      "width": 240,
+      "height": 240,
+      "ground": "brand blue #2563eb",
+      "use": [
+        "buttons and banners on blue",
+        "merch printed on blue stock"
+      ],
+      "note": "Reversed out of brand blue: buttons, banners, merch on blue."
+    },
+    {
+      "code": "B11",
+      "id": "badge-watermark",
+      "name": "Watermark",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-watermark.svg",
+      "png": "png/badge-watermark.png",
+      "width": 240,
+      "height": 240,
+      "ground": "brand blue #2563eb",
+      "use": [
+        "tonal background behind copy",
+        "certificate ground"
+      ],
+      "note": "White at 14% for tonal backgrounds and certificate grounds."
+    },
+    {
+      "code": "B12",
+      "id": "badge-small",
+      "name": "Small",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-small.svg",
+      "png": "png/badge-small.png",
+      "width": 240,
+      "height": 240,
+      "ground": "white or light surface",
+      "use": [
+        "favicon-size spots under 72px",
+        "avatars",
+        "chips",
+        "email signature at 48px"
+      ],
+      "note": "Below 72px: no ring type, no rays, mark enlarged. Favicons, avatars, chips."
+    },
+    {
+      "code": "B13",
+      "id": "badge-sticker",
+      "name": "Die-cut sticker",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-sticker.svg",
+      "png": "png/badge-sticker.png",
+      "width": 260,
+      "height": 260,
+      "ground": "print, die-cut",
+      "use": [
+        "3 inch die-cut sticker; the cream ring is the die line"
+      ],
+      "note": "Cream bleed ring is the die line, 10px outside the teeth."
+    },
+    {
+      "code": "B17",
+      "id": "badge-small-ink",
+      "name": "Small, ink",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-small-ink.svg",
+      "png": "png/badge-small-ink.png",
+      "width": 240,
+      "height": 240,
+      "ground": "dark surface",
+      "use": [
+        "dark avatars",
+        "app chrome under 72px"
+      ],
+      "note": "Small badge for dark avatars and app chrome."
+    },
+    {
+      "code": "B16",
+      "id": "badge-lockup-stacked",
+      "name": "Lockup, stacked",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-lockup-stacked.svg",
+      "png": "png/badge-lockup-stacked.png",
+      "width": 240,
+      "height": 330,
+      "ground": "white or light surface",
+      "use": [
+        "narrow columns",
+        "book and report covers",
+        "event signage"
+      ],
+      "note": "Seal over wordmark for narrow spaces and covers."
+    },
+    {
+      "code": "B14",
+      "id": "badge-lockup-light",
+      "name": "Lockup, light",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-lockup-light.svg",
+      "png": "png/badge-lockup-light.png",
+      "width": 660,
+      "height": 240,
+      "ground": "white or light surface",
+      "use": [
+        "email header",
+        "document cover",
+        "slide footer",
+        "web footer"
+      ],
+      "note": "Seal beside the wordmark for light pages and documents."
+    },
+    {
+      "code": "B15",
+      "id": "badge-lockup-dark",
+      "name": "Lockup, dark",
+      "family": "badge",
+      "theme": null,
+      "svg": "svg/badge-lockup-dark.svg",
+      "png": "png/badge-lockup-dark.png",
+      "width": 660,
+      "height": 240,
+      "ground": "ink or night surface",
+      "use": [
+        "dark email header",
+        "dark slide footer",
+        "dark web footer"
+      ],
+      "note": "Same lockup on dark surfaces."
+    }
+  ]
+}
