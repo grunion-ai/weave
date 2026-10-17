@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { PAINT_PROBE, paintMisses } from './lib/chip-paint.mjs';
 
 let tasks;
 const s = await launch('option swatch colour', (weave) => {
@@ -89,30 +90,66 @@ if (s) {
     });
   }
 
-  test('the swatch and the chip the option produces agree on the colour', async () => {
-    const page = await openTray('select', 'light');
-    for (let i = 0; i < 5; i++) await page.click('#tray-back .opt-add');
-    const pairs = await page.locator('#tray-back .opt-list .opt-row').evaluateAll((rows) => {
-      const resolve = (v) => {
-        const probe = document.createElement('div');
-        probe.style.color = String(v).trim();
-        document.body.appendChild(probe);
-        const out = getComputedStyle(probe).color;
-        probe.remove();
-        return out;
-      };
-      return rows.map((r) => ({
-        swatch: getComputedStyle(r.querySelector('.opt-color')).getPropertyValue('--dot').trim(),
-        chip: getComputedStyle(r.querySelector('.opt-preview .k')).getPropertyValue('--dot').trim(),
-        painted: getComputedStyle(r.querySelector('.opt-color')).backgroundColor,
-        chipAsRgb: resolve(getComputedStyle(r.querySelector('.opt-preview .k')).getPropertyValue('--dot')),
-      }));
-    });
-    assert.equal(pairs.length, 5);
-    for (const p of pairs) {
-      assert.equal(p.swatch, p.chip, 'swatch and chip read the same --dot');
-      assert.equal(p.painted, p.chipAsRgb, 'the swatch is painted the colour its own chip carries');
+  const pickHue = async (page, i, hue) => {
+    const row = page.locator('#tray-back .opt-list .opt-row').nth(i);
+    await row.locator('.opt-color').click();
+    await page.waitForSelector('.chip-pop .swatch-grid');
+    await page.click(`.chip-pop .swatch-grid .sw.hue-${hue}`);
+    await row.locator(`.opt-color.hue-${hue}`).waitFor();
+    await page.click('#tray-back input[name="name"]');
+    await page.waitForSelector('.chip-pop', { state: 'detached' });
+  };
+
+  const rowPaint = (page) => page.evaluate(() => [...document.querySelectorAll('#tray-back .opt-list .opt-row')].map((r) => ({
+    name: r.querySelector('.opt-name').value,
+    swatch: getComputedStyle(r.querySelector('.opt-color')).backgroundColor,
+    chip: window.paintOf(r.querySelector('.opt-preview .k')),
+  })));
+
+  const AGREEMENT = {
+    select: { rows: 5, picks: [[0, 'teal']], want: ['teal', 'green', 'amber', 'purple', 'red'] },
+    multiselect: { rows: 5, picks: [[0, 'teal']], want: ['teal', 'green', 'amber', 'purple', 'red'] },
+    workflow: { rows: 0, picks: [[1, 'green'], [2, 'amber']], want: ['slate', 'green', 'amber', 'red'] },
+  };
+
+  for (const theme of ['light', 'dark']) {
+    for (const [type, plan] of Object.entries(AGREEMENT)) {
+      test(`the swatch, the preview chip and the Default chip paint the colour the ${type} data names (${theme})`, async () => {
+        const page = await openTray(type, theme);
+        await page.evaluate(PAINT_PROBE);
+        for (let i = 0; i < plan.rows; i++) {
+          await page.click('#tray-back .opt-add');
+          await page.locator('#tray-back .opt-name').last().fill(`Option ${i + 1}`);
+        }
+        for (const [i, hue] of plan.picks) await pickHue(page, i, hue);
+        const rows = await rowPaint(page);
+        assert.equal(rows.length, plan.want.length);
+        const want = await page.evaluate((hues) => hues.map((h) => window.huePaint(h)), plan.want);
+        const misses = [];
+        rows.forEach((r, i) => {
+          const hue = plan.want[i];
+          if (r.swatch !== want[i].dot) misses.push(`${type} row ${i} swatch ${r.swatch}, want hue-${hue} dot ${want[i].dot}`);
+        });
+        misses.push(...paintMisses(rows.map((r, i) => ({ where: `${type} row ${i} preview chip`, hue: plan.want[i], got: r.chip, want: want[i] }))));
+        const target = plan.picks[0][0];
+        await page.click('#tray-back .choice-default');
+        await page.waitForSelector('.picker-pop');
+        const listed = await page.evaluate((name) => {
+          const row = [...document.querySelectorAll('.picker-pop .picker-list .picker-row')]
+            .find((x) => x.textContent.trim().includes(name));
+          const chip = row?.querySelector('.k');
+          return chip ? window.paintOf(chip) : null;
+        }, rows[target].name);
+        if (!listed) misses.push(`${type} Default picker lists no chip for ${rows[target].name}`);
+        else misses.push(...paintMisses([{ where: `${type} Default picker row`, hue: plan.want[target], got: listed, want: want[target] }]));
+        await page.locator('.picker-pop .picker-list').getByText(rows[target].name, { exact: true }).first().click();
+        if (type === 'multiselect') await page.click('.picker-pop .picker-done');
+        await page.locator('#tray-back .choice-default .k').first().waitFor();
+        const face = await page.evaluate(() => window.paintOf(document.querySelector('#tray-back .choice-default .k')));
+        misses.push(...paintMisses([{ where: `${type} Default face`, hue: plan.want[target], got: face, want: want[target] }]));
+        assert.deepEqual(misses, [], 'every dialog surface paints what the data names');
+        await page.close();
+      });
     }
-    await page.close();
-  });
+  }
 }

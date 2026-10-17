@@ -4032,7 +4032,7 @@ function filterStrip(db, onChange, { filters = tableFilters(db), save = null } =
       } });
       const chip = st.hue
         ? el('label', { class: `k ${FILTER_CHIP_ROLE[f.type] ?? 'k-state'} filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), el('span', { class: 'filter-chip-label' }, st.name))
-        : el('label', { class: `k ${FILTER_CHIP_ROLE[f.type] ?? 'k-state'} filter-chip cat-${st.category}` }, box, el('span', { class: 'filter-chip-label' }, st.name));
+        : el('label', { class: `k ${FILTER_CHIP_ROLE[f.type] ?? 'k-state'} filter-chip cat-${st.category} hue-${chipCore.stateHue(st, st.category)}` }, box, el('span', { class: 'filter-chip-label' }, st.name));
       chips.push({ chip, field: f.name, name: st.name }); values.append(chip);
     }
     row.append(values); scroll.append(row);
