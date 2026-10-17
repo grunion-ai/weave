@@ -91,6 +91,8 @@ const JS = `
     let me = null;
     try { me = await api('/me'); } catch { me = null; }
     if (me) {
+      const tell = () => globalThis.WeaveConsent && globalThis.WeaveConsent.identify(me.analytics.user);
+      if (me.analytics) document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', tell) : tell();
       renderMe(me);
       show('sec-me');
       $('go').href = next;

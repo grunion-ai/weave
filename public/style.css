@@ -2441,3 +2441,4 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 }
 .subtable-popover { overflow-y: auto; }
 .subtable-config { margin: 0; padding: 8px 10px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); font-size: var(--fs-meta); white-space: pre-wrap; }
+.wv-consent { --line: var(--tblr-border-color); --panel: var(--tblr-bg-surface); --body: var(--tblr-body-color); --ink: var(--tblr-body-color); --muted: var(--tblr-secondary); --accent: var(--tblr-primary); --accent-ink: var(--tblr-primary-fg); }

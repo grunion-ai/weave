@@ -299,7 +299,7 @@
         make('span', { class: 'ws-text' }, make('span', { class: 'ws-title' }, r.title), meta(fill(SLUG.start.inviteLead, { role: r.role })), login(r)),
         make('button', { type: 'button', class: 'btn', onclick: async (ev) => {
           ev.currentTarget.disabled = true;
-          try { location.href = (await post(r.accept)).open; } catch (err) { ev.currentTarget.disabled = false; dispatch({ type: 'fail', code: err.code, message: err.message }); }
+          try { const done = await post(r.accept); capture('invite_accepted', { via: 'start' }); location.href = done.open; } catch (err) { ev.currentTarget.disabled = false; dispatch({ type: 'fail', code: err.code, message: err.message }); }
         } }, COPY.accept)))
       : make('li', {}, make('a', { class: 'ws-row', href: r.open }, wsTile(r),
         make('span', { class: 'ws-text' }, make('span', { class: 'ws-title' }, r.title), meta(r.host ?? `${location.host}/w/${r.name}`, roleLabel(r.role)), login(r)),
