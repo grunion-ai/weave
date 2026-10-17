@@ -1,0 +1,1 @@
+- The loading animation plays again on hosted workspaces. The sign-in wall had been answering the rope fragment `/brand/weave-loader-rope.html` with a redirect, so the loader sat on its still mark; brand fragments now pass the wall like the other brand assets, and a grid loader that opened before the rope landed picks it up when it does (Issue #960).

@@ -134,6 +134,32 @@ if (s) {
     await page.close();
   });
 
+  test('a grid wait that starts before the rope lands picks the rope up when it lands (Issue #960)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    let release;
+    const held = new Promise((r) => { release = r; });
+    await page.route('**/brand/weave-loader-rope.html', async (route) => { await held; await route.continue(); });
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof loading !== 'undefined' && loading.depth === 0 && !!document.querySelector('#main .nav-db, #main .table-wrap, .nav-db'));
+    const id = await page.evaluate(() => document.querySelector('.nav-db')?.getAttribute('href'));
+    await page.evaluate((h) => { location.hash = h.replace(/^.*#/, '#'); }, id);
+    await page.waitForSelector('#main > .table-wrap');
+    await page.evaluate(() => { window.__drop = gridHold(); });
+    await page.waitForSelector('#main > .grid-loader:not([hidden])');
+    const before = await page.evaluate(() => document.querySelectorAll('#main > .grid-loader .rope-a').length);
+    assert.equal(before, 0, 'the rope is still held back, so the grid loader starts on the still mark');
+    release();
+    await page.waitForFunction(() => loading.ready);
+    const after = await eventually(() => page.evaluate(() => {
+      const node = document.querySelector('#main > .grid-loader');
+      return node.querySelectorAll('.rope-a').length > 0
+        && node.getAnimations({ subtree: true }).filter((a) => a.playState === 'running').length >= 2;
+    }), true, { timeout: 5000 });
+    assert.equal(after, true, 'the grid loader kept the still mark after the rope landed, so it never moved');
+    await page.evaluate(() => window.__drop());
+    await page.close();
+  });
+
   test('a show after boot is not held back by the boot gate (Issue #391)', async (t) => {
     const page = await openWithRope(browser, base, 'light');
     const lag = await page.evaluate(async () => {
