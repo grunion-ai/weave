@@ -34,6 +34,31 @@ if (s) {
       await page.close();
     });
 
+    test(`${theme}: the System space header says why it carries no space controls (Issue #849)`, async () => {
+      const page = await openSpace(sys.id, theme);
+      const note = page.locator('.view-header .space-system-note');
+      assert.equal(await note.count(), 1, 'the header carries one note');
+      assert.ok(await note.isVisible(), 'the note is on screen');
+      const said = (await note.innerText()).trim();
+      assert.match(said, /cannot be shared/i, `the note names sharing: ${said}`);
+      assert.match(said, /template/i, `the note names templates: ${said}`);
+      assert.match(said, /deleted/i, `the note names deletion: ${said}`);
+      assert.ok(!said.includes('\u2014'), `no em dash: ${said}`);
+      assert.equal(await page.locator('.view-header .share-btn').count(), 0, 'still no Share');
+      assert.equal(await page.locator('.view-header .use-template-btn').count(), 0, 'still no Use template');
+      assert.equal(await page.locator('.view-header .dots-btn').count(), 0, 'still no \u22ee');
+      const paint = await note.evaluate((n) => ({ fg: getComputedStyle(n).color, bg: getComputedStyle(document.body).backgroundColor }));
+      assert.notEqual(paint.fg, paint.bg, `the note is readable in ${theme}: ${JSON.stringify(paint)}`);
+      await page.close();
+    });
+
+    test(`${theme}: a user space carries no system note (Issue #849)`, async () => {
+      const page = await openSpace(user.id, theme);
+      assert.equal(await page.locator('.view-header .space-system-note').count(), 0, 'a user space keeps its controls');
+      assert.equal(await page.locator('.view-header .share-btn').count(), 1, 'a user space still offers Share');
+      await page.close();
+    });
+
     test(`${theme}: a user space offers only Move to trash, one click with no hold (Feature #296, D6)`, async () => {
       const { page, items } = await openMenu(user.id, theme);
       assert.ok(!items.some((t) => /Export .*\.csv/.test(t)), `no per-table export: ${items}`);

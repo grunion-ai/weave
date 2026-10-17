@@ -9076,7 +9076,7 @@ async function showSpace(spaceId) {
         await api('PATCH', `/spaces/${spaceId}`, { description: md });
         await loadSchema();
       },
-      actions: space.system ? [] : [
+      actions: space.system ? [systemSpaceNote()] : [
         el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('space', spaceId, space.space) }, 'Share…'),
         ...(space.template ? [useTemplateButton(space)] : []),
         kindDots('space', space, () => ({}), { title: 'Space actions' }),
@@ -9104,6 +9104,11 @@ async function showSpace(spaceId) {
       renderTable(body, reg, items, onSaved, onAdd);
     });
   }
+}
+
+function systemSpaceNote() {
+  return el('p', { class: 'space-system-note', role: 'note' },
+    'Weave owns this registry space, so it cannot be shared, used as a template or deleted.');
 }
 
 function useTemplateButton(space) {

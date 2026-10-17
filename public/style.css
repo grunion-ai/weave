@@ -235,6 +235,7 @@ html.view-header-loose #main > .view-header { position: static; }
 .view-desc-more:hover { text-decoration: underline; }
 .view-desc-empty { font-style: italic; color: var(--wv-canvas-muted); }
 .view-desc-edit { width: 100%; min-height: 38px; font: inherit; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 4px 6px; }
+.space-system-note { max-width: 46ch; margin: 0; font-size: var(--fs-secondary); line-height: 1.35; text-align: right; color: var(--tblr-secondary); }
 
 button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inherit; }
 .chip-pop { position: fixed; z-index: 1200; min-width: 140px; padding: 4px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
