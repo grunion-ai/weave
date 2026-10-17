@@ -47,13 +47,11 @@ if (s) {
     });
     assert.notEqual(divider.width, '0px', 'the rail routes need a divider above them');
     assert.notEqual(divider.style, 'none', 'the rail routes need a divider above them');
-    const link = page.locator('#rail-routes .rail-route[aria-label="Activity"]');
-    await link.click();
-    await page.waitForFunction(() => location.hash === '#/activity');
-    const seen = await shown(page, 'Activity');
-    assert.equal(seen.current, 'page', 'the route the page is on carries aria-current');
-    const filled = await page.evaluate(() => document.querySelector('#rail-routes .rail-route[aria-label="Activity"]').classList.contains('active'));
-    assert.ok(filled, 'the current route is drawn as a filled tile');
+    await page.locator('#rail-routes .rail-route[aria-label="Activity"]').click();
+    await page.waitForSelector('#rail-routes .rail-route.active[aria-label="Activity"]');
+    const marks = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#rail-routes .rail-route')]
+      .map((a) => [a.getAttribute('aria-label'), a.getAttribute('aria-current')])));
+    assert.deepEqual(marks, { Workflows: null, Users: null, Activity: 'page', Trash: null }, 'the filled tile is the one route carrying aria-current');
     await page.close();
   });
 
