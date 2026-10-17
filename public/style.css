@@ -161,6 +161,11 @@ button.nav-space:focus-visible { outline: 2px solid var(--tblr-primary); outline
 #ws-list { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #ws-list:empty { display: none; }
 .rail-spacer { flex: 1; }
+.rail-routes { display: none; flex-direction: column; align-items: center; gap: 8px; padding-top: 10px; margin-top: 2px; border-top: 1px solid var(--tblr-border-color); }
+#app.nav-collapsed:not(.nav-peek) .rail-routes { display: flex; }
+#app.nav-collapsed:not(.nav-peek) .rail-routes:empty { display: none; }
+.rail-route { width: 36px; height: 36px; }
+.rail-route .wv-icon { width: 18px; height: 18px; }
 #app.nav-collapsed #sidebar { display: none; }
 #nav-resize { position: fixed; top: 8px; bottom: 8px; left: calc(52px + var(--wv-nav-width, 264px) - 3px); width: 6px; z-index: 5; cursor: col-resize; touch-action: none; }
 #nav-resize::after { content: ""; position: absolute; left: 50%; top: 50%; height: 44px; width: 3px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--tblr-border-color); opacity: 0; transition: opacity .12s ease; }

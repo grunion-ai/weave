@@ -1202,6 +1202,15 @@ function renderNav() {
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
       sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
     ]));
+  const railRoute = (href, icon, label, on) => el('a', {
+    class: 'ws-icon rail-route' + (on ? ' active' : ''),
+    href, title: label, 'aria-label': label, ...(on ? { 'aria-current': 'page' } : {}),
+  }, lucideEl(icon, 'wv-icon'));
+  $('#rail-routes')?.replaceChildren(
+    railRoute(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
+    ...(people ? [railRoute(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
+    railRoute('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
+    railRoute('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
