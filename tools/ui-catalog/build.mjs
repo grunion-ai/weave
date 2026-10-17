@@ -75,7 +75,7 @@ export const inChain = (s, cls) => s.chain.some((c) => (' ' + (c.a.class || '') 
 
 const CHIPS = [
   ['k-state', 'State chip'], ['filter-chip', 'Filter chip'], ['k-multi', 'Multi-select chip'], ['ms-box', 'Multi-select chip'],
-  ['k-select', 'Select chip'], ['k-doc', 'Document chip'], ['doc-chip', 'Document chip'], ['wv-tag', 'Field kind tag'], ['term-tag', 'Term tag'],
+  ['k-select', 'Select chip'], ['k-doc', 'Document chip'], ['doc-chip', 'Document chip'], ['wv-tag', 'Field kind tag'],
   ['wv-chip-id', 'ID chip'], ['auto-pill', 'Automation pill'], ['share-chip', 'Share chip'], ['fx-chip', 'Formula chip'], ['list-chip', 'List chip'],
   ['list-group-chip', 'List group chip'], ['opt-dot', 'Option dot'], ['wv-card-state', 'Card state'], ['nav-account-chip', 'Account chip'], ['badge', 'Badge'],
 ];

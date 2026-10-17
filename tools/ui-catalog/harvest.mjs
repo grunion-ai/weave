@@ -7,7 +7,7 @@ export const PAGE_LIB = () => {
     ['toast', '.wv-toast'],
   ];
   const LEAVES = [
-    ['chip', '.chip, .chip-trigger, .k-select, .k-state, .k-multi, .wv-tag, .filter-chip, .auto-pill, .share-chip, .doc-chip, .picker-chip, .list-chip, .fx-chip, .term-tag, .badge, .list-group-chip, .nav-account-chip, .wv-chip-id, .opt-dot, .wv-card-state'],
+    ['chip', '.chip, .chip-trigger, .k-select, .k-state, .k-multi, .wv-tag, .filter-chip, .auto-pill, .share-chip, .doc-chip, .picker-chip, .list-chip, .fx-chip, .badge, .list-group-chip, .nav-account-chip, .wv-chip-id, .opt-dot, .wv-card-state'],
     ['toggle', 'input[type=checkbox], input[type=radio], [role=switch], .wv-toggle, .switch, .form-check, .form-switch'],
     ['tabs', '[role=tablist], .seg-ctl, .list-segs, .new-row-seg, .view-tab'],
     ['button', 'button, a.btn, [role=button], summary, input[type=button], input[type=submit]'],
