@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, atRest, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const s = await launch('phone new-row sheet', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -38,6 +38,7 @@ if (s) {
   };
 
   const dragSheet = async (page, sel, dy, { step = 40 } = {}) => {
+    await atRest(page.locator(sel));
     const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
@@ -58,14 +59,18 @@ if (s) {
           const before = (await rows(page, issues)).length;
           await page.click('.phone-bar .phone-new');
           await page.waitForSelector('.new-row-sheet .sheet-grip');
+          await atRest(page.locator('.new-row-sheet'));
           const grip = await page.locator('.new-row-sheet .sheet-grip').boundingBox();
           assert.ok(Math.round(grip.height) >= 44, `the grabber is a real target, got ${Math.round(grip.height)}px tall`);
           const h = (await page.locator('.new-row-sheet').boundingBox()).height;
 
           await dragSheet(page, '.new-row-sheet', h * 0.12);
           assert.ok(await page.isVisible('.new-row-sheet'), 'a short drag springs the sheet back');
+          await atRest(page.locator('.new-row-sheet'));
           assert.equal(await page.evaluate(() => document.querySelector('.new-row-sheet').style.transform), '',
             'and leaves no transform behind');
+          assert.equal(await page.locator('.new-row-sheet').evaluate((n) => new DOMMatrix(getComputedStyle(n).transform).isIdentity), true,
+            'the spring-back is over, so the next drag grabs the grabber where it rests');
 
           await dragSheet(page, '.new-row-sheet', h * 0.5);
           await page.waitForSelector('.new-row-sheet', { state: 'detached' });
