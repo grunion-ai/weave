@@ -35,7 +35,7 @@ if (s) {
       const page = await open(colorScheme);
       try {
         await page.goto(`${base}/start`, { waitUntil: 'networkidle' });
-        await page.getByRole('link', { name: 'Sign up or sign in' }).click();
+        await page.getByRole('link', { name: 'Sign in', exact: true }).click();
         await page.waitForURL(`${base}/start`);
         await page.waitForSelector('.rows li');
         assert.deepEqual(await page.locator('.rows li .ws-title').allInnerTexts(), ['Net'], 'eve opens Net');
@@ -58,7 +58,7 @@ if (s) {
         assert.notEqual(fg, bg, 'the login label is readable on the page');
 
         await page.getByRole('button', { name: 'Sign out' }).click();
-        await page.waitForSelector('a:has-text("Sign up or sign in")');
+        await page.waitForSelector('main a[data-go="signin"]');
         assert.equal(await page.locator('.rows li').count(), 0, 'signed out, the list is gone');
       } finally { await page.close(); }
     });
@@ -67,7 +67,7 @@ if (s) {
       const page = await open(colorScheme);
       try {
         await page.goto(`${base}/start`, { waitUntil: 'networkidle' });
-        await page.getByRole('link', { name: 'Sign up or sign in' }).click();
+        await page.getByRole('link', { name: 'Sign in', exact: true }).click();
         await page.waitForURL(`${base}/start`);
         await page.waitForSelector('.rows li a');
         await page.locator('.rows li a').first().click();
