@@ -7023,18 +7023,43 @@ function stampEl(iso) {
   return s.text ? el('span', { class: 'wv-stamp', title: s.title }, s.text) : '';
 }
 
-const usersCache = { rows: [], read: null, done: false };
-function workspaceUsers() {
-  if (usersCache.read) return usersCache;
+const usersCache = { rows: [], known: new Set(), queue: new Set(), read: null, pending: null, inflight: 0, done: true };
+
+function flushUsers(t) {
+  usersCache.pending = null;
+  const want = [...usersCache.queue];
+  usersCache.queue.clear();
+  if (!want.length) return undefined;
+  const here = allTables().some((d) => d.id === t.id);
+  usersCache.inflight += 1;
+  return api('POST', `/tables/${t.id}/query`, { where: [['Name', 'in', want]] }).then((res) => {
+    for (const u of res.items ?? []) {
+      usersCache.rows.push({
+        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
+        workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
+      });
+    }
+  }).catch(() => {}).finally(() => { usersCache.inflight -= 1; });
+}
+
+function workspaceUsers(handles = []) {
   const t = registryTable('users');
   if (!t) return usersCache;
-  const here = allTables().some((d) => d.id === t.id);
-  usersCache.read = api('POST', `/tables/${t.id}/query`, {}).then((res) => {
-    usersCache.rows = (res.items ?? []).map((u) => ({
-      id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
-      workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
-    }));
-  }).catch(() => {}).finally(() => { usersCache.done = true; });
+  let added = false;
+  for (const h of handles) {
+    if (!h || usersCache.known.has(h)) continue;
+    usersCache.known.add(h);
+    usersCache.queue.add(h);
+    added = true;
+  }
+  if (!added) return usersCache;
+  usersCache.done = false;
+  if (!usersCache.pending) {
+    usersCache.pending = Promise.resolve().then(() => flushUsers(t));
+    usersCache.read = usersCache.pending.finally(() => {
+      usersCache.done = !usersCache.queue.size && !usersCache.inflight;
+    });
+  }
   return usersCache;
 }
 
@@ -7068,7 +7093,7 @@ function actorChipEl(actor, { link = true } = {}) {
       : [mark, label];
     chip.replaceChildren(...[...body, via].filter(Boolean));
   };
-  const people = workspaceUsers();
+  const people = workspaceUsers([a.handle]);
   paint(people.rows);
   if (!people.done) people.read?.then(() => paint(people.rows));
   return chip;
@@ -10914,7 +10939,7 @@ const activityPanel = (() => {
   const sectionFor = (field) => sections().find((s) => s.dataset.docField === field);
 
   async function load() {
-    const [ent, act] = await Promise.all([api('GET', `/entities/${st.id}`), api('GET', `/activity?entity=${st.id}&limit=500`)]);
+    const [ent, act] = await Promise.all([api('GET', `/entities/${st.id}`), api('GET', `/activity?entity=${st.id}&limit=${ACTIVITY_PAGE}`)]);
     const db = allTables().find((d) => d.id === ent.dbId);
     const docFields = (db?.fields ?? []).filter((f) => f.type === 'document').map((f) => f.name);
     const documents = await Promise.all(docFields.map(async (field) => ({
@@ -11572,6 +11597,8 @@ function subtablePopover(anchor, ownerId, f, target, eligible, shown, redraw) {
   return pop;
 }
 
+const ACTIVITY_PAGE = 500;
+
 function droppedText(n) {
   return `${n} older ${n === 1 ? 'entry' : 'entries'} not kept`;
 }
@@ -11619,7 +11646,7 @@ async function showActivity(param) {
   renderNav();
   const main = $('#main');
   const entityId = param || null;
-  const qs = entityId ? `?entity=${encodeURIComponent(entityId)}` : '';
+  const qs = `?limit=${ACTIVITY_PAGE}${entityId ? `&entity=${encodeURIComponent(entityId)}` : ''}`;
   let feed = { total: 0, items: [] };
   try { feed = await api('GET', `/activity${qs}`); } catch (err) { toast(err.message, true); }
   const subject = entityId ? feed.items[0] : null;
@@ -11647,6 +11674,7 @@ async function showActivity(param) {
     el('div', { class: 'wv-note' },
       'A system table: weave writes these rows, so they cannot be added, edited or deleted. ',
       el('b', {}, `${feed.total}`), ' events.',
+      feed.items.length < feed.total ? ` Showing the newest ${feed.items.length}.` : '',
       feed.dropped ? ` ${droppedText(feed.dropped)}.` : ''),
     feed.items.length
       ? el('div', { class: 'card' },
