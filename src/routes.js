@@ -122,6 +122,11 @@ const START_TTL_MS = 30 * 60 * 1000;
 const INGEST_MAX_BYTES = 2 * 1024 * 1024;
 const INGEST_HEADERS = ['content-type', 'content-encoding', 'user-agent'];
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const joinedInvite = (next) => {
+  const i = next.indexOf('#');
+  const [path, hash] = i < 0 ? [next, ''] : [next.slice(0, i), next.slice(i)];
+  return `${path}${path.includes('?') ? '&' : '?'}joined=invite${hash}`;
+};
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
 export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
@@ -977,9 +982,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                   return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
                 }
                 const kept = startCookies(await holdLogin(me));
-                if (handoff) return withCookies(await handOff(weave, account.id, next, handoff), kept);
+                const to = posthog ? joinedInvite(next) : next;
+                if (handoff) return withCookies(await handOff(weave, account.id, to, handoff), kept);
                 const minted = weave.createSession(account.id, { ua: rx.header('user-agent') });
-                return { status: 302, headers: { Location: next, 'Set-Cookie': [sessionCookie(cookieName(weave), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
+                return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(weave), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
               }
               let trip;
               try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
@@ -1036,9 +1042,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 return own.length ? withCookies(page, startCookies(await holdLogin(who))) : page;
               }
               const kept = startCookies(await holdLogin(who));
-              if (c.handoff) return withCookies(await handOff(engine, account.id, c.next, c.handoff), kept);
+              const to = posthog && c.invite ? joinedInvite(c.next) : c.next;
+              if (c.handoff) return withCookies(await handOff(engine, account.id, to, c.handoff), kept);
               const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
-              return { status: 302, headers: { Location: c.next, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
+              return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
             }
             return notFound({ error: 'Unknown auth route', code: 'not-found' });
           }
@@ -1075,7 +1082,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const engine = session ? session.engine : weave;
             const sessions = engine.listSessions(account.id).map(({ accountId, ...s }) => ({ ...s, current: s.id === session?.sessionId }));
             const { credentials, ...pub } = engine.listAccounts().find((a) => a.id === account.id) ?? account;
-            return out(200, { account: pub, role: account.role, sessions }, { 'Cache-Control': 'no-store' });
+            const ids = pub.identities ?? [];
+            const user = posthog ? (ids.find((i) => i.issuer === oidc?.issuer) ?? ids[0])?.subject : null;
+            return out(200, { account: pub, role: account.role, sessions, ...(user ? { analytics: { user } } : {}) }, { 'Cache-Control': 'no-store' });
           }
           if ((m = path.match(/^\/api\/auth\/sessions\/([^/]+)$/)) && rx.method === 'DELETE') {
             const account = who();

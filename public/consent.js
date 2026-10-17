@@ -142,7 +142,8 @@
     else if (was === null) ask();
   }
 
-  root.WeaveConsent = { start, capture, identify, consentCookie, OPTIONS, BANNER };
+  const active = () => state.on;
+  root.WeaveConsent = { start, capture, identify, ask, active, consentCookie, OPTIONS, BANNER };
   const tag = typeof document !== 'undefined' ? document.currentScript : null;
   if (tag?.dataset.posthogKey) {
     const go = () => start({ key: tag.dataset.posthogKey });

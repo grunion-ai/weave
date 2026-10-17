@@ -481,7 +481,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     const match = rx?.header?.('if-none-match');
     const matches = (etag) => match && match.split(',').map((t) => t.trim().replace(/^W\//, '')).some((t) => t === '*' || t === etag.slice(2));
     if (file === '/index.html') {
-      const shell = readFileSync(full, 'utf8');
+      const raw = readFileSync(full, 'utf8');
+      const shell = posthog ? raw.replace('<script src="/app.js" defer></script>', (tag) => `<script src="/consent.js" data-posthog-key="${posthog.key}" defer></script>\n${tag}`) : raw;
       const body = assets.rewrite(head ? shell.replace(/<title>[^<]*<\/title>/, () => head) : shell);
       const headers = {
         'Content-Type': MIME['.html'],

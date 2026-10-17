@@ -8,7 +8,7 @@ import { Weave } from '../src/engine.js';
 import { startServer, posthogFromEnv } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
 import { PRIVACY } from '../src/legal.js';
-import { startIdp } from './lib/idp.mjs';
+import { startIdp, serveOidc } from './lib/idp.mjs';
 import '../public/consent.js';
 
 const { consentCookie, OPTIONS, BANNER } = globalThis.WeaveConsent;
@@ -193,10 +193,63 @@ test('the privacy policy names PostHog, links its cookies section and carries no
   assert.match(PRIVACY, /\*Effective date: 2026-10-16\*/);
   assert.match(PRIVACY, /\* \*\*PostHog\*\* \(PostHog Inc\., US\) provides product analytics, only with your consent/);
   assert.match(PRIVACY, /We use PostHog Cloud \(US region\) for product analytics, and we load it only after you click Accept/);
+  assert.match(PRIVACY, /Signed-in use of the app also records named actions \(creating a workspace, table, row or agent token, using a template, sending or accepting an invite\) and daily return visits, never their content\./);
   assert.ok(!PRIVACY.includes('—'));
   const s = await serve();
   try {
     const html = (await hit(s.port, 'GET', '/privacy')).text;
     assert.match(html, /<h3 id="cookies">Cookies<\/h3>/);
+  } finally { s.stop(); }
+});
+
+async function appServer(posthog) {
+  const idp = await startIdp();
+  const dir = mkdtempSync(join(tmpdir(), 'weave-posthog-app-'));
+  const w = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+  w.createAccount({ name: 'operator', role: 'architect' });
+  w.createAccount({ name: 'ada', role: 'editor' });
+  w.setRequireAuth(true);
+  w.save();
+  const s = await serveOidc(w, idp, { posthog });
+  const invite = () => w.linkIdentity('ada', { issuer: idp.issuer }).code;
+  return { ...s, invite, stop: () => { s.stop(); rmSync(dir, { recursive: true, force: true }); } };
+}
+
+test('the app shell loads no consent script and /api/auth/me carries no analytics without a key', async () => {
+  const s = await appServer(null);
+  try {
+    const { res, cookie } = await s.signIn({ sub: 'user_app_nokey', email: 'nokey@example.com', email_verified: true }, { invite: s.invite(), next: '/#/' });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get('location'), '/#/', 'no key leaves the redirect alone');
+    const page = await s.call('GET', '/', { cookie });
+    assert.equal(page.status, 200);
+    const shell = await page.text();
+    assert.match(shell, /\/app\.js/);
+    assert.doesNotMatch(shell, /consent\.js|data-posthog-key|phc_/);
+    const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
+    assert.equal(me.account.name, 'ada');
+    assert.equal(me.analytics, undefined);
+  } finally { s.stop(); }
+});
+
+test('with a key the app shell loads consent.js before app.js, and /api/auth/me names the Clerk user id alone', async () => {
+  const s = await appServer({ key: 'phc_test', host: 'http://127.0.0.1:9', assets: 'http://127.0.0.1:9' });
+  try {
+    const { res, cookie } = await s.signIn({ sub: 'user_app_1', email: 'ada@example.com', email_verified: true }, { invite: s.invite(), next: '/#/table/x' });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get('location'), '/?joined=invite#/table/x', 'an accepted invite link tells the app it was accepted');
+    const page = await s.call('GET', '/', { cookie });
+    assert.equal(page.status, 200);
+    const shell = await page.text();
+    const tag = shell.match(/<script src="\/consent\.js[^"]*" data-posthog-key="phc_test" defer><\/script>/);
+    assert.ok(tag, 'the shell carries the consent script with the key');
+    assert.ok(tag.index < shell.indexOf('/app.js'), 'consent.js runs before app.js');
+    assert.ok(shell.indexOf('/usage-core.js') < shell.indexOf('/app.js'));
+    assert.equal(shell.match(/data-posthog-key/g).length, 1);
+    const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
+    assert.deepEqual(me.analytics, { user: 'user_app_1' });
+    assert.doesNotMatch(JSON.stringify(me.analytics), /ada@example\.com/);
+    const again = await s.signIn({ sub: 'user_app_1', email: 'ada@example.com', email_verified: true }, { next: '/?view=a#/x' });
+    assert.equal(again.res.headers.get('location'), '/?view=a#/x', 'a plain sign-in is not an invite');
   } finally { s.stop(); }
 });

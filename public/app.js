@@ -71,7 +71,7 @@ function warmGet(path, ready = null) {
   warmGets.set(path, { at: Date.now(), p });
   return p;
 }
-async function api(method, path, body, { signal } = {}) {
+async function api(method, path, body, { signal, quiet = false } = {}) {
   if (method === 'GET' && warmGets.has(path)) {
     const hit = warmGets.get(path);
     warmGets.delete(path);
@@ -96,7 +96,30 @@ async function api(method, path, body, { signal } = {}) {
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
+  if (!quiet) noteUsage(method, path, body, data);
   return data;
+}
+
+const usage = (name, props) => globalThis.WeaveConsent?.capture(name, props ?? undefined);
+const systemKindOf = (id) => [...(state.schema ?? []), ...(state.registry ?? [])].flatMap((s) => s.tables).find((t) => t.id === id)?.system ?? null;
+const templateIds = () => (globalThis.WeaveStarters?.TEMPLATES ?? []).map((t) => t.id);
+function noteUsage(method, path, body, data) {
+  if (!globalThis.WeaveConsent || !globalThis.WeaveUsage) return;
+  const hit = WeaveUsage.eventFor({ method, path, body, data, systemOf: systemKindOf, templates: templateIds() });
+  if (hit) usage(...hit);
+}
+function startUsage() {
+  const consent = globalThis.WeaveConsent;
+  if (!consent || !globalThis.WeaveUsage) return;
+  const q = new URLSearchParams(location.search);
+  if (q.get('joined') === 'invite') {
+    usage('invite_accepted', { via: 'link' });
+    q.delete('joined');
+    history.replaceState(history.state, '', `${location.pathname}${q.size ? `?${q}` : ''}${location.hash}`);
+  }
+  const daily = () => { if (consent.active() && WeaveUsage.opened(localStorage)) usage('app_opened'); };
+  daily();
+  addEventListener('grunion:consent-granted', daily);
 }
 
 async function copyText(text, label = 'Copied') {
@@ -1248,6 +1271,7 @@ async function refreshAccountChip() {
     if (err.status !== 401) return;
   }
   closeAccountMenu();
+  if (me?.analytics) globalThis.WeaveConsent?.identify(me.analytics.user);
   if (me?.account) {
     slot.dataset.state = 'signed-in';
     slot.replaceChildren(accountChip(me));
@@ -1302,6 +1326,7 @@ async function personalMenu(btn) {
     { label: 'Theme', hint: THEME_LABELS[pref], icon: THEME_ICONS[pref], section: 'settings', className: 'nav-theme-row', title: `Theme: ${pref}, choose to switch`, run: cycleTheme },
     { label: 'Keyboard shortcuts', hint: '?', icon: 'lucide:circle-question-mark', section: 'settings', run: openKeySheet },
     { label: 'Settings', icon: 'lucide:sliders-horizontal', section: 'settings', className: 'nav-settings-row', run: () => { location.hash = '#/settings'; } },
+    ...(globalThis.WeaveConsent ? [{ label: 'Cookies', icon: 'lucide:shield-check', section: 'settings', className: 'nav-cookies-row', run: () => globalThis.WeaveConsent.ask() }] : []),
     ...(signedIn ? [
       { label: 'Sign out', hint: version, icon: 'lucide:log-out', section: 'organize', title: `Sign out of ${ws}`, run: () => signOutOf([WS_PREFIX]) },
       { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutOf(everywhere) },
@@ -2568,13 +2593,13 @@ function renameNavTable(db, row) {
   row.after(input);
 }
 
-async function duplicateEntity(db, id) {
+async function duplicateEntity(db, id, opts = {}) {
   const row = await api('GET', `/entities/${id}`);
   const values = { ...row.fields };
   for (const f of db.fields) {
     if (READONLY_FIELD_TYPES.includes(f.type) || f.type === 'document') delete values[f.name];
   }
-  return api('POST', `/tables/${db.id}/entities`, { values });
+  return api('POST', `/tables/${db.id}/entities`, { values }, opts);
 }
 
 async function toggleLinkPreview(w, on, after) {
@@ -5628,6 +5653,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`, false, action);
     clearChosen();
     await onSaved?.();
+    return done;
   };
 
   const trashChosen = async () => {
@@ -5730,7 +5756,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     fields: setField,
     link: linkTo,
     more,
-    dup: () => runOnSelection('Duplicated', (id) => duplicateEntity(db, id)),
+    dup: async () => {
+      const done = await runOnSelection('Duplicated', (id) => duplicateEntity(db, id, { quiet: true }));
+      if (done.length) usage('rows_duplicated', { count: done.length });
+    },
     trash: trashChosen,
   };
 
@@ -11226,6 +11255,7 @@ async function runStarter(template) {
     await loadSchema();
     return showHome();
   }
+  usage(...WeaveUsage.template(template.id, templateIds()));
   await loadSchema();
   const name = WeaveStarters.firstTable(template);
   const first = allTables().find((t) => !t.system && t.space === template.space && t.name === name);
@@ -13514,6 +13544,7 @@ function openBugPanel(fab) {
 }
 
 initPageLoader();
+startUsage();
 installBugReporter();
 installPhoneBar();
 toastLayer();
