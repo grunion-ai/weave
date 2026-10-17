@@ -40,6 +40,7 @@ export function probe(rootSelector = null) {
   const unseen = (e) => {
     const own = e.getBoundingClientRect();
     if (!own.width || !own.height || style(e).visibility !== 'visible') return true;
+    if (own.right <= 0 || own.bottom <= 0 || own.left >= innerWidth || own.top >= innerHeight) return true;
     for (let x = e; x && x.nodeType === 1; x = x.parentElement) {
       const cs = style(x);
       if (Number(cs.opacity) === 0) return true;

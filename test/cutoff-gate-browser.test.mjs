@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
-import { CELLS, PLATFORM, fingerprint, ratchet, sectionOf, seed, sweepCell, tally } from './lib/cutoff.mjs';
+import { CELLS, PLATFORM, fingerprint, probe, ratchet, sectionOf, seed, sweepCell, tally } from './lib/cutoff.mjs';
 
 const baseline = sectionOf(JSON.parse(readFileSync(new URL('./cutoff-baseline.json', import.meta.url), 'utf8')));
 
@@ -33,6 +33,57 @@ if (s) {
         assert.ok(Math.abs(result.left - result.end) <= 1);
         assert.equal(result.after, result.before);
       }
+    } finally { await page.close(); }
+  });
+
+  test('Issue #937: text parked below the fold is not cut-off text anyone can see', async () => {
+    const page = await s.browser.newPage({ viewport: CELLS.desktop.viewport });
+    try {
+      await page.goto(`${s.base}/#/`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main');
+      await page.evaluate(() => {
+        const line = (top) => {
+          const span = document.createElement('span');
+          span.className = 'cutoff-fixture-line';
+          span.style.cssText = `position:absolute;left:0;top:${top}px;width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
+          span.textContent = 'a label far too long to sit inside eighty pixels of column';
+          return span;
+        };
+        const host = document.createElement('div');
+        host.id = 'cutoff-fixture';
+        host.style.cssText = 'position:fixed;left:0;top:0;width:80px;height:20px;z-index:9999;';
+        host.append(line(0), line(innerHeight * 3));
+        document.body.append(host);
+      });
+      const lines = (await page.evaluate(probe, null)).filter((f) => String(f.selector).includes('cutoff-fixture-line'));
+      assert.equal(lines.length, 1, 'only the line inside the viewport is a finding');
+    } finally { await page.close(); }
+  });
+
+  test('Issue #937: widening the row window parks more rows off screen and changes no finding', async () => {
+    const page = await s.browser.newPage({ viewport: CELLS.desktop.viewport });
+    try {
+      await page.goto(`${s.base}/#/table/${s.tasks.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      const drawn = () => page.locator('.wv-grid tbody tr.entity-row').count();
+      const nudge = () => page.evaluate(() => {
+        const wrap = document.querySelector('.wv-grid')?.closest('.wv-grid-scroll') ?? document.querySelector('#main');
+        wrap.scrollTop = 1;
+        wrap.dispatchEvent(new Event('scroll'));
+        wrap.scrollTop = 0;
+        wrap.dispatchEvent(new Event('scroll'));
+      });
+      const before = { rows: await drawn(), found: (await page.evaluate(probe, null)).length };
+      await page.evaluate(() => {
+        const gw = globalThis.WeaveGridWindow;
+        const base = gw.windowFor.bind(gw);
+        gw.windowFor = (a) => base({ ...a, viewportH: (Number(a.viewportH) || 0) * 3 });
+      });
+      await nudge();
+      await page.waitForFunction((n) => document.querySelectorAll('.wv-grid tbody tr.entity-row').length > n, before.rows, { timeout: 10000 });
+      const after = { rows: await drawn(), found: (await page.evaluate(probe, null)).length };
+      assert.ok(after.rows > before.rows, `a wider window draws more rows (${before.rows} then ${after.rows})`);
+      assert.equal(after.found, before.found, `${after.found - before.found} findings came from rows nobody can see`);
     } finally { await page.close(); }
   });
 
