@@ -94,6 +94,69 @@ if (s) {
     await page.close();
   });
 
+  const ONLY_HANDLE = ['.entity-body > .attach-block .opt-grip', '.related-head .opt-grip'];
+
+  test('a phone gives the attachments and related-table grips a 44px target that spends no layout (Issue #886)', async () => {
+    const page = await phone(build(), 'light');
+    for (const sel of ONLY_HANDLE) {
+      const grip = page.locator(sel).first();
+      await grip.scrollIntoViewIfNeeded();
+      const box = await grip.boundingBox();
+      assert.ok(box.width >= 44 && box.height >= 44, `${sel} is a ${box.width}x${box.height} target, under 44x44`);
+      const flow = await grip.evaluate((n) => {
+        const cs = getComputedStyle(n);
+        const r = n.getBoundingClientRect();
+        const glyph = n.querySelector('svg, .wv-icon').getBoundingClientRect();
+        const left = r.left - parseFloat(cs.marginLeft);
+        const top = r.top - parseFloat(cs.marginTop);
+        const w = r.width + parseFloat(cs.marginLeft) + parseFloat(cs.marginRight);
+        const h = r.height + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+        return { w, h, dx: Math.round(glyph.left + glyph.width / 2 - (left + w / 2)), dy: Math.round(glyph.top + glyph.height / 2 - (top + h / 2)) };
+      });
+      assert.ok(flow.w <= 16 && flow.h <= 18, `${sel} takes ${flow.w}x${flow.h} of the row, more than the 16x18 glyph`);
+      assert.ok(Math.abs(flow.dx) <= 1 && Math.abs(flow.dy) <= 1, `${sel}: the glyph moved ${flow.dx},${flow.dy}px off its place in the row`);
+      const corners = [[box.x + 2, box.y + 2], [box.x + box.width - 2, box.y + 2], [box.x + 2, box.y + box.height - 2], [box.x + box.width - 2, box.y + box.height - 2]];
+      const hits = await page.evaluate(([s, pts]) => {
+        const g = document.querySelector(s);
+        return pts.map(([x, y]) => g.contains(document.elementFromPoint(x, y)));
+      }, [sel, corners]);
+      assert.deepEqual(hits, [true, true, true, true], `${sel}: every corner of the target lands on the grip`);
+    }
+    const files = await page.locator('.entity-body > .attach-block').boundingBox();
+    assert.ok(files.x >= 0 && files.x + files.width <= 393, 'the attachments block stays on the screen');
+    assert.equal(await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth), true, 'the page does not scroll sideways');
+    await page.close();
+  });
+
+  test('a press at the edge of the 44px target lifts the attachments block (Issue #886)', async () => {
+    const page = await phone(build(), 'light');
+    const blocks = () => page.$$eval('.entity-body > [data-block]', (ns) => ns.map((x) => x.dataset.block));
+    const order = await blocks();
+    const at = order.indexOf('Files');
+    assert.ok(at > 0, `the attachments block has a block above it to swap with: ${order}`);
+    const grip = page.locator('.entity-body > .attach-block .opt-grip');
+    await grip.scrollIntoViewIfNeeded();
+    const box = await grip.boundingBox();
+    const above = await page.locator(`.entity-body > [data-block="${order[at - 1]}"]`).boundingBox();
+    await page.mouse.move(box.x + box.width - 3, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(above.x + 20, above.y + 2, { steps: 10 });
+    assert.equal(await page.locator('.wv-reorder-lift').count(), 1, 'a press 3px inside the target edge lifts the block');
+    await page.mouse.up();
+    const want = [...order.slice(0, at - 1), 'Files', order[at - 1], ...order.slice(at + 1)];
+    assert.deepEqual(await eventually(blocks, want), want, 'the block lands one place up');
+    await page.close();
+  });
+
+  test('a desktop pointer keeps the attachments and related grips at glyph size (Issue #886)', async () => {
+    const page = await desktop(build());
+    for (const sel of ONLY_HANDLE) {
+      const box = await page.locator(sel).first().boundingBox();
+      assert.ok(box && box.width > 0 && box.width < 44 && box.height < 44, `${sel} on desktop is ${JSON.stringify(box)}`);
+    }
+    await page.close();
+  });
+
   test('a desktop pointer keeps the hover grip (Issue #806)', async () => {
     const page = await desktop(build());
     const row = page.locator('.entity-values .fieldrow').first();
