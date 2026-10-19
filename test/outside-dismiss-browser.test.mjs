@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
+import { engineOf, launch, openBugReport, phoneProfile } from './lib/browser.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
 
@@ -53,7 +53,7 @@ if (s) {
     { name: 'the table sheet', at: () => table, show: '#main .crumb-row.tools-open > .crumb-actions', open: async (p) => { await p.click('#main .table-tools-btn'); } },
     { name: 'the filter popover', at: () => table, show: '.table-filter-popover', open: async (p) => { await p.click('#main .table-tools-btn'); await p.click('#main .crumb-actions .table-filter-btn'); } },
     { name: 'the view popover', at: () => table, show: '.table-view-popover', open: async (p) => { await p.click('#main .table-tools-btn'); await p.click('#main .crumb-actions .table-view-btn'); } },
-    { name: 'the bug panel', at: () => table, show: '#bug-panel', open: async (p) => { await p.click('.bug-fab'); } },
+    { name: 'the bug panel', at: () => table, show: '#bug-panel', open: (p) => openBugReport(p) },
     { name: 'the row menu', at: () => docked, show: '.wv-menu[role="menu"]', open: async (p) => { await p.click('#dock .dots-btn'); } },
     { name: 'the picker sheet', at: () => docked, show: '.picker-pop', open: async (p) => { await p.click('#dock .chip-trigger[title="Area"]'); } },
   ];

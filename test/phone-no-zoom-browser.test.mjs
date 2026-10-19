@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
+import { engineOf, launch, openBugReport, phoneProfile } from './lib/browser.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
 
@@ -65,8 +65,7 @@ if (s) {
         } finally { await page.close(); }
         page = await open(b, { profile, theme });
         try {
-          await page.click('.bug-fab');
-          await page.waitForSelector('#bug-panel .bug-note');
+          await openBugReport(page);
           seen.push(...await sweep(page, 'bug panel'));
           await page.keyboard.press('Escape');
           await page.click('.phone-search');

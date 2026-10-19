@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch, PHONE, phoneBrowser, phonePage, phoneProfile } from './lib/browser.mjs';
+import { launch, openBugReport, PHONE, phoneBrowser, phonePage, phoneProfile } from './lib/browser.mjs';
 
 const LONG_ERR = "Couldn't open that record: Entity 'does-not-exist' not found";
 const STALE_MSG = 'This page was served by bbbbbbb but the server is still running aaaaaaa; restart weave, until then saving can fail silently';
@@ -27,7 +27,7 @@ if (s) {
     await page.waitForSelector('#sidebar .nav-health', { state: 'attached' });
     return page;
   }
-  const rect = (page, sel) => page.evaluate((q) => [...document.querySelectorAll(q)].map((n) => {
+  const rect = (page, sel) => page.evaluate((q) => [...document.querySelectorAll(q)].filter((n) => n.getClientRects().length).map((n) => {
     const r = n.getBoundingClientRect();
     return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
   }), sel);
@@ -38,8 +38,7 @@ if (s) {
     test(`${device ?? w}: toasts never touch the bug button or its open panel`, async () => {
       const page = await open(w, h, 'light', device);
       try {
-        await page.click('.bug-fab');
-        await page.waitForSelector('#bug-panel');
+        await openBugReport(page);
         await page.evaluate(([a, b]) => {
           toast(a, true);
           toast('Deleted Task', false, { label: 'Undo', run() {} });
@@ -48,7 +47,7 @@ if (s) {
         assert.equal(await toasts(page).count(), 3);
         const stack = await rect(page, '#wv-toasts .wv-toast');
         const chrome = [...await rect(page, '.bug-fab'), ...await rect(page, '#bug-panel')];
-        assert.equal(chrome.length, 2, 'bug button and open panel are both drawn');
+        assert.equal(chrome.length, device ? 1 : 2, device ? 'a phone draws the open panel and no floating bug button (Issue #983)' : 'bug button and open panel are both drawn');
         for (const t of stack) {
           for (const c of chrome) assert.ok(!hits(t, c), `${w}: toast ${JSON.stringify(t)} overlaps ${JSON.stringify(c)}`);
           assert.ok(t.x >= 0 && t.right <= w && t.y >= 0 && t.bottom <= h, `${w}: toast inside the viewport`);
@@ -182,10 +181,11 @@ if (s) {
         const bar = (await rect(page, '#tray .tray-actions'))[0];
         const save = (await rect(page, '#tray .tray-actions .btn-primary'))[0];
         const fab = (await rect(page, '.bug-fab'))[0];
-        assert.ok(!hits(fab, bar), `the bug button clears the tray's action bar (${JSON.stringify(fab)} vs ${JSON.stringify(bar)})`);
+        if (device) assert.equal(fab, undefined, 'a phone draws no floating bug button over the tray (Issue #983)');
+        else assert.ok(!hits(fab, bar), `the bug button clears the tray's action bar (${JSON.stringify(fab)} vs ${JSON.stringify(bar)})`);
         for (const t of await rect(page, '#wv-toasts .wv-toast')) {
           assert.ok(!hits(t, save), 'no toast on Save changes');
-          assert.ok(!hits(t, fab), 'nor on the bug button');
+          if (fab) assert.ok(!hits(t, fab), 'nor on the bug button');
         }
       } finally { await page.close(); }
     });

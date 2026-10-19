@@ -1356,6 +1356,7 @@ async function personalMenu(btn) {
     { label: 'Keyboard shortcuts', hint: '?', icon: 'lucide:circle-question-mark', section: 'settings', run: openKeySheet },
     { label: 'Settings', icon: 'lucide:sliders-horizontal', section: 'settings', className: 'nav-settings-row', run: () => { location.hash = '#/settings'; } },
     ...(globalThis.WeaveConsent ? [{ label: 'Cookies', icon: 'lucide:shield-check', section: 'settings', className: 'nav-cookies-row', run: () => globalThis.WeaveConsent.ask() }] : []),
+    ...(dockCoversScreen.matches ? [{ label: 'Report a problem', icon: 'lucide:bug', section: 'settings', className: 'nav-bug-row', run: () => { $('#app').classList.remove('nav-peek'); openBugPanel(btn); } }] : []),
     ...(signedIn ? [
       { label: 'Sign out', hint: version, icon: 'lucide:log-out', section: 'organize', title: `Sign out of ${ws}`, run: () => signOutOf([WS_PREFIX]) },
       { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutEverywhere(everywhere) },
@@ -13515,9 +13516,10 @@ function closeBugPanel() {
   document.querySelector('.bug-fab')?.setAttribute('aria-expanded', 'false');
 }
 
-function openBugPanel(fab) {
+function openBugPanel(from) {
   closeBugPanel();
-  fab.setAttribute('aria-expanded', 'true');
+  const fab = from.classList.contains('bug-fab');
+  if (fab) from.setAttribute('aria-expanded', 'true');
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
@@ -13606,18 +13608,20 @@ function openBugPanel(fab) {
   const panel = el('div', { id: 'bug-panel', role: 'dialog', 'aria-label': 'Report a problem' }, form);
   document.body.append(panel);
 
-  const r = fab.getBoundingClientRect();
-  panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
-  panel.style.bottom = (innerHeight - r.top + 6) + 'px';
+  if (fab) {
+    const r = from.getBoundingClientRect();
+    panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
+    panel.style.bottom = (innerHeight - r.top + 6) + 'px';
+  }
 
   dismissOutside({
     open: () => panel.isConnected,
-    inside: (t) => panel.contains(t) || fab.contains(t) || bugCore.canSubmit(picked, note.value),
+    inside: (t) => panel.contains(t) || from.contains(t) || bugCore.canSubmit(picked, note.value),
     close: closeBugPanel,
   });
   addEventListener('keydown', function esc(ev) {
     if (!panel.isConnected) return removeEventListener('keydown', esc);
-    if (ev.key === 'Escape') { closeBugPanel(); fab.focus(); removeEventListener('keydown', esc); }
+    if (ev.key === 'Escape') { closeBugPanel(); from.focus(); removeEventListener('keydown', esc); }
     if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey) && panel.contains(ev.target)) {
       ev.preventDefault();
       form.requestSubmit();
