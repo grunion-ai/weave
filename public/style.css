@@ -2157,10 +2157,10 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 }
 @media (max-width: 600px) and (prefers-reduced-motion: reduce) { .crumb-row.tools-open > .crumb-actions { animation: none; } }
 @media (max-width: 600px) {
-  .chip-pop.picker-pop, .chip-pop.wv-menu-sheet { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; min-width: 0; max-width: none; max-height: calc(100dvh - 72px); transform: none;
+  .chip-pop.picker-pop, .chip-pop.wv-menu-sheet, .chip-pop.table-group-popover { position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; min-width: 0; max-width: none; max-height: calc(100dvh - 72px); transform: none;
     padding: 6px 10px calc(12px + env(safe-area-inset-bottom, 0px)); border: 0; border-radius: 20px 20px 0 0; display: flex; flex-direction: column;
     box-shadow: 0 0 0 100vmax rgba(12, 27, 51, .32), 0 -8px 24px rgba(12, 27, 51, .18); animation: wv-sheet-in .18s ease-out both; }
-  .chip-pop.wv-menu-sheet::before { content: ""; flex: none; align-self: center; width: 36px; height: 5px; margin: 2px 0 8px; border-radius: 3px; background: var(--tblr-border-color); }
+  .chip-pop.wv-menu-sheet::before, .chip-pop.table-group-popover::before { content: ""; flex: none; align-self: center; width: 36px; height: 5px; margin: 2px 0 8px; border-radius: 3px; background: var(--tblr-border-color); }
   .picker-pop > .sheet-grip { margin: -2px 0 2px; }
   .picker-pop .picker-title { font-size: var(--fs-h2); font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--tblr-body-color); padding: 2px 10px 10px; }
   .picker-pop .picker-box { min-height: 44px; border-radius: 10px; }
@@ -2176,7 +2176,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .wv-menu-sheet .wv-menu-title { max-width: none; font-size: var(--fs-doc); }
 }
 @keyframes wv-sheet-in { from { transform: translateY(24px); opacity: .6; } }
-@media (prefers-reduced-motion: reduce) { .chip-pop.picker-pop, .chip-pop.wv-menu-sheet { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .chip-pop.picker-pop, .chip-pop.wv-menu-sheet, .chip-pop.table-group-popover { animation: none; } }
 .list-name { display: none; }
 .phone-lead, .wv-grid td.phone-only { display: none; }
 @media (max-width: 600px) {
