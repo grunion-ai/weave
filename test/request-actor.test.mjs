@@ -43,9 +43,9 @@ test('a row written across a slow body keeps the author who sent it (Issue #810)
   });
   t.after(() => post.destroy());
   post.write(payload.slice(0, -1));
-  await waitFor(() => w.actor === 'alice', 'the paused write holds alice');
+  await waitFor(() => w.actorName(w.actor) === 'alice', 'the paused write holds alice');
   assert.equal((await fetch(`${base}/api/workspace`, { headers: { Authorization: `Bearer ${bob}` } })).status, 200);
-  assert.equal(w.actor, 'bob');
+  assert.equal(w.actorName(w.actor), 'bob');
   post.end(payload.slice(-1));
   const result = await finished;
   assert.equal(result.status, 201);
@@ -83,7 +83,7 @@ test('a bug report filed across a failed forward keeps its reporter (Issue #810)
   }).then(async (r) => ({ status: r.status, data: await r.json() }));
   await waitFor(() => reached, 'the report reached the forward target');
   assert.equal((await fetch(`${base}/api/workspace`, { headers: { Authorization: `Bearer ${bob}` } })).status, 200);
-  assert.equal(w.actor, 'bob');
+  assert.equal(w.actorName(w.actor), 'bob');
   release();
   const report = await filed;
   assert.equal(report.status, 201);

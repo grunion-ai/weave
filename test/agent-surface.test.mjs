@@ -88,6 +88,8 @@ const SURFACE = [
 ];
 
 const INTERNAL = {
+  actorName: 'read helper (Issue #699): every read path renders a stored account:<id> actor as the account\'s current name before it answers, so an agent only ever sees names',
+  isActor: 'permission helper (Issue #699): the keystore, comment and share checks ask whether a stored actor, id or legacy name, is the caller; an agent never asks it',
   save: 'persistence', maybeRefresh: 'cross-process refresh',
   billing: 'read helper (Feature #256): the workspace\'s name, creation date and Clerk organization for src/billing.js; GET /api/billing is the door',
   linkBillingOrg: 'billing plumbing (Feature #256): POST /api/billing/team links the Clerk organization it creates; an agent never links one by hand',

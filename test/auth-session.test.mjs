@@ -90,7 +90,7 @@ test('routes: a provider sign-in sets a session cookie that opens the wall; logo
     assert.equal(me.sessions.length, 1);
     assert.equal(me.sessions[0].current, true);
     const row = await (await s.call('POST', '/api/tables/Task/entities', { cookie: kyle.cookie, body: { name: 'By cookie' } })).json();
-    assert.equal(s.w.getEntity(row.id).createdBy, 'kyle');
+    assert.equal(s.w.readEntity(row.id).createdBy, 'kyle');
     const bye = await s.call('POST', '/api/auth/logout', { cookie: kyle.cookie });
     assert.match(bye.headers.get('set-cookie'), new RegExp(`^wv_session_${s.w.state.meta.id}=; .*Max-Age=0`));
     const after = await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie });
@@ -137,7 +137,7 @@ test('routes: with requireAuth off the page is open, a session still names the a
     assert.equal(kyle.res.status, 302);
     assert.match(kyle.res.headers.get('set-cookie'), /; Secure$/);
     const row = await (await s.call('POST', '/api/tables/Task/entities', { cookie: kyle.cookie, body: { name: 'named' } })).json();
-    assert.equal(s.w.getEntity(row.id).createdBy, 'kyle');
+    assert.equal(s.w.readEntity(row.id).createdBy, 'kyle');
   } finally { s.stop(); }
 });
 
