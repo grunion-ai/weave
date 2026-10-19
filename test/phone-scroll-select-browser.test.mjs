@@ -15,8 +15,8 @@ const s = await launch('phone list scrolls without selecting', (weave) => {
 });
 
 const drag = (page, dy, { click = false } = {}) => page.evaluate(([dy, click]) => {
-  const row = document.querySelectorAll('#main tbody tr.entity-row')[2];
-  const r = row.querySelector('.list-name').getBoundingClientRect();
+  const row = document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[2];
+  const r = row.querySelector('.list-title').getBoundingClientRect();
   const x = r.left + 30, y0 = r.top + 8;
   const fire = (type, y) => document.elementFromPoint(x, Math.max(1, Math.min(innerHeight - 1, y)))?.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerType: 'touch', isPrimary: true, pointerId: 31, button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y }));
   row.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, composed: true, pointerType: 'touch', isPrimary: true, pointerId: 31, button: 0, buttons: 1, clientX: x, clientY: y0 }));
@@ -30,7 +30,7 @@ const state = (page) => page.evaluate(() => ({
   text: String(getSelection()),
   chosen: document.querySelectorAll('#main .sel-box:checked, #main tr.row-selected, #main tr[aria-selected="true"]').length,
   docked: location.href.includes('?e='),
-  userSelect: getComputedStyle(document.querySelector('#main tbody tr.entity-row')).webkitUserSelect || getComputedStyle(document.querySelector('#main tbody tr.entity-row')).userSelect,
+  userSelect: getComputedStyle(document.querySelector('#main :is(tbody tr.entity-row, .wv-list .list-row)')).webkitUserSelect || getComputedStyle(document.querySelector('#main :is(tbody tr.entity-row, .wv-list .list-row)')).userSelect,
 }));
 
 if (s) {
@@ -42,7 +42,7 @@ if (s) {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${table}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main tbody tr.entity-row .list-name');
+    await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row) .list-title');
     return page;
   };
 
@@ -61,7 +61,7 @@ if (s) {
           assert.equal(seen.chosen, 0, 'no row is selected');
           assert.equal(seen.docked, false, 'a drag is a scroll: no row opens, even if a click follows it');
           await page.waitForTimeout(700);
-          const name = await page.locator('#main tbody tr.entity-row').nth(1).locator('.list-name').boundingBox();
+          const name = await page.locator('#main :is(tbody tr.entity-row, .wv-list .list-row)').nth(1).locator('.list-title').boundingBox();
           await page.touchscreen.tap(name.x + 20, name.y + 8);
           await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
           assert.ok(page.url().includes('?e='), 'a tap opens the row');
@@ -74,8 +74,8 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 844 } });
     try {
       await page.goto(`${base}/${table}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main tbody tr.entity-row');
-      assert.notEqual(await page.locator('#main tbody tr.entity-row').first().evaluate((tr) => getComputedStyle(tr).userSelect), 'none');
+      await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
+      assert.notEqual(await page.locator('#main :is(tbody tr.entity-row, .wv-list .list-row)').first().evaluate((tr) => getComputedStyle(tr).userSelect), 'none');
     } finally { await page.close(); }
   });
 }

@@ -15,6 +15,7 @@ const s = await launch('icon centre', (weave) => {
   acme = weave.createEntity(deals, { name: 'Acme Working Capital', values: { Amount: 1200, Stage: 'Lead' } });
   weave.createEntity(deals, { name: 'Globex Renewal', values: { Amount: 800, Stage: 'Won' } });
   weave.setDoc(acme.id, '# Terms\n\nNet 30.\n');
+  weave.tableView(`${deals.id}/Standard`, { layout: 'table' });
 });
 
 const probe = () => {

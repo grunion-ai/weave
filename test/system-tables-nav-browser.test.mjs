@@ -159,7 +159,7 @@ if (s) {
       await page.click('#sidebar .nav-system a[href^="#/table/"]');
       await page.waitForURL(new RegExp(`/w/${ws.state.meta.id}/#/table/${wfId}$`));
       await page.waitForSelector('#main .wv-grid tbody tr');
-      const text = await page.textContent('#main .wv-grid');
+      const text = await page.$eval('#main .wv-grid', (g) => `${g.textContent} ${[...g.querySelectorAll('input, textarea')].map((i) => i.value).join(' ')}`);
       await page.close();
       return text;
     };

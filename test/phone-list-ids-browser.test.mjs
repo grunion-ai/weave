@@ -19,10 +19,10 @@ const s = await launch('phone list id column', (weave) => {
   return { table: `#/table/${issues.id}` };
 });
 
-const measure = (page) => page.evaluate(() => [...document.querySelectorAll('#main tbody tr.entity-row')].map((tr) => {
+const measure = (page) => page.evaluate(() => [...document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')].map((tr) => {
   const link = tr.querySelector('.open-link');
-  const name = tr.querySelector('.list-name');
-  const chip = tr.querySelector('td[data-field] .k');
+  const name = tr.querySelector('.list-title');
+  const chip = tr.querySelector(':is(td, .phone-chip)[data-field] .k');
   const l = link.getBoundingClientRect(), n = name.getBoundingClientRect();
   const range = document.createRange();
   range.selectNodeContents(link);
@@ -43,7 +43,7 @@ if (s) {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${table}`, { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => document.querySelectorAll('#main tbody tr.entity-row').length === 4);
+    await page.waitForFunction(() => document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)').length === 4);
     return page;
   };
 

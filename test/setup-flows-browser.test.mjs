@@ -162,7 +162,7 @@ if (openHub) {
     await step(p, 'done');
     await go(p, 'open');
     await p.waitForURL(/\/w\/ada-sales\/#\/table\//);
-    await p.waitForSelector('.wv-grid tbody tr.entity-row');
+    await p.waitForSelector(':is(tbody tr.entity-row, .wv-list .list-row)');
     assert.equal(await p.locator('.wv-onboard').count(), 0, 'the in-app welcome does not ask the name again');
     await p.context().close();
   });

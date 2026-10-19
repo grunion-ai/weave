@@ -1,4 +1,4 @@
-const ROW = '.wv-grid tbody tr.entity-row';
+const ROW = ':is(.wv-grid tbody tr.entity-row, .wv-list .list-row)';
 const BOTH = ['desktop', 'phone'];
 const DESKTOP = ['desktop'];
 const PHONE = ['phone'];

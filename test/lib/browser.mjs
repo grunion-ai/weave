@@ -138,7 +138,7 @@ export async function painted(page, selector, { timeout = 30000, state } = {}) {
         hash: location.hash,
         skeleton: !!document.querySelector('#main .sk-row, #main .sk-card, #main .sk-toolbar'),
         main: main ? [...main.children].map((n) => n.className || n.tagName) : null,
-        rows: document.querySelectorAll('.wv-grid tbody tr.entity-row').length,
+        rows: document.querySelectorAll('.wv-grid tbody tr.entity-row, .wv-list .list-row').length,
         toast: document.querySelector('#wv-toasts')?.textContent?.trim() || '',
       };
     }).catch((unreadable) => ({ unreadable: String(unreadable) }));

@@ -35,28 +35,27 @@ if (s) {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+    await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
     await page.waitForTimeout(150);
     return page;
   };
   const reset = (page) => write(page, { phoneRow: null, fields: ['Name', 'Description', 'Status', 'Severity', 'Symptom'] });
   const row = (page, n = 0) => page.evaluate((n) => {
-    const tr = document.querySelectorAll('#main .wv-grid tbody tr.entity-row')[n];
+    const tr = document.querySelectorAll('#main .wv-list .list-row')[n];
     const r = tr.getBoundingClientRect();
     const box = (x) => { const b = x.getBoundingClientRect(); return { left: b.left, top: b.top - r.top, right: b.right, bottom: b.bottom - r.top }; };
     const lead = tr.querySelector('.phone-lead');
-    const pid = tr.querySelector('td.pid-cell .open-link');
-    const chips = [...tr.querySelectorAll(':scope > td[data-field]')].filter((td) => td.getClientRects().length)
+    const pid = tr.querySelector('.list-pid');
+    const chips = [...tr.querySelectorAll('.phone-chip[data-field]')].filter((td) => td.getClientRects().length)
       .map((td) => ({ field: td.dataset.field, text: td.textContent.trim(), label: getComputedStyle(td, '::before').content, ...box(td) }))
       .sort((a, b) => a.top - b.top || a.left - b.left);
     return {
       theme: document.documentElement.dataset.bsTheme,
       h: Math.round(r.height),
-      token: parseFloat(getComputedStyle(tr.closest('.wv-grid')).getPropertyValue('--wv-row-h')),
       lead: lead && lead.getClientRects().length ? { text: lead.textContent.trim(), ...box(lead) } : null,
       pid: box(pid),
       chips,
-      more: [...tr.querySelectorAll('td[data-more]')].map((td) => td.dataset.more),
+      more: [...tr.querySelectorAll('.phone-chip[data-more]')].map((td) => td.dataset.more),
     };
   }, n);
 
@@ -67,10 +66,10 @@ if (s) {
         try {
           await reset(page);
           await page.reload({ waitUntil: 'networkidle' });
-          await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+          await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
           const r = await row(page);
           assert.equal(r.theme, theme);
-          assert.equal(r.h, r.token, 'the row keeps its density height');
+          assert.ok(r.h >= 44, 'a touch row');
           assert.ok(r.lead, 'the lead mark shows');
           assert.equal(r.lead.text, 'Open');
           assert.ok(r.lead.right <= r.pid.left + 0.5 && Math.abs(r.lead.top - r.pid.top) < 6, 'on line one, before the #id');
@@ -85,7 +84,7 @@ if (s) {
       try {
         await reset(page);
         await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+        await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
         await page.click('#main .table-tools-btn');
         await settled(page.locator('#main .crumb-actions'));
         await page.click('#main .crumb-actions .eye-btn');
@@ -105,7 +104,7 @@ if (s) {
         assert.deepEqual(sheet.rows, ['Status:lead', 'Severity:chips', 'Symptom:chips', 'Description:off', 'Area:off', 'Chip:off', 'Card:off']);
         assert.equal(sheet.small, 0, 'every control is a 44px target');
         await page.click('.phone-row-field[data-field="Area"] .seg-opt[data-slot="chips"]');
-        await page.waitForFunction(() => [...document.querySelectorAll('#main tbody tr.entity-row:first-child > td[data-field]')].some((td) => td.dataset.field === 'Area' && td.getClientRects().length), null, { timeout: 10000 });
+        await page.waitForFunction(() => [...(document.querySelector('#main .wv-list .list-row')?.querySelectorAll('.phone-chip[data-field]') ?? [])].some((td) => td.dataset.field === 'Area' && td.getClientRects().length), null, { timeout: 10000 });
         await page.click('.phone-row-field[data-field="Symptom"] .seg-opt[data-slot="off"]');
         await page.waitForFunction(async (id) => {
           const v = await (await fetch(`/api/tables/${id}/views/Standard`)).json();
@@ -114,10 +113,9 @@ if (s) {
         const v = await view(page);
         assert.deepEqual(v.phoneRow, { lead: 'Status', chips: ['Severity', 'Area'] });
         assert.deepEqual(v.fields, ['Name', 'Description', 'Status', 'Severity', 'Symptom'], 'the desktop columns are untouched');
-        await page.waitForFunction(() => !document.querySelector('#main tbody tr.entity-row td[data-field="Symptom"]')?.getClientRects().length, null, { timeout: 10000 });
+        await page.waitForFunction(() => !document.querySelector('#main .wv-list .list-row .phone-chip[data-field="Symptom"]')?.getClientRects().length, null, { timeout: 10000 });
         const r = await row(page);
         assert.deepEqual(r.chips.map((c) => c.field), ['Severity', 'Area'], 'a desktop-hidden field can be a chip');
-        assert.equal(r.h, r.token);
       } finally { await reset(page); await page.close(); }
     });
 
@@ -126,7 +124,7 @@ if (s) {
       try {
         assert.equal(await write(page, { phoneRow: { lead: 'Severity', chips: ['Area', 'Symptom', 'Status'], labels: true } }), 200);
         await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+        await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
         let r = await row(page);
         assert.equal(r.lead.text, 'High');
         const shown = r.chips.map((c) => c.field);
@@ -134,12 +132,11 @@ if (s) {
         assert.ok(r.chips.every((c) => c.label.includes(c.field)), 'each chip names its field');
         assert.equal(await write(page, { phoneRow: { chips: ['Area', 'Symptom', 'Status', 'Description'], labels: false, wrap: true } }), 200);
         await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+        await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
         r = await row(page);
-        assert.equal(r.h, r.token, 'wrapping never grows the row');
         assert.ok(r.chips.every((c) => c.bottom <= r.h + 0.5), 'every chip sits inside the row');
-        assert.ok(new Set(r.chips.map((c) => Math.round(c.top))).size >= 2, 'the chips take a second line');
-        assert.ok(r.chips.length >= 4 || r.more.length, 'what does not fit is still counted');
+        assert.equal(r.more.length, 0, 'wrapping shows every chip, so nothing is counted');
+        assert.ok(r.chips.length >= 3, 'the chips wrap rather than drop');
       } finally { await reset(page); await page.close(); }
     });
   }
@@ -149,7 +146,7 @@ if (s) {
     try {
       await write(page, { phoneRow: { lead: 'Status', chips: ['Area'] } });
       await page.reload({ waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+      await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
       const seen = await page.evaluate(() => ({
         lead: [...document.querySelectorAll('#main .phone-lead')].filter((x) => x.getClientRects().length).length,
         extra: [...document.querySelectorAll('#main tbody tr.entity-row:first-child > td[data-field]')].filter((x) => x.getClientRects().length).map((x) => x.dataset.field),
