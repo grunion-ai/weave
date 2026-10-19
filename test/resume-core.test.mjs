@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 await import('../public/resume-core.js');
-const { MARK, land, keep } = globalThis.WeaveResume;
+const { MARK, land, keep, follow } = globalThis.WeaveResume;
 
 test('resume: the resume mark lands on the last page this workspace had open (Issue #977)', () => {
   assert.equal(MARK, '#/resume');
@@ -22,4 +22,16 @@ test('resume: a deep link always wins over the stored page (Issue #977)', () => 
   assert.equal(keep('#/entity/e9'), true);
   assert.equal(keep(MARK), false);
   assert.equal(keep(''), false);
+});
+
+test('resume: each workspace path remembers its own last page, and storage failures stay quiet (Issue #977)', () => {
+  const box = new Map();
+  const storage = { getItem: (k) => box.get(k) ?? null, setItem: (k, v) => box.set(k, v) };
+  assert.equal(follow({ pathname: '/w/a/', hash: '#/table/t1' }, storage), '#/table/t1');
+  assert.equal(follow({ pathname: '/w/b/', hash: '#/entity/e2' }, storage), '#/entity/e2');
+  assert.equal(follow({ pathname: '/w/a/', hash: MARK }, storage), '#/table/t1');
+  assert.equal(follow({ pathname: '/w/c/', hash: MARK }, storage), '#/');
+  const broken = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+  assert.equal(follow({ pathname: '/', hash: MARK }, broken), '#/');
+  assert.equal(follow({ pathname: '/', hash: '#/x' }, broken), '#/x');
 });

@@ -12714,12 +12714,8 @@ function renderRoute() {
 }
 
 function rememberRoute() {
-  const key = `${WeaveResume.KEY}:${location.pathname}`;
-  let stored = null;
-  try { stored = localStorage.getItem(key); } catch {}
-  const landed = WeaveResume.land(location.hash, stored);
+  const landed = WeaveResume.follow(location, globalThis.localStorage);
   if (landed !== location.hash) history.replaceState(history.state, '', landed);
-  else if (WeaveResume.keep(landed)) try { localStorage.setItem(key, landed); } catch {}
 }
 
 function dispatchRoute() {
