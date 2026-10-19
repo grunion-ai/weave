@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
+import { engineOf, launch, openBugReport, phoneProfile } from './lib/browser.mjs';
 
 const MIN = 44;
 const STEP = 0.5;
@@ -97,7 +97,7 @@ if (s) {
     { name: 'row page', hash: `#/table/${table}?e=${row}`, ready: '#dock .entity-fields .fieldrow', roots: ['#dock'] },
     { name: 'menu', hash: `#/table/${table}`, ready: '#main .nav-menu', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu') },
     { name: 'picker sheet', hash: `#/table/${table}?e=${row}`, ready: '#dock .chip-trigger[title="Status"]', roots: ['.picker-pop'], act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
-    { name: 'bug panel', hash: `#/table/${table}`, ready: '.bug-fab', roots: ['#bug-panel'], act: (p) => p.click('.bug-fab') },
+    { name: 'bug panel', hash: `#/table/${table}`, ready: '#main .nav-menu', roots: ['#bug-panel'], act: (p) => openBugReport(p) },
   ];
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }]];
   const webkit = await engineOf('webkit');
