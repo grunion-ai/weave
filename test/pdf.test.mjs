@@ -159,7 +159,7 @@ test('unicode PDF written to disk has a well-formed xref trailer', () => {
   }
 });
 
-test('a missing unicode font degrades the PDF, never the process (G2, workerd)', async () => {
+test('a missing unicode font degrades the PDF, never the process (G2)', async () => {
   const { mkdtempSync, cpSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');

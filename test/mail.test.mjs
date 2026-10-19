@@ -147,9 +147,7 @@ test('the lockup PNGs are served from public/brand at 2x of 104x24', () => {
   }
 });
 
-test('the templates import nothing, so they run under workerd too', () => {
-  const src = readFileSync(join(ROOT, 'src', 'mail.js'), 'utf8');
-  assert.ok(!/^\s*import\s/m.test(src));
+test('longDate names the month and day', () => {
   assert.equal(longDate('2026-10-10T17:00:00.000Z'), 'October 10');
 });
 

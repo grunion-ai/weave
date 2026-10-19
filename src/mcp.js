@@ -4,10 +4,7 @@ import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
-let VERSION = 'dev';
-try {
-  VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-} catch {}
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 function textResult(data) {
   return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data) }] };
@@ -664,7 +661,7 @@ export function toolTable() {
   return ['| Tool | What it does | Effect |', '| --- | --- | --- |', ...TOOLS.map((t) => `| \`${t.name}\` | ${t.annotations.title} | ${effect(t.annotations)} |`)].join('\n');
 }
 
-export function toolProfile(env = globalThis.process?.env ?? {}) {
+export function toolProfile(env = process.env) {
   return env.WEAVE_MCP_TOOLS === 'all' ? 'all' : 'core';
 }
 export function listTools(profile = toolProfile()) {
@@ -979,13 +976,8 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   }
 }
 
-let PRIMER;
-export function primer() {
-  if (PRIMER === undefined) {
-    try { PRIMER = readFileSync(new URL('./mcp-primer.md', import.meta.url), 'utf8'); } catch { PRIMER = null; }
-  }
-  return PRIMER;
-}
+const PRIMER = readFileSync(new URL('./mcp-primer.md', import.meta.url), 'utf8');
+export const primer = () => PRIMER;
 
 export function handleMcpMessage(weave, msg, { version = VERSION, caller = null, tools = toolProfile() } = {}) {
   const { id, method, params } = msg ?? {};
@@ -999,7 +991,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
           protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
           capabilities: { tools: {} },
           serverInfo: { name: 'weave', version },
-          ...(primer() ? { instructions: primer() } : {}),
+          instructions: PRIMER,
         });
       case 'notifications/initialized':
       case 'initialized':

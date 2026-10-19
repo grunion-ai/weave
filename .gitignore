@@ -12,9 +12,6 @@ files/
 .impeccable/
 test.json
 
-# Cloudflare deployment (Feature #84): real config and secrets never land in
-# the public repo — commit wrangler.toml.example only. Entries exist BEFORE the
-# files do (the Issue #10 class, one layer up).
 wrangler.toml
 wrangler.jsonc
 .dev.vars
