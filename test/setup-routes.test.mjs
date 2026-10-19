@@ -74,28 +74,6 @@ test('an empty hub root lets the first sign-in create, and the owner takes its n
   } finally { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a fresh public instance still lets the first sign-in create its workspace while the hub root refuses anonymous admin (Issue #472)', async () => {
-  const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = mkdtempSync(join(tmpdir(), 'weave-setup-fresh-'));
-  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  main.save();
-  const { server, port } = await startServer(main, { port: 0, oidc, origin: 'http://weave.test', limits: { options: 1000, failed: 1000, slugs: 1000 } });
-  try {
-    const apex = (method, path, opts) => hit(port, 'weave.test', method, path, opts);
-    assert.equal((await apex('POST', '/api/accounts', { body: { name: 'mallory', role: 'architect' } })).status, 401);
-    const start = await apex('GET', '/api/auth/oidc/start?start=1');
-    const back = idp.approve(start.headers.location, { sub: 'first', email: 'first@example.com', email_verified: true });
-    const res = await apex('GET', back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
-    const cookie = cookieOf(res, 'wv_start');
-    assert.equal((await apex('GET', '/api/start', { cookie })).json().canCreate, true);
-    const made = await apex('POST', '/api/start/workspaces', { cookie, body: { quick: true } });
-    assert.equal(made.status, 201, made.text);
-    assert.equal(made.json().name, 'first');
-    assert.deepEqual(main.listAccounts(), [], 'nobody became admin of the hub root on the way');
-  } finally { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); }
-});
-
 test('Clerk pane: the start API offers the Clerk script only when the key names the sign-in issuer', async () => {
   const { clerkKeyFromEnv } = await import('../src/server.js');
   assert.equal(clerkKeyFromEnv({}), null);

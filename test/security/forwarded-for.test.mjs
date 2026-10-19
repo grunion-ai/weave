@@ -11,9 +11,7 @@ const { clientAddress } = await import('../../src/routes.js');
 const LIMITS = { options: 10, failed: 5, slugs: 2 };
 
 async function serve(opts = {}) {
-  const w = new Weave();
-  w.setRequireAuth(false);
-  const { server, port } = await startServer(w, { port: 0, limits: LIMITS, ...opts });
+  const { server, port } = await startServer(new Weave(), { port: 0, limits: LIMITS, ...opts });
   const check = async (forwarded) => (await fetch(`http://127.0.0.1:${port}/api/workspaces/slug?slug=probe`, {
     headers: forwarded ? { 'X-Forwarded-For': forwarded } : {},
   })).status;
