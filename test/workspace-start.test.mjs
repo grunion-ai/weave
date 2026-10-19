@@ -122,6 +122,60 @@ test('create: the server re-checks, so a slug lost to a race is slug_taken with 
   } finally { s.stop(); }
 });
 
+test('resume: a signed-in start visit goes straight to the last workspace and its last page (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name: 'Harbor', slug: 'harbor' } })).status, 201);
+    await s.follow((await s.apex('GET', '/api/start/open/harbor', { cookie: kyle.cookie })).headers.location);
+    const start = await s.apex('GET', '/start', { cookie: kyle.cookie });
+    assert.deepEqual([start.status, start.headers.location], [302, '/api/start/open/harbor?to=resume']);
+    const open = await s.apex('GET', start.headers.location, { cookie: kyle.cookie });
+    assert.equal(new URL(open.headers.location).host, 'harbor.weave.test');
+    const landed = await s.follow(open.headers.location);
+    assert.deepEqual([landed.status, landed.headers.location], [302, '/#/resume'], 'the workspace app turns the mark into the last page it had open');
+    const picked = await s.apex('GET', '/start?pick=1', { cookie: kyle.cookie });
+    assert.equal(picked.status, 200, 'the in-app switcher can still ask for the list');
+  } finally { s.stop(); }
+});
+
+test('resume: a deep link wins over the last workspace (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    const moved = await s.apex('GET', `/e/${id}`, { cookie: kyle.cookie });
+    assert.deepEqual([moved.status, moved.headers.location], [301, `http://net.weave.test/e/${id}`]);
+  } finally { s.stop(); }
+});
+
+test('resume: a gone or revoked last workspace falls back to the first one this sign-in opens (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const other = new Weave({ path: join(s.dir, 'other.db') });
+    other.createAccount({ name: 'eve', role: 'editor' });
+    other.redeemIdentityInvite(other.linkIdentity('eve', { issuer: s.idp.issuer }).code, { issuer: s.idp.issuer, subject: 'user_eve' });
+    other.store.close?.();
+    const eve = await s.signInAtStart('user_eve');
+    await s.follow((await s.apex('GET', '/api/start/open/other', { cookie: eve.cookie })).headers.location);
+    assert.equal((await s.apex('GET', '/start', { cookie: eve.cookie })).headers.location, '/api/start/open/other?to=resume');
+    const revoke = new Weave({ path: join(s.dir, 'other.db') });
+    revoke.deleteAccount('eve');
+    revoke.store.close?.();
+    assert.equal((await s.apex('GET', '/start', { cookie: eve.cookie })).headers.location, '/api/start/open/acme?to=resume');
+  } finally { s.stop(); }
+});
+
+test('resume: a sign-in with no workspaces still gets the start page and its empty state (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const nobody = await s.signInAtStart('user_nobody');
+    const page = await s.apex('GET', '/start', { cookie: nobody.cookie });
+    assert.equal(page.status, 200);
+    assert.deepEqual((await s.apex('GET', '/api/start', { cookie: nobody.cookie })).json().rows, []);
+  } finally { s.stop(); }
+});
+
 test('start: the apex shows nothing until sign-in, then lists the workspaces this identity opens', async () => {
   const s = await serve();
   try {
@@ -202,6 +256,7 @@ test('apex: a browser at the apex root gets the start page signed in or not, Net
     const t = s.rootToken;
     const kyle = await s.signInAtStart('user_kyle');
     assert.deepEqual([(await s.apex('GET', '/', { cookie: kyle.cookie })).status, (await s.apex('GET', '/', { cookie: kyle.cookie })).headers.location], [302, '/start']);
+    assert.match((await s.apex('GET', '/start', { cookie: kyle.cookie })).headers.location, /^\/api\/start\/open\/[^/?]+\?to=resume$/, 'signed in, the start page hands straight on to a workspace');
     assert.equal((await s.apex('GET', '/', { token: t })).headers.location, '/start');
     const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
     const moved = await s.apex('GET', `/e/${id}`);

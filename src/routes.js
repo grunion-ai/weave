@@ -883,6 +883,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
+        const asked = ['pick', 'setup', 'error'].some((k) => rx.searchParams?.has(k));
+        const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
+        const last = logins.length ? findWorkspaces(logins).rows.find((r) => r.kind === 'workspace') : null;
+        if (last) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
         const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
         if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
         return notFound({ error: 'Not found', code: 'not-found' });
@@ -1137,6 +1141,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const host = String(w.state.meta.name).toLowerCase();
             const table = String(rx.searchParams?.get('table') ?? '');
             const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
+              : rx.searchParams?.get('to') === 'resume' ? '#/resume'
               : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
             if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
