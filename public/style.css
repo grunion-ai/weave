@@ -1696,6 +1696,7 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 .crumb-item .crumb-ic { flex: none; color: var(--tblr-secondary); }
 .crumb-pid { flex: none; font-family: var(--tblr-font-monospace); font-size: var(--fs-secondary); color: var(--tblr-secondary); }
 .crumb-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.crumb-tbl { display: none; }
 .crumb-cur-wrap { display: inline-flex; align-items: center; gap: 2px; min-width: 0; flex: 1 1 auto; }
 .crumb-cur { max-width: none; color: var(--tblr-body-color); font-weight: 600; cursor: default; }
 .crumb-copy { flex: none; padding: 2px; line-height: 0; }
@@ -2103,6 +2104,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .crumb-pid { font-size: var(--fs-grid); }
   :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table):not(.crumb-cur) { max-width: 18ch; }
   .crumb-sep { padding: 0 1px; }
+  .crumb-cur.crumb-k-row:has(> .crumb-pid) > .crumb-nm { display: none; }
+  .crumb-cur.crumb-k-row:has(> .crumb-pid) > .crumb-tbl { display: inline; flex: none; }
+  .crumb-slot:has(> .crumb-k-table) + .crumb-slot-cur .crumb-tbl { display: none; }
   .crumb-more { width: 36px; height: 36px; border-radius: 18px; background: var(--tblr-bg-surface); box-shadow: var(--wv-panel-shadow); }
 }
 @media (max-width: 600px) {
