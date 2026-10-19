@@ -469,6 +469,9 @@ const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); ret
 export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), openSignup = openSignupFromEnv(), clerkKey = clerkKeyFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv(), posthog = posthogFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces, walled: !!origin });
   const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
+  const publicNames = origin ? [new URL(origin).hostname, ...mcpOrigins.map((o) => new URL(o).hostname)] : [];
+  const elsewhere = new Set(origin ? allowedHosts.filter((h) => !LOOPBACK_NAMES.has(h) && !publicNames.includes(h)) : []);
+  const NOT_A_PAGE = /^(?:\/w\/[^/]+)?\/(?:api|mcp|ingest)(?:\/|$)|^\/(?:_supervisor|\.well-known)\//;
 
   const assets = createAssetVersions(PUBLIC_DIR);
   const serveStatic = (path, rx, { head = null } = {}) => {
@@ -541,6 +544,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       try { path = decodePath(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
       if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts: answers, baseDomain })) {
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
+      }
+      if (elsewhere.size && ['GET', 'HEAD'].includes(req.method) && elsewhere.has(hostnameOf(String(req.headers.host ?? ''))) && !NOT_A_PAGE.test(path)) {
+        res.writeHead(308, secure(req, { Location: `${origin}${req.url}`, 'Cache-Control': 'no-store' }));
+        return res.end();
       }
       if (path === '/_supervisor/workspaces' && deployToken) {
         const given = Buffer.from(String(req.headers.authorization ?? ''));
