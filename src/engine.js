@@ -2356,6 +2356,23 @@ export class Weave {
     return Object.keys(out).length ? out : null;
   }
 
+  viewQuery(dbRef, ref) {
+    return this.#viewQueryIn(this.getTable(dbRef), ref);
+  }
+
+  #viewQueryIn(db, ref) {
+    this.#ensureTableViews(db);
+    const v = db.tableViews[this.#viewIndex(db, ref)];
+    if (!v) throw this.#noView(db, ref);
+    const where = [];
+    for (const [name, states] of Object.entries(v.filters ?? {})) {
+      const f = this.findField(db, name);
+      if (!f || !['workflow', 'toggle', 'select', 'multiselect'].includes(f.type) || !states?.length) continue;
+      where.push([f.name, 'in', f.type === 'toggle' ? states.map((s) => s === f.config.on) : [...states]]);
+    }
+    return { where, sort: structuredClone(v.sort ?? []), search: v.search ?? '' };
+  }
+
   #checkSort(db, sort) {
     if (!Array.isArray(sort)) throw new WeaveError('sort is a list of { field, dir }', 'invalid');
     const out = sort.map((s) => {
@@ -7038,8 +7055,14 @@ export class Weave {
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
     try { return this.#queryIn(dbRef, opts, workspace); } finally { this.viewerZone = prev; }
   }
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '' } = {}, workspace = null) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '', view = null } = {}, workspace = null) {
     const db = this.getTable(dbRef);
+    if (view != null && view !== '') {
+      const saved = this.#viewQueryIn(db, view);
+      if (saved.where.length) where = { and: [...saved.where, Array.isArray(where ?? []) ? { and: where ?? [] } : where] };
+      if (!sort?.length) sort = saved.sort;
+      if (!String(search ?? '').trim()) search = saved.search;
+    }
     const inWs = this.#inWorkspace(db, workspace);
     const scoped = (list) => (inWs ? list.filter(inWs) : list);
     if (fields != null && !Array.isArray(fields)) throw new WeaveError('fields must be a list of field names', 'invalid');
