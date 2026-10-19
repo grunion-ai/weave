@@ -362,6 +362,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
     }
 
+    const shellMarker = () => `\n<meta name="weave-workspace" content="${metaAttr(weave.state.meta.name ?? '')}" data-root="${weave === hub.get(hub.defaultName)}">`;
     const linkPreview = (p, { signedOut = false } = {}) => {
       const m = p.match(/^\/([est])\/([^/]+)$/);
       if (p !== '/' && !m) return null;
@@ -808,7 +809,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const q = weavePrefill.clip(rx.searchParams).query;
         const to = `${wsPrefix}/#/table/${m[1]}/new${q ? `?${q}` : ''}`;
         if (!serveStatic) return { status: 302, headers: { Location: to, 'Cache-Control': 'no-store' }, body: '' };
-        const hit = serveStatic('/', rx, { head: `${preview.head}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
+        const hit = serveStatic('/', rx, { head: `${preview.head}${shellMarker()}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
         if (hit) return { ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } };
       }
       if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
@@ -819,7 +820,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (!preview && path !== '/') throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
         if (preview?.route && !serveStatic) return { status: 302, headers: { Location: preview.route }, body: '' };
         const jump = preview?.route ? `\n<meta name="weave-route" content="${metaAttr(preview.route)}">\n<script src="/permalink.js"></script>` : '';
-        const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + jump }) : null;
+        const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + shellMarker() + jump }) : null;
         if (hit) return hit;
       }
 
