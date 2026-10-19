@@ -18,7 +18,7 @@ Our guiding principle is to collect only what we need. Here's what that means in
 
 ### Identity and access
 
-We receive identifying information from the sign-in provider when you sign in to weave: the provider's identifier for your account and, when the provider has verified it, your email address. We keep one verified email address for each sign-in, along with the name on your weave account, and nothing else from your provider profile: no name, picture or other details. That's so we can match you to your account, show you the workspaces you have been invited to when you sign in, and send you the notifications you ask for. Deleting your account deletes the address.
+We receive identifying information from the sign-in provider when you sign in to weave: the provider's identifier for your account, the name on your provider profile and, when the provider has verified it, your email address. We keep one verified email address for each sign-in and use the name on your provider profile to name your weave account when you create one. We keep nothing else from your provider profile: no picture or other details. That's so we can match you to your account, show you the workspaces you have been invited to when you sign in, and send you the notifications you ask for. Deleting your account deletes the address.
 
 We'll never sell your personal information to third parties, and we won't use your name or company in marketing statements without your permission either.
 

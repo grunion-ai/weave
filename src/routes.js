@@ -482,7 +482,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const signedUp = (me) => live.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
       const signup = !creator && openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
       const owner = creator ?? signup ?? (billing ? logins[0] ?? null : null);
-      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@'))
+      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map((me) => me.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@'))
         ?? logins.map((me) => me.email?.split('@')[0]).find(Boolean) ?? null;
       const unpaid = async (me) => {
         for (const [name, w] of live) {
@@ -502,7 +502,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     };
     const holdLogin = async (who) => {
       const held = await heldStart();
-      const login = { issuer: who.issuer, subject: who.subject, email: who.email ?? null };
+      const login = { issuer: who.issuer, subject: who.subject, email: who.email ?? null, ...(who.name ? { name: who.name } : {}) };
       const logins = (held?.logins ?? []).map((l) => (sameLogin(l, login) ? login : l));
       if (!logins.some((l) => sameLogin(l, login))) logins.push(login);
       const token = held?.token ?? newChallenge();
