@@ -172,6 +172,8 @@ export const VIEW_SHAPES = ['chip', 'card'];
 export const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
 const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
 export const ACTIVITY_CAP = 500;
+export const MAX_ROWS = 500;
+export const rowCap = () => Math.max(1, Number(globalThis.process?.env?.WEAVE_MAX_ROWS) || MAX_ROWS);
 const FIELD_CONFIG_ACTIONS = { 'field-config-updated': 'field-config-updated', 'field-config-undo': 'undo' };
 const SCHEMA_AUDIT_ACTIONS = ['space-created', 'space-updated', 'space-trashed', 'space-deleted', 'space-restored', 'space-from-template',
   'table-created', 'table-updated', 'table-moved', 'table-duplicated', 'table-trashed', 'table-deleted', 'table-restored',
@@ -7342,7 +7344,7 @@ export class Weave {
     return {
       total: rows.length,
       dropped,
-      items: limit == null ? rows.slice(offset) : rows.slice(offset, offset + limit),
+      items: limit == null || limit < 0 ? rows.slice(offset) : rows.slice(offset, offset + limit),
     };
   }
 

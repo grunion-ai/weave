@@ -1,0 +1,1 @@
+- The activity feed answers one page of 500 rows (`WEAVE_MAX_ROWS`) when the caller names no `limit`, over `GET /api/activity`, `weave_activity` and `weave activity`. `total` still counts every event, `offset` pages through them, and `limit: -1` asks for the whole log. Reading the weave workspace's feed over the API went from 13.7 MB to 277 KB (Issue #940).

@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, logoType, inviteUrl } from './engine.js';
+import { Weave, WeaveError, fileHeaders, logoType, inviteUrl, MAX_ROWS, rowCap } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -45,8 +45,7 @@ export function errorBody(err, code = 'internal') {
 }
 
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
-export const MAX_ROWS = 500;
-const rowCap = () => Math.max(1, Number(globalThis.process?.env?.WEAVE_MAX_ROWS) || MAX_ROWS);
+export { MAX_ROWS };
 const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
 
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
@@ -1894,7 +1893,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             tableRef: rx.searchParams.get('table'),
             kinds: rx.searchParams.getAll('kind'),
             since: rx.searchParams.get('since'),
-            limit: boundedLimit(rx.searchParams.get('limit')),
+            limit: boundedLimit(rx.searchParams.get('limit'), rowCap()),
             offset: Number(rx.searchParams.get('offset') ?? 0),
           }));
         }

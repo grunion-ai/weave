@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
-import { Weave, inviteUrl } from './engine.js';
+import { Weave, inviteUrl, rowCap } from './engine.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
 let VERSION = 'dev';
@@ -429,7 +429,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_activity',
-    description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
+    description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 (WEAVE_MAX_ROWS) when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -896,7 +896,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.activityFeed({
         entityId: args.entity ?? null,
         tableRef: args.table ?? null, kinds: args.kinds ?? null, since: args.since ?? null,
-        limit: args.limit ?? null, offset: args.offset ?? 0,
+        limit: args.limit ?? rowCap(), offset: args.offset ?? 0,
       });
     case 'weave_audit':
       return { events: weave.listAudit({ limit: args.limit ?? null, since: args.since ?? null }) };

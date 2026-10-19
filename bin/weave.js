@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
-import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } from '../src/engine.js';
+import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl, rowCap } from '../src/engine.js';
 import { startServer, openDefaultWorkspace } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { guided } from '../src/field-hints.js';
@@ -236,7 +236,8 @@ The workspace itself
   form create --definition '{json}'  Create a native table form
   form update <form> --definition '{json}'  Edit or pause; preserve its link
   form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]   One row through a form
-  activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n]
+  activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n|-1]
+     (prints one page of 500 by default; --limit -1 prints the whole log)
 
 Collaboration & data
   comment <ref> <text> [--author name]
@@ -922,7 +923,7 @@ async function main() {
         tableRef: flags.table ?? null,
         kinds: flags.kinds ? splitList(flags.kinds) : null,
         since: flags.since ?? null,
-        limit: flags.limit ? Number(flags.limit) : null,
+        limit: flags.limit ? Number(flags.limit) : rowCap(),
       }));
     }
     case 'workspace': {
