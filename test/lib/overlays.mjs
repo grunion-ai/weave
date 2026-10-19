@@ -30,7 +30,10 @@ const toolsThen = (trigger) => async (page, ctx, cell) => {
   await tools(page, cell);
   await press(page, trigger, cell);
 };
-const tableMenu = (label) => (page, ctx, cell) => menu(page, cell, '#main .dots-btn[title="Table actions"]', label);
+const tableMenu = (label) => async (page, ctx, cell) => {
+  if (await page.locator('#main .crumb-row.tools-open > .crumb-actions').count()) await press(page, '#main .table-tools-btn', cell);
+  await menu(page, cell, '#main .dots-btn[title="Table actions"]', label);
+};
 const scope = (cell) => (cell === 'phone' ? '#dock' : '#main');
 
 export const OVERLAYS = [

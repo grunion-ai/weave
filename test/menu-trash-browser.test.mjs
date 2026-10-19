@@ -200,14 +200,14 @@ if (s) {
       if (kind === 'table') {
         const db = weave.createTable({ space: 'Product', name: uniq('Left') });
         href = `#/table/${db.id}`;
-        trigger = '#main .crumb-actions .dots-btn[title="Table actions"]';
+        trigger = '#main .crumb-row .dots-btn[title="Table actions"]';
         gone = () => !weave.state.tables[db.id]?.deletedAt;
       } else if (kind === 'space') {
         const name = uniq('Away');
         weave.createSpace({ name });
         const sp = weave.getSpace(name);
         href = `#/space/${sp.id}`;
-        trigger = '#main .view-header .crumb-actions .dots-btn';
+        trigger = '#main .view-header .crumb-row .dots-btn';
         gone = () => !weave.state.spaces[sp.id]?.deletedAt;
       } else {
         const v = weave.createView({ name: uniq('Elsewhere'), blocks: [{ table: 'Task' }] });
