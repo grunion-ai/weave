@@ -28,6 +28,7 @@ const setDisclosure = (btn, open) => btn.setAttribute('aria-expanded', String(op
 const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden': 'true' }, chevron());
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
+const SHELL_ROOT = document.querySelector('meta[name="weave-workspace"]')?.dataset.root === 'true';
 
 const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
 function commitActiveEdit() {
@@ -757,7 +758,7 @@ async function readRegistry() {
 }
 
 async function loadSchema() {
-  const registryRead = WS_PREFIX && state.registry !== null ? readRegistry() : null;
+  const registryRead = WS_PREFIX && !SHELL_ROOT && state.registry !== null ? readRegistry() : null;
   registryRead?.catch(() => {});
   const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
   const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth).catch(() => state.canManageForms = false) : null;
@@ -11923,13 +11924,17 @@ async function showView(id) {
   }
 }
 
+const homeReads = () => Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
+let bootHomeReads = null;
+
 async function showHome() {
   state.route = { page: 'home' };
   syncDocTitle(null);
   renderNav();
   const main = $('#main');
   const mine = WeaveStarters.userTables(state.schema);
-  const [wsRead, listRead, invRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
+  const [wsRead, listRead, invRead] = await (bootHomeReads ?? homeReads());
+  bootHomeReads = null;
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, invite: invRead.status === 'fulfilled' };
@@ -13633,6 +13638,8 @@ installPhoneBar();
 toastLayer();
 wireTheme();
 wireSkipLink();
+(state.healthP ??= api('GET', '/health')).catch(() => {});
+if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
 wireSearchButton();
 buildWsRail();
