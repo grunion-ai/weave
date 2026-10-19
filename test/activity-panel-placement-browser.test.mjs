@@ -15,142 +15,128 @@ const s = await launch('activity panel placement', (weave) => {
 
 const overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
 
-const measure = (page, mountSel) => page.evaluate((sel) => {
+const row = (page) => page.evaluate(() => {
+  const rect = (sel) => { const n = document.querySelector(sel); return n && !n.hidden ? n.getBoundingClientRect().toJSON() : null; };
+  const card = (sel) => { const n = document.querySelector(sel); if (!n) return null; const cs = getComputedStyle(n); return { radius: cs.borderTopLeftRadius, shadow: cs.boxShadow, background: cs.backgroundColor, marginTop: cs.marginTop, marginBottom: cs.marginBottom }; };
   const aside = document.querySelector('aside.wv-activity');
-  const mount = document.querySelector(sel);
-  const rect = (n) => (n ? n.getBoundingClientRect().toJSON() : null);
   return {
     count: document.querySelectorAll('aside.wv-activity').length,
-    parentIsBody: aside.parentElement === document.body,
-    insideMount: !!mount && mount.contains(aside),
-    position: getComputedStyle(aside).position,
-    aside: rect(aside),
-    mount: rect(mount),
-    body: rect(mount?.querySelector('.entity-grid')),
-    table: rect(document.querySelector('#main .table-wrap')),
-    mainMargin: getComputedStyle(document.querySelector('#main')).marginRight,
-    hit: !!document.elementFromPoint(aside.getBoundingClientRect().left + 20, aside.getBoundingClientRect().top + 20)?.closest('aside.wv-activity'),
+    inSide: !!aside && aside.parentElement === document.querySelector('#side'),
+    order: [...document.querySelector('#app').children].map((n) => n.id).filter((id) => ['main', 'dock-gutter', 'dock', 'side-gutter', 'side'].includes(id)),
+    main: rect('#main'), dock: rect('#dock'), side: rect('#side'), sideGutter: rect('#side-gutter'),
+    mainCard: card('#main'), sideCard: card('#side'),
+    hash: location.hash,
+    hit: !!aside && !!document.elementFromPoint(aside.getBoundingClientRect().left + 20, aside.getBoundingClientRect().top + 20)?.closest('#side'),
   };
-}, mountSel);
+});
 
-const docked = (page, viewSel) => page.evaluate((sel) => {
-  const view = document.querySelector(sel);
-  const aside = view.querySelector(':scope > aside.wv-activity');
-  const vr = view.getBoundingClientRect();
-  const inner = { left: vr.left + view.clientLeft, top: vr.top + view.clientTop, width: view.clientWidth, height: view.clientHeight };
-  inner.right = inner.left + inner.width; inner.bottom = inner.top + inner.height;
-  const cs = getComputedStyle(aside);
-  const values = [...view.querySelectorAll('.fieldrow > :not(.fieldrow-label), .entity-grid, .view-header .btn, .view-header textarea')].map((n) => n.getBoundingClientRect().toJSON()).filter((r) => r.width && r.height);
-  return {
-    view: inner, pane: aside.getBoundingClientRect().toJSON(), values,
-    radius: cs.borderTopLeftRadius, borders: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth], shadow: cs.boxShadow,
-    scrollable: view.scrollHeight - view.clientHeight,
-  };
-}, viewSel);
-
-const assertDocked = (m, where) => {
-  const near = (a, b) => Math.abs(a - b) <= 1;
-  assert.ok(near(m.pane.right, m.view.right), `${where}: the pane's right edge is the view's (${m.pane.right} vs ${m.view.right})`);
-  assert.ok(near(m.pane.top, m.view.top), `${where}: the pane starts at the view's top (${m.pane.top} vs ${m.view.top})`);
-  assert.ok(near(m.pane.height, m.view.height), `${where}: the pane is the view's full height (${m.pane.height} vs ${m.view.height})`);
-  assert.equal(m.radius, '0px', `${where}: square edges`);
-  assert.deepEqual(m.borders, ['0px', '0px', '0px', '1px'], `${where}: one left border`);
-  assert.equal(m.shadow, 'none', `${where}: no shadow`);
-  const under = m.values.filter((r) => overlap(r, m.pane) > 0);
-  assert.deepEqual(under, [], `${where}: no field value, header control or record body passes under the pane`);
-};
-
-const scrollEnd = async (page, viewSel) => {
-  await page.evaluate((sel) => { const v = document.querySelector(sel); v.scrollTop = v.scrollHeight; }, viewSel);
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+const assertCard = (m, where) => {
+  assert.deepEqual(m.order, ['main', 'dock-gutter', 'dock', 'side-gutter', 'side'], `${where}: the panes read left to right in one row`);
+  assert.equal(m.count, 1, `${where}: one Activity`);
+  assert.ok(m.inSide, `${where}: Activity lives in the context pane`);
+  assert.ok(m.sideGutter, `${where}: a gutter sits before the context pane`);
+  assert.deepEqual(m.sideCard, m.mainCard, `${where}: the context pane is the same card as the table and entity panes`);
+  assert.ok(m.hit, `${where}: nothing paints over it`);
 };
 
 if (s) {
   const { browser, base } = s;
-  const page = async (hash) => {
-    const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = async (hash, width = 1440) => {
+    const p = await browser.newPage({ viewport: { width, height: 900 } });
     await p.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     return p;
   };
 
-  test('on the full record page the Activity panel mounts inside the record, right of its body, and the body narrows (Issue #871)', async () => {
-    const p = await page(`#/entity/${rowId}`);
-    try {
-      await p.waitForSelector('#main textarea.name-edit');
-      const before = await p.locator('#main .entity-grid').evaluate((n) => n.getBoundingClientRect().width);
-      await p.click('#main .activity-btn');
-      await p.waitForSelector('aside.wv-activity .wv-act-row');
-      const m = await measure(p, '#main');
-      assert.equal(m.count, 1);
-      assert.equal(m.parentIsBody, false, 'the panel is not hung on the page body');
-      assert.ok(m.insideMount, 'the panel sits inside the record view');
-      assert.notEqual(m.position, 'fixed', 'the panel is in the record layout, not pinned over it');
-      assert.equal(overlap(m.aside, m.body), 0, `the panel covers none of the record body (${JSON.stringify([m.aside, m.body])})`);
-      assert.ok(m.aside.left >= m.body.right, 'the panel sits right of the body');
-      assert.ok(m.aside.right <= m.mount.right, 'the panel stays inside the record view');
-      assert.ok(m.body.width < before, `the body narrows to make room (${m.body.width} < ${before})`);
-      assert.equal(m.mainMargin, '8px', 'the page itself does not move');
-      assert.ok(m.hit, 'nothing paints over the panel');
-    } finally { await p.close(); }
-  });
-
-  test('on the full record page the Activity panel is a right-anchored pane, full height, square, and stays docked while the record scrolls (Issue #906)', async () => {
+  test('on the full record page Activity opens in the context pane, a card right of the record that leaves the record uncovered (Feature #348)', async () => {
     const p = await page(`#/entity/${rowId}`);
     try {
       await p.waitForSelector('#main textarea.name-edit');
       await p.click('#main .activity-btn');
-      await p.waitForSelector('aside.wv-activity .wv-act-row');
-      const top = await docked(p, '#main');
-      assert.ok(top.scrollable > 100, `the record is taller than the view (${top.scrollable}px to scroll)`);
-      assertDocked(top, 'at the top');
-      await scrollEnd(p, '#main');
-      assertDocked(await docked(p, '#main'), 'scrolled to the end');
+      await p.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
+      const m = await row(p);
+      assertCard(m, 'full page');
+      assert.equal(m.dock, null, 'no entity pane on the full page');
+      assert.ok(m.side.left >= m.main.right, `right of the record (${m.side.left} >= ${m.main.right})`);
+      assert.equal(overlap(m.side, m.main), 0, 'covers none of the record');
+      assert.ok(Math.abs(m.side.width - 340) <= 1, `340px by default (${m.side.width})`);
+      assert.match(m.hash, /[?&]side=activity\b/, 'the URL names the open pane');
+      assert.equal(await p.locator('#main .activity-btn').getAttribute('aria-pressed'), 'true');
     } finally { await p.close(); }
   });
 
-  test('in the peek the Activity panel is the same right-anchored pane, full height of the peek (Issue #906)', async () => {
+  test('in the peek Activity opens in the context pane right of the entity pane, and neither the table nor the record moves under it (Feature #348)', async () => {
     const p = await page(`#/table/${tableId}?e=${rowId}`);
     try {
       await p.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await p.click('#dock .activity-btn');
-      await p.waitForSelector('aside.wv-activity .wv-act-row');
-      assertDocked(await docked(p, '#dock'), 'peek, at the top');
-      await scrollEnd(p, '#dock');
-      assertDocked(await docked(p, '#dock'), 'peek, scrolled to the end');
+      await p.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
+      const m = await row(p);
+      assertCard(m, 'peek');
+      assert.ok(m.dock.right <= m.side.left, `right of the entity pane (${m.dock.right} <= ${m.side.left})`);
+      assert.ok(m.main.right <= m.dock.left, 'the table stays left of the entity pane');
+      assert.equal(overlap(m.side, m.dock), 0, 'covers none of the record');
+      assert.equal(overlap(m.side, m.main), 0, 'covers none of the table');
+      assert.match(m.hash, new RegExp(`\\?e=${rowId}&side=activity\\b`), 'the URL keeps the record and names the pane');
     } finally { await p.close(); }
   });
 
-  test('in the peek beside a table the Activity panel mounts inside the peek and covers neither the record nor the table (Issue #871)', async () => {
+  test('a reload with side=activity in the URL reopens the context pane on the same record (Feature #348)', async () => {
+    const p = await page(`#/table/${tableId}?e=${rowId}&side=activity`);
+    try {
+      await p.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
+      assertCard(await row(p), 'after reload');
+      assert.equal(await p.locator('#dock .activity-btn').getAttribute('aria-pressed'), 'true');
+    } finally { await p.close(); }
+  });
+
+  test('Esc closes the context pane first, then the entity pane, right to left (Feature #348)', async () => {
     const p = await page(`#/table/${tableId}?e=${rowId}`);
     try {
       await p.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      const tableBefore = await p.locator('#main .table-wrap').evaluate((n) => n.getBoundingClientRect().toJSON());
       await p.click('#dock .activity-btn');
-      await p.waitForSelector('aside.wv-activity .wv-act-row');
-      const m = await measure(p, '#dock');
-      assert.equal(m.parentIsBody, false, 'the panel is not hung on the page body');
-      assert.ok(m.insideMount, 'the panel sits inside the peek');
-      assert.notEqual(m.position, 'fixed');
-      assert.equal(overlap(m.aside, m.body), 0, `the panel covers none of the record body (${JSON.stringify([m.aside, m.body])})`);
-      assert.equal(overlap(m.aside, m.table), 0, 'the panel covers none of the table');
-      assert.ok(m.aside.left >= m.body.right, 'the panel sits right of the record body');
-      assert.ok(m.aside.right <= m.mount.right + 1, 'the panel stays inside the peek');
-      assert.deepEqual([m.table.left, m.table.width], [tableBefore.left, tableBefore.width], 'the table does not move');
-      assert.ok(m.hit, 'nothing paints over the panel');
+      await p.waitForSelector('#side:not([hidden]) aside.wv-activity');
+      await p.locator('#side .wv-act-head h3').click();
+      await p.keyboard.press('Escape');
+      assert.equal(await eventually(() => p.locator('#side:not([hidden])').count(), 0), 0, 'the context pane closes');
+      assert.equal(await p.locator('#side-gutter:not([hidden])').count(), 0, 'with its gutter');
+      assert.equal(await p.locator('#dock:not([hidden])').count(), 1, 'the entity pane stays');
+      assert.doesNotMatch(await p.evaluate(() => location.hash), /side=/, 'the URL drops the pane');
+      await p.keyboard.press('Escape');
+      assert.equal(await eventually(() => p.locator('#dock:not([hidden])').count(), 0), 0, 'a second Esc closes the entity pane');
     } finally { await p.close(); }
   });
 
-  test('collapsing the record into the peek carries the open panel with it (Issue #871)', async () => {
+  test('collapsing the record into the peek keeps the context pane open on the same record (Feature #348)', async () => {
     const p = await page(`#/entity/${rowId}`);
     try {
       await p.waitForSelector('#main textarea.name-edit');
       await p.click('#main .activity-btn');
-      await p.waitForSelector('aside.wv-activity .wv-act-row');
+      await p.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
       await p.click('#main button[title="Collapse (⌘⇧E)"]');
       await p.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      assert.equal(await eventually(() => p.locator('#dock > aside.wv-activity').count(), 1), 1, 'the panel moved into the peek');
-      assert.equal(await p.locator('aside.wv-activity').count(), 1, 'one panel');
-      assert.equal(await p.locator('#dock .activity-btn').getAttribute('aria-pressed'), 'true');
+      assert.equal(await eventually(() => p.locator('#dock .activity-btn[aria-pressed="true"]').count(), 1), 1, 'the peek shows Activity pressed');
+      const m = await row(p);
+      assertCard(m, 'after collapse');
+      assert.ok(m.dock.right <= m.side.left, 'and the context pane now follows the entity pane');
+    } finally { await p.close(); }
+  });
+
+  test('dragging the context pane gutter pins its width, the width survives a reload, and a double-click resets it (Feature #348)', async () => {
+    const p = await page(`#/table/${tableId}?e=${rowId}&side=activity`);
+    try {
+      await p.waitForSelector('#side:not([hidden]) aside.wv-activity');
+      const g = await p.locator('#side-gutter').boundingBox();
+      await p.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+      await p.mouse.down();
+      await p.mouse.move(g.x + g.width / 2 - 80, g.y + g.height / 2, { steps: 4 });
+      await p.mouse.up();
+      const wide = (await row(p)).side.width;
+      assert.ok(wide >= 410, `the drag widened it (${wide})`);
+      await p.reload({ waitUntil: 'networkidle' });
+      await p.waitForSelector('#side:not([hidden]) aside.wv-activity');
+      assert.ok(Math.abs((await row(p)).side.width - wide) <= 1, 'the width is kept');
+      await p.locator('#side-gutter').dblclick();
+      assert.ok(Math.abs((await row(p)).side.width - 340) <= 1, 'a double-click resets to 340px');
     } finally { await p.close(); }
   });
 }

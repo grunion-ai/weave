@@ -525,6 +525,7 @@ function dockExpand() {
 }
 
 async function closeToTable(entity) {
+  if (activityPanel.openFor) activityPanel.close();
   crumbNav = null;
   teardownDocEditors();
   history.replaceState(null, '', `#/table/${entity.dbId}`);
@@ -597,7 +598,9 @@ function dockSyncUrl({ step = false } = {}) {
   const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+(?:\/view\/[^/?]+)?/);
   if (!m) return;
   const top = dock?.state.chain[dock.state.chain.length - 1];
-  const url = top ? `${m[0]}?e=${top.id}` : m[0];
+  const was = new URLSearchParams(location.hash.split('?')[1] ?? '');
+  const side = top && !dockCoversScreen.matches && (activityPanel.openFor ? activityPanel.openFor === top.id : was.get('e') === top.id && was.get('side') === 'activity');
+  const url = top ? `${m[0]}?e=${top.id}${side ? '&side=activity' : ''}` : m[0];
   if (step && top && dockCoversScreen.matches && url !== location.hash) {
     history.pushState({ wvDock: true }, '', url);
     return;
@@ -606,6 +609,7 @@ function dockSyncUrl({ step = false } = {}) {
 }
 
 function dockDismiss() {
+  if (activityPanel.openFor) activityPanel.close();
   crumbNav = null;
   if (history.state?.wvDock) {
     dockClose();
@@ -640,8 +644,8 @@ async function drawDock() {
   panel.hidden = false;
   const swapped = panel.dataset.eid !== top.id;
   panel.dataset.eid = top.id;
-  wireDockGutter(panel);
-  applyDockWidth(panel);
+  wirePaneGutter(panel, DOCK_PANE);
+  applyPaneWidth(panel, DOCK_PANE);
   const host = el('div', { class: 'dock-entity' });
   panel.replaceChildren(host);
   if (swapped) panel.scrollTop = 0;
@@ -664,17 +668,18 @@ async function drawDock() {
   markDockedRow();
 }
 
-const DOCK_MIN = 360;
-function pinDock(panel, px) {
+const DOCK_PANE = { grip: '#dock-gutter', key: 'wv-dock-width', min: 360 };
+const SIDE_PANE = { grip: '#side-gutter', key: 'wv-side-width', min: 300 };
+function pinPane(panel, px) {
   panel.style.width = '';
   panel.style.flex = px ? `0 1 ${px}px` : '';
 }
-function applyDockWidth(panel) {
-  const px = Number(localStorage.getItem('wv-dock-width'));
-  pinDock(panel, px >= DOCK_MIN ? px : 0);
+function applyPaneWidth(panel, pane) {
+  const px = Number(localStorage.getItem(pane.key));
+  pinPane(panel, px >= pane.min ? px : 0);
 }
-function wireDockGutter(panel) {
-  const grip = $('#dock-gutter');
+function wirePaneGutter(panel, pane) {
+  const grip = $(pane.grip);
   grip.hidden = false;
   if (grip.dataset.wired) return;
   grip.dataset.wired = '1';
@@ -683,21 +688,34 @@ function wireDockGutter(panel) {
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add('dock-resizing');
     const right = panel.getBoundingClientRect().right;
-    const move = (ev) => pinDock(panel, Math.max(DOCK_MIN, Math.round(right - ev.clientX)));
+    const move = (ev) => pinPane(panel, Math.max(pane.min, Math.round(right - ev.clientX)));
     const up = () => {
       document.body.classList.remove('dock-resizing');
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
-      const px = Math.max(DOCK_MIN, Math.round(panel.getBoundingClientRect().width));
-      localStorage.setItem('wv-dock-width', String(px));
+      const px = Math.max(pane.min, Math.round(panel.getBoundingClientRect().width));
+      localStorage.setItem(pane.key, String(px));
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
   });
   grip.addEventListener('dblclick', () => {
-    localStorage.removeItem('wv-dock-width');
-    applyDockWidth(panel);
+    localStorage.removeItem(pane.key);
+    applyPaneWidth(panel, pane);
   });
+}
+
+function sideWanted() {
+  return new URLSearchParams(location.hash.split('?')[1] ?? '').get('side');
+}
+function sideSyncUrl() {
+  if (dockCoversScreen.matches) return;
+  const [path, query = ''] = location.hash.split('?');
+  if (!/^#\/(?:entity|table|db)\//.test(path)) return;
+  const q = new URLSearchParams(query);
+  if (activityPanel.openFor) q.set('side', 'activity'); else q.delete('side');
+  const next = q.toString() ? `${path}?${q}` : path;
+  if (next !== location.hash) history.replaceState(history.state, '', next);
 }
 
 document.addEventListener('keydown', (e) => {
@@ -10931,7 +10949,6 @@ const activityPanel = (() => {
   let panel = null;
   let sheetBack = null;
   let fitObserver = null;
-  let viewObserver = null;
 
   const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
@@ -11102,14 +11119,12 @@ const activityPanel = (() => {
       el('div', { class: 'wv-act-head' }, el('h3', {}, 'Activity'),
         el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
       filters, list);
-    const host = st.mount?.closest?.('#main, #dock') ?? st.mount;
-    if (panel?.parentElement === host) panel.replaceWith(next); else { panel?.remove(); host.prepend(next); }
+    const side = $('#side');
+    if (panel?.parentElement === side) panel.replaceWith(next); else side.replaceChildren(next);
     panel = next;
-    viewObserver?.disconnect();
-    const fitHeight = () => host.style.setProperty('--wv-act-h', `${host.clientHeight}px`);
-    fitHeight();
-    viewObserver = new ResizeObserver(fitHeight);
-    viewObserver.observe(host);
+    side.hidden = false;
+    wirePaneGutter(side, SIDE_PANE);
+    applyPaneWidth(side, SIDE_PANE);
     fitObserver?.disconnect();
     fitFilters(filters);
     fitObserver = new ResizeObserver(() => fitFilters(filters));
@@ -11159,6 +11174,7 @@ const activityPanel = (() => {
     renderPanel();
     renderView();
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
+    sideSyncUrl();
   }
 
   async function open(id, mount) {
@@ -11181,23 +11197,26 @@ const activityPanel = (() => {
       if (!back && history.state?.wvSheet === 'activity') history.back();
     }
     fitObserver?.disconnect(); fitObserver = null;
-    viewObserver?.disconnect(); viewObserver = null;
     panel?.remove(); panel = null;
+    $('#side').hidden = true;
+    $('#side-gutter').hidden = true;
     clearViews();
     for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
     st = null;
+    sideSyncUrl();
   }
   function toggle(id, mount) {
     if (st?.id === id && panel?.isConnected) return close();
     return open(id, mount);
   }
   function mounted(id, mount) {
-    if (!st || !panel) return;
+    if (!st || !panel) { if (sideWanted() === 'activity') open(id, mount); return; }
     if (st.id !== id) { if (!st.mount?.isConnected || !panel.isConnected) close(); return; }
     st.mount = mount;
     for (const b of mount.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
     renderPanel();
     renderView();
+    sideSyncUrl();
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !panel?.isConnected || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
