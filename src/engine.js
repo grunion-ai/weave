@@ -173,6 +173,9 @@ export const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
 const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
 export const ACTIVITY_CAP = 500;
 export const ACTIVITY_PAGE = 500;
+const ACCOUNT_ACTOR = /account:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
+export const accountActor = (id) => `account:${id}`;
+const REMOVED_ACCOUNT = 'removed account';
 const FIELD_CONFIG_ACTIONS = { 'field-config-updated': 'field-config-updated', 'field-config-undo': 'undo' };
 const SCHEMA_AUDIT_ACTIONS = ['space-created', 'space-updated', 'space-trashed', 'space-deleted', 'space-restored', 'space-from-template',
   'table-created', 'table-updated', 'table-moved', 'table-duplicated', 'table-trashed', 'table-deleted', 'table-restored',
@@ -1883,7 +1886,7 @@ export class Weave {
         .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
         .map((v) => structuredClone(v));
     }
-    return Object.values(this.state.meta.views ?? {}).map((v) => ({ ...v, shared: this.listShares({ kind: 'view', id: v.id }).length > 0 }));
+    return Object.values(this.state.meta.views ?? {}).map((v) => ({ ...v, createdBy: this.actorName(v.createdBy ?? null), shared: this.listShares({ kind: 'view', id: v.id }).length > 0 }));
   }
 
   getView(id) {
@@ -3266,8 +3269,8 @@ export class Weave {
     return Object.keys(keys).sort().map((name) => ({
       name,
       set: true,
-      owner: keys[name].owner ?? null,
-      shared: keys[name].shared ?? false,
+      owner: this.actorName(keys[name].owner ?? null),
+      shared: this.#namedShared(keys[name].shared ?? false),
     }));
   }
 
@@ -3282,8 +3285,8 @@ export class Weave {
     if (!entry) return false;
     if (!(this.registryHost ?? this).listAccounts().length) return true;
     if (entry.shared === true) return true;
-    if (Array.isArray(entry.shared) && entry.shared.includes(this.actor)) return true;
-    return !!entry.owner && entry.owner === this.actor;
+    if (Array.isArray(entry.shared) && entry.shared.some((a) => this.isActor(a))) return true;
+    return !!entry.owner && this.isActor(entry.owner);
   }
 
   revealKey(name, { via = 'show' } = {}) {
@@ -3298,7 +3301,7 @@ export class Weave {
   }
 
   #mayGrant(entry) {
-    return !entry.owner || entry.owner === this.actor;
+    return !entry.owner || this.isActor(entry.owner);
   }
 
   grantKey(name, account) {
@@ -3306,25 +3309,27 @@ export class Weave {
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
-    if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${entry.owner}' can share '${name}'`, 'forbidden');
+    if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${this.actorName(entry.owner)}' can share '${name}'`, 'forbidden');
     entry.owner ??= this.actor;
+    const who = account === true ? true : this.#actorFor(account);
     const list = Array.isArray(entry.shared) ? entry.shared : [];
-    if (account !== true && !list.includes(account)) list.push(account);
-    entry.shared = account === true ? true : list;
+    if (who !== true && !list.includes(who)) list.push(who);
+    entry.shared = who === true ? true : list;
     this.#writeKeystore(data);
     this.#audit('key-granted', { name, to: account === true ? 'everyone' : account });
-    return { name, shared: entry.shared };
+    return { name, shared: this.#namedShared(entry.shared) };
   }
 
   revokeKey(name, account) {
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
-    if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${entry.owner}' can unshare '${name}'`, 'forbidden');
-    entry.shared = Array.isArray(entry.shared) ? entry.shared.filter((a) => a !== account) : false;
+    if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${this.actorName(entry.owner)}' can unshare '${name}'`, 'forbidden');
+    const who = this.#actorFor(account);
+    entry.shared = Array.isArray(entry.shared) ? entry.shared.filter((a) => a !== account && a !== who) : false;
     this.#writeKeystore(data);
     this.#audit('key-revoked', { name, from: account });
-    return { name, shared: entry.shared };
+    return { name, shared: this.#namedShared(entry.shared) };
   }
 
   #renameKeyHolder(from, to) {
@@ -3384,7 +3389,7 @@ export class Weave {
   }
 
   listAudit(opts) {
-    return this.store.listAudit(opts).map((r) => ({ ...r, detail: Weave.#publicDetail(r.detail) }));
+    return this.store.listAudit(opts).map((r) => ({ ...r, actor: this.actorName(r.actor), detail: this.#namedDetail(Weave.#publicDetail(r.detail)) }));
   }
 
   createAccount({ name, role: asked = 'editor' } = {}) {
@@ -3420,6 +3425,47 @@ export class Weave {
 
   listAccounts() {
     return Object.values(this.state.meta.accounts ?? {}).map(({ tokenHash, credentials, ...pub }) => pub);
+  }
+
+  actorName(actor) {
+    if (typeof actor !== 'string' || !actor.includes('account:')) return actor;
+    return actor.replace(ACCOUNT_ACTOR, (_, id) => this.#accountById(id)?.name ?? REMOVED_ACCOUNT);
+  }
+
+  isActor(who) {
+    if (who == null) return false;
+    if (who === this.actor) return true;
+    const name = this.actorName(this.actor);
+    return name !== REMOVED_ACCOUNT && this.actorName(who) === name;
+  }
+
+  #accountById(id) {
+    for (const w of [this, ...this.#engines()]) {
+      const a = own(w.state.meta.accounts ?? {}, id);
+      if (a) return a;
+    }
+    return null;
+  }
+
+  #actorFor(name) {
+    for (const w of [this, ...this.#engines()]) {
+      const a = Object.values(w.state.meta.accounts ?? {}).find((x) => x.name === name);
+      if (a) return accountActor(a.id);
+    }
+    return name;
+  }
+
+  #namedShared(shared) {
+    return Array.isArray(shared) ? shared.map((a) => this.actorName(a)) : shared;
+  }
+
+  #namedDetail(detail) {
+    if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return detail;
+    return Object.fromEntries(Object.entries(detail).map(([k, v]) => [k, typeof v === 'string' ? this.actorName(v) : v]));
+  }
+
+  #namedActivity(a) {
+    return { ...a, actor: this.actorName(a.actor ?? null), detail: this.#namedDetail(a.detail) };
   }
 
   deleteAccount(ref) {
@@ -3643,7 +3689,7 @@ export class Weave {
     const now = Date.now();
     return Object.entries(this.state.meta.identityInvites ?? {})
       .filter(([, i]) => !i.accountId && Date.parse(i.expiresAt) > now)
-      .map(([id, i]) => ({ id, email: i.email, name: this.#inviteName(i), role: i.role, roleLabel: Weave.ROLE_LABELS[i.role], workspace: this.state.meta.name, invitedBy: i.invitedBy, createdAt: i.createdAt, expiresAt: i.expiresAt }))
+      .map(([id, i]) => ({ id, email: i.email, name: this.#inviteName(i), role: i.role, roleLabel: Weave.ROLE_LABELS[i.role], workspace: this.state.meta.name, invitedBy: this.actorName(i.invitedBy), createdAt: i.createdAt, expiresAt: i.expiresAt }))
       .sort((x, y) => x.createdAt.localeCompare(y.createdAt));
   }
 
@@ -4243,7 +4289,7 @@ export class Weave {
 
   listUndo({ limit = 20 } = {}) {
     return this.store.listUndo({ limit })
-      .map(({ data, ...summary }) => ({ ...summary, entity: `${summary.table}#${summary.publicId}` }));
+      .map(({ data, ...summary }) => ({ ...summary, actor: this.actorName(summary.actor), entity: `${summary.table}#${summary.publicId}` }));
   }
 
   #sysTable(kind) {
@@ -6954,8 +7000,8 @@ export class Weave {
         docs,
         createdAt: e.createdAt,
         updatedAt: e.updatedAt,
-        createdBy: e.createdBy ?? null,
-        modifiedBy: e.modifiedBy ?? null,
+        createdBy: this.actorName(e.createdBy ?? null),
+        modifiedBy: this.actorName(e.modifiedBy ?? null),
         deletedAt: e.deletedAt ?? null,
         url: `/e/${e.id}`,
         ...(Object.keys(scales).length ? { scales } : {}),
@@ -6974,14 +7020,14 @@ export class Weave {
       doc: defaultDocField ? (e.docs?.[defaultDocField.id] ?? '') : '',
       docField: defaultDocField ? defaultDocField.name : null,
       docs,
-      comments: e.comments,
-      activity: e.activity,
+      comments: e.comments.map((c) => ({ ...c, author: this.actorName(c.author) })),
+      activity: (e.activity ?? []).map((a) => this.#namedActivity(a)),
       activityDropped: e.activityDropped ?? 0,
       files: e.files.map((f) => (this.#hasBlob(f.id) ? f : { ...f, missing: true })),
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
-      createdBy: e.createdBy ?? null,
-      modifiedBy: e.modifiedBy ?? null,
+      createdBy: this.actorName(e.createdBy ?? null),
+      modifiedBy: this.actorName(e.modifiedBy ?? null),
       deletedAt: e.deletedAt ?? null,
       url: `/e/${e.id}`,
       ...(Object.keys(scales).length ? { scales } : {}),
@@ -7168,7 +7214,7 @@ export class Weave {
         if (parts[i] === 'createdAt') { results.push(ce.createdAt); continue; }
         if (parts[i] === 'updatedAt') { results.push(ce.updatedAt); continue; }
         const f = this.findField(cdb, parts[i]);
-        if (!f && Object.hasOwn(SYSTEM_SORT_KEYS, parts[i])) { results.push(ce[SYSTEM_SORT_KEYS[parts[i]]] ?? null); continue; }
+        if (!f && Object.hasOwn(SYSTEM_SORT_KEYS, parts[i])) { results.push(this.actorName(ce[SYSTEM_SORT_KEYS[parts[i]]] ?? null)); continue; }
         if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
         let resolved = this.#resolve(ce, cdb, f, 0);
         if (isLast && f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) resolved = lastNumber(resolved);
@@ -7274,10 +7320,15 @@ export class Weave {
     const e = this.getEntity(entityId);
     const f = this.#resolveDocField(this.state.tables[e.dbId], fieldRef);
     const revisions = this.store.listDocRevisions(e.id, f.id, { limit: Math.max(1, Math.min(1000, Number(limit) || 50)) });
-    return { field: f.name, revisions };
+    return { field: f.name, revisions: revisions.map((r) => ({ ...r, actor: this.actorName(r.actor) })) };
   }
 
   getDocRevision(entityId, fieldRef, seq) {
+    const rev = this.#docRevision(entityId, fieldRef, seq);
+    return { ...rev, actor: this.actorName(rev.actor) };
+  }
+
+  #docRevision(entityId, fieldRef, seq) {
     const e = this.getEntity(entityId);
     const f = this.#resolveDocField(this.state.tables[e.dbId], fieldRef);
     const rev = this.store.getDocRevision(e.id, f.id, Number(seq));
@@ -7286,7 +7337,7 @@ export class Weave {
   }
 
   restoreDocRevision(entityId, fieldRef, seq) {
-    const rev = this.getDocRevision(entityId, fieldRef, seq);
+    const rev = this.#docRevision(entityId, fieldRef, seq);
     const changed = this.getDoc(entityId, fieldRef) !== rev.text;
     this.#docRevisionFresh = true;
     this.#restoring = rev;
@@ -7304,7 +7355,7 @@ export class Weave {
     this.#logActivity(e, 'comment-added', { author });
     this.#recordUndo('comment-add', e, { commentId: comment.id });
     this.save();
-    return comment;
+    return { ...comment, author: this.actorName(author) };
   }
 
   deleteComment(entityId, commentId) {
@@ -7367,7 +7418,7 @@ export class Weave {
     return {
       total: rows.length,
       dropped,
-      items: page < 0 ? rows.slice(offset) : rows.slice(offset, offset + page),
+      items: (page < 0 ? rows.slice(offset) : rows.slice(offset, offset + page)).map((r) => this.#namedActivity(r)),
     };
   }
 
@@ -7378,7 +7429,7 @@ export class Weave {
       const rows = this.#fieldConfigRows();
       const row = this.#fieldConfigRow(id, rows);
       const { code, ...rollback } = this.#rollbackCheck(row, rows);
-      return { ...row, rollback };
+      return { ...this.#namedActivity(row), rollback };
     }
     const index = Number(String(id).slice(at + 1));
     const e = own(this.state.entities, entityId);

@@ -89,7 +89,7 @@ export function scopeTitle(weave, scope) {
   }
 }
 
-const publicGrant = (weave, g) => ({ ...g, scope: { ...g.scope }, url: `/s/${g.token}`, title: scopeTitle(weave, g.scope) });
+const publicGrant = (weave, g) => ({ ...g, createdBy: weave.actorName(g.createdBy ?? null), scope: { ...g.scope }, url: `/s/${g.token}`, title: scopeTitle(weave, g.scope) });
 
 export function mint(weave, { scope, mode = 'read', visibility = 'public', label = '', expiresAt = null } = {}) {
   const target = resolveScope(weave, scope);
@@ -133,7 +133,7 @@ export function byToken(weave, token) {
 export function revoke(weave, id, { any = true } = {}) {
   const g = own(weave.state.meta.shares, id);
   if (!g) throw gone('Share', id);
-  if (!any && g.createdBy !== weave.actor) throw new WeaveError('An editor revokes the links it made; an architect revokes any', 'forbidden');
+  if (!any && !weave.isActor(g.createdBy)) throw new WeaveError('An editor revokes the links it made; an architect revokes any', 'forbidden');
   if (g.revokedAt) return { grant: publicGrant(weave, g), changed: false };
   g.revokedAt = new Date().toISOString();
   return { grant: publicGrant(weave, g), changed: true };
