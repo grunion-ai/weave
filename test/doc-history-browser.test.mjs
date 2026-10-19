@@ -186,11 +186,12 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a long value wraps inside the panel, and chips that do not fit wait under More (Issue #907)', async () => {
+  test('a long value wraps inside the panel, and chips that do not fit a 300px context pane wait under More (Issue #907, Feature #348)', async () => {
     const url = 'https://adriany.fibery.io/Task_Management/Task/a-path-that-keeps-going-past-the-panel-edge-1234';
     weave.updateEntity(lone, { Link: url });
     const page = await open(lone);
     try {
+      await page.evaluate(() => localStorage.setItem('wv-side-width', '300'));
       await page.click('.activity-btn');
       const r = page.locator('.wv-activity .wv-act-row').filter({ has: page.locator('.name', { hasText: /^Link$/ }) }).first();
       await r.waitFor();
@@ -238,7 +239,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('in a docked record the Activity button opens the panel inside the dock, and Escape closes the panel, not the dock (Feature #296, Issue #871)', async () => {
+  test('in a docked record the Activity button opens the context pane right of the dock, and Escape closes the pane, not the dock (Feature #296, Feature #348)', async () => {
     const page = await open();
     try {
       await page.click('#main button[title="Collapse (⌘⇧E)"]');
@@ -246,7 +247,8 @@ if (s) {
       await page.click('#dock .crumb-actions .activity-btn');
       await page.waitForSelector('.wv-activity .wv-act-row');
       const [panel, dock] = await Promise.all(['.wv-activity', '#dock'].map((sel) => page.locator(sel).evaluate((n) => n.getBoundingClientRect().toJSON())));
-      assert.ok(panel.left >= dock.left && panel.right <= dock.right, `the panel sits inside the dock (${panel.left}-${panel.right} in ${dock.left}-${dock.right})`);
+      assert.ok(panel.left >= dock.right, `the pane sits right of the dock (${panel.left} >= ${dock.right})`);
+      assert.equal(await page.locator('#side > .wv-activity').count(), 1, 'in the context pane');
       await page.keyboard.press('Escape');
       await page.waitForSelector('.wv-activity', { state: 'detached' });
       assert.equal(await page.locator('#dock').isVisible(), true, 'the dock stays open');
