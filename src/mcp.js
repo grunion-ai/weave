@@ -71,6 +71,7 @@ export const TOOLS = [
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
         countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted rows before where and search' },
         search: { type: 'string', description: 'Keep only the rows the weave_search matcher finds in this table: name, publicId (#143), text fields, documents, comments. Composes with where and sort; total counts the matches.' },
+        view: { type: 'string', description: 'A saved view, by id or name: the rows it shows. Its filters AND where; its sort and search apply unless you pass your own.' },
       },
       required: ['db'],
     },
@@ -736,7 +737,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
         offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'full',
         includeDeleted: Boolean(args.includeDeleted),
-        trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '',
+        trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
       });
     case 'weave_get_entity':
       return weave.readEntity(args.entity);
