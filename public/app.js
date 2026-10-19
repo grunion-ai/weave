@@ -2621,6 +2621,13 @@ async function toggleLinkPreview(w, on, after) {
 
 const TRASHED = 'Moved to trash';
 
+function reopenAfterUndo(href, open, stayed) {
+  if (!open) return null;
+  if (!stayed) return href;
+  location.hash = href;
+  return null;
+}
+
 function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
   return {
     label: 'Move to trash', danger: true,
@@ -2629,14 +2636,15 @@ function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
         await remove();
         await loadSchema();
         const where = await after();
+        const landed = location.hash;
         toast(TRASHED, false, {
           label: 'Undo',
           run: async () => {
             try {
               await restore();
               await loadSchema();
-              await undone(where);
-              toast('Restored');
+              const href = await undone(where, location.hash === landed);
+              toast('Restored', false, typeof href === 'string' ? { label: 'Open', run: () => { location.hash = href; } } : null);
             } catch (err) { toast(err.message, true); }
           },
         });
@@ -2697,7 +2705,7 @@ const MENU_ROWS = {
         if (open) location.hash = `#/space/${db.spaceId}`;
         return open;
       },
-      undone: (open) => { if (open) location.hash = `#/table/${db.id}`; },
+      undone: (open, stayed) => reopenAfterUndo(`#/table/${db.id}`, open, stayed),
     }),
   }),
   record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null } = {}) => ({
@@ -2741,7 +2749,7 @@ const MENU_ROWS = {
         }
         return open;
       },
-      undone: (open) => { if (open) location.hash = `#/space/${space.spaceId}`; },
+      undone: (open, stayed) => reopenAfterUndo(`#/space/${space.spaceId}`, open, stayed),
     }),
   }),
   'share-page': (v) => ({
@@ -2754,9 +2762,9 @@ const MENU_ROWS = {
         if (open || state.route?.page === 'home') showHome();
         return open;
       },
-      undone: (open) => {
-        if (open) location.hash = `#/view/${v.id}`;
-        else if (state.route?.page === 'home') showHome();
+      undone: (open, stayed) => {
+        if (!(open && stayed) && state.route?.page === 'home') showHome();
+        return reopenAfterUndo(`#/view/${v.id}`, open, stayed);
       },
     }),
   }),
