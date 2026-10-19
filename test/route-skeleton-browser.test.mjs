@@ -24,7 +24,7 @@ if (s) {
         await page.goto(`${base}/#/table/${tasks.id}?e=${task.id}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('#dock textarea.name-edit');
         assert.equal(await page.locator('#main .sk').count(), 0, 'no skeleton painted over the drawn table');
-        assert.ok(await page.locator('#main .wv-grid tbody tr.entity-row').count() > 0, 'the rows are on screen');
+        assert.ok(await page.locator('#main :is(tbody tr.entity-row, .wv-list .list-row)').count() > 0, 'the rows are on screen');
         if (!width) assert.equal(await page.locator('#main .nav-menu').count(), 1, 'the phone menu button is there');
       } finally { await page.close(); }
     });

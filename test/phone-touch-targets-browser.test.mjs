@@ -8,7 +8,7 @@ const SPAN = MIN - 1;
 const IPHONE = phoneProfile()?.page ?? null;
 
 const SWEEP = (roots) => {
-  const SEL = 'a[href], button, [role="button"], summary, input:not([type="hidden"]), select, textarea, tbody tr.entity-row';
+  const SEL = 'a[href], button, [role="button"], summary, input:not([type="hidden"]), select, textarea, :is(tbody tr.entity-row, .wv-list .list-row)';
   const tops = roots.flatMap((r) => [...document.querySelectorAll(r)]);
   const inRoot = (n) => tops.some((t) => t.contains(n));
   const shown = (n) => {
@@ -93,7 +93,7 @@ if (s) {
   const { base, browser, table, row } = s;
   const surfaces = [
     { name: 'workspace home', hash: '#/', roots: ['#main'] },
-    { name: 'table list', hash: `#/table/${table}`, ready: '#main .wv-grid tbody tr.entity-row', roots: ['#main'] },
+    { name: 'table list', hash: `#/table/${table}`, ready: '#main :is(tbody tr.entity-row, .wv-list .list-row)', roots: ['#main'] },
     { name: 'row page', hash: `#/table/${table}?e=${row}`, ready: '#dock .entity-fields .fieldrow', roots: ['#dock'] },
     { name: 'menu', hash: `#/table/${table}`, ready: '#main .nav-menu', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu') },
     { name: 'picker sheet', hash: `#/table/${table}?e=${row}`, ready: '#dock .chip-trigger[title="Status"]', roots: ['.picker-pop'], act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
@@ -139,7 +139,7 @@ if (s) {
   const viewSwitcher = {
     name: 'views popover',
     hash: `#/table/${table}`,
-    ready: '#main .wv-grid tbody tr.entity-row',
+    ready: '#main :is(tbody tr.entity-row, .wv-list .list-row)',
     roots: ['.table-view-popover .view-row'],
     act: async (page) => {
       const tools = page.locator('#main .table-tools-btn');
@@ -206,7 +206,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${table}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+      await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
       const h = await page.evaluate(() => {
         const box = (q) => { const n = document.querySelector(q); return n ? Math.round(n.getBoundingClientRect().height) : null; };
         return { title: box('#main .view-title'), crumb: box('#main .crumb-item') };

@@ -19,9 +19,9 @@ if (s) {
       const page = await phonePage(await phoneBrowser(), { colorScheme });
       try {
         await page.goto(`${base}/#/table/${issues.id}`, { waitUntil: 'networkidle' });
-        await page.waitForSelector('#main tbody tr.entity-row');
+        await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
         const status = await page.evaluate(async () => {
-          const row = document.querySelectorAll('#main tbody tr.entity-row')[1];
+          const row = document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[1];
           const box = row.getBoundingClientRect();
           const x = box.right - 40, y = box.top + box.height / 2;
           const target = document.elementFromPoint(x, y);

@@ -55,7 +55,7 @@ if (s) {
         await page.evaluate(() => { const m = document.querySelector('#main'); m.scrollTop = m.scrollHeight; });
         await page.waitForTimeout(150);
         const last = await page.$eval('#main', (m) => {
-          const rows = [...m.querySelectorAll('tbody tr.entity-row')];
+          const rows = [...m.querySelectorAll(':is(tbody tr.entity-row, .wv-list .list-row)')];
           return rows.at(-1).getBoundingClientRect().bottom;
         });
         assert.ok(last <= b.search.top, `the last row ends at ${last}px, above the bar at ${b.search.top}px`);

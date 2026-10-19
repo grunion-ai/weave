@@ -1875,7 +1875,6 @@ function searchPicker({ anchor = null, title = '', placeholder: given = null, op
   return pop;
 }
 const PHONE_SHORT_LIST = 8;
-const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 88 };
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
@@ -2320,38 +2319,7 @@ function phoneLeadEl(f, item) {
   } else seg = { kind: 'field', type: f.type, label: f.name, value: String(fieldValueCell(val) ?? '') || '—' };
   return el('span', { class: 'phone-lead', dataset: { field: f.name, ftype: f.type } }, viewSegmentEl(seg));
 }
-function fitPhoneChipLines(grid) {
-  const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
-  const wrap = grid.dataset.phoneWrap != null;
-  for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
-    const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
-    for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
-    if (!phone) continue;
-    const drawn = cells.filter((td) => td.getClientRects().length).sort((a, b) => Number(a.dataset.phoneChip) - Number(b.dataset.phoneChip));
-    if (!drawn.length) continue;
-    const cut = drawn.filter((td) => [...td.querySelectorAll('.k-label')].some(overflowsX));
-    for (const td of cut) td.classList.add('list-hide');
-    const shown = drawn.filter((td) => !cut.includes(td));
-    if (!shown.length) {
-      cut[0].classList.replace('list-hide', 'phone-count-only');
-      cut[0].dataset.more = `+${cut.length}`;
-      continue;
-    }
-    const top = shown[0].getBoundingClientRect().top;
-    const box = tr.getBoundingClientRect();
-    const edge = box.right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
-    let n = shown.length;
-    const fits = () => {
-      const r = shown[n - 1].getBoundingClientRect();
-      return (wrap ? r.bottom <= box.bottom + 0.5 : r.top - top < 1) && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
-    };
-    while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
-    const hidden = cut.length + shown.length - n;
-    if (hidden) shown[n - 1].dataset.more = `+${hidden}`;
-  }
-}
 function markClippedCells(grid) {
-  fitPhoneChipLines(grid);
   fitChips(grid);
   const cutOff = new Set();
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
@@ -4157,8 +4125,11 @@ async function showDatabase(dbId, view) {
   const release = again ? gridHold() : () => {};
   try { await readAndDrawTable(db, dbId, search); } finally { release(); }
 }
+dockCoversScreen.addEventListener('change', () => {
+  if (state.route?.page === 'db' && $('#main')?.wvTable) showDatabase(state.route.dbId, state.route.view);
+});
 async function readAndDrawTable(db, dbId, search) {
-  if (isListLayout(db)) return readAndDrawList(db, dbId, search);
+  if (drawsList(db)) return readAndDrawList(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const query = {
@@ -4192,8 +4163,6 @@ function gridMoves(db, field) {
 
 function gridFields(db) {
   const names = new Set(visibleCols(db));
-  const phone = phoneRowOf(db);
-  for (const n of [phone.lead, ...phone.chips]) if (n) names.add(n);
   for (const s of gridSort(db) ?? []) if (db.fields.some((f) => f.name === s.field)) names.add(s.field);
   for (const n of db.systemFields ?? []) names.add(n);
   return [...names];
@@ -4748,7 +4717,7 @@ function tableChrome(db, trashCount) {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
         eye.setAttribute('aria-label', 'Show or hide fields');
         eye.title = 'Show or hide fields';
-        eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db)
+        eye.addEventListener('click', () => (dockCoversScreen.matches && ref.db.view?.layout !== 'table'
           ? phoneRowPopover(eye, ref.db) : fieldVisibilityPopover(eye, ref.db, ref.trashCount)));
         return eye;
       })(),
@@ -4920,7 +4889,71 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
 }
 
 const listCore = globalThis.weaveListCore;
+function phoneList(list, db, items) {
+  const top = items.reduce((n, x) => Math.max(n, x?.publicId ?? 0), db.maxPublicId ?? 0);
+  const fit = () => {
+    if (!list.isConnected) return;
+    const face = list.querySelector('.list-phone-head');
+    if (face) {
+      const probe = el('a', { class: 'open-link list-pid pid-probe', 'aria-hidden': 'true' }, `#${'0'.repeat(String(top).length)} ↗`);
+      face.append(probe);
+      list.style.setProperty('--wv-pid-w', `${Math.ceil(probe.getBoundingClientRect().width)}px`);
+      probe.remove();
+    }
+    if (list.closest('[data-phone-wrap]')) return;
+    for (const line of list.querySelectorAll('.phone-chips')) fitPhoneChipRow(line, [...line.children]);
+  };
+  let width = 0;
+  new ResizeObserver(() => { if (list.clientWidth !== width) { width = list.clientWidth; fit(); } }).observe(list);
+  requestAnimationFrame(fit);
+  document.fonts?.ready?.then(fit);
+  let press = null;
+  list.addEventListener('pointerdown', (e) => {
+    press = e.pointerType !== 'mouse' ? { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId, tap: false } : null;
+  }, true);
+  list.addEventListener('pointerup', (e) => {
+    if (!press || e.pointerId !== press.id) return;
+    press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= TAP_SLOP && e.timeStamp - press.t <= TAP_MS;
+  }, true);
+  list.addEventListener('pointercancel', () => { press = null; }, true);
+  list.addEventListener('click', (e) => {
+    const line = e.target.closest?.('.list-row');
+    if (!line || e.target.closest('.list-grip, .list-check, .list-check-gap') || nativeClick(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const touched = press;
+    press = null;
+    if (touched && !touched.tap) return;
+    const chip = phoneChipAt(line, e.clientX, e.clientY);
+    if (chip) return editPhoneField(chip, db, line.dataset.eid, chip.dataset.field);
+    openEntity(line.dataset.eid);
+  }, true);
+}
+function fitPhoneChipRow(box, cells) {
+  for (const c of cells) { c.classList.remove('list-hide', 'phone-count-only'); delete c.dataset.more; }
+  const drawn = cells.filter((c) => c.getClientRects().length);
+  if (!drawn.length) return;
+  const cut = drawn.filter((c) => overflowsX(c.firstElementChild ?? c) || [...c.querySelectorAll('.k-label')].some(overflowsX));
+  for (const c of cut) c.classList.add('list-hide');
+  const shown = drawn.filter((c) => !cut.includes(c));
+  if (!shown.length) {
+    cut[0].classList.replace('list-hide', 'phone-count-only');
+    cut[0].dataset.more = `+${cut.length}`;
+    return;
+  }
+  const edge = box.getBoundingClientRect().right;
+  const top = shown[0].getBoundingClientRect().top;
+  let n = shown.length;
+  const fits = () => {
+    const r = shown[n - 1].getBoundingClientRect();
+    return r.top - top < 1 && r.right <= edge + 0.5 && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
+  };
+  while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
+  const hidden = cut.length + shown.length - n;
+  if (hidden) shown[n - 1].dataset.more = `+${hidden}`;
+}
 const isListLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'list';
+const drawsList = (db) => isListLayout(db) || (dockCoversScreen.matches && !db.system && !!db.view && !db.view.blank && db.view.layout !== 'table');
 function listSetup(db) {
   const v = db.view ?? {};
   const fieldOf = (n) => (n ? db.fields.find((f) => f.name === n) : null) ?? null;
@@ -4980,7 +5013,9 @@ async function readAndDrawList(db, dbId, search) {
   const s = listSetup(db);
   const where = filterWhere(db);
   const sort = gridSort(db);
+  const phone = dockCoversScreen.matches ? phoneRowOf(db) : null;
   const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
+    ...(phone ? [phone.lead, ...phone.chips] : []),
     ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
   const base = { fields: [...new Set(names)], relations: 'chip' };
   const filtered = !!(where || search);
@@ -5027,8 +5062,10 @@ function listPathValues(s, path, item = null, from = null) {
   return values;
 }
 function renderList(main, db, items, ctx) {
+  adoptLegacyDensity(db);
   const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
   const v = db.view;
+  const phone = dockCoversScreen.matches ? phoneRowOf(db) : null;
   const parentOf = (it) => {
     if (!s.nest) return null;
     const p = it?.fields?.[s.nest.name];
@@ -5109,18 +5146,29 @@ function renderList(main, db, items, ctx) {
       class: 'list-grip', type: 'button', tabindex: '-1', 'aria-label': `Move ${it.name}`,
       title: sorted ? 'Sorted: drag into another group, or sideways to nest' : 'Drag to reorder; sideways to nest',
     }, lucideEl('grip-vertical'));
+    const title = el('a', { class: 'list-title', href: `#/entity/${it.id}`, tabindex: '-1' }, viewCore.viewTitle(chipV) || `#${it.publicId}`);
     const line = el('div', {
       class: 'list-row' + (r.ghost ? ' ghost' : '') + (r.done ? ' done' : ''), role: 'listitem',
       tabindex: r.ghost ? '-1' : '0', dataset: { eid: it.id, depth: String(item.depth) }, style: `--depth:${item.depth}`,
       ...(r.ghost ? { title: 'Shown for its matching sub-rows; the filter leaves it out' } : {}),
-    }, grip, box,
-      el('span', { class: 'list-chip' },
-        el('a', { class: 'list-title', href: `#/entity/${it.id}`, tabindex: '-1' }, viewCore.viewTitle(chipV) || `#${it.publicId}`),
-        segs.length ? el('span', { class: 'list-segs' }, ...segs.map(viewSegmentEl)) : null));
+    }, grip, box, phone ? phoneFace(it, title) : el('span', { class: 'list-chip' },
+      title, segs.length ? el('span', { class: 'list-segs' }, ...segs.map(viewSegmentEl)) : null));
     line.wvPath = path;
     line.wvItem = item;
     if (!r.ghost) grip.addEventListener('pointerdown', (e) => listDrag(e, line));
     return [line, ...item.children.flatMap((c) => rowEls(c, path))];
+  };
+  const phoneFace = (it, title) => {
+    const lead = phone.lead && db.fields.find((x) => x.name === phone.lead);
+    const chips = phone.chips.filter((n) => n !== s.completedBy?.name).map((n, i) => {
+      const f = db.fields.find((x) => x.name === n);
+      return f && el('span', { class: 'phone-chip', dataset: { field: f.name, ftype: f.type, phoneChip: String(i + 1) } },
+        el('div', { class: 'wv-cb' }, labeledEditorFor(f, it, db, () => reload(it.id), { compact: true, fit: true })));
+    });
+    return el('span', { class: 'list-chip list-phone' },
+      el('span', { class: 'list-phone-head' }, lead ? phoneLeadEl(lead, it) : null,
+        el('a', { class: 'open-link list-pid', href: `#/entity/${it.id}`, tabindex: '-1' }, `#${it.publicId} ↗`), title),
+      el('span', { class: 'phone-chips' }, ...chips.filter(Boolean)));
   };
   const addEl = (path) => {
     const where = path.map((p) => p.label).join(listCore.SEP);
@@ -5186,9 +5234,12 @@ function renderList(main, db, items, ctx) {
   }
   const footer = el('div', { class: 'list-footer', role: 'status', 'aria-live': 'polite' },
     listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term }));
-  const wrap = el('div', { class: 'card list-wrap', dataset: { density: gridDensity(db), layout: 'list' } }, list, footer);
+  const wrap = el('div', { class: 'card list-wrap', dataset: {
+    density: gridDensity(db), layout: 'list', ...(phone?.labels ? { phoneLabels: '' } : {}), ...(phone?.wrap ? { phoneWrap: '' } : {}),
+  } }, list, footer);
   wrap.wvSetDensity = (mode) => { wrap.dataset.density = mode; saveGridDensity(db, mode); };
   main.append(wrap);
+  if (phone) phoneList(list, db, [...known.values(), ...items]);
 
   const siblingsOf = (line) => {
     const holder = line.closest('.list-group') ?? list;
@@ -5383,7 +5434,7 @@ function tableGroupButton(ref) {
     const text = names.length ? `Group: ${names.join(listCore.SEP)}` : 'Group';
     if (btn.querySelector('.table-control-label').textContent !== text) btn.querySelector('.table-control-label').textContent = text;
     btn.setAttribute('aria-label', text);
-    btn.hidden = !isListLayout(ref.db);
+    btn.hidden = !drawsList(ref.db);
   };
   btn.label();
   btn.addEventListener('click', () => {
@@ -5590,7 +5641,6 @@ let GRID_SEQ = 0;
 function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   adoptLegacyDensity(db);
   let cols = visibleCols(db);
-  const phone = phoneRowOf(db);
   const isSysCol = (c) => !colField(db, c) && !!SYSTEM_COLS[c];
   const sysTail = db.columns ? [] : (db.systemFields ?? []);
   const cellBox = (...kids) => el('div', { class: 'wv-cb' }, ...kids);
@@ -5826,8 +5876,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       dataset: { ftype: f.type, field: f.name },
       class: (isNumCell(f, item) ? 'num' : '') + extra + kind,
     }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
-    const at = phone.chips.indexOf(f.name) + 1;
-    if (at) { td.dataset.phoneChip = String(at); td.style.order = String(at); }
     return f.type === 'attachments'
       ? fileDropZone(td, (files) => td.querySelector('.k-attach')?.dropFiles?.(files))
       : td;
@@ -5854,14 +5902,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           class: 'open-link',
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
           title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : keyHint(`Open ${db.term.singular} beside the table — ⌘-click for a new tab`),
-        }, `#${item.publicId} ↗`),
-        el('span', { class: 'list-name' }, item.name ?? ''))),
+        }, `#${item.publicId} ↗`))),
       ...cols.map((c) => (isSysCol(c) ? sysCell(c, item) : fieldCell(db.fields.find((x) => x.name === c), item, c === cols[0] ? ' name-cell' : ''))),
-      ...sysTail.map((n) => sysCell(n, item)),
-      ...phone.chips.filter((n) => !cols.includes(n)).map((n) => fieldCell(db.fields.find((x) => x.name === n), item, ' phone-only')));
-    const lead = phone.lead && db.fields.find((x) => x.name === phone.lead);
-    if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb').prepend(phoneLeadEl(lead, item));
-    for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop, .phone-only)')) td.tabIndex = 0;
+      ...sysTail.map((n) => sysCell(n, item)));
+    for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     return row;
   };
@@ -5956,18 +6000,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const css = layoutCss();
     if (layoutSheet.textContent !== css) layoutSheet.textContent = css;
   };
-  const sizePidColumn = () => {
-    const cell = listRows() ? table.querySelector('tbody tr.entity-row > td.pid-cell > .wv-cb') : null;
-    if (!cell) return table.style.removeProperty('--wv-pid-w');
-    const top = ordered().reduce((n, x) => Math.max(n, x?.publicId ?? 0), db.maxPublicId ?? 0);
-    const probe = el('a', { class: 'open-link pid-probe', 'aria-hidden': 'true' }, `#${'0'.repeat(String(top).length)} ↗`);
-    cell.append(probe);
-    table.style.setProperty('--wv-pid-w', `${Math.ceil(probe.getBoundingClientRect().width)}px`);
-    probe.remove();
-  };
   const settle = () => {
     if (!table?.isConnected) return;
-    sizePidColumn();
     const head = table.tHead.rows[0];
     for (const th of head.querySelectorAll('th.col-head, th.sys-head')) {
       const label = th.querySelector('.col-label');
@@ -6307,14 +6341,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     nudgeTimers.set(c, setTimeout(() => { nudgeTimers.delete(c); commitWidth(c, w); }, 350));
   };
   const tokenH = {};
-  const listRows = () => dockCoversScreen.matches && wrap.parentElement === main && main.id === 'main';
   const rowH = () => {
     const d = gridDensity(db);
-    const key = listRows() ? `${d}:list` : d;
-    if (!tokenH[key] && table?.isConnected && table.dataset.density === d) {
-      tokenH[key] = parseFloat(getComputedStyle(table).getPropertyValue('--wv-row-h')) || 0;
+    if (!tokenH[d] && table?.isConnected && table.dataset.density === d) {
+      tokenH[d] = parseFloat(getComputedStyle(table).getPropertyValue('--wv-row-h')) || 0;
     }
-    return tokenH[key] || (listRows() ? PHONE_ROW_H[d] : GW().ROW_H[d]);
+    return tokenH[d] || GW().ROW_H[d];
   };
   const spacer = () => el('tr', { class: 'wv-spacer', 'aria-hidden': 'true' },
     el('td', { colspan: String(colCount) }));
@@ -6423,8 +6455,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
     for (const td of tr.querySelectorAll(':scope > td.sys-cell')) td.replaceChildren(cellBox(sysValue(td.dataset.sys, item)));
-    const listName = tr.querySelector(':scope > td.pid-cell .list-name');
-    if (listName && listName.textContent !== (item.name ?? '')) listName.textContent = item.name ?? '';
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
   const patchRows = async (fresh) => {
@@ -6543,7 +6573,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
     table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
-      dataset: { density: gridDensity(db), ...(phone.labels ? { phoneLabels: '' } : {}), ...(phone.wrap ? { phoneWrap: '' } : {}) },
+      dataset: { density: gridDensity(db) },
     },
       el('thead', {}, el('tr', {},
         el('th', { class: 'sel-head' },
@@ -6905,34 +6935,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('mouseleave', dropCellPop);
   wrap.addEventListener('mousedown', dropCellPop, true);
   wrap.addEventListener('focusin', dropCellPop);
-  const listRow = (e) => (listRows() && !nativeClick(e) ? e.target?.closest?.('tbody tr.entity-row') : null);
-  let press = null;
-  wrap.addEventListener('pointerdown', (e) => {
-    press = listRows() && e.pointerType !== 'mouse' ? { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId, tap: false } : null;
-  }, true);
-  wrap.addEventListener('pointerup', (e) => {
-    if (!press || e.pointerId !== press.id) return;
-    press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= TAP_SLOP && e.timeStamp - press.t <= TAP_MS;
-  }, true);
-  wrap.addEventListener('pointercancel', () => { press = null; }, true);
-  wrap.addEventListener('mousedown', (e) => {
-    if (!listRow(e)) return;
-    e.preventDefault();
-    e.stopPropagation();
-  }, true);
-  wrap.addEventListener('click', (e) => {
-    const tr = listRow(e);
-    if (!tr) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const touched = press;
-    press = null;
-    if (touched && !touched.tap) return;
-    const chip = phoneChipAt(tr, e.clientX, e.clientY);
-    if (chip) return editPhoneField(chip, db, tr.dataset.eid, chip.dataset.field);
-    if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
-    else openEntity(tr.dataset.eid);
-  }, true);
   main.append(wrap);
   settle();
   document.fonts?.ready?.then(() => { if (wrap.isConnected) settle(); });
@@ -6951,12 +6953,12 @@ function phoneChipAt(tr, x, y) {
     const px = pad ? Math.max(0, (PHONE_HIT - r.width) / 2) : 0, py = pad ? Math.max(0, (PHONE_HIT - r.height) / 2) : 0;
     return x >= r.left - px && x <= r.right + px && y >= r.top - py && y <= r.bottom + py;
   };
-  const marks = [...tr.querySelectorAll(':scope > td.pid-cell .phone-lead, :scope > td[data-phone-chip]')]
+  const marks = [...tr.querySelectorAll('.list-phone .phone-lead, .list-phone [data-phone-chip]')]
     .filter((n) => n.getClientRects().length && !n.classList.contains('list-hide'))
     .filter((n) => phoneRowCore.tapAction(n.dataset.ftype));
   const exact = marks.find((n) => inside(n, false));
   if (exact) return exact;
-  if ([...tr.querySelectorAll(':scope > td.pid-cell :is(.open-link, .list-name)')].some((n) => inside(n, false))) return null;
+  if ([...tr.querySelectorAll('.list-phone :is(.list-pid, .list-title)')].some((n) => inside(n, false))) return null;
   const near = marks.filter((n) => inside(n, true));
   const dist = (n) => { const r = n.getBoundingClientRect(); return Math.hypot(x - (r.left + r.right) / 2, y - (r.top + r.bottom) / 2); };
   return near.sort((a, b) => dist(a) - dist(b))[0] ?? null;

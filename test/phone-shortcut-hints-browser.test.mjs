@@ -44,7 +44,7 @@ if (s) {
       test(`on a touch phone no visible text, title or label offers a keyboard shortcut (${engine}, ${theme}, Issue #736)`, async () => {
         let page = await open(make, table, theme);
         try {
-          await page.waitForSelector('#main tbody tr.entity-row');
+          await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
           let h = await hints(page);
           assert.equal(h.theme, theme);
           assert.deepEqual(h.out, [], 'the table page');
@@ -67,7 +67,7 @@ if (s) {
   test('on a desktop the shortcut hints stay (Issue #736)', async () => {
     const page = await open(() => browser.newPage({ viewport: { width: 1280, height: 844 } }), table, 'light');
     try {
-      await page.waitForSelector('#main tbody tr.entity-row');
+      await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
       assert.ok((await hints(page)).out.length > 0, 'the ⌘K pill and ⌘-click titles show where a keyboard is');
     } finally { await page.close(); }
   });
