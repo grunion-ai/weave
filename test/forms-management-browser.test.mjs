@@ -28,7 +28,6 @@ if (app) for (const theme of ['light', 'dark']) for (const width of [390, 1280])
       await page.context().addCookies([{ name: `wv_session_${weave.state.meta.id}`, value: weave.createSession(architect.account.id).token, url: base }]);
       await page.goto(`${base}/#/db/${table.id}`);
       await page.locator('.table-tools-btn').waitFor({ state: 'attached' });
-      if (width < 600) await page.getByRole('button', { name: 'View, filters, fields and row height', exact: true }).click();
       await page.getByRole('button', { name: 'Table actions', exact: true }).filter({ visible: true }).click();
       await page.getByRole('menuitem', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
       await page.getByRole('button', { name: 'Create form', exact: true }).click();

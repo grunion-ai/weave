@@ -46,7 +46,7 @@ export function errorBody(err, code = 'internal') {
 
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ROWS = 500;
-const rowCap = () => Math.max(1, Number(globalThis.process?.env?.WEAVE_MAX_ROWS) || MAX_ROWS);
+const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
 const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
 
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
@@ -129,7 +129,7 @@ const joinedInvite = (next) => {
 };
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, anonymousForms = ['1', 'true'].includes(String(globalThis.process?.env?.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, anonymousForms = ['1', 'true'].includes(String(process.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const clerkPane = (() => {
     if (!clerkKey || !oidc) return null;
     let host;
@@ -362,6 +362,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
     }
 
+    const shellMarker = () => `\n<meta name="weave-workspace" content="${metaAttr(weave.state.meta.name ?? '')}" data-root="${weave === hub.get(hub.defaultName)}">`;
     const linkPreview = (p, { signedOut = false } = {}) => {
       const m = p.match(/^\/([est])\/([^/]+)$/);
       if (p !== '/' && !m) return null;
@@ -482,7 +483,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const signedUp = (me) => live.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
       const signup = !creator && openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
       const owner = creator ?? signup ?? (billing ? logins[0] ?? null : null);
-      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@'))
+      const accountName = (creator && rootOf(creator)?.name) ?? logins.map((me) => rootOf(me)?.name).find(Boolean) ?? logins.map((me) => me.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@'))
         ?? logins.map((me) => me.email?.split('@')[0]).find(Boolean) ?? null;
       const unpaid = async (me) => {
         for (const [name, w] of live) {
@@ -502,7 +503,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     };
     const holdLogin = async (who) => {
       const held = await heldStart();
-      const login = { issuer: who.issuer, subject: who.subject, email: who.email ?? null };
+      const login = { issuer: who.issuer, subject: who.subject, email: who.email ?? null, ...(who.name ? { name: who.name } : {}) };
       const logins = (held?.logins ?? []).map((l) => (sameLogin(l, login) ? login : l));
       if (!logins.some((l) => sameLogin(l, login))) logins.push(login);
       const token = held?.token ?? newChallenge();
@@ -559,7 +560,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       });
     }
     if (path === '/.well-known/openai-apps-challenge' && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
-      const token = globalThis.process?.env?.WEAVE_OPENAI_APPS_CHALLENGE?.trim();
+      const token = process.env.WEAVE_OPENAI_APPS_CHALLENGE?.trim();
       if (!token) return notFound({ error: 'No apps challenge is configured', code: 'not-found' });
       return out(200, token, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     }
@@ -808,7 +809,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const q = weavePrefill.clip(rx.searchParams).query;
         const to = `${wsPrefix}/#/table/${m[1]}/new${q ? `?${q}` : ''}`;
         if (!serveStatic) return { status: 302, headers: { Location: to, 'Cache-Control': 'no-store' }, body: '' };
-        const hit = serveStatic('/', rx, { head: `${preview.head}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
+        const hit = serveStatic('/', rx, { head: `${preview.head}${shellMarker()}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
         if (hit) return { ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } };
       }
       if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
@@ -819,7 +820,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (!preview && path !== '/') throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
         if (preview?.route && !serveStatic) return { status: 302, headers: { Location: preview.route }, body: '' };
         const jump = preview?.route ? `\n<meta name="weave-route" content="${metaAttr(preview.route)}">\n<script src="/permalink.js"></script>` : '';
-        const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + jump }) : null;
+        const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + shellMarker() + jump }) : null;
         if (hit) return hit;
       }
 

@@ -91,11 +91,11 @@ if (s) {
       await page.click('#main .table-filter-btn');
       await page.waitForTimeout(150);
       assert.equal(await page.locator('.table-filter-popover').count(), 0, 'the button shuts its own popover');
-      await page.click('#main .crumb-actions .dots-btn');
+      await page.click('#main .crumb-row .dots-btn');
       assert.ok(await shown(page, '.wv-menu[role="menu"]'), 'the table menu opens');
-      await page.click('#main .crumb-actions .dots-btn');
+      await page.click('#main .crumb-row .dots-btn');
       assert.equal(await shown(page, '.wv-menu[role="menu"]'), false, 'and its button shuts it');
-      await page.click('#main .crumb-actions .dots-btn');
+      await page.click('#main .crumb-row .dots-btn');
       await page.mouse.click(640, 800);
       assert.equal(await shown(page, '.wv-menu[role="menu"]'), false, 'a click away shuts it');
     } finally { await page.close(); }

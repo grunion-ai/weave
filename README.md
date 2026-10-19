@@ -138,6 +138,13 @@ call opens the provider's sign-in in your browser; no token to paste:
 claude mcp add --scope user --transport http weave https://weave.example.com/mcp
 ```
 
+For weave cloud at `weave.grunion.ai`, this repository is also a Claude Code
+plugin marketplace. In Claude Code:
+
+```
+/plugin install weave --marketplace grunion-ai/weave
+```
+
 `/w/<name>/mcp` serves another workspace. Your account has to be linked to
 your provider sign-in first (open the invite `weave account link <name>`
 prints, once, in a browser), and it needs the Architect role, since MCP

@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 process.env.WEAVE_KEYSTORE ??= join(mkdtempSync(join(tmpdir(), 'weave-sec-')), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { startServer } = await import('../../src/server.js');
-const { WeaveWorkspace } = await import('../../src/worker.js');
 
 const SECRET = "ENOENT: no such file or directory, open '/secret/path/workspace.db'";
 const ID = /^[0-9a-f]{8}$/;
@@ -76,37 +74,4 @@ test('the applet answers the same generic 500', async () => {
     assert.ok(!JSON.stringify(json).includes('/secret/path'), JSON.stringify(json));
     assert.ok(log.lines.some((l) => l.includes(json.id) && l.includes('/secret/path')));
   } finally { log.restore(); stop(); }
-});
-
-function shimStorage() {
-  const db = new DatabaseSync(':memory:');
-  return {
-    sql: {
-      exec(query, ...params) {
-        if (params.length === 0 && !/^\s*SELECT/i.test(query)) db.exec(query);
-        const stmt = db.prepare(query);
-        if (/^\s*SELECT/i.test(query)) return { toArray: () => stmt.all(...params) };
-        stmt.run(...params);
-      },
-    },
-    transactionSync(fn) {
-      db.exec('BEGIN');
-      try { const r = fn(); db.exec('COMMIT'); return r; } catch (err) { db.exec('ROLLBACK'); throw err; }
-    },
-  };
-}
-
-test('the Worker answers a generic body for an error outside the dispatcher', async () => {
-  const dobj = new WeaveWorkspace({ storage: shimStorage() }, { WEAVE_VERSION: '0.0.0-test' });
-  const log = capture();
-  try {
-    const headers = { get: (name) => { if (name === 'origin') throw new Error(SECRET); return name === 'x-weave-workspace' ? 'scratch' : null; } };
-    const res = await dobj.fetch({ url: 'http://do/api/health', method: 'GET', headers });
-    const json = await res.json();
-    assert.equal(res.status, 500);
-    assert.equal(json.code, 'internal');
-    assert.match(json.id, ID);
-    assert.ok(!json.error.includes('/secret/path'), JSON.stringify(json));
-    assert.ok(log.lines.some((l) => l.includes(json.id)));
-  } finally { log.restore(); }
 });

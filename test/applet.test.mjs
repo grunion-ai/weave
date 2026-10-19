@@ -655,8 +655,8 @@ test('applet: bug reports are asked of the workspace that can file them', async 
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
   assert.match(src, /'\/w\/weave\/api\/bug-report'/,
-    "on Cloudflare each workspace is its own DO: asked from uno, hub.get('weave') is null and the endpoint 501s");
-  assert.doesNotMatch(src, /fetch\('\/api\/bug-report'/, 'the un-prefixed path only works on the node adapter');
+    'the Issue is filed into the weave docs workspace, so the applet asks that workspace directly');
+  assert.doesNotMatch(src, /fetch\('\/api\/bug-report'/, 'never the un-prefixed path of whichever workspace the applet sits in');
 });
 
 test('applet: the bug reporter is the desktop one, parts and all', async () => {

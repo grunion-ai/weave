@@ -28,6 +28,7 @@ const setDisclosure = (btn, open) => btn.setAttribute('aria-expanded', String(op
 const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden': 'true' }, chevron());
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
+const SHELL_ROOT = document.querySelector('meta[name="weave-workspace"]')?.dataset.root === 'true';
 
 const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
 function commitActiveEdit() {
@@ -757,7 +758,7 @@ async function readRegistry() {
 }
 
 async function loadSchema() {
-  const registryRead = WS_PREFIX && state.registry !== null ? readRegistry() : null;
+  const registryRead = WS_PREFIX && !SHELL_ROOT && state.registry !== null ? readRegistry() : null;
   registryRead?.catch(() => {});
   const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
   const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth).catch(() => state.canManageForms = false) : null;
@@ -1034,6 +1035,8 @@ function descToggle(name, panel, key) {
 
 function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page', lead = null, descriptionKey = null }) {
   const box = el('div', { class: `view-header${descriptionKey ? ' view-description-toggle' : ''}` });
+  const tools = actions.filter(Boolean);
+  const dots = tools.at(-1)?.classList?.contains('dl-wrap') ? tools.pop() : null;
   box.append(el('div', { class: 'crumb crumb-row' },
     navMenuButton(),
     crumbPath([...crumbs.map(crumbOfHref), { kind, label: title, icon, current: true }], {
@@ -1042,7 +1045,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         run: () => copyText(typeof permalink === 'function' ? permalink() : permalink, 'Permalink copied'),
       },
     }),
-    el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
+    el('span', { class: 'crumb-actions wv-toolbar' }, ...tools), dots));
 
   syncDocTitle(title);
   const titleInput = titleEdit('input', 'view-title', title, { 'aria-label': 'Title', title: onRename ? 'Click to rename' : '', readonly: onRename ? undefined : '' });
@@ -4742,7 +4745,7 @@ function tableChrome(db, trashCount) {
       filterBtn,
       groupBtn,
       sortBtn,
-      kindDots('table', () => ref.db, () => ({}), { title: 'Table actions', labelled: true, onRun: () => tools.shut() }),
+      kindDots('table', () => ref.db, () => ({}), { title: 'Table actions' }),
     ],
   });
   kindContext(chrome.header, 'table', () => ref.db, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a, .table-tools-btn` });
@@ -4791,7 +4794,6 @@ function tableToolsButton(header, ref) {
     });
     addEventListener('keydown', esc, true);
   });
-  btn.shut = shut;
   return btn;
 }
 
@@ -11924,13 +11926,17 @@ async function showView(id) {
   }
 }
 
+const homeReads = () => Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
+let bootHomeReads = null;
+
 async function showHome() {
   state.route = { page: 'home' };
   syncDocTitle(null);
   renderNav();
   const main = $('#main');
   const mine = WeaveStarters.userTables(state.schema);
-  const [wsRead, listRead, invRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
+  const [wsRead, listRead, invRead] = await (bootHomeReads ?? homeReads());
+  bootHomeReads = null;
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, invite: invRead.status === 'fulfilled' };
@@ -13634,6 +13640,8 @@ installPhoneBar();
 toastLayer();
 wireTheme();
 wireSkipLink();
+(state.healthP ??= api('GET', '/health')).catch(() => {});
+if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
 wireSearchButton();
 buildWsRail();

@@ -104,6 +104,9 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
     const page = await (await fetch(`${base}/w/weave/`)).text();
     assert.match(page, /id="app"/);
     assert.match(page, /<title>weave<\/title>/, 'the shell wears the workspace title before the app runs (Feature #264)');
+    assert.match(page, /<meta name="weave-workspace" content="weave" data-root="false">/, 'a member shell says it is not the root (Issue #395)');
+    assert.match(await (await fetch(`${base}/`)).text(), /<meta name="weave-workspace" content="uno" data-root="true">/, 'the root shell says it is the root');
+    assert.match(await (await fetch(`${base}/w/uno/`)).text(), /<meta name="weave-workspace" content="uno" data-root="true">/, 'the root under its own prefix is still the root');
 
     const mmd = await fetch(`${base}/w/weave/e/${guideId}/doc.mmd`);
     assert.equal(mmd.headers.get('content-type'), 'text/vnd.mermaid; charset=utf-8');

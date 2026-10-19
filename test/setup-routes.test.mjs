@@ -164,6 +164,20 @@ test('open sign-up: a stranger creates one workspace from a template, owns it, a
   } finally { s.stop(); }
 });
 
+test('open sign-up: the profile name names the new account, never the address local part (Issue #935)', async () => {
+  const s = await serve({ openSignup: { on: true, limit: 1 } });
+  try {
+    const { cookie } = await s.signIn({ sub: 'user_ada', email: 'ada-sales@example.com', email_verified: true, name: 'Ada', picture: 'https://img.example/ada.png' });
+    assert.equal((await s.apex('GET', '/api/start', { cookie })).json().accountName, 'Ada');
+    const made = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Ada Desk', slug: 'ada-desk' } });
+    assert.equal(made.status, 201, made.text);
+    const w = s.open('ada-desk');
+    assert.deepEqual(w.listAccounts().map((a) => a.name), ['Ada']);
+    assert.ok(!JSON.stringify(w.state.meta).includes('img.example'), 'the picture is never kept');
+    w.store.close?.();
+  } finally { s.stop(); }
+});
+
 test('quick setup: skip makes an empty workspace named for the person, on a free address', async () => {
   const s = await serve({ openSignup: { on: true, limit: 1 } });
   try {
