@@ -71,8 +71,8 @@ if (s) {
     const page = await browser.newPage();
     await stubClipboard(page);
     await page.goto(`${base}/#/table/${saves.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .crumb-actions .dots-btn');
-    await page.locator('.crumb-actions .dots-btn').last().click();
+    await page.waitForSelector('#main .crumb-row .dots-btn');
+    await page.locator('.crumb-row .dots-btn').last().click();
     await page.locator('.wv-menu .wv-menu-row', { hasText: 'Copy create link' }).first().click();
     await page.waitForFunction(() => window.__copied.length === 1);
     assert.equal(await page.evaluate(() => window.__copied[0]), `${base}/t/${saves.id}/new`);

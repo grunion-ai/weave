@@ -1360,7 +1360,7 @@ test('lookup / rollup pick their relation and target field from what exists; no 
 
 test('the view controls sit on the crumb line; Fields has a bundled eye icon and visibility checkboxes', () => {
   const vh = fnBody('viewHeader');
-  assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.actions\.filter\(Boolean\)/, 'actions render beside the crumb');
+  assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.tools\), dots\)/, 'actions render beside the crumb, the trailing ⋮ pinned to the crumb row (Issue #853)');
   assert.doesNotMatch(vh, /titleInput, \.\.\.actions/, 'and no longer on the title row');
   assert.match(fnBody('fieldVisibilityPopover'), /el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'rows are the shared checkbox (Issue #915)');
   assert.match(fnBody('tableChrome'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');

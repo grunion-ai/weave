@@ -70,7 +70,7 @@ if (s) {
         await page.waitForSelector('#main .wv-grid');
         const before = await navTables(page, 'Product');
         assert.ok(before.includes(name));
-        const undo = await trashOnce(page, '#main .crumb-actions .dots-btn[title="Table actions"]');
+        const undo = await trashOnce(page, '#main .crumb-row .dots-btn[title="Table actions"]');
         assert.ok(await eventually(() => !!weave.state.tables[db.id]?.deletedAt, true), 'the table is in the trash');
         await page.waitForFunction((nm) => ![...document.querySelectorAll('#nav a.nav-db')].some((a) => a.textContent.trim() === nm), name);
         await undo.click();
@@ -109,7 +109,7 @@ if (s) {
       const sp = weave.getSpace(name);
       const page = await open(`#/space/${sp.id}`, theme);
       try {
-        const undo = await trashOnce(page, '#main .view-header .crumb-actions .dots-btn');
+        const undo = await trashOnce(page, '#main .view-header .crumb-row .dots-btn');
         await page.waitForFunction((h) => location.hash !== h, `#/space/${sp.id}`);
         await undo.click();
         await hashIs(page, `#/space/${sp.id}`);
@@ -123,7 +123,7 @@ if (s) {
       const page = await open(`#/entity/${e.id}`, theme);
       try {
         await page.waitForSelector('#main textarea.name-edit');
-        const undo = await trashOnce(page, '#main .view-header .crumb-actions .dots-btn');
+        const undo = await trashOnce(page, '#main .view-header .crumb-row .dots-btn');
         assert.ok(await eventually(() => !!weave.state.entities[e.id]?.deletedAt, true), 'the record is in the trash');
         await hashIs(page, `#/table/${db.id}`);
         await undo.click();
@@ -200,14 +200,14 @@ if (s) {
       if (kind === 'table') {
         const db = weave.createTable({ space: 'Product', name: uniq('Left') });
         href = `#/table/${db.id}`;
-        trigger = '#main .crumb-actions .dots-btn[title="Table actions"]';
+        trigger = '#main .crumb-row .dots-btn[title="Table actions"]';
         gone = () => !weave.state.tables[db.id]?.deletedAt;
       } else if (kind === 'space') {
         const name = uniq('Away');
         weave.createSpace({ name });
         const sp = weave.getSpace(name);
         href = `#/space/${sp.id}`;
-        trigger = '#main .view-header .crumb-actions .dots-btn';
+        trigger = '#main .view-header .crumb-row .dots-btn';
         gone = () => !weave.state.spaces[sp.id]?.deletedAt;
       } else {
         const v = weave.createView({ name: uniq('Elsewhere'), blocks: [{ table: 'Task' }] });
@@ -262,7 +262,7 @@ if (s) {
 
       await page.goto(`${base}/#/table/${db.id}?e=${b.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      await page.locator('#dock .view-header .crumb-actions .dots-btn').click();
+      await page.locator('#dock .view-header .crumb-row .dots-btn').click();
       await page.locator(`${MENU} .wv-menu-row`, { hasText: 'Move to trash' }).click();
       const one = await read();
       assert.ok(await eventually(() => !!weave.state.entities[b.id].deletedAt, true));
