@@ -48,7 +48,7 @@ if (s) {
       await page.waitForSelector('.wv-activity .wv-act-row');
       assert.equal(await page.locator('.activity-btn').getAttribute('aria-pressed'), 'true');
       assert.deepEqual(await page.locator('.wv-act-filters button[data-filter]').allTextContents(), ['All', 'Description', 'Spec', 'Release note', 'Fields'], 'a chip per document; no Comments chip (Feature #323)');
-      assert.equal(await page.locator('.wv-act-head').textContent(), 'Activity', 'a title and a close button: no counts, no subtitle');
+      assert.equal(await page.locator('.wv-act-head').textContent(), 'Panel›Activity', 'the record crumb, a title and a close button: no counts, no subtitle (Issue #979)');
       const strip = await page.locator('.wv-act-filters').evaluate((f) => {
         const shown = [...f.children].filter((b) => !b.hidden);
         const edge = f.getBoundingClientRect().right;

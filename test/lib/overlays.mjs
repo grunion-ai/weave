@@ -84,7 +84,7 @@ export const OVERLAYS = [
       await press(page, '.chip-pop .chip-pop-row >> text=Field settings', cell);
     },
   },
-  { name: 'table-icon', surface: 'table', cells: BOTH, root: '.picker-pop', open: (page, ctx, cell) => press(page, '#main .icon-btn', cell) },
+  { name: 'table-icon', surface: 'table', cells: BOTH, root: '.picker-pop', open: (page, ctx, cell) => (cell === 'phone' ? tableMenu('Add icon…')(page, ctx, cell) : press(page, '#main .icon-btn', cell)) },
   { name: 'field-menu', surface: 'table', cells: DESKTOP, root: '.chip-pop', open: (page, ctx, cell) => press(page, '.field-menu[title="Configure Status"]', cell) },
   {
     name: 'field-editor', surface: 'table', cells: DESKTOP, root: '#tray-back',

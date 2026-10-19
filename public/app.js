@@ -28,6 +28,7 @@ const setDisclosure = (btn, open) => btn.setAttribute('aria-expanded', String(op
 const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden': 'true' }, chevron());
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
+const SHELL_ROOT = document.querySelector('meta[name="weave-workspace"]')?.dataset.root === 'true';
 
 const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
 function commitActiveEdit() {
@@ -757,7 +758,7 @@ async function readRegistry() {
 }
 
 async function loadSchema() {
-  const registryRead = WS_PREFIX && state.registry !== null ? readRegistry() : null;
+  const registryRead = WS_PREFIX && !SHELL_ROOT && state.registry !== null ? readRegistry() : null;
   registryRead?.catch(() => {});
   const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
   const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth).catch(() => state.canManageForms = false) : null;
@@ -901,6 +902,7 @@ function crumbIconEl(c) {
 function crumbInner(c) {
   return [
     crumbIconEl(c),
+    c.kind === 'row' && c.current && c.table ? el('span', { class: 'crumb-tbl' }, c.table) : null,
     c.publicId != null ? el('span', { class: 'crumb-pid' }, `#${c.publicId}`) : null,
     el('span', { class: 'crumb-nm' }, c.label ?? ''),
   ];
@@ -2719,6 +2721,15 @@ const MENU_ROWS = {
       }, 'Save'),
     },
     forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => formsDialog(db) } : null,
+    icon: dockCoversScreen.matches && !db.icon && !db.system ? { label: 'Add icon…', run: () => searchPicker({
+      anchor, title: 'Icon', options: iconCatalogue(), grid: true, currentId: '',
+      onPick: async (o) => {
+        if (!o.id) return;
+        await api('PATCH', `/tables/${db.id}`, { icon: o.id });
+        await loadSchema();
+        if (state.route?.dbId === db.id) showDatabase(db.id, state.route.view);
+      },
+    }) } : null,
     description: !db.description?.trim() ? { label: 'Add description…', run: async () => {
       if (state.route?.page !== 'db' || state.route.dbId !== db.id) history.pushState(null, '', `#/table/${db.id}`);
       await showDatabase(db.id);
@@ -10991,6 +11002,7 @@ const activityPanel = (() => {
       return (f?.optionsFull ?? []).find((o) => o?.id === v)?.name ?? v;
     };
     st.docFields = docFields;
+    st.name = ent.name ?? '';
     st.items = H().feed({ documents, activity: act.items, optionName });
     if (st.sel && !byId(st.sel)) st.sel = null;
   }
@@ -11091,7 +11103,7 @@ const activityPanel = (() => {
       el('span', { class: 'wv-act-who' }, ...(() => { const chip = actorChipEl(it.actor, { link: false }); return chip ? [chip, ` · ${who}`] : [who]; })()),
       on ? tray(it) : null);
     node.addEventListener('click', (e) => {
-      if (e.target.closest('.wv-act-tray')) return;
+      if (e.target.closest('.wv-act-tray, .wv-act-view')) return;
       st.sel = it.id; st.from = null; st.done = null; st.scroll = true; render();
     });
     node.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === node) node.click(); });
@@ -11116,6 +11128,13 @@ const activityPanel = (() => {
       if (fits()) return;
     }
   }
+  function subjectCrumb() {
+    if (!st.name) return [];
+    const subject = dockCoversScreen.matches
+      ? el('button', { type: 'button', class: 'wv-act-subject', title: `Back to ${st.name}`, onclick: () => close() }, st.name)
+      : el('span', { class: 'wv-act-subject' }, st.name);
+    return [subject, el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›')];
+  }
   function renderPanel() {
     const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields']];
     const pickFilter = (k) => { st.filter = k; render(); };
@@ -11135,7 +11154,7 @@ const activityPanel = (() => {
     if (!list.children.length) list.append(el('div', { class: 'wv-empty' }, 'No changes yet.'));
     const keep = panel?.querySelector('.wv-act-list')?.scrollTop ?? 0;
     const next = el('aside', { class: 'wv-activity', 'aria-label': 'Activity' },
-      el('div', { class: 'wv-act-head' }, el('h3', {}, 'Activity'),
+      el('div', { class: 'wv-act-head' }, el('h3', {}, ...subjectCrumb(), el('span', { class: 'wv-act-section' }, 'Activity')),
         el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
       filters, list);
     const side = $('#side');
@@ -11157,7 +11176,7 @@ const activityPanel = (() => {
     }
   }
 
-  const reveal = (node) => { if (st.scroll) { st.scroll = false; scrollTargetIntoView(node, { padding: 12 }); } };
+  const reveal = (node, padding = 12) => { if (st.scroll) { st.scroll = false; scrollTargetIntoView(node, { padding }); } };
   function clearViews() {
     for (const v of document.querySelectorAll('.wv-act-view')) {
       const body = v.closest('.doc-section')?.querySelector(':scope > .doc-section-body');
@@ -11169,22 +11188,24 @@ const activityPanel = (() => {
     clearViews();
     const it = byId(st?.sel);
     if (!it) return;
+    const inSheet = dockCoversScreen.matches ? panel?.querySelector('.wv-act-row.sel') : null;
     if (it.kind === 'rev') {
-      const sec = sectionFor(it.field); if (!sec) return;
-      const body = sec.querySelector(':scope > .doc-section-body');
+      const sec = inSheet ? null : sectionFor(it.field); if (!inSheet && !sec) return;
       const from = st.from ? byId(st.from) : prevOf(it);
       const view = el('div', { class: 'wv-act-view' });
-      body.hidden = true; body.after(view);
+      if (inSheet) inSheet.append(view);
+      else { const body = sec.querySelector(':scope > .doc-section-body'); body.hidden = true; body.after(view); }
       const [ft, tt] = await Promise.all([from ? text(from) : '', text(it)]);
       if (!view.isConnected) return;
       const diff = el('div', { class: 'wv-act-diff' }); diff.innerHTML = H().renderDiff(ft, tt);
       view.append(el('div', { class: 'wv-act-bar' }, from ? val(stamp(from.at), 'from') : null, from ? arrow() : null, val(stamp(it.at), 'to')), diff);
-      reveal(sec);
+      if (inSheet) reveal(inSheet, 36); else reveal(sec);
       return;
     }
-    const host = st.mount?.querySelector('.entity-body'); if (!host) return;
+    const host = inSheet ?? st.mount?.querySelector('.entity-body'); if (!host) return;
     const view = el('div', { class: 'wv-act-view top' }, el('div', { class: 'wv-act-card' },
       el('b', {}, it.field), val(it.from), arrow(), val(it.to, 'new')));
+    if (inSheet) { inSheet.append(view); reveal(inSheet, 36); return; }
     host.prepend(view);
     reveal(view);
   }
@@ -11924,13 +11945,17 @@ async function showView(id) {
   }
 }
 
+const homeReads = () => Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
+let bootHomeReads = null;
+
 async function showHome() {
   state.route = { page: 'home' };
   syncDocTitle(null);
   renderNav();
   const main = $('#main');
   const mine = WeaveStarters.userTables(state.schema);
-  const [wsRead, listRead, invRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
+  const [wsRead, listRead, invRead] = await (bootHomeReads ?? homeReads());
+  bootHomeReads = null;
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, invite: invRead.status === 'fulfilled' };
@@ -13637,6 +13662,8 @@ installPhoneBar();
 toastLayer();
 wireTheme();
 wireSkipLink();
+(state.healthP ??= api('GET', '/health')).catch(() => {});
+if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
 wireSearchButton();
 buildWsRail();

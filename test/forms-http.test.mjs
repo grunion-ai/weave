@@ -133,10 +133,10 @@ test('an interleaved request cannot change the authenticated form author or rece
   t.after(() => post.destroy());
   post.write(payload.slice(0, -1));
   const deadline = Date.now() + 5000;
-  while (w.actor !== 'alice' && Date.now() < deadline) await setImmediate();
-  assert.equal(w.actor, 'alice');
+  while (w.actorName(w.actor) !== 'alice' && Date.now() < deadline) await setImmediate();
+  assert.equal(w.actorName(w.actor), 'alice');
   assert.equal((await fetch(`${base}/api/forms/${form.id}`, { headers: { Authorization: `Bearer ${bob}` } })).status, 200);
-  assert.equal(w.actor, 'bob');
+  assert.equal(w.actorName(w.actor), 'bob');
   post.end(payload.slice(-1));
   const result = await finished;
   assert.equal(result.status, 201);

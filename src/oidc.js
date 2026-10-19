@@ -89,7 +89,7 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       const verifier = randomBytes(48).toString('base64url');
       const url = new URL(doc.authorization_endpoint);
       for (const [k, v] of Object.entries({
-        response_type: 'code', client_id: clientId, redirect_uri: redirectUri, scope: 'openid email',
+        response_type: 'code', client_id: clientId, redirect_uri: redirectUri, scope: 'openid email profile',
         state, nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
       })) url.searchParams.set(k, v);
       if (fresh) url.searchParams.set('prompt', doc.prompt_values_supported?.includes('select_account') ? 'login select_account' : 'login');
@@ -114,7 +114,8 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       const tokens = await getJson(doc.token_endpoint, { method: 'POST', headers, body: form.toString() });
       const claims = await verifyIdToken(tokens.id_token, { nonce, doc });
       const email = claims.email_verified === true && typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
-      return { issuer, subject: String(claims.sub), ...(email ? { email } : {}) };
+      const name = typeof claims.name === 'string' ? claims.name.trim().replace(/\s+/g, ' ').slice(0, 80) : '';
+      return { issuer, subject: String(claims.sub), ...(email ? { email } : {}), ...(name ? { name } : {}) };
     },
     async identify(accessToken) {
       const key = createHash('sha256').update(String(accessToken)).digest('hex');
