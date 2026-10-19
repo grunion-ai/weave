@@ -1635,7 +1635,7 @@ Door C signs people in with one OpenID Connect (OIDC) provider. The provider has
 
 Signing in at the provider creates no account in weave. An architect either invites a new person to a workspace (below, **Invite a new person**), which makes the account when they sign in, or links an existing weave account by minting an invite: a one-time link that lasts 7 days. The person opens it and signs in at the provider, and weave stores the provider's issuer and subject (the \`sub\` claim) on the account as an identity. From then on the subject alone signs that person in.
 
-weave asks the provider for the \`openid\` and \`email\` scopes (Feature #290, which reverses Feature #252 for the email claim only). It keeps one email address per sign-in identity, and only when the provider marks it verified; it never stores a name, picture or other profile claim. The address lets the start page list the invites waiting for a person as soon as they sign in, gives notification email a recipient, and shows architects who each member is in the **Invite people** dialog. A person sees their own address at \`/api/auth/me\`; deleting the account or unlinking the identity deletes it, and \`weave export\` leaves it out. An identity linked before this release gets its address at its next sign-in; nothing is guessed from old data.
+weave asks the provider for the \`openid\`, \`email\` and \`profile\` scopes (Feature #290 for the email claim, Issue #935 for the name). It keeps one email address per sign-in identity, and only when the provider marks it verified. It reads the profile name to name the account a person creates at the start page, and never stores a picture or any other profile claim. The address lets the start page list the invites waiting for a person as soon as they sign in, gives notification email a recipient, and shows architects who each member is in the **Invite people** dialog. A person sees their own address at \`/api/auth/me\`; deleting the account or unlinking the identity deletes it, and \`weave export\` leaves it out. An identity linked before this release gets its address at its next sign-in; nothing is guessed from old data.
 
 A hosted provider with open sign-up lets anyone create a user there. A sign-in at the provider proves who someone is, and weave admits that person only after they have redeemed an invite for an account. weave keeps only the invite's hash, like a token or a session, and an invite works once.
 
@@ -1649,7 +1649,7 @@ Add your own fields to Users like on any table, and point a relation at it from 
 
 ## Application at the provider
 
-Register an OAuth or OIDC application that uses the authorization code flow with PKCE, the scope \`openid\` and one redirect URI:
+Register an OAuth or OIDC application that uses the authorization code flow with PKCE, the scopes \`openid\`, \`email\` and \`profile\` and one redirect URI:
 
 \`\`\`
 <WEAVE_ORIGIN>/api/auth/oidc/callback

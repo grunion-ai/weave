@@ -59,20 +59,21 @@ async function serve() {
   return { dir, main, at, apex, follow, signInAtStart, reopen, idp, invite, architect, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
-test('oidc: the verified email comes back normalised; an unverified one, a name or a picture never does', async () => {
+test('oidc: the verified email and the profile name come back normalised; an unverified email or a picture never does (Issue #935)', async () => {
   const idp = await startIdp();
   try {
     const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret });
     const redeem = async (claims) => {
       const trip = await oidc.begin({ redirectUri: 'http://localhost/cb' });
-      assert.equal(new URL(trip.url).searchParams.get('scope'), 'openid email');
+      assert.equal(new URL(trip.url).searchParams.get('scope'), 'openid email profile');
       const back = idp.approve(trip.url, claims);
       return oidc.redeem({ code: back.searchParams.get('code'), redirectUri: 'http://localhost/cb', verifier: trip.verifier, nonce: trip.nonce });
     };
-    const extra = { name: 'Kyle A', picture: 'https://img.example/k.png', given_name: 'Kyle' };
-    assert.deepEqual(await redeem({ sub: 'u1', email: ' Kyle@Example.COM ', email_verified: true, ...extra }), { issuer: idp.issuer, subject: 'u1', email: 'kyle@example.com' });
-    assert.deepEqual(await redeem({ sub: 'u2', email: 'kyle@example.com', email_verified: false, ...extra }), { issuer: idp.issuer, subject: 'u2' });
+    const extra = { name: '  Kyle   A ', picture: 'https://img.example/k.png', given_name: 'Kyle' };
+    assert.deepEqual(await redeem({ sub: 'u1', email: ' Kyle@Example.COM ', email_verified: true, ...extra }), { issuer: idp.issuer, subject: 'u1', email: 'kyle@example.com', name: 'Kyle A' });
+    assert.deepEqual(await redeem({ sub: 'u2', email: 'kyle@example.com', email_verified: false, ...extra }), { issuer: idp.issuer, subject: 'u2', name: 'Kyle A' });
     assert.deepEqual(await redeem({ sub: 'u3', email: 'kyle@example.com', email_verified: 'true' }), { issuer: idp.issuer, subject: 'u3' }, 'only a boolean true counts');
+    assert.deepEqual(await redeem({ sub: 'u4', name: '   ', picture: 'https://img.example/k.png' }), { issuer: idp.issuer, subject: 'u4' }, 'a blank name is no name');
   } finally { idp.stop(); }
 });
 
@@ -143,7 +144,22 @@ test('start: a verified address sees its pending invites after sign-in and accep
   } finally { s.stop(); }
 });
 
-test('privacy: the policy says weave keeps one verified email per sign-in and nothing else from the profile', () => {
+test('privacy: the policy says weave keeps one verified email per sign-in, uses the profile name for the account and nothing else', () => {
   assert.match(PRIVACY, /one verified email address for each sign-in/);
-  assert.match(PRIVACY, /no name, picture or other details/);
+  assert.match(PRIVACY, /the name on your provider profile/);
+  assert.match(PRIVACY, /no picture or other details/);
+});
+
+test('privacy: the scope weave asks for and the policy agree (Issue #935)', async () => {
+  const idp = await startIdp();
+  try {
+    const trip = await createOidc({ issuer: idp.issuer, clientId: idp.clientId }).begin({ redirectUri: 'http://localhost/cb' });
+    const scope = new URL(trip.url).searchParams.get('scope').split(' ');
+    const said = {
+      email: /your email address/.test(PRIVACY),
+      profile: /the name on your provider profile/.test(PRIVACY) && !/no name/.test(PRIVACY),
+    };
+    assert.deepEqual({ email: scope.includes('email'), profile: scope.includes('profile') }, said, `scope "${scope.join(' ')}" and the privacy policy describe different claims`);
+    assert.ok(!scope.some((s) => !['openid', 'email', 'profile'].includes(s)), 'every scope requested is one the policy describes');
+  } finally { idp.stop(); }
 });
