@@ -540,10 +540,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const from = hub.entries().find(([, x]) => x !== w && !x.state.meta.deletedAt && x.verifyToken(token))?.[1];
       return from ? { ...from.verifyToken(token), role: 'observer' } : null;
     };
-    const sessionOn = (w) => {
+    const crossSeat = (w) => {
       const root = hub.get(hub.defaultName);
-      return ownSession(w) ?? (w !== root && !cookies[outName(w)] ? ownSession(root) : null) ?? docsVisitor(w);
+      if (w === root || cookies[outName(w)]) return null;
+      const base = ownSession(root);
+      if (!base) return null;
+      for (const id of base.identities ?? []) {
+        const acct = w.accountForIdentity({ issuer: id.issuer, subject: id.subject }, { touch: false });
+        if (acct) return { ...base, role: acct.role };
+      }
+      return null;
     };
+    const sessionOn = (w) => ownSession(w) ?? crossSeat(w) ?? docsVisitor(w);
     const authz = rx.header('authorization');
     let oauth = null;
     let mcpDoor = false;
