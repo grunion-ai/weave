@@ -902,6 +902,7 @@ function crumbIconEl(c) {
 function crumbInner(c) {
   return [
     crumbIconEl(c),
+    c.kind === 'row' && c.current && c.table ? el('span', { class: 'crumb-tbl' }, c.table) : null,
     c.publicId != null ? el('span', { class: 'crumb-pid' }, `#${c.publicId}`) : null,
     el('span', { class: 'crumb-nm' }, c.label ?? ''),
   ];
