@@ -740,7 +740,7 @@
     try { me = await getJson('/api/start'); } catch (err) { main.textContent = err.message; return; }
     entry = q;
     s = begin(me, q);
-    if (location.search || location.hash) history.replaceState(null, '', '/start');
+    if (location.search || location.hash) history.replaceState(null, '', q.pick ? '/start?pick=1' : '/start');
     globalThis.WeaveConsent?.start(me.analytics);
     render();
     if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');

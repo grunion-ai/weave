@@ -1356,7 +1356,7 @@ async function personalMenu(btn) {
     ...(globalThis.WeaveConsent ? [{ label: 'Cookies', icon: 'lucide:shield-check', section: 'settings', className: 'nav-cookies-row', run: () => globalThis.WeaveConsent.ask() }] : []),
     ...(signedIn ? [
       { label: 'Sign out', hint: version, icon: 'lucide:log-out', section: 'organize', title: `Sign out of ${ws}`, run: () => signOutOf([WS_PREFIX]) },
-      { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutOf(everywhere) },
+      { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutEverywhere(everywhere) },
     ] : []),
   ], {
     anchor: btn, className: 'nav-personal-menu', label: 'Your menu',
@@ -1364,10 +1364,18 @@ async function personalMenu(btn) {
   });
 }
 
+const postLogout = (url) => fetch(url, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin',
+});
+
 async function signOutOf(prefixes) {
-  await Promise.allSettled([...new Set(prefixes)].map((p) => fetch(`${p}/api/auth/logout`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin',
-  })));
+  await Promise.allSettled([...new Set(prefixes)].map((p) => postLogout(`${p}/api/auth/logout`)));
+  location.assign(`${WS_PREFIX}/auth?signed-out=1`);
+}
+
+async function signOutEverywhere(prefixes) {
+  const res = await postLogout(`${WS_PREFIX}/api/auth/logout?everywhere=1`).catch(() => null);
+  if (res?.status === 404) return signOutOf(prefixes);
   location.assign(`${WS_PREFIX}/auth?signed-out=1`);
 }
 
@@ -2639,6 +2647,13 @@ async function toggleLinkPreview(w, on, after) {
 
 const TRASHED = 'Moved to trash';
 
+function reopenAfterUndo(href, open, stayed) {
+  if (!open) return null;
+  if (!stayed) return href;
+  location.hash = href;
+  return null;
+}
+
 function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
   return {
     label: 'Move to trash', danger: true,
@@ -2647,14 +2662,15 @@ function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
         await remove();
         await loadSchema();
         const where = await after();
+        const landed = location.hash;
         toast(TRASHED, false, {
           label: 'Undo',
           run: async () => {
             try {
               await restore();
               await loadSchema();
-              await undone(where);
-              toast('Restored');
+              const href = await undone(where, location.hash === landed);
+              toast('Restored', false, typeof href === 'string' ? { label: 'Open', run: () => { location.hash = href; } } : null);
             } catch (err) { toast(err.message, true); }
           },
         });
@@ -2715,7 +2731,7 @@ const MENU_ROWS = {
         if (open) location.hash = `#/space/${db.spaceId}`;
         return open;
       },
-      undone: (open) => { if (open) location.hash = `#/table/${db.id}`; },
+      undone: (open, stayed) => reopenAfterUndo(`#/table/${db.id}`, open, stayed),
     }),
   }),
   record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null } = {}) => ({
@@ -2759,7 +2775,7 @@ const MENU_ROWS = {
         }
         return open;
       },
-      undone: (open) => { if (open) location.hash = `#/space/${space.spaceId}`; },
+      undone: (open, stayed) => reopenAfterUndo(`#/space/${space.spaceId}`, open, stayed),
     }),
   }),
   'share-page': (v) => ({
@@ -2772,13 +2788,14 @@ const MENU_ROWS = {
         if (open || state.route?.page === 'home') showHome();
         return open;
       },
-      undone: (open) => {
-        if (open) location.hash = `#/view/${v.id}`;
-        else if (state.route?.page === 'home') showHome();
+      undone: (open, stayed) => {
+        if (!(open && stayed) && state.route?.page === 'home') showHome();
+        return reopenAfterUndo(`#/view/${v.id}`, open, stayed);
       },
     }),
   }),
   workspace: (w, { after = null } = {}) => ({
+    invite: w.invite ? { label: 'Invite people…', run: () => inviteDialog() } : null,
     'link-preview': typeof w.linkPreview === 'boolean' ? {
       label: 'Link preview before sign-in', switch: w.linkPreview,
       run: () => toggleLinkPreview(w, w.linkPreview, after),
@@ -3743,7 +3760,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
-    layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
+    layout: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -11911,10 +11928,10 @@ async function showHome() {
   renderNav();
   const main = $('#main');
   const mine = WeaveStarters.userTables(state.schema);
-  const [wsRead, listRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces')]);
+  const [wsRead, listRead, invRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
-  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview };
+  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, invite: invRead.status === 'fulfilled' };
   const wsCtx = () => ({ after: () => showHome() });
   const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
     return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
@@ -11935,7 +11952,10 @@ async function showHome() {
       description: ws.description,
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
       lead: wsLogoButton(here, !!ws.logo),
-      actions: [kindDots('workspace', here, wsCtx, { title: 'Workspace actions' })],
+      actions: [
+        here.invite ? el('button', { class: 'btn btn-sm wv-invite-btn', type: 'button', onclick: () => inviteDialog() }, 'Invite') : null,
+        kindDots('workspace', here, wsCtx, { title: 'Workspace actions' }),
+      ],
     }),
     ...(mine.length ? [] : [emptyWorkspace()]),
     el('div', { class: 'card list-rows system-tables' },
@@ -11983,7 +12003,6 @@ async function showHome() {
       renderTable(body, reg, mineOnly(res.items), onSaved, onAdd);
     });
   }
-  await membersSection(main);
 }
 
 const ROLE_LABELS = { editor: 'Editor, paid seat', observer: 'Observer, free', architect: 'Architect, paid' };
@@ -11995,26 +12014,29 @@ function seatNote(billing) {
     : 'No plan covers this workspace yet, so Editors and Architects work as Observers.';
   return el('div', { class: 'wv-invite-note wv-seat-note' }, `${lead} Observers stay free. `, el('a', { href: `${WS_PREFIX}/billing` }, 'Billing'));
 }
-async function membersSection(parent) {
+async function inviteDialog() {
   const [acc, inv, bill] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites'), api('GET', '/billing')]);
-  if (acc.status !== 'fulfilled' || inv.status !== 'fulfilled') return;
+  if (acc.status !== 'fulfilled' || inv.status !== 'fulfilled') return toast((acc.reason ?? inv.reason).message, true);
   const billing = bill.status === 'fulfilled' ? bill.value : null;
-  const body = el('div', { class: 'wv-members' });
-  const box = el('details', { class: 'wv-members-box' }, el('summary', {}, summaryChevron(), 'Members'), body);
   const day = (iso) => String(iso ?? '').slice(0, 10);
+  const email = el('input', { class: 'form-control', type: 'email', placeholder: 'name@company.com', 'aria-label': 'Email to invite' });
+  const role = pickerSelect({ name: 'invite-role', title: 'Role', value: 'editor',
+    options: Object.entries(ROLE_LABELS).map(([id, label]) => ({ id, label })) });
+  const body = el('div', { class: 'wv-members' });
+  const send = async () => {
+    if (!email.checkValidity() || !email.value.trim()) { email.reportValidity(); return; }
+    try {
+      const made = await api('POST', '/invites', { email: email.value.trim(), role: role.input.value });
+      if (made.mailError) toast(`The invite email was not sent: ${made.mailError}`, true);
+      const [a2, i2] = await Promise.all([api('GET', '/accounts'), api('GET', '/invites')]);
+      email.value = '';
+      draw(a2, i2, made);
+    } catch (err) { toast(err.message, true); }
+  };
+  email.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+  const form = el('div', { class: 'wv-invite-form' }, email, role,
+    el('button', { class: 'btn btn-primary wv-invite-send', type: 'button', onclick: send }, 'Invite'));
   const draw = (accounts, invites, link = null) => {
-    const email = el('input', { class: 'form-control', type: 'email', placeholder: 'name@company.com', 'aria-label': 'Email to invite', required: '' });
-    const role = pickerSelect({ name: 'invite-role', title: 'Role', value: 'editor',
-      options: Object.entries(ROLE_LABELS).map(([id, label]) => ({ id, label })) });
-    const form = el('form', { class: 'wv-invite-form', onsubmit: async (ev) => {
-      ev.preventDefault();
-      try {
-        const made = await api('POST', '/invites', { email: email.value.trim(), role: role.input.value });
-        if (made.mailError) toast(`The invite email was not sent: ${made.mailError}`, true);
-        const [a2, i2] = await Promise.all([api('GET', '/accounts'), api('GET', '/invites')]);
-        draw(a2, i2, made);
-      } catch (err) { toast(err.message, true); }
-    } }, email, role, el('button', { class: 'btn btn-primary', type: 'submit' }, 'Invite'));
     const shown = link?.mailed ? el('div', { class: 'wv-invite-link card' },
       el('div', { class: 'wv-invite-link-head' }, `Emailed ${link.email}`),
       el('div', { class: 'wv-invite-note' }, 'weave emailed the sign-in link. It works once and expires in 7 days.'))
@@ -12026,15 +12048,16 @@ async function membersSection(parent) {
       el('div', { class: 'wv-invite-note' }, link.mailError
         ? 'Send this link yourself: the email did not go out. It works once and expires in 7 days.'
         : 'Send this link yourself: weave does not send email yet. It works once and expires in 7 days.')) : null;
-    body.replaceChildren(
-      el('div', { class: 'wv-members-sub' }, 'Accounts'),
+    body.replaceChildren(...[
+      form, seatNote(billing), shown,
+      el('div', { class: 'wv-members-sub' }, 'Members'),
       accounts.length ? el('div', { class: 'card list-rows' },
         ...accounts.map((a) => el('div', { class: 'list-row' },
           el('span', {}, a.name),
           ...[...new Set((a.identities ?? []).map((i) => i.verifiedEmail).filter(Boolean))].map((mail) => el('span', { class: 'pid wv-member-email' }, mail)),
           el('span', { class: 'spacer' }),
-          el('span', { class: 'pid' }, ROLE_LABELS[a.role] ?? a.role))))
-        : el('div', { class: 'wv-members-empty' }, 'None'),
+          el('span', { class: 'pid' }, ROLE_LABELS[a.role] ?? a.role)))) : null,
+      accounts.length > 1 ? null : el('div', { class: 'wv-members-empty' }, 'No one else has joined yet.'),
       el('div', { class: 'wv-members-sub' }, 'Pending invites'),
       invites.length ? el('div', { class: 'card list-rows' },
         ...invites.map((i) => el('div', { class: 'list-row', dataset: { invite: i.id } },
@@ -12048,11 +12071,11 @@ async function membersSection(parent) {
               draw(accounts, await api('GET', '/invites'));
             } catch (err) { toast(err.message, true); }
           } }, 'Revoke'))))
-        : el('div', { class: 'wv-members-empty' }, 'None'),
-      form, seatNote(billing), shown);
+        : el('div', { class: 'wv-members-empty' }, 'No pending invites.'),
+    ].filter(Boolean));
   };
   draw(acc.value, inv.value);
-  parent.append(box);
+  modal('Invite people', [body], null, 'Done');
 }
 
 function navigateToResult(hit) {
@@ -12732,6 +12755,11 @@ function renderRoute() {
   return Promise.resolve().then(dispatchRoute).finally(cancelSkeleton);
 }
 
+function rememberRoute() {
+  const landed = WeaveResume.follow(location, globalThis.localStorage);
+  if (landed !== location.hash) history.replaceState(history.state, '', landed);
+}
+
 function dispatchRoute() {
   teardownDocEditors();
   dockClose();
@@ -12740,6 +12768,7 @@ function dispatchRoute() {
     if (!pop.classList.contains('table-view-popover') || pop.tableId !== nextTable) pop.remove();
   }
   state.pageName = null;
+  rememberRoute();
   const hash = location.hash || '#/';
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
   if (!(dbM && tableChromeOn(dbM[1]))) {
@@ -13063,8 +13092,9 @@ async function buildWsRail() {
           e.stopPropagation();
           const at = e.clientX || e.clientY ? { point: { x: e.clientX, y: e.clientY } } : { anchor: chip };
           if (openMenu?.trigger === chip) { openMenu.close(); return; }
-          const record = await wsApi(w, 'GET', '/workspace').catch(() => null);
-          const o = { ...w, title: record?.title ?? w.name, linkPreview: record ? !!record.linkPreview : undefined };
+          const [record, invite] = await Promise.all([wsApi(w, 'GET', '/workspace').catch(() => null),
+            w.name === current ? api('GET', '/invites').then(() => true, () => false) : false]);
+          const o = { ...w, title: record?.title ?? w.name, linkPreview: record ? !!record.linkPreview : undefined, invite };
           const items = menuFor('workspace', o, { after: () => { if (w.name === current && state.route?.page === 'home') showHome(); } });
           if (!items.length) return;
           menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', o), label: `${w.name} workspace` });
@@ -13168,7 +13198,7 @@ function wireWsNew() {
     menu([
       { label: copy.newWorkspace, section: 'organize', run: newWorkspaceForm },
       { label: copy.addLogin, section: 'organize', run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1`; } },
-      { label: copy.find, section: 'organize', run: () => { location.href = start; } },
+      { label: copy.find, section: 'organize', run: () => { location.href = `${start}?pick=1`; } },
     ], { anchor: btn, className: 'ws-plus', label: 'Workspaces' });
   });
   async function newWorkspaceForm() {

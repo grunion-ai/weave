@@ -31,7 +31,7 @@ if (s) {
       await chip(page, name).click({ button: 'right' });
       await page.waitForSelector('.ws-ctx .wv-menu-row');
       const items = (await menuItems(page)).map((t) => t.trim());
-      assert.deepEqual(items, ['Link preview before sign-in'], `${name} opens its menu without a delete: ${items}`);
+      assert.deepEqual(items.filter((t) => t !== 'Invite people…'), ['Link preview before sign-in'], `${name} opens its menu without a delete: ${items}`);
       await page.keyboard.press('Escape');
       assert.equal(await page.locator('.ws-ctx').count(), 0, 'Escape closes the menu');
     }

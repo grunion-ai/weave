@@ -184,7 +184,7 @@ if (s) {
       await page.click('.table-view-btn');
       await page.click('.view-layout .seg-opt:text-is("Table")');
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      assert.equal(view().layout, undefined);
+      assert.equal(view().layout, 'table', 'a Table choice is kept (Issue #740)');
       assert.deepEqual(view().group, [{ field: 'Trip', heading: 'chip' }, { field: 'Priority' }], 'Table keeps the list keys');
       if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
       await page.click('.view-layout .seg-opt:text-is("List")');

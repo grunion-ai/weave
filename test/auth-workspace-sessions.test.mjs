@@ -198,3 +198,28 @@ test('routes: the hub-root fallthrough still opens a member workspace for a root
 
   } finally { s.stop(); }
 });
+
+test('routes: signing out of a workspace opened through the hub-root fallthrough leaves the root and other members signed in (Issue #716)', async () => {
+  const s = await serve();
+  try {
+    const b = browser(s);
+    await b.signIn('home');
+    assert.equal((await b.call('GET', '/w/gamma/api/schema')).status, 200, 'gamma opens through the fallthrough');
+    assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 200);
+    assert.equal((await b.call('POST', '/w/gamma/api/auth/logout')).status, 200);
+    assert.equal((await b.call('GET', '/api/schema')).status, 200, 'the root is still signed in');
+    assert.equal(s.home.w.listSessions('kyle').length, 1, 'the root session is not revoked');
+    assert.equal((await b.call('GET', '/w/gamma/api/schema')).status, 401, 'gamma is signed out in this browser');
+    assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 200, 'the sign-out is scoped to gamma');
+
+    await b.signIn('gamma');
+    assert.equal((await b.call('GET', '/w/gamma/api/schema')).status, 200, 'signing in to gamma again opens it');
+
+    await b.call('POST', '/w/gamma/api/auth/logout');
+    const rootCookie = `${nameOf(s.home.w)}=${b.jar.get(nameOf(s.home.w))}`;
+    assert.equal((await s.call('GET', '/api/schema', { cookie: rootCookie })).status, 200);
+    assert.equal((await b.call('POST', '/api/auth/logout?everywhere=1')).status, 200);
+    assert.equal(b.jar.size, 0, 'sign out everywhere clears the root session and the gamma marker');
+    assert.equal((await s.call('GET', '/api/schema', { cookie: rootCookie })).status, 401, 'and ends the root session');
+  } finally { s.stop(); }
+});

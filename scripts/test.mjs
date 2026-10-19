@@ -2,6 +2,7 @@
 
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { availableParallelism, tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -50,12 +51,39 @@ export function readFailed(failedPath) {
 
 export const childEnv = ({ NODE_TEST_CONTEXT, ...rest } = process.env) => rest;
 
+export function browserProblem(env = process.env, root = ROOT) {
+  let modulePath;
+  try { modulePath = createRequire(join(root, 'package.json')).resolve('playwright'); } catch { return undefined; }
+  const kind = env.WEAVE_BROWSER || 'chromium';
+  const probe = `import(${JSON.stringify(pathToFileURL(modulePath).href)}).then(async (m) => { const pw = m.default || m; await (await pw[${JSON.stringify(kind)}].launch()).close(); })`
+    + `.catch((e) => { process.stderr.write(String(e.message).split('\\n')[0]); process.exit(1); });`;
+  const r = spawnSync(process.execPath, ['-e', probe], { env, encoding: 'utf8', timeout: 60_000 });
+  if (r.error) return `${kind} did not launch: ${r.error.message}`;
+  return r.status === 0 ? null : (r.stderr.trim().split('\n')[0] || `${kind} did not launch (exit ${r.status})`);
+}
+
 export function run(files, extraArgs = [], opts = {}) {
   if (!files.length) throw new Error('Empty test selection refused');
+  const { out = console.log, browserCheck = () => browserProblem(opts.env ?? childEnv()) } = opts;
   const { unit, browser } = lanes(files);
+  if (browser.length) {
+    const problem = browserCheck();
+    if (problem) {
+      out(`# BROWSER MISSING: ${problem}`);
+      out(`# Install it with \`npx playwright install ${process.env.WEAVE_BROWSER || 'chromium'}\` from this checkout, then rerun.`);
+      out('# RESULT red: browser missing, no lane ran');
+      return 1;
+    }
+  }
   let code = 0;
-  if (unit.length) code = runLane(unit, extraArgs, 0, opts) || code;
-  if (browser.length) code = runLane(browser, extraArgs, browserConcurrency(), opts) || code;
+  const said = [];
+  for (const [name, lane, cap] of [['unit', unit, 0], ['browser', browser, browserConcurrency()]]) {
+    if (!lane.length) continue;
+    const status = runLane(lane, extraArgs, cap, opts);
+    said.push(`${name} lane ${status ? 'red' : 'green'}`);
+    code = status || code;
+  }
+  out(`# RESULT ${code ? 'red' : 'green'}: ${said.join(', ')}`);
   return code;
 }
 

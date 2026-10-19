@@ -64,6 +64,40 @@ if (s) {
     } finally { await p.close(); }
   });
 
+  test('the sticky section head never paints over the Activity panel head while the record scrolls (Issue #587, Feature #348)', async () => {
+    const p = await page(`#/entity/${rowId}`);
+    try {
+      await p.waitForSelector('#main .doc-section-head');
+      await p.click('#main .activity-btn');
+      await p.waitForSelector('aside.wv-activity .wv-act-head');
+      const pinned = [];
+      for (const y of [0, 200, 400, 800]) {
+        await p.evaluate((top) => { document.querySelector('#main').scrollTop = top; }, y);
+        await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        const m = await p.evaluate(() => {
+          const aside = document.querySelector('aside.wv-activity');
+          const head = aside.querySelector('.wv-act-head').getBoundingClientRect();
+          const section = document.querySelector('#main .doc-section-head');
+          const sr = section.getBoundingClientRect();
+          const mid = head.top + head.height / 2;
+          const pts = [[head.left + 16, mid], [head.left + head.width / 2, mid], [head.right - 16, mid]];
+          return {
+            scrolled: document.querySelector('#main').scrollTop,
+            ownCard: !document.querySelector('#main').contains(aside),
+            sectionTop: Math.round(sr.top),
+            head: head.toJSON(),
+            hits: pts.map(([x, py]) => !!document.elementFromPoint(x, py)?.closest('aside.wv-activity')),
+          };
+        });
+        assert.ok(m.head.top >= 0 && m.head.bottom <= 900, `scroll ${y}: the panel head stays on screen (${JSON.stringify(m.head)})`);
+        assert.deepEqual(m.hits, [true, true, true], `scroll ${y} (at ${m.scrolled}): nothing paints over the panel head`);
+        assert.ok(m.ownCard, `scroll ${y}: the panel is its own card, outside the scrolling record`);
+        if (y >= 400) pinned.push(m.sectionTop);
+      }
+      assert.equal(pinned[0], pinned[1], `the section head is pinned between scroll 400 and 800, so the case covers its sticky state (${pinned})`);
+    } finally { await p.close(); }
+  });
+
   test('in the peek Activity opens in the context pane right of the entity pane, and neither the table nor the record moves under it (Feature #348)', async () => {
     const p = await page(`#/table/${tableId}?e=${rowId}`);
     try {

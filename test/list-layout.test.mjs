@@ -77,7 +77,7 @@ test('null clears a key, Table keeps the list keys, and from copies them', () =>
   const { w } = plans();
   w.tableView('To-do/Standard', { layout: 'list', group: ['Priority'], completedBy: 'Done', nest: 'Parent' });
   const table = w.tableView('To-do/Standard', { layout: 'table' });
-  assert.equal(table.layout, undefined, 'table is the default and reads as nothing');
+  assert.equal(table.layout, 'table', 'a Table choice is kept, so a phone can tell it from a view nobody set (Issue #740)');
   assert.deepEqual(table.group, [{ field: 'Priority' }], 'switching to Table loses nothing');
   const copy = w.tableView('To-do/Copy', { from: 'Standard', layout: 'list' });
   assert.equal(copy.completedBy, 'Done');
@@ -122,8 +122,23 @@ test('the Views registry row shows Layout and Group, and writing them writes the
   assert.equal(rowOf().fields.Group, 'Trip › Priority');
   w.updateEntity(rowOf().id, { Group: 'Trip' });
   assert.deepEqual(w.tableView('To-do/Standard').group, [{ field: 'Trip', heading: 'chip' }], 'a level that stays keeps its heading');
+  w.updateEntity(rowOf().id, { Layout: 'Table' });
+  assert.equal(w.tableView('To-do/Standard').layout, 'table');
+  assert.equal(rowOf().fields.Layout, 'table');
   w.updateEntity(rowOf().id, { Layout: '' });
   assert.equal(w.tableView('To-do/Standard').layout, undefined);
+});
+
+test('layout has three states: list, table, and unset, which null clears back to (Issue #740)', () => {
+  const { w } = plans();
+  assert.equal(w.tableView('To-do/Standard').layout, undefined, 'a new view has made no choice');
+  assert.equal(w.tableView('To-do/Standard', { layout: 'table' }).layout, 'table');
+  assert.equal(w.tableView('To-do/Standard', { layout: 'list' }).layout, 'list');
+  assert.equal(w.tableView('To-do/Standard', { layout: null }).layout, undefined);
+  w.tableView('To-do/Standard', { layout: 'table' });
+  const w2 = new Weave();
+  w2.applySchema(w.describeSchema());
+  assert.equal(w2.tableView('To-do/Standard').layout, 'table', 'a Table choice travels with the schema');
 });
 
 test('describeSchema carries layout, group, completedBy and nest into a fresh workspace; rows never travel', () => {

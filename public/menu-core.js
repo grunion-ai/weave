@@ -64,7 +64,7 @@
     doc: { export: ['md', 'mmd', 'html', 'pdf'] },
     space: { delete: ['delete'] },
     'share-page': { delete: ['delete'] },
-    workspace: { share: ['link-preview'] },
+    workspace: { share: ['invite', 'link-preview'] },
     field: { settings: ['settings'], organize: ['insert'], delete: ['delete'] },
   };
 

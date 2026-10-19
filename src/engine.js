@@ -2057,7 +2057,7 @@ export class Weave {
     if (v.density) out.density = v.density;
     if (v.deleted) out.deleted = true;
     if (typeof v.rollups === 'boolean') out.rollups = v.rollups;
-    if (v.layout === 'list') out.layout = 'list';
+    if (v.layout === 'list' || v.layout === 'table') out.layout = v.layout;
     const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ field: db.fields[l.field].name, ...ListCore.compactLevel(db.fields[l.field].type, l) }));
     if (group.length) out.group = group;
     if (db.fields[v.completedBy]) out.completedBy = db.fields[v.completedBy].name;
@@ -2130,8 +2130,8 @@ export class Weave {
 
   #writeListKeys(db, next, patch) {
     if (patch.layout !== undefined) {
-      if (patch.layout == null || patch.layout === 'table') delete next.layout;
-      else if (patch.layout === 'list') next.layout = 'list';
+      if (patch.layout == null || patch.layout === '') delete next.layout;
+      else if (patch.layout === 'list' || patch.layout === 'table') next.layout = patch.layout;
       else throw new WeaveError(`layout is table or list — got ${JSON.stringify(patch.layout)}`, 'invalid');
     }
     if (patch.group !== undefined) {
@@ -3093,7 +3093,7 @@ export class Weave {
       if ((vDoc.density ?? 'comfortable') !== (have?.density ?? 'comfortable')) patch.density = vDoc.density ?? 'comfortable';
       if (!!vDoc.deleted !== !!have?.deleted) patch.deleted = !!vDoc.deleted;
       if ((vDoc.rollups ?? null) !== (have?.rollups ?? null)) patch.rollups = vDoc.rollups ?? null;
-      if ((vDoc.layout ?? 'table') !== (have?.layout ?? 'table')) patch.layout = vDoc.layout ?? 'table';
+      if ((vDoc.layout ?? null) !== (have?.layout ?? null)) patch.layout = vDoc.layout ?? null;
       if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
       for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.phoneRow ?? null) !== JSON.stringify(have?.phoneRow ?? null)) {
@@ -4839,7 +4839,7 @@ export class Weave {
     if ('Density' in values) vp.density = String(take('Density') ?? '').trim() || 'comfortable';
     if ('Show Deleted' in values) vp.deleted = !!take('Show Deleted');
     if ('Rollup Row' in values) vp.rollups = !!take('Rollup Row');
-    if ('Layout' in values) vp.layout = String(take('Layout') ?? '').trim().toLowerCase() || 'table';
+    if ('Layout' in values) vp.layout = String(take('Layout') ?? '').trim().toLowerCase() || null;
     if ('Group' in values) {
       const names = ListCore.parseGroup(String(take('Group') ?? '')).map((l) => l.field);
       vp.group = names.map((n) => cur?.group?.find((l) => l.field.toLowerCase() === n.toLowerCase()) ?? n);

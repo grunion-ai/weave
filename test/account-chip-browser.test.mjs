@@ -31,7 +31,7 @@ if (s) {
   };
   const logoutCalls = (page) => {
     const seen = [];
-    page.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/api/auth/logout')) seen.push(new URL(r.url()).pathname); });
+    page.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/api/auth/logout')) { const u = new URL(r.url()); seen.push(u.pathname + u.search); } });
     return seen;
   };
 
@@ -97,13 +97,25 @@ if (s) {
     await ctx.close();
   });
 
-  test('sign out everywhere posts the logout of every workspace in the rail', async () => {
+  test('sign out everywhere sends one logout?everywhere=1 call, whatever the rail holds (Issue #719)', async () => {
     const { ctx, page } = await open('/');
     const calls = logoutCalls(page);
     await page.locator('#sidebar .nav-identity .nav-identity-more').click();
     const row = page.locator('.nav-personal-menu [role="menuitem"]', { hasText: 'Sign out everywhere' });
     await Promise.all([page.waitForURL('**/auth?signed-out=1'), row.click()]);
-    assert.deepEqual([...calls].sort(), ['/api/auth/logout', '/w/uno/api/auth/logout']);
+    assert.deepEqual(calls, ['/api/auth/logout?everywhere=1']);
+    await ctx.close();
+  });
+
+  test('sign out everywhere falls back to one logout per workspace when the single call answers 404 (Issue #719)', async () => {
+    const { ctx, page } = await open('/');
+    const calls = logoutCalls(page);
+    await page.route('**/api/auth/logout?everywhere=1', (route) => route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"Not found"}' }));
+    await page.locator('#sidebar .nav-identity .nav-identity-more').click();
+    const row = page.locator('.nav-personal-menu [role="menuitem"]', { hasText: 'Sign out everywhere' });
+    await Promise.all([page.waitForURL('**/auth?signed-out=1'), row.click()]);
+    assert.equal(calls[0], '/api/auth/logout?everywhere=1');
+    assert.deepEqual(calls.slice(1).sort(), ['/api/auth/logout', '/w/uno/api/auth/logout']);
     await ctx.close();
   });
 

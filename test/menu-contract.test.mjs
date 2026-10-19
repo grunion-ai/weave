@@ -110,7 +110,7 @@ test('rows carry menu roles and the trigger reports its state', () => {
 });
 
 test('the phone sheet reuses the picker sheet rules and gives rows 44px', () => {
-  assert.match(CSS, /\.chip-pop\.picker-pop, \.chip-pop\.wv-menu-sheet \{ position: fixed;/, 'one sheet rule for pickers and menus');
+  assert.match(CSS, /\.chip-pop\.picker-pop, \.chip-pop\.wv-menu-sheet, \.chip-pop\.table-group-popover \{ position: fixed;/, 'one sheet rule for pickers, menus and the group levels (Issue #809)');
   assert.match(CSS, /\.wv-menu-sheet \.wv-menu-row \{ min-height: 44px;/);
   assert.match(fnBody('menu'), /sheet = MENU_SHEET\.matches/, 'the sheet is the default under the phone breakpoint');
   assert.match(APP, /const MENU_SHEET = matchMedia\('\(max-width: 600px\)'\)/);
