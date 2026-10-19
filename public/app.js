@@ -3734,7 +3734,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
-    layout: 'table', group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
+    layout: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
