@@ -2357,6 +2357,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .crumb-item::after { content: ''; position: absolute; left: 0; top: 50%; width: 100%; height: max(100%, 44px); transform: translateY(-50%); }
   .crumb-path, .crumb-slot:not(.crumb-slot-cur), .crumb-slot > a.crumb-item { overflow: visible; }
   .icon-btn { min-width: 44px; min-height: 44px; }
+  .wv-invite-btn { min-width: 44px; min-height: 44px; }
   .ws-logo-pick { width: 44px; height: 44px; }
   .view-title { min-height: 44px; }
   #sidebar .ws-wordmark { min-height: 44px; }
