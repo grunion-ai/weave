@@ -10,7 +10,7 @@ const rgb = (c) => {
   const n = String(c).match(/[\d.]+/g).map(Number);
   return (c.startsWith('color(') ? n.slice(0, 3).map((v) => Math.round(v * 255)) : n.slice(0, 3)).join(',');
 };
-const DESKTOP = ['.table-search', '.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn', '.table-sort-btn', '.dots-btn'];
+const DESKTOP = ['.table-search', '.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn', '.table-sort-btn'];
 
 const s = await launch('phone table menu', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -52,7 +52,7 @@ if (s) {
       controls: Object.fromEntries(controls.map((q) => { const n = head.querySelector(`.crumb-actions ${q}`); return [q, shown(n) ? box(n) : null]; })),
       marked: head.querySelector('.crumb-actions .table-filter-btn')?.dataset.mark ?? null,
       sheet: shown(sheet) ? box(sheet) : null,
-      kebab: (() => { const k = head.querySelector('.crumb-actions .dots-btn'); return shown(k) ? { ...box(k), text: k.innerText.trim(), expanded: k.getAttribute('aria-expanded') } : null; })(),
+      kebab: (() => { const k = head.querySelector('.crumb-row > .dl-wrap .dots-btn'); return shown(k) ? { ...box(k), text: k.innerText.trim(), expanded: k.getAttribute('aria-expanded') } : null; })(),
       menu: shown(menu) ? {
         box: box(menu),
         sheet: menu.classList.contains('wv-menu-sheet'),
@@ -101,7 +101,7 @@ if (s) {
         } finally { await page.close(); }
       });
 
-      test(`on a phone the table sheet ends in a Table actions row that opens the table menu as a bottom sheet of 44px rows (${engine}, ${theme}, Issue #723, Feature #296)`, async () => {
+      test(`on a phone the header ⋮ beside the sliders button opens the table menu as a bottom sheet of 44px rows (${engine}, ${theme}, Issue #723, Feature #296, Issue #853)`, async () => {
         const page = await open(b, { profile, theme });
         try {
           await page.click('#main .table-tools-btn');
@@ -109,11 +109,12 @@ if (s) {
           let seen = await read(page, [...SHEET, ...FOLDED]);
           assert.equal(seen.controls['.table-search'], null, 'no second search in the sheet');
           assert.equal(seen.sortValue, 'None', 'the Sort row says the table is unsorted');
-          assert.ok(seen.kebab, 'the table menu trigger shows in the sheet');
-          assert.equal(seen.kebab.text, 'Table actions', 'as a labelled row');
+          assert.ok(seen.kebab, 'the table menu trigger stays in the header (Issue #853)');
+          assert.equal(await page.locator('#main .crumb-actions .dots-btn').count(), 0, 'the sheet holds no second trigger');
           assert.ok(seen.kebab.height >= 44, `a ${seen.kebab.height}px target`);
           assert.equal(seen.menus, 0, 'no menu opens until it is tapped');
-          await page.click('#main .crumb-actions .dots-btn');
+          await page.keyboard.press('Escape');
+          await page.click('#main .crumb-row > .dl-wrap .dots-btn');
           await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
           await settled(page.locator('.chip-pop.wv-menu'));
           seen = await read(page, [...SHEET, ...FOLDED]);
@@ -131,7 +132,8 @@ if (s) {
           assert.notEqual(rgb(seen.menu.rows[0].color), rgb(del), 'and the others are not');
           await page.keyboard.press('Escape');
           await page.waitForSelector('.chip-pop.wv-menu', { state: 'detached' });
-          assert.ok((await read(page, SHEET)).sheet, 'Escape closes the menu and leaves the toolbar sheet');
+          await page.click('#main .table-tools-btn');
+          await settled(page.locator('#main .crumb-actions'));
           await page.click('#main .crumb-actions .table-sort-btn');
           await page.waitForSelector('.table-sort-popover .table-sort-field');
           await page.click('.table-sort-popover .table-sort-field:has-text("Severity")');
@@ -176,6 +178,7 @@ if (s) {
       assert.equal(seen.tools, null);
       for (const q of DESKTOP) assert.ok(seen.controls[q] && seen.controls[q].height < 40, `${q} shows inline at its desktop size`);
       assert.equal(seen.kebab?.text, '', 'the kebab keeps its icon-only face on a desktop');
+      assert.ok(seen.kebab.height < 40, 'at its desktop size, on the crumb row (Issue #853)');
     } finally { await page.close(); }
   });
 }

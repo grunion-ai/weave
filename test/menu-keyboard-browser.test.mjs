@@ -24,12 +24,12 @@ if (s) {
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${base}/${table}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .crumb-actions .dots-btn');
+    await page.waitForSelector('#main .crumb-row .dots-btn');
     return page;
   };
   const focused = (page) => page.evaluate(() => {
     const a = document.activeElement;
-    return { text: a?.querySelector?.('.wv-menu-label, .hold-label')?.textContent ?? a?.textContent?.trim() ?? '', role: a?.getAttribute?.('role') ?? null, trigger: !!a?.matches?.('#main .crumb-actions .dots-btn') };
+    return { text: a?.querySelector?.('.wv-menu-label, .hold-label')?.textContent ?? a?.textContent?.trim() ?? '', role: a?.getAttribute?.('role') ?? null, trigger: !!a?.matches?.('#main .crumb-row .dots-btn') };
   });
   const press = async (page, key) => { await page.keyboard.press(key); return (await focused(page)).text; };
   const menuOpen = (page) => page.locator('.chip-pop.wv-menu[role="menu"]').count();
@@ -38,7 +38,7 @@ if (s) {
     test(`a ⋮ menu opens from the keyboard on its first row and walks with arrows, Home, End and typeahead (${theme}, Issue #763)`, async () => {
       const page = await open(theme);
       try {
-        const trigger = page.locator('#main .crumb-actions .dots-btn');
+        const trigger = page.locator('#main .crumb-row .dots-btn');
         assert.equal(await trigger.getAttribute('aria-haspopup'), 'menu');
         await trigger.focus();
         await page.keyboard.press('Enter');
@@ -87,7 +87,7 @@ if (s) {
   test('Enter on a row runs it and closes the menu (Issue #763)', async () => {
     const page = await open('light');
     try {
-      await page.locator('#main .crumb-actions .dots-btn').focus();
+      await page.locator('#main .crumb-row .dots-btn').focus();
       await page.keyboard.press('Enter');
       await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
       await page.keyboard.type('share');
