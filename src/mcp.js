@@ -430,7 +430,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_activity',
-    description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
+    description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
     inputSchema: {
       type: 'object',
       properties: {
