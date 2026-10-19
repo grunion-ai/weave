@@ -19,7 +19,7 @@ const ROWS = {
   doc: ['Markdown', 'Mermaid', 'HTML', 'PDF'],
   space: ['Move to trash'],
   'share-page': ['Move to trash'],
-  workspace: ['Link preview before sign-in'],
+  workspace: ['Invite people…', 'Link preview before sign-in'],
   field: ['Field settings…', 'Insert field…', 'Move to trash'],
 };
 
@@ -130,7 +130,7 @@ if (s) {
           const names = Object.keys(seen);
           const want = ROWS[k.kind] ?? seen[names[0]].rows;
           for (const name of names) assert.deepEqual(seen[name].rows, want, `${name} opens the ${k.kind} menu`);
-          if (k.kind === 'workspace') assert.equal(want[0], 'Link preview before sign-in', 'the workspace Share section is the link preview switch');
+          if (k.kind === 'workspace') assert.deepEqual(want, ['Invite people…', 'Link preview before sign-in'], 'the workspace Share section invites, then the link preview switch (Issue #759)');
           for (const name of names.filter((n) => /right-click|nav row|tray/.test(n))) assert.equal(seen[name].head, 1, `${name} names the object in a head row`);
         } finally { await page.close(); }
       });

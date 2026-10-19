@@ -748,16 +748,17 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .list-row.list-row-add:hover { background: none; }
 .list-rows > .card-title { margin: 0; padding: 12px 14px 4px; }
 .list-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wv-schema, .wv-members-box { margin-top: 14px; }
-.wv-schema > summary, .wv-members-box > summary { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-meta); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); cursor: pointer; padding: 4px 0; }
-.wv-schema > summary:hover, .wv-members-box > summary:hover { color: var(--tblr-body-color); }
-.wv-schema > summary::-webkit-details-marker, .wv-members-box > summary::-webkit-details-marker { display: none; }
+.wv-schema { margin-top: 14px; }
+.wv-schema > summary { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-meta); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); cursor: pointer; padding: 4px 0; }
+.wv-schema > summary:hover { color: var(--tblr-body-color); }
+.wv-schema > summary::-webkit-details-marker { display: none; }
 .wv-members { display: grid; gap: 8px; max-width: 760px; }
 .wv-members-sub { font-size: var(--fs-secondary); font-weight: 600; color: var(--tblr-secondary); margin-top: 4px; }
 .wv-members-empty { font-size: var(--fs-grid); color: var(--tblr-secondary); }
 .wv-invite-form { display: flex; gap: 6px; flex-wrap: wrap; }
 .wv-invite-form input { flex: 1 1 220px; min-width: 0; }
-.wv-invite-form .picker-wrap { flex: 0 0 200px; width: 200px; }
+.wv-invite-form .picker-wrap { flex: 1 1 160px; width: auto; }
+#modal:has(.wv-members) { width: 560px; }
 .wv-invite-link { padding: 10px 12px; display: grid; gap: 6px; }
 .wv-invite-link-head { font-size: var(--fs-grid); font-weight: 600; }
 .wv-invite-link-row { display: flex; gap: 6px; }
@@ -2359,7 +2360,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .ws-logo-pick { width: 44px; height: 44px; }
   .view-title { min-height: 44px; }
   #sidebar .ws-wordmark { min-height: 44px; }
-  .wv-schema > summary, .wv-members-box > summary { min-height: 44px; }
+  .wv-schema > summary { min-height: 44px; }
   .entity-body :is(.block-head, .doc-section-head) { min-height: 44px; align-items: center; }
   .entity-fields .fieldrow { min-height: 44px; align-items: center; }
   .entity-fields .fieldrow :is(.form-control, .form-select, .picker-face, input.inline-edit, select.inline-edit) { min-height: 44px; }
