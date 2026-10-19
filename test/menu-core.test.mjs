@@ -119,7 +119,7 @@ test('the definitions match the target menu table', () => {
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
   assert.deepEqual(shape('space'), { delete: ['delete'] });
   assert.deepEqual(shape('share-page'), { delete: ['delete'] });
-  assert.deepEqual(shape('workspace'), { share: ['link-preview'] });
+  assert.deepEqual(shape('workspace'), { share: ['invite', 'link-preview'] });
   assert.deepEqual(shape('field'), { settings: ['settings'], organize: ['insert'], delete: ['delete'] });
 });
 

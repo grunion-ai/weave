@@ -22,20 +22,20 @@ if (s) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
       await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
-      await page.click('.wv-members-box > summary');
+      await page.click('#main .view-header .wv-invite-btn');
       const send = async (email) => {
-        await page.fill('.wv-invite-form input[type=email]', email);
-        await page.click('.wv-invite-form button[type=submit]');
+        await page.fill('#modal .wv-invite-form input[type=email]', email);
+        await page.click('#modal .wv-invite-send');
         await page.locator('.wv-invite-link-head', { hasText: email }).waitFor();
       };
       await send(`ok-${theme}@example.com`);
       assert.equal((await page.locator('.wv-invite-link-head').textContent()).trim(), `Emailed ok-${theme}@example.com`);
-      assert.match(await page.locator('.wv-invite-note').textContent(), /weave emailed the sign-in link/);
+      assert.match(await page.locator('.wv-invite-link .wv-invite-note').textContent(), /weave emailed the sign-in link/);
       assert.equal(await page.locator('.wv-invite-link input').count(), 0, 'no link to copy');
       assert.ok(sent.some((m) => m.to === `ok-${theme}@example.com`));
       await send(`fail-${theme}@example.com`);
       assert.match(await page.locator('.wv-invite-link input').inputValue(), /\/api\/auth\/oidc\/start\?invite=wvi_/);
-      assert.match(await page.locator('.wv-invite-note').textContent(), /the email did not go out/);
+      assert.match(await page.locator('.wv-invite-link .wv-invite-note').textContent(), /the email did not go out/);
       assert.match(await page.locator('.toast, .wv-toast', { hasText: 'not sent' }).first().textContent(), /domain not verified/);
       await page.close();
     });

@@ -39,8 +39,8 @@ if (s) {
       await page.waitForSelector('.ws-ctx .wv-menu-row');
       const items = await menuItems(page);
       assert.ok(!items.some((t) => /logo/i.test(t)), `${name} keeps logo rows out of the menu: ${items}`);
-      assert.equal(items[0], 'Link preview before sign-in', `${name} opens on the link preview switch: ${items}`);
-      assert.equal(await page.locator('.ws-ctx .wv-menu-row').first().getAttribute('role'), 'menuitemcheckbox', 'a switch row says so');
+      assert.equal(items.find((t) => t.trim() !== 'Invite people…')?.trim(), 'Link preview before sign-in', `${name} opens on the link preview switch after any invite row (Issue #759): ${items}`);
+      assert.equal(await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Link preview before sign-in' }).getAttribute('role'), 'menuitemcheckbox', 'a switch row says so');
       await closeMenu(page);
     }
     await page.close();
