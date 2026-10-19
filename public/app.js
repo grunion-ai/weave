@@ -2718,6 +2718,15 @@ const MENU_ROWS = {
       }, 'Save'),
     },
     forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => formsDialog(db) } : null,
+    icon: dockCoversScreen.matches && !db.icon && !db.system ? { label: 'Add icon…', run: () => searchPicker({
+      anchor, title: 'Icon', options: iconCatalogue(), grid: true, currentId: '',
+      onPick: async (o) => {
+        if (!o.id) return;
+        await api('PATCH', `/tables/${db.id}`, { icon: o.id });
+        await loadSchema();
+        if (state.route?.dbId === db.id) showDatabase(db.id, state.route.view);
+      },
+    }) } : null,
     description: !db.description?.trim() ? { label: 'Add description…', run: async () => {
       if (state.route?.page !== 'db' || state.route.dbId !== db.id) history.pushState(null, '', `#/table/${db.id}`);
       await showDatabase(db.id);
