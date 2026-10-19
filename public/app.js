@@ -4147,7 +4147,7 @@ async function showDatabase(dbId, view) {
   try { await readAndDrawTable(db, dbId, search); } finally { release(); }
 }
 dockCoversScreen.addEventListener('change', () => {
-  if (state.route?.page === 'db' && $('#main')?.wvTable) showDatabase(state.route.dbId, state.route.view);
+  if (state.route?.page === 'db' && $('#main')?.wvTable) renderRouteSafely();
 });
 async function readAndDrawTable(db, dbId, search) {
   if (drawsList(db)) return readAndDrawList(db, dbId, search);
@@ -4845,6 +4845,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     renderList(main, db, items, list);
     main.wvDraw = { db, items, trashCount, pager: null };
     paintGridWait();
+    syncPhoneBar();
     return;
   }
 
