@@ -32,13 +32,6 @@ export function statusFor(err) {
 
 const STARTED_AT = new Date().toISOString();
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-const NEAR_ADDRESS = /^(?:::ffff:)?(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)|^(?:::1|f[cd][0-9a-f]{2}:|fe80:)/i;
-export const localRequest = ({ host, remote, forwarded = null }) => {
-  const name = String(host ?? '').toLowerCase().replace(/:\d+$/, '');
-  return LOOPBACK_HOSTS.has(name) && NEAR_ADDRESS.test(String(remote ?? '')) && !forwarded;
-};
-
 export const clientAddress = ({ forwarded, remote, trustProxy }) => {
   const hop = trustProxy ? String(forwarded ?? '').split(',').pop().trim() : '';
   return hop || remote || 'unknown';
@@ -137,7 +130,7 @@ const joinedInvite = (next) => {
 };
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, setupToken = null, wallUnclaimed = false, anonymousForms = ['1', 'true'].includes(String(process.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, anonymousForms = ['1', 'true'].includes(String(process.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const clerkPane = (() => {
     if (!clerkKey || !oidc) return null;
     let host;
@@ -542,11 +535,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
       return null;
     };
-    let viaSetup = false;
-    const setupAccount = async (w, token) => (setupToken && !w.listAccounts().length && (await digest(token)) === (await digest(setupToken)) ? { name: 'setup', role: 'architect', setup: true } : null);
-    const unclaimed = () => wallUnclaimed && weave.state.meta.requireAuth == null && !weave.listAccounts().length && !hub.get(hub.defaultName).listAccounts().length
-      && !localRequest({ host: rx.header('host'), remote: rx.remote, forwarded: rx.header('x-forwarded-for') || rx.header('x-forwarded-host') || rx.header('forwarded') || null });
-    const walled = () => !!weave.state.meta.requireAuth || unclaimed();
     const docsToken = (w, token) => {
       if (!isDocsWorkspace(w) || !w.state.meta.requireAuth) return null;
       const from = hub.entries().find(([, x]) => x !== w && !x.state.meta.deletedAt && x.verifyToken(token))?.[1];
@@ -615,18 +603,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     if (share) role = null;
     else if (authz && /^Bearer /i.test(authz)) {
-      const bearer = authz.slice(7).trim();
-      const account = oauth?.account ?? weave.verifyToken(bearer) ?? docsToken(weave, bearer) ?? (await setupAccount(weave, bearer));
+      const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = oauth ? `${accountActor(account.id)} via MCP` : actorOf(account);
-      accountName = account.setup ? null : account.name;
-      viaSetup = !!account.setup;
+      accountName = account.name;
       role = Weave.roleName(account.role);
     } else if ((session = sessionOn(weave))) {
       weave.actor = actorOf(session);
       accountName = session.name;
       role = Weave.roleName(session.role);
-    } else if (walled() && !openDoor && cookies[cookieName(weave)]) {
+    } else if (weave.state.meta.requireAuth && !openDoor && cookies[cookieName(weave)]) {
       if (weave.removedSession(cookies[cookieName(weave)])) {
         const ws = weave.state.meta.name;
         if (path.startsWith('/api/')) return out(403, { error: `Your access to ${ws} was removed`, code: 'access-removed' }, { 'Cache-Control': 'no-store' });
@@ -639,8 +625,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return path.startsWith('/api/')
         ? deny(401, 'Session expired or revoked')
         : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(cookieName(weave), rx), 'Cache-Control': 'no-store' }, body: '' };
-    } else if (walled() && !openDoor) {
-      if (path.startsWith('/api/')) return deny(401, weave.state.meta.requireAuth ? 'This workspace requires authentication' : 'This instance has no accounts yet: sign in, or create the first account with WEAVE_SETUP_TOKEN or from a shell on the server');
+    } else if (weave.state.meta.requireAuth && !openDoor) {
+      if (path.startsWith('/api/')) return deny(401, 'This workspace requires authentication');
       const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return wall();
@@ -1452,11 +1438,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             theme: ['light', 'dark'].includes(rx.searchParams?.get('theme')) ? rx.searchParams.get('theme') : undefined });
           return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         }
-        if (route === 'POST /api/accounts') {
-          const made = weave.createAccount(body ?? {});
-          if (viaSetup && weave.state.meta.requireAuth == null) { weave.setRequireAuth(true); weave.save(); }
-          return out(201, made);
-        }
+        if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
         if ((m = path.match(/^\/api\/accounts\/([^/]+)$/)) && rx.method === 'PATCH') {
           const changed = weave.setAccountRole(decodeURIComponent(m[1]), body?.role);
           await remirror(weave);

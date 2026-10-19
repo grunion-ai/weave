@@ -27,16 +27,14 @@ const hit = (port, host, method, path, { cookie, body } = {}) => new Promise((re
   req.end(payload ?? undefined);
 });
 
-async function serveHub({ baseDomain = BASE, oidc = null, origin = null, before = () => {}, architect = false } = {}) {
+async function serveHub({ baseDomain = BASE, oidc = null, origin = null, before = () => {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-hosts-'));
   before(dir);
   const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   main.state.meta.name = 'Net';
-  if (architect) main.createAccount({ name: 'root', role: 'architect' });
-  const cookie = architect ? `wv_session_${main.state.meta.id}=${main.createSession('root').token}` : undefined;
   main.save();
   const { server, port } = await startServer(main, { port: 0, baseDomain, origin, oidc, limits: { options: 1000, failed: 1000 } });
-  const at = (host) => (method, path, opts) => hit(port, host, method, path, { cookie, ...opts });
+  const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
   return { dir, main, port, at, stop: () => { server.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
@@ -70,7 +68,7 @@ test('allowed hosts: one label under the base domain answers only when the base 
 });
 
 test('host routing: <slug>.<base> serves that workspace, the apex the default, /w/ everywhere, unknown 404', async () => {
-  const s = await serveHub({ architect: true });
+  const s = await serveHub();
   try {
     assert.equal((await s.at('weave.test')('POST', '/api/workspaces', { body: { name: 'Acme' } })).status, 201);
     const acme = s.at('acme.weave.test');
@@ -107,7 +105,7 @@ test('host routing: with no base domain a slug host is refused as before', async
 });
 
 test('slugs over HTTP: create and rename refuse reserved names; a rename leaves a 301 alias that nobody else can claim', async () => {
-  const s = await serveHub({ architect: true });
+  const s = await serveHub();
   const apex = s.at('weave.test');
   try {
     assert.equal((await apex('POST', '/api/workspaces', { body: { name: 'api' } })).status, 400);
