@@ -84,7 +84,7 @@ test('the five programmatic scrolls all go through scrollTargetIntoView', () => 
     "the editor's slash menu");
   assert.match(CODE, /scrollTargetIntoView\(rowEls\[sel\]/, 'the search palette');
   assert.match(CODE, /scrollTargetIntoView\(row,/, 'a new grid row taking focus');
-  assert.match(CODE, /const reveal = \(node\) => \{ if \(st\.scroll\) \{ st\.scroll = false; scrollTargetIntoView\(node,/, 'the Activity panel bringing a picked change into view (Issue #429)');
+  assert.match(CODE, /const reveal = \(node, padding = \d+\) => \{ if \(st\.scroll\) \{ st\.scroll = false; scrollTargetIntoView\(node, \{ padding \}/, 'the Activity panel bringing a picked change into view, in the record or in the phone sheet (Issue #429, Issue #978)');
 });
 
 test('the helper moves the resolved box and nothing else', () => {

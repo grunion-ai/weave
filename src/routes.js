@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, logoType, inviteUrl } from './engine.js';
+import { Weave, WeaveError, fileHeaders, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -47,6 +47,7 @@ export function errorBody(err, code = 'internal') {
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ROWS = 500;
 const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
+const actorOf = (account) => (account?.id ? accountActor(account.id) : account?.name);
 const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
 
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
@@ -604,11 +605,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     else if (authz && /^Bearer /i.test(authz)) {
       const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
-      weave.actor = oauth ? `${account.name} via MCP` : account.name;
+      weave.actor = oauth ? `${accountActor(account.id)} via MCP` : actorOf(account);
       accountName = account.name;
       role = Weave.roleName(account.role);
     } else if ((session = sessionOn(weave))) {
-      weave.actor = session.name;
+      weave.actor = actorOf(session);
       accountName = session.name;
       role = Weave.roleName(session.role);
     } else if (weave.state.meta.requireAuth && !openDoor && cookies[cookieName(weave)]) {
@@ -682,7 +683,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const observer = cap !== 'editor';
       const cm = observer && !read && path.match(/^\/api\/entities\/([^/]+)\/comments(?:\/([^/]+?))?$/);
       const ownComment = cm && (cm[2] == null ? m2 === 'POST' : m2 === 'DELETE' && (() => {
-        try { return weave.getEntity(cm[1]).comments.find((c) => c.id === cm[2])?.author === weave.actor; } catch { return false; }
+        try { return weave.isActor(weave.getEntity(cm[1]).comments.find((c) => c.id === cm[2])?.author); } catch { return false; }
       })());
       const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
       if (observer && !read && !ownComment && !submits) {
@@ -854,7 +855,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const retry = formLimited([['server', limits.formServer ?? 1000], [`form:${key}`, limits.formTotal ?? 120], [`sender:${key}:${ip}`, limits.formSender ?? 20]]);
         if (retry) return out(429, { error: 'Too many submissions. Try again later.', code: 'rate-limited' }, { 'Retry-After': String(retry) });
         const signedIn = roleOn(form.owner) != null;
-        const actor = !signedIn ? 'anonymous' : form.owner === weave ? requestActor : (authz && /^Bearer /i.test(authz) ? form.owner.verifyToken(authz.slice(7).trim()) ?? docsToken(form.owner, authz.slice(7).trim()) : sessionOn(form.owner))?.name ?? requestActor;
+        const actor = !signedIn ? 'anonymous' : form.owner === weave ? requestActor : actorOf((authz && /^Bearer /i.test(authz) ? form.owner.verifyToken(authz.slice(7).trim()) ?? docsToken(form.owner, authz.slice(7).trim()) : sessionOn(form.owner)) ?? null) ?? requestActor;
         const body = await rx.readBody();
         const idempotencyKey = rx.header('idempotency-key') ?? body?.idempotencyKey;
         const client = formClient();
@@ -1463,7 +1464,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const reveal = !!km?.[2] && rx.method === 'POST';
           const target = route === 'POST /api/keys' ? body?.name
             : km && !km[2] && rx.method === 'DELETE' ? decodeURIComponent(km[1]) : null;
-          const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === actorForRequest;
+          const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === weave.actorName(actorForRequest);
           if (!mayAdminister(root, rootRole) && !(reveal && rootRole) && !owns) {
             return deny(rootRole ? 403 : 401, 'Managing keys needs an architect on the hub root');
           }

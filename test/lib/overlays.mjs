@@ -51,7 +51,14 @@ export const OVERLAYS = [
   { name: 'new-workspace', surface: 'home', cells: DESKTOP, root: '#tray-back', open: (page, ctx, cell) => press(page, '.ws-new', cell) },
   { name: 'workspace-menu', surface: 'home', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Workspace actions"]', cell) },
   { name: 'nav-table-menu', surface: 'home', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#nav .dots-btn[title="Task actions"]', cell) },
-  { name: 'bug-report', surface: 'home', cells: BOTH, root: '#bug-panel', open: (page, ctx, cell) => press(page, '.bug-fab', cell) },
+  {
+    name: 'bug-report', surface: 'home', cells: BOTH, root: '#bug-panel',
+    async open(page, ctx, cell) {
+      if (cell !== 'phone') return press(page, '.bug-fab', cell);
+      await press(page, '#main .nav-menu', cell);
+      await menu(page, cell, '#sidebar .nav-identity-more', 'Report a problem');
+    },
+  },
   {
     name: 'nav', surface: 'home', cells: PHONE, root: '#nav',
     open: (page, ctx, cell) => press(page, '#main .nav-menu', cell),
@@ -77,7 +84,7 @@ export const OVERLAYS = [
       await press(page, '.chip-pop .chip-pop-row >> text=Field settings', cell);
     },
   },
-  { name: 'table-icon', surface: 'table', cells: BOTH, root: '.picker-pop', open: (page, ctx, cell) => press(page, '#main .icon-btn', cell) },
+  { name: 'table-icon', surface: 'table', cells: BOTH, root: '.picker-pop', open: (page, ctx, cell) => (cell === 'phone' ? tableMenu('Add icon…')(page, ctx, cell) : press(page, '#main .icon-btn', cell)) },
   { name: 'field-menu', surface: 'table', cells: DESKTOP, root: '.chip-pop', open: (page, ctx, cell) => press(page, '.field-menu[title="Configure Status"]', cell) },
   {
     name: 'field-editor', surface: 'table', cells: DESKTOP, root: '#tray-back',

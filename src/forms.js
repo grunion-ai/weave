@@ -500,7 +500,7 @@ function submitResolved(w, ref, input = {}, { actor = null, server = {}, idempot
     return { ...duplicate.receipt, replayed: true, duplicate: true };
   }
   ensureCapacity();
-  const { input: row, extra } = form.kind === 'Bug report' ? bugRow(form, input, server) : plainRow(form, picked, who, server);
+  const { input: row, extra } = form.kind === 'Bug report' ? bugRow(form, input, server) : plainRow(form, picked, owner.actorName(who), server);
   const was = owner.actor;
   owner.actor = who;
   try {

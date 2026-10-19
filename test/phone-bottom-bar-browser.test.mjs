@@ -31,7 +31,7 @@ if (s) {
       searchFill: getComputedStyle(document.querySelector('.phone-bar .phone-search') ?? document.body).backgroundColor,
       newShown: shown(document.querySelector('.phone-bar .phone-new')),
       newBtn: rect(document.querySelector('.phone-bar .phone-new')),
-      fab: rect(fab), fabInset: inset,
+      fab: shown(fab) ? rect(fab) : null, fabInset: inset,
       vw: innerWidth, vh: innerHeight,
     };
   });
@@ -49,9 +49,7 @@ if (s) {
         assert.ok(b.newShown, 'a table page shows the New button');
         assert.ok(b.newBtn.width >= 44 && Math.abs(b.newBtn.width - b.newBtn.height) < 1, `New is a ${b.newBtn.width}px circle`);
         assert.ok(b.newBtn.left >= b.search.right, 'New sits right of the capsule');
-        assert.ok(b.fab.width >= 44 && b.fab.height >= 44, 'the bug button keeps its 44px target');
-        assert.ok(b.fab.bottom - b.fabInset <= b.search.top, `the bug button sits above the bar (${b.fab.bottom - b.fabInset} vs ${b.search.top})`);
-        assert.ok(b.vw - b.fab.right <= 3.5, 'and hugs the right edge');
+        assert.equal(b.fab, null, 'no floating bug button sits over the rows or the bar (Issue #983)');
         await page.evaluate(() => { const m = document.querySelector('#main'); m.scrollTop = m.scrollHeight; });
         await page.waitForTimeout(150);
         const last = await page.$eval('#main', (m) => {

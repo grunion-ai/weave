@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, openBugReport, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const s = await launch('phone shortcut hints', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -51,14 +51,13 @@ if (s) {
           await page.tap('#main .nav-menu');
           await page.waitForSelector('#app.nav-peek');
           assert.deepEqual((await hints(page)).out, [], 'the menu');
+          await openBugReport(page);
+          assert.deepEqual((await hints(page)).out, [], 'the bug panel');
         } finally { await page.close(); }
         page = await open(make, docked, theme);
         try {
           await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
           assert.deepEqual((await hints(page)).out, [], 'the row page');
-          await page.tap('.bug-fab');
-          await page.waitForSelector('#bug-panel');
-          assert.deepEqual((await hints(page)).out, [], 'the bug panel');
         } finally { await page.close(); }
       });
     }
