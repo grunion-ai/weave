@@ -210,6 +210,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   const clientIp = (rx) => clientAddress({ forwarded: rx.header('x-forwarded-for'), remote: rx.remote, trustProxy });
   const LEGACY_COOKIE = 'wv_session';
   const cookieName = (w) => `${LEGACY_COOKIE}_${w.state.meta.id}`;
+  const outName = (w) => `wv_out_${w.state.meta.id}`;
   const secureFlag = (rx) => (originFor(rx).startsWith('https:') ? '; Secure' : '');
   const sessionCookie = (name, token, rx) => `${name}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`;
   const clearCookie = (name, rx) => `${name}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureFlag(rx)}`;
@@ -539,7 +540,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     };
     const sessionOn = (w) => {
       const root = hub.get(hub.defaultName);
-      return ownSession(w) ?? (w !== root ? ownSession(root) : null) ?? docsVisitor(w);
+      return ownSession(w) ?? (w !== root && !cookies[outName(w)] ? ownSession(root) : null) ?? docsVisitor(w);
     };
     const authz = rx.header('authorization');
     let oauth = null;
@@ -1049,7 +1050,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               const to = posthog && c.invite ? joinedInvite(c.next) : c.next;
               if (c.handoff) return withCookies(await handOff(engine, account.id, to, c.handoff), kept);
               const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
-              return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
+              const back = cookies[outName(c.holder)] ? [clearCookie(outName(c.holder), rx)] : [];
+              return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back, ...kept], 'Cache-Control': 'no-store' }, body: '' };
             }
             return notFound({ error: 'Unknown auth route', code: 'not-found' });
           }
@@ -1068,17 +1070,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (route === 'POST /api/auth/logout') {
             const everywhere = ['1', 'true'].includes(rx.searchParams?.get('everywhere') ?? '');
-            const ending = everywhere ? hub.entries().map(([, w]) => ownSession(w)).filter(Boolean) : [session].filter(Boolean);
+            const borrowed = !everywhere && !!session && session.engine !== weave;
+            const ending = everywhere ? hub.entries().map(([, w]) => ownSession(w)).filter(Boolean) : borrowed ? [] : [session].filter(Boolean);
             for (const hit of ending) {
               try { hit.engine.revokeSession(hit.id, { id: hit.sessionId }); } catch {}
             }
             const names = new Set(everywhere
-              ? [...Object.keys(cookies).filter((n) => n === LEGACY_COOKIE || n.startsWith(`${LEGACY_COOKIE}_`)), ...ending.map((hit) => hit.cookie)]
-              : [session?.cookie ?? cookieName(weave)]);
+              ? [...Object.keys(cookies).filter((n) => n === LEGACY_COOKIE || n.startsWith(`${LEGACY_COOKIE}_`) || n.startsWith('wv_out_')), ...ending.map((hit) => hit.cookie)]
+              : borrowed ? [] : [session?.cookie ?? cookieName(weave)]);
+            const marks = borrowed ? [`${outName(weave)}=1; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`] : [];
             const held = everywhere ? await heldStart() : null;
             if (held) starts.delete(held.key);
             const startEnds = everywhere ? [clearCookie('wv_start', rx), clearRail()] : [];
-            return out(200, { ok: true }, { 'Set-Cookie': [...[...names].map((n) => clearCookie(n, rx)), ...startEnds], 'Cache-Control': 'no-store' });
+            return out(200, { ok: true }, { 'Set-Cookie': [...[...names].map((n) => clearCookie(n, rx)), ...marks, ...startEnds], 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/auth/me') {
             const account = who();
@@ -1145,7 +1149,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
             if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
-            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': sessionCookie(cookieName(engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+            const back = cookies[outName(w)] ? [clearCookie(outName(w), rx)] : [];
+            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back], 'Cache-Control': 'no-store' }, body: '' };
           }
           if ((m = path.match(/^\/api\/start\/logo\/([^/]+)$/)) && rx.method === 'GET') {
             const w = hub.bySlug(String(m[1]).toLowerCase());
