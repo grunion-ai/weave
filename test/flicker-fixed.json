@@ -23,5 +23,9 @@
   "open-row|transient|div.doc-editor.vditor > div.vditor-content": {
     "issue": 634,
     "why": "the document editor booted on a host that was already in the dock, so its body was born and destroyed inside a frame"
+  },
+  "load-home|shift|aside#sidebar > div.nav-pinned": {
+    "issue": 944,
+    "why": "the account slot in the sidebar's identity row was empty until /api/auth/me answered, so the pinned block grew 4px and moved up when the account chip landed (Issue #946 is the same finding filed twice)"
   }
 }

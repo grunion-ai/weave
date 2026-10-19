@@ -111,6 +111,7 @@ button.nav-space:hover { color: var(--tblr-primary); }
 button.nav-space:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; border-radius: 3px; }
 .nav-identity { display: flex; align-items: center; gap: 2px; margin: 6px -6px 0; padding: 6px 0 14px; border-top: 1px solid var(--wv-pill-hover); flex: none; }
 .nav-identity .nav-account { flex: 1 1 auto; min-width: 0; margin: 0; }
+.nav-identity .nav-account:empty { display: block; min-height: 32px; }
 .nav-identity-more { flex: none; }
 .nav-pinned { margin-top: auto; flex-shrink: 0; display: flex; flex-direction: column; }
 .nav-db { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: var(--tblr-border-radius); cursor: pointer; color: var(--tblr-body-color); text-decoration: none; }
