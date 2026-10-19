@@ -2274,8 +2274,8 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .list-phone-head > .list-pid.pid-probe { position: absolute; flex: none; overflow: visible; visibility: hidden; }
   .list-phone-head > .phone-lead { display: inline-flex; flex: none; max-width: 45%; overflow: hidden; }
   .list-phone-head > .phone-lead > * { height: 20px; max-width: 100%; overflow: hidden; font-size: var(--fs-grid); line-height: 20px; white-space: nowrap; text-overflow: ellipsis; }
-  .list-phone .list-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: normal; overflow-wrap: anywhere; font-size: var(--fs-doc); font-weight: 600; line-height: 20px; color: var(--tblr-body-color); }
-  .list-wrap[data-density="compact"] .list-phone .list-title, .list-wrap[data-phone-wrap] .list-phone .list-title { -webkit-line-clamp: 1; }
+  .list-phone .list-title { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: var(--fs-doc); font-weight: 600; line-height: 20px; color: var(--tblr-body-color); }
+  .list-wrap:is([data-density="compact"], [data-phone-wrap]) .list-phone .list-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
   .list-phone > .phone-chips { display: flex; flex-wrap: nowrap; gap: 6px; min-width: 0; overflow: hidden; }
   .list-phone > .phone-chips:not(:has(> .phone-chip:not(.list-hide))) { display: none; }
   .list-wrap[data-phone-wrap] .list-phone > .phone-chips { flex-wrap: wrap; row-gap: 4px; }

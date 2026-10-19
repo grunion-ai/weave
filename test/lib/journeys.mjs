@@ -39,7 +39,12 @@ const BOTH = ['desktop', 'phone'];
 const PHONE = ['phone'];
 
 const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
-const ROW = '.wv-grid tbody tr.entity-row';
+const ROW = ':is(.wv-grid tbody tr.entity-row, .wv-list .list-row)';
+const rowOf = (id) => `:is(tr, .list-row)[data-eid="${id}"]`;
+async function openRow(page, id) {
+  const b = await page.locator(`${rowOf(id)} .open-link`).first().boundingBox();
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+}
 
 async function table(page, ctx) {
   await page.goto(`${ctx.base}/#/table/${ctx.tasks.id}`, { waitUntil: 'networkidle' });
@@ -50,7 +55,8 @@ async function table(page, ctx) {
 async function scrollTo(page, f) {
   await page.evaluate((k) => {
     const wrap = document.querySelector('.table-wrap');
-    const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement;
+    const main = document.querySelector('#main');
+    const box = wrap?.classList.contains('wv-grid-scroll') ? wrap : main && main.scrollHeight > main.clientHeight ? main : document.scrollingElement;
     box.scrollTo({ top: (box.scrollHeight - box.clientHeight) * k, behavior: 'instant' });
   }, f);
   await frames(page, 3);
@@ -108,10 +114,10 @@ export const JOURNEYS = [
     name: 'open-row',
     setup: table,
     async run(page, ctx) {
-      await page.click(`tr[data-eid="${ctx.ids[1]}"] .open-link`);
+      await openRow(page, ctx.ids[1]);
       await page.waitForSelector('#dock:not([hidden]) .fieldrow[data-field="Status"]');
       await frames(page, 3);
-      await page.click(`tr[data-eid="${ctx.ids[4]}"] .open-link`);
+      await openRow(page, ctx.ids[4]);
       await page.waitForFunction((id) => location.hash.includes(id), ctx.ids[4]);
       await page.waitForSelector('#dock:not([hidden]) .fieldrow[data-field="Status"]');
     },
@@ -234,7 +240,7 @@ export const JOURNEYS = [
     cells: PHONE,
     setup: table,
     async run(page, ctx) {
-      const name = await page.locator(`tr[data-eid="${ctx.ids[1]}"] .list-name`).boundingBox();
+      const name = await page.locator(`${rowOf(ctx.ids[1])} :is(.list-title, td[data-field="Name"])`).first().boundingBox();
       await page.touchscreen.tap(name.x + 20, name.y + name.height / 2);
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await beat(page);

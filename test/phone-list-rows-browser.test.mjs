@@ -62,7 +62,7 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`on a phone the table is the List component: muted #id, a two-line name, then value chips (${theme}, Feature #272, Issue #740)`, async () => {
+    test(`on a phone the table is the List component: muted #id, the whole name, then value chips (${theme}, Feature #272, Issue #740)`, async () => {
       const page = await open({ theme });
       try {
         const seen = await list(page);
@@ -74,7 +74,7 @@ if (s) {
         for (const r of seen.rows) {
           assert.ok(r.height >= 44, `row ${r.i} is a touch row (${r.height}px)`);
           assert.ok(r.nameShown, `row ${r.i} shows its name`);
-          assert.ok(r.nameH <= 2 * r.lineH + 1, `row ${r.i}'s name takes at most two lines (${r.nameH}px)`);
+          assert.ok(r.nameH <= r.height, `row ${r.i}'s whole name sits inside the row (${r.nameH}px)`);
           assert.equal(r.lead, 'Open', `row ${r.i} leads with its Status (Feature #299)`);
           assert.ok(r.chips.every((c) => c.top > r.nameTop), `row ${r.i}'s chips sit under its name`);
         }

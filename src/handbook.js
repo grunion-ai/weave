@@ -2438,7 +2438,7 @@ A list holds things to finish, in an order you set; a table holds records to com
 
 The footer counts what shows: **3 of 8 to-dos · 1 completed**.
 
-On a phone (600px wide or less) every view draws as this list unless someone chose **Table** for it; a view saved as Table stays a real table there, with its column header, and scrolls sideways. A phone row shows the **Phone row** fields set under **Fields**: the lead mark, the #id, the name (one line at Compact, two otherwise) and one line of chips, with **+N** for the chips that do not fit. A tap on the name or the #id opens the row; a tap on a chip edits that field in a sheet; a drag that starts on a row scrolls and never opens or edits it.
+On a phone (600px wide or less) every view draws as this list unless someone chose **Table** for it; a view saved as Table stays a real table there, with its column header, and scrolls sideways. A phone row shows the **Phone row** fields set under **Fields**: the lead mark, the #id, the whole name (one line at Compact) and one line of chips, with **+N** for the chips that do not fit. A tap on the name or the #id opens the row; a tap on a chip edits that field in a sheet; a drag that starts on a row scrolls and never opens or edits it.
 
 ## For agents
 
