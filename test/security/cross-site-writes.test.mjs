@@ -20,6 +20,7 @@ const call = (port, method, path, { headers = {}, body } = {}) => new Promise((r
 
 async function serve(opts = {}) {
   const w = new Weave();
+  w.setRequireAuth(false);
   const { server, port } = await startServer(w, { port: 0, ...opts });
   const spaces = () => w.listSpaces().map((s) => s.name);
   return { w, port, spaces, stop: () => server.close() };
