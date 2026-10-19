@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-import { WeaveWorkspace } from '../src/worker.js';
 import { PRIVACY, TERMS } from '../src/legal.js';
 
 const ATTRIBUTION = /Adapted from the Basecamp open-source policies.*github\.com\/basecamp\/policies.*CC BY 4\.0/s;
@@ -57,32 +55,6 @@ test('the sign-in page links Privacy and Terms', async () => {
     assert.match(html, /<a href="\/privacy">Privacy<\/a>/);
     assert.match(html, /<a href="\/terms">Terms<\/a>/);
   } finally { stop(); }
-});
-
-test('the Worker serves the same pages through the shared dispatcher', async () => {
-  const db = new DatabaseSync(':memory:');
-  const storage = {
-    sql: {
-      exec(query, ...params) {
-        if (params.length === 0 && !/^\s*SELECT/i.test(query)) db.exec(query);
-        const stmt = db.prepare(query);
-        if (/^\s*SELECT/i.test(query)) return { toArray: () => stmt.all(...params) };
-        stmt.run(...params);
-      },
-    },
-    transactionSync(fn) {
-      db.exec('BEGIN');
-      try { const r = fn(); db.exec('COMMIT'); return r; } catch (err) { db.exec('ROLLBACK'); throw err; }
-    },
-  };
-  const dobj = new WeaveWorkspace({ storage }, { WEAVE_VERSION: '0.0.0-test' });
-  for (const [path, heading] of PAGES) {
-    const res = await dobj.fetch(new Request(`http://do${path}`, { headers: { 'x-weave-workspace': 'scratch' } }));
-    assert.equal(res.status, 200, path);
-    const html = await res.text();
-    assert.match(html, new RegExp(`<h1>${heading}</h1>`));
-    assert.match(html, ATTRIBUTION);
-  }
 });
 
 test('the legal text names the contact address, keeps the entity slot and carries no em dash', () => {

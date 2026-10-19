@@ -1473,7 +1473,7 @@ Opening a row opens the structure: a row that describes another workspace deep-l
 
 ## Migration
 
-A workspace that minted its own System space keeps it as a **tombstone**: the space and its four tables are marked deleted, their rows kept, nothing purged. Its space rollups are re-created on the root Spaces table (a name clash gets \` (<workspace>)\` appended). \`weave serve\` on that file alone hosts the registry again; joining a hub tombstones it again. The Cloudflare Worker serves one workspace per deployment, so there the root is that workspace and nothing moves.`,
+A workspace that minted its own System space keeps it as a **tombstone**: the space and its four tables are marked deleted, their rows kept, nothing purged. Its space rollups are re-created on the root Spaces table (a name clash gets \` (<workspace>)\` appended). \`weave serve\` on that file alone hosts the registry again; joining a hub tombstones it again.`,
   },
   {
     name: "Self-host weave: choose your door",
