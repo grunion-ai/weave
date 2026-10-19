@@ -51,7 +51,14 @@ export const OVERLAYS = [
   { name: 'new-workspace', surface: 'home', cells: DESKTOP, root: '#tray-back', open: (page, ctx, cell) => press(page, '.ws-new', cell) },
   { name: 'workspace-menu', surface: 'home', cells: BOTH, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Workspace actions"]', cell) },
   { name: 'nav-table-menu', surface: 'home', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#nav .dots-btn[title="Task actions"]', cell) },
-  { name: 'bug-report', surface: 'home', cells: BOTH, root: '#bug-panel', open: (page, ctx, cell) => press(page, '.bug-fab', cell) },
+  {
+    name: 'bug-report', surface: 'home', cells: BOTH, root: '#bug-panel',
+    async open(page, ctx, cell) {
+      if (cell !== 'phone') return press(page, '.bug-fab', cell);
+      await press(page, '#main .nav-menu', cell);
+      await menu(page, cell, '#sidebar .nav-identity-more', 'Report a problem');
+    },
+  },
   {
     name: 'nav', surface: 'home', cells: PHONE, root: '#nav',
     open: (page, ctx, cell) => press(page, '#main .nav-menu', cell),
