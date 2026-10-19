@@ -1,1 +1,0 @@
-- A signed-in visit to the weave root now opens the workspace used last, on the page it last had open, instead of stopping on the workspace list. A deep link still wins, a gone or revoked workspace falls back to the first one the sign-in opens, and the list appears only for a sign-in with no workspaces or from the in-app Find workspaces item (Issue #977).
