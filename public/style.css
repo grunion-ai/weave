@@ -403,6 +403,7 @@ a.wv-menu-row, a.wv-menu-row:hover { text-decoration: none; color: var(--tblr-bo
 .wv-grid .date-text:not(:focus)::placeholder { color: transparent; }
 .wv-grid .num-dressed, .wv-grid .text-dressed { font-size: var(--wv-grid-font); }
 .wv-grid td.name-cell .inline-edit { font-weight: 600; }
+.wv-grid td.name-cell .text-dressed { font-weight: 600; }
 .wv-grid .chip { border-color: transparent; }
 .wv-grid .k { max-width: 100%; }
 .wv-grid .k:not(.k-rel) { overflow: hidden; }

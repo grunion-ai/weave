@@ -3456,7 +3456,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   input.addEventListener('change', () => patch(input.value === '' ? null
     : f.type === 'number' ? (isPercent ? Math.round(Number(input.value) * 1e8) / 1e10 : Number(input.value))
     : input.value));
-  if (f.type === 'text' && !f.literal && typeof rawVal === 'string' && hasInlineMarkup(rawVal)) {
+  if (f.type === 'text' && !f.literal && typeof rawVal === 'string' && (hasInlineMarkup(rawVal) || (fit && rawVal !== ''))) {
     return dressedText(rawVal, input);
   }
   if (f.type === 'url' && globalThis.WeaveEditorLib.urlParts(rawVal)) {
