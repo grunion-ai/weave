@@ -1873,6 +1873,12 @@ WEAVE_DATA=/data/workspace.db
 WEAVE_KEYSTORE_PASSPHRASE=<a long random string, kept in your password manager>
 \`\`\`
 
+\`\`\`
+WEAVE_SETUP_TOKEN=<another long random string, 32 characters or more>
+\`\`\`
+
+\`WEAVE_SETUP_TOKEN\` is how the first account gets made without a shell, which a Railway project token does not give you (step 6).
+
 \`WEAVE_KEYSTORE_PASSPHRASE\` is what keeps the keystore key off the volume; lose it and the secrets in the keystore are unreadable (the data is untouched). \`WEAVE_ORIGIN=https://weave.example.com\` (the custom domain from step 4) and \`WEAVE_TRUST_PROXY=1\` join the list once \`requireAuth\` is on and you use **Door C: sign in with a provider**; \`WEAVE_BACKUP_DEST\` (with the bucket credentials) switches on the nightly backup — the **Backup and restore** guide. The **Environment reference** guide has every variable and what breaks when each is wrong.
 
 ## 4. Custom domain
@@ -1885,7 +1891,17 @@ Service → **Settings → Networking → Custom Domain** → \`weave.example.co
 
 ## 6. The door
 
-The custom domain is public. Turn \`requireAuth\` on (\`weave workspace require-auth\` from a shell on the service, or \`PATCH /api/workspace\` with \`{"requireAuth": true}\` and an architect token) and put a door in front: **Door C: sign in with a provider** (set \`WEAVE_ORIGIN\` to the custom domain, \`WEAVE_TRUST_PROXY=1\` and the \`WEAVE_OIDC_*\` variables, then \`weave account link\` from a shell on the service) or **Door A: an edge gate**. Once \`WEAVE_ORIGIN\` is set, or the default workspace requires sign-in, every workspace the instance creates starts with \`requireAuth\` on: with a base domain each one answers at a guessable \`<slug>.<domain>\` host. Turn it off only on a workspace you mean to publish.
+A fresh instance with no accounts answers every API call and page on a public host name with \`401\` or the sign-in wall from its first boot, so a stranger who finds the domain from step 4 cannot make an account or change a setting (Issue #472). Only a request made on \`localhost\` from the same machine or a private network gets in without an account, which is what keeps a first local run working. \`/api/health\`, \`/start\`, sign-in, \`/privacy\` and \`/terms\` stay open.
+
+Make the first architect over HTTPS with the setup token from step 3:
+
+\`\`\`
+curl -X POST https://weave.example.com/api/accounts -H "Authorization: Bearer $WEAVE_SETUP_TOKEN" -H 'Content-Type: application/json' -d '{"name":"you","role":"architect"}'
+\`\`\`
+
+The answer carries the new account's \`wv_\` token; keep it in your password manager. The setup token works only on a workspace with no accounts, and the first account it makes turns \`requireAuth\` on there. The wall is per workspace: the \`weave.db\` docs workspace has its own accounts and its own \`requireAuth\`, so repeat the call on \`/w/weave/api/accounts\` if you want an account there too, then remove \`WEAVE_SETUP_TOKEN\` from the variables.
+
+Then turn \`requireAuth\` on for any other workspace (\`weave workspace require-auth\` from a shell on the service, or \`PATCH /api/workspace\` with \`{"requireAuth": true}\` and an architect token) and put a door in front: **Door C: sign in with a provider** (set \`WEAVE_ORIGIN\` to the custom domain, \`WEAVE_TRUST_PROXY=1\` and the \`WEAVE_OIDC_*\` variables, then \`weave account link\` from a shell on the service) or **Door A: an edge gate**. Once \`WEAVE_ORIGIN\` is set, or the default workspace requires sign-in, every workspace the instance creates starts with \`requireAuth\` on: with a base domain each one answers at a guessable \`<slug>.<domain>\` host. Turn it off only on a workspace you mean to publish.
 
 ## 7. Updates in place
 
@@ -2184,6 +2200,7 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_OIDC_ISSUER\` | \`weave serve\`, \`weave account link\` | unset | The issuer URL of one OpenID Connect provider, \`https\` off loopback. Set with \`WEAVE_OIDC_CLIENT_ID\`, \`/auth\` sends a signed-out browser to the provider (the **Door C: sign in with a provider** guide). Set without it, \`serve\` stops at startup and names the missing variable. A URL the provider does not call its own issuer fails every sign-in with a page that says so. |
 | \`WEAVE_MCP_ORIGINS\` | \`weave serve\` | unset | Other public origins the MCP door answers on, comma separated, each scheme and host only: \`https://mcp.weave.example.com\`. The protected-resource metadata names the one the request arrived on, else \`WEAVE_ORIGIN\`; each host is also served. Unset, a second domain on the same service gets \`421\`; wrong, the agent's client refuses the metadata because it names another URL (the **Door C: sign in with a provider** guide). |
 | \`WEAVE_BASE_DOMAIN\` | \`weave serve\` | unset | The domain workspaces get their own hosts under: \`weave.example.com\` serves each workspace at \`<slug>.weave.example.com\`, host name only. Sign-in still finishes at \`WEAVE_ORIGIN\`. Unset, a workspace host gets \`421\`; wrong, the wildcard certificate does not cover the hosts browsers ask for (the **Door C: sign in with a provider** guide, section Workspace hosts). |
+| \`WEAVE_SETUP_TOKEN\` | \`weave serve\` | unset | A secret of 32 characters or more. On a workspace with no accounts, \`POST /api/accounts\` with \`Authorization: Bearer <token>\` makes the first account and turns that workspace's \`requireAuth\` on; once the workspace has an account the token opens nothing there. Unset or shorter, the first account comes from a shell (\`weave account create\`) or from \`localhost\`, because an instance with no accounts refuses anonymous calls on any public host name. Remove it once the first architect exists. |
 | \`WEAVE_OPEN_SIGNUP\` | \`weave serve\` | unset | \`1\` lets anyone who signs in at the provider create a workspace from \`/start\` and own it. Unset, only an architect on the hub root creates workspaces and everyone else joins by invite. |
 | \`WEAVE_SIGNUP_LIMIT\` | \`weave serve\` | \`1\` | How many workspaces one sign-in may create under \`WEAVE_OPEN_SIGNUP\`. |
 | \`WEAVE_ALLOWED_HOSTS\` | \`weave serve\` | unset | Extra Host names the server answers, comma separated, besides loopback and the host of \`WEAVE_ORIGIN\`: \`weave.internal,10.0.0.5\`. Any other \`Host\` header gets \`421\`, so a platform that probes by a name missing here sees its health check fail. With \`WEAVE_ORIGIN\` set, a page asked for on one of these names gets a \`308\` to the same path on \`WEAVE_ORIGIN\`, so sign-in always runs on the name its callback returns to; API, MCP and \`/api/health\` calls are served where they arrive. Unset, with \`WEAVE_ORIGIN\`, \`WEAVE_MCP_ORIGINS\` and \`WEAVE_BASE_DOMAIN\` unset too, a non-loopback bind answers any Host and warns once at start. |

@@ -19,6 +19,7 @@ const get = (port, path, host) => new Promise((resolve, reject) => {
 
 async function serve(opts = {}) {
   const w = new Weave();
+  w.setRequireAuth(false);
   const { server, port } = await startServer(w, { port: 0, ...opts });
   return { port, stop: () => server.close() };
 }

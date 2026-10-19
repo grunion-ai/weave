@@ -5,16 +5,18 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { startServer, createWorkspaceHub, deployTokenFromEnv } from '../src/server.js';
+import { startServer, createWorkspaceHub, deployTokenFromEnv, setupTokenFromEnv } from '../src/server.js';
+import { localRequest } from '../src/routes.js';
 import { exposed, probeUrls } from '../scripts/exposure.mjs';
 
 const DEPLOY = 'd'.repeat(40);
+const SETUP = 's'.repeat(40);
 
-const hit = (port, host, method, path, { token, body, cookie } = {}) => new Promise((resolve, reject) => {
+const hit = (port, host, method, path, { token, body, cookie, headers = {} } = {}) => new Promise((resolve, reject) => {
   const payload = body === undefined ? null : JSON.stringify(body);
   const req = request({
     host: '127.0.0.1', port, method, path,
-    headers: { Host: host, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { Host: host, ...headers, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}) },
   }, (res) => {
     let text = '';
     res.setEncoding('utf8');
@@ -144,4 +146,75 @@ test('the probe fails when it cannot read the workspace list, and finds nothing 
   await assert.rejects(exposed({ list: async () => { throw new Error('HTTP 404'); }, status: async () => 200 }, { base: 'https://x' }), /HTTP 404/);
   await assert.rejects(exposed({ list: async () => [], status: async () => 200 }, { base: 'https://x' }), /no workspaces/);
   assert.deepEqual(await exposed({ list: async () => [{ name: 'a' }], status: async () => 401 }, { base: 'https://x' }), []);
+});
+
+test('a request is local only when its host is a loopback name, it comes from this machine or a private network, and no proxy forwarded it (Issue #472)', () => {
+  assert.equal(localRequest({ host: 'localhost:4400', remote: '127.0.0.1' }), true);
+  assert.equal(localRequest({ host: '127.0.0.1:4400', remote: '::ffff:127.0.0.1' }), true);
+  assert.equal(localRequest({ host: '[::1]:4400', remote: '::1' }), true);
+  assert.equal(localRequest({ host: 'localhost:4400', remote: '172.17.0.1' }), true, 'docker on a laptop');
+  assert.equal(localRequest({ host: 'localhost:4400', remote: '192.168.65.1' }), true, 'docker desktop');
+  assert.equal(localRequest({ host: 'weave.example.com', remote: '127.0.0.1' }), false, 'a public name');
+  assert.equal(localRequest({ host: '203.0.113.9:4400', remote: '198.51.100.7' }), false, 'a bare public address');
+  assert.equal(localRequest({ host: 'localhost', remote: '198.51.100.7' }), false, 'a spoofed host from the internet');
+  assert.equal(localRequest({ host: 'localhost:4400', remote: '127.0.0.1', forwarded: '198.51.100.7' }), false, 'a proxy in front');
+  assert.equal(localRequest({ host: '', remote: '127.0.0.1' }), false);
+});
+
+test('a fresh instance with no accounts serves nobody anonymous as admin on a public host, and stays open on localhost (Issue #472)', async () => {
+  const h = hubIn();
+  const { server, port } = await startServer(h.main, { port: 0, origin: 'https://weave.example.com' });
+  try {
+    for (const [method, path, body] of [['POST', '/api/accounts', { name: 'mallory', role: 'architect' }], ['PATCH', '/api/workspace', { requireAuth: false }], ['PATCH', '/api/workspace', { name: 'owned' }], ['GET', '/api/tables']]) {
+      assert.equal((await hit(port, 'weave.example.com', method, path, { body })).status, 401, `${method} ${path} on the public host`);
+    }
+    assert.equal((await hit(port, 'weave.example.com', 'GET', '/api/health')).status, 200);
+    assert.equal((await hit(port, `localhost:${port}`, 'GET', '/api/tables', { headers: { 'X-Forwarded-For': '198.51.100.7' } })).status, 401, 'a proxied request is not local');
+    assert.equal((await hit(port, `localhost:${port}`, 'GET', '/api/tables')).status, 200, 'a first-time local user still gets in');
+    assert.deepEqual(h.main.listAccounts(), []);
+  } finally { server.close(); h.done(); }
+});
+
+test('the door is shut on a public host before WEAVE_ORIGIN is set too, the moment a platform domain points at the service (Issue #472)', async () => {
+  const h = hubIn();
+  const { server, port } = await startServer(h.main, { port: 0, host: '0.0.0.0' });
+  try {
+    assert.equal((await hit(port, 'weave-production.up.railway.app', 'POST', '/api/accounts', { body: { name: 'mallory', role: 'architect' } })).status, 401);
+    assert.equal((await hit(port, 'weave-production.up.railway.app', 'PATCH', '/api/workspace', { body: { requireAuth: false } })).status, 401);
+    assert.deepEqual(h.main.listAccounts(), []);
+  } finally { server.close(); h.done(); }
+});
+
+test('an operator who turned the wall off on purpose keeps an open instance (Issue #472)', async () => {
+  const h = hubIn();
+  h.main.setRequireAuth(false);
+  h.main.save();
+  const { server, port } = await startServer(h.main, { port: 0, origin: 'https://weave.example.com' });
+  try {
+    assert.equal((await hit(port, 'weave.example.com', 'GET', '/api/tables')).status, 200);
+  } finally { server.close(); h.done(); }
+});
+
+test('the setup token makes the first architect over HTTPS, closes the wall behind it, and stops working once the workspace has an account (Issue #472)', async () => {
+  assert.equal(setupTokenFromEnv({ WEAVE_SETUP_TOKEN: 'short' }), null);
+  assert.equal(setupTokenFromEnv({}), null);
+  assert.equal(setupTokenFromEnv({ WEAVE_SETUP_TOKEN: SETUP }), SETUP);
+  const h = hubIn();
+  const docs = new Weave({ path: join(h.dir, 'other.db'), name: 'other' });
+  docs.state.meta.name = 'other';
+  docs.save();
+  docs.store.close?.();
+  const { server, port } = await startServer(h.main, { port: 0, origin: 'https://weave.example.com', setupToken: SETUP });
+  try {
+    assert.equal((await hit(port, 'weave.example.com', 'POST', '/api/accounts', { token: 'x'.repeat(40), body: { name: 'kyle', role: 'architect' } })).status, 401, 'a wrong secret');
+    const made = await hit(port, 'weave.example.com', 'POST', '/api/accounts', { token: SETUP, body: { name: 'kyle', role: 'architect' } });
+    assert.equal(made.status, 201, made.text);
+    const { token } = made.json();
+    assert.deepEqual(h.main.listAccounts().map((a) => [a.name, Weave.roleName(a.role)]), [['kyle', 'architect']]);
+    assert.equal(h.main.state.meta.requireAuth, true, 'the wall is on behind the first account');
+    assert.equal((await hit(port, 'weave.example.com', 'POST', '/api/accounts', { token: SETUP, body: { name: 'mallory', role: 'architect' } })).status, 401, 'one time only');
+    assert.equal((await hit(port, 'weave.example.com', 'GET', '/api/tables')).status, 401, 'anonymous reads stay shut');
+    assert.equal((await hit(port, 'weave.example.com', 'GET', '/api/tables', { token })).status, 200, 'the new token opens it');
+    assert.equal((await hit(port, 'weave.example.com', 'POST', '/w/other/api/accounts', { token: SETUP, body: { name: 'kyle', role: 'architect' } })).status, 201, 'the wall is per workspace, and so is the first account');
+  } finally { server.close(); h.done(); }
 });
