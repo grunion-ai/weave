@@ -10990,6 +10990,7 @@ const activityPanel = (() => {
       return (f?.optionsFull ?? []).find((o) => o?.id === v)?.name ?? v;
     };
     st.docFields = docFields;
+    st.name = ent.name ?? '';
     st.items = H().feed({ documents, activity: act.items, optionName });
     if (st.sel && !byId(st.sel)) st.sel = null;
   }
@@ -11090,7 +11091,7 @@ const activityPanel = (() => {
       el('span', { class: 'wv-act-who' }, ...(() => { const chip = actorChipEl(it.actor, { link: false }); return chip ? [chip, ` · ${who}`] : [who]; })()),
       on ? tray(it) : null);
     node.addEventListener('click', (e) => {
-      if (e.target.closest('.wv-act-tray')) return;
+      if (e.target.closest('.wv-act-tray, .wv-act-view')) return;
       st.sel = it.id; st.from = null; st.done = null; st.scroll = true; render();
     });
     node.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === node) node.click(); });
@@ -11115,6 +11116,13 @@ const activityPanel = (() => {
       if (fits()) return;
     }
   }
+  function subjectCrumb() {
+    if (!st.name) return [];
+    const subject = dockCoversScreen.matches
+      ? el('button', { type: 'button', class: 'wv-act-subject', title: `Back to ${st.name}`, onclick: () => close() }, st.name)
+      : el('span', { class: 'wv-act-subject' }, st.name);
+    return [subject, el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›')];
+  }
   function renderPanel() {
     const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields']];
     const pickFilter = (k) => { st.filter = k; render(); };
@@ -11134,7 +11142,7 @@ const activityPanel = (() => {
     if (!list.children.length) list.append(el('div', { class: 'wv-empty' }, 'No changes yet.'));
     const keep = panel?.querySelector('.wv-act-list')?.scrollTop ?? 0;
     const next = el('aside', { class: 'wv-activity', 'aria-label': 'Activity' },
-      el('div', { class: 'wv-act-head' }, el('h3', {}, 'Activity'),
+      el('div', { class: 'wv-act-head' }, el('h3', {}, ...subjectCrumb(), el('span', { class: 'wv-act-section' }, 'Activity')),
         el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
       filters, list);
     const side = $('#side');
@@ -11156,7 +11164,7 @@ const activityPanel = (() => {
     }
   }
 
-  const reveal = (node) => { if (st.scroll) { st.scroll = false; scrollTargetIntoView(node, { padding: 12 }); } };
+  const reveal = (node, padding = 12) => { if (st.scroll) { st.scroll = false; scrollTargetIntoView(node, { padding }); } };
   function clearViews() {
     for (const v of document.querySelectorAll('.wv-act-view')) {
       const body = v.closest('.doc-section')?.querySelector(':scope > .doc-section-body');
@@ -11168,22 +11176,24 @@ const activityPanel = (() => {
     clearViews();
     const it = byId(st?.sel);
     if (!it) return;
+    const inSheet = dockCoversScreen.matches ? panel?.querySelector('.wv-act-row.sel') : null;
     if (it.kind === 'rev') {
-      const sec = sectionFor(it.field); if (!sec) return;
-      const body = sec.querySelector(':scope > .doc-section-body');
+      const sec = inSheet ? null : sectionFor(it.field); if (!inSheet && !sec) return;
       const from = st.from ? byId(st.from) : prevOf(it);
       const view = el('div', { class: 'wv-act-view' });
-      body.hidden = true; body.after(view);
+      if (inSheet) inSheet.append(view);
+      else { const body = sec.querySelector(':scope > .doc-section-body'); body.hidden = true; body.after(view); }
       const [ft, tt] = await Promise.all([from ? text(from) : '', text(it)]);
       if (!view.isConnected) return;
       const diff = el('div', { class: 'wv-act-diff' }); diff.innerHTML = H().renderDiff(ft, tt);
       view.append(el('div', { class: 'wv-act-bar' }, from ? val(stamp(from.at), 'from') : null, from ? arrow() : null, val(stamp(it.at), 'to')), diff);
-      reveal(sec);
+      if (inSheet) reveal(inSheet, 36); else reveal(sec);
       return;
     }
-    const host = st.mount?.querySelector('.entity-body'); if (!host) return;
+    const host = inSheet ?? st.mount?.querySelector('.entity-body'); if (!host) return;
     const view = el('div', { class: 'wv-act-view top' }, el('div', { class: 'wv-act-card' },
       el('b', {}, it.field), val(it.from), arrow(), val(it.to, 'new')));
+    if (inSheet) { inSheet.append(view); reveal(inSheet, 36); return; }
     host.prepend(view);
     reveal(view);
   }
