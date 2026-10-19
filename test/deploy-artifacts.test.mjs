@@ -251,3 +251,18 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
     }
   }
 });
+
+test('the Door C guide explains the account chip, both sign-out rows and the 30-day idle rule (Issue #718)', () => {
+  const doc = guide('Door C: sign in with a provider').doc;
+  const app = read('public/app.js');
+  for (const label of ['Sign out', 'Sign out everywhere', 'Your menu']) {
+    assert.ok(app.includes(`'${label}'`), `the app still labels a control '${label}'`);
+    assert.ok(doc.includes(`**${label}**`), `door C names **${label}**`);
+  }
+  assert.ok(doc.includes('**Sign out of <workspace>**'), 'door C names the Sign out tooltip');
+  assert.match(doc, /## Your account and signing out\n/, 'the chip has its own section');
+  const section = doc.split('## Your account and signing out\n')[1].split('\n## ')[0];
+  for (const s of ['sidebar', '30 days', 'hub root', 'wv_out_<workspace id>', 'POST /api/auth/logout?everywhere=1']) {
+    assert.ok(section.includes(s), `the section covers ${s}`);
+  }
+});
