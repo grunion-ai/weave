@@ -899,7 +899,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         limit: args.limit ?? null, offset: args.offset ?? 0,
       });
     case 'weave_audit':
-      return { events: weave.listAudit({ limit: args.limit ?? null, since: args.since ?? null }) };
+      return { events: weave.listAudit({ limit: args.limit ?? undefined, since: args.since ?? null }) };
     case 'weave_forms':
       if (args.action === 'list') return listForms(weave);
       if (args.action === 'get') return getFormDefinition(weave, args.form);
