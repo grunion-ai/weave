@@ -1338,7 +1338,7 @@ async function personalMenu(btn) {
     ...(globalThis.WeaveConsent ? [{ label: 'Cookies', icon: 'lucide:shield-check', section: 'settings', className: 'nav-cookies-row', run: () => globalThis.WeaveConsent.ask() }] : []),
     ...(signedIn ? [
       { label: 'Sign out', hint: version, icon: 'lucide:log-out', section: 'organize', title: `Sign out of ${ws}`, run: () => signOutOf([WS_PREFIX]) },
-      { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutOf(everywhere) },
+      { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutEverywhere(everywhere) },
     ] : []),
   ], {
     anchor: btn, className: 'nav-personal-menu', label: 'Your menu',
@@ -1346,10 +1346,18 @@ async function personalMenu(btn) {
   });
 }
 
+const postLogout = (url) => fetch(url, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin',
+});
+
 async function signOutOf(prefixes) {
-  await Promise.allSettled([...new Set(prefixes)].map((p) => fetch(`${p}/api/auth/logout`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin',
-  })));
+  await Promise.allSettled([...new Set(prefixes)].map((p) => postLogout(`${p}/api/auth/logout`)));
+  location.assign(`${WS_PREFIX}/auth?signed-out=1`);
+}
+
+async function signOutEverywhere(prefixes) {
+  const res = await postLogout(`${WS_PREFIX}/api/auth/logout?everywhere=1`).catch(() => null);
+  if (res?.status === 404) return signOutOf(prefixes);
   location.assign(`${WS_PREFIX}/auth?signed-out=1`);
 }
 
