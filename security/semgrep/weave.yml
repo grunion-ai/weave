@@ -191,4 +191,4 @@ rules:
               regex: '^[^0-9]'
           - pattern-not-inside: $M.get($K)
     paths:
-      include: ['src/routes.js', 'src/server.js', 'src/worker.js', 'src/mcp.js', 'src/applet.js', 'bin/weave.js']
+      include: ['src/routes.js', 'src/server.js', 'src/mcp.js', 'src/applet.js', 'bin/weave.js']

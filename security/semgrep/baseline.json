@@ -12,7 +12,6 @@
   "weave-decodeuricomponent-unguarded|public/app.js|if ((m = hash.match(/^#\\/(?:table|db)\\/([^/?]+)(?:\\/view\\/([^/?]+))?(?:\\?e=([^&]+))?/))) return showDatabase(m[1], m[2] ? decodeURIComponent(m[2]) : null).then(() => redock(m[1], m[3]));",
   "weave-decodeuricomponent-unguarded|public/app.js|return $('#ws-name')?.textContent || (WS_PREFIX ? decodeURIComponent(WS_PREFIX.slice(3)) : '');",
   "weave-decodeuricomponent-unguarded|src/server.js|path: decodeURIComponent(url.pathname),",
-  "weave-decodeuricomponent-unguarded|src/worker.js|const path = decodeURIComponent(url.pathname);",
   "weave-html-sink-unescaped|public/app.js|body.innerHTML = html;",
   "weave-html-sink-unescaped|public/app.js|box.innerHTML = html;",
   "weave-html-sink-unescaped|public/app.js|box.innerHTML = html;",

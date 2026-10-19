@@ -14,7 +14,7 @@ export function createMailer({ key, from, fetch = globalThis.fetch }) {
   };
 }
 
-export function mailerFromEnv(env = globalThis.process?.env ?? {}, opts = {}) {
+export function mailerFromEnv(env = process.env, opts = {}) {
   const key = String(env.WEAVE_MAIL_KEY ?? '').trim();
   const from = String(env.WEAVE_MAIL_FROM ?? '').trim();
   return key && from ? createMailer({ key, from, ...opts }) : null;

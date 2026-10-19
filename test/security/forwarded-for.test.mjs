@@ -3,12 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 process.env.WEAVE_KEYSTORE ??= join(mkdtempSync(join(tmpdir(), 'weave-sec-')), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { startServer } = await import('../../src/server.js');
 const { clientAddress } = await import('../../src/routes.js');
-const { WeaveWorkspace } = await import('../../src/worker.js');
 
 const LIMITS = { options: 10, failed: 5, slugs: 2 };
 
@@ -48,38 +46,4 @@ test('with WEAVE_TRUST_PROXY unset, X-Forwarded-For is ignored and the socket ad
     assert.deepEqual(got, [200, 200, 429]);
     assert.equal(await check(null), 429, 'no header, same socket, same budget');
   } finally { stop(); }
-});
-
-function shimStorage() {
-  const db = new DatabaseSync(':memory:');
-  return {
-    sql: {
-      exec(query, ...params) {
-        if (params.length === 0 && !/^\s*SELECT/i.test(query)) db.exec(query);
-        const stmt = db.prepare(query);
-        if (/^\s*SELECT/i.test(query)) return { toArray: () => stmt.all(...params) };
-        stmt.run(...params);
-      },
-    },
-    transactionSync(fn) {
-      db.exec('BEGIN');
-      try { const r = fn(); db.exec('COMMIT'); return r; } catch (err) { db.exec('ROLLBACK'); throw err; }
-    },
-  };
-}
-
-test('the Worker keys the limiter on CF-Connecting-IP', async () => {
-  const dobj = new WeaveWorkspace({ storage: shimStorage() }, { WEAVE_VERSION: '0.0.0-test' });
-  const call = async (ip) => (await dobj.fetch(new Request('http://do/api/workspaces/slug?slug=probe', {
-    headers: { 'x-weave-workspace': 'scratch', 'CF-Connecting-IP': ip },
-  }))).status;
-  const quiet = console.error;
-  console.error = () => {};
-  try {
-    const seen = new Set();
-    for (let i = 0; i < 60; i++) seen.add(await call('203.0.113.7'));
-    assert.ok(!seen.has(429), 'sixty checks fit the budget');
-    assert.equal(await call('203.0.113.7'), 429, 'the sixty-first from the same address is refused');
-    assert.notEqual(await call('203.0.113.8'), 429, 'another address has its own budget');
-  } finally { console.error = quiet; }
 });

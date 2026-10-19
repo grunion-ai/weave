@@ -8,7 +8,6 @@ import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave, WeaveError } from '../src/engine.js';
 import { Store } from '../src/store.js';
-import { CFStore } from '../src/store-cf.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 
@@ -88,24 +87,6 @@ storeContract('sqlite store', () => {
   const dir = mkdtempSync(join(tmpdir(), 'weave-rev-'));
   test.after(() => rmSync(dir, { recursive: true, force: true }));
   const s = new Store(join(dir, 'ws.db'));
-  s.load();
-  return s;
-});
-storeContract('cloudflare store', () => {
-  const db = new DatabaseSync(':memory:');
-  const storage = {
-    sql: {
-      exec(query, ...params) {
-        if (params.length === 0 && !/^\s*SELECT/i.test(query)) { db.exec(query); return { toArray: () => [] }; }
-        const stmt = db.prepare(query);
-        if (/^\s*SELECT/i.test(query)) return { toArray: () => stmt.all(...params) };
-        stmt.run(...params);
-        return { toArray: () => [] };
-      },
-    },
-    transactionSync(fn) { db.exec('BEGIN'); try { const r = fn(); db.exec('COMMIT'); return r; } catch (err) { db.exec('ROLLBACK'); throw err; } },
-  };
-  const s = new CFStore(storage);
   s.load();
   return s;
 });

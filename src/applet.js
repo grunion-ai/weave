@@ -1155,16 +1155,6 @@ const CLIENT = `
       });
   }
 
-  /* The bug reporter, with the desktop's own parts: bug-core's categories,
-     its ring-buffer recorder, its client context, and the payload
-     /api/bug-report actually reads. The applet is a weave surface; a report
-     from it should be indistinguishable from one filed at a desk.
-
-     The report goes to /w/weave/api/bug-report, not /api/bug-report. The
-     Issue is filed into the weave docs workspace, and on Cloudflare each
-     workspace is its own Durable Object with a single-member hub — asked
-     from uno, hub.get('weave') is null and the endpoint answers 501. Asking
-     the weave workspace directly works on both adapters. */
   if (rec) {
     rec.record({ kind: 'nav', to: location.pathname, t: now() });
     addEventListener('error', (e) => rec.record({
