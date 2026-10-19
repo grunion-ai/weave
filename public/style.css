@@ -722,6 +722,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-body > .attach-block:hover { background: var(--wv-pill-hover); }
 .entity-body > .attach-block label { color: var(--tblr-secondary); font-size: var(--fs-grid); }
 @media (max-width: 600px) { .entity-body > .attach-block { grid-template-columns: 16px 110px minmax(0, 1fr); } }
+@media (pointer: coarse) { .entity-body > .attach-block .opt-grip, .related-head .opt-grip { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: flex-start; box-sizing: border-box; min-width: 44px; min-height: 44px; padding-left: 6px; margin: -13px -22px -13px -6px; } }
 
 @media (max-width: 600px) { .entity-fields .fieldrow { grid-template-columns: 16px 110px minmax(0, 1fr); } }
 @container entity-body (max-width: 330px) {
