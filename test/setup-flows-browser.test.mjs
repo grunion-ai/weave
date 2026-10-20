@@ -813,15 +813,19 @@ if (openHub) {
   });
 
   for (const role of ['architect', 'editor', 'observer']) {
-    for (const phone of [false, true]) {
-      test(`invited ${role} in an empty workspace (${phone ? 'phone' : 'desktop'})`, async () => {
-        const suffix = `${role}-${phone ? 'phone' : 'desktop'}`;
+    for (const { phone, populated } of [{ phone: false, populated: false }, { phone: true, populated: false }, { phone: false, populated: true }, { phone: true, populated: true }]) {
+      test(`invited ${role} in a ${populated ? 'populated' : 'empty'} workspace (${phone ? 'phone' : 'desktop'})`, async () => {
+        const suffix = `${role}-${phone ? 'phone' : 'desktop'}-${populated ? 'full' : 'empty'}`;
         const owner = await page();
         person(openHub, { email: `owner-${suffix}@example.com` });
         await signIn(owner, openHub);
         await nameIt(owner, `Invite ${suffix}`, `invite-${suffix}`);
-        await go(owner, 'skip');
-        await owner.waitForURL(new RegExp(`/w/invite-${suffix}/$`));
+        if (populated) {
+          await pickWork(owner, 'tasks');
+          await step(owner, 'agent');
+          await go(owner, 'open');
+        } else await go(owner, 'skip');
+        await owner.waitForURL(new RegExp(`/w/invite-${suffix}/`));
         await owner.close();
         const w = openHub.opened(`invite-${suffix}`);
         const email = `invited-${suffix}@example.com`;
@@ -831,10 +835,11 @@ if (openHub) {
         person(openHub, { email });
         try {
           await p.goto(`${openHub.base}/w/invite-${suffix}/api/auth/oidc/start?invite=${invite.code}`);
-          await p.waitForSelector('.wv-start');
+          await p.waitForSelector('#main .view-header');
           const onboarding = await p.evaluate(async () => (await fetch('api/onboarding')).json());
           assert.equal(onboarding.show, false, 'invited members do not rename the workspace');
-          if (role === 'architect') assert.equal(await p.locator('.wv-start-new').count(), 1);
+          if (populated) assert.equal(await p.locator('.wv-start').count(), 0);
+          else if (role === 'architect') assert.equal(await p.locator('.wv-start-new').count(), 1);
           else {
             assert.equal(await p.locator('.wv-start-new, .wv-start-template').count(), 0);
             assert.match(await p.locator('.wv-start').textContent(), /Ask a workspace architect/);

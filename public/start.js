@@ -492,6 +492,7 @@
     gallery.id = 'work-gallery';
     search.value = query;
     const visible = () => [...gallery.querySelectorAll('.card')].filter((c) => !c.hidden && !c.closest('.shelf').hidden);
+    const firstMatch = () => visible().find((c) => c.hay) ?? visible()[0];
 
     function describe() {
       if (choice === EMPTY) {
@@ -524,12 +525,12 @@
 
     function select(id) {
       choice = id;
-      s.data = { ...s.data, empty: id === EMPTY, template: id === EMPTY ? null : id, other: id === EMPTY ? other.value : '' };
-      saveDraft();
       for (const b of gallery.querySelectorAll('.card')) b.setAttribute('aria-pressed', String(b.dataset.template === id));
       go.textContent = goLabel(id);
       go.disabled = false;
       if (id === EMPTY && !other.value && query && !visible().some((c) => c.hay)) other.value = query;
+      s.data = { ...s.data, empty: id === EMPTY, template: id === EMPTY ? null : id, other: id === EMPTY ? other.value : '' };
+      saveDraft();
       describe();
       place();
       details.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
@@ -558,8 +559,8 @@
     search.addEventListener('input', () => { query = search.value; filter(); });
     search.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && search.value) { ev.preventDefault(); search.value = ''; query = ''; filter(); }
-      else if (ev.key === 'ArrowDown') { ev.preventDefault(); visible()[0]?.focus(); }
-      else if (ev.key === 'Enter') { ev.preventDefault(); const first = visible()[0]; if (first) { select(first.dataset.template); first.focus(); } }
+      else if (ev.key === 'ArrowDown') { ev.preventDefault(); firstMatch()?.focus(); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); const first = firstMatch(); if (first) { select(first.dataset.template); first.focus(); } }
     });
     const lift = () => {
       if (!matchMedia('(max-width: 860px)').matches) return;
@@ -767,6 +768,7 @@
     try { saved = JSON.parse(sessionStorage.getItem('weave:setup')); } catch {}
     s = q.setup === 'resume' ? resume(me, saved) : begin(me, q);
     if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : q.mode === 'signup' ? '/start?mode=signup' : '/start');
+    if (s.data.template && !TEMPLATES.some((t) => t.id === s.data.template)) s.data.template = null;
     saveDraft();
     globalThis.WeaveConsent?.start(me.analytics);
     render();
