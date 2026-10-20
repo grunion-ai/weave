@@ -47,3 +47,11 @@ test('resume: route dispatch tolerates a browser that denies the storage getter 
   runInNewContext(`Object.defineProperty(globalThis, 'localStorage', { get() { throw new Error('SecurityError'); } });\n${core}\n${route}\nrememberRoute();`, browser);
   assert.equal(location.hash, '#/');
 });
+
+test('resume: implicit storage access fails safely for resume and deep links (Issue #956)', () => {
+  const core = readFileSync(new URL('../public/resume-core.js', import.meta.url), 'utf8');
+  const browser = {};
+  runInNewContext(`Object.defineProperty(globalThis, 'localStorage', { get() { throw new Error('SecurityError'); } });\n${core}`, browser);
+  assert.equal(browser.WeaveResume.follow({ pathname: '/', hash: MARK }), '#/');
+  assert.equal(browser.WeaveResume.follow({ pathname: '/', hash: '#/entity/e9' }), '#/entity/e9');
+});
