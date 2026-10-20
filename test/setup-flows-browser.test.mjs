@@ -124,7 +124,7 @@ if (openHub) {
     await step(p, 'agent');
     assert.equal((await donut(p)).at, 100);
     assert.equal(await stageArt(p), art);
-    assert.deepEqual(await p.locator('main h2').allTextContents(), ['Chat apps', 'Harnesses'], 'two groups: chat apps and harnesses (Issue #950)');
+    assert.deepEqual(await p.locator('main h2').allTextContents(), ['Chat apps', 'Desktop and terminal tools'], 'chat apps lead; desktop clients are disclosed separately');
     const listed = (i) => p.locator('main .apps').nth(i).locator('.app[data-tool] b').allTextContents();
     assert.deepEqual(await listed(0), ['Claude', 'ChatGPT', 'Gemini'], 'Claude leads the chat apps');
     assert.deepEqual(await listed(1), ['Claude Code', 'Codex', 'Antigravity', 'Gemini CLI', 'Something else']);
@@ -137,7 +137,7 @@ if (openHub) {
     const lead = await p.locator('main .lead').textContent();
     assert.match(lead, /agent you already use/);
     assert.ok(lead.trim().split(/\s+/).length <= 16, `the lead is one short line (${lead})`);
-    assert.equal(await p.locator('main [data-go="next"]').count(), 0, 'no way forward but a tool or skip');
+    assert.equal(await p.locator('main [data-go="next"]').count(), 0, 'AI setup has no misleading Continue action before a connection');
     await p.click('.app[data-tool="claude"]');
     assert.equal(await p.locator('.chosen b').textContent(), 'Claude', 'the chosen app heads the step');
     await p.click('main [data-go="change"]');
@@ -348,6 +348,9 @@ if (openHub) {
         anchors.set(a.abs, a.text);
       }
     }
+    const mcp = await p.request.get(`${openHub.base}/w/link-check/mcp`);
+    assert.equal(mcp.status(), 401, 'the address answers as an MCP server asking for sign-in');
+    assert.match(mcp.headers()['www-authenticate'] ?? '', /resource_metadata=/);
     const promise = { weave: /weave/i, Privacy: /<title>Privacy/, Terms: /<title>Terms/ };
     for (const [abs, text] of anchors) {
       if (new URL(abs).origin !== new URL(openHub.base).origin) continue;
@@ -355,10 +358,7 @@ if (openHub) {
       assert.ok(res.status() < 400, `"${text}" (${abs}) answers ${res.status()}`);
       assert.match(await res.text(), promise[text] ?? /./, `"${text}" lands on the page it names`);
     }
-    assert.deepEqual([...anchors.values()].sort(), ['Privacy', 'Terms', 'weave'], 'the step links home, Privacy and Terms, and nothing else');
-    const mcp = await p.request.get(`${openHub.base}/w/link-check/mcp`);
-    assert.equal(mcp.status(), 401, 'the address answers as an MCP server asking for sign-in');
-    assert.match(mcp.headers()['www-authenticate'] ?? '', /resource_metadata=/);
+    assert.deepEqual([...anchors.values()].sort(), ['Open workspace', 'Privacy', 'Terms', 'weave'], 'the created workspace can be opened before AI setup');
     await p.context().close();
   });
 
@@ -427,6 +427,8 @@ if (openHub) {
     await go(p, 'new');
     await step(p, 'workspace');
     await p.click('main button:has-text("Back")');
+    await step(p, 'list');
+    await p.reload();
     await step(p, 'list');
     await p.context().close();
   });
@@ -851,5 +853,23 @@ if (openHub) {
       });
     }
   }
+
+  test('expired setup sign-in resumes only after the same identity authenticates', async () => {
+    const p = await page();
+    const who = person(openHub, { email: 'expired-draft@example.com' });
+    try {
+      await signIn(p, openHub);
+      await nameIt(p, 'Draft team', 'expired-draft');
+      await p.context().clearCookies();
+      await p.reload();
+      await step(p, 'account');
+      openHub.idp.signInBrowserAs(who);
+      await go(p, 'signin');
+      await step(p, 'work');
+      await p.getByRole('button', { name: 'Back', exact: true }).click();
+      await step(p, 'workspace');
+      assert.equal(await p.inputValue('input[name="slug"]'), 'expired-draft');
+    } finally { await p.close(); }
+  });
 
 }

@@ -201,3 +201,13 @@ test('refresh never replays workspace creation, including a lost creation respon
   assert.equal(resume(member, draft(agent)).made.open, '/api/start/open/team');
   assert.notEqual(resume({ ...member, rows: [] }, draft(agent)).step, 'agent');
 });
+
+
+test('starting again from the picker clears abandoned workspace details', () => {
+  const named = reduce(begin(PEOPLE.returning, { setup: 'new' }), { type: 'next', name: 'Abandoned', slug: 'abandoned' });
+  const listed = reduce(reduce(named, { type: 'back' }), { type: 'back' });
+  const fresh = reduce(listed, { type: 'new' });
+  assert.equal(fresh.step, 'workspace');
+  assert.equal(fresh.data.name, '');
+  assert.equal(fresh.data.slug, '');
+});

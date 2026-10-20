@@ -332,6 +332,7 @@ test('spent invites offer safe recovery without redeeming again or admitting str
     assert.equal(again.status, 410);
     assert.match(again.text, /You already have access/);
     assert.match(again.text, /Open workspace/);
+    assert.match(again.text, /href="\/w\/recovery\/"/);
     assert.equal(again.headers['set-cookie'], undefined);
   } finally { s.stop(); }
 });

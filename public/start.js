@@ -173,12 +173,17 @@
   }
 
   function saveDraft() {
+    if (!s.me?.signedIn && entry.setup === 'resume') {
+      history.replaceState(null, '', '/start?setup=resume');
+      return;
+    }
     const saved = draft(s);
     try {
       if (saved) sessionStorage.setItem('weave:setup', JSON.stringify(saved));
       else sessionStorage.removeItem('weave:setup');
     } catch {}
-    if (saved) history.replaceState(null, '', '/start?setup=resume');
+    if (saved && location.search !== '?setup=resume') history.replaceState(null, '', '/start?setup=resume');
+    else if (['list', 'closed'].includes(s.step)) history.replaceState(null, '', PICK);
   }
 
   function dispatch(e) {
@@ -239,7 +244,7 @@
   function account() {
     let mode = entry.mode === 'signup' ? 'signup' : 'signin';
     const pane = me.clerk;
-    const next = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : entry.pick ? PICK : '/start');
+    const next = signInHref(['skip', 'new', 'resume'].includes(entry.setup) ? `/start?setup=${entry.setup}` : entry.pick ? PICK : '/start');
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
@@ -658,7 +663,7 @@
     const g = s.data.tool ? guide(s.data.tool, { url: s.made.mcp, workspace: title, template: chosen()?.work ?? chosen()?.title ?? null, other: s.data.other }) : null;
     const skip = make('button', { type: 'button', class: 'btn-link', 'data-go': 'skip', onclick: () => dispatch({ type: 'skip' }) }, COPY.agent.skip);
     const open = make('a', { class: 'btn btn-primary btn-wide', href: s.made.open + (s.made.table ? `?table=${encodeURIComponent(s.made.table)}` : ''), 'data-go': 'open' }, COPY.done.open);
-    const ready = make('div', { class: 'actions' }, open, make('span', { class: 'muted' }, 'Your workspace is ready. AI setup is optional and can be done later.'));
+    const ready = make('section', { class: 'workspace-ready', 'aria-label': 'Workspace ready' }, open, make('p', { class: 'muted' }, 'Your workspace is ready. AI setup is optional and can be done later.'));
     if (!g) {
       const group = (heading, kinds) => {
         const tools = TOOLS.filter((t) => kinds.includes(t.kind));
@@ -666,7 +671,7 @@
           appTile(t), make('span', { class: 'app-text' }, make('b', {}, t.name), make('small', {}, t.pitch ?? t.where)))))] : [];
       };
       return [ready, make('h1', {}, COPY.agent.title), make('p', { class: 'lead' }, COPY.agent.lead), errorBox(s.error),
-        ...group(COPY.agent.chat, ['chat']), make('details', {}, make('summary', {}, COPY.agent.harnesses), ...group('Desktop and terminal tools', ['harness', 'other'])),
+        ...group(COPY.agent.chat, ['chat']), make('details', { class: 'agent-tools' }, make('summary', {}, 'More AI tools (desktop)'), ...group('Desktop and terminal tools', ['harness', 'other'])),
         make('div', { class: 'actions' }, skip)];
     }
     const kind = { prompt: COPY.agent.copyPrompt, command: COPY.agent.copyCommand, codex: COPY.agent.copyCommand, url: COPY.agent.copyAddress }[g.copy];

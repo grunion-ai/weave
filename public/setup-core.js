@@ -22,7 +22,7 @@
     switch (e.type) {
       case 'new':
         if (s.step !== 'list') return s;
-        return s.me.canCreate ? at('workspace', { data: { ...s.data, name: '' } }) : at('closed');
+        return s.me.canCreate ? at('workspace', { data: { name: '', slug: '', template: null, other: '', tool: null }, made: null, skipped: false }) : at('closed');
       case 'next':
         if (s.step === 'workspace') return at('work', { data: { ...s.data, name: e.name ?? s.data.name, slug: e.slug ?? s.data.slug } });
         if (s.step === 'work') return at('build', { data: { ...s.data, template: e.template ?? null, other: e.other ?? '' } });
