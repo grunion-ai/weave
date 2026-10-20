@@ -12833,7 +12833,7 @@ function renderRoute() {
 }
 
 function rememberRoute() {
-  const landed = WeaveResume.follow(location, globalThis.localStorage);
+  const landed = WeaveResume.follow(location);
   if (landed !== location.hash) history.replaceState(history.state, '', landed);
 }
 

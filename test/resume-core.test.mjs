@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 
 await import('../public/resume-core.js');
 const { MARK, land, keep, follow } = globalThis.WeaveResume;
@@ -34,4 +36,14 @@ test('resume: each workspace path remembers its own last page, and storage failu
   const broken = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
   assert.equal(follow({ pathname: '/', hash: MARK }, broken), '#/');
   assert.equal(follow({ pathname: '/', hash: '#/x' }, broken), '#/x');
+});
+
+test('resume: route dispatch tolerates a browser that denies the storage getter (Issue #956)', () => {
+  const location = { pathname: '/', hash: '#/resume' };
+  const browser = { location, history: { state: null, replaceState: (_state, _title, hash) => { location.hash = hash; } } };
+  const core = readFileSync(new URL('../public/resume-core.js', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const route = app.match(/function rememberRoute\(\) \{[\s\S]*?\n\}/)[0];
+  runInNewContext(`Object.defineProperty(globalThis, 'localStorage', { get() { throw new Error('SecurityError'); } });\n${core}\n${route}\nrememberRoute();`, browser);
+  assert.equal(location.hash, '#/');
 });
