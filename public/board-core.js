@@ -55,6 +55,37 @@
     field, differs: new Set(items.map((it) => sameKey(it?.raw?.[field.name]))).size > 1,
   }));
 
+  const LIST = () => root.weaveListCore;
+
+  function laneGrid(groups, lane = {}) {
+    const columns = (groups ?? []).map(({ groups: _, ...c }) => c);
+    const seen = new Map();
+    for (const col of groups ?? []) for (const g of col.groups ?? []) if (!seen.has(g.value)) seen.set(g.value, g.path[g.path.length - 1]);
+    const rank = new Map((lane.order === 'az' ? [] : lane.domain ?? []).map((d, i) => [d.key, i]));
+    const keys = [...seen.keys()].sort((a, b) => {
+      if ((a === '') !== (b === '')) return a === '' ? 1 : -1;
+      const ra = rank.has(a) ? rank.get(a) : Infinity;
+      const rb = rank.has(b) ? rank.get(b) : Infinity;
+      return ra - rb || String(seen.get(a).label).localeCompare(String(seen.get(b).label), undefined, { numeric: true });
+    });
+    const lanes = keys.map((value) => {
+      const bucket = seen.get(value);
+      const cells = (groups ?? []).map((col) => col.groups?.find((g) => g.value === value)
+        ?? { key: [...col.path, bucket].map((p) => p.label).join(LIST().SEP), label: bucket.label, value, level: 1, path: [...col.path, bucket], count: 0, items: [] });
+      return { key: bucket.label, label: bucket.label, value, path: [bucket], cells, count: cells.reduce((n, c) => n + (c.count ?? 0), 0) };
+    });
+    return { columns, lanes };
+  }
+
+  const laneShut = (collapsed, lane) => Array.isArray(collapsed) && lane.cells.every((c) => collapsed.includes(c.key));
+
+  function laneFold(collapsed, lane) {
+    const now = collapsed == null ? [LIST().COMPLETED] : collapsed.slice();
+    const keys = lane.cells.map((c) => c.key);
+    if (laneShut(now, lane)) return now.filter((k) => !keys.includes(k));
+    return [...now, ...keys.filter((k) => !now.includes(k))];
+  }
+
   const groupsOf = (view) => (GROUPS.includes(view?.groups) ? view.groups : 'side');
 
   function pictureOf(db, view) {
@@ -68,5 +99,5 @@
     return { card: CARD_PX[size], column: COLUMN_PX[size], phone: PHONE_COLUMNS[size] };
   }
 
-  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, groupsOf, pictureOf, widths };
+  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
 })(typeof window !== 'undefined' ? window : globalThis);
