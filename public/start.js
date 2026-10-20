@@ -345,9 +345,12 @@
     const go = make('button', { type: 'submit', class: 'btn btn-primary', 'data-go': 'next' });
     slugs.bindSubmit(go);
     go.textContent = COPY.next;
+    const empty = make('button', { type: 'button', class: 'btn-link', 'data-go': 'skip', onclick: () => dispatch({ type: 'skip', ...slugs.value() }) });
+    slugs.bindSubmit(empty);
+    empty.textContent = 'Create empty workspace';
     const form = make('form', { novalidate: true }, slugs.node, make('div', { class: 'actions' },
       (me.rows ?? []).length ? make('button', { type: 'button', class: 'btn', onclick: () => dispatch({ type: 'back' }) }, COPY.back) : null,
-      make('button', { type: 'button', class: 'btn-link', 'data-go': 'skip', onclick: () => { if (!go.disabled) dispatch({ type: 'skip', ...slugs.value() }); else slugs.nameInput.focus(); } }, 'Create empty workspace'),
+      empty,
       make('span', { class: 'grow' }), go));
     form.addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -356,9 +359,11 @@
     });
     queueMicrotask(() => {
       slugs.nameInput.value = s.data.name;
-      if (s.data.slug) slugs.slugInput.value = s.data.slug;
       slugs.nameInput.dispatchEvent(new Event('input'));
-      if (s.data.slug) slugs.slugInput.dispatchEvent(new Event('input'));
+      if (s.data.slug) {
+        slugs.slugInput.value = s.data.slug;
+        slugs.slugInput.dispatchEvent(new Event('input'));
+      }
       if (s.error && /^slug_/.test(s.error.code)) slugs.refused(s.error.code);
       form.addEventListener('input', () => { s.data = { ...s.data, ...slugs.value() }; saveDraft(); });
       slugs.nameInput.focus();

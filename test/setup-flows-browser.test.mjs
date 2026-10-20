@@ -749,11 +749,17 @@ if (openHub) {
         person(openHub, { email: `recovery-${suffix}@example.com` });
         try {
           await signIn(p, openHub);
-          await nameIt(p, `Recovery ${suffix}`, `recovery-${suffix}`);
+          await nameIt(p, `Recovery ${suffix}`, `custom-${suffix}`);
           await p.click('.card[data-template="tasks"]');
           await p.reload();
           await step(p, 'work');
           assert.equal(await p.locator('.card[data-template="tasks"]').getAttribute('aria-pressed'), 'true');
+          await p.getByRole('button', { name: 'Back', exact: true }).click();
+          await step(p, 'workspace');
+          assert.equal(await p.inputValue('input[name="slug"]'), `custom-${suffix}`);
+          await p.waitForSelector('.ws-slug-status[data-state="available"]');
+          await go(p, 'next');
+          await step(p, 'work');
           await go(p, 'next');
           await step(p, 'agent');
           await p.reload();
@@ -762,7 +768,7 @@ if (openHub) {
           assert.equal(await p.locator('.app[data-tool="codex"]').isHidden(), true);
           assert.ok(await p.locator('main [data-go="open"]').evaluate((n) => n.getBoundingClientRect().bottom < innerHeight));
           await go(p, 'open');
-          await p.waitForSelector('#ws-new');
+          await p.waitForSelector('#ws-new', { state: 'attached' });
           if (phone) await p.getByRole('button', { name: 'Open navigation', exact: true }).click();
           await p.locator('#ws-new').click();
           await p.locator('.wv-menu.ws-plus .wv-menu-row', { hasText: 'New workspace' }).click();
@@ -826,6 +832,8 @@ if (openHub) {
         try {
           await p.goto(`${openHub.base}/w/invite-${suffix}/api/auth/oidc/start?invite=${invite.code}`);
           await p.waitForSelector('.wv-start');
+          const onboarding = await p.evaluate(async () => (await fetch('api/onboarding')).json());
+          assert.equal(onboarding.show, false, 'invited members do not rename the workspace');
           if (role === 'architect') assert.equal(await p.locator('.wv-start-new').count(), 1);
           else {
             assert.equal(await p.locator('.wv-start-new, .wv-start-template').count(), 0);

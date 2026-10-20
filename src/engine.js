@@ -3823,6 +3823,7 @@ export class Weave {
       const { account } = this.#createAccount({ name: this.#inviteName(i), role: i.role }, i.rowId ?? uuid());
       const row = this.state.meta.accounts[account.id];
       row.identities = [stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at })];
+      row.onboardedAt = at;
       this.save();
       this.#audit('member-joined', { name: row.name, role: row.role, invitedBy: i.invitedBy ?? null });
       this.#syncUsers();
