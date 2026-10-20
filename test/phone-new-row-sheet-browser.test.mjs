@@ -14,7 +14,10 @@ const s = await launch('phone new-row sheet', (weave) => {
   weave.updateField(guides, 'Name', { config: { term: { singular: 'guide', plural: 'guides' } } });
   const notes = weave.createTable({ space: 'Handbook', name: 'Note' });
   const tasks = weave.createTable({ space: 'Handbook', name: 'Tasks' });
-  return { issues: issues.id, guides: guides.id, notes: notes.id, tasks: tasks.id };
+  const todos = weave.createTable({ space: 'Handbook', name: 'Todo' });
+  weave.createEntity(todos, { name: 'Call Acme' });
+  weave.tableView(`${todos.id}/Standard`, { layout: 'list' });
+  return { issues: issues.id, guides: guides.id, notes: notes.id, tasks: tasks.id, todos: todos.id };
 });
 
 const until = async (read, ok = Boolean, { timeout = 10000 } = {}) => {
@@ -34,7 +37,7 @@ const touchOutside = (page) => page.evaluate(() => {
 });
 
 if (s) {
-  const { base, browser, issues, guides, notes, tasks } = s;
+  const { base, browser, issues, guides, notes, tasks, todos } = s;
   const phone = await phoneBrowser();
   const engines = [['chromium 390x844', () => browser.newPage({ viewport: { width: 390, height: 844 } })]];
   if (phone) engines.push(['webkit iPhone 15', () => phonePage(phone)]);
@@ -163,6 +166,16 @@ if (s) {
       } finally { await page.close(); }
     });
 
+    test(`on a phone a cold load of a list view shows + without waiting on the workspace list (${engine}, Issue #1006)`, async () => {
+      const page = await make();
+      try {
+        await page.route('**/api/workspaces*', async (r) => { await new Promise((ok) => setTimeout(ok, 6000)); await r.continue().catch(() => {}); });
+        await page.goto(`${base}/#/table/${todos}`);
+        await page.waitForSelector('#main .list-row');
+        assert.equal(await until(() => page.evaluate(() => document.querySelector('.phone-bar .phone-new')?.hidden), (h) => h === false, { timeout: 3000 }), false, 'the + is up once the list paints');
+        assert.equal(await page.getAttribute('.phone-bar .phone-new', 'aria-label'), 'New todo');
+      } finally { await page.close(); }
+    });
     test(`on a phone Create keeps the sheet open with the name cleared and focus in it, so a second row needs no reopen (${engine}, Issue #988)`, async () => {
       const page = await open(make, issues);
       try {

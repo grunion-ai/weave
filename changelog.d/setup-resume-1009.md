@@ -1,0 +1,1 @@
+- Setup drafts survive refresh within the same signed-in browser session; interrupted creation never automatically replays. (Issue #1009).

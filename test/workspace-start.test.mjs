@@ -176,6 +176,52 @@ test('resume: a sign-in with no workspaces still gets the start page and its emp
   } finally { s.stop(); }
 });
 
+test('root: with the short apex sign-in gone, the rail cookie opens the last workspace on its own host (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const rail = (names) => s.apex('GET', '/', { cookie: `wv_rail=${names}` });
+    const acme = await rail('acme,net');
+    assert.deepEqual([acme.status, acme.headers.location], [302, 'http://acme.weave.test/#/resume']);
+    assert.equal((await rail('gone,net')).headers.location, 'http://net.weave.test/#/resume', 'a name no workspace holds is skipped');
+    assert.equal((await rail('weave')).headers.location, '/start', 'the docs workspace is never a landing');
+    assert.equal((await s.apex('GET', '/', { cookie: 'wv_rail=' })).headers.location, '/start');
+    const kyle = await s.signInAtStart('user_kyle');
+    assert.equal((await s.apex('GET', '/', { cookie: `${kyle.cookie}; wv_rail=acme` })).headers.location, '/start', 'a held apex sign-in still lands through /start');
+  } finally { s.stop(); }
+});
+
+test('resume: a pending invite keeps the list so it can be accepted (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const other = new Weave({ path: join(s.dir, 'other.db') });
+    other.actor = 'someone';
+    other.inviteMember({ email: 'eve@example.com', role: 'editor', issuer: s.idp.issuer });
+    other.store.close?.();
+    const eve = await s.signInAtStart('user_eve', { email: 'eve@example.com', email_verified: true });
+    const start = await s.apex('GET', '/start', { cookie: eve.cookie });
+    assert.equal(start.status, 200, 'eve opens acme, and the invite to other waits on the list');
+    assert.ok((await s.apex('GET', '/api/start', { cookie: eve.cookie })).json().rows.some((r) => r.kind === 'invite'));
+  } finally { s.stop(); }
+});
+
+test('links: an apex link to a row, table or space opens on the host of the workspace that holds it (Issue #992)', async () => {
+  const s = await serve();
+  try {
+    const acme = new Weave({ path: join(s.dir, 'acme.db') });
+    const space = acme.createSpace({ name: 'Deals' });
+    const table = acme.createTable({ space: space.id, name: 'Deal' });
+    const row = acme.createEntity(table.id, { Name: 'Receivables' });
+    acme.save();
+    acme.store.close?.();
+    for (const [kind, id] of [['e', row.id], ['t', table.id], ['s', space.id]]) {
+      const moved = await s.apex('GET', `/${kind}/${id}`);
+      assert.deepEqual([moved.status, moved.headers.location], [301, `http://acme.weave.test/${kind}/${id}`], kind);
+    }
+    const unknown = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    assert.equal((await s.apex('GET', `/e/${unknown}`)).headers.location, `http://net.weave.test/e/${unknown}`, 'a link no workspace holds goes to Net as before');
+  } finally { s.stop(); }
+});
+
 test('start: the apex shows nothing until sign-in, then lists the workspaces this identity opens', async () => {
   const s = await serve();
   try {
@@ -349,4 +395,22 @@ test('start: the page and the in-app form read their words from slug-core, the o
   for (const line of [WeaveSlugs.COPY.taken, WeaveSlugs.COPY.chipLead, WeaveSlugs.COPY.submit]) assert.ok(!form.includes(line), `slug-form.js repeats copy: ${line}`);
   const index = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(index.indexOf('/slug-form.js') > -1 && index.indexOf('/slug-form.js') < index.indexOf('/app.js'));
+});
+
+test('resume: explicit workspace choice survives listing and root-backed sessions (Issue #957)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    const chosen = await s.apex('GET', '/api/start/open/other', { cookie: kyle.cookie });
+    const rail = cookieOf(chosen, 'wv_rail');
+    assert.ok(rail?.startsWith('wv_rail=other,'), 'opening a workspace moves it to the front');
+    await s.follow(chosen.headers.location);
+    const cookie = `${kyle.cookie}; ${rail}`;
+    assert.equal((await s.apex('GET', '/start', { cookie })).headers.location, '/api/start/open/other?to=resume');
+    const listed = await s.apex('GET', '/api/start', { cookie });
+    assert.equal(cookieOf(listed, 'wv_rail'), rail, 'listing preserves this browser choice');
+    const eve = await s.signInAtStart('user_eve');
+    assert.equal((await s.apex('GET', '/start', { cookie: `${eve.cookie}; ${rail}` })).headers.location, '/api/start/open/acme?to=resume', 'a stale preference cannot grant access');
+    assert.equal((await s.apex('GET', '/start?pick=1', { cookie })).status, 200);
+  } finally { s.stop(); }
 });
