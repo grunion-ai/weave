@@ -56,7 +56,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const metaAttr = (s) => escapeHtml(s).replace(/\r?\n/g, '&#10;');
-const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'field']);
+const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'avatar', 'field']);
 const pickOption = (options, ref) => options.find((o) => o.id === ref)
   ?? options.find((o) => o.name === ref)
   ?? options.find((o) => o.name.toLowerCase() === String(ref).toLowerCase());

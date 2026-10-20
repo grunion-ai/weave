@@ -656,6 +656,16 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 .entity-head { display: flex; align-items: center; gap: 10px; margin-bottom: 0; flex-wrap: wrap; }
 .entity-head .pid { color: var(--tblr-secondary); }
+.entity-head:has(> .av-control) textarea.name-edit { width: auto; flex: 1 1 0; min-width: 0; }
+.av-control { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.av-pick { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
+.av-pick:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
+.av-control.is-file-drop .wv-av { box-shadow: 0 0 0 2px var(--tblr-primary); }
+.wv-av.head-av { --wv-av-size: 40px; }
+.wv-av.field-av { --wv-av-size: 32px; }
+.wv-av.cell-av { --wv-av-size: 20px; }
+.wv-av.crumb-ic { --wv-av-size: 16px; color: var(--text, var(--tblr-secondary)); }
+.wv-av.cmdk-av { --wv-av-size: 18px; }
 .entity-head textarea.name-edit { font-size: var(--fs-title); border: none; padding: 2px 4px; width: 100%; resize: none; overflow: hidden; field-sizing: content; line-height: 1.25; }
 .entity-head .dl-wrap { margin-left: auto; }
 .entity-head textarea.name-edit:hover, .entity-head textarea.name-edit:focus { background: var(--tblr-bg-surface-secondary); }

@@ -79,7 +79,10 @@ const BLOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
   || (f.type === 'relation' && !!(f.many ?? f.config?.many));
 
-const VALUE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
+const VALUE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments', 'avatar'];
+const isFileField = (f) => f.type === 'attachments' || f.type === 'avatar';
+export const AVATAR_SHAPES = ['round', 'square'];
+const AVATAR_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
@@ -210,7 +213,7 @@ const VIEW_DEFAULTS = {
   card: { shape: 'card', link: true, state: true, description: 'small', fields: null },
 };
 const VIEW_NAMES = { chip: 'Chip', card: 'Card' };
-const VIEW_EXCLUDED_TYPES = ['document', 'attachments', 'key', 'field', 'view'];
+const VIEW_EXCLUDED_TYPES = ['document', 'attachments', 'avatar', 'key', 'field', 'view'];
 function plainLines(md, budget = 12) {
   const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md, { lines: budget });
   if (!kind) return [];
@@ -359,7 +362,7 @@ const RECIPE_KEYS = ['relationField', 'relation', 'targetField', 'aggregate'];
 
 export const DEFINABLE_TYPES = [
   'text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email',
-  'select', 'multiselect', 'workflow', 'document', 'field', 'key', 'attachments',
+  'select', 'multiselect', 'workflow', 'document', 'field', 'key', 'attachments', 'avatar',
 ];
 const MAX_DEFINITION_DEPTH = 4;
 export const TYPE_MIGRATIONS = {
@@ -681,6 +684,11 @@ function normalizeSelfContainedConfig(type, config = {}, { formula = false, stri
     if (on.toLowerCase() === off.toLowerCase()) throw new WeaveError(`A toggle needs two different labels, got '${on}' for both`, 'invalid');
     return { on, off };
   }
+  if (type === 'avatar') {
+    const shape = config.shape == null || config.shape === '' ? 'round' : config.shape;
+    if (!AVATAR_SHAPES.includes(shape)) throw new WeaveError(`Invalid avatar shape '${shape}' (${AVATAR_SHAPES.join(', ')})`, 'invalid');
+    return { shape };
+  }
   if (type === 'attachments') {
     const multiple = config.multiple == null ? true : !!config.multiple;
     const out = { multiple };
@@ -925,6 +933,7 @@ const USER_COLUMNS = [
   ['Role', 'select', { options: [{ name: 'Architect', hue: 'purple' }, { name: 'Editor', hue: 'blue' }, { name: 'Observer', hue: 'slate' }] }],
   ['Status', 'select', { options: [{ name: 'Invited', hue: 'amber' }, { name: 'Active', hue: 'green' }] }],
   ['Kind', 'select', { options: [{ name: 'Person', hue: 'slate' }, { name: 'Agent', hue: 'slate' }] }],
+  ['Avatar', 'avatar', { shape: 'round' }],
   ['Identities', 'number', { decimals: 0 }],
   ['Last Seen', 'date', { time: true }],
   ['Created', 'date', { time: true }],
@@ -1248,6 +1257,27 @@ export class Weave {
     return out;
   }
 
+  avatarOf(entityRef) {
+    return this.#faceOf(this.getEntity(entityRef));
+  }
+
+  #faceOf(e) {
+    const db = this.state.tables[e.dbId];
+    const field = Object.values(db.fields).find((f) => f.type === 'avatar' && !f.deletedAt);
+    if (!field) return null;
+    const name = this.entityName(e);
+    const core = globalThis.chipCore;
+    const id = (Array.isArray(e.values[field.id]) ? e.values[field.id] : []).find((x) => e.files.some((m) => m.id === x)) ?? null;
+    const kind = db.system === 'users' ? this.#displayValue(db, this.findField(db, 'Kind'), this.#resolve(e, db, this.findField(db, 'Kind'), 0), e) : null;
+    return {
+      shape: field.config.shape ?? 'round',
+      initials: core.initialsFor(name),
+      hue: core.hueForName(name),
+      file: id,
+      badge: String(kind?.name ?? kind ?? '') === 'Agent' ? 'agent' : null,
+    };
+  }
+
   renderView(entityRef, shape, { limit = null, config = null } = {}) {
     const e = this.getEntity(entityRef);
     const db = this.state.tables[e.dbId];
@@ -1256,6 +1286,8 @@ export class Weave {
       ? this.#normalizeViewConfig(db, field ?? { config: { ...VIEW_DEFAULTS[shape] } }, config)
       : (field?.config ?? VIEW_DEFAULTS[shape]);
     const out = { shape, id: e.id, publicId: e.publicId, url: `/e/${e.id}`, name: this.entityName(e), link: cfg.link, state: null, description: null, fields: [] };
+    const face = this.#faceOf(e);
+    if (face) out.avatar = face;
     const wf = Object.values(db.fields).find((f) => f.type === 'workflow');
     if (cfg.state && wf) {
       const st = this.#resolve(e, db, wf, 0);
@@ -2442,6 +2474,7 @@ export class Weave {
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
       if (f.type === 'attachments') for (const k of ATTACHMENT_LOOK_KEYS) if (f[k] != null) config[k] = f[k];
+      if (f.type === 'avatar' && f.shape != null) config.shape = f.shape;
       if (f.term != null) config.term = f.term;
       if (f.type === 'rating') { if (f.max != null) config.max = f.max; if (f.icon != null) config.icon = f.icon; if (f.color != null) config.color = f.color; }
       if (f.type === 'view') {
@@ -4960,7 +4993,10 @@ export class Weave {
     if (type === 'view') throw new WeaveError('The chip and the card are minted on every table; configure those instead', 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (['select', 'multiselect', 'workflow', 'field', 'number', 'rating', 'date', 'daterange', 'attachments', 'document', 'key', 'text', 'toggle'].includes(type)) {
+    if (type === 'avatar' && Object.values(db.fields).some((f) => f.type === 'avatar' && !f.deletedAt)) {
+      throw new WeaveError(`Table '${db.name}' already has an avatar field; a row has one face`, 'conflict');
+    }
+    if (['select', 'multiselect', 'workflow', 'field', 'number', 'rating', 'date', 'daterange', 'attachments', 'avatar', 'document', 'key', 'text', 'toggle'].includes(type)) {
       field.config = normalizeSelfContainedConfig(type, config, { strict: true });
     } else if (type === 'lookup') {
       field.config = this.#recipe(db, 'lookup', config);
@@ -5252,6 +5288,7 @@ export class Weave {
         field.config.multiple = next.multiple;
         for (const k of ATTACHMENT_LOOK_KEYS) { if (next[k] == null) delete field.config[k]; else field.config[k] = next[k]; }
       }
+      if (field.type === 'avatar' && 'shape' in patch.config) field.config.shape = normalizeSelfContainedConfig('avatar', { shape: patch.config.shape }).shape;
       if (field.type === 'document' && 'kind' in patch.config) {
         const kind = normalizeSelfContainedConfig('document', patch.config).kind;
         if (kind) field.config.kind = kind; else delete field.config.kind;
@@ -6131,10 +6168,14 @@ export class Weave {
         continue;
       }
       const val = this.#validateValue(field, raw);
-      if (field.type === 'attachments') {
+      if (isFileField(field)) {
         for (const id of val) {
-          if (!e.files.some((x) => x.id === id)) {
+          const meta = e.files.find((x) => x.id === id);
+          if (!meta) {
             throw new WeaveError(`'${id}' is not a file on this entity — upload it here first`, 'invalid');
+          }
+          if (field.type === 'avatar' && !AVATAR_IMAGE_TYPES.includes(String(meta.mime ?? '').toLowerCase())) {
+            throw new WeaveError(`'${meta.name}' is not an image; an avatar takes a PNG, JPEG, GIF or WebP`, 'invalid');
           }
         }
       }
@@ -6238,9 +6279,10 @@ export class Weave {
         return normalizeDefinition(raw, field.config.depth ?? 1, { strict: !this.#inMetaSync });
       case 'key':
         return String(raw);
+      case 'avatar':
       case 'attachments': {
         const arr = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
-        if (field.config.multiple === false && arr.length > 1) throw new WeaveError(`'${field.name}' holds one file`, 'invalid');
+        if ((field.type === 'avatar' || field.config.multiple === false) && arr.length > 1) throw new WeaveError(`'${field.name}' holds one file`, 'invalid');
         return arr.map((r) => String(r && typeof r === 'object' ? r.id : r));
       }
       default:
@@ -6680,6 +6722,7 @@ export class Weave {
         const unset = keystore === 'local' && !this.hasKey(resolved) ? ' (unset)' : '';
         return `✱✱✱✱ ${resolved}${unset}`;
       }
+      case 'avatar':
       case 'attachments': {
         if (!Array.isArray(resolved) || !resolved.length) return null;
         const names = resolved.map((id) => {
@@ -6830,7 +6873,7 @@ export class Weave {
       this.#checkWhere(db, where);
       rows = rows.filter((r) => this.#matchNode(r, db, Array.isArray(where) ? { and: where } : where));
     }
-    const SKIP = new Set(['view', 'document', 'attachments', 'key', 'field']);
+    const SKIP = new Set(['view', 'document', 'attachments', 'avatar', 'key', 'field']);
     const fields = db.fieldOrder.map((id) => db.fields[id]).filter((f) => f && !SKIP.has(f.type) && (!only || f.id === only.id));
     const isBlank = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
     const read = (f) => rows.map((e) => this.#resolve(e, db, f, 0));
@@ -6970,7 +7013,7 @@ export class Weave {
           const s = chips[rid] ?? this.#summary(rid);
           if (!s) return null;
           chips[rid] = s;
-          return { id: s.id, publicId: s.publicId, name: s.name };
+          return { id: s.id, publicId: s.publicId, name: s.name, ...(s.avatar ? { avatar: s.avatar } : {}) };
         }).filter(Boolean);
         fields[f.name] = far.many ? summaries : (summaries[0] ?? null);
       } else {
@@ -6980,6 +7023,7 @@ export class Weave {
     const docs = {};
     for (const f of this.documentFields(db)) if (!pick || pick.ids.has(f.id)) docs[f.name] = e.docs?.[f.id] ?? '';
     const defaultDocField = this.descriptionField(db) ?? this.documentFields(db)[0];
+    const face = this.#faceOf(e);
     const scales = {};
     for (const fid of db.fieldOrder) {
       if (pick && !pick.ids.has(fid)) continue;
@@ -7004,6 +7048,7 @@ export class Weave {
         modifiedBy: this.actorName(e.modifiedBy ?? null),
         deletedAt: e.deletedAt ?? null,
         url: `/e/${e.id}`,
+        ...(face ? { avatar: face } : {}),
         ...(Object.keys(scales).length ? { scales } : {}),
         ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
       };
@@ -7020,6 +7065,7 @@ export class Weave {
       doc: defaultDocField ? (e.docs?.[defaultDocField.id] ?? '') : '',
       docField: defaultDocField ? defaultDocField.name : null,
       docs,
+      ...(face ? { avatar: face } : {}),
       comments: e.comments.map((c) => ({ ...c, author: this.actorName(c.author) })),
       activity: (e.activity ?? []).map((a) => this.#namedActivity(a)),
       activityDropped: e.activityDropped ?? 0,
@@ -7077,7 +7123,8 @@ export class Weave {
     const e = own(this.state.entities, id);
     if (!e) return null;
     const db = this.state.tables[e.dbId];
-    return { id: e.id, publicId: e.publicId, name: this.entityName(e), db: this.qualifiedName(db), ...(db.system ? {} : { chip: this.renderView(e.id, 'chip') }) };
+    const face = this.#faceOf(e);
+    return { id: e.id, publicId: e.publicId, name: this.entityName(e), db: this.qualifiedName(db), ...(face ? { avatar: face } : {}), ...(db.system ? {} : { chip: this.renderView(e.id, 'chip') }) };
   }
 
   #inWorkspace(db, workspace) {
@@ -8240,10 +8287,17 @@ export class Weave {
     const e = this.getEntity(entityId);
     const db = this.state.tables[e.dbId];
     const field = this.getField(db.id, fieldRef);
-    if (field.type !== 'attachments') throw new WeaveError(`Field '${field.name}' is not an attachments field`, 'invalid');
+    if (!isFileField(field)) throw new WeaveError(`Field '${field.name}' is not an attachments field`, 'invalid');
+    if (field.type === 'avatar') {
+      const bytes = fileInput?.bytes;
+      const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes ?? ''), 'base64');
+      const mime = sniffImage(buf);
+      if (!mime) throw new WeaveError('An avatar must be a PNG, JPEG, GIF or WebP image', 'unsupported-type');
+      fileInput = { ...fileInput, bytes: buf, mime };
+    }
     const file = this.attachFile(e.id, fileInput);
     const cur = Array.isArray(e.values[field.id]) ? e.values[field.id] : [];
-    this.updateEntity(e.id, { [field.name]: [...cur, file.id] });
+    this.updateEntity(e.id, { [field.name]: field.type === 'avatar' ? [file.id] : [...cur, file.id] });
     return file;
   }
 
@@ -8292,7 +8346,7 @@ export class Weave {
     e.files = e.files.filter((f) => f.id !== fileId);
     const db = this.state.tables[e.dbId];
     for (const f of Object.values(db.fields)) {
-      if (f.type === 'attachments' && Array.isArray(e.values[f.id]) && e.values[f.id].includes(fileId)) {
+      if (isFileField(f) && Array.isArray(e.values[f.id]) && e.values[f.id].includes(fileId)) {
         e.values[f.id] = e.values[f.id].filter((id) => id !== fileId);
       }
     }
@@ -8570,6 +8624,7 @@ export class Weave {
             out.multiple = f.config.multiple !== false;
             for (const k of ATTACHMENT_LOOK_KEYS) if (f.config[k] != null) out[k] = f.config[k];
           }
+          if (f.type === 'avatar') out.shape = f.config.shape ?? 'round';
           if (f.type === 'toggle') { out.on = f.config.on; out.off = f.config.off; }
           if (f.type === 'rating') { out.max = f.config.max; out.icon = f.config.icon; out.color = f.config.color ?? 'ink'; }
           if (f.type === 'lookup' || f.type === 'rollup') {
