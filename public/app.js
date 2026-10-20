@@ -4930,6 +4930,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     state.inlineAdd = async () => main.querySelector('.list-add-name')?.focus();
     renderList(main, db, items, list);
     main.wvDraw = { db, items, trashCount, pager: null };
+    syncPhoneBar();
     paintGridWait();
     return;
   }
