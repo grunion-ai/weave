@@ -106,9 +106,12 @@
 
   const mark = () => document.getElementById('weave-mark').content.firstElementChild.cloneNode(true);
 
+  const emptyArt = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%2F%3E';
   const radiate = () => make('picture', { class: 'radiate' },
+    make('source', { srcset: emptyArt, media: '(max-width: 860px)' }),
     make('source', { srcset: '/brand/weave-radiate-dark.svg', media: '(prefers-color-scheme: dark)' }),
-    make('img', { src: '/brand/weave-radiate-light.svg', alt: 'The weave mark with rings radiating to every edge' }));
+    make('source', { srcset: '/brand/weave-radiate-light.svg' }),
+    make('img', { src: emptyArt, alt: 'The weave mark with rings radiating to every edge' }));
 
   const SEG = 25;
   const GAP = 2.2;
@@ -249,7 +252,7 @@
         c.unmountSignIn?.(mount);
         c.unmountSignUp?.(mount);
         mount.replaceChildren();
-        mount.removeAttribute('data-opening');
+        mount.removeAttribute('aria-busy');
         mount.dataset.mode = mode;
         const appearance = clerkAppearance();
         if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: onboard, signInForceRedirectUrl: next, appearance });
