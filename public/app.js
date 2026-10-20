@@ -9780,6 +9780,24 @@ function skipCaretOnlyUndo(vditor) {
   };
 }
 
+let vditorLoading = null;
+function loadVditor() {
+  if (window.Vditor) return Promise.resolve();
+  vditorLoading ??= new Promise((resolve, reject) => {
+    const tpl = document.querySelector('#vditor-assets');
+    const css = el('link', { rel: 'stylesheet', href: tpl?.content.querySelector('link')?.getAttribute('href') ?? '/vendor/vditor/dist/index.css' });
+    const js = el('script', { src: tpl?.content.querySelector('script')?.getAttribute('src') ?? '/vendor/vditor/dist/index.min.js' });
+    const loaded = (node) => new Promise((ok, fail) => {
+      node.addEventListener('load', ok, { once: true });
+      node.addEventListener('error', () => fail(new Error('The editor did not load. Showing the source instead; reload to try again.')), { once: true });
+    });
+    const both = Promise.all([loaded(css), loaded(js)]);
+    if (tpl) tpl.before(css); else document.head.append(css);
+    document.head.append(js);
+    both.then(() => resolve(), (err) => { vditorLoading = null; css.remove(); js.remove(); reject(err); });
+  });
+  return vditorLoading;
+}
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   guardMathRender();
   const t = vditorTheme();
@@ -10784,17 +10802,21 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
     const mountEditor = () => {
-      const ed = mountDocEditor(host, {
-        value: entity.docs?.[f.name] ?? '',
-        entityId: id,
-        placeholder: `Write ${f.name}… press / for blocks`,
-        onInput: (value) => {
-          scheduleDocSave(id, f.name, value, status);
-          rail.schedule();
-          folds.schedule();
-        },
-      });
-      editors?.push(ed);
+      const mount = () => {
+        const ed = mountDocEditor(host, {
+          value: entity.docs?.[f.name] ?? '',
+          entityId: id,
+          placeholder: `Write ${f.name}… press / for blocks`,
+          onInput: (value) => {
+            scheduleDocSave(id, f.name, value, status);
+            rail.schedule();
+            folds.schedule();
+          },
+        });
+        editors?.push(ed);
+      };
+      if (window.Vditor) mount();
+      else loadVditor().then(mount, (err) => { mountSourceEditor(); toast(err.message, true); });
     };
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
@@ -13745,7 +13767,7 @@ wireTheme();
 wireSkipLink();
 (state.healthP ??= api('GET', '/health')).catch(() => {});
 if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
-withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
+withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => setTimeout(() => loadVditor().catch(() => {}), 1500));
 wireSearchButton();
 buildWsRail();
 wireWsNew();
