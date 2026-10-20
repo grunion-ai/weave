@@ -84,6 +84,10 @@
       "gzip": 1593,
       "br": 1410
     },
+    "/file-preview-core.js": {
+      "gzip": 770,
+      "br": 663
+    },
     "/form.js": {
       "gzip": 1533,
       "br": 1312
