@@ -227,7 +227,7 @@
   function account() {
     let mode = 'signin';
     const pane = me.clerk;
-    const next = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : '/start');
+    const next = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : entry.next === '/' ? '/' : '/start');
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;

@@ -120,6 +120,13 @@ const HANDOFF_TTL_MS = 60 * 1000;
 const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
 const LIMITS = { options: 10, failed: 5, slugs: 60 };
 const START_TTL_MS = 30 * 60 * 1000;
+const holdsLink = (w, kind, id) => {
+  w.maybeRefresh();
+  if (kind === 't') return !!w.findTable(id);
+  if (kind === 's') return !!(w.findSpace(id) || w.shareByToken(id));
+  return Object.hasOwn(w.state.entities ?? {}, id);
+};
+const linkHolder = (hub, kind, id) => hub.entries().map(([, w]) => w).find((w) => !w.state.meta.deletedAt && holdsLink(w, kind, id)) ?? null;
 const INGEST_MAX_BYTES = 2 * 1024 * 1024;
 const INGEST_HEADERS = ['content-type', 'content-encoding', 'user-agent'];
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -295,9 +302,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     weave.maybeRefresh();
     versionOf = weave;
     if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
-      if (path === '/') return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
       if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
-        return { status: 301, headers: { Location: `${scheme}//${String(hub.defaultName).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+        const holder = linkHolder(hub, path.slice(1, 2), path.slice(3)) ?? hub.get(hub.defaultName);
+        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
       }
     }
     const updateWorkspace = (patch) => {
@@ -479,7 +486,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
           .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
       ];
-      const names = live.filter(([, w]) => opener(w) && !isDocsWorkspace(w)).map(([name]) => name.toLowerCase());
+      const names = rows.filter((r) => r.kind === 'workspace' && !isDocsWorkspace(hub.get(r.name))).map((r) => r.name.toLowerCase());
       const creator = logins.find((me) => mayAdminister(hubRoot, rootOf(me)?.role)) ?? null;
       const signedUp = (me) => live.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
       const signup = !creator && openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
@@ -516,6 +523,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const clearRail = () => `wv_rail=; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=0${secureFlag(rx)}`;
     const startCookies = ({ token, logins }) => [`wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, railCookie(findWorkspaces(logins).names)];
     const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
+    const rootLanding = async () => {
+      const logins = (await heldStart())?.logins ?? [];
+      if (logins.length) {
+        const { rows } = findWorkspaces(logins);
+        const last = rows.some((r) => r.kind === 'invite') ? null : rows.find((r) => r.kind === 'workspace' && !isDocsWorkspace(hub.get(r.name)));
+        return last ? `${last.open}?to=resume` : '/start';
+      }
+      const railed = String(cookies.wv_rail ?? '').split(',').filter(Boolean).map((n) => hub.bySlug(n)).find((w) => w && !w.state.meta.deletedAt && !isDocsWorkspace(w));
+      return railed ? `${scheme}//${String(railed.state.meta.name).toLowerCase()}.${baseDomain}/#/resume` : '/start?next=%2F';
+    };
+    if (path === '/' && baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+      return { status: 302, headers: { Location: await rootLanding(), 'Cache-Control': 'no-store' }, body: '' };
+    }
     const resolved = new Map();
     const ownSession = (w) => {
       if (resolved.has(w)) return resolved.get(w);
@@ -963,7 +983,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (limited('options', ip)) return tooMany();
               const handoff = rx.searchParams?.get('handoff') || null;
               if (handoff && (!baseDomain || hub.bySlug(handoff) !== weave)) return refusal(400, 'This sign-in link is not valid', 'Start again from the sign-in page of the workspace you want.');
-              const next = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), handoff ? '/' : `${wsPrefix}/`);
+              const start = !hostOrigin && !wsPrefix && (rx.searchParams?.has('start') || !!baseDomain);
+              const next = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), handoff ? '/' : start && !rx.searchParams?.has('invite') ? '/start' : `${wsPrefix}/`);
               const invite = rx.searchParams?.get('invite') || null;
               if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
               const heldLogins = invite && !rx.searchParams?.has('pick') ? (await heldStart())?.logins ?? [] : [];
@@ -993,7 +1014,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               let trip;
               try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
               const binder = newChallenge();
-              const start = !hostOrigin && !wsPrefix && (rx.searchParams?.has('start') || !!baseDomain);
               putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix, handoff, start }, trip.state);
               const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
               return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
@@ -1017,7 +1037,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
               }
               if (c.start) {
-                const back = /^\/start(?:[?#]|$)/.test(c.next) ? c.next : '/start';
+                const back = c.next === '/' || /^\/start(?:[?#]|$)/.test(c.next) ? c.next : '/start';
                 return { status: 302, headers: { Location: back, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
               }
               const root = hub.get(hub.defaultName);
@@ -1143,6 +1163,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const host = String(w.state.meta.name).toLowerCase();
             const table = String(rx.searchParams?.get('table') ?? '');
             const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
+              : rx.searchParams?.get('to') === 'resume' ? '#/resume'
               : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
             if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });

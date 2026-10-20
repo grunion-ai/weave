@@ -122,11 +122,96 @@ test('create: the server re-checks, so a slug lost to a race is slug_taken with 
   } finally { s.stop(); }
 });
 
+test('root: a signed-in visit to the apex root opens the last workspace on its last page, and /start keeps the list (Issue #977, Net #124)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name: 'Harbor', slug: 'harbor' } })).status, 201);
+    await s.follow((await s.apex('GET', '/api/start/open/harbor', { cookie: kyle.cookie })).headers.location);
+    const root = await s.apex('GET', '/', { cookie: kyle.cookie });
+    assert.deepEqual([root.status, root.headers.location], [302, '/api/start/open/harbor?to=resume']);
+    const open = await s.apex('GET', root.headers.location, { cookie: kyle.cookie });
+    assert.equal(new URL(open.headers.location).host, 'harbor.weave.test');
+    const landed = await s.follow(open.headers.location);
+    assert.deepEqual([landed.status, landed.headers.location], [302, '/#/resume'], 'the workspace app turns the mark into the last page it had open');
+    assert.equal((await s.apex('GET', '/start', { cookie: kyle.cookie })).status, 200, 'the start page still lists every workspace');
+    const listed = await s.apex('GET', '/api/start', { cookie: kyle.cookie });
+    assert.equal(cookieOf(listed, 'wv_rail'), 'wv_rail=harbor,net,acme,other', 'the rail cookie names the last workspace first');
+  } finally { s.stop(); }
+});
+
+test('root: a gone or revoked last workspace falls back to the next one this sign-in opens (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const other = new Weave({ path: join(s.dir, 'other.db') });
+    other.createAccount({ name: 'eve', role: 'editor' });
+    other.redeemIdentityInvite(other.linkIdentity('eve', { issuer: s.idp.issuer }).code, { issuer: s.idp.issuer, subject: 'user_eve' });
+    other.store.close?.();
+    const eve = await s.signInAtStart('user_eve');
+    await s.follow((await s.apex('GET', '/api/start/open/other', { cookie: eve.cookie })).headers.location);
+    assert.equal((await s.apex('GET', '/', { cookie: eve.cookie })).headers.location, '/api/start/open/other?to=resume');
+    const revoke = new Weave({ path: join(s.dir, 'other.db') });
+    revoke.deleteAccount('eve');
+    revoke.store.close?.();
+    assert.equal((await s.apex('GET', '/', { cookie: eve.cookie })).headers.location, '/api/start/open/acme?to=resume');
+  } finally { s.stop(); }
+});
+
+test('root: a pending invite or no workspace at all stops on the start page, which signs in back to the root (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const nobody = await s.signInAtStart('user_nobody');
+    assert.equal((await s.apex('GET', '/', { cookie: nobody.cookie })).headers.location, '/start');
+    assert.deepEqual((await s.apex('GET', '/api/start', { cookie: nobody.cookie })).json().rows, []);
+    const other = new Weave({ path: join(s.dir, 'other.db') });
+    other.actor = 'someone';
+    other.inviteMember({ email: 'scott@example.com', role: 'editor', issuer: s.idp.issuer });
+    other.store.close?.();
+    const scott = await s.signInAtStart('user_eve', { email: 'scott@example.com', email_verified: true });
+    assert.equal((await s.apex('GET', '/', { cookie: scott.cookie })).headers.location, '/start', 'an invite waiting to be accepted shows on the list');
+    const anon = await s.apex('GET', '/');
+    assert.deepEqual([anon.status, anon.headers.location], [302, '/start?next=%2F'], 'signed out, the start page is told to come back to the root');
+    const start = await s.apex('GET', '/api/auth/oidc/start?start=1&next=%2F');
+    const back = s.idp.approve(start.headers.location, { sub: 'user_eve' });
+    const res = await s.follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
+    assert.deepEqual([res.status, res.headers.location], [302, '/'], 'a start sign-in may return to the root');
+  } finally { s.stop(); }
+});
+
+test('root: with the short start sign-in gone, the rail cookie opens the last workspace on its own host (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const rail = (names) => s.apex('GET', '/', { cookie: `wv_rail=${names}` });
+    assert.deepEqual([(await rail('acme,net')).status, (await rail('acme,net')).headers.location], [302, 'http://acme.weave.test/#/resume']);
+    assert.equal((await rail('gone,net')).headers.location, 'http://net.weave.test/#/resume', 'a name no workspace holds is skipped');
+    assert.equal((await rail('weave')).headers.location, '/start?next=%2F', 'the docs workspace is never a landing');
+    assert.equal((await s.apex('GET', '/', { cookie: 'wv_rail=' })).headers.location, '/start?next=%2F');
+  } finally { s.stop(); }
+});
+
+test('links: an apex link to a row, table or space opens on the host of the workspace that holds it (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const acme = new Weave({ path: join(s.dir, 'acme.db') });
+    const space = acme.createSpace({ name: 'Deals' });
+    const table = acme.createTable({ space: space.id, name: 'Deal' });
+    const row = acme.createEntity(table.id, { Name: 'Receivables' });
+    acme.save();
+    acme.store.close?.();
+    for (const [kind, id] of [['e', row.id], ['t', table.id], ['s', space.id]]) {
+      const moved = await s.apex('GET', `/${kind}/${id}`);
+      assert.deepEqual([moved.status, moved.headers.location], [301, `http://acme.weave.test/${kind}/${id}`], kind);
+    }
+    const unknown = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    assert.equal((await s.apex('GET', `/e/${unknown}`)).headers.location, `http://net.weave.test/e/${unknown}`, 'a link no workspace holds goes to Net as before');
+  } finally { s.stop(); }
+});
+
 test('start: the apex shows nothing until sign-in, then lists the workspaces this identity opens', async () => {
   const s = await serve();
   try {
     const root = await s.apex('GET', '/');
-    assert.deepEqual([root.status, root.headers.location], [302, '/start'], 'a signed-out apex goes to start');
+    assert.deepEqual([root.status, root.headers.location], [302, '/start?next=%2F'], 'a signed-out apex goes to start, which signs in back to the root');
     const page = await s.apex('GET', '/start');
     assert.equal(page.status, 200);
     assert.ok(!/acme|other|Net\b/.test(page.text), 'the page names no workspace');
@@ -196,13 +281,13 @@ test('start: rows name host and role, show the logo through the start door, and 
   } finally { s.stop(); }
 });
 
-test('apex: a browser at the apex root gets the start page signed in or not, Net moves to its host, /api and /mcp stay', async () => {
+test('apex: a browser at the apex root opens a workspace or the start page, Net moves to its host, /api and /mcp stay', async () => {
   const s = await serve();
   try {
     const t = s.rootToken;
     const kyle = await s.signInAtStart('user_kyle');
-    assert.deepEqual([(await s.apex('GET', '/', { cookie: kyle.cookie })).status, (await s.apex('GET', '/', { cookie: kyle.cookie })).headers.location], [302, '/start']);
-    assert.equal((await s.apex('GET', '/', { token: t })).headers.location, '/start');
+    assert.deepEqual([(await s.apex('GET', '/', { cookie: kyle.cookie })).status, (await s.apex('GET', '/', { cookie: kyle.cookie })).headers.location], [302, '/api/start/open/Net?to=resume']);
+    assert.equal((await s.apex('GET', '/', { token: t })).headers.location, '/start?next=%2F');
     const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
     const moved = await s.apex('GET', `/e/${id}`);
     assert.deepEqual([moved.status, moved.headers.location], [301, `http://net.weave.test/e/${id}`]);

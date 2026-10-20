@@ -12782,6 +12782,11 @@ function renderRoute() {
   return Promise.resolve().then(dispatchRoute).finally(cancelSkeleton);
 }
 
+function rememberRoute() {
+  const landed = WeaveResume.follow(location, globalThis.localStorage);
+  if (landed !== location.hash) history.replaceState(history.state, '', landed);
+}
+
 function dispatchRoute() {
   teardownDocEditors();
   dockClose();
@@ -12790,6 +12795,7 @@ function dispatchRoute() {
     if (!pop.classList.contains('table-view-popover') || pop.tableId !== nextTable) pop.remove();
   }
   state.pageName = null;
+  rememberRoute();
   const hash = location.hash || '#/';
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
   if (!(dbM && tableChromeOn(dbM[1]))) {
