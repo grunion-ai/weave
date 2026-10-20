@@ -196,6 +196,14 @@
       "gzip": 16413,
       "br": 13670
     },
+    "/status.css": {
+      "gzip": 2036,
+      "br": 1711
+    },
+    "/status.js": {
+      "gzip": 3057,
+      "br": 2653
+    },
     "/style.css": {
       "gzip": 37512,
       "br": 30903
