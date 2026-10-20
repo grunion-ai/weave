@@ -3,7 +3,7 @@ import { spawnSync, execFile } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, extname, basename } from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, brotliCompress, constants as zlibConstants } from 'node:zlib';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
@@ -80,16 +80,24 @@ export const MIME = {
 const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i;
 const GZIP_MIN = 1024;
 
-export function acceptsGzip(header) {
+export function acceptsCoding(header, coding) {
   const q = {};
   for (const part of String(header ?? '').toLowerCase().split(',')) {
-    const [coding, ...params] = part.split(';').map((x) => x.trim());
-    if (!coding) continue;
+    const [name, ...params] = part.split(';').map((x) => x.trim());
+    if (!name) continue;
     const qp = params.find((x) => x.startsWith('q='));
-    q[coding] = qp ? Number(qp.slice(2)) : 1;
+    q[name] = qp ? Number(qp.slice(2)) : 1;
   }
-  const v = q.gzip ?? q['*'];
+  const v = q[coding] ?? q['*'];
   return v > 0;
+}
+
+export const acceptsGzip = (header) => acceptsCoding(header, 'gzip');
+
+function brotliLater(cache, key, body, size) {
+  cache.set(key, null);
+  const params = { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: size };
+  brotliCompress(body, { params }, (err, out) => (err ? cache.delete(key) : cache.set(key, out)));
 }
 
 export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache = null, path = '' } = {}) {
@@ -97,8 +105,14 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
   if (!COMPRESSIBLE.test(type) || headers['Content-Encoding']) return { headers, body };
   const vary = headers.Vary ? `${headers.Vary}, Accept-Encoding` : 'Accept-Encoding';
   const size = typeof body === 'string' ? Buffer.byteLength(body) : body?.length ?? 0;
-  if (status !== 200 || size < GZIP_MIN || !acceptsGzip(acceptEncoding)) return { headers: { ...headers, Vary: vary }, body };
+  if (status !== 200 || size < GZIP_MIN) return { headers: { ...headers, Vary: vary }, body };
   const key = headers.ETag && `${path} ${headers.ETag}`;
+  if (key && cache && acceptsCoding(acceptEncoding, 'br')) {
+    const br = cache.get(`br ${key}`);
+    if (br) return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'br' }, body: br };
+    if (br === undefined) brotliLater(cache, `br ${key}`, body, size);
+  }
+  if (!acceptsGzip(acceptEncoding)) return { headers: { ...headers, Vary: vary }, body };
   let zipped = key && cache?.get(key);
   if (!zipped) {
     zipped = gzipSync(body);
