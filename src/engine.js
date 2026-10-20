@@ -7203,18 +7203,18 @@ export class Weave {
   }
 
   query(dbRef, { viewerZone = null, workspace = null, ...opts } = {}) {
-    if (viewerZone == null) return this.#queryIn(dbRef, opts, workspace);
+    if (viewerZone == null) return this.#inQuery(dbRef, opts, workspace);
     const prev = this.viewerZone;
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
-    try { return this.#queryIn(dbRef, opts, workspace); } finally { this.viewerZone = prev; }
+    try { return this.#inQuery(dbRef, opts, workspace); } finally { this.viewerZone = prev; }
   }
-  #queryIn(dbRef, opts, workspace) {
-    if (this.#query) return this.#queryRows(dbRef, opts, workspace);
+  #inQuery(dbRef, opts, workspace) {
+    if (this.#query) return this.#queryIn(dbRef, opts, workspace);
     this.#query = { rollupRows: new Map() };
-    try { return this.#queryRows(dbRef, opts, workspace); } finally { this.#query = null; }
+    try { return this.#queryIn(dbRef, opts, workspace); } finally { this.#query = null; }
   }
 
-  #queryRows(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '', view = null } = {}, workspace = null) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '', view = null } = {}, workspace = null) {
     const db = this.getTable(dbRef);
     if (view != null && view !== '') {
       const saved = this.#viewQueryIn(db, view);
