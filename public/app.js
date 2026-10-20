@@ -5395,7 +5395,8 @@ function boardControls(db, put) {
       boardCore.pictureOf(db, v), (picture) => put({ picture }))),
   ];
 }
-const TILE_HANDS_OFF = 'button, input, select, textarea, [contenteditable], .picker-wrap, .tile-field';
+const TILE_FORM = 'button, input, select, textarea, [contenteditable], .picker-wrap';
+const TILE_HANDS_OFF = `${TILE_FORM}, .tile-field`;
 function renderBoard(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
   const v = db.view;
@@ -5443,9 +5444,14 @@ function renderBoard(main, db, items, ctx) {
     card.wvPath = path;
     card.wvItem = node;
     RO().guard(card);
-    card.addEventListener('pointerdown', (e) => { if (e.button === 0 && !e.target.closest(TILE_HANDS_OFF)) boardDrag(e, card); });
+    card.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const phone = dockCoversScreen.matches;
+      if (!phone && e.target.closest('.tile-field > dd')) { if (!nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
+      if (!e.target.closest(phone ? TILE_FORM : TILE_HANDS_OFF)) boardDrag(e, card);
+    });
     card.addEventListener('click', (e) => {
-      if (nativeClick(e) || e.defaultPrevented || e.target.closest(`${TILE_HANDS_OFF}, a`)) return;
+      if (nativeClick(e) || e.target.closest('a.tile-title') || (!dockCoversScreen.matches && e.target.closest('.tile-field > dd'))) return;
       dockEntity(db, it.id, { step: true });
     });
     card.addEventListener('keydown', (e) => {
@@ -5488,14 +5494,17 @@ function renderBoard(main, db, items, ctx) {
     el('span', {}, listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term })), hint);
   const wrap = el('div', { class: 'card board-wrap', dataset: { layout: 'board' } }, board, footer);
   main.append(wrap);
+  board.style.setProperty('--board-top', `${Math.max(0, Math.round(board.getBoundingClientRect().top + scrollY))}px`);
   markDockedRow();
 
   function boardDrag(down, card) {
+    const side = board.dataset.groups === 'side';
     RO().sortable(down, {
       source: card,
       items: () => [...board.querySelectorAll('.tile, .board-tail')],
       tail: (n) => n.classList.contains('board-tail'),
-      axis: board.dataset.groups === 'side' ? 'y' : 'x',
+      axis: side ? 'y' : 'x',
+      alsoScroll: [side ? { scroller: board, axis: 'x' } : { scroller: RO().scrollParent(board, 'y'), axis: 'y' }],
       zone: () => board,
       onDrop: (placed) => drop(card, placed),
     });

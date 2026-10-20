@@ -162,6 +162,15 @@ if (s) {
       await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Chair');
       assert.equal(await page.locator('.wv-board .tile.row-docked').count(), 1);
       assert.equal(await page.locator(`${tile(ids.chair)}.row-docked`).count(), 1, 'the outline moves with the record');
+      for (const [id, part, name] of [[ids.pants, '.tile-cover', 'Black pants'], [ids.shoes, '.tile-field[data-field="Best Price"] dt', 'Dress shoes'], [ids.mat, '.tile-body', 'Walking mat']]) {
+        await page.click(`${tile(id)} ${part}`, { position: { x: 4, y: 4 } });
+        await page.waitForFunction((n) => document.querySelector('#dock .name-edit')?.value === n, name);
+      }
+      await page.click(`${tile(ids.chair)} .tile-field[data-field="State"] .chip-trigger`);
+      await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Chair');
+      assert.equal(await page.locator('.picker-pop').count(), 1, 'a field value opens the pane and its own editor');
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.picker-pop', { state: 'detached' });
       await page.click('#dock .activity-btn');
       await page.waitForSelector('#side:not([hidden]) aside.wv-activity');
       await page.evaluate(() => document.activeElement?.blur());
@@ -193,7 +202,8 @@ if (s) {
       await page.locator('.picker-pop .picker-row', { hasText: 'Ready to Buy' }).first().click();
       await eventually(() => valueOf(ids.shoes, 'State'), 'Ready to Buy');
       await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Ready to Buy"] .tile[data-eid="${id}"]`), ids.shoes);
-      assert.ok(await page.locator('#dock').isHidden(), 'editing a field never opens the record');
+      await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Dress shoes');
+      assert.ok(await page.locator('#dock').isVisible(), 'a click on a field value opens the record beside its editor');
       const price = page.locator(`${tile(ids.desk)} .tile-field[data-field="Best Price"] input.inline-edit`);
       await price.fill('399');
       await price.press('Enter');
