@@ -1,0 +1,1 @@
+- Editors and observers see role-aware empty states without unauthorized table, template or space creation actions. (Issue #1008).

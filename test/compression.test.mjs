@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
+import { minifyJs } from '../src/minify.js';
 import { startServer, acceptsGzip, acceptsCoding, gzipOutcome } from '../src/server.js';
 
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -31,21 +32,21 @@ async function withServer(fn) {
   try { await fn(port); } finally { server.close(); }
 }
 
-test('app.js goes out gzipped when the browser accepts gzip, and inflates to the file', async () => {
+test('app.js goes out gzipped when the browser accepts gzip, and inflates to the minified file', async () => {
   await withServer(async (port) => {
-    const file = readFileSync(join(PUBLIC, 'app.js'));
+    const file = Buffer.from(minifyJs(readFileSync(join(PUBLIC, 'app.js'), 'utf8')));
     const res = await raw(port, '/app.js', { 'Accept-Encoding': 'gzip, deflate, br' });
     assert.equal(res.status, 200);
     assert.equal(res.headers['content-encoding'], 'gzip');
     assert.match(res.headers.vary ?? '', /accept-encoding/i, 'a cache must key on the encoding');
     assert.ok(res.body.length < file.length * 0.4, `gzip should cut app.js well below 40% (got ${res.body.length} of ${file.length})`);
-    assert.ok(gunzipSync(res.body).equals(file), 'the inflated body is the file, byte for byte');
+    assert.ok(gunzipSync(res.body).equals(file), 'the inflated body is the minified file, byte for byte');
   });
 });
 
 test('a request without Accept-Encoding gets the plain file', async () => {
   await withServer(async (port) => {
-    const file = readFileSync(join(PUBLIC, 'app.js'));
+    const file = Buffer.from(minifyJs(readFileSync(join(PUBLIC, 'app.js'), 'utf8')));
     const res = await raw(port, '/app.js');
     assert.equal(res.status, 200);
     assert.equal(res.headers['content-encoding'], undefined);
@@ -130,15 +131,15 @@ const settle = async (read, ok, tries = 200) => {
   return got;
 };
 
-test('a static asset goes out as Brotli once it is compressed off the request path, and inflates to the file (Issue #989)', async () => {
+test('a static asset goes out as Brotli once it is compressed off the request path, and inflates to the minified file (Issue #989)', async () => {
   await withServer(async (port) => {
-    const file = readFileSync(join(PUBLIC, 'app.js'));
+    const file = Buffer.from(minifyJs(readFileSync(join(PUBLIC, 'app.js'), 'utf8')));
     const first = await raw(port, '/app.js', { 'Accept-Encoding': 'gzip, deflate, br' });
     assert.equal(first.headers['content-encoding'], 'gzip', 'the first request does not wait on Brotli');
     const res = await settle(() => raw(port, '/app.js', { 'Accept-Encoding': 'gzip, deflate, br' }), (r) => r.headers['content-encoding'] === 'br');
     assert.equal(res.headers['content-encoding'], 'br');
     assert.match(res.headers.vary ?? '', /accept-encoding/i);
-    assert.ok(brotliDecompressSync(res.body).equals(file), 'the inflated body is the file, byte for byte');
+    assert.ok(brotliDecompressSync(res.body).equals(file), 'the inflated body is the minified file, byte for byte');
     const gz = await raw(port, '/app.js', { 'Accept-Encoding': 'gzip' });
     assert.equal(gz.headers['content-encoding'], 'gzip', 'a client without br still gets gzip');
     assert.ok(res.body.length < gz.body.length * 0.85, `Brotli should beat gzip by 15% or more (br ${res.body.length}, gzip ${gz.body.length})`);

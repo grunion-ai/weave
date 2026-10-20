@@ -69,4 +69,21 @@ if (s) {
       assert.deepEqual(fetched, ['/field-dialog.js'], 'the second open reuses the loaded file');
     } finally { await page.close(); }
   });
+
+  test('the activity log loads its page on first visit, once, and opens an entry', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      const fetched = watch(page);
+      await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.evaluate(() => { location.hash = '#/activity'; });
+      await page.waitForSelector('tr.activity-row');
+      assert.deepEqual(fetched, ['/activity-log.js']);
+      await page.locator('tr.activity-row').first().click();
+      await page.waitForSelector('.activity-title');
+      await page.evaluate(() => { location.hash = '#/activity'; });
+      await page.waitForSelector('tr.activity-row');
+      assert.deepEqual(fetched, ['/activity-log.js'], 'later visits reuse the loaded file');
+    } finally { await page.close(); }
+  });
 }

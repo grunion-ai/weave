@@ -13,7 +13,7 @@
   const ERRORS = new Set(['taken', 'reserved', 'invalid']);
 
   function mount({ check, accountName = null, base = null, delay = 300 } = {}) {
-    let submit = null;
+    const submits = new Set();
     let state = null;
     let checkedSlug = null;
     let slugEdited = false;
@@ -54,7 +54,7 @@
       status.dataset.state = current ?? '';
       slugInput.setAttribute('aria-invalid', ERRORS.has(current) ? 'true' : 'false');
       chips.hidden = !(current === 'taken' || current === 'reserved');
-      if (submit) submit.disabled = current !== 'available';
+      for (const submit of submits) submit.disabled = current !== 'available';
     };
 
     const run = async () => {
@@ -95,7 +95,7 @@
       node,
       nameInput,
       slugInput,
-      bindSubmit(button) { submit = button; button.textContent = COPY.submit; paint(); },
+      bindSubmit(button) { submits.add(button); button.textContent = COPY.submit; paint(); },
       value: () => ({ name: nameInput.value.trim(), slug: slugInput.value }),
       refused(code) {
         const lost = String(code ?? '').replace(/^slug_/, '');

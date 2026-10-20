@@ -42,7 +42,7 @@ if (s) {
     assert.equal((await chip.locator('.nav-account-name').innerText()).trim(), 'Ada Lovelace');
     assert.equal((await chip.locator('.nav-account-role').innerText()).trim(), 'Editor');
     assert.match(await chip.locator('.nav-account-role').getAttribute('class'), /\bk-select\b.*\bhue-blue\b|\bhue-blue\b.*\bk-select\b/, 'the role is a blue chip');
-    assert.equal((await chip.locator('.av').innerText()).trim(), 'AL');
+    assert.equal((await chip.locator('.nav-account-av').innerText()).trim(), 'AL');
     assert.equal(await chip.evaluate((n) => n.closest('.nav-pinned')?.lastElementChild?.matches('.nav-identity') && !!n.closest('.nav-identity')), true, 'the panel closes the pinned strip');
     await ctx.close();
   });
