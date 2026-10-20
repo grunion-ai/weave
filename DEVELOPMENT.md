@@ -408,7 +408,7 @@ the click.
 ## Vitals budget
 
 `test/vitals-budget-browser.test.mjs` loads home (`#/`) and a table
-(`#/table/<id>`) cold, five times each on desktop and on the phone, and reads
+(`#/table/<id>`) cold, once to warm up and then seven times, on desktop and on the phone, and reads
 LCP, CLS and INP from PerformanceObserver (`test/lib/vitals.mjs`). After the
 page is ready it makes one real interaction for INP: desktop opens the Task
 table from the sidebar or a row's dock, the phone opens the menu or taps a row.
