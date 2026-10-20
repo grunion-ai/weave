@@ -1,0 +1,205 @@
+{
+  "bytes": {
+    "/activity-log.js": {
+      "gzip": 3418,
+      "br": 3020
+    },
+    "/actor-core.js": {
+      "gzip": 1057,
+      "br": 961
+    },
+    "/agent-connect-core.js": {
+      "gzip": 2389,
+      "br": 2032
+    },
+    "/app.js": {
+      "gzip": 159586,
+      "br": 127942
+    },
+    "/billing.js": {
+      "gzip": 2099,
+      "br": 1784
+    },
+    "/breadcrumbs.js": {
+      "gzip": 1331,
+      "br": 1231
+    },
+    "/bug-core.js": {
+      "gzip": 3184,
+      "br": 2783
+    },
+    "/cell-graphics.js": {
+      "gzip": 2462,
+      "br": 2210
+    },
+    "/chip-core.js": {
+      "gzip": 1083,
+      "br": 949
+    },
+    "/chip-view.js": {
+      "gzip": 3032,
+      "br": 2675
+    },
+    "/chip.css": {
+      "gzip": 3406,
+      "br": 2973
+    },
+    "/column-resize.js": {
+      "gzip": 2387,
+      "br": 2196
+    },
+    "/consent.js": {
+      "gzip": 2305,
+      "br": 1935
+    },
+    "/date-core.js": {
+      "gzip": 1787,
+      "br": 1613
+    },
+    "/date-grain.js": {
+      "gzip": 4465,
+      "br": 4072
+    },
+    "/editor-lib.js": {
+      "gzip": 4499,
+      "br": 4070
+    },
+    "/entity-surface-core.js": {
+      "gzip": 1064,
+      "br": 987
+    },
+    "/field-dialog-core.js": {
+      "gzip": 11729,
+      "br": 10453
+    },
+    "/field-dialog.js": {
+      "gzip": 17088,
+      "br": 15216
+    },
+    "/field-diff-core.js": {
+      "gzip": 1593,
+      "br": 1410
+    },
+    "/form.js": {
+      "gzip": 1533,
+      "br": 1312
+    },
+    "/graph-parse.js": {
+      "gzip": 979,
+      "br": 901
+    },
+    "/grid-keymap.js": {
+      "gzip": 1846,
+      "br": 1634
+    },
+    "/grid-range.js": {
+      "gzip": 2625,
+      "br": 2386
+    },
+    "/grid-window.js": {
+      "gzip": 584,
+      "br": 519
+    },
+    "/history-core.js": {
+      "gzip": 2567,
+      "br": 2370
+    },
+    "/icon-registry.js": {
+      "gzip": 3881,
+      "br": 3275
+    },
+    "/list-core.js": {
+      "gzip": 3219,
+      "br": 2909
+    },
+    "/mark-icons.js": {
+      "gzip": 1414,
+      "br": 1223
+    },
+    "/menu-core.js": {
+      "gzip": 1584,
+      "br": 1384
+    },
+    "/nl-date.js": {
+      "gzip": 1189,
+      "br": 1052
+    },
+    "/number-core.js": {
+      "gzip": 1000,
+      "br": 885
+    },
+    "/palette-core.js": {
+      "gzip": 1474,
+      "br": 1322
+    },
+    "/permalink.js": {
+      "gzip": 238,
+      "br": 238
+    },
+    "/phone-row.js": {
+      "gzip": 1039,
+      "br": 899
+    },
+    "/picker-core.js": {
+      "gzip": 1680,
+      "br": 1488
+    },
+    "/prefill-core.js": {
+      "gzip": 603,
+      "br": 523
+    },
+    "/relmap-layout.js": {
+      "gzip": 1605,
+      "br": 1477
+    },
+    "/reorder.js": {
+      "gzip": 4567,
+      "br": 4169
+    },
+    "/resume-core.js": {
+      "gzip": 561,
+      "br": 561
+    },
+    "/selection-core.js": {
+      "gzip": 1018,
+      "br": 888
+    },
+    "/setup-core.js": {
+      "gzip": 1313,
+      "br": 1173
+    },
+    "/slug-core.js": {
+      "gzip": 1286,
+      "br": 1107
+    },
+    "/slug-form.js": {
+      "gzip": 1482,
+      "br": 1275
+    },
+    "/start.js": {
+      "gzip": 12917,
+      "br": 11513
+    },
+    "/starter-core.js": {
+      "gzip": 16413,
+      "br": 13670
+    },
+    "/style.css": {
+      "gzip": 37512,
+      "br": 30903
+    },
+    "/term-core.js": {
+      "gzip": 1362,
+      "br": 1147
+    },
+    "/usage-core.js": {
+      "gzip": 793,
+      "br": 686
+    },
+    "/view-core.js": {
+      "gzip": 624,
+      "br": 518
+    }
+  },
+  "raised": {}
+}

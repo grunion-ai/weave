@@ -1,0 +1,1 @@
+- Explicit signup intent survives the legacy auth redirect and opens the signup pane. (Issue #911).

@@ -43,6 +43,8 @@ if (s) {
     idp.signInBrowserAs({ sub: 'user_eve' });
     const page = await arrive();
     try {
+      await page.reload();
+      await page.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
       const inn = await options(page);
       assert.equal(inn.forceRedirectUrl, `/w/harbor/api/auth/oidc/start?next=${encodeURIComponent(link)}`, 'a sign-in goes on to the workspace');
       assert.equal(inn.signUpForceRedirectUrl, '/api/auth/oidc/start?start=1&next=%2Fstart', 'a sign-up goes to onboarding');
@@ -74,6 +76,8 @@ if (s) {
     const page = await arrive();
     try {
       await page.click('main [data-go="switch"]');
+      await page.waitForSelector('#clerk-pane [data-fake-clerk="signup"]');
+      await page.reload();
       await page.waitForSelector('#clerk-pane [data-fake-clerk="signup"]');
       const up = await options(page);
       assert.equal(up.forceRedirectUrl, '/api/auth/oidc/start?start=1&next=%2Fstart', 'a new account goes to the setup steps');

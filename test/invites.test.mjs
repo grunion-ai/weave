@@ -41,6 +41,7 @@ test('engine: redeeming makes the account at the invited role, de-duplicates the
   assert.equal(w.identityInvite(inv.code).account, 'dylan-2', 'the peek names the account it will make');
   const made = w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_dylan' });
   assert.deepEqual([made.name, made.role], ['dylan-2', 'observer']);
+  assert.ok(w.onboardedAt(made.id), 'joining a workspace is not creator onboarding');
   assert.deepEqual(made.identities.map((i) => [i.issuer, i.subject]), [[ISS, 'user_dylan']]);
   assert.ok(!JSON.stringify(w.state.meta.accounts).includes('example.com'), 'the account carries no email');
   assert.equal(w.listInvites().length, 0);
