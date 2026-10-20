@@ -34,9 +34,9 @@ if (s) {
     test(`start page: one sign-in, then Use another account, then Sign out (${colorScheme})`, async () => {
       const page = await open(colorScheme);
       try {
-        await page.goto(`${base}/start`, { waitUntil: 'networkidle' });
+        await page.goto(`${base}/start?pick=1`, { waitUntil: 'networkidle' });
         await page.getByRole('link', { name: 'Sign in', exact: true }).click();
-        await page.waitForURL(`${base}/start`);
+        await page.waitForURL(`${base}/start?pick=1`);
         await page.waitForSelector('.rows li');
         assert.deepEqual(await page.locator('.rows li .ws-title').allInnerTexts(), ['Net'], 'eve opens Net');
         assert.equal(await page.locator('.rows .ws-login').count(), 0, 'one login needs no label');
@@ -47,7 +47,7 @@ if (s) {
 
         page.who = 'user_kyle';
         await page.getByRole('link', { name: 'Use another account' }).click();
-        await page.waitForURL(`${base}/start`);
+        await page.waitForURL(`${base}/start?pick=1`);
         await page.waitForSelector('.rows .ws-login');
         assert.deepEqual(await page.locator('.rows .ws-login').allInnerTexts(), ['eve'], 'with two logins each row names the login that opens it');
         assert.equal(await page.locator('.rows li').count(), 1, 'the workspace both logins open is listed once');
@@ -68,10 +68,9 @@ if (s) {
       try {
         await page.goto(`${base}/start`, { waitUntil: 'networkidle' });
         await page.getByRole('link', { name: 'Sign in', exact: true }).click();
-        await page.waitForURL(`${base}/start`);
-        await page.waitForSelector('.rows li a');
-        await page.locator('.rows li a').first().click();
         await page.waitForSelector('#ws-new > .wv-icon');
+        const home = new URL(page.url()).pathname;
+        assert.equal(home, '/w/Net/', 'signing in at the root opens the workspace, not the list (Issue #977)');
         await page.locator('#ws-new').click();
         await page.waitForSelector('.wv-menu.ws-plus');
         const items = await page.locator('.wv-menu.ws-plus .wv-menu-row').allInnerTexts();
@@ -81,6 +80,18 @@ if (s) {
         assert.notEqual(mfg, mbg, 'menu text is readable');
         await page.keyboard.press('Escape');
         assert.equal(await page.locator('.wv-menu.ws-plus').count(), 0, 'Escape closes the menu');
+
+        await page.goto(`${base}${home}#/settings`);
+        await page.waitForFunction((key) => localStorage.getItem(key) === '#/settings', `wv-last-route:${home}`);
+        await page.goto(`${base}/start`);
+        await page.waitForURL(`${base}${home}#/settings`);
+        assert.equal(await page.evaluate(() => location.hash), '#/settings', 'the root reopens the page the workspace last had open (Issue #977)');
+
+        await page.locator('#ws-new').click();
+        await page.locator('.wv-menu.ws-plus .wv-menu-row', { hasText: 'Find my workspaces' }).click();
+        await page.waitForURL(`${base}/start?pick=1`);
+        await page.waitForSelector('.rows li');
+        assert.deepEqual(await page.locator('.rows li .ws-title').allInnerTexts(), ['Net'], 'Find my workspaces still shows the list');
       } finally { await page.close(); }
     });
   }

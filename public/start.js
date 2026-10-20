@@ -199,6 +199,7 @@
       href ? make('a', { class: 'btn-link', href, 'data-go': 'billing' }, COPY.waiting.link) : null);
   }
 
+  const PICK = '/start?pick=1';
   const signInHref = (next) => `/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`;
 
   let clerk = null;
@@ -227,7 +228,7 @@
   function account() {
     let mode = 'signin';
     const pane = me.clerk;
-    const next = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : '/start');
+    const next = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : entry.pick ? PICK : '/start');
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
@@ -272,7 +273,7 @@
 
   function foot() {
     return make('p', { class: 'muted foot-links' },
-      make('a', { class: 'btn-link', href: '/api/auth/oidc/start?start=1&fresh=1' }, COPY.addLogin),
+      make('a', { class: 'btn-link', href: `${signInHref(PICK)}&fresh=1` }, COPY.addLogin),
       make('button', { type: 'button', class: 'btn-link', 'data-go': 'signout', onclick: async () => {
         await post('/api/start/signout').catch(() => {});
         await boot();
@@ -740,7 +741,7 @@
     try { me = await getJson('/api/start'); } catch (err) { main.textContent = err.message; return; }
     entry = q;
     s = begin(me, q);
-    if (location.search || location.hash) history.replaceState(null, '', '/start');
+    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : '/start');
     globalThis.WeaveConsent?.start(me.analytics);
     render();
     if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');

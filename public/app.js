@@ -12782,6 +12782,11 @@ function renderRoute() {
   return Promise.resolve().then(dispatchRoute).finally(cancelSkeleton);
 }
 
+function rememberRoute() {
+  const landed = WeaveResume.follow(location, globalThis.localStorage);
+  if (landed !== location.hash) history.replaceState(history.state, '', landed);
+}
+
 function dispatchRoute() {
   teardownDocEditors();
   dockClose();
@@ -12790,6 +12795,7 @@ function dispatchRoute() {
     if (!pop.classList.contains('table-view-popover') || pop.tableId !== nextTable) pop.remove();
   }
   state.pageName = null;
+  rememberRoute();
   const hash = location.hash || '#/';
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
   if (!(dbM && tableChromeOn(dbM[1]))) {
@@ -13243,8 +13249,8 @@ function wireWsNew() {
     const apex = start.replace(/\/start$/, '');
     menu([
       { label: copy.newWorkspace, section: 'organize', run: newWorkspaceForm },
-      { label: copy.addLogin, section: 'organize', run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1`; } },
-      { label: copy.find, section: 'organize', run: () => { location.href = start; } },
+      { label: copy.addLogin, section: 'organize', run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1&next=${encodeURIComponent('/start?pick=1')}`; } },
+      { label: copy.find, section: 'organize', run: () => { location.href = `${start}?pick=1`; } },
     ], { anchor: btn, className: 'ws-plus', label: 'Workspaces' });
   });
   async function newWorkspaceForm() {
