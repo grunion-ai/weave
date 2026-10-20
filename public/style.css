@@ -977,7 +977,8 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .doc-rail-dash:focus-visible { outline: none; }
 .doc-rail-tick { width: 9px; height: 2px; border-radius: 1px; flex: none; background: var(--tblr-border-color);
   transition: width .16s ease, background .12s ease; }
-.doc-rail.peek .doc-rail-tick, .doc-rail:hover .doc-rail-tick { width: var(--w); }
+.doc-rail.peek .doc-rail-tick { width: var(--w); }
+@media (hover: hover) { .doc-rail:hover .doc-rail-tick { width: var(--w); } }
 .doc-rail-dash.active .doc-rail-tick { background: var(--tblr-body-color); }
 .doc-rail-dash.peeked .doc-rail-tick { background: var(--tblr-body-color); }
 .doc-rail-card { display: none; position: absolute; left: calc(100% + 14px); width: 260px; z-index: 6; pointer-events: none;
