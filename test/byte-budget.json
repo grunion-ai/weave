@@ -9,8 +9,8 @@
       "br": 2032
     },
     "/app.js": {
-      "gzip": 177680,
-      "br": 142370
+      "gzip": 162340,
+      "br": 130077
     },
     "/billing.js": {
       "gzip": 2099,
@@ -57,8 +57,8 @@
       "br": 4072
     },
     "/editor-lib.js": {
-      "gzip": 4418,
-      "br": 3992
+      "gzip": 4499,
+      "br": 4070
     },
     "/entity-surface-core.js": {
       "gzip": 1064,
@@ -67,6 +67,10 @@
     "/field-dialog-core.js": {
       "gzip": 11729,
       "br": 10453
+    },
+    "/field-dialog.js": {
+      "gzip": 17088,
+      "br": 15216
     },
     "/field-diff-core.js": {
       "gzip": 1593,
@@ -169,16 +173,16 @@
       "br": 1275
     },
     "/start.js": {
-      "gzip": 12770,
-      "br": 11375
+      "gzip": 12917,
+      "br": 11513
     },
     "/starter-core.js": {
       "gzip": 16413,
       "br": 13670
     },
     "/style.css": {
-      "gzip": 37492,
-      "br": 30916
+      "gzip": 37512,
+      "br": 30903
     },
     "/term-core.js": {
       "gzip": 1362,
