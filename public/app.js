@@ -13000,7 +13000,32 @@ function newRowSheet(start) {
       await then(made);
     } catch (err) { create.disabled = more.disabled = false; toast(err.message, true); }
   };
-  create.addEventListener('click', () => write((made) => openEntity(made.id)));
+  const writeAndStay = async () => {
+    const text = name.value.trim();
+    if (!text) return;
+    const target = db;
+    const values = { ...filterSeed(target) };
+    for (const [k, v] of Object.entries(picked)) if (v !== undefined && !(Array.isArray(v) && !v.length)) values[k] = v;
+    name.value = '';
+    picked = {};
+    create.disabled = more.disabled = true;
+    draw();
+    name.focus({ preventScroll: true });
+    try {
+      const made = await api('POST', `/tables/${target.id}/entities`, { name: text, ...(Object.keys(values).length ? { values } : {}) });
+      toast(`Created ${text}`, false, { label: 'Open', run: () => { if (sheet.isConnected) close(); openEntity(made.id); } });
+      await loadSchema();
+      if (state.route?.page === 'db' && state.route.dbId === target.id) await showDatabase(target.id, state.route.view);
+    } catch (err) {
+      if (sheet.isConnected && !name.value) {
+        name.value = text;
+        create.disabled = more.disabled = false;
+      }
+      toast(err.message, true);
+    }
+  };
+  if (phone) create.addEventListener('mousedown', (e) => e.preventDefault());
+  create.addEventListener('click', () => (phone ? writeAndStay() : write((made) => openEntity(made.id))));
   more.addEventListener('click', () => write((made) => { location.hash = `#/entity/${made.id}`; }));
   sheet.append(
     sheetGrip(sheet, close),
@@ -13010,7 +13035,7 @@ function newRowSheet(start) {
     el('div', { class: 'new-row-actions' }, more, create));
   draw();
   document.body.append(back, sheet);
-  off = dismissOutside({ inside: (t) => sheet.contains(t) || !!t.closest?.('.picker-pop, .chip-pop'), close, swallow: () => true, open: () => sheet.isConnected });
+  off = dismissOutside({ inside: (t) => sheet.contains(t) || !!t.closest?.('.picker-pop, .chip-pop, #wv-toasts'), close, swallow: () => true, open: () => sheet.isConnected });
   addEventListener('keydown', esc, true);
   name.focus({ preventScroll: true });
   return sheet;
