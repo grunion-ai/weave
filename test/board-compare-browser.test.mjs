@@ -58,6 +58,7 @@ if (s) {
         await pick(page, ids.desk);
         assert.deepEqual(await picked(page), [ids.desk]);
         assert.equal(await page.locator(`${tile(ids.desk)} .tile-pick input`).isChecked(), true);
+        await page.waitForLoadState('networkidle');
         assert.ok(await page.locator('#dock').isHidden(), 'a pick opens no record');
         const ring = await page.locator(tile(ids.desk)).evaluate((n) => [getComputedStyle(n).borderLeftWidth, getComputedStyle(n).borderRightWidth]);
         assert.equal(ring[0], ring[1], 'the picked card wears no one-side stripe');

@@ -5564,7 +5564,7 @@ function renderBoard(main, db, items, ctx) {
       if (!e.target.closest(phone ? TILE_FORM : TILE_HANDS_OFF)) boardDrag(e, card);
     });
     card.addEventListener('click', (e) => {
-      if (nativeClick(e) || e.target.closest('a.tile-title') || (!dockCoversScreen.matches && e.target.closest('.tile-field > dd'))) return;
+      if (nativeClick(e) || e.target.closest('a.tile-title, .tile-pick') || (!dockCoversScreen.matches && e.target.closest('.tile-field > dd'))) return;
       dockEntity(db, it.id, { step: true });
     });
     card.addEventListener('keydown', (e) => {
