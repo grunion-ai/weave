@@ -760,8 +760,10 @@ test('reference panels join the side column as card panels, wearing the pointer-
     'a side-column card panel');
   assert.doesNotMatch(block, /left\.append/, 'the entity body stays quiet');
   assert.doesNotMatch(block, /el\('details'|el\('summary'/, 'no disclosure of its own: the side column is the disclosure');
-  assert.match(block, /el\('div', \{ class: 'card-header' \},\s*el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
-    'the header is title + count');
+  assert.match(block, /el\('div', \{ class: 'card-header' \},\s*caret, el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
+    'the header is fold caret + title + count (Issue #993)');
+  assert.match(block, /disclosure\('doc-caret', true/, 'the caret is the shared doc-caret disclosure');
+  assert.match(block, /docSectionCollapse\(db\.id, extraClass/, 'the fold is remembered per table and per card');
   assert.match(APP, /const entityRefs = \(id\) => Promise\.all\(\['references-from', 'references'\]/,
     'both directions load with the record (Feature #315)');
   for (const fn of ['showEntity', 'drawDock']) {
@@ -1160,8 +1162,8 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
 
 test('field dialogs are the unified fieldDialog, not the old string forms', () => {
   assert.match(APP, /function fieldDialog\(db, existing, after, \{ pickTables = null \} = \{\}\)/);
-  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,400}?fieldDialog\(db, null,/);
-  assert.match(APP, /function editFieldDialog\(db, f\) \{\s*fieldDialog\(db, f,/);
+  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,400}?openFieldDialog\(db, null,/);
+  assert.match(APP, /function editFieldDialog\(db, f\) \{\s*openFieldDialog\(db, f,/);
   assert.doesNotMatch(APP, /Options \(comma-separated\)/);
 });
 
@@ -1632,7 +1634,7 @@ test('workspace links and rename use the workspace id permalink', () => {
 });
 
 test('dock: the surface core loads before app.js and #dock is a sibling of #main', () => {
-  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8').replace(/<template\b[\s\S]*?<\/template>/g, '');
   const core = html.indexOf('entity-surface-core.js');
   assert.ok(core > -1 && core < html.indexOf('"/app.js"'), 'entity-surface-core.js must load before app.js');
   const main = html.indexOf('<main id="main">');
@@ -1657,7 +1659,7 @@ test('dock: Escape defers to every overlay app.js can raise', () => {
   const pops = [...new Set([...APP.matchAll(/class: '([a-z]+-pop)'/g)].map((x) => `.${x[1]}`))];
   assert.ok(backs.length >= 4 && pops.length >= 3, `the derivation found ${backs.length} backdrops and ${pops.length} popovers`);
   for (const sel of [...backs, ...pops]) assert.ok(owners.includes(sel), `${sel} owns Escape but the dock does not defer to it`);
-  assert.ok(owners.includes('.doc-rail.open'), 'an open document outline owns Escape too');
+  assert.ok(owners.includes('.doc-rail.peek'), 'an outline preview card owns Escape too');
   const esc = APP.match(/if \(e\.key !== 'Escape' \|\| !dock\) return;[\s\S]{0,400}?\}\);/)[0];
   assert.match(esc, /closest\?\.\('input, textarea, select, \[contenteditable\]'\)/, 'a focused editor keeps its Escape');
   assert.match(esc, /weaveBreadcrumbs\.navCanBack\(crumbNav\)[\s\S]*weaveBreadcrumbs\.navBack\(crumbNav\)/, 'the step back is the nav core\'s rule, not a hand-rolled one');

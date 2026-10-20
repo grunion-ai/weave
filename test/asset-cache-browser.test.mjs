@@ -19,12 +19,13 @@ if (s) {
     await page.goto(`${base}/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.home-map');
     const boot = await page.evaluate(() => ({
-      blocking: [...document.querySelectorAll('script[src]')].filter((el) => !el.defer && el.type !== 'module').map((el) => el.src),
-      globals: ['Vditor', 'chipCore', 'WeaveTerm'].filter((g) => !(g in window)),
+      blocking: [...document.querySelectorAll('script[src]')].filter((el) => !el.defer && !el.async && el.type !== 'module').map((el) => el.src),
+      globals: ['chipCore', 'WeaveTerm'].filter((g) => !(g in window)),
       name: document.querySelector('#ws-name')?.textContent,
     }));
     assert.deepEqual(boot.blocking, [], 'no classic script blocks the parser');
     assert.deepEqual(boot.globals, [], 'every boot global is in place');
+    assert.equal(await page.waitForFunction(() => 'Vditor' in window, null, { timeout: 15000 }).then(() => true), true, 'the document editor arrives after boot (Issue #989)');
     assert.ok(boot.name, 'the workspace name painted');
     assert.deepEqual(errors, []);
     await page.close();

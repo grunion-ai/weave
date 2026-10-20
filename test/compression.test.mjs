@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, brotliDecompressSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { startServer, acceptsGzip, gzipOutcome } from '../src/server.js';
+import { startServer, acceptsGzip, acceptsCoding, gzipOutcome } from '../src/server.js';
 
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -119,4 +119,46 @@ test('the gzip cache never hands one file the bytes of another with the same siz
   assert.equal(gunzipSync(a.body).toString()[0], 'a');
   assert.equal(gunzipSync(b.body).toString()[0], 'b');
   assert.equal(out('z', '/a.css').body, a.body, 'the same path and validator is a cache hit');
+});
+
+const settle = async (read, ok, tries = 200) => {
+  let got = await read();
+  for (let i = 0; i < tries && !ok(got); i++) {
+    await new Promise((r) => setTimeout(r, 10));
+    got = await read();
+  }
+  return got;
+};
+
+test('a static asset goes out as Brotli once it is compressed off the request path, and inflates to the file (Issue #989)', async () => {
+  await withServer(async (port) => {
+    const file = readFileSync(join(PUBLIC, 'app.js'));
+    const first = await raw(port, '/app.js', { 'Accept-Encoding': 'gzip, deflate, br' });
+    assert.equal(first.headers['content-encoding'], 'gzip', 'the first request does not wait on Brotli');
+    const res = await settle(() => raw(port, '/app.js', { 'Accept-Encoding': 'gzip, deflate, br' }), (r) => r.headers['content-encoding'] === 'br');
+    assert.equal(res.headers['content-encoding'], 'br');
+    assert.match(res.headers.vary ?? '', /accept-encoding/i);
+    assert.ok(brotliDecompressSync(res.body).equals(file), 'the inflated body is the file, byte for byte');
+    const gz = await raw(port, '/app.js', { 'Accept-Encoding': 'gzip' });
+    assert.equal(gz.headers['content-encoding'], 'gzip', 'a client without br still gets gzip');
+    assert.ok(res.body.length < gz.body.length * 0.85, `Brotli should beat gzip by 15% or more (br ${res.body.length}, gzip ${gz.body.length})`);
+    const refused = await raw(port, '/app.js', { 'Accept-Encoding': 'gzip, br;q=0' });
+    assert.equal(refused.headers['content-encoding'], 'gzip', 'br;q=0 is a refusal');
+  });
+});
+
+test('a response without a validator stays gzip, so nothing uncached pays for Brotli (Issue #989)', () => {
+  const cache = new Map();
+  const body = 'x'.repeat(4096);
+  const out = gzipOutcome({ status: 200, headers: { 'Content-Type': 'application/json' }, body }, 'gzip, br', { cache, path: '/api/schema' });
+  assert.equal(out.headers['Content-Encoding'], 'gzip');
+  assert.equal(cache.size, 0);
+});
+
+test('acceptsCoding reads q-values per coding (Issue #989)', () => {
+  assert.equal(acceptsCoding('gzip, deflate, br', 'br'), true);
+  assert.equal(acceptsCoding('br;q=0, gzip', 'br'), false);
+  assert.equal(acceptsCoding('gzip', 'br'), false);
+  assert.equal(acceptsCoding('*', 'br'), true);
+  assert.equal(acceptsCoding('BR', 'br'), true);
 });

@@ -3,7 +3,7 @@ import { spawnSync, execFile } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, extname, basename } from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, brotliCompress, constants as zlibConstants } from 'node:zlib';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
@@ -80,16 +80,24 @@ export const MIME = {
 const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i;
 const GZIP_MIN = 1024;
 
-export function acceptsGzip(header) {
+export function acceptsCoding(header, coding) {
   const q = {};
   for (const part of String(header ?? '').toLowerCase().split(',')) {
-    const [coding, ...params] = part.split(';').map((x) => x.trim());
-    if (!coding) continue;
+    const [name, ...params] = part.split(';').map((x) => x.trim());
+    if (!name) continue;
     const qp = params.find((x) => x.startsWith('q='));
-    q[coding] = qp ? Number(qp.slice(2)) : 1;
+    q[name] = qp ? Number(qp.slice(2)) : 1;
   }
-  const v = q.gzip ?? q['*'];
+  const v = q[coding] ?? q['*'];
   return v > 0;
+}
+
+export const acceptsGzip = (header) => acceptsCoding(header, 'gzip');
+
+function brotliLater(cache, key, body, size) {
+  cache.set(key, null);
+  const params = { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: size };
+  brotliCompress(body, { params }, (err, out) => (err ? cache.delete(key) : cache.set(key, out)));
 }
 
 export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache = null, path = '' } = {}) {
@@ -97,14 +105,32 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
   if (!COMPRESSIBLE.test(type) || headers['Content-Encoding']) return { headers, body };
   const vary = headers.Vary ? `${headers.Vary}, Accept-Encoding` : 'Accept-Encoding';
   const size = typeof body === 'string' ? Buffer.byteLength(body) : body?.length ?? 0;
-  if (status !== 200 || size < GZIP_MIN || !acceptsGzip(acceptEncoding)) return { headers: { ...headers, Vary: vary }, body };
-  const key = headers.ETag && `${path} ${headers.ETag}`;
+  if (status !== 200 || size < GZIP_MIN) return { headers: { ...headers, Vary: vary }, body };
+  const key = headers.ETag && !/\bprivate\b/.test(headers['Cache-Control'] ?? '') && `${path} ${headers.ETag}`;
+  if (key && cache && acceptsCoding(acceptEncoding, 'br')) {
+    const br = cache.get(`br ${key}`);
+    if (br) return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'br' }, body: br };
+    if (br === undefined) brotliLater(cache, `br ${key}`, body, size);
+  }
+  if (!acceptsGzip(acceptEncoding)) return { headers: { ...headers, Vary: vary }, body };
   let zipped = key && cache?.get(key);
   if (!zipped) {
     zipped = gzipSync(body);
     if (key && cache) cache.set(key, zipped);
   }
   return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'gzip' }, body: zipped };
+}
+
+export const etagMatches = (header, etag) => !!header && String(header).split(',').map((t) => t.trim().replace(/^W\//, '')).some((t) => t === '*' || t === etag.slice(2));
+
+const API_PATH = /^(?:\/w\/[^/]+)?\/api\//;
+export function revalidateApi(outcome, { method, path, ifNoneMatch }) {
+  const { status, headers, body } = outcome;
+  if (method !== 'GET' || status !== 200 || !API_PATH.test(path) || body == null
+    || headers.ETag || headers['Cache-Control'] || headers['Set-Cookie'] || headers['Content-Encoding']) return outcome;
+  const etag = `W/"${createHash('sha1').update(body).digest('base64url').slice(0, 22)}"`;
+  const tagged = { ...headers, ETag: etag, 'Cache-Control': 'private, no-cache' };
+  return etagMatches(ifNoneMatch, etag) ? { status: 304, headers: tagged, body: '' } : { status, headers: tagged, body };
 }
 
 const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -482,7 +508,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     const full = join(PUBLIC_DIR, file.replace(/\.\./g, ''));
     if (!existsSync(full) || full.endsWith('/')) return null;
     const match = rx?.header?.('if-none-match');
-    const matches = (etag) => match && match.split(',').map((t) => t.trim().replace(/^W\//, '')).some((t) => t === '*' || t === etag.slice(2));
+    const matches = (etag) => etagMatches(match, etag);
     if (file === '/index.html') {
       const raw = readFileSync(full, 'utf8');
       const shell = posthog ? raw.replace('<script src="/app.js" defer></script>', (tag) => `<script src="/consent.js" data-posthog-key="${posthog.key}" defer></script>\n${tag}`) : raw;
@@ -567,8 +593,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         readBytes: (max) => readBytes(req, max),
         remote: req.socket?.remoteAddress ?? null,
       });
-      const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
-      res.writeHead(outcome.status, secure(req, headers));
+      const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });
+      const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
+      res.writeHead(fresh.status, secure(req, headers));
       res.end(body);
     } catch (err) {
       console.error(`weave: ${req.method} ${req.url} failed:`, err);

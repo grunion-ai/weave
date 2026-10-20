@@ -116,6 +116,32 @@ Consumers:
 | App page loads | `public/brand/weave-loader-rope.html` (`loaderRopeHtml()`) | Inlined by `initPageLoader()`. Chrome and Safari tick SMIL on the main thread, so the SMIL rope froze on every long task (Issue #390). The app shows the still strands through windows that move by transform only, which the compositor runs: each end of the dash is an anchor holding a far-side window, a square cut at the end's point and a round cap disc, and the strand inside counter-moves so it stays put. The ends ride the dash's ends frame by frame; the unweave follows Chromium's dash so it ends on the two end dots. Look settled by Kyle, 2026-09-28 |
 | README hero | `assets/png/weave-loader-{dark,light}.gif` | GitHub's image proxy does not run SMIL; `brand/render-gif.mjs` builds the pair from the same generator |
 
+## Marketing: radiating rings (2026-10-15)
+
+A half-page print and social asset: the mark centred on a half US Letter page
+(8.5 x 5.5 in, landscape), with contour rings spaced 16 px apart at 3.8 px
+weight radiating from it to every edge. Kyle picked this from three contact
+sheet rounds (concept 1b-3).
+
+The rings are iso-lines of the distance from the two strands. Near the mark
+they follow the rope; further out the field is blurred at a radius that grows
+with distance, so every ring stays one continuous curve with no cusp at the
+strand ends while the pitch holds. `test/brand-radiate.test.mjs` gates the
+pitch, the smoothness, the edge-to-edge fill and both palettes.
+
+| File in `assets/marketing/` | Use |
+| --- | --- |
+| `weave-radiate-half-letter-dark.{svg,pdf,png}` | Slate canvas `#0f1115`, sky rings, blue + sky strands |
+| `weave-radiate-half-letter-light.{svg,pdf,png}` | White, blue rings, blue + ink strands |
+
+The SVG and PDF are vector. The PNG is 2550 x 1650, 300 dpi at print size.
+
+The same generator writes the setup page stage art at 3840 x 2160 into
+`public/brand/weave-radiate-{light,dark}.svg` (Issue #990). The mark keeps the
+half-page scale, so it is 320 px wide on the 4K canvas and the rings run out to
+every edge. `public/start.html` draws it at its own scale and shrinks it only
+when the stage is too narrow to hold the mark at 55% of its width.
+
 ## Usage rules
 
 - **Minimum sizes:** mark 12px tall; lockup 80px wide. Below that, use the favicon build.
@@ -126,16 +152,13 @@ Consumers:
 - The lockup wordmark is Outfit 600; the SVG falls back to the system stack if
   Outfit isn't loaded.
 
-## Marketing kit
-
-The badge, posters and patterns for the website, email, social, print and merch live in [kit/](kit/README.md). Agents read [kit/manifest.json](kit/manifest.json) to pick an asset by family and use; the kit README has a recipe table for each channel. The badge ring words are DATA · AGENTS over SYSTEMS (Feature #347).
-
 ## Rebuilding
 
 ```
 node brand/build-logos.mjs        # served SVGs + loader -> public/brand/, the rest -> brand/assets/
 node brand/render-png.mjs         # PNGs via Playwright Chromium
 node --test brand/build-logos.test.mjs
+node brand/build-radiate.mjs --render   # half-page radiating-rings asset -> brand/assets/marketing/
 ```
 
 ImageMagick cannot rasterize these SVGs (its delegate drops `<mask>`), which is

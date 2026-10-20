@@ -951,6 +951,7 @@ export class Weave {
 
   #schemaVersion = null;
   #scales = new Map();
+  #rows = null;
 
   #computing = [];
 
@@ -2159,7 +2160,7 @@ export class Weave {
   #orderRow(db, ref) {
     const pid = typeof ref === 'number' ? ref : /^#?\d+$/.test(String(ref).trim()) ? Number(String(ref).trim().replace('#', '')) : null;
     const e = pid != null
-      ? Object.values(this.state.entities).find((x) => x.dbId === db.id && x.publicId === pid)
+      ? this.#rowsByPublicId(db.id, pid).find((x) => x.publicId === pid)
       : own(this.state.entities, String(ref));
     if (!e || e.dbId !== db.id) throw new WeaveError(`'${ref}' is not a row of ${this.qualifiedName(db)} — order lists its rows as #ids`, 'invalid');
     return e.id;
@@ -4344,7 +4345,7 @@ export class Weave {
   #sysRow(kind, sysId) {
     const t = this.#sysTable(kind);
     if (!t) return undefined;
-    return Object.values(this.#reg.state.entities).find((e) => e.dbId === t.id && e.sysId === sysId);
+    return this.#reg.#tableRows(t.id).find((e) => e.sysId === sysId);
   }
 
   #relIds(row, table, fieldName) {
@@ -5989,8 +5990,53 @@ export class Weave {
   }
 
   listEntities(dbId, { includeDeleted = false } = {}) {
-    return Object.values(this.state.entities)
-      .filter((e) => e.dbId === dbId && (includeDeleted || !e.deletedAt));
+    const rows = this.#tableRows(dbId);
+    return includeDeleted ? rows : rows.filter((e) => !e.deletedAt);
+  }
+
+  #rowIndex() {
+    const entities = this.state.entities;
+    if (this.#rows?.entities !== entities) {
+      this.#rows = { entities, byTable: new Map(), byPublicId: new Map() };
+      for (const e of Object.values(entities)) this.#indexRow(e);
+    }
+    return this.#rows;
+  }
+
+  #indexRow(e) {
+    const index = this.#rows;
+    if (index?.entities !== this.state.entities) return;
+    let table = index.byTable.get(e.dbId);
+    if (!table) index.byTable.set(e.dbId, (table = new Map()));
+    table.set(e.id, e);
+    index.byPublicId.delete(e.dbId);
+  }
+
+  #unindexRow(e) {
+    const index = this.#rows;
+    if (index?.entities !== this.state.entities) return;
+    index.byTable.get(e.dbId)?.delete(e.id);
+    index.byPublicId.delete(e.dbId);
+  }
+
+  #tableRows(dbId) {
+    const table = this.#rowIndex().byTable.get(dbId);
+    return table ? [...table.values()] : [];
+  }
+
+  #rowsByPublicId(dbId, publicId) {
+    const index = this.#rowIndex();
+    let pids = index.byPublicId.get(dbId);
+    if (!pids) {
+      pids = new Map();
+      for (const e of index.byTable.get(dbId)?.values() ?? []) {
+        const key = String(e.publicId);
+        const same = pids.get(key);
+        if (same) same.push(e); else pids.set(key, [e]);
+      }
+      index.byPublicId.set(dbId, pids);
+    }
+    return pids.get(String(publicId)) ?? [];
   }
 
   #liveRowCounts() {
@@ -6027,7 +6073,7 @@ export class Weave {
       const found = this.findEntity(m[1], '#' + m[2]);
       if (found) return found;
       const dbId = this.findTable(m[1]).id;
-      const trashed = this.listEntities(dbId, { includeDeleted: true }).find((x) => x.deletedAt && x.publicId === Number(m[2]));
+      const trashed = this.#rowsByPublicId(dbId, Number(m[2])).find((x) => x.deletedAt && x.publicId === Number(m[2]));
       if (trashed) return trashed;
     }
     throw new WeaveError(`Entity '${id}' not found`, 'not-found');
@@ -6037,20 +6083,20 @@ export class Weave {
     if (ref && typeof ref === 'object') ref = ref.id;
     if (own(this.state.entities, ref)) return this.state.entities[ref];
     const db = this.getTable(dbRef);
-    const list = this.listEntities(db.id);
     const q = /^(.+)#(\d+)$/.exec(String(ref));
     if (q) {
       const qt = this.findTable(q[1]);
       if (qt && qt.id === db.id) {
-        const byPid = list.find((e) => String(e.publicId) === q[2]);
+        const byPid = this.#rowsByPublicId(db.id, q[2]).find((e) => !e.deletedAt);
         if (byPid) return byPid;
       }
     }
     const pid = String(ref).replace(/^#/, '');
     if (/^\d+$/.test(pid)) {
-      const byPid = list.find((e) => String(e.publicId) === pid);
+      const byPid = this.#rowsByPublicId(db.id, pid).find((e) => !e.deletedAt);
       if (byPid) return byPid;
     }
+    const list = this.listEntities(db.id);
     return list.find((e) => this.entityName(e) === ref)
       ?? list.find((e) => this.entityName(e).toLowerCase() === String(ref).toLowerCase());
   }
@@ -6117,6 +6163,7 @@ export class Weave {
       }
     }
     this.state.entities[e.id] = e;
+    this.#indexRow(e);
     this.#logActivity(e, 'created', {});
     try {
       this.#applyValues(e, db, values, { depth, isCreate: true });
@@ -6127,6 +6174,7 @@ export class Weave {
         }
       }
       delete this.state.entities[e.id];
+      this.#unindexRow(e);
       db.publicIdCounter--;
       throw err;
     }
@@ -6479,6 +6527,7 @@ export class Weave {
       }
     }
     delete this.state.entities[id];
+    this.#unindexRow(e);
     for (const f of e.files) this.#dropBlob(f.id);
     this.store.deleteDocRevisions(id);
     this.#mark(id);
@@ -7185,15 +7234,16 @@ export class Weave {
       else if (!Object.hasOwn(SYSTEM_SORT_KEYS, name)) this.getField(db.id, name);
     }
     const chips = relations === 'chip' && !select ? Object.create(null) : null;
-    let rows = scoped(this.listEntities(db.id, { includeDeleted }));
-    const all = countAll ? (includeDeleted ? scoped(this.listEntities(db.id)).length : rows.length) : null;
+    const table = scoped(this.#tableRows(db.id));
+    let live = 0;
+    for (const e of table) if (!e.deletedAt) live++;
+    let rows = includeDeleted ? table : table.filter((e) => !e.deletedAt);
+    const all = countAll ? live : null;
     if (String(search ?? '').trim()) {
       const hit = new Set(this.#searchHits(search, db.id).map((h) => h.e.id));
       rows = rows.filter((e) => hit.has(e.id));
     }
-    const trashed = trashCount
-      ? scoped(this.listEntities(db.id, { includeDeleted: true })).filter((e) => e.deletedAt).length
-      : null;
+    const trashed = trashCount ? table.length - live : null;
     if (where && (Array.isArray(where) ? where.length : true)) {
       rows = rows.filter((e) => this.#matchNode(e, db, Array.isArray(where) ? { and: where } : where));
     }
@@ -7665,7 +7715,7 @@ export class Weave {
     const t = this.#sysTable('workflows');
     if (!t) return [];
     if (this.#wfRows?.state !== this.state || this.#wfRows.epoch !== this.#wfEpoch || this.#wfRows.table !== t) {
-      const rows = Object.values(this.state.entities).filter((e) => e.dbId === t.id).sort((a, b) => a.publicId - b.publicId);
+      const rows = this.#tableRows(t.id).sort((a, b) => a.publicId - b.publicId);
       this.#wfRows = { state: this.state, epoch: this.#wfEpoch, table: t, rows };
     }
     return this.#wfRows.rows.filter((e) => this.state.entities[e.id] === e && !e.deletedAt);
