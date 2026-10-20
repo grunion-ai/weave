@@ -144,7 +144,7 @@ Schema
   table move <ref> <space> [--position N]
                                       Another space, last there unless --position says
   table view <table/view> [--fields A,B] [--filters '{json}'] [--sort '[json]'] [--search text] [--density compact]
-              [--layout table|list] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
+              [--layout table|list|board] [--groups stacked|side] [--picture off|small|medium|large] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
               [--completed-by Done|none] [--nest Parent|none] [--order 3,1,2] [--collapsed '["Completed"]']
               [--phone-row '{"lead":"Status","chips":["Severity"],"labels":true,"wrap":true}'|none]
   field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
@@ -663,7 +663,7 @@ async function main() {
         if (flags.move != null) patch.move = { field: flags.move, ...(flags.before != null ? { before: flags.before } : { after: flags.after }) };
         for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
         if (flags.frozen != null) patch.frozen = Number(flags.frozen);
-        for (const k of ['density', 'layout', 'search']) if (flags[k] != null) patch[k] = flags[k] === true ? '' : String(flags[k]);
+        for (const k of ['density', 'layout', 'groups', 'picture', 'search']) if (flags[k] != null) patch[k] = flags[k] === true ? '' : String(flags[k]);
         if (flags.group != null) patch.group = String(flags.group).trim().startsWith('[') ? parseJsonFlag('group') : String(flags.group);
         for (const [flag, key] of [['completed-by', 'completedBy'], ['nest', 'nest']]) if (flags[flag] != null) patch[key] = flags[flag] === 'none' ? null : flags[flag];
         if (flags.collapsed != null) patch.collapsed = parseJsonFlag('collapsed');
