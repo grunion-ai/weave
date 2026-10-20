@@ -50,7 +50,7 @@ async function table(page, ctx) {
 async function scrollTo(page, f) {
   await page.evaluate((k) => {
     const wrap = document.querySelector('.table-wrap');
-    const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement;
+    const box = wrap.classList.contains('wv-grid-scroll') ? wrap : wrap.closest('#main') ?? document.scrollingElement;
     box.scrollTo({ top: (box.scrollHeight - box.clientHeight) * k, behavior: 'instant' });
   }, f);
   await frames(page, 3);

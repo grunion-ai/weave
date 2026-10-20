@@ -1,0 +1,1 @@
+- **The nav's + New table and New space buttons show again** (Issue #1026): PR #347 wrote `hidden: !state.canManageForms`, which `el()` turns into `hidden="false"`, an attribute that hides the button for everyone. Both buttons now carry `hidden` only for accounts that cannot manage the workspace. Gate: `test/icon-vocabulary-browser.test.mjs`.

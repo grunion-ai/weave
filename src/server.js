@@ -13,6 +13,7 @@ import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
 import { billingFromEnv } from './billing.js';
+import { createMinified } from './minify.js';
 import { cloudStore, restore as restoreArchive, isEncrypted, inspect as inspectDb } from './backup.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -500,6 +501,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   const NOT_A_PAGE = /^(?:\/w\/[^/]+)?\/(?:api|mcp|ingest)(?:\/|$)|^\/(?:_supervisor|\.well-known)\//;
 
   const assets = createAssetVersions(PUBLIC_DIR);
+  const minified = createMinified();
   const serveStatic = (path, rx, { head = null } = {}) => {
     const file = path === '/' ? '/index.html'
       : path === '/favicon.ico' ? '/brand/favicon.ico'
@@ -521,19 +523,21 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body };
     }
     const v = rx?.searchParams?.get?.('v');
-    const { mtime, size } = statSync(full);
+    const st = statSync(full);
+    const { mtime, size } = st;
     const headers = {
       'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
       'Cache-Control': v ? (v === assets.version(file) ? IMMUTABLE : 'no-cache') : file.startsWith('/vendor/') ? VENDOR_CACHE : 'no-cache',
       'Last-Modified': mtime.toUTCString(),
       ETag: `W/"${size.toString(16)}-${Math.floor(mtime.getTime()).toString(16)}"`,
     };
-    if (match) return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body: readFileSync(full) };
+    const read = () => (/\.(?:m?js|css)$/.test(file) && !file.startsWith('/vendor/') ? minified(full, st, () => readFileSync(full)) : readFileSync(full));
+    if (match) return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body: read() };
     const since = Date.parse(rx?.header?.('if-modified-since') ?? '');
     if (since && Math.floor(mtime.getTime() / 1000) <= Math.floor(since / 1000)) {
       return { status: 304, headers, body: '' };
     }
-    return { status: 200, headers, body: readFileSync(full) };
+    return { status: 200, headers, body: read() };
   };
 
   const handle = createRequestHandler(hub, {

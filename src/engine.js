@@ -6,6 +6,7 @@ import '../public/icon-registry.js';
 import '../public/mark-icons.js';
 import '../public/editor-lib.js';
 import '../public/list-core.js';
+import '../public/board-core.js';
 import '../public/phone-row.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
@@ -34,6 +35,8 @@ function iconValue(v) {
 
 const Term = globalThis.WeaveTerm;
 const ListCore = globalThis.weaveListCore;
+const BoardCore = globalThis.weaveBoardCore;
+const LAYOUTS = ['table', 'list', 'board'];
 const PhoneRow = globalThis.weavePhoneRow;
 const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow', forms: 'form' };
 
@@ -112,6 +115,10 @@ export function sniffImage(bytes) {
   if (at('52494646') && at('57454250', 8)) return 'image/webp';
   return null;
 }
+
+const fileBlobIds = (f) => (f.preview?.id ? [f.id, f.preview.id] : [f.id]);
+export const PREVIEW_MAX_BYTES = 256 * 1024;
+const PREVIEW_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 export function logoType(bytes) {
   const head = Buffer.from(bytes ?? []).subarray(0, 1024).toString('utf8').replace(/^\ufeff/, '');
@@ -2092,7 +2099,9 @@ export class Weave {
     if (v.density) out.density = v.density;
     if (v.deleted) out.deleted = true;
     if (typeof v.rollups === 'boolean') out.rollups = v.rollups;
-    if (v.layout === 'list' || v.layout === 'table') out.layout = v.layout;
+    if (LAYOUTS.includes(v.layout)) out.layout = v.layout;
+    if (v.groups) out.groups = v.groups;
+    if (v.picture) out.picture = v.picture;
     const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ field: db.fields[l.field].name, ...ListCore.compactLevel(db.fields[l.field].type, l) }));
     if (group.length) out.group = group;
     if (db.fields[v.completedBy]) out.completedBy = db.fields[v.completedBy].name;
@@ -2166,8 +2175,18 @@ export class Weave {
   #writeListKeys(db, next, patch) {
     if (patch.layout !== undefined) {
       if (patch.layout == null || patch.layout === '') delete next.layout;
-      else if (patch.layout === 'list' || patch.layout === 'table') next.layout = patch.layout;
-      else throw new WeaveError(`layout is table or list — got ${JSON.stringify(patch.layout)}`, 'invalid');
+      else if (LAYOUTS.includes(patch.layout)) next.layout = patch.layout;
+      else throw new WeaveError(`layout is table, list or board — got ${JSON.stringify(patch.layout)}`, 'invalid');
+    }
+    if (patch.groups !== undefined) {
+      if (patch.groups == null || patch.groups === '') delete next.groups;
+      else if (BoardCore.GROUPS.includes(patch.groups)) next.groups = patch.groups;
+      else throw new WeaveError(`groups is stacked or side — got ${JSON.stringify(patch.groups)}`, 'invalid');
+    }
+    if (patch.picture !== undefined) {
+      if (patch.picture == null || patch.picture === '') delete next.picture;
+      else if (BoardCore.PICTURES.includes(patch.picture)) next.picture = patch.picture;
+      else throw new WeaveError(`picture is off, small, medium or large — got ${JSON.stringify(patch.picture)}`, 'invalid');
     }
     if (patch.group !== undefined) {
       const g = patch.group == null ? [] : this.#checkGroup(db, patch.group);
@@ -2219,7 +2238,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'group', 'completedBy', 'nest', 'collapsed', 'order', 'phoneRow'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'groups', 'picture', 'group', 'completedBy', 'nest', 'collapsed', 'order', 'phoneRow'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -3097,7 +3116,7 @@ export class Weave {
       if (vDoc.density) out.density = vDoc.density;
       if (vDoc.deleted) out.deleted = true;
       if (typeof vDoc.rollups === 'boolean') out.rollups = vDoc.rollups;
-      if (vDoc.layout) out.layout = vDoc.layout;
+      for (const k of ['layout', 'groups', 'picture']) if (vDoc[k]) out[k] = vDoc[k];
       if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
       for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
       const pr = vDoc.phoneRow;
@@ -3129,7 +3148,7 @@ export class Weave {
       if ((vDoc.density ?? 'comfortable') !== (have?.density ?? 'comfortable')) patch.density = vDoc.density ?? 'comfortable';
       if (!!vDoc.deleted !== !!have?.deleted) patch.deleted = !!vDoc.deleted;
       if ((vDoc.rollups ?? null) !== (have?.rollups ?? null)) patch.rollups = vDoc.rollups ?? null;
-      if ((vDoc.layout ?? null) !== (have?.layout ?? null)) patch.layout = vDoc.layout ?? null;
+      for (const k of ['layout', 'groups', 'picture']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
       for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.phoneRow ?? null) !== JSON.stringify(have?.phoneRow ?? null)) {
@@ -3826,6 +3845,7 @@ export class Weave {
       const { account } = this.#createAccount({ name: this.#inviteName(i), role: i.role }, i.rowId ?? uuid());
       const row = this.state.meta.accounts[account.id];
       row.identities = [stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at })];
+      row.onboardedAt = at;
       this.save();
       this.#audit('member-joined', { name: row.name, role: row.role, invitedBy: i.invitedBy ?? null });
       this.#syncUsers();
@@ -4401,7 +4421,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
-    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Search', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox'], ['Layout', 'text'], ['Group', 'text']]) {
+    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Search', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox'], ['Layout', 'text'], ['Group', 'text'], ['Groups', 'text'], ['Picture', 'text']]) {
       if (!this.#sysField(viewsT, n)) this.addField(viewsT.id, { name: n, type, ...(type === 'number' ? { config: { decimals: 0 } } : {}) }).system = true;
     }
     const wfT = this.#sysTable('workflows')
@@ -4632,6 +4652,8 @@ export class Weave {
         'Show Deleted': !!v.deleted,
         'Rollup Row': typeof v.rollups === 'boolean' ? v.rollups : db.hideRollups === false,
         Layout: v.layout ?? '',
+        Groups: v.groups ?? '',
+        Picture: v.picture ?? '',
         Group: (v.group ?? []).map((l) => db.fields[l.field]?.name).filter(Boolean).join(ListCore.SEP),
       };
       let row = this.#sysRow('views', v.id);
@@ -4648,7 +4670,7 @@ export class Weave {
       }
       const patch = {};
       if (reg.entityName(row) !== v.name) patch.Name = v.name;
-      for (const k of ['Fields', 'Filter', 'Sort', 'Search', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row', 'Layout', 'Group']) {
+      for (const k of ['Fields', 'Filter', 'Sort', 'Search', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row', 'Layout', 'Group', 'Groups', 'Picture']) {
         const f = this.#sysField(t, k);
         if (!f) continue;
         if ((row.values[f.id] ?? (['Default', 'Show Deleted', 'Rollup Row'].includes(k) ? false : k === 'Frozen' ? 0 : '')) !== want[k]) patch[k] = want[k];
@@ -4918,7 +4940,7 @@ export class Weave {
     if ('Density' in values) vp.density = String(take('Density') ?? '').trim() || 'comfortable';
     if ('Show Deleted' in values) vp.deleted = !!take('Show Deleted');
     if ('Rollup Row' in values) vp.rollups = !!take('Rollup Row');
-    if ('Layout' in values) vp.layout = String(take('Layout') ?? '').trim().toLowerCase() || null;
+    for (const [col, key] of [['Layout', 'layout'], ['Groups', 'groups'], ['Picture', 'picture']]) if (col in values) vp[key] = String(take(col) ?? '').trim().toLowerCase() || null;
     if ('Group' in values) {
       const names = ListCore.parseGroup(String(take('Group') ?? '')).map((l) => l.field);
       vp.group = names.map((n) => cur?.group?.find((l) => l.field.toLowerCase() === n.toLowerCase()) ?? n);
@@ -6513,7 +6535,7 @@ export class Weave {
     }
     delete this.state.entities[id];
     this.#unindexRow(e);
-    for (const f of e.files) this.#dropBlob(f.id);
+    for (const f of e.files) for (const blob of fileBlobIds(f)) this.#dropBlob(blob);
     this.store.deleteDocRevisions(id);
     this.#mark(id);
     this.save();
@@ -7091,6 +7113,8 @@ export class Weave {
     }
     if (pick) {
       const docNamed = defaultDocField && pick.ids.has(defaultDocField.id);
+      const held = new Set(db.fieldOrder.filter((fid) => pick.ids.has(fid) && db.fields[fid].type === 'attachments').flatMap((fid) => raw[db.fields[fid].name] ?? []));
+      const files = held.size ? e.files.filter((f) => held.has(f.id)).map((f) => (this.#hasBlob(f.id) ? f : { ...f, missing: true })) : null;
       return {
         id: e.id,
         publicId: e.publicId,
@@ -7101,6 +7125,7 @@ export class Weave {
         raw,
         ...(docNamed ? { doc: e.docs?.[defaultDocField.id] ?? '', docField: defaultDocField.name } : {}),
         docs,
+        ...(files ? { files } : {}),
         createdAt: e.createdAt,
         updatedAt: e.updatedAt,
         createdBy: this.actorName(e.createdBy ?? null),
@@ -8293,7 +8318,7 @@ export class Weave {
     let fileBytes = 0;
     for (const e of Object.values(this.state.entities)) {
       if (!e.deletedAt) entities += 1;
-      for (const f of e.files ?? []) fileBytes += f.size ?? 0;
+      for (const f of e.files ?? []) fileBytes += (f.size ?? 0) + (f.preview?.size ?? 0);
     }
     return { entities, sizeBytes: (this.store.sizeBytes?.() ?? 0) + fileBytes };
   }
@@ -8337,11 +8362,21 @@ export class Weave {
     this.state.fileBlobs[id] = buf.toString('base64');
   }
 
-  attachFile(entityId, { name, mime = 'application/octet-stream', bytes }) {
+  attachFile(entityId, { name, mime = 'application/octet-stream', bytes, preview = null }) {
     const e = this.getEntity(entityId);
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
+    const small = preview?.bytes == null ? null : Buffer.isBuffer(preview.bytes) ? preview.bytes : Buffer.from(String(preview.bytes), 'base64');
+    const smallType = small && sniffImage(small);
+    if (small && (!sniffImage(buf) || !PREVIEW_TYPES.has(smallType))) {
+      throw new WeaveError('A preview is a PNG, JPEG or WebP image, and only an image upload takes one', 'unsupported-type');
+    }
+    if (small && small.length > PREVIEW_MAX_BYTES) throw new WeaveError(`A preview is at most ${PREVIEW_MAX_BYTES} bytes; this one is ${small.length}`, 'invalid');
     const file = { id: uuid(), name: String(name), size: buf.length, mime, createdAt: nowISO() };
     this.#writeBlob(file.id, buf);
+    if (small) {
+      file.preview = { id: uuid(), size: small.length, mime: smallType };
+      this.#writeBlob(file.preview.id, small);
+    }
     e.files.push(file);
     this.#logActivity(e, 'file-attached', { name: file.name });
     this.#recordUndo('file-attach', e, { fileId: file.id });
@@ -8367,10 +8402,12 @@ export class Weave {
     return file;
   }
 
-  readFile(fileId) {
+  readFile(fileId, { preview = false } = {}) {
     for (const e of Object.values(this.state.entities)) {
       const meta = e.files.find((f) => f.id === fileId);
       if (!meta) continue;
+      const small = preview && meta.preview && this.#readBlob(meta.preview.id);
+      if (small) return { meta: { ...meta.preview, name: meta.name }, bytes: small };
       const bytes = this.#readBlob(fileId);
       if (bytes == null) throw new WeaveError('File blob missing', 'not-found');
       return { meta, bytes };
@@ -8408,7 +8445,7 @@ export class Weave {
 
   deleteFile(entityId, fileId) {
     const e = this.getEntity(entityId);
-    const had = e.files.some((f) => f.id === fileId);
+    const had = e.files.find((f) => f.id === fileId);
     e.files = e.files.filter((f) => f.id !== fileId);
     const db = this.state.tables[e.dbId];
     for (const f of Object.values(db.fields)) {
@@ -8417,9 +8454,10 @@ export class Weave {
       }
     }
     this.#dropBlob(fileId);
+    if (had?.preview) this.#dropBlob(had.preview.id);
     this.#mark(e);
     this.save();
-    return { id: fileId, entity: e.id, deleted: had };
+    return { id: fileId, entity: e.id, deleted: !!had };
   }
 
   importCSV(dbRef, csvText) {
@@ -8744,7 +8782,7 @@ export class Weave {
       const bytes = this.#readBlob(id);
       if (bytes) blobs[id] = bytes.toString('base64');
     };
-    for (const e of Object.values(this.state.entities)) for (const f of e.files ?? []) carry(f.id);
+    for (const e of Object.values(this.state.entities)) for (const f of e.files ?? []) fileBlobIds(f).forEach(carry);
     if (this.state.meta.logo) carry(this.state.meta.logo.id);
     if (Object.keys(blobs).length) out.fileBlobs = blobs;
     return out;
@@ -8779,7 +8817,7 @@ export class Weave {
   importJSON(state) {
     if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
     const ids = [...Object.keys(state.fileBlobs ?? {}), state.meta?.logo?.id];
-    for (const e of Object.values(state.entities ?? {})) for (const f of e?.files ?? []) ids.push(f?.id);
+    for (const e of Object.values(state.entities ?? {})) for (const f of e?.files ?? []) ids.push(...fileBlobIds(f ?? {}));
     for (const id of ids) {
       if (id !== undefined && !BLOB_ID.test(String(id))) throw new WeaveError(`Invalid file id '${id}' in the import`, 'invalid');
     }

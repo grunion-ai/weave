@@ -54,6 +54,7 @@ const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charse
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+const previewInput = (p) => (p && typeof p === 'object' && (p.contentBase64 ?? p.bytes) != null ? { bytes: p.contentBase64 ?? p.bytes } : null);
 const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const metaAttr = (s) => escapeHtml(s).replace(/\r?\n/g, '&#10;');
 const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'avatar', 'field']);
@@ -884,7 +885,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path === '/auth') {
-        if (baseDomain && oidc && !hostOrigin && !wsPrefix) return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
+        if (baseDomain && oidc && !hostOrigin && !wsPrefix) return { status: 302, headers: { Location: rx.searchParams?.get('mode') === 'signup' ? '/start?mode=signup' : '/start', 'Cache-Control': 'no-store' }, body: '' };
         if (oidc && !session && !role && !rx.searchParams?.has('signed-out')) {
           const q = rx.searchParams?.toString() ?? '';
           if (!origin && String(rx.header('host') ?? '').split(':')[0] === '127.0.0.1') {
@@ -899,7 +900,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
-        const asked = ['pick', 'setup', 'error', 'next'].some((k) => rx.searchParams?.has(k));
+        const asked = ['pick', 'setup', 'error', 'mode', 'next'].some((k) => rx.searchParams?.has(k));
         const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
         const found = logins.length ? findWorkspaces(logins) : null;
         const last = found?.rows.find((r) => r.kind === 'workspace' && r.name.toLowerCase() === found.names[0]) ?? found?.rows.find((r) => r.kind === 'workspace');
@@ -990,7 +991,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (handoff && (!baseDomain || hub.bySlug(handoff) !== weave)) return refusal(400, 'This sign-in link is not valid', 'Start again from the sign-in page of the workspace you want.');
               const next = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), handoff ? '/' : `${wsPrefix}/`);
               const invite = rx.searchParams?.get('invite') || null;
-              if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
+              if (invite && !weave.identityInvite(invite)) {
+                const member = session?.engine === weave || ((await heldStart())?.logins ?? []).some((me) => weave.accountForIdentity(me));
+                return refusal(410, 'This invite expired or was already used', member ? 'You already have access. Open your workspace to continue.' : 'If you already joined, sign in to open the workspace. Otherwise, ask the sender for a new invite.',
+                  [{ href: member ? `${mount}/` : `${mount}/auth`, label: member ? 'Open workspace' : 'Sign in to workspace' }, { href: '/start?pick=1', label: 'Find your workspaces' }]);
+              }
               const heldLogins = invite && !rx.searchParams?.has('pick') ? (await heldStart())?.logins ?? [] : [];
               if (heldLogins.length) {
                 const again = (extra) => { const u = new URLSearchParams(rx.searchParams ?? ''); for (const [k, v] of Object.entries(extra)) u.set(k, v); return `${mount}/api/auth/oidc/start?${u}`; };
@@ -1889,17 +1894,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/fields\/([^/]+)\/files$/)) && rx.method === 'POST') {
-          return out(201, weave.attachToField(m[1], decodeURIComponent(m[2]), { name: body.name, mime: body.mime, bytes: body.bytes ?? body.contentBase64 }));
+          return out(201, weave.attachToField(m[1], decodeURIComponent(m[2]), { name: body.name, mime: body.mime, bytes: body.bytes ?? body.contentBase64, preview: previewInput(body.preview) }));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/files$/)) && rx.method === 'POST') {
-          return out(201, weave.attachFile(m[1], { name: body.name, mime: body.mime, bytes: body.contentBase64 }));
+          return out(201, weave.attachFile(m[1], { name: body.name, mime: body.mime, bytes: body.contentBase64, preview: previewInput(body.preview) }));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/files\/([^/]+)$/)) && rx.method === 'DELETE') {
           weave.deleteFile(m[1], m[2]);
           return out(200, { ok: true });
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
-          const { meta, bytes } = weave.readFile(m[1]);
+          const { meta, bytes } = weave.readFile(m[1], { preview: rx.searchParams?.has('preview') ?? false });
           return out(200, bytes, fileHeaders(meta, bytes, { view: rx.searchParams?.has('view') ?? false }));
         }
 

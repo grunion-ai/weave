@@ -405,6 +405,60 @@ raised number unless the same change writes a new reason under
 `raised["<journey|cell>"]`. The reason names the Issue or Feature that needs
 the click.
 
+## Vitals budget
+
+`test/vitals-budget-browser.test.mjs` loads home (`#/`) and a table
+(`#/table/<id>`) cold, once to warm up and then seven times, on desktop and on the phone, and reads
+LCP, CLS and INP from PerformanceObserver (`test/lib/vitals.mjs`). After the
+page is ready it makes one real interaction for INP: desktop opens the Task
+table from the sidebar or a row's dock, the phone opens the menu or taps a row.
+CLS is the largest session window of shifts without recent input. The medians
+are judged against `test/vitals-budget.json`
+(`vitals["<journey|cell|metric>"]`) and logged as
+`vitals <journey|cell|metric> <value> runs <...> budget <n>`. The phone cell runs
+Chromium with the iPhone 15 profile, because WebKit reports no `layout-shift`
+entries. Budgets hold the Linux runner's medians with headroom; a raise needs a
+new reason under `raised[...]`, checked against `HEAD^1` by
+`test/vitals-budget.test.mjs`.
+
+## Feedback budget
+
+An action answers on screen before the server does. `test/feedback-budget-browser.test.mjs`
+walks every journey three times with each `/api/` request held 1000 ms by a
+Playwright route, and times each trusted press or commit key (Enter, Tab,
+Escape) to the first animation frame after a visible DOM change. A skeleton, a
+loader or `aria-busy` is not an answer. The journey's time is its slowest
+action; the gate reads the median of the three walks against
+`test/feedback-budget.json` (`ms["<journey|cell>"]`) and logs
+`feedback <journey|cell> <ms> runs <a,b,c> budget <n> acts <kind:ms ...>`.
+
+A fourth walk runs against the unheld server and refuses any loading state
+shown for an action that settles inside the skeleton delay: a skeleton or
+loader visible sooner than `SKELETON_SHOW_AFTER_MS` after an action, or
+`aria-busy` that sets and clears inside it. `busy["<journey|cell>"]` lets a
+journey off that check only while it names the Issue that will fix it.
+
+Budgets hold the Linux runner's times with headroom, since a timing gate cannot
+ratchet down on every run the way clicks do. A time over its budget fails.
+Raising a budget needs a new reason under `raised["<journey|cell>"]`, checked
+against `HEAD^1` by `test/feedback-budget.test.mjs`, the same rule as the click
+budget. Journeys that wait on the server today carry their measured time and the
+`Slow:` Issue that tracks them; lower the budget in the change that fixes one.
+
+## Render budget
+
+`test/render-budget-browser.test.mjs` walks every journey three times with the
+flicker probe and counts its renders: animation frames in which the app wrote to
+the DOM under `<body>` (child lists, `class`, `hidden` or `style`). The median
+of three walks is judged against `test/render-budget.json`
+(`renders["<journey|cell>"]`) and logged as
+`renders <journey|cell> <n> runs <a,b,c> budget <n>`. Budgets hold the Linux
+runner's largest median plus a quarter and one frame, since network timing
+splits writes across frames from run to run. A count over its budget fails.
+Batch the writes, or raise the budget with a new reason under
+`raised["<journey|cell>"]`, which `test/render-budget.test.mjs` checks against
+`HEAD^1`.
+
 ## Cut-off loop
 
 Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page
