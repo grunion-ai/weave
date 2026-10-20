@@ -742,7 +742,8 @@ if (openHub) {
     await p.keyboard.press('Enter');
     assert.equal(await p.locator('.card[aria-pressed="true"]').getAttribute('data-template'), first, 'Enter on a card picks it');
     await go(p, 'next');
-    await step(p, 'build');
+    await step(p, 'agent');
+    assert.equal(await p.locator('main [data-go="open"]').isVisible(), true, 'keyboard selection creates an accessible workspace');
     await p.close();
   });
   for (const phone of [false, true]) {
