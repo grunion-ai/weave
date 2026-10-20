@@ -788,7 +788,7 @@ async function loadSchema() {
 
 function inlineNameInput(placeholder, onCommit) {
   document.querySelectorAll('.nav-inline-add').forEach((n) => n.remove());
-  const input = el('input', { class: 'form-control form-control-sm nav-inline-add', placeholder });
+  const input = el('input', { class: 'form-control form-control-sm wv-edit nav-inline-add', placeholder });
   const cancel = () => { input.remove(); renderNav(); };
   input.addEventListener('keydown', async (e) => {
     if (e.key === 'Escape') return cancel();
@@ -1001,7 +1001,7 @@ function refreshWsMarks() {
 }
 
 function titleEdit(tag, modifier, value, attrs) {
-  const node = el(tag, { ...attrs, class: `title-edit ${modifier}` });
+  const node = el(tag, { placeholder: 'Untitled', ...attrs, class: `title-edit wv-edit ${modifier}` });
   node.value = value;
   return node;
 }
@@ -1111,7 +1111,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
       if (descBox.classList.contains('editing')) return;
       descBox.classList.add('editing');
       descBox.hidden = false;
-      const ta = el('textarea', { class: 'view-desc-edit', placeholder: 'Description (markdown)…' });
+      const ta = el('textarea', { class: 'wv-edit view-desc-edit', placeholder: 'Description (markdown)…' });
       ta.value = current;
       const save = async () => {
         const md = ta.value;
@@ -3538,7 +3538,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   const isPercent = f.type === 'number' && f.format === 'percent';
   const boxVal = isPercent && typeof rawVal === 'number' ? Math.round(rawVal * 100 * 1e8) / 1e8 : rawVal;
   const input = el('input', {
-    class: 'form-control form-control-sm inline-edit',
+    class: 'form-control form-control-sm wv-edit inline-edit',
     type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text',
     value: boxVal ?? '',
     onclick: (e) => e.stopPropagation(),
@@ -3857,7 +3857,7 @@ function viewStrip(db) {
   let editorInput = null;
   const editor = () => {
     const e = viewEdit;
-    const input = el('input', { class: 'view-name-input', value: e.name, 'aria-label': e.mode === 'rename' ? `Rename ${e.orig}` : 'New view name', autocomplete: 'off' });
+    const input = el('input', { class: 'wv-edit view-name-input', value: e.name, 'aria-label': e.mode === 'rename' ? `Rename ${e.orig}` : 'New view name', autocomplete: 'off' });
     const row = el('div', { class: 'view-tab view-edit', role: 'listitem' }, input,
       el('span', { class: 'view-edit-hint', 'aria-hidden': 'true' }, e.mode === 'rename' ? '↵ save · esc' : '↵ create · esc'));
     let done = false;
@@ -7771,7 +7771,7 @@ function dateControl({ value = '', title = '', time = false, format = 'iso', cos
   let current = value ?? '';
   const show = (v) => dc.formatDate(v, view);
   const text = el('input', {
-    class: 'form-control form-control-sm inline-edit date-text' + (compact ? '' : ' date-text-wide'),
+    class: 'form-control form-control-sm wv-edit inline-edit date-text' + (compact ? '' : ' date-text-wide'),
     value: show(current), placeholder: timeOnly ? '9:15, 5:40 pm…' : placeholder,
     onclick: (e) => e.stopPropagation(),
   });
@@ -7829,7 +7829,7 @@ function rangeControl({ value = null, title = '', costume, compact = true, place
   let current = value?.start && value?.end ? { start: value.start, end: value.end } : null;
   const show = (r) => (r ? dc.formatDateRange(r, view) : '');
   const text = el('input', {
-    class: 'form-control form-control-sm inline-edit date-text range-text' + (compact ? '' : ' date-text-wide'),
+    class: 'form-control form-control-sm wv-edit inline-edit date-text range-text' + (compact ? '' : ' date-text-wide'),
     value: show(current), placeholder,
     onclick: (e) => e.stopPropagation(),
   });
