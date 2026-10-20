@@ -21,8 +21,7 @@ if (s) {
   for (const j of JOURNEYS) {
     for (const cell of cellsOf(j)) {
       const key = clickKey(j.name, cell);
-      const stalled = (delay) => { const p = feedbackProbe({ delay }); const install = p.install; p.install = async (page) => { await install(page); await page.addInitScript(() => addEventListener('pointerdown', () => { const end = performance.now() + 300; while (performance.now() < end); }, true)); }; return p; };
-      const run = (delay) => walk(matrix[cell].browser, j, s, { ...matrix[cell].options, probe: stalled(delay) });
+      const run = (delay) => walk(matrix[cell].browser, j, s, { ...matrix[cell].options, probe: feedbackProbe({ delay }) });
 
       test(`${key}: the action paints its answer before a slow server does, within its feedback budget (Issue #1003)`, async (t) => {
         const times = [];
