@@ -17,6 +17,12 @@ if (s) {
     const page = await s.browser.newPage(options[cell]);
     try {
       await installVitals(page);
+      await page.addInitScript(() => {
+        const spin = (ms) => { const end = performance.now() + ms; while (performance.now() < end); };
+        addEventListener('DOMContentLoaded', () => spin(600));
+        addEventListener('pointerdown', () => spin(300), true);
+        addEventListener('load', () => setTimeout(() => document.body.prepend(Object.assign(document.createElement('div'), { style: 'height:200px' })), 300));
+      });
       await page.goto(`${s.base}${j.url(s)}`, { waitUntil: 'networkidle' });
       await page.waitForSelector(j.ready);
       await j.interact(page, cell, s);
