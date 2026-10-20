@@ -12,7 +12,7 @@
   function rowCrumb(h, current = false, icon = h.tableIcon ?? null) {
     return {
       kind: 'row', id: h.id, label: h.name ?? '', href: `#/entity/${h.id}`,
-      icon, publicId: h.publicId ?? null, table: h.table ?? '',
+      icon, avatar: h.avatar ?? null, publicId: h.publicId ?? null, table: h.table ?? '',
       title: h.table ? `${h.table} \u00b7 ${h.name ?? ''}` : (h.name ?? ''), current,
     };
   }

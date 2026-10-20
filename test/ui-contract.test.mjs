@@ -720,7 +720,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
   assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
   assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the side column is gone, not blank');
-  assert.match(APP, /class: 'wv-toolbar entity-head' \}, nameInput\)/, 'the title row holds only the name');
+  assert.match(APP, /class: 'wv-toolbar entity-head' \}, entityAvatarEl\(entity, db, refresh\), nameInput\)/, 'the title row holds the row\'s face, when its table has an avatar field, and the name (Feature #349)');
   assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb crumb-row' \}/,
     'the entity crumb + title row live in a .view-header, so crumb spacing matches');
   assert.match(body, /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false \}\)/,

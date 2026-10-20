@@ -187,3 +187,13 @@ test('nav: navUpdate fills a hop in wherever it sits (a name learnt after the fe
   nav = navUpdate(nav, { id: 'a', name: 'Ada', publicId: 7 });
   assert.deepEqual(navPath(nav).map((x) => [x.id, x.name, x.publicId]), [['a', 'Ada', 7], ['b', undefined, undefined]]);
 });
+
+test('a row with an avatar wears it in the crumb in place of the row mark', () => {
+  const face = { shape: 'round', initials: 'AC', hue: 'blue', file: null, badge: null };
+  const crumbs = entityCrumbs('weave', [], { ...ada, avatar: face });
+  const row = crumbs[crumbs.length - 1];
+  assert.deepEqual(row.avatar, face);
+  assert.equal(entityCrumbs('weave', [], ada).at(-1).avatar, null);
+  assert.equal(entityCrumbs('weave', [], ada).at(-1).icon, ROW_MARK);
+  assert.deepEqual(dockCrumbs([{ ...leo, avatar: face }])[0].avatar, face);
+});

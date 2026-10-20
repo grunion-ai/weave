@@ -196,8 +196,8 @@
   .pane-foot { font-size: 12.5px; color: var(--muted); }
   .pane-foot a { color: var(--muted); }
   .stage { position: sticky; top: 0; height: 100vh; overflow: hidden; }
-  .radiate, .radiate img { display: block; width: 100%; height: 100%; }
-  .radiate img { object-fit: cover; object-position: center; }
+  .radiate { display: block; width: 100%; height: 100%; }
+  .radiate img { position: absolute; left: 50%; top: 50%; width: min(3840px, 660%); max-width: none; height: auto; min-height: 100%; object-fit: cover; transform: translate(-50%, -50%); }
   .mark { display: inline-flex; }
   .mark-dark { display: none; }
   @media (prefers-color-scheme: dark) { .mark-light { display: none; } .mark-dark { display: block; } }
