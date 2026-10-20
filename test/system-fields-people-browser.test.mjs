@@ -60,7 +60,7 @@ if (s) {
       await mod.waitFor();
       assert.match(await mod.getAttribute('href'), new RegExp(`#/entity/${agent.id}$`));
       assert.equal(await mod.locator('.mi-cpu').count(), 1, 'the agent badge identifies automation');
-      assert.equal(await mod.locator('.wv-av.square').count(), 1, 'agents use the canonical square avatar');
+      assert.equal(await mod.locator('.av').count(), 0, 'an agent fallback does not use person initials');
       assert.match(await page.locator('.fieldrow-system[data-field="Modified By"] .k-actor-via').textContent(), /via MCP/);
       assert.doesNotMatch(await page.locator('body').innerText(), /VMH4hSRpVOhCwUno/);
     } finally { await page.close(); }
