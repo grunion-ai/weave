@@ -3121,6 +3121,14 @@ function toggleSwitch(f, val, patch) {
 
 const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
+const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
+async function uploadBody(file) {
+  const [bytes, preview] = await Promise.all([fileBase64(file), WeavePreview.make(file)]);
+  return {
+    name: file.name, mime: file.type || 'application/octet-stream', bytes,
+    ...(preview ? { preview: { contentBase64: await fileBase64(preview) } } : {}),
+  };
+}
 function fileKind(file) {
   const mime = String(file.mime ?? '').split(';')[0].trim().toLowerCase();
   if (/^image\/(png|jpeg|gif|webp)$/.test(mime)) return 'image';
@@ -3149,7 +3157,7 @@ function attachSheetEl(files, { size = 'medium', fit = 'trim' } = {}, { remove =
       onclick: (e) => { e.preventDefault(); fileLightbox(files, i); },
     });
     if (kind === 'image') {
-      const img = el('img', { src: fileUrl(file), alt: file.name, loading: 'lazy' });
+      const img = el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: file.name });
       img.addEventListener('load', () => { if (img.naturalHeight) cell.style.setProperty('--ar', (img.naturalWidth / img.naturalHeight).toFixed(3)); });
       cell.append(img);
     } else {
@@ -3178,8 +3186,12 @@ function fileViewerEl(file, { size = 'medium' } = {}) {
     body);
 }
 function entityCoverEl(file, { size = 'medium', fit = 'trim' } = {}) {
-  return el('div', { class: `entity-cover size-${size} fit-${fit}`, title: file.name },
-    el('img', { src: fileUrl(file), alt: file.name }));
+  const full = fileUrl(file);
+  const img = el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: file.name });
+  img.addEventListener('load', () => {
+    if (img.getAttribute('src') !== full && img.clientWidth * devicePixelRatio > img.naturalWidth) img.src = full;
+  });
+  return el('div', { class: `entity-cover size-${size} fit-${fit}`, title: file.name }, img);
 }
 function fileLightbox(files, index) {
   const file = files[index];
@@ -3464,10 +3476,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       let landed = 0;
       try {
         for (const file of files) {
-          const bytes = await fileBase64(file);
-          await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, {
-            name: file.name, mime: file.type || 'application/octet-stream', bytes,
-          });
+          await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, await uploadBody(file));
           landed += 1;
         }
       } catch (err) { toast(err.message, true); }

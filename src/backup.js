@@ -214,7 +214,10 @@ export function inspect(path) {
       let e;
       try { e = JSON.parse(json); } catch { continue; }
       if (!e.deletedAt) entities += 1;
-      for (const f of e.files ?? []) if (f?.id) refs.push({ id: String(f.id), name: f.name ?? '' });
+      for (const f of e.files ?? []) {
+        if (f?.id) refs.push({ id: String(f.id), name: f.name ?? '' });
+        if (f?.preview?.id) refs.push({ id: String(f.preview.id), name: `${f.name ?? ''} (preview)` });
+      }
     }
     return { entities, refs };
   } finally { db.close(); }
