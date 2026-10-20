@@ -20,6 +20,10 @@
       "gzip": 2099,
       "br": 1784
     },
+    "/board-core.js": {
+      "gzip": 744,
+      "br": 623
+    },
     "/breadcrumbs.js": {
       "gzip": 1331,
       "br": 1231
