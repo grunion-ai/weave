@@ -1630,7 +1630,7 @@ test('workspace links and rename use the workspace id permalink', () => {
 });
 
 test('dock: the surface core loads before app.js and #dock is a sibling of #main', () => {
-  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8').replace(/<template\b[\s\S]*?<\/template>/g, '');
   const core = html.indexOf('entity-surface-core.js');
   assert.ok(core > -1 && core < html.indexOf('"/app.js"'), 'entity-surface-core.js must load before app.js');
   const main = html.indexOf('<main id="main">');

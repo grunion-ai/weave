@@ -476,6 +476,7 @@ if (openHub) {
     await p.goto(`${clerkHub.base}/start#/settings`);
     await step(p, 'account');
     await p.waitForSelector('.pane #clerk-pane [data-fake-clerk="signin"]');
+    assert.equal(await p.locator('#clerk-pane').getAttribute('aria-busy'), null, 'the loaded sign-in form is no longer busy');
     assert.equal(await p.evaluate(() => location.hash), '', 'a leftover hash is cleared before Clerk mounts (Issue #933)');
     assert.equal(await p.locator('main [data-go="signin"]').isHidden(), true, 'the provider button steps aside for the mounted form');
     const options = () => p.evaluate(() => ({ mounted: window.__clerkMounted, ...window.__clerkOptions, appearance: !!window.__clerkOptions.appearance?.variables?.colorPrimary, footer: window.__clerkOptions.appearance?.elements?.footerAction?.display }));

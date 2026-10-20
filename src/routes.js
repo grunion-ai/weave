@@ -479,7 +479,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
           .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
       ];
-      const names = live.filter(([, w]) => opener(w) && !isDocsWorkspace(w)).map(([name]) => name.toLowerCase());
+      const available = rows.filter((r) => r.kind === 'workspace' && !isDocsWorkspace(hub.get(r.name))).map((r) => r.name.toLowerCase());
+      const names = [...new Set([...String(cookies.wv_rail ?? '').split(',').filter((n) => available.includes(n)), ...available])];
       const creator = logins.find((me) => mayAdminister(hubRoot, rootOf(me)?.role)) ?? null;
       const signedUp = (me) => live.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
       const signup = !creator && openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
@@ -888,7 +889,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
         const asked = ['pick', 'setup', 'error', 'mode'].some((k) => rx.searchParams?.has(k));
         const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
-        const last = logins.length ? findWorkspaces(logins).rows.find((r) => r.kind === 'workspace') : null;
+        const found = logins.length ? findWorkspaces(logins) : null;
+        const last = found?.rows.find((r) => r.kind === 'workspace' && r.name.toLowerCase() === found.names[0]) ?? found?.rows.find((r) => r.kind === 'workspace');
         if (last) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
         const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
         if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
@@ -1153,10 +1155,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
               : rx.searchParams?.get('to') === 'resume' ? '#/resume'
               : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
-            if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
+            const rail = railCookie(isDocsWorkspace(w) ? found.names : [host, ...found.names.filter((name) => name !== host)]);
+            if (baseDomain) return withCookies(await handOff(engine, account.id, `/${land}`, host), [rail]);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
             const back = cookies[outName(w)] ? [clearCookie(outName(w), rx)] : [];
-            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back], 'Cache-Control': 'no-store' }, body: '' };
+            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back, rail], 'Cache-Control': 'no-store' }, body: '' };
           }
           if ((m = path.match(/^\/api\/start\/logo\/([^/]+)$/)) && rx.method === 'GET') {
             const w = hub.bySlug(String(m[1]).toLowerCase());

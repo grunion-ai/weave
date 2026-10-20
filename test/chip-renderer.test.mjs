@@ -178,3 +178,13 @@ test('an avatar leads the card head', () => {
   const av = html.indexOf('class="wv-av ');
   assert.ok(head >= 0 && av > head && av < html.indexOf('wv-card-title'), html);
 });
+
+test('a face pile overlaps up to five faces, each a link, then +N', () => {
+  const face = (n) => ({ id: `e${n}`, name: `Person ${n}`, avatar: { shape: 'round', initials: `P${n}`, hue: 'blue', file: null, badge: null } });
+  const html = chip.facePileHtml([1, 2, 3, 4, 5, 6, 7].map(face), { href: (s) => `#/entity/${s.id}` });
+  assert.match(html, /^<span class="wv-face-pile"/);
+  assert.equal((html.match(/<a /g) ?? []).length, 5, 'five faces');
+  assert.match(html, /<a href="#\/entity\/e1" title="Person 1"[^>]*><span class="wv-av round hue-blue"/);
+  assert.match(html, /<span class="k k-more"[^>]*>\+2<\/span>/);
+  assert.doesNotMatch(chip.facePileHtml([1, 2].map(face), { href: (s) => `#/entity/${s.id}` }), /k-more/);
+});

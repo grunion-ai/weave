@@ -1326,7 +1326,18 @@ const ACCOUNT_ROLE_HUES = { Architect: 'purple', Editor: 'blue', Observer: 'slat
 function accountChip(me) {
   const name = accountDisplayName(me.account.name) || 'Signed in';
   const role = ACCOUNT_ROLE_LABELS[me.role] ?? me.role ?? '';
-  const avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
+  let avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
+  const people = workspaceUsers([me.account.name]);
+  const face = () => {
+    const u = people.rows.find((r) => r.name === me.account.name);
+    if (!u?.avatar || avatar.dataset.face) return;
+    const next = chipElFrom(chipView.avatarHtml(u.avatar, { cls: 'nav-account-av' }));
+    next.dataset.face = '1';
+    avatar.replaceWith(next);
+    avatar = next;
+  };
+  queueMicrotask(face);
+  if (!people.done) people.read?.then(face);
   return el('span', {
     class: 'nav-account-chip',
     title: `${name}${role ? `, ${role}` : ''} in ${accountWorkspaceName()}`,
@@ -3387,8 +3398,10 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const box = el('span', { class: 'ms-box' });
     const all = val == null ? [] : Array.isArray(val) ? val : [val];
     const CAP = 3;
-    const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
-    const hidden = all.length - current.length;
+    const pile = compact && all.length > 1 && all.every((s) => s.avatar);
+    const current = pile ? [] : compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
+    const hidden = pile ? 0 : all.length - current.length;
+    if (pile) box.append(chipElFrom(chipView.facePileHtml(all, { href: (s) => `#/entity/${s.id}` })), ' ');
     for (const s of current) {
       const onRemove = compact ? null : async () => {
         try {
@@ -7127,7 +7140,7 @@ function flushUsers(t) {
   return api('POST', `/tables/${t.id}/query`, { where: [['Name', 'in', want]] }).then((res) => {
     for (const u of res.items ?? []) {
       usersCache.rows.push({
-        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
+        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email, avatar: u.avatar ?? null,
         workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
       });
     }
@@ -7174,7 +7187,8 @@ function actorChipEl(actor, { link = true } = {}) {
   const chip = el('span', { class: 'k k-actor' });
   const paint = (users) => {
     const r = weaveActor.resolveActor(actor, users, { workspaceId: state.wsId });
-    const mark = r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
+    const mark = r.user?.avatar ? chipElFrom(chipView.avatarHtml(r.user.avatar, { cls: 'actor-av' }))
+      : r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
       : r.kind === 'person' ? el('span', { class: `av hue-${chipCore.hueForName(r.name)}` }, chipCore.initialsFor(r.name)) : null;
     const label = el('span', { class: 'k-label' }, r.name);
     const via = r.via ? el('span', { class: 'k-actor-via' }, `· via ${r.via}`) : null;
@@ -9780,6 +9794,23 @@ function skipCaretOnlyUndo(vditor) {
   };
 }
 
+let vditorLoading = null;
+function loadVditor() {
+  vditorLoading ??= new Promise((resolve, reject) => {
+    const tpl = document.querySelector('#vditor-assets');
+    const css = el('link', { rel: 'stylesheet', href: tpl?.content.querySelector('link')?.getAttribute('href') ?? '/vendor/vditor/dist/index.css' });
+    const js = el('script', { src: tpl?.content.querySelector('script')?.getAttribute('src') ?? '/vendor/vditor/dist/index.min.js' });
+    const loaded = (node) => new Promise((ok, fail) => {
+      node.addEventListener('load', ok, { once: true });
+      node.addEventListener('error', () => fail(new Error('The editor did not load. Showing the source instead; reload to try again.')), { once: true });
+    });
+    const both = Promise.all([loaded(css), loaded(js)]);
+    if (tpl) tpl.before(css); else document.head.append(css);
+    document.head.append(js);
+    both.then(() => resolve(), (err) => { vditorLoading = null; css.remove(); js.remove(); reject(err); });
+  });
+  return vditorLoading;
+}
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   guardMathRender();
   const t = vditorTheme();
@@ -10784,17 +10815,25 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
     const mountEditor = () => {
-      const ed = mountDocEditor(host, {
-        value: entity.docs?.[f.name] ?? '',
-        entityId: id,
-        placeholder: `Write ${f.name}… press / for blocks`,
-        onInput: (value) => {
-          scheduleDocSave(id, f.name, value, status);
-          rail.schedule();
-          folds.schedule();
-        },
+      const mount = () => {
+        if (!host.isConnected) return;
+        const ed = mountDocEditor(host, {
+          value: entity.docs?.[f.name] ?? '',
+          entityId: id,
+          placeholder: `Write ${f.name}… press / for blocks`,
+          onInput: (value) => {
+            scheduleDocSave(id, f.name, value, status);
+            rail.schedule();
+            folds.schedule();
+          },
+        });
+        editors?.push(ed);
+      };
+      loadVditor().then(mount, (err) => {
+        if (!host.isConnected) return;
+        mountSourceEditor();
+        toast(err.message, true);
       });
-      editors?.push(ed);
     };
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
@@ -12837,7 +12876,7 @@ function renderRoute() {
 }
 
 function rememberRoute() {
-  const landed = WeaveResume.follow(location, globalThis.localStorage);
+  const landed = WeaveResume.follow(location);
   if (landed !== location.hash) history.replaceState(history.state, '', landed);
 }
 
@@ -13749,7 +13788,7 @@ wireTheme();
 wireSkipLink();
 (state.healthP ??= api('GET', '/health')).catch(() => {});
 if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
-withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
+withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => setTimeout(() => loadVditor().catch(() => {}), 1500));
 wireSearchButton();
 buildWsRail();
 wireWsNew();

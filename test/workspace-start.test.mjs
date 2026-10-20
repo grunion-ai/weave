@@ -350,3 +350,21 @@ test('start: the page and the in-app form read their words from slug-core, the o
   const index = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(index.indexOf('/slug-form.js') > -1 && index.indexOf('/slug-form.js') < index.indexOf('/app.js'));
 });
+
+test('resume: explicit workspace choice survives listing and root-backed sessions (Issue #957)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    const chosen = await s.apex('GET', '/api/start/open/other', { cookie: kyle.cookie });
+    const rail = cookieOf(chosen, 'wv_rail');
+    assert.ok(rail?.startsWith('wv_rail=other,'), 'opening a workspace moves it to the front');
+    await s.follow(chosen.headers.location);
+    const cookie = `${kyle.cookie}; ${rail}`;
+    assert.equal((await s.apex('GET', '/start', { cookie })).headers.location, '/api/start/open/other?to=resume');
+    const listed = await s.apex('GET', '/api/start', { cookie });
+    assert.equal(cookieOf(listed, 'wv_rail'), rail, 'listing preserves this browser choice');
+    const eve = await s.signInAtStart('user_eve');
+    assert.equal((await s.apex('GET', '/start', { cookie: `${eve.cookie}; ${rail}` })).headers.location, '/api/start/open/acme?to=resume', 'a stale preference cannot grant access');
+    assert.equal((await s.apex('GET', '/start?pick=1', { cookie })).status, 200);
+  } finally { s.stop(); }
+});

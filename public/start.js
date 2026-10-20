@@ -107,9 +107,12 @@
 
   const mark = () => document.getElementById('weave-mark').content.firstElementChild.cloneNode(true);
 
+  const emptyArt = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%2F%3E';
   const radiate = () => make('picture', { class: 'radiate' },
+    make('source', { srcset: emptyArt, media: '(max-width: 860px)' }),
     make('source', { srcset: '/brand/weave-radiate-dark.svg', media: '(prefers-color-scheme: dark)' }),
-    make('img', { src: '/brand/weave-radiate-light.svg', alt: 'The weave mark with rings radiating to every edge' }));
+    make('source', { srcset: '/brand/weave-radiate-light.svg' }),
+    make('img', { src: emptyArt, alt: 'The weave mark with rings radiating to every edge' }));
 
   const SEG = 25;
   const GAP = 2.2;
@@ -307,6 +310,18 @@
       make('img', { src: r.logo, alt: '', onerror: (e) => e.currentTarget.parentElement.replaceWith(letter()) }));
   }
 
+  function opening(ev, row) {
+    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    main.querySelectorAll('a.ws-row[data-opening]').forEach((link) => {
+      link.removeAttribute('data-opening');
+      link.querySelector('[role="status"]')?.remove();
+    });
+    ev.currentTarget.setAttribute('data-opening', 'true');
+    ev.currentTarget.querySelector('.ws-text').append(make('small', { class: 'muted', role: 'status' }, `Opening ${row.title}…`));
+  }
+
+  addEventListener('pageshow', (ev) => { if (ev.persisted && s) render(); });
+
   function list() {
     const logins = me.logins ?? [];
     const several = logins.length > 1;
@@ -318,7 +333,7 @@
           ev.currentTarget.disabled = true;
           try { const done = await post(r.accept); capture('invite_accepted', { via: 'start' }); location.href = done.open; } catch (err) { ev.currentTarget.disabled = false; dispatch({ type: 'fail', code: err.code, message: err.message }); }
         } }, COPY.accept)))
-      : make('li', {}, make('a', { class: 'ws-row', href: r.open }, wsTile(r),
+      : make('li', {}, make('a', { class: 'ws-row', href: r.open, onclick: (ev) => opening(ev, r) }, wsTile(r),
         make('span', { class: 'ws-text' }, make('span', { class: 'ws-title' }, r.title), meta(r.host ?? `${location.host}/w/${r.name}`, roleLabel(r.role)), login(r)),
         glyph('chevron-right', 'glyph ws-go')))));
     return [

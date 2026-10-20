@@ -6,7 +6,10 @@
   function follow(loc, storage) {
     const key = `${KEY}:${loc.pathname}`;
     let stored = null;
-    try { stored = storage?.getItem(key) ?? null; } catch {}
+    try {
+      storage ??= root.localStorage;
+      stored = storage?.getItem(key) ?? null;
+    } catch {}
     const landed = land(loc.hash, stored);
     if (landed === loc.hash && keep(landed)) try { storage?.setItem(key, landed); } catch {}
     return landed;
