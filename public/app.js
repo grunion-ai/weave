@@ -11003,11 +11003,26 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
   const refCard = (title, extraClass, refs) => {
     if (!refs.length) return;
+    const body = el('div', { class: 'card-body ref-backlinks' },
+      ...refs.map((r) => relationChipEl({ targetDbIds: true }, r)));
+    const fold = (closed) => {
+      body.classList.toggle('hidden', closed);
+      caret.classList.toggle('closed', closed);
+      setDisclosure(caret, !closed);
+    };
+    const caret = disclosure('doc-caret', true, {
+      title: `Collapse ${title}`,
+      onclick: () => {
+        const closed = !body.classList.contains('hidden');
+        fold(closed);
+        docSectionCollapse(db.id, extraClass, closed);
+      },
+    });
+    if (docSectionCollapse(db.id, extraClass)) fold(true);
     right.append(el('div', { class: `card panel ref-backlinks-card ${extraClass}` },
       el('div', { class: 'card-header' },
-        el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
-      el('div', { class: 'card-body ref-backlinks' },
-        ...refs.map((r) => relationChipEl({ targetDbIds: true }, r)))));
+        caret, el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
+      body));
   };
   const deckRole = deckRoleOf(db);
   if (deckRole) {
