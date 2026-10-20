@@ -512,7 +512,6 @@
     gallery.id = 'work-gallery';
     search.value = query;
     const visible = () => [...gallery.querySelectorAll('.card')].filter((c) => !c.hidden && !c.closest('.shelf').hidden);
-    const firstMatch = () => visible().find((c) => c.hay) ?? visible()[0];
 
     function describe() {
       if (choice === EMPTY) {
@@ -569,6 +568,8 @@
         hits += shown;
         sec.hidden = !shown || (shelf !== 'all' && sec.dataset.category !== shelf);
       }
+      if (query.trim()) gallery.append(fallback);
+      else gallery.prepend(fallback);
       noMatch.hidden = hits > 0;
       noMatch.textContent = hits ? '' : fill(COPY.work.noMatch, { query: query.trim() });
       gallery.classList.toggle('one', shelf !== 'all');
@@ -579,8 +580,8 @@
     search.addEventListener('input', () => { query = search.value; filter(); });
     search.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && search.value) { ev.preventDefault(); search.value = ''; query = ''; filter(); }
-      else if (ev.key === 'ArrowDown') { ev.preventDefault(); firstMatch()?.focus(); }
-      else if (ev.key === 'Enter') { ev.preventDefault(); const first = firstMatch(); if (first) { select(first.dataset.template); first.focus(); } }
+      else if (ev.key === 'ArrowDown') { ev.preventDefault(); visible()[0]?.focus(); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); const first = visible()[0]; if (first) { select(first.dataset.template); first.focus(); } }
     });
     const lift = () => {
       if (!matchMedia('(max-width: 860px)').matches) return;

@@ -727,6 +727,7 @@ if (openHub) {
     await p.keyboard.type('candidates');
     assert.ok(await p.locator('.card[data-template]:visible').first().evaluate((n) => n.getBoundingClientRect().top < innerHeight * 0.55), 'the first match shows above where the keyboard rises');
     const top = (await visibleCards(p))[0];
+    assert.equal(top, 'recruiting', 'search results precede the simple setup alternatives');
     await p.keyboard.press('Enter');
     assert.equal(await p.locator('.card[aria-pressed="true"]').getAttribute('data-template'), top, 'Enter picks the first match');
     assert.equal(await p.evaluate(() => document.activeElement.dataset.template), top);
