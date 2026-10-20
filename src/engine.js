@@ -113,7 +113,7 @@ export function sniffImage(bytes) {
   return null;
 }
 
-const fileBlobIds = (f) => (f.preview ? [f.id, f.preview.id] : [f.id]);
+const fileBlobIds = (f) => (f.preview?.id ? [f.id, f.preview.id] : [f.id]);
 export const PREVIEW_MAX_BYTES = 256 * 1024;
 const PREVIEW_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
