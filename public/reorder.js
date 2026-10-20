@@ -253,7 +253,7 @@
   }
 
   function sortable(down, opts) {
-    const { source, items, axis = 'y', scroller, tail, members: memberFn, onPlace, onDrop, onCancel, zone, lock = false, alsoScroll = [] } = opts;
+    const { source, items, axis = 'y', scroller, tail, members: memberFn, onPlace, onDrop, onStay, onCancel, zone, lock = false, alsoScroll = [] } = opts;
     const follow = (p) => clone.follow(lock && axis === 'y' ? 0 : p.x - start.x, lock && axis === 'x' ? 0 : p.y - start.y);
     let clone = null, members = [source], origin = null, auto = null, extra = [], last = null, placed = null, start = null;
     const skipNext = (n) => { let s = n?.nextElementSibling; while (s && (members.includes(s) || lifting(s))) s = s.nextElementSibling; return s; };
@@ -329,6 +329,7 @@
         const moved = !(skipNext(members[members.length - 1]) === origin.next && source.parentNode === origin.parent);
         finishWith(false);
         if (moved) onDrop?.({ ...placed, point: p, start });
+        else onStay?.({ point: p, start });
       },
       cancel: () => { finishWith(true); onCancel?.(); },
     });

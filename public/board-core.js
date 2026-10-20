@@ -35,6 +35,26 @@
     return n === 1 ? 'Photo' : `Photo ${n}`;
   }
 
+  const PICK_MIN = 2;
+  const PICK_CAP = 4;
+
+  function togglePick(ids, id) {
+    if (ids.includes(id)) return { ids: ids.filter((x) => x !== id), refused: false };
+    if (ids.length >= PICK_CAP) return { ids, refused: true };
+    return { ids: [...ids, id], refused: false };
+  }
+
+  const sameKey = (v) => {
+    if (v == null || v === '' || (Array.isArray(v) && !v.length)) return '';
+    if (Array.isArray(v)) return JSON.stringify(v.map(sameKey).sort());
+    if (typeof v === 'object') return v.id != null ? `#${v.id}` : JSON.stringify(v);
+    return JSON.stringify(v);
+  };
+
+  const compareRows = (fields, items) => fields.map((field) => ({
+    field, differs: new Set(items.map((it) => sameKey(it?.raw?.[field.name]))).size > 1,
+  }));
+
   const groupsOf = (view) => (GROUPS.includes(view?.groups) ? view.groups : 'side');
 
   function pictureOf(db, view) {
@@ -48,5 +68,5 @@
     return { card: CARD_PX[size], column: COLUMN_PX[size], phone: PHONE_COLUMNS[size] };
   }
 
-  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, photoFieldName, groupsOf, pictureOf, widths };
+  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, groupsOf, pictureOf, widths };
 })(typeof window !== 'undefined' ? window : globalThis);
