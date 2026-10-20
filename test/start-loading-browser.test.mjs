@@ -9,8 +9,6 @@ if (s) {
     test(`start shows pending requests and workspace navigation in ${theme}`, async () => {
       const context = await s.browser.newContext({ colorScheme: theme, viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
       const page = await context.newPage();
-      let finishNavigation;
-      const navigating = new Promise((resolve) => { finishNavigation = resolve; });
       let release;
       const ready = new Promise((resolve) => { release = resolve; });
       await page.route('**/api/start', async (route) => {
@@ -24,18 +22,18 @@ if (s) {
         const row = page.locator('a.ws-row');
         await row.waitFor();
         assert.equal(await page.locator('#start [role="status"]').count(), 0);
+        await page.evaluate(() => document.addEventListener('click', (ev) => ev.preventDefault()));
+        assert.equal(await row.getAttribute('href'), '/w/net/');
         await row.dispatchEvent('click', { ctrlKey: true });
         assert.equal(await row.getAttribute('data-opening'), null);
-        await page.route('**/w/net/', async (route) => { await navigating; await route.abort(); });
-        await row.click({ noWaitAfter: true });
-        await page.waitForFunction(() => document.querySelector('a.ws-row')?.getAttribute('data-opening') === 'true');
+        await row.click();
+        assert.equal(await row.getAttribute('data-opening'), 'true');
         assert.equal(await row.locator('[role="status"]').textContent(), 'Opening Net…');
         await page.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
         assert.equal(await page.locator('a.ws-row').getAttribute('data-opening'), null);
         assert.equal(await page.locator('#start [role="status"]').count(), 0);
       } finally {
         release();
-        finishNavigation();
         await context.close();
       }
     });
