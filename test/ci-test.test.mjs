@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, SMOKE, newestAttempts } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, SMOKE, ONBOARDING, newestAttempts } from '../scripts/ci-test.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
 const manifest = plan(files, { unit: files.slice(0, 2), browser: files.slice(2) }, () => 10, 2, 2);
@@ -101,7 +101,7 @@ test('a changed file maps to browser tests whose source cites it', () => {
 test('a diff nothing maps to falls back to the fixed smoke set, never an empty browser lane', () => {
   assert.deepEqual(touchedBrowser(['DEVELOPMENT.md', 'test/formula.test.mjs'], browserFiles, read), [...SMOKE].sort());
   assert.deepEqual(touchedBrowser([], browserFiles, read), [...SMOKE].sort());
-  assert.ok(SMOKE.length > 0 && SMOKE.length <= 8);
+  assert.ok(SMOKE.length > 0 && SMOKE.length <= 12);
   assert.ok(SMOKE.every(f => f.endsWith('-browser.test.mjs')));
 });
 
@@ -124,7 +124,7 @@ test('the PR plan runs every unit file and the touched browser tests through the
   assert.equal(wide.filter(s => s.lane === 'browser').length, 4);
   assert.equal(wide.filter(s => s.lane === 'browser').flatMap(s => s.files).length, browser.length);
   const mid = prPlan({ unit, browser }, many.slice(0, 30), read, () => 1);
-  assert.equal(mid.filter(s => s.lane === 'browser').length, 2);
+  assert.equal(mid.filter(s => s.lane === 'browser').length, 3);
 });
 
 test('pr.yml runs the fast tier on ready pull requests and one PR gate requires every shard', async () => {
@@ -173,4 +173,13 @@ test('the main tests gate judges each shard by its newest attempt, so Re-run fai
   const passed = evidence().slice(1).map((r) => ({ ...r, attempt: 1 }));
   assert.throws(() => validate(manifest, newestAttempts([failed, ...passed]), 'abc'), /Invalid shard/);
   assert.equal(validate(manifest, newestAttempts([failed, ...passed, rerun]), 'abc').files, 4);
+});
+
+test('onboarding journeys are mandatory even for unrelated changes and cannot silently disappear', () => {
+  const selected = touchedBrowser(['README.md'], browserFiles, read);
+  for (const file of ONBOARDING) {
+    assert.ok(selected.includes(file));
+    assert.throws(() => touchedBrowser([], browserFiles.filter(f => f !== file), read), /Missing required journey suite/);
+  }
+  assert.equal(ONBOARDING.length, 4);
 });

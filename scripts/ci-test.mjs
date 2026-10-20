@@ -44,7 +44,15 @@ export function validate(manifest, results, commit) {
   return { commit, files: summaries.length, tests: summaries.reduce((n, s) => n + s.counts.tests, 0), slowest: summaries.sort((a, b) => b.duration_ms - a.duration_ms).slice(0, 10) };
 }
 
+export const ONBOARDING = [
+  'test/setup-flows-browser.test.mjs',
+  'test/workspace-signin-start-browser.test.mjs',
+  'test/invites-browser.test.mjs',
+  'test/invites-mail-browser.test.mjs',
+];
+
 export const SMOKE = [
+  ...ONBOARDING,
   'test/chip-paint-contract-browser.test.mjs',
   'test/click-budget-browser.test.mjs',
   'test/doc-title-browser.test.mjs',
@@ -56,7 +64,8 @@ export const SMOKE = [
 ];
 
 export function touchedBrowser(changed, browser, read) {
-  const picked = new Set(SMOKE.filter(file => browser.includes(file)));
+  for (const file of SMOKE) if (!browser.includes(file)) throw new Error(`Missing required journey suite ${file}`);
+  const picked = new Set(SMOKE);
   for (const file of changed) {
     if (browser.includes(file)) { picked.add(file); continue; }
     const name = basename(file);

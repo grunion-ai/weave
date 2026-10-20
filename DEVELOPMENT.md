@@ -488,3 +488,11 @@ that grows past its committed version or past the base a pull request merges
 into. **Fixing one:** fix the cut-off, run the sweep with `--lower`, and commit
 the lowered counts in the same change. A red gate prints the Linux counts it
 measured; copy them into the `linux` section.
+
+### Mandatory onboarding verification
+
+[The onboarding verification contract](docs/onboarding-verification.md) maps the
+required journeys, permutations and remaining coverage gaps to executable tests.
+`ONBOARDING` in `scripts/ci-test.mjs` runs on every ready PR, alongside `SMOKE`,
+regardless of diff selection. Missing mandatory suites fail planning. Keep the
+contract and regression assertions current in the same PR as a flow change.
