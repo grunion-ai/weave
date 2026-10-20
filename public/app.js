@@ -729,7 +729,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back, #app.nav-held';
+const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.peek, #tray-back, #modal-back, #cmdk-back, #fsv-back, #app.nav-held';
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !dock) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
@@ -10239,24 +10239,36 @@ const docRails = new Set();
 
 function attachDashRail(section, host) {
   const track = el('div', { class: 'doc-rail-track' });
+  const title = el('div', { class: 'doc-rail-card-title' });
+  const text = el('div', { class: 'doc-rail-card-text' });
+  const card = el('div', { class: 'doc-rail-card', role: 'tooltip' }, title, text);
   const st = {
-    section, host, track, timer: 0,
-    rail: el('nav', { class: 'doc-rail', title: 'Document outline' }, track),
+    section, host, track, card, timer: 0, shown: -1, key: '', items: [],
+    rail: el('nav', { class: 'doc-rail', 'aria-label': 'Document outline' }, track, card),
   };
-  const onAway = (e) => { if (!st.rail.contains(e.target)) st.close(); };
-  const onKey = (e) => { if (e.key === 'Escape') st.close(); };
-  st.close = () => {
-    st.rail.classList.remove('open');
-    document.removeEventListener('click', onAway, true);
+  const onKey = (e) => { if (e.key === 'Escape') st.hide(); };
+  st.show = (i) => {
+    const dash = track.children[i];
+    const item = st.items[i];
+    if (!dash || !item) return;
+    st.shown = i;
+    title.textContent = item.text;
+    text.textContent = item.preview;
+    text.hidden = !item.preview;
+    for (const d of track.children) d.classList.toggle('peeked', d === dash);
+    st.rail.classList.add('peek');
+    card.style.top = `${dash.getBoundingClientRect().top - st.rail.getBoundingClientRect().top - 8}px`;
+    document.addEventListener('keydown', onKey);
+  };
+  st.hide = () => {
+    st.shown = -1;
+    st.rail.classList.remove('peek');
+    for (const d of track.children) d.classList.remove('peeked');
     document.removeEventListener('keydown', onKey);
   };
-  st.rail.addEventListener('click', (e) => {
-    if (st.rail.classList.contains('open')) return;
-    e.stopPropagation();
-    st.rail.classList.add('open');
-    document.addEventListener('click', onAway, true);
-    document.addEventListener('keydown', onKey);
-  }, { capture: true });
+  st.close = st.hide;
+  st.rail.addEventListener('pointerleave', st.hide);
+  st.rail.addEventListener('focusout', (e) => { if (!st.rail.contains(e.relatedTarget)) st.hide(); });
   st.schedule = () => {
     clearTimeout(st.timer);
     st.timer = setTimeout(() => refreshDashRail(st), REF_CHIP_DEBOUNCE);
@@ -10272,6 +10284,16 @@ function headText(h) {
     .map((n) => n.textContent).join('').trim();
 }
 
+function sectionTexts(h) {
+  const texts = [];
+  for (let n = h.nextElementSibling; n && !/^H[1-6]$/.test(n.tagName) && texts.length < 6; n = n.nextElementSibling) {
+    const c = n.cloneNode(true);
+    for (const x of c.querySelectorAll('.vditor-ir__marker, .vditor-ir__preview')) x.remove();
+    texts.push(c.textContent);
+  }
+  return texts;
+}
+
 function refreshDashRail(st) {
   if (!document.body.contains(st.section)) { st.close(); docRails.delete(st); return; }
   const root = st.host.querySelector('.vditor-ir .vditor-reset');
@@ -10284,17 +10306,27 @@ function refreshDashRail(st) {
   if (!st.rail.isConnected) st.section.append(st.rail);
   const lineTop = scrollBoxOf(heads[0])?.getBoundingClientRect().top ?? 0;
   const current = lib.currentSection(heads.map((h) => h.getBoundingClientRect().top - lineTop), DASH_READING_LINE);
-  st.track.replaceChildren(...spec.map((d, i) => el('button', {
-    class: 'doc-rail-dash' + (i === current ? ' active' : ''),
-    type: 'button',
-    title: d.text,
-    onclick: () => {
-      scrollTargetIntoView(heads[i], { block: 'start', padding: DASH_READING_LINE });
-      st.close();
+  st.items = spec.map((d, i) => ({ text: d.text, preview: lib.sectionPreview(sectionTexts(heads[i])) }));
+  st.heads = heads;
+  const key = spec.map((d) => `${d.level}:${d.text}`).join('\n');
+  if (key !== st.key) {
+    st.key = key;
+    st.track.replaceChildren(...spec.map((d, i) => el('button', {
+      class: 'doc-rail-dash',
+      type: 'button',
+      'aria-label': d.text,
+      onpointerenter: () => st.show(i),
+      onfocus: () => st.show(i),
+      onclick: () => {
+        const heads = st.heads;
+        scrollTargetIntoView(heads[i], { block: 'start', padding: DASH_READING_LINE });
+      },
     },
-  },
-  el('i', { class: 'doc-rail-tick', style: `width:${d.width}px` }),
-  el('span', { class: 'doc-rail-label' }, d.text))));
+    el('i', { class: 'doc-rail-tick', style: `--w:${d.width}px` }))));
+    if (st.shown >= 0) st.show(Math.min(st.shown, spec.length - 1));
+  }
+  [...st.track.children].forEach((d, i) => d.classList.toggle('active', i === current));
+  st.track.style.setProperty('--rail-h', `${st.track.offsetHeight}px`);
   const marker = st.track.children[current];
   if (marker && st.track.scrollHeight > st.track.clientHeight && !st.rail.matches(':hover')) {
     st.track.scrollTop = Math.max(0, marker.offsetTop - st.track.clientHeight / 2);

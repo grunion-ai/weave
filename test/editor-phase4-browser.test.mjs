@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, atRest } from './lib/browser.mjs';
 
 let tableRef;
 
@@ -200,17 +200,19 @@ if (s) {
 
   const RAIL_DOC = '# One\n\ntext\n\n## Two\n\n' + 'filler\n\n'.repeat(40) + '## Three\n\nmore\n\n### Four\n\nend\n';
 
-  test('a document with 3+ headings grows a dash rail, longer dashes higher up', async () => {
+  test('a document with 3+ headings grows a dash rail, longer dashes higher up once hovered', async () => {
     const id = entityWithDoc('Rail', RAIL_DOC);
     const page = await openEntity(id);
     try {
       await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
+      await page.hover('.doc-rail .doc-rail-dash');
+      await atRest(page.locator('.doc-rail .doc-rail-tick').first());
       const r = await page.evaluate(() => {
         const dashes = [...document.querySelectorAll('.doc-rail .doc-rail-dash')];
         return {
           count: dashes.length,
-          widths: dashes.map((d) => d.getBoundingClientRect().width),
-          titles: dashes.map((d) => d.title),
+          widths: dashes.map((d) => d.querySelector('.doc-rail-tick').getBoundingClientRect().width),
+          titles: dashes.map((d) => d.getAttribute('aria-label')),
           active: dashes.findIndex((d) => d.classList.contains('active')),
         };
       });
@@ -227,11 +229,7 @@ if (s) {
     const page = await openEntity(id);
     try {
       await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
-      await page.evaluate(() => document.querySelector('.doc-rail').click());
-      await page.waitForSelector('.doc-rail.open', { timeout: 20000 });
       await page.evaluate(() => document.querySelectorAll('.doc-rail-dash')[1].click());
-      await page.waitForFunction(() => !document.querySelector('.doc-rail.open'),
-        null, { timeout: 20000 });
       await page.waitForFunction(() => {
         const h = [...document.querySelectorAll('.vditor-ir .vditor-reset h2')]
           .find((x) => x.textContent.includes('Two'));
@@ -245,49 +243,43 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the outline opens on click, in place, and Escape closes it', async () => {
-    const id = entityWithDoc('RailOpen', RAIL_DOC);
+  test('hovering a dash previews its section in a card, and Escape puts it away', async () => {
+    const id = entityWithDoc('RailPeek', RAIL_DOC);
     const page = await openEntity(id);
     try {
       await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
-      const labelDisplay = () => page.evaluate(() =>
-        getComputedStyle(document.querySelector('.doc-rail-label')).display);
-      assert.equal(await labelDisplay(), 'none', 'the resting rail is a minimap, not a table of contents');
-      await page.hover('.doc-rail');
-      assert.equal(await labelDisplay(), 'none', 'hover reveals nothing — the outline is click-to-open');
-      await page.evaluate(() => document.querySelector('.doc-rail').click());
-      await page.waitForSelector('.doc-rail.open', { timeout: 20000 });
-      const after = await page.evaluate(() => {
-        const l = document.querySelector('.doc-rail-label');
-        const t = document.querySelector('.doc-rail-track').getBoundingClientRect();
-        return { display: getComputedStyle(l).display, text: l.textContent,
-          width: l.getBoundingClientRect().width, top: t.top, vh: innerHeight };
-      });
-      assert.notEqual(after.display, 'none', 'clicking shows the headings');
-      assert.equal(after.text, 'One', 'the label is the heading');
-      assert.ok(after.width > 0, 'and it takes real space');
-      assert.ok(after.top < after.vh / 3,
-        `the open outline stays at the minimap's anchor near the top (top ${after.top} of ${after.vh})`);
+      const cardShown = () => page.evaluate(() => getComputedStyle(document.querySelector('.doc-rail-card')).display !== 'none');
+      assert.equal(await cardShown(), false, 'the resting rail is a minimap, not a table of contents');
+      await page.locator('.doc-rail-dash').nth(1).hover();
+      await page.waitForSelector('.doc-rail.peek', { timeout: 20000 });
+      const card = await page.evaluate(() => ({
+        title: document.querySelector('.doc-rail-card-title').textContent,
+        text: document.querySelector('.doc-rail-card-text').textContent,
+      }));
+      assert.equal(card.title, 'Two', 'the card names the hovered heading');
+      assert.match(card.text, /^filler/, 'and previews its section');
+      assert.equal(await page.locator('.doc-rail.open').count(), 0, 'no panel opens');
       await page.keyboard.press('Escape');
-      await page.waitForFunction(() => !document.querySelector('.doc-rail.open'), null, { timeout: 20000 });
-      assert.equal(await labelDisplay(), 'none', 'Escape folds it back to a minimap');
+      await page.waitForFunction(() => !document.querySelector('.doc-rail.peek'), null, { timeout: 20000 });
+      assert.equal(await cardShown(), false, 'Escape puts the card away');
     } finally { await page.close(); }
   });
 
-  test('the rail floats: scrolling leaves the track near the reading line', async () => {
+  test('the rail floats: scrolling leaves the track in the middle of the page', async () => {
     const id = entityWithDoc('RailFloat', RAIL_DOC);
     const page = await openEntity(id);
     try {
       await page.waitForSelector('.doc-rail .doc-rail-track', { timeout: 20000 });
-      const top = () => page.evaluate(() =>
-        document.querySelector('.doc-rail-track').getBoundingClientRect().top);
-      const resting = await top();
+      const off = () => page.evaluate(() => {
+        const t = document.querySelector('.doc-rail-track').getBoundingClientRect();
+        const m = document.querySelector('#main').getBoundingClientRect();
+        return Math.round((t.top + t.height / 2) - (m.top + m.height / 2));
+      });
       await page.evaluate(() => document.querySelector('#main').scrollBy({ top: 600, behavior: 'instant' }));
       await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 590, null, { timeout: 20000 });
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-      const scrolled = await top();
-      assert.ok(scrolled > 0, 'the track never scrolls off the top of the viewport');
-      assert.ok(scrolled < 200, 'it holds at the reading line instead of riding the document down');
+      const scrolled = await off();
+      assert.ok(Math.abs(scrolled) < 60, `the track holds the vertical middle instead of riding the document (${scrolled}px off)`);
     } finally { await page.close(); }
   });
 

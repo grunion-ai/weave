@@ -1657,7 +1657,7 @@ test('dock: Escape defers to every overlay app.js can raise', () => {
   const pops = [...new Set([...APP.matchAll(/class: '([a-z]+-pop)'/g)].map((x) => `.${x[1]}`))];
   assert.ok(backs.length >= 4 && pops.length >= 3, `the derivation found ${backs.length} backdrops and ${pops.length} popovers`);
   for (const sel of [...backs, ...pops]) assert.ok(owners.includes(sel), `${sel} owns Escape but the dock does not defer to it`);
-  assert.ok(owners.includes('.doc-rail.open'), 'an open document outline owns Escape too');
+  assert.ok(owners.includes('.doc-rail.peek'), 'an outline preview card owns Escape too');
   const esc = APP.match(/if \(e\.key !== 'Escape' \|\| !dock\) return;[\s\S]{0,400}?\}\);/)[0];
   assert.match(esc, /closest\?\.\('input, textarea, select, \[contenteditable\]'\)/, 'a focused editor keeps its Escape');
   assert.match(esc, /weaveBreadcrumbs\.navCanBack\(crumbNav\)[\s\S]*weaveBreadcrumbs\.navBack\(crumbNav\)/, 'the step back is the nav core\'s rule, not a hand-rolled one');
