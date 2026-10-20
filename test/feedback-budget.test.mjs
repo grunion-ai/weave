@@ -78,6 +78,13 @@ test('the budget file covers every journey cell, and nothing else', () => {
   for (const k of Object.keys(budget.raised)) assert.ok(k in budget.ms, `raised["${k}"] names no journey`);
 });
 
+test('a journey let off the busy check names a journey and the Issue that will fix it', () => {
+  for (const [k, why] of Object.entries(budget.busy)) {
+    assert.ok(k in budget.ms, `busy["${k}"] names no journey`);
+    assert.match(why, /Issue #\d+/, `busy["${k}"] names no Issue`);
+  }
+});
+
 const budgetAt = (rev) => { try { return JSON.parse(execFileSync('git', ['show', `${rev}:${BUDGET_FILE}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return null; } };
 
 test('this change raises no feedback budget without a reason (Issue #1003)', () => {

@@ -63,16 +63,16 @@ function probe({ visual, aria }) {
   const shown = (n) => n.isConnected && (n.checkVisibility ? n.checkVisibility() : true);
   const answers = (r) => {
     const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+    if (t === document.documentElement && r.type === 'attributes') return true;
     if (!t || !document.body?.contains(t)) return false;
     if (t.closest(busyHost)) return false;
     if (r.type === 'attributes' && r.attributeName === 'aria-busy') return false;
     if (r.type === 'childList' && [...r.addedNodes].some((n) => n.nodeType === 1 && (n.matches(busyHost) || n.querySelector(busyHost)))) return false;
     return shown(t);
   };
-  const mo = new MutationObserver((records) => {
-    const a = acts.at(-1);
-    if (a && a.mutated == null && records.some(answers)) a.mutated = now();
-  });
+  const answered = () => { const a = acts.at(-1); if (a && a.mutated == null) a.mutated = now(); };
+  const mo = new MutationObserver((records) => { if (records.some(answers)) answered(); });
+  addEventListener('scroll', answered, { capture: true, passive: true });
   const start = () => mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
   if (document.documentElement) start(); else document.addEventListener('readystatechange', start, { once: true });
   const label = (n) => n.id ? `#${n.id}` : `${n.localName}${[...n.classList].slice(0, 2).map((c) => `.${c}`).join('')}`;
@@ -103,13 +103,25 @@ function probe({ visual, aria }) {
   });
 }
 
+const API = /\/api\//;
+
 export function feedbackProbe({ delay = API_DELAY_MS } = {}) {
+  const flying = new Set();
   return {
-    install: (page) => page.addInitScript(probe, { visual: VISUAL_BUSY, aria: ARIA_BUSY }),
+    async install(page) {
+      await page.addInitScript(probe, { visual: VISUAL_BUSY, aria: ARIA_BUSY });
+      page.on('request', (r) => { if (API.test(r.url())) flying.add(r); });
+      for (const done of ['requestfinished', 'requestfailed']) page.on(done, (r) => flying.delete(r));
+    },
     async reset(page) {
-      if (delay) await page.route(/\/api\//, async (r) => { await new Promise((res) => setTimeout(res, delay)); await r.continue().catch(() => {}); });
+      if (delay) await page.route(API, async (r) => { await new Promise((res) => setTimeout(res, delay)); await r.continue().catch(() => {}); });
       await page.evaluate(() => window.__fbStart?.());
     },
-    read: (page) => page.evaluate(() => window.__fbRead?.() ?? { acts: [], spans: [] }),
+    async read(page) {
+      const out = await page.evaluate(() => window.__fbRead?.() ?? { acts: [], spans: [] });
+      for (const end = Date.now() + 15000; flying.size && Date.now() < end;) await new Promise((r) => setTimeout(r, 50));
+      if (flying.size) throw new Error(`${flying.size} API request(s) still in flight 15 s after the journey: ${[...flying].map((r) => `${r.method()} ${r.url()}`).join(', ')}`);
+      return out;
+    },
   };
 }
