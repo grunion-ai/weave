@@ -1,0 +1,2 @@
+- With the thirty-minute apex sign-in gone, a visit to the weave.grunion.ai root opens the workspace named first on the `wv_rail` cookie, on its own host and last page, instead of the sign-in step. A pending invite now keeps the start list so it can be accepted (Net #124).
+- An apex row, table, space or share link now opens on the host of the workspace that holds it rather than always on Net (Issue #992).

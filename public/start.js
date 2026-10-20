@@ -220,6 +220,8 @@
 
   const PICK = '/start?pick=1';
   const signInHref = (next) => `/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`;
+  const workspaceOf = (next) => /^\/w\/([^/?#]+)\//.exec(next ?? '')?.[1] ?? null;
+  const workspaceSignIn = (next) => `/w/${workspaceOf(next)}/api/auth/oidc/start?next=${encodeURIComponent(next)}`;
 
   let clerk = null;
   const inject = (src, attrs = {}) => new Promise((resolve, reject) => {
@@ -247,12 +249,13 @@
   function account() {
     let mode = entry.mode === 'signup' ? 'signup' : 'signin';
     const pane = me.clerk;
-    const next = signInHref(['skip', 'new', 'resume'].includes(entry.setup) ? `/start?setup=${entry.setup}` : entry.pick ? PICK : '/start');
+    const onboard = signInHref(['skip', 'new', 'resume'].includes(entry.setup) ? `/start?setup=${entry.setup}` : entry.pick ? PICK : '/start');
+    const next = workspaceOf(entry.next) ? workspaceSignIn(entry.next) : onboard;
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
     const switchLead = make('span', {});
-    const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; history.replaceState(null, '', `/start?mode=${mode}`); show(); } });
+    const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; history.replaceState(null, '', `/start?mode=${mode}${workspaceOf(entry.next) ? `&next=${encodeURIComponent(entry.next)}` : ''}`); show(); } });
     const toggle = make('p', { class: 'switch', hidden: true }, switchLead, ' ', switchGo);
     const show = async () => {
       title.textContent = mode === 'signup' ? COPY.account.title : COPY.account.signInTitle;
@@ -268,8 +271,8 @@
         mount.removeAttribute('aria-busy');
         mount.dataset.mode = mode;
         const appearance = clerkAppearance();
-        if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: next, signInForceRedirectUrl: next, appearance });
-        else c.mountSignIn(mount, { routing: 'virtual', withSignUp: true, forceRedirectUrl: next, signUpForceRedirectUrl: next, appearance });
+        if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: onboard, signInForceRedirectUrl: next, appearance });
+        else c.mountSignIn(mount, { routing: 'virtual', withSignUp: true, forceRedirectUrl: next, signUpForceRedirectUrl: onboard, appearance });
         toggle.hidden = !c.mountSignUp;
       } catch {
         mount.replaceChildren();
@@ -785,12 +788,18 @@
     const q = Object.fromEntries(new URLSearchParams(location.search));
     try { me = await getJson('/api/start'); } catch (err) { main.textContent = err.message; return; }
     entry = q;
+    const linked = workspaceOf(q.next);
+    if (me.signedIn && linked && (me.rows ?? []).some((r) => r.kind === 'workspace' && encodeURIComponent(r.name).toLowerCase() === linked.toLowerCase())) {
+      location.replace(workspaceSignIn(q.next));
+      return;
+    }
     let saved = null;
     try { saved = JSON.parse(sessionStorage.getItem('weave:setup')); } catch {}
     s = q.setup === 'resume' ? resume(me, saved) : begin(me, q);
-    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : q.mode === 'signup' ? '/start?mode=signup' : '/start');
+    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : workspaceOf(q.next) ? `/start?next=${encodeURIComponent(q.next)}${q.mode === 'signup' ? '&mode=signup' : ''}` : q.mode === 'signup' ? '/start?mode=signup' : '/start');
     if (s.data.template && !TEMPLATES.some((t) => t.id === s.data.template)) s.data.template = null;
     saveDraft();
+
     globalThis.WeaveConsent?.start(me.analytics);
     render();
     if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');
