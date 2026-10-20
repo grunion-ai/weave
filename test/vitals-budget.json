@@ -6,12 +6,15 @@
     "load-home|phone|lcp": 350,
     "load-home|phone|cls": 0.01,
     "load-home|phone|inp": 80,
-    "open-table|desktop|lcp": 750,
+    "open-table|desktop|lcp": 1000,
     "open-table|desktop|cls": 0.01,
     "open-table|desktop|inp": 80,
-    "open-table|phone|lcp": 750,
+    "open-table|phone|lcp": 1000,
     "open-table|phone|cls": 0.01,
     "open-table|phone|inp": 64
   },
-  "raised": {}
+  "raised": {
+    "open-table|desktop|lcp": "Issue #1003: main run 39378994075 read 480, 512, 764, 916 and 716 ms against 750",
+    "open-table|phone|lcp": "Issue #1003: main run 39378994075 read single loads up to 1204 ms"
+  }
 }

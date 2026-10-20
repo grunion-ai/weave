@@ -1,6 +1,6 @@
 export const BUDGET_FILE = 'test/vitals-budget.json';
 
-export const RUNS = 5;
+export const RUNS = 7;
 
 export const METRICS = ['lcp', 'cls', 'inp'];
 
