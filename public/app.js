@@ -402,6 +402,7 @@ document.addEventListener('click', (e) => {
   if (nativeClick(e)) return;
   const a = e.target.closest?.('a[href^="#/entity/"]');
   if (!a || e.target.closest('button, input, select, textarea, label')) return;
+  if (dockCoversScreen.matches && a.closest('.wv-board.is-picking')) return;
   const m = a.getAttribute('href').match(/^#\/entity\/([^/?]+)$/);
   if (!m) return;
   e.preventDefault();
@@ -428,6 +429,7 @@ const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [co
 function openNativeClick(e) {
   if (!nativeClick(e)) return;
   if (e.target?.closest?.(NATIVE_CLICK_KEEPS)) return;
+  if (e.shiftKey && !e.metaKey && !e.ctrlKey && e.target?.closest?.('.wv-board .tile')) return;
   const host = e.target?.closest?.('[data-href]');
   if (!host) return;
   e.preventDefault();
@@ -461,6 +463,7 @@ function termOfTable(id) {
 }
 
 let dock = null;
+let compare = null;
 
 function markDockedRow() {
   const id = dock ? weaveEntitySurface.selectionId(dock.state) : null;
@@ -544,7 +547,8 @@ async function collapseToSplit(entity) {
 }
 
 function dockClose() {
-  if (!dock) return;
+  if (!dock && !compare) return;
+  compare = null;
   commitActiveEdit();
   releaseDockPanel();
   const panel = $('#dock');
@@ -563,6 +567,7 @@ function anchorTable(db) {
 
 async function dockEntity(db, id, { drill = false, step = false } = {}) {
   commitActiveEdit();
+  compare = null;
   const S = weaveEntitySurface;
   const frame = { kind: 'entity', id, tableId: db.id, tableName: db.name };
   const anchor = anchorTable(db);
@@ -5419,7 +5424,63 @@ function boardControls(db, put) {
   ];
 }
 const TILE_FORM = 'button, input, select, textarea, [contenteditable], .picker-wrap';
-const TILE_HANDS_OFF = `${TILE_FORM}, .tile-field`;
+const TILE_HANDS_OFF = `${TILE_FORM}, .tile-field, .tile-pick`;
+const boardPicks = { dbId: null, ids: [], full: false };
+function closeCompare() {
+  if (!compare) return;
+  if (history.state?.wvCompare) history.back();
+  else dockClose();
+}
+addEventListener('popstate', () => { if (compare) dockClose(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !compare || e.defaultPrevented) return;
+  if (document.querySelector(DOCK_ESC_OWNERS) || document.querySelector('.picker-pop')) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+  closeCompare();
+});
+async function openCompare(db, ids) {
+  if (activityPanel.openFor) activityPanel.close();
+  if (dock) { dockClose(); dockSyncUrl(); }
+  crumbNav = null;
+  compare = { db, ids: [...ids] };
+  if (dockCoversScreen.matches && !history.state?.wvCompare) history.pushState({ wvCompare: true }, '', location.hash);
+  await drawCompare();
+}
+async function drawCompare() {
+  const at = compare;
+  if (!at) return;
+  let items;
+  try { items = await Promise.all(at.ids.map((id) => api('GET', `/entities/${id}`))); } catch (err) { closeCompare(); return toast(err.message, true); }
+  if (compare !== at) return;
+  const { db } = at;
+  const cover = boardCore.coverField(db);
+  const rows = boardCore.compareRows(boardCardFields(db), items);
+  const saved = () => { drawCompare(); keepScroll(() => showDatabase(db.id, db.view.id)); };
+  const panel = $('#dock');
+  releaseDockPanel();
+  panel.hidden = false;
+  delete panel.dataset.eid;
+  wirePaneGutter(panel, DOCK_PANE);
+  applyPaneWidth(panel, DOCK_PANE);
+  const head = el('div', { class: 'compare-head' },
+    el('h2', { class: 'compare-title' }, `Compare ${items.length}`, el('span', { class: 'compare-table' }, db.name)),
+    el('button', { class: 'btn btn-sm btn-ghost-secondary compare-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close the comparison', onclick: () => closeCompare() }, iconEl('✕')));
+  const column = (it) => {
+    const file = cover ? boardCore.coverOf(db, it) : null;
+    return el('th', { scope: 'col', dataset: { eid: it.id } },
+      cover ? el('div', { class: 'tile-cover' + (file ? '' : ' is-empty') },
+        file ? el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: '' }) : iconEl('lucide:image', 'wv-icon')) : null,
+      el('a', { class: 'compare-name', href: `#/entity/${it.id}`, onclick: (e) => { if (nativeClick(e)) return; e.preventDefault(); dockEntity(db, it.id, { step: true }); } },
+        el('span', { class: 'tile-id' }, `#${it.publicId}`), ' ', it.name || `#${it.publicId}`));
+  };
+  const table = el('table', { class: 'wv-compare', 'aria-label': `Compare ${items.length} from ${db.name}` },
+    el('thead', {}, el('tr', {}, el('th', { class: 'compare-corner', scope: 'col' }), ...items.map(column))),
+    el('tbody', {}, ...rows.map(({ field, differs }) => el('tr', { class: differs ? 'is-different' : '', dataset: { field: field.name } },
+      el('th', { scope: 'row' }, field.name),
+      ...items.map((it) => el('td', { dataset: { eid: it.id } }, labeledEditorFor(field, it, db, saved, { compact: true })))))));
+  panel.replaceChildren(el('div', { class: 'dock-compare' }, head, el('div', { class: 'compare-scroll' }, table)));
+  markDockedRow();
+}
 function renderBoard(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
   const v = db.view;
@@ -5427,6 +5488,10 @@ function renderBoard(main, db, items, ctx) {
   const picture = boardCore.pictureOf(db, v);
   const size = boardCore.widths(picture);
   const fields = boardCardFields(db);
+  if (boardPicks.dbId !== db.id) Object.assign(boardPicks, { dbId: db.id, ids: [], full: false });
+  const known = new Set((everyone ?? items).map((it) => it.id));
+  boardPicks.ids = boardPicks.ids.filter((id) => known.has(id));
+  if (compare?.db.id === db.id) compare.db = db;
   const levels = groups === 'side' ? s.levels.slice(0, 1) : s.levels;
   const rows = items.map((it) => ({ id: it.id, keys: levels.map((l) => listKeys(l, it)), parent: null, done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, item: it }));
   const byPid = new Map([...(everyone ?? []), ...items].map((it) => [it.publicId, it.id]));
@@ -5476,6 +5541,8 @@ function renderBoard(main, db, items, ctx) {
         file ? el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: '', draggable: 'false' }) : iconEl('lucide:image', 'wv-icon')),
       el('div', { class: 'tile-body' },
         el('div', { class: 'tile-head' },
+          el('label', { class: 'tile-pick', title: 'Pick to compare' },
+            el('input', { type: 'checkbox', 'aria-label': `Pick ${label} to compare`, onchange: () => pickCard(it.id) })),
           el('span', { class: 'tile-id' }, `#${it.publicId}`),
           el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1', title: label }, label)),
         fields.length ? el('dl', { class: 'tile-fields' }, ...fields.map((f) => el('div', { class: 'tile-field', dataset: { field: f.name } },
@@ -5484,8 +5551,14 @@ function renderBoard(main, db, items, ctx) {
     card.wvItem = node;
     RO().guard(card);
     fileDropZone(card, (files) => dropCover(it, files));
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.tile-pick') || !(e.shiftKey || (dockCoversScreen.matches && boardPicks.ids.length))) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pickCard(it.id);
+    }, true);
     card.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || e.shiftKey) return;
       const phone = dockCoversScreen.matches;
       if (!phone && e.target.closest('.tile-field > dd')) { if (!nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
       if (!e.target.closest(phone ? TILE_FORM : TILE_HANDS_OFF)) boardDrag(e, card);
@@ -5530,13 +5603,38 @@ function renderBoard(main, db, items, ctx) {
   const hint = sorted
     ? el('span', { class: 'board-hint' }, `Sorted by ${sortName}: ${levels.length ? 'drag into another group, or ' : ''}choose `, manualBtn, ' to arrange by hand')
     : el('span', { class: 'board-hint' }, levels.length ? 'Manual: drag to arrange, or into another group to change it' : 'Manual: drag to arrange, left to right then down');
+  const picks = el('span', { class: 'board-picks' });
   const footer = el('div', { class: 'list-footer board-footer', role: 'status', 'aria-live': 'polite' },
-    el('span', {}, listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term })), hint);
+    el('span', {}, listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term })), hint, picks);
   const wrap = el('div', { class: 'card board-wrap', dataset: { layout: 'board' } }, board, footer);
   main.append(wrap);
+  syncPicks();
   board.style.setProperty('--board-top', `${Math.max(0, Math.round(board.getBoundingClientRect().top + scrollY))}px`);
   markDockedRow();
 
+  function pickCard(id) {
+    const got = boardCore.togglePick(boardPicks.ids, id);
+    boardPicks.ids = got.ids;
+    boardPicks.full = got.refused;
+    syncPicks();
+  }
+  function syncPicks() {
+    const on = new Set(boardPicks.ids);
+    board.classList.toggle('is-picking', on.size > 0);
+    for (const t of board.querySelectorAll('.tile[data-eid]')) {
+      const yes = on.has(t.dataset.eid);
+      t.classList.toggle('is-picked', yes);
+      const box = t.querySelector('.tile-pick input');
+      if (box) box.checked = yes;
+    }
+    if (!on.size) { picks.replaceChildren(); return; }
+    const n = on.size;
+    picks.replaceChildren(
+      boardPicks.full ? el('span', { class: 'board-pick-hint' }, `Compare takes up to ${boardCore.PICK_CAP} cards`) : null,
+      el('button', { class: 'btn btn-sm btn-primary board-compare', type: 'button', ...(n < boardCore.PICK_MIN ? { disabled: '', title: `Pick ${boardCore.PICK_MIN} to ${boardCore.PICK_CAP} cards to compare` } : {}),
+        onclick: () => openCompare(db, boardPicks.ids) }, `Compare ${n}`),
+      el('button', { class: 'btn btn-sm btn-ghost-secondary board-clear', type: 'button', onclick: () => { Object.assign(boardPicks, { ids: [], full: false }); syncPicks(); } }, 'Clear'));
+  }
   function boardDrag(down, card) {
     const side = board.dataset.groups === 'side';
     let at = { x: down.clientX, y: down.clientY };
@@ -5561,6 +5659,9 @@ function renderBoard(main, db, items, ctx) {
       alsoScroll: [side ? { scroller: board, axis: 'x' } : { scroller: RO().scrollParent(board, 'y'), axis: 'y' }],
       zone: () => board,
       onDrop: (placed) => drop(card, placed),
+      onStay: ({ point, start }) => {
+        if (down.pointerType === 'touch' && Math.hypot(point.x - start.x, point.y - start.y) <= RO().TOUCH_SLOP) pickCard(card.wvItem.row.item.id);
+      },
     });
   }
   function drop(card, { node, before }) {
