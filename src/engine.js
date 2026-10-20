@@ -957,7 +957,7 @@ export class Weave {
   #scales = new Map();
   #rows = null;
   #query = null;
-  #loops = 0;
+  #cutoffs = 0;
 
   #computing = [];
 
@@ -6666,22 +6666,28 @@ export class Weave {
   }
 
   #resolve(e, db, field, depth) {
-    if (depth > MAX_COMPUTE_DEPTH) return null;
+    if (depth > MAX_COMPUTE_DEPTH) { this.#cutoffs++; return null; }
     if (field.type !== 'formula' && field.type !== 'lookup' && field.type !== 'rollup') {
       return this.#resolveValue(e, db, field, depth);
     }
     const key = `${e.id}:${field.id}`;
+    const memo = this.#query?.computed;
+    const known = memo?.get(key);
+    if (known && depth <= known.depth) return known.value;
     const frame = { key, name: field.name, row: e.id, rowName: this.#rawName(e, db) };
     const at = this.#computing.findIndex((c) => c.key === key);
     if (at >= 0) {
-      this.#loops++;
+      this.#cutoffs++;
       const loop = [...this.#computing.slice(at), frame];
       const travels = new Set(loop.map((c) => c.row)).size > 1;
       return CYCLE_PREFIX + loop.map((c) => (travels && c.rowName ? `${c.rowName} › ${c.name}` : c.name)).join(' → ');
     }
     this.#computing.push(frame);
+    const cutoffs = this.#cutoffs;
     try {
-      return this.#resolveValue(e, db, field, depth);
+      const value = this.#resolveValue(e, db, field, depth);
+      if (memo && this.#cutoffs === cutoffs) memo.set(key, { value, depth: Math.max(depth, known?.depth ?? 0) });
+      return value;
     } finally {
       this.#computing.pop();
     }
@@ -6869,13 +6875,13 @@ export class Weave {
     const shared = this.#query?.rollupRows;
     const key = `${targetDb.id}:${field.id}`;
     if (shared?.has(key)) return shared.get(key);
-    const loops = owner.#loops;
+    const cutoffs = owner.#cutoffs;
     let rows = owner.listEntities(targetDb.id);
     const w = field.config.where;
     if (w) {
       try { rows = rows.filter((r) => owner.#matchNode(r, targetDb, Array.isArray(w) ? { and: w } : w)); } catch { rows = null; }
     }
-    if (shared && owner.#loops === loops) shared.set(key, rows);
+    if (shared && owner.#cutoffs === cutoffs) shared.set(key, rows);
     return rows;
   }
 
@@ -7235,7 +7241,7 @@ export class Weave {
   }
   #inQuery(dbRef, opts, workspace) {
     if (this.#query) return this.#queryIn(dbRef, opts, workspace);
-    this.#query = { rollupRows: new Map() };
+    this.#query = { rollupRows: new Map(), computed: new Map() };
     try { return this.#queryIn(dbRef, opts, workspace); } finally { this.#query = null; }
   }
 
@@ -7274,16 +7280,16 @@ export class Weave {
     }
     for (const s of [...sort].reverse()) {
       const { field, dir = 'asc' } = typeof s === 'string' ? { field: s } : s;
+      if (rows.length < 2) continue;
       const mul = dir === 'desc' ? -1 : 1;
-      rows = [...rows].sort((a, b) => {
-        const av = this.#pathValue(a, db, field, { undressed: true });
-        const bv = this.#pathValue(b, db, field, { undressed: true });
+      const keyed = rows.map((e) => ({ e, v: this.#pathValue(e, db, field, { undressed: true }) }));
+      rows = keyed.sort(({ v: av }, { v: bv }) => {
         if (av == null && bv == null) return 0;
         if (av == null) return 1;
         if (bv == null) return -1;
         if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
         return String(av).localeCompare(String(bv)) * mul;
-      });
+      }).map(({ e }) => e);
     }
     const total = rows.length;
     rows = rows.slice(offset, limit != null ? offset + limit : undefined);
