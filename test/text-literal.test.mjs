@@ -5,7 +5,7 @@ import { Weave } from '../src/engine.js';
 
 await import('../public/field-dialog-core.js');
 const FDC = globalThis.weaveFieldDialogCore ?? globalThis.fieldDialogCore;
-const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+import { APP } from './lib/source.mjs';
 const HB = readFileSync(new URL('../src/handbook.js', import.meta.url), 'utf8');
 
 test('the engine keeps literal on a text field, and only when it is true', () => {

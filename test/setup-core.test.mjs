@@ -158,3 +158,56 @@ test('no step is called Template', () => {
   assert.ok(!Object.values(STEP_NAMES).some((n) => /template/i.test(n)));
   assert.deepEqual(Object.keys(STEP_NAMES), ['account', 'workspace', 'work', 'agent']);
 });
+
+test('additional workspaces start without reusing the occupied account name', () => {
+  assert.equal(begin(PEOPLE.returning, { setup: 'new' }).data.name, '');
+  assert.equal(reduce(begin(PEOPLE.returning), { type: 'new' }).data.name, '');
+  assert.equal(begin(PEOPLE.newcomer).data.name, 'Ada');
+});
+
+test('creating an empty workspace preserves entered naming fields', () => {
+  const s = reduce(begin(PEOPLE.newcomer), { type: 'skip', name: 'Second Team', slug: 'second-team' });
+  assert.equal(s.step, 'build');
+  assert.equal(s.data.name, 'Second Team');
+  assert.equal(s.data.slug, 'second-team');
+});
+
+test('setup drafts resume only for the same login and within one day', () => {
+  const { draft, resume } = globalThis.WeaveSetup;
+  const me = { ...PEOPLE.newcomer, logins: ['ada@example.com'] };
+  const s = reduce(begin(me), { type: 'next', name: 'Team', slug: 'team' });
+  const saved = draft(s, 1000);
+  assert.equal(resume(me, saved, 2000).step, 'work');
+  assert.equal(resume(me, saved, 2000).data.slug, 'team');
+  for (const bad of [null, {}, { ...saved, at: 3000 }, { ...saved, identity: 'other' }, { ...saved, version: 9 }]) assert.equal(resume(me, bad, 2000).step, 'workspace');
+  assert.equal(resume(me, saved, 86402000).step, 'workspace');
+  assert.equal(resume(PEOPLE.stranger, saved, 2000).step, 'account');
+  assert.equal(draft(begin(PEOPLE.stranger)), null);
+});
+
+test('refresh never replays workspace creation, including a lost creation response', () => {
+  const { draft, resume } = globalThis.WeaveSetup;
+  const me = { ...PEOPLE.newcomer, logins: ['ada@example.com'] };
+  const building = reduce(reduce(begin(me), { type: 'next', name: 'Team', slug: 'team' }), { type: 'next', template: 'crm' });
+  const saved = draft(building);
+  assert.equal(resume(me, saved).step, 'workspace');
+  assert.equal(resume(me, saved).error.code, 'interrupted');
+  const member = { ...me, rows: [{ kind: 'workspace', name: 'team', open: '/api/start/open/team', title: 'Team' }], canCreate: false };
+  const recovered = resume(member, saved);
+  assert.equal(recovered.step, 'done');
+  assert.equal(recovered.made.open, '/api/start/open/team');
+  const agent = reduce(building, { type: 'built', made: { name: 'team', open: '/old', mcp: '/w/team/mcp' } });
+  assert.equal(resume(member, draft(agent)).step, 'agent');
+  assert.equal(resume(member, draft(agent)).made.open, '/api/start/open/team');
+  assert.notEqual(resume({ ...member, rows: [] }, draft(agent)).step, 'agent');
+});
+
+
+test('starting again from the picker clears abandoned workspace details', () => {
+  const named = reduce(begin(PEOPLE.returning, { setup: 'new' }), { type: 'next', name: 'Abandoned', slug: 'abandoned' });
+  const listed = reduce(reduce(named, { type: 'back' }), { type: 'back' });
+  const fresh = reduce(listed, { type: 'new' });
+  assert.equal(fresh.step, 'workspace');
+  assert.equal(fresh.data.name, '');
+  assert.equal(fresh.data.slug, '');
+});

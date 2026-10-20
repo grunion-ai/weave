@@ -1,0 +1,1 @@
+- Hosted New workspace opens the shared setup flow instead of root-only workspace administration. (Issue #1007).

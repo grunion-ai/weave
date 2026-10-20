@@ -1,0 +1,1 @@
+- Additional workspace naming starts blank instead of reusing an occupied account address. (Issue #1014).

@@ -1,0 +1,1 @@
+- Sign-in clears its busy accessibility state when the embedded form finishes loading (Issue #960).
