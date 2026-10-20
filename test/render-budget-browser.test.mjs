@@ -9,7 +9,7 @@ import { installProbe, readRenders, resetProbe } from './lib/flicker.mjs';
 import { RUNS, judgeRenders } from './lib/renders.mjs';
 
 const { renders: budget } = JSON.parse(readFileSync(new URL('./render-budget.json', import.meta.url), 'utf8'));
-const probe = { install: installProbe, reset: resetProbe, read: readRenders };
+const probe = { async install(page) { await installProbe(page); await page.addInitScript(() => addEventListener('pointerdown', () => { let k = 12; const step = () => { document.body.classList.toggle('wv-stall'); if (--k) requestAnimationFrame(step); }; requestAnimationFrame(step); }, true)); }, reset: resetProbe, read: readRenders };
 
 const s = await launch('render budget', seed);
 
