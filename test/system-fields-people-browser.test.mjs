@@ -75,7 +75,7 @@ if (s) {
       await page.locator(`tr[data-eid="${row.id}"] td[data-sys="Created By"] .k-actor a`).waitFor();
       assert.ok(await web.evaluate((n) => n.classList.contains('is-unknown')), 'muted');
       assert.equal(await web.locator('a').count(), 0, 'no link');
-      assert.equal(await web.locator('.av').count(), 0, 'no initials beside the word: never "WWeb"');
+      assert.equal(await web.locator('.av, .actor-av').count(), 0, 'no initials beside the word: never "WWeb"');
       assert.equal((await web.innerText()).trim(), 'Web');
       const ink = await web.evaluate((n) => [getComputedStyle(n).color, getComputedStyle(document.body).color]);
       assert.notEqual(ink[0], ink[1], 'quieter than body text');
