@@ -149,9 +149,9 @@ are part of the engine, not user data.
 
 ## The other axis: field types
 
-Twenty-one, and not one of them is a kind of entity. Sixteen store a value —
+Twenty-two, and not one of them is a kind of entity. Seventeen store a value —
 `text`, `number`, `rating`, `date`, `daterange`, `checkbox`, `toggle`, `url`, `email`, `select`,
-`multiselect`, `workflow`, `relation`, `field`, `key`, `attachments`. Four
+`multiselect`, `workflow`, `relation`, `field`, `key`, `attachments`, `avatar`. Four
 compute one from other fields — `lookup`, `rollup`, `formula`, and `view`,
 which computes the row's own chip or card. One holds a body — `document`.
 
@@ -224,6 +224,10 @@ An authored, time-ordered note on an entity, kept separate from its documents.
 ### File
 A blob attached to an entity, stored beside the workspace file and referenced by
 id from attachments fields.
+
+### Avatar
+The face of one row, drawn first on its chip, card, crumb and header. An
+`avatar` field holds it; with no image the row shows its initials.
 
 ### Activity
 An append-only entry recording one change to an entity — created, field-updated,
@@ -394,6 +398,10 @@ The name of a secret. Displays redacted, and says whether the keystore holds it.
 
 ### `attachments`
 File ids — one, or many.
+
+### `avatar`
+The row's face: one image file from the row, or initials on a hue from its
+name. One per table. An icon names the kind of row; an avatar names the row.
 
 ### `lookup`
 A value pulled through a relation from a field on the far side.

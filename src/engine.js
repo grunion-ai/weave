@@ -1257,10 +1257,6 @@ export class Weave {
     return out;
   }
 
-  avatarOf(entityRef) {
-    return this.#faceOf(this.getEntity(entityRef));
-  }
-
   #faceOf(e) {
     const db = this.state.tables[e.dbId];
     const field = Object.values(db.fields).find((f) => f.type === 'avatar' && !f.deletedAt);

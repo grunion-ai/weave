@@ -71,10 +71,10 @@
 .doc-ref-layer .doc-ref-slot.long { overflow: hidden; text-overflow: ellipsis; }
 .doc-ref-raw:not(.open) { display: inline-block; font-size: 0; line-height: 0; color: transparent;
   overflow: hidden; white-space: nowrap; vertical-align: middle; }
-.wv-av { --wv-av-size: 16px; position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center;
+.wv-av { --wv-av-size: 18px; position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: var(--wv-av-size); height: var(--wv-av-size); border-radius: 4px; overflow: visible;
   background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary));
-  font-family: var(--tblr-font-sans-serif); font-size: max(8px, calc(var(--wv-av-size) * .42)); font-weight: 600; letter-spacing: -.02em; line-height: 1; }
+  font-family: var(--tblr-font-sans-serif); font-size: var(--fs-meta); font-weight: 600; letter-spacing: -.02em; line-height: 1; }
 .wv-av.round, .wv-av.round > img { border-radius: 50%; }
 .wv-av.square > img { border-radius: 4px; }
 .wv-av > img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -85,7 +85,7 @@
 .wv-av > .av-badge .wv-icon, .wv-av > .av-badge svg { width: 75%; height: 75%; margin: 0; }
 .k-rel.has-av > a.mention { padding-left: 3px; }
 .k-rel.has-av > .mention-entity::before { content: none; }
-.wv-card-head > .wv-card-av { --wv-av-size: 32px; }
+.wv-card-head > .wv-card-av { --wv-av-size: 32px; font-size: var(--fs-body); }
 .wv-card-head:has(> .wv-card-av) { justify-content: flex-start; gap: 10px; }
 .wv-card-head:has(> .wv-card-av) > .wv-card-title { flex: 1 1 auto; min-width: 0; }
 .wv-prose .k-rel .wv-av { vertical-align: -3px; margin-right: 4px; }
