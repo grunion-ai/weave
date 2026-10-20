@@ -3878,16 +3878,18 @@ export class Weave {
     return { unlinked, remaining: keep.length };
   }
 
-  accountForIdentity({ issuer, subject, email } = {}) {
+  accountForIdentity({ issuer, subject, email } = {}, { touch = true } = {}) {
     if (!issuer || !subject) return null;
     for (const a of Object.values(this.state.meta.accounts ?? {})) {
       const i = (a.identities ?? []).find((x) => x.issuer === issuer && x.subject === String(subject));
       if (!i) continue;
-      i.lastUsedAt = nowISO();
-      const mail = String(email ?? '').trim().toLowerCase();
-      if (mail) i.verifiedEmail = mail;
-      this.save();
-      this.#syncUsers();
+      if (touch) {
+        i.lastUsedAt = nowISO();
+        const mail = String(email ?? '').trim().toLowerCase();
+        if (mail) i.verifiedEmail = mail;
+        this.save();
+        this.#syncUsers();
+      }
       const { tokenHash, ...pub } = a;
       return pub;
     }

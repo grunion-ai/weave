@@ -104,6 +104,19 @@ test('the root admin manages workspaces, from the root or through a member with 
   assert.ok(names(await call('GET', '/w/open/api/workspaces', { cookie: session })).includes('secret'));
 });
 
+test('a reader or writer of the root, signed in by session, cannot open a walled member or find it in search (Issue #985)', async () => {
+  const { call, root } = build();
+  for (const name of ['root-reader', 'root-writer']) {
+    const { token: session } = root.createSession(name);
+    assert.equal((await call('GET', '/w/secret/api/schema', { cookie: session })).status, 401, `${name} holds no account on secret`);
+    assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: session })), ['open'], `${name} never finds secret through search`);
+    assert.equal(names(await call('GET', '/w/open/api/workspaces', { cookie: session })).includes('secret'), false, `${name} does not see secret listed`);
+  }
+  const { token: admin } = root.createSession('root-admin');
+  assert.equal((await call('GET', '/w/secret/api/schema', { cookie: admin })).status, 200, 'the hub operator still opens it');
+  assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: admin })), ['open', 'secret']);
+});
+
 test('bug report: a writer and a reader file into weave through the form; an anonymous caller cannot reach a walled weave', async () => {
   const { call, writer, reader, docs, root, open } = build();
   const n = issues(docs);
