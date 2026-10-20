@@ -5457,7 +5457,7 @@ function renderBoard(main, db, items, ctx) {
       dataset: { eid: it.id, href: `#/entity/${it.id}` }, 'aria-label': label,
     },
       picture === 'off' ? null : el('div', { class: 'tile-cover' + (file ? '' : ' is-empty') },
-        file ? el('img', { src: fileUrl(file), alt: '', loading: 'lazy', draggable: 'false' }) : iconEl('lucide:image', 'wv-icon')),
+        file ? el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: '', draggable: 'false' }) : iconEl('lucide:image', 'wv-icon')),
       el('div', { class: 'tile-body' },
         el('div', { class: 'tile-head' },
           el('span', { class: 'tile-id' }, `#${it.publicId}`),

@@ -73,7 +73,7 @@ if (s) {
         assert.deepEqual(await page.$$eval('.wv-board > .board-group', (gs) => gs.map((g) => g.dataset.key)), ['Research', 'Ready to Buy', 'Bought']);
         assert.equal(await page.locator('.board-group[data-key="Bought"] .tile').count(), 0);
         assert.equal(await page.locator('.board-group[data-key="Bought"] .board-empty').count(), 1, 'an empty column still shows, as a drop target');
-        assert.match(await page.locator(`${tile(ids.desk)} .tile-cover img`).getAttribute('src'), new RegExp(`/api/files/${pics.desk.id}$`));
+        assert.match(await page.locator(`${tile(ids.desk)} .tile-cover img`).getAttribute('src'), new RegExp(`/api/files/${pics.desk.id}(\\?preview)?$`), 'the card loads the cover, through its small preview when it has one');
         assert.equal(await page.locator(`${tile(ids.mat)} .tile-cover.is-empty`).count(), 1, 'a row with no picture keeps the card shape');
         assert.equal(await page.locator(`${tile(ids.desk)} .tile-title`).getAttribute('draggable'), 'false', 'the title link never starts a native link drag');
         assert.equal(await page.locator(`${tile(ids.desk)} .tile-field[data-field="Photo"]`).count(), 0, 'the cover field is the picture, not a card field');
