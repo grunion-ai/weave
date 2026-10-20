@@ -246,7 +246,7 @@
         c.unmountSignIn?.(mount);
         c.unmountSignUp?.(mount);
         mount.replaceChildren();
-        mount.removeAttribute('aria-busy');
+        mount.removeAttribute('data-opening');
         mount.dataset.mode = mode;
         const appearance = clerkAppearance();
         if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: next, signInForceRedirectUrl: next, appearance });
@@ -293,11 +293,11 @@
 
   function opening(ev, row) {
     if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
-    main.querySelectorAll('a.ws-row[aria-busy]').forEach((link) => {
-      link.removeAttribute('aria-busy');
+    main.querySelectorAll('a.ws-row[data-opening]').forEach((link) => {
+      link.removeAttribute('data-opening');
       link.querySelector('[role="status"]')?.remove();
     });
-    ev.currentTarget.setAttribute('aria-busy', 'true');
+    ev.currentTarget.setAttribute('data-opening', 'true');
     ev.currentTarget.querySelector('.ws-text').append(make('small', { class: 'muted', role: 'status' }, `Opening ${row.title}…`));
   }
 
