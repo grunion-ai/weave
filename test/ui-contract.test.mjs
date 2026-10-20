@@ -5,19 +5,17 @@ import { join } from 'node:path';
 import { ROOT, APP, HTML, CSS, rulesFor, px, fnBody } from './lib/source.mjs';
 
 
-test('#ws-rail carries a positive z-index so the expand chevron stays clickable', () => {
+test('#ws-rail carries a positive z-index so #main never paints over it', () => {
   const rail = rulesFor('#ws-rail');
   assert.ok(['relative', 'sticky'].includes(rail.position), `rail is positioned — with its z-index it is a stacking context, got ${rail.position}`);
-  assert.ok(rail['z-index'], '#ws-rail must declare a z-index or #main paints over #nav-expand');
+  assert.ok(rail['z-index'], '#ws-rail must declare a z-index or #main paints over it');
   assert.ok(px(rail['z-index']) > 0, `#ws-rail z-index must be > 0, got ${rail['z-index']}`);
 });
 
-test('#nav-expand paints inside the rail stacking context, not above it', () => {
-  const rail = px(rulesFor('#ws-rail')['z-index']);
-  const expand = rulesFor('#nav-expand');
-  assert.equal(expand.position, 'fixed');
-  assert.ok(px(expand.left) >= px(rulesFor('#ws-rail').width), 'chevron overhangs the rail');
-  assert.ok(rail >= px(expand['z-index'] ?? 0) || rail > 0);
+test('the show button lives in the page header, not floating over the rail (Issue #927)', () => {
+  assert.ok(!HTML.includes('nav-expand'), 'no floating #nav-expand button');
+  assert.ok(!CSS.includes('#nav-expand'), 'and no rules left for it');
+  assert.match(fnBody('navMenuButton'), /setNavCollapsed\(false\)/, 'the header button shows the nav on desktop');
 });
 
 test('the first rail chip is centred on the sidebar wordmark', () => {
@@ -46,8 +44,7 @@ test('wireNavCollapse wires both directions and persists the state', () => {
   const fn = APP.slice(APP.indexOf('function wireNavCollapse'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(narrowShell\.matches \? app\.classList\.remove\('nav-peek'\) : apply\(true\)\)\)/);
-  assert.match(body, /expand\.addEventListener\('click',\s*\(\)\s*=>\s*apply\(false\)\)/);
-  assert.match(body, /localStorage\.setItem\('weave-nav-collapsed'/);
+  assert.match(fnBody('setNavCollapsed'), /localStorage\.setItem\('weave-nav-collapsed'/);
   assert.match(body, /localStorage\.getItem\('weave-nav-collapsed'\)/);
 });
 

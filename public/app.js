@@ -1226,15 +1226,6 @@ function renderNav() {
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
       sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
     ]));
-  const railRoute = (href, icon, label, on) => el('a', {
-    class: 'ws-icon rail-route' + (on ? ' active' : ''),
-    href, title: label, 'aria-label': label, ...(on ? { 'aria-current': 'page' } : {}),
-  }, lucideEl(icon, 'wv-icon'));
-  $('#rail-routes')?.replaceChildren(
-    railRoute(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
-    ...(people ? [railRoute(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
-    railRoute('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
-    railRoute('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
@@ -12118,29 +12109,30 @@ function wireWsNew() {
 }
 
 const narrowShell = matchMedia('(max-width: 900px)');
+function setNavCollapsed(collapsed) {
+  const app = $('#app');
+  app.classList.toggle('nav-collapsed', collapsed);
+  app.classList.remove('nav-peek');
+  localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
+}
 function wireNavCollapse() {
   const app = $('#app');
   const collapse = $('#nav-collapse');
-  const expand = $('#nav-expand');
   const sidebar = $('#sidebar');
-  if (!app || !collapse || !expand || !sidebar) return;
-  const apply = (collapsed) => {
-    app.classList.toggle('nav-collapsed', collapsed);
-    app.classList.remove('nav-peek');
-    expand.classList.toggle('hidden', !collapsed);
-    localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
-  };
+  const rail = $('#ws-rail');
+  if (!app || !collapse || !sidebar || !rail) return;
+  const apply = setNavCollapsed;
   collapse.addEventListener('click', () => (narrowShell.matches ? app.classList.remove('nav-peek') : apply(true)));
-  expand.addEventListener('click', () => apply(false));
   const strip = el('div', { id: 'nav-hot-strip', 'aria-hidden': 'true' });
   app.append(strip);
+  const panel = [sidebar, rail, strip];
   let settle = null;
   strip.addEventListener('mouseenter', () => {
     if (!app.classList.contains('nav-collapsed')) return;
     app.classList.add('nav-peek');
     clearTimeout(settle);
     settle = setTimeout(() => {
-      if (!sidebar.matches(':hover') && !strip.matches(':hover')) app.classList.remove('nav-peek');
+      if (!panel.some((n) => n.matches(':hover'))) app.classList.remove('nav-peek');
     }, 400);
   });
   strip.addEventListener('click', () => apply(false));
@@ -12149,17 +12141,22 @@ function wireNavCollapse() {
     if (e.target.closest('a,button,input,textarea,select,label')) return;
     apply(false);
   });
-  sidebar.addEventListener('mouseleave', (e) => {
-    if (e.relatedTarget?.closest?.('.wv-menu')) return;
-    if (app.classList.contains('nav-peek') && !narrowShell.matches) app.classList.remove('nav-peek');
-  });
+  for (const side of [sidebar, rail]) {
+    side.addEventListener('mouseleave', (e) => {
+      if (e.relatedTarget?.closest?.('.wv-menu, #sidebar, #ws-rail, #nav-hot-strip')) return;
+      if (app.classList.contains('nav-peek') && !narrowShell.matches) app.classList.remove('nav-peek');
+    });
+  }
   addEventListener('keydown', (e) => { if (e.key === 'Escape') app.classList.remove('nav-peek'); });
   apply(localStorage.getItem('weave-nav-collapsed') === '1');
   const shut = () => app.classList.remove('nav-peek');
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);
   sidebar.addEventListener('click', (e) => { if (narrowShell.matches && e.target.closest('a[href]')) shut(); }, true);
-  narrowShell.addEventListener('change', shut);
+  narrowShell.addEventListener('change', () => {
+    shut();
+    for (const btn of document.querySelectorAll('.nav-menu')) labelNavMenu(btn);
+  });
 }
 
 const NAV_WIDTH = { min: 200, max: 480, base: 264, step: 16 };
@@ -12275,14 +12272,20 @@ function wireNavHold() {
   }, true);
 }
 
+function labelNavMenu(btn) {
+  const label = narrowShell.matches ? 'Open navigation' : 'Show sidebar';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
 function navMenuButton() {
   const btn = el('button', {
-    class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button',
-    title: 'Open navigation', 'aria-label': 'Open navigation', 'aria-controls': 'sidebar',
+    class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button', 'aria-controls': 'sidebar',
     'aria-expanded': $('#app')?.classList.contains('nav-held') ? 'true' : 'false',
-    onclick: () => $('#app').classList.add('nav-peek'),
+    onclick: () => (narrowShell.matches ? $('#app').classList.add('nav-peek') : setNavCollapsed(false)),
   });
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+  labelNavMenu(btn);
+  btn.innerHTML = '<svg class="nav-menu-burger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>'
+    + '<svg class="nav-menu-panel" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>';
   return btn;
 }
 
