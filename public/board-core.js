@@ -20,6 +20,21 @@
     return (entity?.files ?? []).find((x) => ids.includes(x.id) && !x.missing && isPicture(x)) ?? null;
   }
 
+  function coverDrop(db, files) {
+    const list = [...(files ?? [])];
+    const file = list.find((f) => isPicture({ mime: f?.mime ?? f?.type }));
+    if (!file) return { refuse: 'not-picture', name: list[0]?.name ?? '' };
+    const field = coverField(db);
+    return field ? { field, file } : { refuse: 'no-field', file };
+  }
+
+  function photoFieldName(db) {
+    const taken = new Set((db?.fields ?? []).map((f) => String(f.name).toLowerCase()));
+    let n = 1;
+    while (taken.has((n === 1 ? 'photo' : `photo ${n}`))) n += 1;
+    return n === 1 ? 'Photo' : `Photo ${n}`;
+  }
+
   const groupsOf = (view) => (GROUPS.includes(view?.groups) ? view.groups : 'side');
 
   function pictureOf(db, view) {
@@ -33,5 +48,5 @@
     return { card: CARD_PX[size], column: COLUMN_PX[size], phone: PHONE_COLUMNS[size] };
   }
 
-  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, groupsOf, pictureOf, widths };
+  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, photoFieldName, groupsOf, pictureOf, widths };
 })(typeof window !== 'undefined' ? window : globalThis);

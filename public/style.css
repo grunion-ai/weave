@@ -2334,6 +2334,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .wv-board .tile:hover { border-color: rgba(var(--tblr-primary-rgb), .45); }
 .wv-board .tile:focus-visible { outline: 2px solid rgba(var(--tblr-primary-rgb), .6); outline-offset: 2px; }
 .wv-board .tile.row-docked { border-color: var(--tblr-primary); box-shadow: 0 0 0 1px var(--tblr-primary); }
+.wv-board .tile.is-file-drop { border-color: var(--tblr-primary); box-shadow: inset 0 0 0 2px var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .08); }
 .tile-cover { aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); }
 .tile-cover img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .tile-cover.is-empty .wv-icon svg { width: 24px; height: 24px; opacity: .6; }

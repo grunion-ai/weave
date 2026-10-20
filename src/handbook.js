@@ -760,7 +760,7 @@ weave file delete Task#5 <fileId>
 
 Renders by its \`preview\`. A click on a sheet cell opens the file full-screen, and ← → step through the field's files. A single-file field shows its file in place: an image, a PDF or plain text in a frame, an HTML upload live under \`GET /api/files/:id?view\`, whose sandbox keeps the page off the workspace's origin (its scripts run, its links open a new tab, and it can read nothing of weave's). The viewer's bottom edge drags.
 
-In the app, drop files from your desktop onto the field's cell in the grid, or onto its files on the record: the cell lights while files hover it, and every file you let go of uploads into the field. **+ file** on the record picks one from a dialog. A single-file field refuses a second file and says so.
+In the app, drop files from your desktop onto the field's cell in the grid, or onto its files on the record: the cell lights while files hover it, and every file you let go of uploads into the field. **+ file** on the record picks one from a dialog. An upload into a single-file field that already holds a file replaces it; the old file stays in the row's file ledger. Where a table shows its rows as cards, drop a picture on a card to set its cover: it uploads into the table's cover field, a file that is no PNG, JPEG, GIF or WebP is refused, and a table with no cover field offers to add a Photo field.
 
 ## Gotchas
 
