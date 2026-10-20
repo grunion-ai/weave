@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createOidc } from '../src/oidc.js';
-import { launch } from './lib/browser.mjs';
+import { launch, phonePage } from './lib/browser.mjs';
 
-const s = await launch('start mobile artwork requests', () => {}, { server: () => ({ oidc: createOidc({ issuer: 'https://idp.example.test', clientId: 'test', clientSecret: 'test', name: 'Test' }) }) });
+const s = await launch('start mobile artwork requests', () => {}, { phone: true, server: () => ({ oidc: createOidc({ issuer: 'https://idp.example.test', clientId: 'test', clientSecret: 'test', name: 'Test' }) }) });
 if (s) {
   for (const theme of ['light', 'dark']) {
     test(`hidden start artwork makes no phone request and loads after desktop resize in ${theme}`, async () => {
-      const page = await s.browser.newPage({ colorScheme: theme, viewport: { width: 390, height: 844 } });
+      const page = await phonePage(s.browser, { colorScheme: theme, viewport: { width: 390, height: 844 } });
       const requests = [];
       page.on('request', (r) => { if (/\/brand\/weave-radiate-/.test(r.url())) requests.push(r.url()); });
       await page.route('**/api/start', (route) => route.fulfill({ json: { signedIn: false, provider: 'Test' } }));
