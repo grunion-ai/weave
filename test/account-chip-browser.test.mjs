@@ -13,6 +13,10 @@ const s = await launch('account chip', (root) => {
   uno = new Weave();
   uno.updateWorkspace({ name: 'uno' });
   uno.createSpace({ name: 'Agent' });
+  const issuer = 'https://idp.weave.test';
+  const unoAda = uno.createAccount({ name: 'Ada Lovelace', role: 'editor' }).account;
+  root.redeemIdentityInvite(root.linkIdentity(ada.id, { issuer }).code, { issuer, subject: 'user_ada' });
+  uno.redeemIdentityInvite(uno.linkIdentity(unoAda.id, { issuer }).code, { issuer, subject: 'user_ada' });
   uno.setRequireAuth(true);
 }, { server: () => ({ workspaces: { uno } }) });
 

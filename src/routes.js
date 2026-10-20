@@ -549,7 +549,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const acct = w.accountForIdentity({ issuer: id.issuer, subject: id.subject }, { touch: false });
         if (acct) return { ...base, role: acct.role };
       }
-      return null;
+      return mayAdminister(root, base.role) ? base : null;
     };
     const sessionOn = (w) => ownSession(w) ?? crossSeat(w) ?? docsVisitor(w);
     const authz = rx.header('authorization');
