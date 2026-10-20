@@ -88,6 +88,9 @@ test('initials are at most two letters, upper case', () => {
   assert.equal(chips.initialsFor('kyle adriany'), 'KA');
   assert.equal(chips.initialsFor('Cher'), 'C');
   assert.equal(chips.initialsFor('Ana Maria de Souza'), 'AM', 'never more than two');
+  assert.equal(chips.initialsFor('weave-fixer'), 'WF', 'a one-word handle splits on dashes');
+  assert.equal(chips.initialsFor('scout_bot'), 'SB', 'and on underscores');
+  assert.equal(chips.initialsFor('Jean-Luc Picard'), 'JP', 'a name with spaces keeps its words whole');
 });
 
 test('the avatar is a real element, but no longer a default on the chip', () => {
