@@ -91,8 +91,10 @@ if (openHub) {
     await step(p, 'account');
     const art = await stageArt(p);
     assert.match(art, /picture class="radiate"/, 'the right pane carries the radiating-rings asset');
-    assert.deepEqual(await donut(p), { at: 25, name: 'Account' }, 'the donut starts at a quarter');
+    assert.equal(await donut(p), null, 'signing in shows no setup donut (Issue #987)');
     await go(p, 'signin');
+    await step(p, 'workspace');
+    assert.deepEqual(await donut(p), { at: 50, name: 'Workspace' }, 'the donut appears on the workspace step');
     await nameIt(p, 'Ada Sales', 'ada-sales');
     await step(p, 'work');
     assert.equal((await donut(p)).at, 75);
@@ -477,6 +479,7 @@ if (openHub) {
     assert.match(inn.forceRedirectUrl, /^\/api\/auth\/oidc\/start\?start=1&next=%2Fstart$/);
     assert.equal(inn.signUpForceRedirectUrl, inn.forceRedirectUrl);
     assert.equal(await p.locator('main h1').textContent(), 'Sign in to weave');
+    assert.equal(await donut(p), null, 'a returning visitor signs in with no setup donut (Issue #987)');
     assert.equal(await p.locator('main [data-go="switch"]').textContent(), 'Create an account');
     assert.equal(await p.locator('main [data-go="bypass"], main [data-go="skip"]').count(), 0, 'login cannot be skipped');
     await p.click('main [data-go="switch"]');
@@ -485,6 +488,7 @@ if (openHub) {
     assert.deepEqual([up.mounted, up.routing], ['signup', 'virtual']);
     assert.equal(up.signInForceRedirectUrl, up.forceRedirectUrl);
     assert.equal(await p.locator('main h1').textContent(), 'Create your weave account');
+    assert.equal(await donut(p), null, 'the create-account form carries no donut either');
     await p.click('main [data-go="switch"]');
     await p.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
     await p.click('#clerk-pane [data-fake-clerk="google"]');
