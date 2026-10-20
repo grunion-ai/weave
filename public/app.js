@@ -9782,7 +9782,6 @@ function skipCaretOnlyUndo(vditor) {
 
 let vditorLoading = null;
 function loadVditor() {
-  if (window.Vditor) return Promise.resolve();
   vditorLoading ??= new Promise((resolve, reject) => {
     const tpl = document.querySelector('#vditor-assets');
     const css = el('link', { rel: 'stylesheet', href: tpl?.content.querySelector('link')?.getAttribute('href') ?? '/vendor/vditor/dist/index.css' });
@@ -10803,6 +10802,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
     const mountEditor = () => {
       const mount = () => {
+        if (!host.isConnected) return;
         const ed = mountDocEditor(host, {
           value: entity.docs?.[f.name] ?? '',
           entityId: id,
@@ -10815,8 +10815,11 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         });
         editors?.push(ed);
       };
-      if (window.Vditor) mount();
-      else loadVditor().then(mount, (err) => { mountSourceEditor(); toast(err.message, true); });
+      loadVditor().then(mount, (err) => {
+        if (!host.isConnected) return;
+        mountSourceEditor();
+        toast(err.message, true);
+      });
     };
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
