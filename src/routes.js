@@ -891,6 +891,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return { status: 302, headers: { Location: `${originFor(rx)}${wsPrefix}/auth${q ? '?' + q : ''}`, 'Cache-Control': 'no-store' }, body: '' };
           }
           const n = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), null);
+          if (baseDomain && wsPrefix && !hostOrigin) return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(n?.startsWith(`${wsPrefix}/`) ? n : `${wsPrefix}/`)}`, 'Cache-Control': 'no-store' }, body: '' };
           const next = n ? `?next=${encodeURIComponent(n)}` : '';
           return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
         }
@@ -898,12 +899,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
-        const asked = ['pick', 'setup', 'error'].some((k) => rx.searchParams?.has(k));
+        const asked = ['pick', 'setup', 'error', 'next'].some((k) => rx.searchParams?.has(k));
         const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
         const found = logins.length ? findWorkspaces(logins) : null;
         const last = found?.rows.find((r) => r.kind === 'workspace' && r.name.toLowerCase() === found.names[0]) ?? found?.rows.find((r) => r.kind === 'workspace');
         if (last && !found.rows.some((r) => r.kind === 'invite')) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
         const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
+        const back = rx.searchParams?.get('next');
+        const workspaceReturn = back == null || (sameOriginPath(back, originFor(rx), null) === back && /^\/w\/[^/?#]+\//.test(back));
+        if (page && !workspaceReturn) {
+          const q = new URLSearchParams(rx.searchParams);
+          q.delete('next');
+          return { status: 302, headers: { Location: `/start${q.size ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+        }
         if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
         return notFound({ error: 'Not found', code: 'not-found' });
       }

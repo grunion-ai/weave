@@ -204,6 +204,8 @@
 
   const PICK = '/start?pick=1';
   const signInHref = (next) => `/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`;
+  const workspaceOf = (next) => /^\/w\/([^/?#]+)\//.exec(next ?? '')?.[1] ?? null;
+  const workspaceSignIn = (next) => `/w/${workspaceOf(next)}/api/auth/oidc/start?next=${encodeURIComponent(next)}`;
 
   let clerk = null;
   const inject = (src, attrs = {}) => new Promise((resolve, reject) => {
@@ -231,7 +233,8 @@
   function account() {
     let mode = 'signin';
     const pane = me.clerk;
-    const next = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : entry.pick ? PICK : '/start');
+    const onboard = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : entry.pick ? PICK : '/start');
+    const next = workspaceOf(entry.next) ? workspaceSignIn(entry.next) : onboard;
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
@@ -252,8 +255,8 @@
         mount.removeAttribute('aria-busy');
         mount.dataset.mode = mode;
         const appearance = clerkAppearance();
-        if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: next, signInForceRedirectUrl: next, appearance });
-        else c.mountSignIn(mount, { routing: 'virtual', withSignUp: true, forceRedirectUrl: next, signUpForceRedirectUrl: next, appearance });
+        if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: onboard, signInForceRedirectUrl: next, appearance });
+        else c.mountSignIn(mount, { routing: 'virtual', withSignUp: true, forceRedirectUrl: next, signUpForceRedirectUrl: onboard, appearance });
         toggle.hidden = !c.mountSignUp;
       } catch {
         mount.replaceChildren();
@@ -755,6 +758,11 @@
     const q = Object.fromEntries(new URLSearchParams(location.search));
     try { me = await getJson('/api/start'); } catch (err) { main.textContent = err.message; return; }
     entry = q;
+    const linked = workspaceOf(q.next);
+    if (me.signedIn && linked && (me.rows ?? []).some((r) => r.kind === 'workspace' && encodeURIComponent(r.name).toLowerCase() === linked.toLowerCase())) {
+      location.replace(workspaceSignIn(q.next));
+      return;
+    }
     s = begin(me, q);
     if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : '/start');
     globalThis.WeaveConsent?.start(me.analytics);
