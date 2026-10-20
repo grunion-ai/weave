@@ -1,0 +1,23 @@
+{
+  "renders": {
+    "load-home|desktop": 9,
+    "load-home|phone": 5,
+    "open-table|desktop": 8,
+    "open-table|phone": 6,
+    "scroll-grid|desktop": 20,
+    "scroll-grid|phone": 15,
+    "edit-cell|desktop": 6,
+    "open-row|desktop": 13,
+    "switch-view|desktop": 15,
+    "type-doc|desktop": 61,
+    "type-doc|phone": 14,
+    "trash-undo|desktop": 20,
+    "theme|desktop": 1,
+    "phone-search|phone": 4,
+    "phone-menu|phone": 4,
+    "phone-table-sheet|phone": 4,
+    "phone-picker|phone": 5,
+    "phone-open-row|phone": 6
+  },
+  "raised": {}
+}

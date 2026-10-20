@@ -85,8 +85,11 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
     const B = new Set(String(b ?? '').split(/\s+/).filter(Boolean));
     return [...[...B].filter((t) => !A.has(t)).map((t) => `+${t}`), ...[...A].filter((t) => !B.has(t)).map((t) => `-${t}`)].join(' ');
   };
+  let dirty = false;
+  window.__flickerRenders = 0;
   const mo = new MutationObserver((records) => {
     const t = now();
+    if (!dirty && records.some((r) => r.target !== document.documentElement && document.body?.contains(r.target))) dirty = true;
     const added = [];
     for (const r of records) {
       if (r.type === 'childList') {
@@ -175,6 +178,7 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
     }
   };
   const tick = (t) => {
+    if (dirty) { window.__flickerRenders++; dirty = false; }
     painted.push(t);
     if (painted.length > 300) painted.shift();
     chan.port2.postMessage(0);
@@ -209,7 +213,8 @@ function probe({ maxMs: MAX, answerFrames: FRAMES }) {
 export const installProbe = (page, { maxMs = FLASH_MS, answerFrames = ANSWER_FRAMES } = {}) => page.addInitScript(probe, { maxMs, answerFrames });
 export const readProbe = (page) => page.evaluate(() => window.__flicker?.slice() ?? []);
 export const readInputs = (page) => page.evaluate(() => window.__flickerInputs?.slice() ?? []);
-export const resetProbe = (page) => page.evaluate(() => { if (window.__flicker) window.__flicker.length = 0; });
+export const resetProbe = (page) => page.evaluate(() => { if (window.__flicker) window.__flicker.length = 0; window.__flickerRenders = 0; });
+export const readRenders = (page) => page.evaluate(() => window.__flickerRenders ?? null);
 
 export async function recordFrames(page, { maxWidth = 640, maxHeight = 480 } = {}) {
   const cdp = await page.context().newCDPSession(page).catch(() => null);

@@ -429,6 +429,20 @@ against `HEAD^1` by `test/feedback-budget.test.mjs`, the same rule as the click
 budget. Journeys that wait on the server today carry their measured time and the
 `Slow:` Issue that tracks them; lower the budget in the change that fixes one.
 
+## Render budget
+
+`test/render-budget-browser.test.mjs` walks every journey three times with the
+flicker probe and counts its renders: animation frames in which the app wrote to
+the DOM under `<body>` (child lists, `class`, `hidden` or `style`). The median
+of three walks is judged against `test/render-budget.json`
+(`renders["<journey|cell>"]`) and logged as
+`renders <journey|cell> <n> runs <a,b,c> budget <n>`. Budgets hold the Linux
+runner's largest median plus a quarter and one frame, since network timing
+splits writes across frames from run to run. A count over its budget fails.
+Batch the writes, or raise the budget with a new reason under
+`raised["<journey|cell>"]`, which `test/render-budget.test.mjs` checks against
+`HEAD^1`.
+
 ## Cut-off loop
 
 Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page
