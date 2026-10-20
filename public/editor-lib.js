@@ -209,6 +209,11 @@ globalThis.WeaveEditorLib = {
     return current;
   },
 
+  sectionPreview(texts, limit = 240) {
+    const s = texts.map((t) => String(t ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ');
+    return s.length > limit ? s.slice(0, limit - 1).trimEnd() + '…' : s;
+  },
+
   scrollBoxIndex(boxes) {
     return (Array.isArray(boxes) ? boxes : []).findIndex((b) =>
       /^(auto|scroll|overlay)$/.test(b?.overflowY ?? '')

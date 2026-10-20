@@ -121,6 +121,13 @@ const HANDOFF_TTL_MS = 60 * 1000;
 const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
 const LIMITS = { options: 10, failed: 5, slugs: 60 };
 const START_TTL_MS = 30 * 60 * 1000;
+const holdsLink = (w, kind, id) => {
+  w.maybeRefresh();
+  if (kind === 't') return !!w.findTable(id);
+  if (kind === 's') return !!(w.findSpace(id) || w.shareByToken(id));
+  return Object.hasOwn(w.state.entities ?? {}, id);
+};
+const linkHolder = (hub, kind, id) => hub.entries().map(([, w]) => w).find((w) => !w.state.meta.deletedAt && holdsLink(w, kind, id)) ?? null;
 const INGEST_MAX_BYTES = 2 * 1024 * 1024;
 const INGEST_HEADERS = ['content-type', 'content-encoding', 'user-agent'];
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -296,9 +303,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     weave.maybeRefresh();
     versionOf = weave;
     if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
-      if (path === '/') return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
       if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
-        return { status: 301, headers: { Location: `${scheme}//${String(hub.defaultName).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+        const holder = linkHolder(hub, path.slice(1, 2), path.slice(3)) ?? hub.get(hub.defaultName);
+        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
       }
     }
     const updateWorkspace = (patch) => {
@@ -480,7 +487,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
           .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
       ];
-      const names = live.filter(([, w]) => opener(w) && !isDocsWorkspace(w)).map(([name]) => name.toLowerCase());
+      const available = rows.filter((r) => r.kind === 'workspace' && !isDocsWorkspace(hub.get(r.name))).map((r) => r.name.toLowerCase());
+      const names = [...new Set([...String(cookies.wv_rail ?? '').split(',').filter((n) => available.includes(n)), ...available])];
       const creator = logins.find((me) => mayAdminister(hubRoot, rootOf(me)?.role)) ?? null;
       const signedUp = (me) => live.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
       const signup = !creator && openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
@@ -517,6 +525,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const clearRail = () => `wv_rail=; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=0${secureFlag(rx)}`;
     const startCookies = ({ token, logins }) => [`wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, railCookie(findWorkspaces(logins).names)];
     const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
+    if (path === '/' && baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+      const railed = (await heldStart()) ? null : String(cookies.wv_rail ?? '').split(',').filter(Boolean).map((n) => hub.bySlug(n)).find((w) => w && !w.state.meta.deletedAt && !isDocsWorkspace(w));
+      return { status: 302, headers: { Location: railed ? `${scheme}//${String(railed.state.meta.name).toLowerCase()}.${baseDomain}/#/resume` : '/start', 'Cache-Control': 'no-store' }, body: '' };
+    }
     const resolved = new Map();
     const ownSession = (w) => {
       if (resolved.has(w)) return resolved.get(w);
@@ -880,6 +892,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return { status: 302, headers: { Location: `${originFor(rx)}${wsPrefix}/auth${q ? '?' + q : ''}`, 'Cache-Control': 'no-store' }, body: '' };
           }
           const n = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), null);
+          if (baseDomain && wsPrefix && !hostOrigin) return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(n?.startsWith(`${wsPrefix}/`) ? n : `${wsPrefix}/`)}`, 'Cache-Control': 'no-store' }, body: '' };
           const next = n ? `?next=${encodeURIComponent(n)}` : '';
           return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
         }
@@ -887,11 +900,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
-        const asked = ['pick', 'setup', 'error'].some((k) => rx.searchParams?.has(k));
+        const asked = ['pick', 'setup', 'error', 'next'].some((k) => rx.searchParams?.has(k));
         const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
-        const last = logins.length ? findWorkspaces(logins).rows.find((r) => r.kind === 'workspace') : null;
-        if (last) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
+        const found = logins.length ? findWorkspaces(logins) : null;
+        const last = found?.rows.find((r) => r.kind === 'workspace' && r.name.toLowerCase() === found.names[0]) ?? found?.rows.find((r) => r.kind === 'workspace');
+        if (last && !found.rows.some((r) => r.kind === 'invite')) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
         const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
+        const back = rx.searchParams?.get('next');
+        const workspaceReturn = back == null || (sameOriginPath(back, originFor(rx), null) === back && /^\/w\/[^/?#]+\//.test(back));
+        if (page && !workspaceReturn) {
+          const q = new URLSearchParams(rx.searchParams);
+          q.delete('next');
+          return { status: 302, headers: { Location: `/start${q.size ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+        }
         if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
         return notFound({ error: 'Not found', code: 'not-found' });
       }
@@ -1150,10 +1171,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
               : rx.searchParams?.get('to') === 'resume' ? '#/resume'
               : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
-            if (baseDomain) return handOff(engine, account.id, `/${land}`, host);
+            const rail = railCookie(isDocsWorkspace(w) ? found.names : [host, ...found.names.filter((name) => name !== host)]);
+            if (baseDomain) return withCookies(await handOff(engine, account.id, `/${land}`, host), [rail]);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
             const back = cookies[outName(w)] ? [clearCookie(outName(w), rx)] : [];
-            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back], 'Cache-Control': 'no-store' }, body: '' };
+            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back, rail], 'Cache-Control': 'no-store' }, body: '' };
           }
           if ((m = path.match(/^\/api\/start\/logo\/([^/]+)$/)) && rx.method === 'GET') {
             const w = hub.bySlug(String(m[1]).toLowerCase());

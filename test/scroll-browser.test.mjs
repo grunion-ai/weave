@@ -47,8 +47,6 @@ if (s) {
       await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 295, null, { timeout: 20000 });
       const before = await page.evaluate(() => Math.round(document.querySelector('#main').scrollTop));
 
-      await page.evaluate(() => document.querySelector('#dock .doc-rail').click());
-      await page.waitForSelector('#dock .doc-rail.open', { timeout: 20000 });
       await page.evaluate(() => document.querySelectorAll('#dock .doc-rail-dash')[1].click());
 
       await page.waitForFunction(() => document.querySelector('#dock').scrollTop > 100,
@@ -67,8 +65,6 @@ if (s) {
   test('the heading lands on the reading line, not under the panel edge', async () => {
     const page = await dockedDoc();
     try {
-      await page.evaluate(() => document.querySelector('#dock .doc-rail').click());
-      await page.waitForSelector('#dock .doc-rail.open', { timeout: 20000 });
       await page.evaluate(() => document.querySelectorAll('#dock .doc-rail-dash')[1].click());
       await page.waitForFunction(() => {
         const h = [...document.querySelectorAll('#dock .vditor-ir .vditor-reset h2')]
@@ -84,8 +80,6 @@ if (s) {
     const page = await dockedDoc();
     try {
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      await page.evaluate(() => document.querySelector('#dock .doc-rail').click());
-      await page.waitForSelector('#dock .doc-rail.open', { timeout: 20000 });
       const landed = await page.evaluate(async () => {
         document.querySelectorAll('#dock .doc-rail-dash')[1].click();
         await new Promise((r) => requestAnimationFrame(r));
