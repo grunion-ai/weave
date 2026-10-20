@@ -1013,13 +1013,15 @@ The token is stored with the grant so the dialog can show the link again, and \`
 
 ## The home page and a space page
 
-The first time you open an empty instance, a short welcome asks you to name the workspace (a default is filled in), then offers a starter or an empty workspace. **Skip setup** or Esc keeps the defaults. It runs once per person, and an existing workspace with tables never shows it; rename the workspace later from its chip in the rail or its page title.
+On a local instance, the first time you open an empty workspace, a short welcome asks you to name the workspace (a default is filled in), then offers a starter or an empty workspace. **Skip setup** or Esc keeps the defaults. It runs once per person, and an existing workspace with tables never shows it; rename the workspace later from its chip in the rail or its page title.
 
-A workspace with no tables of your own opens its home page on an empty state: one line on spaces and tables, a **New table** button, and three templates (**Money**, **Work**, **People**). The system **Workspace** space (**Spaces**, **Tables**, **Fields**, **Views**, **Workflows**, **Workspaces**) doesn't count as yours.
+Architects opening a workspace with no tables of their own see a **New table** button and three templates (**Money**, **Work**, **People**). The system **Workspace** space (**Spaces**, **Tables**, **Fields**, **Views**, **Workflows**, **Workspaces**) doesn't count as yours.
 
 **New table** asks for a name and a space, offering **General** if you have none. A template builds its space, tables, fields and a few sample rows in one build call, and opens its first table. **Money** links each transaction to an account and a month, and a **Months** row totals what was **Spent** and **Earned** that month and the **Net** between them; you link the rows by hand for now. **Work** gives **Tasks** a status, a due date and a priority. **People** links **Contacts** to **Companies**. The empty state ends with your first table.
 
-Then the home page shows the relation map. A space page shows a **+ New table** button, the space's relation map, and its tables with record counts.
+Editors and observers see guidance to ask a workspace architect for the first table instead of schema-creation controls. Editors can add and edit rows once a table exists; observers can read and comment. Invited members, including architects, skip the creator naming wizard.
+
+Then the home page shows the relation map. A space page shows architects a **+ New table** button, the space's relation map, and its tables with record counts.
 
 On both pages the grid (**Spaces** on home, **Tables** on a space page) sits under a collapsed **Schema** disclosure; opened, it stays open in that browser until you close it. Every column is editable in place, including the **Tables** grid's **Field Order**, **Hidden Fields**, **Filter** and **Sort**.
 
@@ -1737,7 +1739,7 @@ An architect invites someone who has no account yet from the workspace's home pa
 
 The person opens the link and signs in at the provider, signing up there first if they have to. weave then makes their account at the invited role, named after the email's local part (\`dylan@example.com\` becomes \`dylan\`, then \`dylan-2\` when that name is taken), pins their subject to it, spends the invite and opens the workspace. Their next sign-in needs no link, and the link is not the only way in: a person who signs in at \`/start\` with a verified address that matches a pending invite sees it listed there and can accept it, which does the same thing. The audit log and \`weave export\` never carry the email; the account keeps the verified address the provider sent at sign-in.
 
-An invite opens the workspace it was made in. An invite made on the hub root makes a root account, which opens every workspace the way a root account always has. A link that was revoked, spent, expired or made in another workspace answers \`410\` before the provider; a sign-in with no invite gets the refusal page, **No access to** the workspace.
+An invite opens the workspace it was made in. An invite made on the hub root makes a root account, which opens every workspace the way a root account always has. A link that was revoked, spent, expired or made in another workspace answers \`410\` before the provider; a sign-in with no invite and no membership gets the refusal page, **No access to** the workspace. Invalid-invite recovery offers ordinary sign-in or **Open workspace** for an existing member, plus **Find your workspaces**. It never grants access or redeems the invalid link again.
 
 An architect sees the emails weave sends about an invite, filled with sample values, at \`GET /api/mail/preview/invite\` and \`GET /api/mail/preview/accepted\`. Add \`?role=observer\`, \`editor\` or \`architect\` to pick the role, and \`?theme=light\` or \`?theme=dark\` to paint one palette instead of following the mail client's setting.
 
@@ -1785,6 +1787,14 @@ A paid account without a seat works as an Observer. Its writes answer \`402\` wi
 \`GET /api/billing\` returns the plan (\`trial\` during one), \`trial: { endsAt, daysLeft }\` or \`null\`, the seat count and each member's seat; \`POST /api/billing/team\` opens the team plan and needs an architect. An architect also reads each member's verified address, as in the Invite people dialog, and the Billing page prints it under the name so a team workspace says who holds which seat. A member who is no architect reads the seats without any address.
 
 With billing on, a person with no account can start a workspace of their own. Signing in at the start page, or at a workspace that answers **No access**, holds the login at \`/start\`, which offers **Create workspace**. The new workspace makes that person its Architect, linked to the login they signed in with, and the workspace starts its free trial, so they create and edit from the first minute. After the trial they work as an Observer there until they hold the solo plan, which they buy on its **Billing** page. Each login gets one unpaid workspace: while a workspace that login is Architect of has no plan, trial or not, another create answers \`402\` with \`code: "plan-required"\`, \`waiting\` naming that workspace and \`billing\` its billing page, and once the solo plan covers it the next create goes through. \`GET /api/start\` says so before anyone types: \`waiting\` beside \`canCreate\` names the workspace, or is \`null\`, and each workspace row carries its \`trial\`. A row's \`open\` link with \`?to=billing\` lands on that workspace's billing page. A hub-root architect is never held to this. When Clerk does not answer, the create answers \`503\` with \`code: "billing-unavailable"\` rather than letting the workspace through. With billing off, only a hub-root architect creates workspaces. The agent step counts an AI app as connected only once weave has answered one of its MCP calls, never a call it refused.
+
+## Hosted setup
+
+Website **Sign up** opens \`/start?mode=signup\`; **Sign in** keeps the sign-in form. The hosted rail's **New workspace** opens \`/start?setup=new\`, using the same creation eligibility and billing checks as the start page. Additional workspaces start with blank naming fields. **Create empty workspace** keeps the name and address you entered and waits for an available address, just like **Next**.
+
+Empty and general setups appear before the template catalog. While searching, matching templates come first. Once creation finishes, **Open workspace** is available immediately; AI connection is optional, and desktop clients are under **More AI tools (desktop)**.
+
+Setup keeps a draft in this tab's session storage for up to one day, scoped to the held sign-ins. Reload resumes the naming, work-selection or AI step. An interrupted create request is never replayed automatically: an existing workspace is reopened, otherwise the naming step asks you to check before continuing. Returning to the workspace picker discards the draft. Blocked storage still allows setup but cannot preserve a draft across reloads.
 
 ## Sign-in page
 
