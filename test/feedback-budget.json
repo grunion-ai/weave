@@ -19,6 +19,15 @@
     "phone-picker|phone": 150,
     "phone-open-row|phone": 1950
   },
-  "busy": {},
-  "raised": {}
+  "busy": {
+    "switch-view|desktop": "Issue #1023: a grid hold sets aria-busy at once, so closing the view strip flips it for 95 to 141 ms"
+  },
+  "raised": {
+    "open-table|phone": "Issue #1017: the phone paints nothing but the skeleton until the rows arrive; measured 1499 to 1648 ms",
+    "open-row|desktop": "Issue #1018: the dock waits for the entity request; measured 1052 to 1056 ms",
+    "trash-undo|desktop": "Issue #1019: Move to trash waits for the delete before the rows leave; measured 905 to 908 ms",
+    "phone-search|phone": "Issue #1021: the search sheet appears 127 to 139 ms after the tap",
+    "phone-menu|phone": "Issue #1022: the menu opens 194 to 220 ms after the tap",
+    "phone-open-row|phone": "Issue #1020: the record waits for the entity request; measured 1168 to 1462 ms"
+  }
 }
