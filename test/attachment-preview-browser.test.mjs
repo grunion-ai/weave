@@ -88,7 +88,6 @@ if (s) {
       const coverReq = fileRequest(page, true);
       const hero = page.locator('.fieldrow', { has: page.locator('.fieldrow-label', { hasText: 'Hero' }) }).locator('input[type=file]');
       await hero.setInputFiles({ name: 'hero.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(b64, 'base64') });
-      await page.reload({ waitUntil: 'domcontentloaded' });
       const cover = page.locator('.entity-cover img');
       await cover.waitFor();
       assert.ok((await (await coverReq).body()).length < 60 * 1024);
