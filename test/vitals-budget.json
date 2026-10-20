@@ -1,0 +1,17 @@
+{
+  "vitals": {
+    "load-home|desktop|lcp": 500,
+    "load-home|desktop|cls": 0.01,
+    "load-home|desktop|inp": 64,
+    "load-home|phone|lcp": 350,
+    "load-home|phone|cls": 0.01,
+    "load-home|phone|inp": 80,
+    "open-table|desktop|lcp": 750,
+    "open-table|desktop|cls": 0.01,
+    "open-table|desktop|inp": 80,
+    "open-table|phone|lcp": 750,
+    "open-table|phone|cls": 0.01,
+    "open-table|phone|inp": 64
+  },
+  "raised": {}
+}
