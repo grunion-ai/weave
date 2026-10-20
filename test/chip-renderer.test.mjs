@@ -155,3 +155,26 @@ test('the chip inherits the type around it, so a chip in prose never grows the l
   assert.ok(!/k-inline/.test(APP));
   assert.ok(!/k-inline/.test(MARKDOWN));
 });
+
+test('an avatar leads the chip inside its link, before the #id', () => {
+  const html = chip.chipHtml(view({ avatar: { shape: 'round', initials: 'MC', hue: 'blue', file: null, badge: null } }), { href: '/x' });
+  const a = html.indexOf('<a ');
+  const av = html.indexOf('class="wv-av ');
+  assert.ok(a >= 0 && av > a && av < html.indexOf('wv-chip-id'), html);
+  assert.match(html, /<span class="wv-av round hue-blue"[^>]*>MC<\/span>/);
+});
+
+test('a photo avatar draws the file, and an agent wears its badge', () => {
+  const html = chip.avatarHtml({ shape: 'round', initials: 'WF', hue: 'purple', file: 'f1', badge: 'agent' }, { base: '/w/weave' });
+  assert.match(html, /<img src="\/w\/weave\/api\/files\/f1" alt="">/);
+  assert.match(html, /class="av-badge"/);
+  assert.match(chip.avatarHtml({ shape: 'square', initials: 'AC', hue: 'amber', file: null, badge: null }), /class="wv-av square hue-amber"/);
+  assert.equal(chip.avatarHtml(null), '');
+});
+
+test('an avatar leads the card head', () => {
+  const html = chip.cardHtml(view({ shape: 'card', avatar: { shape: 'round', initials: 'MC', hue: 'blue', file: null, badge: null } }), { href: '/x' });
+  const head = html.indexOf('wv-card-head');
+  const av = html.indexOf('class="wv-av ');
+  assert.ok(head >= 0 && av > head && av < html.indexOf('wv-card-title'), html);
+});

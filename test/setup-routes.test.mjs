@@ -130,6 +130,9 @@ test('a signed-out workspace link signs in on the apex setup page and keeps the 
     const out = await s.apex('GET', '/w/harbor/auth?signed-out=1');
     assert.equal(out.status, 200, 'signed-out=1 keeps the workspace sign-in page');
     assert.equal((await s.apex('GET', '/start?next=%2Fw%2Fharbor%2Fe%2F1')).status, 200, '/start serves a workspace return path');
+    const { cookie } = await s.signIn({ sub: 'user_kyle' });
+    assert.equal((await s.apex('GET', '/start', { cookie })).status, 302, 'signed in, a bare /start resumes the last workspace');
+    assert.equal((await s.apex('GET', '/start?next=%2Fw%2Fharbor%2Fe%2F1', { cookie })).status, 200, 'a workspace return path is not swallowed by the resume');
     for (const bad of ['https%3A%2F%2Fevil.example%2Fw%2Fharbor%2F', '%2F%2Fevil.example%2Fw%2Fx%2F', '%2Fapi%2Fstart', '%2Fw%2Fharbor%2F..%2F..%2Fapi%2Fstart']) {
       const res = await s.apex('GET', `/start?setup=skip&next=${bad}`);
       assert.deepEqual([res.status, res.headers.location], [302, '/start?setup=skip'], `next=${bad} is dropped, other choices kept`);

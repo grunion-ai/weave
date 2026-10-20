@@ -771,6 +771,36 @@ A file whose bytes are gone keeps its name and is marked \`(missing)\` in the ce
 A file attached to the row rather than to this field (\`POST /api/entities/<id>/files\`, or \`weave file attach\` with no \`--field\`) lands in the row's file ledger. The record's **Files** card lists everything in that ledger no attachments field already draws, with the same link and \`(missing)\` treatment, so a row whose table has no attachments field still reaches its files.
 
 A file delete is not undoable.` },
+  { name: 'avatar', kind: 'Files', doc: `# avatar
+
+The row's face: an uploaded image, or the row's initials on a colour drawn from its name. An icon says what kind of row this is and belongs to the table; an avatar says which row it is and belongs to the row, so an avatar never takes an icon from the inventory.
+
+## Config
+
+\`shape\`: \`round\` (default) for people and agents, \`square\` for organisations and logos.
+
+A table holds one avatar field. A second is refused.
+
+\`\`\`bash
+weave field add Contact Photo avatar
+weave field add Company Logo avatar --config '{"shape":"square"}'
+\`\`\`
+
+## Usage
+
+\`\`\`bash
+weave file attach Contact#5 --path ./myriam.png --field Photo
+\`\`\`
+
+The upload replaces the face; the earlier image stays in the row's file ledger. The value is the id of a file on this row, and the field takes PNG, JPEG, GIF or WebP. An SVG is refused, since weave serves uploaded SVGs as downloads, never inline. Clearing the value, or deleting the file, puts the initials back.
+
+A table with an avatar field puts the face first in the row's chip, inside its link, and first in the card's head. The face stands in for the row mark in the crumb and sits beside the name on the row's page, where a click or a dropped image changes it. A relation to the table draws the face on every chip that points there, and ⌘K shows it beside the hit. A table without one draws exactly as before.
+
+**System/Users** carries an Avatar field. An agent account shows its face with a small chip badge in the corner, so a person and an agent with the same initials read apart.
+
+## Gotchas
+
+The avatar is never a chip segment or a card field: it is the face, drawn once. Formulas, filters and footers skip it, as they skip attachments.` },
 ];
 
 export const GUIDES = [
@@ -1641,7 +1671,7 @@ A hosted provider with open sign-up lets anyone create a user there. A sign-in a
 
 ## The Users table
 
-**Users** is a system table in the System space, listed in the sidebar's System group under Workflows (Feature #318, Feature #333). Each account and each pending invite is a row with Name, Email, Role (Architect, Editor or Observer), Status (Invited or Active), Kind (Person or Agent), Identities, Last Seen and Created. The accounts stay the source of truth and the rows follow them, so an account made with \`weave account create\` or redeemed from an invite shows up here too.
+**Users** is a system table in the System space, listed in the sidebar's System group under Workflows (Feature #318, Feature #333). Each account and each pending invite is a row with Name, Email, Role (Architect, Editor or Observer), Status (Invited or Active), Kind (Person or Agent), Avatar, Identities, Last Seen and Created. The accounts stay the source of truth and the rows follow them, so an account made with \`weave account create\` or redeemed from an invite shows up here too.
 
 You manage people by editing rows. A new row with an Email invites that person at the row's Role; the answer carries the one-time sign-in link as \`invite.url\`, and the row reads Invited until they sign in. A new row with Kind Agent and no Email makes an agent account; the answer carries its \`wv_\` token as \`token\`, shown once. Editing Role changes the account's role without replacing its tokens or sessions; the last architect cannot be demoted. Editing Name renames the account, and deleting the row revokes the invite or deletes the account. Email, Status, Kind, Identities, Last Seen and Created are kept by weave and refuse edits.
 
@@ -2468,7 +2498,7 @@ The grey box is the link to the row. The state mark, the segments, the caret and
 | 6 | **Caret** (\`›\` / \`‹\`) | folds the segments in and out; shows only when there is a segment to show | **click to expand**; it turns to face the label (\`‹\`) and a second click **collapses** | a 24×24px square around the glyph; the click stops there |
 | 7 | **Remove** (\`×\`) | in a relation cell only: unlinks this row from the field — never deletes it | **click to unlink**; \`weave undo\` (or the activity row) puts it back | its own box, outside the link |
 
-There is no open mark and no avatar. The chip is the link, so a separate \`↗\` promises nothing, and a person table asks for its avatar through its own Chip config. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in \`--wv-chip-font\` and \`--wv-chip-line\`, and a segment is drawn at that same size rather than shrunk.
+There is no open mark. The chip is the link, so a separate \`↗\` promises nothing. A table with an [[table:Handbook/Fields|avatar]] field puts the row's face first inside the link, before the \`#id\`; a table without one draws no face. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in \`--wv-chip-font\` and \`--wv-chip-line\`, and a segment is drawn at that same size rather than shrunk.
 
 One renderer draws this markup: \`public/chip-view.js\`, loaded by the browser and by \`src/markdown.js\`, with one stylesheet, \`public/chip.css\`, behind both. A relation cell, a document page and an HTML export of the same row therefore print the same chip, down to the class names.
 

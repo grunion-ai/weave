@@ -1,7 +1,7 @@
 (function (root) {
   const VIEW_SHAPES = ['chip', 'card'];
   const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
-  const EXCLUDED = ['document', 'attachments', 'key', 'field', 'view'];
+  const EXCLUDED = ['document', 'attachments', 'avatar', 'key', 'field', 'view'];
 
   function viewSegments(v) {
     const out = [];

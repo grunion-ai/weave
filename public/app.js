@@ -28,6 +28,7 @@ const setDisclosure = (btn, open) => btn.setAttribute('aria-expanded', String(op
 const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden': 'true' }, chevron());
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
+window.weaveFileBase = WS_PREFIX;
 const SHELL_ROOT = document.querySelector('meta[name="weave-workspace"]')?.dataset.root === 'true';
 
 const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
@@ -897,6 +898,7 @@ window.visualViewport?.addEventListener('resize', publishViewHeaderHeight);
 const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: weaveBreadcrumbs.ROW_MARK };
 function crumbIconEl(c) {
   if (c.kind === 'ws') return wsMarkEl();
+  if (c.avatar) return chipElFrom(chipView.avatarHtml(c.avatar, { cls: 'crumb-ic crumb-av' }));
   return iconEl(c.icon, 'wv-icon crumb-ic') ?? (CRUMB_ICON_FALLBACK[c.kind] ? iconEl(CRUMB_ICON_FALLBACK[c.kind], 'wv-icon crumb-ic') : null);
 }
 function crumbInner(c) {
@@ -1426,8 +1428,6 @@ function stateChipClass(fieldSchema, stateName) {
   const st = fieldSchema.states?.find((s) => s.name === stateName);
   return `k k-state cat-${cat} hue-${chipCore.stateHue(st, cat)}`;
 }
-
-const PERSON_TABLE = /^(people|persons?|members?|users?|contacts?|owners?|team|staff|employees?)$/i;
 
 function deckRoleOf(db) {
   if (!db?.fields) return null;
@@ -2987,8 +2987,51 @@ function viewCell(v, f, { compact = false } = {}) {
   if (!v || typeof v !== 'object') return el('span', { class: 'k k-empty' }, '—');
   return f.shape === 'card' || v.shape === 'card' ? viewCardEl(v, { compact }) : viewChipEl(v);
 }
+function avatarUpload(entityId, fieldName, done) {
+  return async (file) => {
+    if (!file) return;
+    try {
+      await api('POST', `/entities/${entityId}/fields/${encodeURIComponent(fieldName)}/files`, {
+        name: file.name, mime: file.type || 'application/octet-stream', bytes: await fileBase64(file),
+      });
+      await done();
+    } catch (err) { toast(err.message, true); }
+  };
+}
+function avatarPicker(face, { cls, title, upload, onClear = null }) {
+  const input = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', style: 'display:none' });
+  input.addEventListener('change', () => upload(input.files?.[0]));
+  const pick = el('button', {
+    type: 'button', class: 'av-pick', title, 'aria-label': title,
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); input.click(); },
+  }, chipElFrom(chipView.avatarHtml(face, { cls })));
+  const clear = onClear && face?.file ? el('button', {
+    type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny av-clear', title: 'Remove photo', 'aria-label': 'Remove photo',
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); onClear(); },
+  }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null;
+  return fileDropZone(el('span', { class: 'av-control' }, pick, clear, input), (files) => upload(files?.[0]));
+}
+function avatarControl(item, f, { compact, saved, patch }) {
+  const face = item.avatar;
+  if (!face) return el('span', { class: 'k k-empty' }, '—');
+  return avatarPicker(face, {
+    cls: compact ? 'cell-av' : 'field-av',
+    title: face.file ? 'Change photo, or drop an image here' : 'Upload a photo, or drop an image here',
+    upload: avatarUpload(item.id, f.name, saved),
+    onClear: compact ? null : () => patch([]),
+  });
+}
+function entityAvatarEl(entity, db, refresh) {
+  const f = db?.fields?.find((x) => x.type === 'avatar');
+  if (!entity.avatar || !f) return null;
+  return avatarPicker(entity.avatar, {
+    cls: 'head-av',
+    title: entity.avatar.file ? 'Change photo' : 'Upload a photo',
+    upload: avatarUpload(entity.id, f.name, async () => refresh?.()),
+  });
+}
 function relationChipEl(f, s, { onRemove = null } = {}) {
-  const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [] };
+  const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [], ...(s.avatar ? { avatar: s.avatar } : {}) };
   return viewChipEl(v, {
     home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
     onRemove,
@@ -3414,6 +3457,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     };
     return el('span', { class: 'fielddef-edit' }, chip);
   }
+  if (f.type === 'avatar') return avatarControl(item, f, { compact, saved, patch });
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
     const upload = async (files) => {
@@ -3900,7 +3944,7 @@ function filterSeed(db) {
   return values;
 }
 
-const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'field']);
+const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'avatar', 'field']);
 const prefillBase = (db) => `${location.origin}${WS_PREFIX}/t/${db.id}/new`;
 const manyRelation = (f) => f.type === 'relation' && !!f.many;
 
@@ -8573,6 +8617,12 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         }
       } else if (t === 'view') {
         kids.push(...viewSection(db, state, changed, drawCfg));
+      } else if (t === 'avatar') {
+        kids.push(dsection('Shape', segCtl([
+          { id: 'round', label: 'round', title: 'People and agents' },
+          { id: 'square', label: 'square', title: 'Organisations and logos' },
+        ], state.avatarShape ?? 'round', (v) => { state.avatarShape = v; changed(); })));
+        kids.push(el('div', { class: 'modal-note full' }, 'The row\'s face on its chip, card and header. With no photo it shows initials on the name\'s colour. One per table.'));
       } else if (t === 'attachments') {
         const files = state.files ?? (state.files = { preview: '', size: 'medium', fit: 'trim' });
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
@@ -8940,7 +8990,7 @@ function footAggregatesFor(db, f) {
   if (f.role === 'name' || f.id === db.fields.find((x) => x.role === 'name')?.id) return ['count', 'distinct'];
   if (f.type === 'number' || f.type === 'rating' || f.type === 'formula' || f.type === 'rollup') return [...FOOT_NUMERIC, 'filled', 'empty'];
   if (f.type === 'date') return ['min', 'max', 'filled', 'empty'];
-  if (f.type === 'view' || f.type === 'document' || f.type === 'attachments' || f.type === 'key' || f.type === 'field') return [];
+  if (f.type === 'view' || f.type === 'document' || f.type === 'attachments' || f.type === 'avatar' || f.type === 'key' || f.type === 'field') return [];
   return ['filled', 'empty', 'distinct'];
 }
 
@@ -9730,6 +9780,23 @@ function skipCaretOnlyUndo(vditor) {
   };
 }
 
+let vditorLoading = null;
+function loadVditor() {
+  vditorLoading ??= new Promise((resolve, reject) => {
+    const tpl = document.querySelector('#vditor-assets');
+    const css = el('link', { rel: 'stylesheet', href: tpl?.content.querySelector('link')?.getAttribute('href') ?? '/vendor/vditor/dist/index.css' });
+    const js = el('script', { src: tpl?.content.querySelector('script')?.getAttribute('src') ?? '/vendor/vditor/dist/index.min.js' });
+    const loaded = (node) => new Promise((ok, fail) => {
+      node.addEventListener('load', ok, { once: true });
+      node.addEventListener('error', () => fail(new Error('The editor did not load. Showing the source instead; reload to try again.')), { once: true });
+    });
+    const both = Promise.all([loaded(css), loaded(js)]);
+    if (tpl) tpl.before(css); else document.head.append(css);
+    document.head.append(js);
+    both.then(() => resolve(), (err) => { vditorLoading = null; css.remove(); js.remove(); reject(err); });
+  });
+  return vditorLoading;
+}
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   guardMathRender();
   const t = vditorTheme();
@@ -10593,7 +10660,7 @@ function pageGo(next) {
 
 function entityHop(entity) {
   const db = allTables().find((d) => d.id === entity.dbId);
-  return { id: entity.id, publicId: entity.publicId, name: entity.name, space: db?.space ?? '', spaceId: db?.spaceId ?? '', spaceIcon: db?.spaceIcon ?? null, table: db?.name ?? entity.db, tableId: entity.dbId, tableIcon: db?.icon ?? null };
+  return { id: entity.id, publicId: entity.publicId, name: entity.name, space: db?.space ?? '', spaceId: db?.spaceId ?? '', spaceIcon: db?.spaceIcon ?? null, table: db?.name ?? entity.db, tableId: entity.dbId, tableIcon: db?.icon ?? null, avatar: entity.avatar ?? null };
 }
 
 const entityRefs = (id) => Promise.all(['references-from', 'references'].map((path) => api('GET', `/entities/${id}/${path}`).catch(() => [])));
@@ -10653,7 +10720,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           foldFrom: inPeek ? 1 : 4,
         }),
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
-      el('div', { class: 'wv-toolbar entity-head' }, nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
+      el('div', { class: 'wv-toolbar entity-head' }, entityAvatarEl(entity, db, refresh), nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
   );
   const nextFab = nextStateButton(entity, db, refresh);
   if (nextFab) mount.append(nextFab);
@@ -10734,17 +10801,25 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
     const mountEditor = () => {
-      const ed = mountDocEditor(host, {
-        value: entity.docs?.[f.name] ?? '',
-        entityId: id,
-        placeholder: `Write ${f.name}… press / for blocks`,
-        onInput: (value) => {
-          scheduleDocSave(id, f.name, value, status);
-          rail.schedule();
-          folds.schedule();
-        },
+      const mount = () => {
+        if (!host.isConnected) return;
+        const ed = mountDocEditor(host, {
+          value: entity.docs?.[f.name] ?? '',
+          entityId: id,
+          placeholder: `Write ${f.name}… press / for blocks`,
+          onInput: (value) => {
+            scheduleDocSave(id, f.name, value, status);
+            rail.schedule();
+            folds.schedule();
+          },
+        });
+        editors?.push(ed);
+      };
+      loadVditor().then(mount, (err) => {
+        if (!host.isConnected) return;
+        mountSourceEditor();
+        toast(err.message, true);
       });
-      editors?.push(ed);
     };
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
@@ -12140,11 +12215,11 @@ function noteEntityRecent(entity) {
 }
 
 function paletteIcon(hit, group) {
+  if (hit.avatar) return chipElFrom(chipView.avatarHtml(hit.avatar, { cls: 'cmdk-ic cmdk-av' }));
   const name = hit.kind === 'table' ? 'table'
     : hit.kind === 'view' ? 'eye'
     : hit.kind === 'space' ? 'layout-grid'
     : hit.kind === 'workspace' ? 'house'
-    : PERSON_TABLE.test(String(hit.db ?? '').split('/').pop()) ? 'user'
     : group === 'docs' ? 'file-text' : 'file';
   return iconEl(`lucide:${name}`, 'wv-icon cmdk-ic');
 }
@@ -12782,6 +12857,11 @@ function renderRoute() {
   return Promise.resolve().then(dispatchRoute).finally(cancelSkeleton);
 }
 
+function rememberRoute() {
+  const landed = WeaveResume.follow(location);
+  if (landed !== location.hash) history.replaceState(history.state, '', landed);
+}
+
 function dispatchRoute() {
   teardownDocEditors();
   dockClose();
@@ -12790,6 +12870,7 @@ function dispatchRoute() {
     if (!pop.classList.contains('table-view-popover') || pop.tableId !== nextTable) pop.remove();
   }
   state.pageName = null;
+  rememberRoute();
   const hash = location.hash || '#/';
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
   if (!(dbM && tableChromeOn(dbM[1]))) {
@@ -13000,7 +13081,32 @@ function newRowSheet(start) {
       await then(made);
     } catch (err) { create.disabled = more.disabled = false; toast(err.message, true); }
   };
-  create.addEventListener('click', () => write((made) => openEntity(made.id)));
+  const writeAndStay = async () => {
+    const text = name.value.trim();
+    if (!text) return;
+    const target = db;
+    const values = { ...filterSeed(target) };
+    for (const [k, v] of Object.entries(picked)) if (v !== undefined && !(Array.isArray(v) && !v.length)) values[k] = v;
+    name.value = '';
+    picked = {};
+    create.disabled = more.disabled = true;
+    draw();
+    name.focus({ preventScroll: true });
+    try {
+      const made = await api('POST', `/tables/${target.id}/entities`, { name: text, ...(Object.keys(values).length ? { values } : {}) });
+      toast(`Created ${text}`, false, { label: 'Open', run: () => { if (sheet.isConnected) close(); openEntity(made.id); } });
+      await loadSchema();
+      if (state.route?.page === 'db' && state.route.dbId === target.id) await showDatabase(target.id, state.route.view);
+    } catch (err) {
+      if (sheet.isConnected && !name.value) {
+        name.value = text;
+        create.disabled = more.disabled = false;
+      }
+      toast(err.message, true);
+    }
+  };
+  if (phone) create.addEventListener('mousedown', (e) => e.preventDefault());
+  create.addEventListener('click', () => (phone ? writeAndStay() : write((made) => openEntity(made.id))));
   more.addEventListener('click', () => write((made) => { location.hash = `#/entity/${made.id}`; }));
   sheet.append(
     sheetGrip(sheet, close),
@@ -13010,7 +13116,7 @@ function newRowSheet(start) {
     el('div', { class: 'new-row-actions' }, more, create));
   draw();
   document.body.append(back, sheet);
-  off = dismissOutside({ inside: (t) => sheet.contains(t) || !!t.closest?.('.picker-pop, .chip-pop'), close, swallow: () => true, open: () => sheet.isConnected });
+  off = dismissOutside({ inside: (t) => sheet.contains(t) || !!t.closest?.('.picker-pop, .chip-pop, #wv-toasts'), close, swallow: () => true, open: () => sheet.isConnected });
   addEventListener('keydown', esc, true);
   name.focus({ preventScroll: true });
   return sheet;
@@ -13218,8 +13324,8 @@ function wireWsNew() {
     const apex = start.replace(/\/start$/, '');
     menu([
       { label: copy.newWorkspace, section: 'organize', run: newWorkspaceForm },
-      { label: copy.addLogin, section: 'organize', run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1`; } },
-      { label: copy.find, section: 'organize', run: () => { location.href = start; } },
+      { label: copy.addLogin, section: 'organize', run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1&next=${encodeURIComponent('/start?pick=1')}`; } },
+      { label: copy.find, section: 'organize', run: () => { location.href = `${start}?pick=1`; } },
     ], { anchor: btn, className: 'ws-plus', label: 'Workspaces' });
   });
   async function newWorkspaceForm() {
@@ -13664,7 +13770,7 @@ wireTheme();
 wireSkipLink();
 (state.healthP ??= api('GET', '/health')).catch(() => {});
 if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
-withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
+withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => setTimeout(() => loadVditor().catch(() => {}), 1500));
 wireSearchButton();
 buildWsRail();
 wireWsNew();

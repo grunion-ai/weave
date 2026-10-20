@@ -58,7 +58,7 @@ if (s) {
     const ctx = await s.browser.newContext({ viewport: { width: 1280, height: 860 } });
     const page = await ctx.newPage();
     try {
-      await page.goto(`${base}/start`);
+      await page.goto(`${base}/start?pick=1`);
       await page.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
       await page.click('#clerk-pane [data-fake-clerk="google"]');
       await page.waitForSelector('main#start[data-step="list"] .rows li');

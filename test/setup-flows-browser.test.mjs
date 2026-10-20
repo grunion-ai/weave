@@ -399,7 +399,7 @@ if (openHub) {
     await signIn(p, openHub, 'bypass');
     await p.waitForURL(/\/w\/twice\/$/, { timeout: 15000 });
     openHub.idp.signInBrowserAs(who);
-    await p.goto(`${openHub.base}/start`);
+    await p.goto(`${openHub.base}/start?pick=1`);
     await step(p, 'list');
     assert.deepEqual(await p.locator('.rows .ws-title').allTextContents(), ['twice']);
     const row = await p.locator('.rows a.ws-row').evaluate((a) => ({
@@ -626,7 +626,7 @@ if (openHub) {
       const res = await r.fetch();
       await r.fulfill({ response: res, json: { ...(await res.json()), waiting: 'waits' } });
     });
-    await p.goto(`${openHub.base}/start`);
+    await p.goto(`${openHub.base}/start?pick=1`);
     await step(p, 'list');
     const note = p.locator('.alert[data-code="waiting"]');
     assert.match(await note.textContent(), /waits needs a plan/);

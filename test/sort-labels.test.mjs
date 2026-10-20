@@ -18,7 +18,7 @@ const EXPECTED = {
   select: { asc: 'Option order', desc: 'Reverse option order' },
   workflow: { asc: 'State order', desc: 'Reverse state order' },
   multiselect: PLAIN, relation: PLAIN, checkbox: PLAIN, toggle: PLAIN,
-  field: PLAIN, attachments: PLAIN, document: PLAIN, view: PLAIN,
+  field: PLAIN, attachments: PLAIN, avatar: PLAIN, document: PLAIN, view: PLAIN,
   lookup: PLAIN, rollup: PLAIN, formula: PLAIN,
 };
 

@@ -180,7 +180,7 @@ export function newSlideVersion(weave, ref, { promote = false } = {}) {
   }
   const values = {};
   for (const f of fieldsOf(db)) {
-    if (f.system || ['lookup', 'rollup', 'formula', 'document', 'attachments'].includes(f.type)) continue;
+    if (f.system || ['lookup', 'rollup', 'formula', 'document', 'attachments', 'avatar'].includes(f.type)) continue;
     if (f.name === DECK.version || f.name === DECK.supersedes) continue;
     if (f.type === 'relation' && f.config?.many) continue;
     const raw = ent.raw?.[f.name];

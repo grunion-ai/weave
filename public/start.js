@@ -199,6 +199,7 @@
       href ? make('a', { class: 'btn-link', href, 'data-go': 'billing' }, COPY.waiting.link) : null);
   }
 
+  const PICK = '/start?pick=1';
   const signInHref = (next) => `/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`;
   const workspaceOf = (next) => /^\/w\/([^/?#]+)\//.exec(next ?? '')?.[1] ?? null;
   const workspaceSignIn = (next) => `/w/${workspaceOf(next)}/api/auth/oidc/start?next=${encodeURIComponent(next)}`;
@@ -229,7 +230,7 @@
   function account() {
     let mode = 'signin';
     const pane = me.clerk;
-    const onboard = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : '/start');
+    const onboard = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : entry.pick ? PICK : '/start');
     const next = workspaceOf(entry.next) ? workspaceSignIn(entry.next) : onboard;
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
@@ -248,7 +249,7 @@
         c.unmountSignIn?.(mount);
         c.unmountSignUp?.(mount);
         mount.replaceChildren();
-        mount.removeAttribute('aria-busy');
+        mount.removeAttribute('data-opening');
         mount.dataset.mode = mode;
         const appearance = clerkAppearance();
         if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: onboard, signInForceRedirectUrl: next, appearance });
@@ -275,7 +276,7 @@
 
   function foot() {
     return make('p', { class: 'muted foot-links' },
-      make('a', { class: 'btn-link', href: '/api/auth/oidc/start?start=1&fresh=1' }, COPY.addLogin),
+      make('a', { class: 'btn-link', href: `${signInHref(PICK)}&fresh=1` }, COPY.addLogin),
       make('button', { type: 'button', class: 'btn-link', 'data-go': 'signout', onclick: async () => {
         await post('/api/start/signout').catch(() => {});
         await boot();
@@ -293,6 +294,18 @@
       make('img', { src: r.logo, alt: '', onerror: (e) => e.currentTarget.parentElement.replaceWith(letter()) }));
   }
 
+  function opening(ev, row) {
+    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    main.querySelectorAll('a.ws-row[data-opening]').forEach((link) => {
+      link.removeAttribute('data-opening');
+      link.querySelector('[role="status"]')?.remove();
+    });
+    ev.currentTarget.setAttribute('data-opening', 'true');
+    ev.currentTarget.querySelector('.ws-text').append(make('small', { class: 'muted', role: 'status' }, `Opening ${row.title}…`));
+  }
+
+  addEventListener('pageshow', (ev) => { if (ev.persisted && s) render(); });
+
   function list() {
     const logins = me.logins ?? [];
     const several = logins.length > 1;
@@ -304,7 +317,7 @@
           ev.currentTarget.disabled = true;
           try { const done = await post(r.accept); capture('invite_accepted', { via: 'start' }); location.href = done.open; } catch (err) { ev.currentTarget.disabled = false; dispatch({ type: 'fail', code: err.code, message: err.message }); }
         } }, COPY.accept)))
-      : make('li', {}, make('a', { class: 'ws-row', href: r.open }, wsTile(r),
+      : make('li', {}, make('a', { class: 'ws-row', href: r.open, onclick: (ev) => opening(ev, r) }, wsTile(r),
         make('span', { class: 'ws-text' }, make('span', { class: 'ws-title' }, r.title), meta(r.host ?? `${location.host}/w/${r.name}`, roleLabel(r.role)), login(r)),
         glyph('chevron-right', 'glyph ws-go')))));
     return [
@@ -748,7 +761,7 @@
       return;
     }
     s = begin(me, q);
-    if (location.search || location.hash) history.replaceState(null, '', '/start');
+    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : '/start');
     globalThis.WeaveConsent?.start(me.analytics);
     render();
     if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');

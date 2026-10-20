@@ -1,0 +1,1 @@
+- The workspace picker shows loading feedback immediately and names the workspace being opened (Issue #958).

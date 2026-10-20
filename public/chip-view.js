@@ -101,6 +101,16 @@
       + `</span>${valueHtml(seg)}</span>`;
   }
 
+  const AVATAR_SHAPES = ['round', 'square'];
+  function avatarHtml(a, { base = root.weaveFileBase ?? '', cls = '' } = {}) {
+    if (!a) return '';
+    const shape = AVATAR_SHAPES.includes(a.shape) ? a.shape : 'round';
+    const hue = root.chipCore?.hueName(a.hue) ?? 'slate';
+    const face = a.file ? `<img src="${esc(`${base}/api/files/${a.file}`)}" alt="">` : esc(a.initials ?? '');
+    const badge = a.badge === 'agent' ? `<span class="av-badge" title="Agent">${iconHtml('lucide:cpu', 'wv-icon')}</span>` : '';
+    return `<span class="wv-av ${shape} hue-${hue}${a.file ? ' has-photo' : ''}${cls ? ` ${cls}` : ''}" aria-hidden="true">${face}${badge}</span>`;
+  }
+
   function chipHtml(v, { kind = 'entity', href = null, home = null, removable = false, broken = false, label = null } = {}) {
     const title = label ?? String(v?.name ?? '');
     if (broken || !href) return `<span class="mention broken">${esc(title)}</span>`;
@@ -111,9 +121,11 @@
     const cls = ['k', 'k-rel', `kind-${kind}`];
     if (id) cls.push('has-id');
     if (rest.length) cls.push('has-segs');
+    if (v?.avatar) cls.push('has-av');
     return `<span class="${cls.join(' ')}"${attr('data-eid', kind === 'entity' ? v?.id : null)}>`
       + (state ? segHtml(state) : '')
       + `<a class="mention mention-${kind}" href="${esc(href)}"${attr('title', title)}${attr('data-name', v?.name)}>`
+      + avatarHtml(v?.avatar)
       + (id ? `<span class="wv-chip-id">${esc(id)}</span>` : '')
       + `<span class="k-label">${esc(title)}</span></a>`
       + (rest.length ? `<span class="mention-fields">${rest.map(segHtml).join('')}</span>` : '')
@@ -131,6 +143,7 @@
     return `<div class="wv-card${compact ? ' compact' : ''}" data-eid="${esc(v?.id)}">`
       + (cover ? `<span class="wv-card-cover"><img src="${esc(cover)}" alt=""></span>` : '')
       + '<div class="wv-card-head">'
+      + avatarHtml(v?.avatar, { cls: 'wv-card-av' })
       + `<a class="wv-card-title" href="${esc(href ?? `#/entity/${v?.id}`)}">`
       + (id ? `<span class="wv-card-id">${esc(id)}</span>` : '')
       + `${esc(v?.name || (v?.link ? '' : id))}</a></div>`
@@ -143,5 +156,5 @@
       + '</div>';
   }
 
-  root.weaveChipView = { KIND_GLYPH, CARET, COMPUTED_GLYPHS, ROUTE_GLYPH, chipHtml, cardHtml, segHtml, valueHtml, stateClass, iconHtml, esc };
+  root.weaveChipView = { KIND_GLYPH, CARET, COMPUTED_GLYPHS, ROUTE_GLYPH, chipHtml, cardHtml, avatarHtml, segHtml, valueHtml, stateClass, iconHtml, esc };
 })(typeof window !== 'undefined' ? window : globalThis);
