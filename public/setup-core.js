@@ -58,7 +58,7 @@
 
   function progress(s, build = null) {
     const id = AT[s.step];
-    if (!id) return null;
+    if (!id || (id === 'account' && !s.me?.signedIn)) return null;
     const n = ORDER.indexOf(id) + 1;
     const extra = s.step === 'build' && build?.of ? Math.min(1, build.done / build.of) / ORDER.length : 0;
     return { at: n / ORDER.length + extra, n, of: ORDER.length, id, label: STEP_NAMES[id] };
