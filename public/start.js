@@ -249,7 +249,7 @@
         c.unmountSignIn?.(mount);
         c.unmountSignUp?.(mount);
         mount.replaceChildren();
-        mount.removeAttribute('data-opening');
+        mount.removeAttribute('aria-busy');
         mount.dataset.mode = mode;
         const appearance = clerkAppearance();
         if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: next, signInForceRedirectUrl: next, appearance });
