@@ -116,6 +116,42 @@ test('apex sign-up always starts onboarding: /auth goes to /start, and a sign-in
   } finally { s.stop(); }
 });
 
+test('a signed-out workspace link signs in on the apex setup page and keeps the return path (Issue #994)', async () => {
+  const s = await serve();
+  try {
+    const wall = await s.apex('GET', '/w/harbor/e/1');
+    assert.deepEqual([wall.status, wall.headers.location], [302, '/w/harbor/auth?next=%2Fw%2Fharbor%2Fe%2F1']);
+    const auth = await s.follow(wall.headers.location);
+    assert.deepEqual([auth.status, auth.headers.location], [302, '/start?next=%2Fw%2Fharbor%2Fe%2F1'], 'the workspace sign-in moves to the setup page, return path carried');
+    for (const [q, back] of [['', '/w/harbor/'], ['?next=https%3A%2F%2Fevil.example%2F', '/w/harbor/'], ['?next=%2F%2Fevil.example', '/w/harbor/'], ['?next=%2Fw%2Fother%2F', '/w/harbor/']]) {
+      const res = await s.apex('GET', `/w/harbor/auth${q}`);
+      assert.deepEqual([res.status, res.headers.location], [302, `/start?next=${encodeURIComponent(back)}`], `/w/harbor/auth${q}`);
+    }
+    const out = await s.apex('GET', '/w/harbor/auth?signed-out=1');
+    assert.equal(out.status, 200, 'signed-out=1 keeps the workspace sign-in page');
+    assert.equal((await s.apex('GET', '/start?next=%2Fw%2Fharbor%2Fe%2F1')).status, 200, '/start serves a workspace return path');
+    for (const bad of ['https%3A%2F%2Fevil.example%2Fw%2Fharbor%2F', '%2F%2Fevil.example%2Fw%2Fx%2F', '%2Fapi%2Fstart', '%2Fw%2Fharbor%2F..%2F..%2Fapi%2Fstart']) {
+      const res = await s.apex('GET', `/start?setup=skip&next=${bad}`);
+      assert.deepEqual([res.status, res.headers.location], [302, '/start?setup=skip'], `next=${bad} is dropped, other choices kept`);
+    }
+    const host = await s.at('harbor.weave.test')('GET', '/auth?next=%2Fe%2F1');
+    assert.equal(host.headers.location, '/api/auth/oidc/start?next=%2Fe%2F1', 'a workspace host keeps its own sign-in');
+  } finally { s.stop(); }
+});
+
+test('without a base domain a workspace sign-in goes straight to the identity provider, as before (Issue #994)', async () => {
+  const idp = await startIdp();
+  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+  const harbor = new Weave();
+  harbor.state.meta.name = 'harbor';
+  harbor.setRequireAuth(true);
+  const { server, port } = await startServer(new Weave(), { port: 0, oidc, workspaces: { harbor } });
+  try {
+    const res = await hit(port, `localhost:${port}`, 'GET', '/w/harbor/auth?next=%2Fw%2Fharbor%2Fe%2F1');
+    assert.deepEqual([res.status, res.headers.location], [302, '/w/harbor/api/auth/oidc/start?next=%2Fw%2Fharbor%2Fe%2F1']);
+  } finally { server.close(); idp.stop(); }
+});
+
 test('env: open sign-up is off unless the operator turns it on, with a per-person limit', () => {
   assert.deepEqual(openSignupFromEnv({}), { on: false, limit: 1 });
   assert.deepEqual(openSignupFromEnv({ WEAVE_OPEN_SIGNUP: '1' }), { on: true, limit: 1 });
