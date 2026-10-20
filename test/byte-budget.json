@@ -21,8 +21,8 @@
       "br": 1784
     },
     "/board-core.js": {
-      "gzip": 1231,
-      "br": 1076
+      "gzip": 1838,
+      "br": 1630
     },
     "/breadcrumbs.js": {
       "gzip": 1331,
@@ -215,6 +215,6 @@
   },
   "raised": {
     "/setup-core.js": "PR #347 (onboarding recovery) grew setup-core.js after PR #359 measured it: gzip 1,313 to 1,641, br 1,173 to 1,460, budget set 5% above",
-    "/board-core.js": "PR #375 (Feature #353) added coverDrop and photoFieldName: gzip 744 to 895, br 623 to 767. Feature #354 (compare picked cards) added togglePick and compareRows: gzip 895 to 1,172, br 767 to 1,024. Budget set 5% above"
+    "/board-core.js": "PR #375 (Feature #353) added coverDrop and photoFieldName: gzip 744 to 895, br 623 to 767. Feature #354 (compare picked cards) added togglePick and compareRows: gzip 895 to 1,172, br 767 to 1,024. Feature #355 (swimlanes) added laneGrid, laneShut and laneFold: gzip 1,172 to 1,750, br 1,024 to 1,552. Budget set 5% above"
   }
 }

@@ -5479,14 +5479,14 @@ function renderBoard(main, db, items, ctx) {
   const known = new Set((everyone ?? items).map((it) => it.id));
   boardPicks.ids = boardPicks.ids.filter((id) => known.has(id));
   if (compare?.db.id === db.id) compare.db = db;
-  const levels = groups === 'side' ? s.levels.slice(0, 1) : s.levels;
+  const levels = groups === 'side' ? s.levels.slice(0, 2) : s.levels;
+  const lanes = groups === 'side' && levels.length === 2;
   const rows = items.map((it) => ({ id: it.id, keys: levels.map((l) => listKeys(l, it)), parent: null, done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, item: it }));
   const byPid = new Map([...(everyone ?? []), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
-  const arranged = listCore.arrange(rows, {
-    levels: levels.map((l, i) => ({ order: l.order, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` })),
-    completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered,
-  });
+  const arrangeLevels = levels.map((l, i) => ({ order: l.order, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
+  const arranged = listCore.arrange(rows, { levels: arrangeLevels, completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered });
+  let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
   const reload = () => keepScroll(() => showDatabase(db.id, db.view.id));
@@ -5561,11 +5561,11 @@ function renderBoard(main, db, items, ctx) {
     });
     return card;
   };
-  const groupEl = (node, depth, { completed = false } = {}) => {
+  const groupEl = (node, depth, { completed = false, cell = false } = {}) => {
     const key = node.key ?? '';
     const cards = el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)));
     cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
-    const head = node.path?.length || completed
+    const head = !cell && (node.path?.length || completed)
       ? el('div', { class: 'board-group-head' },
         completed ? el('span', { class: 'list-group-label' }, node.label) : listHeadingEl(s, depth, node),
         el('span', { class: 'list-count' }, String(node.count ?? node.items.length)))
@@ -5579,11 +5579,31 @@ function renderBoard(main, db, items, ctx) {
   if (arranged.groups) arranged.groups.forEach((g) => walk(g, 0));
   else leaves.push([{ key: '', path: [], items: arranged.items, count: arranged.items.length }, 0]);
   const flat = (node) => ({ ...node, items: node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; }) });
+  const laneEl = (lane) => {
+    const shut = boardCore.laneShut(collapsed, lane);
+    const row = el('div', { class: 'board-lane' + (shut ? ' shut' : ''), role: 'group', 'aria-label': lane.label, dataset: { key: lane.key } });
+    const fold = el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${lane.label}` }, lucideEl('chevron-right'));
+    fold.addEventListener('click', () => {
+      collapsed = boardCore.laneFold(collapsed, lane);
+      const now = boardCore.laneShut(collapsed, lane);
+      row.classList.toggle('shut', now);
+      fold.setAttribute('aria-expanded', String(!now));
+      v.collapsed = collapsed;
+      listViewWrite(db, { collapsed });
+    });
+    row.append(el('div', { class: 'board-lane-head' },
+      el('span', { class: 'board-lane-title' }, fold, listHeadingEl(s, 1, lane), el('span', { class: 'list-count' }, String(lane.count)))),
+    ...lane.cells.map((c) => groupEl(flat(c), 1, { cell: true })));
+    return row;
+  };
+  const grid = lanes ? boardCore.laneGrid(arranged.groups, arrangeLevels[1]) : null;
   const board = el('div', {
     class: 'wv-board', 'aria-label': `${db.name} · ${v.name}`,
-    dataset: { groups: levels.length ? groups : 'stacked', picture },
-    style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}`,
-  }, ...leaves.map(([node, depth]) => groupEl(flat(node), depth)));
+    dataset: { groups: levels.length ? groups : 'stacked', picture, ...(lanes ? { lanes: 'true' } : {}) },
+    style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
+  }, ...(lanes
+    ? [...grid.columns.map((c) => el('div', { class: 'board-col-head board-group-head', dataset: { key: c.key } }, listHeadingEl(s, 0, c), el('span', { class: 'list-count' }, String(c.count)))), ...grid.lanes.map(laneEl)]
+    : leaves.map(([node, depth]) => groupEl(flat(node), depth))));
   if (arranged.completed?.count) board.append(groupEl(flat(arranged.completed), 0, { completed: true }));
   const sortName = (gridSort(db) ?? []).map((x) => x.field).join(', ');
   const manualBtn = el('button', { class: 'btn btn-sm btn-ghost-primary tiny board-manual', type: 'button', onclick: () => listViewWrite(db, { sort: [] }).then(reload) }, 'Manual');
@@ -5630,10 +5650,17 @@ function renderBoard(main, db, items, ctx) {
     addEventListener('pointermove', track, true);
     addEventListener('pointerup', stop, true);
     addEventListener('pointercancel', stop, true);
-    const under = () => [...board.querySelectorAll(':scope > .board-group')].find((g) => {
-      const r = g.getBoundingClientRect();
-      return at.x >= r.left && at.x <= r.right && (side || (at.y >= r.top && at.y <= r.bottom));
-    });
+    const inLanes = board.dataset.lanes === 'true';
+    let held = null;
+    const under = () => {
+      const g = [...board.querySelectorAll('.board-group')].find((n) => {
+        if (!n.getClientRects().length) return false;
+        const r = n.getBoundingClientRect();
+        return at.x >= r.left && at.x <= r.right && ((side && !inLanes) || (at.y >= r.top && at.y <= r.bottom));
+      });
+      if (g) held = g;
+      return g ?? (inLanes ? held : null);
+    };
     RO().sortable(down, {
       source: card,
       items: () => {
