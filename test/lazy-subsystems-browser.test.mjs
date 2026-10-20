@@ -86,4 +86,23 @@ if (s) {
       assert.deepEqual(fetched, ['/activity-log.js'], 'later visits reuse the loaded file');
     } finally { await page.close(); }
   });
+
+  test('the search button loads the command palette once and finds a row', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      const fetched = watch(page);
+      await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.click('#search-btn');
+      await page.waitForSelector('#cmdk-input');
+      assert.deepEqual(fetched, ['/command-palette.js']);
+      await page.fill('#cmdk-input', 'Big');
+      await page.locator('#cmdk-results .result', { hasText: 'Big' }).first().waitFor();
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#cmdk-back', { state: 'detached' });
+      await page.click('#search-btn');
+      await page.waitForSelector('#cmdk-input');
+      assert.deepEqual(fetched, ['/command-palette.js'], 'the second open reuses the loaded file');
+    } finally { await page.close(); }
+  });
 }

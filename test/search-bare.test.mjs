@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(`../public/${p}`, import.meta.url), 'utf8');
-const APP = read('app.js');
+import { APP } from './lib/source.mjs';
 const CSS = read('style.css');
 
 const rules = () => {

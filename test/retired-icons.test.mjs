@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
+import { APP } from './lib/source.mjs';
 await import('../public/icon-registry.js');
 await import('../public/vendor/lucide-moving.js');
 await import('../public/field-dialog-core.js');
@@ -55,7 +56,7 @@ test('every former layers slot names its object', () => {
   assert.equal(projects.icon, 'lucide:folder-kanban');
   const team = S.TEMPLATES.find((t) => t.id === 'projects');
   assert.equal(S.spec(team).spaces[0].tables.find((t) => t.name === 'Projects').icon, 'lucide:folder-kanban');
-  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const app = APP;
   assert.match(app, /tableControlButton\('table-group-btn', 'Group', 'group'\)/);
   assert.match(app, /rollup: 'sigma'/);
   assert.match(app, /deckBtn\('deck-promote', [^)]*'copy-plus'/);
