@@ -1,4 +1,4 @@
-const WORD = /[\w$\\\u0080-￿]/;
+const WORD = /[\w$\\\u0080-\uffff]/;
 const KEYWORDS = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
 
 function spaceNeeded(p, c, after) {
@@ -14,7 +14,9 @@ function spaceNeeded(p, c, after) {
 }
 
 export function minifyJs(src) {
-  let out = '';
+  const out = [];
+  let last = '';
+  const put = (text) => { out.push(text); last = text.at(-1); };
   let pending = false;
   let prev = null;
   let before = null;
@@ -22,17 +24,17 @@ export function minifyJs(src) {
   const n = src.length;
   let i = 0;
   const emit = (text) => {
-    if (pending && spaceNeeded(out.at(-1) ?? '', text[0], prev)) out += ' ';
+    if (pending && spaceNeeded(last, text[0], prev)) put(' ');
     pending = false;
-    out += text;
+    put(text);
   };
   const template = () => {
     const start = i;
     while (i < n) {
       const ch = src[i];
       if (ch === '\\') i += 2;
-      else if (ch === '`') { out += src.slice(start, ++i); prev = 'template'; return; }
-      else if (ch === '$' && src[i + 1] === '{') { i += 2; out += src.slice(start, i); stack.push('tpl'); prev = '{'; return; }
+      else if (ch === '`') { put(src.slice(start, ++i)); prev = 'template'; return; }
+      else if (ch === '$' && src[i + 1] === '{') { i += 2; put(src.slice(start, i)); stack.push('tpl'); prev = '{'; return; }
       else i++;
     }
     throw new Error('unterminated template literal');
@@ -42,7 +44,7 @@ export function minifyJs(src) {
   while (i < n) {
     const c = src[i];
     if (c === ' ' || c === '\t') { pending = true; i++; continue; }
-    if (c === '\n' || c === '\r') { out += c; pending = false; i++; continue; }
+    if (c === '\n' || c === '\r') { put(c); pending = false; i++; continue; }
     if (c === '/' && src[i + 1] === '/') {
       while (i < n && src[i] !== '\n' && src[i] !== '\r') i++;
       pending = true;
@@ -52,7 +54,7 @@ export function minifyJs(src) {
       const end = src.indexOf('*/', i + 2);
       if (end < 0) throw new Error('unterminated comment');
       const breaks = src.slice(i, end).match(/\r?\n|\r/g);
-      if (breaks) { out += breaks.join(''); pending = false; } else pending = true;
+      if (breaks) { put(breaks.join('')); pending = false; } else pending = true;
       i = end + 2;
       continue;
     }
@@ -99,7 +101,7 @@ export function minifyJs(src) {
     if (c === '}' && stack.at(-1) === 'tpl') {
       stack.pop();
       pending = false;
-      out += '}';
+      put('}');
       i++;
       template();
       continue;
@@ -111,13 +113,14 @@ export function minifyJs(src) {
     i++;
   }
   if (stack.length) throw new Error('unbalanced braces');
-  return out;
+  return out.join('');
 }
 
 const CSS_GLUE = new Set(['{', '}', ';', ',', '>']);
 
 export function minifyCss(src) {
-  let out = '';
+  const out = [];
+  let p = '';
   let pending = false;
   let escaped = false;
   const n = src.length;
@@ -141,14 +144,14 @@ export function minifyCss(src) {
       const hex = /^[\da-f]{1,6}/i.exec(src.slice(j, j + 6));
       j += hex ? hex[0].length : 1;
     }
-    const p = out.at(-1) ?? '';
-    if (pending && p && (escaped || !(CSS_GLUE.has(p) || CSS_GLUE.has(c) || p === ':' || p === '(' || c === ')'))) out += ' ';
+    if (pending && p && (escaped || !(CSS_GLUE.has(p) || CSS_GLUE.has(c) || p === ':' || p === '(' || c === ')'))) out.push(' ');
     pending = false;
     escaped = c === '\\';
-    out += src.slice(i, j);
+    out.push(src.slice(i, j));
+    p = src[j - 1];
     i = j;
   }
-  return out;
+  return out.join('');
 }
 
 export function createMinified() {

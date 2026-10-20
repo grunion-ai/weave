@@ -62,6 +62,15 @@ test('minifyCss drops comments and spaces beside braces, separators and colons, 
   assert.equal(minifyCss('.\\31 0 { a: b }'), '.\\31 0{a:b}', 'the space ending a hex escape stays');
 });
 
+test('minifyJs reads app.js in linear time, well under a second', () => {
+  const src = readFileSync(join(PUBLIC, 'app.js'), 'utf8');
+  const start = performance.now();
+  minifyJs(src);
+  minifyCss(readFileSync(join(PUBLIC, 'style.css'), 'utf8'));
+  const ms = performance.now() - start;
+  assert.ok(ms < 1000, `minifying app.js and style.css took ${Math.round(ms)} ms; the first request waits on it`);
+});
+
 test('createMinified serves a file it cannot minify as written', () => {
   const dir = mkdtempSync(join(tmpdir(), 'weave-minify-'));
   try {
