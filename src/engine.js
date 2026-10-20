@@ -956,6 +956,8 @@ export class Weave {
   #schemaVersion = null;
   #scales = new Map();
   #rows = null;
+  #query = null;
+  #loops = 0;
 
   #computing = [];
 
@@ -6672,6 +6674,7 @@ export class Weave {
     const frame = { key, name: field.name, row: e.id, rowName: this.#rawName(e, db) };
     const at = this.#computing.findIndex((c) => c.key === key);
     if (at >= 0) {
+      this.#loops++;
       const loop = [...this.#computing.slice(at), frame];
       const travels = new Set(loop.map((c) => c.row)).size > 1;
       return CYCLE_PREFIX + loop.map((c) => (travels && c.rowName ? `${c.rowName} › ${c.name}` : c.name)).join(' → ');
@@ -6712,11 +6715,8 @@ export class Weave {
         let rows;
         if (field.config.via) {
           if (e.sysId !== targetDb.spaceId) return null;
-          rows = owner.listEntities(targetDb.id);
-          const w = field.config.where;
-          if (w) {
-            try { rows = rows.filter((r) => owner.#matchNode(r, targetDb, Array.isArray(w) ? { and: w } : w)); } catch { return null; }
-          }
+          rows = this.#rollupRows(owner, targetDb, field);
+          if (!rows) return null;
         } else {
           const rel = db.fields[field.config.relationField];
           rows = this.#relationIds(e, rel).map((id) => this.#liveEntity(id)).filter(Boolean);
@@ -6863,6 +6863,20 @@ export class Weave {
     const lists = rel.config.many ? resolved : [resolved];
     const ids = Array.isArray(lists) ? lists.flat().filter((id) => typeof id === 'string' && !isCycle(id)) : [];
     return { ids: [...new Set(ids)], many: !!(rel.config.many || target.config.many) };
+  }
+
+  #rollupRows(owner, targetDb, field) {
+    const shared = this.#query?.rollupRows;
+    const key = `${targetDb.id}:${field.id}`;
+    if (shared?.has(key)) return shared.get(key);
+    const loops = owner.#loops;
+    let rows = owner.listEntities(targetDb.id);
+    const w = field.config.where;
+    if (w) {
+      try { rows = rows.filter((r) => owner.#matchNode(r, targetDb, Array.isArray(w) ? { and: w } : w)); } catch { rows = null; }
+    }
+    if (shared && owner.#loops === loops) shared.set(key, rows);
+    return rows;
   }
 
   #rollupTarget(db, field) {
@@ -7214,11 +7228,17 @@ export class Weave {
   }
 
   query(dbRef, { viewerZone = null, workspace = null, ...opts } = {}) {
-    if (viewerZone == null) return this.#queryIn(dbRef, opts, workspace);
+    if (viewerZone == null) return this.#inQuery(dbRef, opts, workspace);
     const prev = this.viewerZone;
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
-    try { return this.#queryIn(dbRef, opts, workspace); } finally { this.viewerZone = prev; }
+    try { return this.#inQuery(dbRef, opts, workspace); } finally { this.viewerZone = prev; }
   }
+  #inQuery(dbRef, opts, workspace) {
+    if (this.#query) return this.#queryIn(dbRef, opts, workspace);
+    this.#query = { rollupRows: new Map() };
+    try { return this.#queryIn(dbRef, opts, workspace); } finally { this.#query = null; }
+  }
+
   #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '', view = null } = {}, workspace = null) {
     const db = this.getTable(dbRef);
     if (view != null && view !== '') {
