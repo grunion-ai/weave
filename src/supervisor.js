@@ -1,14 +1,13 @@
 import { createServer, request } from 'node:http';
 import { spawn } from 'node:child_process';
 import { timingSafeEqual } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createGunzip } from 'node:zlib';
-import { pipeline } from 'node:stream/promises';
+import { gunzipSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { createReleaseCheck, newerVersion } from './update-check.js';
-import { streamTar } from './backup.js';
+import { readTar } from './backup.js';
 
 export const REPO_API = 'https://api.github.com/repos/grunion-ai/weave';
 export const REPO_GIT = 'https://github.com/grunion-ai/weave.git';
@@ -57,18 +56,16 @@ const versionOf = (dir) => { try { return JSON.parse(readFileSync(join(dir, 'pac
 const forwardable = (headers, drop = []) => Object.fromEntries(Object.entries(headers).filter(([k]) => !HOP.has(k) && !drop.includes(k)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function unpackRelease(tgz, dir) {
+export function unpackRelease(tgz, dir) {
   const root = resolve(dir);
-  const open = (name) => {
+  for (const { name, data } of readTar(gunzipSync(tgz))) {
     const rel = name.split('/').slice(1).join('/');
-    if (!rel) return null;
+    if (!rel) continue;
     const out = resolve(root, rel);
     if (!out.startsWith(root + sep)) throw new Refusal(`a tarball entry escapes the release directory: ${name}`);
     mkdirSync(dirname(out), { recursive: true });
-    const fd = openSync(out, 'w');
-    return { write: (buf) => writeSync(fd, buf), close: () => closeSync(fd) };
-  };
-  await pipeline(Buffer.isBuffer(tgz) ? [tgz] : tgz, createGunzip(), (chunks) => streamTar(chunks, open));
+    writeFileSync(out, data);
+  }
 }
 
 function goodReleases(releasesDir, failed) {
@@ -285,7 +282,7 @@ export async function startSupervisor({
     if (!r.ok) throw new Error(`the ${name} tarball answered HTTP ${r.status}`);
     const part = join(releasesDir, `${name}.part`);
     rmSync(part, { recursive: true, force: true });
-    await unpackRelease(r.body, part);
+    unpackRelease(Buffer.from(await r.arrayBuffer()), part);
     return part;
   }
 
