@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 await import('../public/date-grain.js');
 await import('../public/field-dialog-core.js');
 const core = globalThis.fieldDialogCore;
-const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+import { APP } from './lib/source.mjs';
 
 const sel = (options, dflt) => core.stateFromDefinition({ type: 'select', config: { options, ...(dflt !== undefined ? { default: dflt } : {}) } });
 

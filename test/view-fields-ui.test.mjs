@@ -11,7 +11,7 @@ const core = globalThis.fieldDialogCore;
 const viewCore = globalThis.weaveViewCore;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+import { APP } from './lib/source.mjs';
 const CSS = [readFileSync(join(ROOT, 'public/chip.css'), 'utf8'), readFileSync(join(ROOT, 'public/style.css'), 'utf8')].join('\n');
 
 test('view is a type the dialog knows but never offers as a tile', () => {
