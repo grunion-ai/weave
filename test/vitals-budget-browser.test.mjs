@@ -25,6 +25,7 @@ if (s) {
       });
       await page.goto(`${s.base}${j.url(s)}`, { waitUntil: 'networkidle' });
       await page.waitForSelector(j.ready);
+      await page.evaluate(() => new Promise((r) => setTimeout(() => { document.querySelector('#main').style.marginTop = '160px'; requestAnimationFrame(() => requestAnimationFrame(r)); }, 200)));
       await j.interact(page, cell, s);
       return await readVitals(page);
     } finally {
