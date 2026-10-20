@@ -762,7 +762,7 @@ async function loadSchema() {
   const registryRead = WS_PREFIX && !SHELL_ROOT && state.registry !== null ? readRegistry() : null;
   registryRead?.catch(() => {});
   const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
-  const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth).catch(() => state.canManageForms = false) : null;
+  const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
   schemaLoading = true;
   try {
     state.schema = await api('GET', '/schema');
@@ -1173,7 +1173,7 @@ function renderNav() {
       }),
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
-        title: `New table in ${space.space}`, type: 'button',
+        title: `New table in ${space.space}`, type: 'button', hidden: !state.canManageForms,
         onclick: () => tableTray({ spaceId: space.spaceId }),
       }, iconEl('+', 'wv-icon')),
       kindDots('space', space, () => ({}), { title: `${space.space} actions`, extraClass: 'nav-space-menu', head: true }));
@@ -1197,7 +1197,7 @@ function renderNav() {
   }
   const foot = el('div', { class: 'nav-foot' },
     el('button', {
-      class: 'btn btn-sm btn-ghost-secondary', type: 'button',
+      class: 'btn btn-sm btn-ghost-secondary', type: 'button', hidden: !state.canManageForms,
       onclick: () => foot.append(inlineNameInput('New space name…', async (name) => {
         await api('POST', '/spaces', { name });
         await loadSchema();
@@ -9250,7 +9250,7 @@ async function useTemplateDialog(space) {
 }
 
 function spaceTablesCard(space) {
-  const add = space.system ? null
+  const add = space.system || !state.canManageForms ? null
     : el('button', { class: 'btn btn-sm wv-start-new', onclick: () => tableTray({ spaceId: space.spaceId }) }, '+ New table');
   if (!space.tables.length) {
     return el('div', { class: 'card wv-start space-tables' },
@@ -11408,6 +11408,10 @@ async function runStarter(template) {
 }
 
 function emptyWorkspace() {
+  if (!state.canManageForms) return el('div', { class: 'card wv-start' }, el('div', { class: 'card-body' },
+    el('h2', {}, 'You’re in the workspace'),
+    el('p', { class: 'wv-start-lead' }, 'There are no tables here yet. Ask a workspace architect to add the first table or template.'),
+    el('p', {}, state.accountRole === 'editor' ? 'As an editor, you can add and edit rows once a table is ready.' : 'As an observer, you can read and comment once your team adds content.')));
   return el('div', { class: 'card wv-start' },
     el('div', { class: 'card-body' },
       el('p', { class: 'wv-start-lead' }, 'A table holds rows, and you choose its fields. Start with a new table or a template.'),
@@ -13298,7 +13302,7 @@ function wireWsNew() {
     if (!start) return newWorkspaceForm();
     const apex = start.replace(/\/start$/, '');
     menu([
-      { label: copy.newWorkspace, section: 'organize', run: newWorkspaceForm },
+      { label: copy.newWorkspace, section: 'organize', run: () => { location.href = `${start}?setup=new`; } },
       { label: copy.addLogin, section: 'organize', run: () => { location.href = `${apex}/api/auth/oidc/start?start=1&fresh=1&next=${encodeURIComponent('/start?pick=1')}`; } },
       { label: copy.find, section: 'organize', run: () => { location.href = `${start}?pick=1`; } },
     ], { anchor: btn, className: 'ws-plus', label: 'Workspaces' });

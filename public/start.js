@@ -1,6 +1,6 @@
 (function () {
   const { COPY: SLUG, fill } = globalThis.WeaveSlugs;
-  const { begin, reduce, progress } = globalThis.WeaveSetup;
+  const { begin, reduce, draft, resume, progress } = globalThis.WeaveSetup;
   const { TEMPLATES, spec } = globalThis.WeaveStarters;
   const CATEGORIES = globalThis.WeaveStarters.CATEGORIES ?? [];
   const { TOOLS, guide } = globalThis.WeaveAgentConnect;
@@ -67,6 +67,7 @@
     done: { title: '{title} is ready', withAgent: 'Your AI app is connected. Open the workspace, then ask your AI app for a tour.', withoutAgent: 'To connect an AI app later, add this connection address to it: {mcp}', open: 'Open workspace' },
     trial: { left: '{n} days left in your trial', leftOne: '1 day left in your trial' },
     errors: {
+      interrupted: 'Setup was interrupted. Check the workspace name below before continuing.',
       signin_failed: 'Sign-in did not finish. Try again, or use a different account.',
       signin_unverified: 'weave could not verify that sign-in. Try again.',
       provider_down: '{provider} is not answering. Try again in a minute.',
@@ -171,9 +172,19 @@
     if (e.type === 'connected' && was.step === 'agent' && !was.connected) capture('agent_connected', { tool: was.data.tool });
   }
 
+  function saveDraft() {
+    const saved = draft(s);
+    try {
+      if (saved) sessionStorage.setItem('weave:setup', JSON.stringify(saved));
+      else sessionStorage.removeItem('weave:setup');
+    } catch {}
+    if (saved) history.replaceState(null, '', '/start?setup=resume');
+  }
+
   function dispatch(e) {
     const was = s;
     s = reduce(s, e);
+    saveDraft();
     milestone(e, was);
     render();
   }
@@ -226,14 +237,14 @@
   }
 
   function account() {
-    let mode = 'signin';
+    let mode = entry.mode === 'signup' ? 'signup' : 'signin';
     const pane = me.clerk;
     const next = signInHref(entry.setup === 'skip' ? '/start?setup=skip' : entry.pick ? PICK : '/start');
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
     const switchLead = make('span', {});
-    const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; show(); } });
+    const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; history.replaceState(null, '', `/start?mode=${mode}`); show(); } });
     const toggle = make('p', { class: 'switch', hidden: true }, switchLead, ' ', switchGo);
     const show = async () => {
       title.textContent = mode === 'signup' ? COPY.account.title : COPY.account.signInTitle;
@@ -327,7 +338,7 @@
       return [...head, waitingNote(), (me.rows ?? []).length ? make('div', { class: 'actions' }, make('button', { type: 'button', class: 'btn', onclick: () => dispatch({ type: 'back' }) }, COPY.back)) : null];
     }
     const slugs = globalThis.WeaveSlugForm.mount({
-      accountName: me.accountName,
+      accountName: s.data.name,
       base: me.base,
       check: (slug) => getJson(`/api/start/slug?slug=${encodeURIComponent(slug)}`),
     });
@@ -336,7 +347,7 @@
     go.textContent = COPY.next;
     const form = make('form', { novalidate: true }, slugs.node, make('div', { class: 'actions' },
       (me.rows ?? []).length ? make('button', { type: 'button', class: 'btn', onclick: () => dispatch({ type: 'back' }) }, COPY.back) : null,
-      make('button', { type: 'button', class: 'btn-link', 'data-go': 'skip', onclick: () => dispatch({ type: 'skip' }) }, COPY.skip),
+      make('button', { type: 'button', class: 'btn-link', 'data-go': 'skip', onclick: () => { if (!go.disabled) dispatch({ type: 'skip', ...slugs.value() }); else slugs.nameInput.focus(); } }, 'Create empty workspace'),
       make('span', { class: 'grow' }), go));
     form.addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -344,11 +355,12 @@
       dispatch({ type: 'next', ...slugs.value() });
     });
     queueMicrotask(() => {
-      slugs.nameInput.value = s.data.name || me.accountName || '';
+      slugs.nameInput.value = s.data.name;
       if (s.data.slug) slugs.slugInput.value = s.data.slug;
       slugs.nameInput.dispatchEvent(new Event('input'));
       if (s.data.slug) slugs.slugInput.dispatchEvent(new Event('input'));
       if (s.error && /^slug_/.test(s.error.code)) slugs.refused(s.error.code);
+      form.addEventListener('input', () => { s.data = { ...s.data, ...slugs.value() }; saveDraft(); });
       slugs.nameInput.focus();
     });
     return [...head, s.error && !/^slug_/.test(s.error.code) ? errorBox(s.error) : null, form];
@@ -439,12 +451,13 @@
   let query = '';
   let entry = {};
   function work() {
-    choice = s.data.other ? EMPTY : s.data.template ?? choice;
+    choice = s.data.empty ? EMPTY : s.data.template ?? null;
     const groups = shelves();
     const basic = TEMPLATES.find((t) => t.id === BASIC) ?? null;
     if (!groups.some((g) => g.id === shelf)) shelf = 'all';
     const other = make('textarea', { class: 'form-control', rows: 2, id: 'work-other', placeholder: COPY.work.emptyPlaceholder });
     other.value = s.data.other ?? '';
+    other.addEventListener('input', () => { s.data.other = other.value; saveDraft(); });
     const details = make('div', { class: 'details', id: 'work-details', 'aria-live': 'polite' });
     const goLabel = (id) => (id && id !== EMPTY ? fill(COPY.work.choose, { title: titleOf(TEMPLATES.find((t) => t.id === id)) }) : COPY.next);
     const go = make('button', { type: 'button', class: 'btn btn-primary', 'data-go': 'next', disabled: !choice, onclick: () => {
@@ -469,7 +482,7 @@
     const chips = groups.length > 1 ? make('div', { class: 'chips', role: 'group', 'aria-label': COPY.work.title },
       [{ id: 'all', label: COPY.work.all }, ...groups].map((g) => make('button', { type: 'button', class: 'chip', 'data-category': g.id, 'aria-pressed': String(shelf === g.id), onclick: () => { shelf = g.id; filter(); } },
         g.icon ? glyph(g.icon) : null, g.label))) : null;
-    const gallery = make('div', { class: 'gallery' }, sections, fallback);
+    const gallery = make('div', { class: 'gallery' }, fallback, sections);
     const search = make('input', { type: 'search', class: 'form-control', id: 'work-search', 'aria-label': COPY.work.search, placeholder: COPY.work.searchPlaceholder, autocomplete: 'off', enterkeyhint: 'search', 'aria-controls': 'work-gallery' });
     gallery.id = 'work-gallery';
     search.value = query;
@@ -506,6 +519,8 @@
 
     function select(id) {
       choice = id;
+      s.data = { ...s.data, empty: id === EMPTY, template: id === EMPTY ? null : id, other: id === EMPTY ? other.value : '' };
+      saveDraft();
       for (const b of gallery.querySelectorAll('.card')) b.setAttribute('aria-pressed', String(b.dataset.template === id));
       go.textContent = goLabel(id);
       go.disabled = false;
@@ -636,14 +651,16 @@
     const title = s.made?.title ?? s.data.name;
     const g = s.data.tool ? guide(s.data.tool, { url: s.made.mcp, workspace: title, template: chosen()?.work ?? chosen()?.title ?? null, other: s.data.other }) : null;
     const skip = make('button', { type: 'button', class: 'btn-link', 'data-go': 'skip', onclick: () => dispatch({ type: 'skip' }) }, COPY.agent.skip);
+    const open = make('a', { class: 'btn btn-primary btn-wide', href: s.made.open + (s.made.table ? `?table=${encodeURIComponent(s.made.table)}` : ''), 'data-go': 'open' }, COPY.done.open);
+    const ready = make('div', { class: 'actions' }, open, make('span', { class: 'muted' }, 'Your workspace is ready. AI setup is optional and can be done later.'));
     if (!g) {
       const group = (heading, kinds) => {
         const tools = TOOLS.filter((t) => kinds.includes(t.kind));
         return tools.length ? [make('h2', {}, heading), make('div', { class: 'apps' }, tools.map((t) => make('button', { type: 'button', class: 'app', 'data-tool': t.id, onclick: () => dispatch({ type: 'tool', tool: t.id }) },
           appTile(t), make('span', { class: 'app-text' }, make('b', {}, t.name), make('small', {}, t.pitch ?? t.where)))))] : [];
       };
-      return [make('h1', {}, COPY.agent.title), make('p', { class: 'lead' }, COPY.agent.lead), errorBox(s.error),
-        ...group(COPY.agent.chat, ['chat']), ...group(COPY.agent.harnesses, ['harness', 'other']),
+      return [ready, make('h1', {}, COPY.agent.title), make('p', { class: 'lead' }, COPY.agent.lead), errorBox(s.error),
+        ...group(COPY.agent.chat, ['chat']), make('details', {}, make('summary', {}, COPY.agent.harnesses), ...group('Desktop and terminal tools', ['harness', 'other'])),
         make('div', { class: 'actions' }, skip)];
     }
     const kind = { prompt: COPY.agent.copyPrompt, command: COPY.agent.copyCommand, codex: COPY.agent.copyCommand, url: COPY.agent.copyAddress }[g.copy];
@@ -665,6 +682,7 @@
       make('div', { class: 'copybox stacked' }, make('code', { 'aria-label': 'first message', class: 'message' }, g.message), copyButton(g.message, 'first message', COPY.agent.copyMessage, connected ? 'btn btn-primary' : 'btn')));
     if (connected) queueMicrotask(() => payoff.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }));
     return [
+      ready,
       make('div', { class: 'chosen' }, appTile(g, ' big'), make('span', { class: 'chosen-text' }, make('b', {}, g.name), make('small', {}, g.where)),
         make('button', { type: 'button', class: 'btn-link', 'data-go': 'change', onclick: () => dispatch({ type: 'back' }) }, COPY.agent.change)),
       errorBox(s.error),
@@ -740,8 +758,11 @@
     const q = Object.fromEntries(new URLSearchParams(location.search));
     try { me = await getJson('/api/start'); } catch (err) { main.textContent = err.message; return; }
     entry = q;
-    s = begin(me, q);
-    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : '/start');
+    let saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem('weave:setup')); } catch {}
+    s = q.setup === 'resume' ? resume(me, saved) : begin(me, q);
+    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : q.mode === 'signup' ? '/start?mode=signup' : '/start');
+    saveDraft();
     globalThis.WeaveConsent?.start(me.analytics);
     render();
     if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');

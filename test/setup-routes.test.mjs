@@ -301,3 +301,37 @@ test('agent step: a call weave refused never counts as a connected AI app (Issue
     assert.equal(await seen(), true);
   } finally { s.stop(); }
 });
+
+test('explicit signup intent survives the legacy website auth entry point', async () => {
+  const s = await serve();
+  try {
+    const r = await s.apex('GET', '/auth?mode=signup');
+    assert.equal(r.status, 302);
+    assert.equal(r.headers.location, '/start?mode=signup');
+    const page = await s.follow(r.headers.location);
+    assert.equal(page.status, 200);
+  } finally { s.stop(); }
+});
+
+test('spent invites offer safe recovery without redeeming again or admitting strangers', async () => {
+  const s = await serve({ openSignup: { on: true, limit: 2 } });
+  try {
+    const { cookie } = await s.signIn({ sub: 'owner_recovery', email: 'owner@example.com', email_verified: true });
+    await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Recovery', slug: 'recovery' } });
+    const w = s.open('recovery');
+    const invited = w.inviteMember({ email: 'member@example.com', role: 'observer', issuer: s.idp.issuer });
+    w.redeemIdentityInvite(invited.code, { issuer: s.idp.issuer, subject: 'member_recovery', email: 'member@example.com', emailVerified: true });
+    w.store.close();
+    const path = `/w/recovery/api/auth/oidc/start?invite=${invited.code}`;
+    const stranger = await s.apex('GET', path);
+    assert.equal(stranger.status, 410);
+    assert.match(stranger.text, /Sign in to workspace/);
+    assert.equal(stranger.headers['set-cookie'], undefined);
+    const member = await s.signIn({ sub: 'member_recovery', email: 'member@example.com', email_verified: true });
+    const again = await s.apex('GET', path, { cookie: member.cookie });
+    assert.equal(again.status, 410);
+    assert.match(again.text, /You already have access/);
+    assert.match(again.text, /Open workspace/);
+    assert.equal(again.headers['set-cookie'], undefined);
+  } finally { s.stop(); }
+});

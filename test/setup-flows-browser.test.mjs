@@ -182,6 +182,7 @@ if (openHub) {
     await step(p, 'agent');
     const fits = () => p.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
     assert.ok(await fits(), 'the app grid fits the phone');
+    await p.locator('main details summary').click();
     await p.click('.app[data-tool="claude-code"]');
     assert.match(await p.locator('ol.steps').textContent(), /Run \/mcp/);
     const prompt = await p.locator('.steps pre.prompt').textContent();
@@ -227,6 +228,7 @@ if (openHub) {
       await signIn(p, openHub);
       if (at === 'work') await nameIt(p, `Skip ${at}`, `skip-${at}-chosen`);
       await step(p, at);
+      if (at === 'workspace') await p.waitForSelector('.ws-slug-status[data-state="available"]');
       await go(p, 'skip');
       await p.waitForURL(at === 'work' ? /\/w\/skip-work-chosen\/$/ : /\/w\/skip-workspace\/$/, { timeout: 15000 });
       await p.context().close();
@@ -241,6 +243,7 @@ if (openHub) {
     await pickWork(p, 'tasks');
     await step(p, 'agent');
     await p.mouse.move(0, 0);
+    await p.locator('main details summary').click();
     await p.click('.app[data-tool="codex"]');
     assert.match(await p.locator('.steps li[data-at] code').textContent(), /^codex mcp add weave --url http:\/\/localhost:\d+\/w\/no-agent\/mcp$/, 'Codex copies its add command');
     assert.equal(await p.locator('main .btn-primary[data-copy="address"]').textContent(), 'Copy command');
@@ -327,6 +330,7 @@ if (openHub) {
     const anchors = new Map();
     const views = [['list', await read()]];
     for (const id of ids) {
+      if (await p.locator(`.app[data-tool="${id}"]`).isHidden()) await p.locator("main details summary").click();
       await p.click(`.app[data-tool="${id}"]`);
       await p.waitForSelector('.chosen');
       views.push([id, await read()]);
@@ -675,7 +679,7 @@ if (openHub) {
     await p.press('#work-search', 'Escape');
     assert.equal(await p.inputValue('#work-search'), '');
     assert.equal((await visibleCards(p)).length, all, 'Escape clears the search');
-    assert.equal((await visibleCards(p)).at(-1 - (await p.locator('.card[data-template="basic"]').count())), 'empty', 'the fallbacks stay pinned at the end');
+    assert.equal((await visibleCards(p))[0], 'empty', 'simple setups are available first');
     await p.context().close();
   });
 
@@ -737,4 +741,102 @@ if (openHub) {
     await step(p, 'build');
     await p.close();
   });
+  for (const phone of [false, true]) {
+    for (const theme of ['light', 'dark']) {
+      test(`onboarding recovery and second workspace (${phone ? 'phone' : 'desktop'}, ${theme})`, async () => {
+        const p = await page({ phone, theme });
+        const suffix = `${phone ? 'phone' : 'desktop'}-${theme}`;
+        person(openHub, { email: `recovery-${suffix}@example.com` });
+        try {
+          await signIn(p, openHub);
+          await nameIt(p, `Recovery ${suffix}`, `recovery-${suffix}`);
+          await p.click('.card[data-template="tasks"]');
+          await p.reload();
+          await step(p, 'work');
+          assert.equal(await p.locator('.card[data-template="tasks"]').getAttribute('aria-pressed'), 'true');
+          await go(p, 'next');
+          await step(p, 'agent');
+          await p.reload();
+          await step(p, 'agent');
+          assert.equal(await p.locator('main [data-go="open"]').isVisible(), true);
+          assert.equal(await p.locator('.app[data-tool="codex"]').isHidden(), true);
+          assert.ok(await p.locator('main [data-go="open"]').evaluate((n) => n.getBoundingClientRect().bottom < innerHeight));
+          await go(p, 'open');
+          await p.waitForSelector('#ws-new');
+          if (phone) await p.getByRole('button', { name: 'Open navigation', exact: true }).click();
+          await p.locator('#ws-new').click();
+          await p.locator('.wv-menu.ws-plus .wv-menu-row', { hasText: 'New workspace' }).click();
+          await step(p, 'workspace');
+          assert.equal(await p.inputValue('input[name="name"]'), '');
+          await p.fill('input[name="name"]', `Second ${suffix}`);
+          await p.fill('input[name="slug"]', `second-${suffix}`);
+          await p.waitForSelector('.ws-slug-status[data-state="available"]');
+          await go(p, 'skip');
+          await p.waitForURL(new RegExp(`/w/second-${suffix}/$`));
+          assert.equal(await p.locator('.wv-start-new').count(), 1);
+        } finally { await p.close(); }
+      });
+    }
+  }
+
+  test('signup intent opens the signup pane and survives refresh and switching', async () => {
+    const p = await page();
+    try {
+      await p.goto(`${clerkHub.base}/start?mode=signup`);
+      await p.waitForSelector('#clerk-pane[data-mode="signup"]');
+      await p.reload();
+      await p.waitForSelector('#clerk-pane[data-mode="signup"]');
+      await go(p, 'switch');
+      await p.waitForSelector('#clerk-pane[data-mode="signin"]');
+      await p.reload();
+      await p.waitForSelector('#clerk-pane[data-mode="signin"]');
+    } finally { await p.close(); }
+  });
+
+  test('blocked session storage does not prevent setup', async () => {
+    const p = await page();
+    person(openHub, { email: 'blocked-storage@example.com' });
+    await p.addInitScript(() => Object.defineProperty(window, 'sessionStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } }));
+    try {
+      await signIn(p, openHub);
+      await nameIt(p, 'Blocked storage', 'blocked-storage');
+      await pickWork(p, 'tasks');
+      await step(p, 'agent');
+      assert.equal(await p.locator('main [data-go="open"]').isVisible(), true);
+    } finally { await p.close(); }
+  });
+
+  for (const role of ['architect', 'editor', 'observer']) {
+    for (const phone of [false, true]) {
+      test(`invited ${role} in an empty workspace (${phone ? 'phone' : 'desktop'})`, async () => {
+        const suffix = `${role}-${phone ? 'phone' : 'desktop'}`;
+        const owner = await page();
+        person(openHub, { email: `owner-${suffix}@example.com` });
+        await signIn(owner, openHub);
+        await nameIt(owner, `Invite ${suffix}`, `invite-${suffix}`);
+        await go(owner, 'skip');
+        await owner.waitForURL(new RegExp(`/w/invite-${suffix}/$`));
+        await owner.close();
+        const w = openHub.opened(`invite-${suffix}`);
+        const email = `invited-${suffix}@example.com`;
+        const invite = w.inviteMember({ email, role, issuer: openHub.idp.issuer });
+        w.store.close();
+        const p = await page({ phone, theme: phone ? 'dark' : 'light' });
+        person(openHub, { email });
+        try {
+          await p.goto(`${openHub.base}/w/invite-${suffix}/api/auth/oidc/start?invite=${invite.code}`);
+          await p.waitForSelector('.wv-start');
+          if (role === 'architect') assert.equal(await p.locator('.wv-start-new').count(), 1);
+          else {
+            assert.equal(await p.locator('.wv-start-new, .wv-start-template').count(), 0);
+            assert.match(await p.locator('.wv-start').textContent(), /Ask a workspace architect/);
+            assert.match(await p.locator('.wv-start').textContent(), new RegExp(`As an ${role}`));
+            assert.equal(await p.locator('.nav-add-table:visible').count(), 0);
+          }
+          assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        } finally { await p.close(); }
+      });
+    }
+  }
+
 }

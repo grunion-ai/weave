@@ -1,5 +1,5 @@
 (function (root) {
-  const STEP_NAMES = { account: 'Account', workspace: 'Workspace', work: 'Your work', agent: 'AI app' };
+  const STEP_NAMES = { account: 'Account', workspace: 'Workspace', work: 'Your work', agent: 'Optional AI app' };
   const ORDER = Object.keys(STEP_NAMES);
   const AT = { account: 'account', workspace: 'workspace', work: 'work', build: 'work', agent: 'agent', done: 'agent' };
   const STEPS = ['account', 'list', 'closed', 'workspace', 'work', 'build', 'agent', 'done'];
@@ -14,7 +14,7 @@
     if (query.setup === 'skip' && me.canCreate && !rows.some((r) => r.kind === 'workspace')) return { ...base, step: 'build', skipped: true };
     if (rows.length && query.setup !== 'new') return { ...base, step: 'list' };
     if (!me.canCreate) return { ...base, step: rows.length ? 'list' : 'closed' };
-    return { ...base, step: 'workspace', data: { ...base.data, name: me.accountName ?? '' } };
+    return { ...base, step: 'workspace', data: { ...base.data, name: rows.length ? '' : me.accountName ?? '' } };
   }
 
   function reduce(s, e) {
@@ -22,7 +22,7 @@
     switch (e.type) {
       case 'new':
         if (s.step !== 'list') return s;
-        return s.me.canCreate ? at('workspace', { data: { ...s.data, name: s.data.name || (s.me.accountName ?? '') } }) : at('closed');
+        return s.me.canCreate ? at('workspace', { data: { ...s.data, name: '' } }) : at('closed');
       case 'next':
         if (s.step === 'workspace') return at('work', { data: { ...s.data, name: e.name ?? s.data.name, slug: e.slug ?? s.data.slug } });
         if (s.step === 'work') return at('build', { data: { ...s.data, template: e.template ?? null, other: e.other ?? '' } });
@@ -34,7 +34,7 @@
         if (s.step === 'agent' && s.data.tool) return at('agent', { data: { ...s.data, tool: null } });
         return s;
       case 'skip':
-        if (s.step === 'workspace' || s.step === 'work') return at('build', { skipped: true });
+        if (s.step === 'workspace' || s.step === 'work') return at('build', { skipped: true, data: { ...s.data, name: e.name ?? s.data.name, slug: e.slug ?? s.data.slug } });
         if (s.step === 'agent') return at('done', { skippedAgent: true });
         return s;
       case 'tool':
@@ -56,6 +56,21 @@
     }
   }
 
+  function draft(s, now = Date.now()) {
+    if (!s.me?.signedIn || !['workspace', 'work', 'build', 'agent', 'done'].includes(s.step)) return null;
+    return { version: 1, at: now, identity: JSON.stringify(s.me.logins ?? []), step: s.step, data: s.data, made: s.made, skipped: s.skipped };
+  }
+
+  function resume(me, saved, now = Date.now()) {
+    const fresh = begin(me, { setup: 'new' });
+    if (!me.signedIn || !saved || saved.version !== 1 || saved.identity !== JSON.stringify(me.logins ?? []) || !Number.isFinite(saved.at) || now - saved.at > 86400000 || saved.at > now || !saved.data || typeof saved.data.name !== 'string' || typeof saved.data.slug !== 'string' || !['workspace', 'work', 'build', 'agent', 'done'].includes(saved.step)) return fresh;
+    const row = (me.rows ?? []).find((r) => r.kind === 'workspace' && r.name === (saved.made?.name ?? saved.data.slug));
+    if (saved.made && row) return { ...fresh, step: saved.step === 'done' ? 'done' : 'agent', data: saved.data, made: { ...saved.made, open: row.open }, skipped: false };
+    if (saved.step === 'build' && row) return { ...fresh, step: 'done', data: saved.data, made: { name: row.name, title: row.title, open: row.open }, skipped: true };
+    if (!me.canCreate || saved.made) return fresh;
+    return { ...fresh, step: saved.step === 'work' ? 'work' : 'workspace', data: saved.data, error: saved.step === 'build' ? { code: 'interrupted' } : null };
+  }
+
   function progress(s, build = null) {
     const id = AT[s.step];
     if (!id || (id === 'account' && !s.me?.signedIn)) return null;
@@ -73,5 +88,5 @@
     return out;
   }
 
-  root.WeaveSetup = { STEP_NAMES, STEPS, begin, reduce, progress, exits };
+  root.WeaveSetup = { STEP_NAMES, STEPS, begin, reduce, draft, resume, progress, exits };
 })(globalThis);

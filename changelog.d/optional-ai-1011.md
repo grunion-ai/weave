@@ -1,0 +1,1 @@
+- Open a created workspace immediately; desktop AI clients live under an expandable section. (Issue #1011).
