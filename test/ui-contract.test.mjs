@@ -760,8 +760,10 @@ test('reference panels join the side column as card panels, wearing the pointer-
     'a side-column card panel');
   assert.doesNotMatch(block, /left\.append/, 'the entity body stays quiet');
   assert.doesNotMatch(block, /el\('details'|el\('summary'/, 'no disclosure of its own: the side column is the disclosure');
-  assert.match(block, /el\('div', \{ class: 'card-header' \},\s*el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
-    'the header is title + count');
+  assert.match(block, /el\('div', \{ class: 'card-header' \},\s*caret, el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
+    'the header is fold caret + title + count (Issue #993)');
+  assert.match(block, /disclosure\('doc-caret', true/, 'the caret is the shared doc-caret disclosure');
+  assert.match(block, /docSectionCollapse\(db\.id, extraClass/, 'the fold is remembered per table and per card');
   assert.match(APP, /const entityRefs = \(id\) => Promise\.all\(\['references-from', 'references'\]/,
     'both directions load with the record (Feature #315)');
   for (const fn of ['showEntity', 'drawDock']) {
