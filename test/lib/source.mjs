@@ -6,7 +6,8 @@ import { dirname, join } from 'node:path';
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const read = (file) => readFileSync(join(ROOT, file), 'utf8');
 
-export const APP = read('public/app.js');
+export const LAZY = ['public/field-dialog.js'];
+export const APP = ['public/app.js', ...LAZY].map(read).join('\n');
 export const HTML = read('public/index.html');
 export const CHIP_CSS = read('public/chip.css');
 export const CSS = [CHIP_CSS, read('public/style.css')].join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
