@@ -113,6 +113,10 @@ export function sniffImage(bytes) {
   return null;
 }
 
+const fileBlobIds = (f) => (f.preview?.id ? [f.id, f.preview.id] : [f.id]);
+export const PREVIEW_MAX_BYTES = 256 * 1024;
+const PREVIEW_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
 export function logoType(bytes) {
   const head = Buffer.from(bytes ?? []).subarray(0, 1024).toString('utf8').replace(/^\ufeff/, '');
   return sniffImage(bytes)
@@ -6512,7 +6516,7 @@ export class Weave {
     }
     delete this.state.entities[id];
     this.#unindexRow(e);
-    for (const f of e.files) this.#dropBlob(f.id);
+    for (const f of e.files) for (const blob of fileBlobIds(f)) this.#dropBlob(blob);
     this.store.deleteDocRevisions(id);
     this.#mark(id);
     this.save();
@@ -8274,7 +8278,7 @@ export class Weave {
     let fileBytes = 0;
     for (const e of Object.values(this.state.entities)) {
       if (!e.deletedAt) entities += 1;
-      for (const f of e.files ?? []) fileBytes += f.size ?? 0;
+      for (const f of e.files ?? []) fileBytes += (f.size ?? 0) + (f.preview?.size ?? 0);
     }
     return { entities, sizeBytes: (this.store.sizeBytes?.() ?? 0) + fileBytes };
   }
@@ -8318,11 +8322,21 @@ export class Weave {
     this.state.fileBlobs[id] = buf.toString('base64');
   }
 
-  attachFile(entityId, { name, mime = 'application/octet-stream', bytes }) {
+  attachFile(entityId, { name, mime = 'application/octet-stream', bytes, preview = null }) {
     const e = this.getEntity(entityId);
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
+    const small = preview?.bytes == null ? null : Buffer.isBuffer(preview.bytes) ? preview.bytes : Buffer.from(String(preview.bytes), 'base64');
+    const smallType = small && sniffImage(small);
+    if (small && (!sniffImage(buf) || !PREVIEW_TYPES.has(smallType))) {
+      throw new WeaveError('A preview is a PNG, JPEG or WebP image, and only an image upload takes one', 'unsupported-type');
+    }
+    if (small && small.length > PREVIEW_MAX_BYTES) throw new WeaveError(`A preview is at most ${PREVIEW_MAX_BYTES} bytes; this one is ${small.length}`, 'invalid');
     const file = { id: uuid(), name: String(name), size: buf.length, mime, createdAt: nowISO() };
     this.#writeBlob(file.id, buf);
+    if (small) {
+      file.preview = { id: uuid(), size: small.length, mime: smallType };
+      this.#writeBlob(file.preview.id, small);
+    }
     e.files.push(file);
     this.#logActivity(e, 'file-attached', { name: file.name });
     this.#recordUndo('file-attach', e, { fileId: file.id });
@@ -8348,10 +8362,12 @@ export class Weave {
     return file;
   }
 
-  readFile(fileId) {
+  readFile(fileId, { preview = false } = {}) {
     for (const e of Object.values(this.state.entities)) {
       const meta = e.files.find((f) => f.id === fileId);
       if (!meta) continue;
+      const small = preview && meta.preview && this.#readBlob(meta.preview.id);
+      if (small) return { meta: { ...meta.preview, name: meta.name }, bytes: small };
       const bytes = this.#readBlob(fileId);
       if (bytes == null) throw new WeaveError('File blob missing', 'not-found');
       return { meta, bytes };
@@ -8389,7 +8405,7 @@ export class Weave {
 
   deleteFile(entityId, fileId) {
     const e = this.getEntity(entityId);
-    const had = e.files.some((f) => f.id === fileId);
+    const had = e.files.find((f) => f.id === fileId);
     e.files = e.files.filter((f) => f.id !== fileId);
     const db = this.state.tables[e.dbId];
     for (const f of Object.values(db.fields)) {
@@ -8398,9 +8414,10 @@ export class Weave {
       }
     }
     this.#dropBlob(fileId);
+    if (had?.preview) this.#dropBlob(had.preview.id);
     this.#mark(e);
     this.save();
-    return { id: fileId, entity: e.id, deleted: had };
+    return { id: fileId, entity: e.id, deleted: !!had };
   }
 
   importCSV(dbRef, csvText) {
@@ -8725,7 +8742,7 @@ export class Weave {
       const bytes = this.#readBlob(id);
       if (bytes) blobs[id] = bytes.toString('base64');
     };
-    for (const e of Object.values(this.state.entities)) for (const f of e.files ?? []) carry(f.id);
+    for (const e of Object.values(this.state.entities)) for (const f of e.files ?? []) fileBlobIds(f).forEach(carry);
     if (this.state.meta.logo) carry(this.state.meta.logo.id);
     if (Object.keys(blobs).length) out.fileBlobs = blobs;
     return out;
@@ -8760,7 +8777,7 @@ export class Weave {
   importJSON(state) {
     if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
     const ids = [...Object.keys(state.fileBlobs ?? {}), state.meta?.logo?.id];
-    for (const e of Object.values(state.entities ?? {})) for (const f of e?.files ?? []) ids.push(f?.id);
+    for (const e of Object.values(state.entities ?? {})) for (const f of e?.files ?? []) ids.push(...fileBlobIds(f ?? {}));
     for (const id of ids) {
       if (id !== undefined && !BLOB_ID.test(String(id))) throw new WeaveError(`Invalid file id '${id}' in the import`, 'invalid');
     }

@@ -262,17 +262,20 @@ if (s) {
     });
   }
 
-  const probe = (page, opts) => page.evaluate((o) => {
-    window.__refocused = null;
-    const box = Object.assign(document.createElement('textarea'), { id: 'ref-probe' });
-    document.querySelector('#main').append(box);
-    box.focus();
-    const back = () => { box.focus(); window.__refocused = document.activeElement?.id ?? null; };
-    openCommandK({
-      ...(o.multi ? { multi: true, onCommit: back } : { onPick: back, onDismiss: back }),
-      ...(o.create ? { create: [{ label: 'New record', run: async (q) => ({ id: 'made', name: q }) }] } : {}),
-    });
-  }, opts);
+  const probe = async (page, opts) => {
+    await page.evaluate((o) => {
+      window.__refocused = null;
+      const box = Object.assign(document.createElement('textarea'), { id: 'ref-probe' });
+      document.querySelector('#main').append(box);
+      box.focus();
+      const back = () => { box.focus(); window.__refocused = document.activeElement?.id ?? null; };
+      openPalette({
+        ...(o.multi ? { multi: true, onCommit: back } : { onPick: back, onDismiss: back }),
+        ...(o.create ? { create: [{ label: 'New record', run: async (q) => ({ id: 'made', name: q }) }] } : {}),
+      });
+    }, opts);
+    await page.waitForSelector('#cmdk-input:focus');
+  };
 
   test('a reference picked from the palette returns the cursor to the document editor', async () => {
     const page = await open('light');
