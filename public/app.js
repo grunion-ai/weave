@@ -5477,7 +5477,7 @@ function renderBoard(main, db, items, ctx) {
   const groupEl = (node, depth, { completed = false } = {}) => {
     const key = node.key ?? '';
     const cards = el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)));
-    if (!node.items.length) cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
+    cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
     const head = node.path?.length || completed
       ? el('div', { class: 'board-group-head' },
         completed ? el('span', { class: 'list-group-label' }, node.label) : listHeadingEl(s, depth, node),
@@ -5512,9 +5512,23 @@ function renderBoard(main, db, items, ctx) {
 
   function boardDrag(down, card) {
     const side = board.dataset.groups === 'side';
+    let at = { x: down.clientX, y: down.clientY };
+    const track = (e) => { at = { x: e.clientX, y: e.clientY }; };
+    const stop = () => { removeEventListener('pointermove', track, true); removeEventListener('pointerup', stop, true); removeEventListener('pointercancel', stop, true); };
+    addEventListener('pointermove', track, true);
+    addEventListener('pointerup', stop, true);
+    addEventListener('pointercancel', stop, true);
+    const under = () => [...board.querySelectorAll(':scope > .board-group')].find((g) => {
+      const r = g.getBoundingClientRect();
+      return at.x >= r.left && at.x <= r.right && (side || (at.y >= r.top && at.y <= r.bottom));
+    });
     RO().sortable(down, {
       source: card,
-      items: () => [...board.querySelectorAll('.tile, .board-tail')],
+      items: () => {
+        const all = [...board.querySelectorAll('.tile, .board-tail')];
+        const group = under();
+        return group ? all.filter((n) => group.contains(n)) : all;
+      },
       tail: (n) => n.classList.contains('board-tail'),
       axis: side ? 'y' : 'x',
       alsoScroll: [side ? { scroller: board, axis: 'x' } : { scroller: RO().scrollParent(board, 'y'), axis: 'y' }],

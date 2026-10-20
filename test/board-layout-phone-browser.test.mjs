@@ -122,7 +122,7 @@ if (s) {
         await page.locator('.table-tools-btn').tap();
         await page.locator('.table-view-btn').tap();
         await page.waitForSelector('.table-view-popover .board-picture');
-        const controls = await page.$$eval('.table-view-popover :is(.view-layout .seg-opt, .board-preset)', (ns) => ns.map((n) => [n.textContent, n.getBoundingClientRect().height]));
+        const controls = await page.$$eval('.table-view-popover :is(.view-layout .seg-opt, .board-preset)', (ns) => ns.map((n) => [n.textContent, n.offsetHeight]));
         assert.ok(controls.length >= 10, `Layout, presets, Groups and Picture sit in the phone menu: ${controls.length}`);
         assert.deepEqual(controls.filter(([, h]) => h < 44), [], 'every control is a 44 px target');
       } finally { await page.close(); }

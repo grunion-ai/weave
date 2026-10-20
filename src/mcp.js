@@ -311,7 +311,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write, creating the view if new (from: copy). fields: columns in order. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}]. search: text. position: 0 = first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. layout: table|list|board. groups: stacked|side; picture: off|small|medium|large (the cover). A gallery is a stacked board with a picture, a kanban a side board. group: ≤3 levels, field or {field, heading: label|chip, order: option|table|az, grain}. completedBy: checkbox. nest: Parent link. collapsed: group paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
+    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates the view (from: copy). fields: columns in order. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}]. search. position: 0 = first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery = stacked with a picture, kanban = side). group: ≤3 levels, field or {field, heading: label|chip, order: option|table|az, grain}. completedBy: checkbox. nest: Parent link. collapsed: group paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -319,7 +319,7 @@ export const TOOLS = [
         move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
         position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
         widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
-        layout: { type: 'string' }, groups: { type: 'string' }, picture: { type: 'string' }, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
+        layout: { type: 'string' }, groups: {}, picture: {}, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
       },
       required: ['view'],
     },

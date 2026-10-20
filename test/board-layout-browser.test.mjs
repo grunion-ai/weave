@@ -107,12 +107,12 @@ if (s) {
     const page = await open();
     try {
       await drag(page, tile(ids.pants), '.board-group[data-key="Bought"] .board-empty');
-      await eventually(() => valueOf(ids.pants, 'State'), 'Bought');
+      assert.equal(await eventually(() => valueOf(ids.pants, 'State'), 'Bought'), 'Bought', 'the card lands in the empty column, not the one beside it');
       await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Bought"] .tile[data-eid="${id}"]`), ids.pants);
       const note = page.locator('.wv-toast', { hasText: `#${pid(ids.pants)} moved to Bought` });
       await note.waitFor();
       await note.locator('.wv-toast-action').click();
-      await eventually(() => valueOf(ids.pants, 'State'), 'Research');
+      assert.equal(await eventually(() => valueOf(ids.pants, 'State'), 'Research'), 'Research');
       await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Research"] .tile[data-eid="${id}"]`), ids.pants);
       assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
@@ -142,7 +142,7 @@ if (s) {
       await page.waitForFunction((want) => [...document.querySelectorAll('.board-group[data-key="Ready to Buy"] .tile')].map((t) => t.dataset.eid).join() === want, [ids.desk, ids.chair, ids.mat].join());
       assert.equal(view().order, undefined, 'no hand order is saved while sorted');
       await drag(page, tile(ids.mat), '.board-group[data-key="Bought"] .board-empty');
-      await eventually(() => valueOf(ids.mat, 'State'), 'Bought');
+      assert.equal(await eventually(() => valueOf(ids.mat, 'State'), 'Bought'), 'Bought');
     } finally { await page.close(); }
   });
 
@@ -200,14 +200,15 @@ if (s) {
     try {
       await page.click(`${tile(ids.shoes)} .tile-field[data-field="State"] .chip-trigger`);
       await page.locator('.picker-pop .picker-row', { hasText: 'Ready to Buy' }).first().click();
-      await eventually(() => valueOf(ids.shoes, 'State'), 'Ready to Buy');
+      assert.equal(await eventually(() => valueOf(ids.shoes, 'State'), 'Ready to Buy'), 'Ready to Buy');
       await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Ready to Buy"] .tile[data-eid="${id}"]`), ids.shoes);
       await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Dress shoes');
       assert.ok(await page.locator('#dock').isVisible(), 'a click on a field value opens the record beside its editor');
+      await page.click(`${tile(ids.desk)} .tile-field[data-field="Best Price"] .num-dressed`);
       const price = page.locator(`${tile(ids.desk)} .tile-field[data-field="Best Price"] input.inline-edit`);
       await price.fill('399');
       await price.press('Enter');
-      await eventually(() => weave.readEntity(ids.desk).raw['Best Price'], 399);
+      assert.equal(await eventually(() => weave.readEntity(ids.desk).raw['Best Price'], 399), 399);
       await page.waitForFunction((id) => /399/.test(document.querySelector(`.wv-board .tile[data-eid="${id}"] .tile-field[data-field="Best Price"]`)?.textContent + (document.querySelector(`.wv-board .tile[data-eid="${id}"] .tile-field[data-field="Best Price"] input`)?.value ?? '')), ids.desk);
     } finally { await page.close(); }
   });
