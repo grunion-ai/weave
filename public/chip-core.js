@@ -51,8 +51,7 @@
   }
 
   function initialsFor(name) {
-    const spaced = String(name ?? '').trim().split(/\s+/).filter(Boolean);
-    const words = spaced.length === 1 ? spaced[0].split(/[-_]+/).filter(Boolean) : spaced;
+    const words = String(name ?? '').trim().split(/\s+/).filter(Boolean);
     return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   }
 
