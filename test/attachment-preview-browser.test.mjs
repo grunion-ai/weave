@@ -29,7 +29,11 @@ if (s) {
       img.data[i + 3] = 255;
     }
     g.putImageData(img, 0, 0);
-    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
+    let blob;
+    for (const q of [0.9, 0.75, 0.6, 0.45, 0.3]) {
+      blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', q));
+      if (blob.size < 6 * 1024 * 1024) break;
+    }
     const bytes = new Uint8Array(await blob.arrayBuffer());
     let bin = '';
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
