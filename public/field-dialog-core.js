@@ -16,6 +16,7 @@
     { id: 'field', label: 'field', icon: 'lucide:sliders-horizontal' },
     { id: 'key', label: 'key', icon: '✱' },
     { id: 'attachments', label: 'files', icon: 'lucide:folder' },
+    { id: 'avatar', label: 'avatar', icon: 'lucide:user' },
     { id: 'relation', label: 'relation', icon: 'lucide:arrow-left-right', relation: true },
     { id: 'lookup', label: 'lookup', icon: 'lucide:arrow-up-right', computed: true },
     { id: 'rollup', label: 'rollup', icon: 'Σ', computed: true },
@@ -55,6 +56,7 @@
   const FORMULA_UNREADABLE = {
     document: "document fields don't compute — a formula reads values, not prose",
     attachments: "attachment fields don't compute — a formula reads values, not files",
+    avatar: "an avatar doesn't compute — a formula reads values, not pictures",
   };
   function formulaFieldChoices(fields, selfName = null) {
     return fields
@@ -423,6 +425,8 @@
       config.depth = state.depth ?? 1;
     } else if (t === 'text') {
       if (state.literal) config.literal = true;
+    } else if (t === 'avatar') {
+      config.shape = state.avatarShape === 'square' ? 'square' : 'round';
     } else if (t === 'attachments') {
       if (state.multiple === false) config.multiple = false;
       const fl = state.files ?? {};
@@ -508,6 +512,8 @@
       state.toggle = { on: c.on ?? 'On', off: c.off ?? 'Off' };
     } else if (def.type === 'rating') {
       state.rating = { max: c.max ?? 5, icon: c.icon ?? 'lucide:star', color: c.color ?? 'ink' };
+    } else if (def.type === 'avatar') {
+      state.avatarShape = c.shape ?? 'round';
     } else if (def.type === 'attachments') {
       state.multiple = c.multiple !== false;
       state.files = { preview: c.preview ?? '', size: c.size ?? 'medium', fit: c.fit ?? 'trim' };
@@ -597,6 +603,7 @@
       c.multiple = f.multiple !== false;
       for (const k of ATTACHMENT_LOOK_KEYS) if (f[k] != null) c[k] = f[k];
     }
+    if (f.type === 'avatar') c.shape = f.shape ?? 'round';
     if (f.type === 'toggle') { c.on = f.on ?? 'On'; c.off = f.off ?? 'Off'; }
     if (f.type === 'rating') { c.max = f.max ?? 5; c.icon = f.icon ?? 'lucide:star'; if (f.color && f.color !== 'ink') c.color = f.color; }
     if (f.type === 'document' && f.kind) c.kind = f.kind;
@@ -639,6 +646,7 @@
       patch.multiple = state.multiple !== false;
       for (const k of ATTACHMENT_LOOK_KEYS) patch[k] = c[k] ?? null;
     }
+    if (existing.type === 'avatar') patch.shape = c.shape ?? 'round';
     if (existing.type === 'toggle') { patch.on = c.on; patch.off = c.off; }
     if (existing.type === 'rating') { patch.max = c.max; patch.icon = c.icon; patch.color = c.color ?? null; }
     if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }
