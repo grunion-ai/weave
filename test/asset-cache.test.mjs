@@ -78,7 +78,8 @@ test('versions are cached per mtime and follow a content change', () => {
 });
 
 test('every classic boot script is deferred; the file on disk keeps plain URLs', () => {
-  const tags = [...INDEX.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
+  const live = INDEX.replace(/<template\b[\s\S]*?<\/template>/g, '');
+  const tags = [...live.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
   const classic = tags.filter((a) => /\bsrc=/.test(a));
   assert.ok(classic.length >= 24, `expected the boot list, saw ${classic.length}`);
   for (const a of classic) assert.match(a, /\bdefer\b/, `<script${a}> blocks the parser`);
