@@ -306,7 +306,7 @@ a.wv-menu-row, a.wv-menu-row:hover { text-decoration: none; color: var(--tblr-bo
 .wv-grid tbody tr.row-selected > td, .wv-grid tbody tr.row-selected:hover > td {
   background: color-mix(in srgb, var(--tblr-primary) 9%, transparent);
 }
-.table-wrap.has-selection { padding-bottom: 62px; }
+.table-wrap.has-selection { --wv-sel-room: 62px; padding-bottom: var(--wv-sel-room); }
 .sel-puck-wrap { position: fixed; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; pointer-events: none; z-index: 1030; }
 .sel-puck {
   pointer-events: auto; display: flex; align-items: center; gap: 2px;
@@ -490,6 +490,8 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .wv-grid tr.add-entity-row:hover td { background: var(--tblr-bg-surface); }
 #main > .table-wrap.wv-fit .wv-grid tr.add-entity-row td { overflow: visible; }
 #main > .table-wrap.wv-fit .wv-grid tr.add-entity-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: var(--wv-pane-pad, 24px); background: var(--tblr-bg-surface); pointer-events: none; }
+.table-wrap.wv-grid-scroll.has-selection .wv-grid tr.add-entity-row td { overflow: visible; }
+.table-wrap.wv-grid-scroll.has-selection .wv-grid tr.add-entity-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: var(--wv-sel-room); background: var(--tblr-bg-surface); pointer-events: none; }
 .add-entity-btn { width: 100%; display: block; padding: 7px 12px; background: none; border: 0; color: var(--tblr-secondary); font: inherit; text-align: left; cursor: pointer; }
 .add-entity-btn:hover { color: var(--tblr-primary); }
 .table-wrap, .wv-grid, .wv-grid tbody { overflow-anchor: none; }
