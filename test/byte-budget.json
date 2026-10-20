@@ -1,5 +1,9 @@
 {
   "bytes": {
+    "/activity-log.js": {
+      "gzip": 3418,
+      "br": 3020
+    },
     "/actor-core.js": {
       "gzip": 1057,
       "br": 961
@@ -9,8 +13,8 @@
       "br": 2032
     },
     "/app.js": {
-      "gzip": 162340,
-      "br": 130077
+      "gzip": 159586,
+      "br": 127942
     },
     "/billing.js": {
       "gzip": 2099,
