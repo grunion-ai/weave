@@ -1173,7 +1173,7 @@ function renderNav() {
       }),
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
-        title: `New table in ${space.space}`, type: 'button', hidden: !state.canManageForms,
+        title: `New table in ${space.space}`, type: 'button', ...(state.canManageForms ? {} : { hidden: '' }),
         onclick: () => tableTray({ spaceId: space.spaceId }),
       }, iconEl('+', 'wv-icon')),
       kindDots('space', space, () => ({}), { title: `${space.space} actions`, extraClass: 'nav-space-menu', head: true }));
@@ -1197,7 +1197,7 @@ function renderNav() {
   }
   const foot = el('div', { class: 'nav-foot' },
     el('button', {
-      class: 'btn btn-sm btn-ghost-secondary', type: 'button', hidden: !state.canManageForms,
+      class: 'btn btn-sm btn-ghost-secondary', type: 'button', ...(state.canManageForms ? {} : { hidden: '' }),
       onclick: () => foot.append(inlineNameInput('New space name…', async (name) => {
         await api('POST', '/spaces', { name });
         await loadSchema();
