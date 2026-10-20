@@ -13,8 +13,8 @@
       "br": 2032
     },
     "/app.js": {
-      "gzip": 159586,
-      "br": 127942
+      "gzip": 157089,
+      "br": 125937
     },
     "/billing.js": {
       "gzip": 2099,
@@ -47,6 +47,10 @@
     "/column-resize.js": {
       "gzip": 2387,
       "br": 2196
+    },
+    "/command-palette.js": {
+      "gzip": 3435,
+      "br": 3047
     },
     "/consent.js": {
       "gzip": 2305,
