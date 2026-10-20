@@ -175,7 +175,7 @@ test('spaces and tables have exactly one create flow', () => {
   assert.doesNotMatch(APP, /function newSpaceModal/);
   assert.doesNotMatch(APP, /function newTableModal/);
   assert.match(APP, /function inlineNameInput/);
-  assert.ok(rulesFor('.nav-inline-add').padding, 'the inline input must be styled as a nav row');
+  assert.ok(rulesFor('.nav-inline-add')['--wv-edit-pad'], 'the inline input must be styled as a nav row');
 });
 
 test('one tray creates a table, and every trigger opens it (Issue #778)', () => {
@@ -342,7 +342,7 @@ test('the description block is compact', () => {
   assert.ok(px(desc['margin-top']) <= 3, `view-desc margin-top too large: ${desc['margin-top']}`);
   assert.ok(px(desc['font-size']) <= 12.5, `view-desc font-size too large: ${desc['font-size']}`);
   assert.ok(px(edit['min-height']) <= 40, `editor min-height too large: ${edit['min-height']}`);
-  assert.ok(px(edit.padding) <= 4, `editor padding too large: ${edit.padding}`);
+  assert.ok(px(edit['--wv-edit-pad']) <= 4, `editor padding too large: ${edit['--wv-edit-pad']}`);
   const floor = Number(APP.match(/Math\.max\((\d+), ta\.scrollHeight\)/)?.[1]);
   assert.equal(floor, px(edit['min-height']), 'autosize floor must match CSS min-height');
 });
@@ -698,11 +698,10 @@ test('the <select> era leaves nothing behind', () => {
 });
 
 test('an idle inline-edit cell casts no shadow', () => {
-  const idle = rulesFor('.inline-edit:not(:focus)');
-  assert.equal(idle['box-shadow'], 'none',
-    '.inline-edit:not(:focus) must zero Tabler\'s --tblr-shadow-input');
-  assert.equal(rulesFor('.inline-edit')['box-shadow'], undefined,
-    'the reset must not be unscoped — that would kill the focus ring too');
+  assert.equal(rulesFor('.wv-edit')['box-shadow'], 'none',
+    '.wv-edit must zero Tabler\'s --tblr-shadow-input');
+  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 1.5px var(--tblr-primary)',
+    'and the focus rule draws the one ring over that reset (Issue #1030)');
 });
 
 test('the entity ⋮ sits at the right end of the title row, like every other view', () => {
