@@ -789,8 +789,9 @@ if (openHub) {
     }
   }
 
-  test('signup intent opens the signup pane and survives refresh and switching', async () => {
-    const p = await page();
+  for (const phone of [false, true]) test(`signup intent survives refresh, login switching and workspace creation (${phone ? 'phone' : 'desktop'})`, async () => {
+    const p = await page({ phone });
+    person(clerkHub, { email: `intent-${phone ? 'phone' : 'desktop'}@example.com` });
     try {
       await p.goto(`${clerkHub.base}/start?mode=signup`);
       await p.waitForSelector('#clerk-pane[data-mode="signup"]');
@@ -800,6 +801,12 @@ if (openHub) {
       await p.waitForSelector('#clerk-pane[data-mode="signin"]');
       await p.reload();
       await p.waitForSelector('#clerk-pane[data-mode="signin"]');
+      await go(p, 'switch');
+      await p.waitForSelector('#clerk-pane[data-mode="signup"]');
+      await p.click('#clerk-pane [data-fake-clerk="google"]');
+      await nameIt(p, `Intent ${phone ? 'phone' : 'desktop'}`, `intent-${phone ? 'phone' : 'desktop'}`);
+      await go(p, 'skip');
+      await p.waitForURL(new RegExp(`/w/intent-${phone ? 'phone' : 'desktop'}/$`));
     } finally { await p.close(); }
   });
 
