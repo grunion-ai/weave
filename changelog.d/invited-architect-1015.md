@@ -1,0 +1,1 @@
+- Invited members skip creator onboarding, including architects joining an empty team workspace (Issue #1015).
