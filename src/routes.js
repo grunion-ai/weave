@@ -120,6 +120,13 @@ const HANDOFF_TTL_MS = 60 * 1000;
 const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
 const LIMITS = { options: 10, failed: 5, slugs: 60 };
 const START_TTL_MS = 30 * 60 * 1000;
+const holdsLink = (w, kind, id) => {
+  w.maybeRefresh();
+  if (kind === 't') return !!w.findTable(id);
+  if (kind === 's') return !!(w.findSpace(id) || w.shareByToken(id));
+  return Object.hasOwn(w.state.entities ?? {}, id);
+};
+const linkHolder = (hub, kind, id) => hub.entries().map(([, w]) => w).find((w) => !w.state.meta.deletedAt && holdsLink(w, kind, id)) ?? null;
 const INGEST_MAX_BYTES = 2 * 1024 * 1024;
 const INGEST_HEADERS = ['content-type', 'content-encoding', 'user-agent'];
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -295,9 +302,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     weave.maybeRefresh();
     versionOf = weave;
     if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
-      if (path === '/') return { status: 302, headers: { Location: '/start', 'Cache-Control': 'no-store' }, body: '' };
       if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
-        return { status: 301, headers: { Location: `${scheme}//${String(hub.defaultName).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+        const holder = linkHolder(hub, path.slice(1, 2), path.slice(3)) ?? hub.get(hub.defaultName);
+        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
       }
     }
     const updateWorkspace = (patch) => {
@@ -517,6 +524,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const clearRail = () => `wv_rail=; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=0${secureFlag(rx)}`;
     const startCookies = ({ token, logins }) => [`wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, railCookie(findWorkspaces(logins).names)];
     const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
+    if (path === '/' && baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+      const railed = (await heldStart()) ? null : String(cookies.wv_rail ?? '').split(',').filter(Boolean).map((n) => hub.bySlug(n)).find((w) => w && !w.state.meta.deletedAt && !isDocsWorkspace(w));
+      return { status: 302, headers: { Location: railed ? `${scheme}//${String(railed.state.meta.name).toLowerCase()}.${baseDomain}/#/resume` : '/start', 'Cache-Control': 'no-store' }, body: '' };
+    }
     const resolved = new Map();
     const ownSession = (w) => {
       if (resolved.has(w)) return resolved.get(w);
@@ -891,7 +902,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
         const found = logins.length ? findWorkspaces(logins) : null;
         const last = found?.rows.find((r) => r.kind === 'workspace' && r.name.toLowerCase() === found.names[0]) ?? found?.rows.find((r) => r.kind === 'workspace');
-        if (last) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
+        if (last && !found.rows.some((r) => r.kind === 'invite')) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
         const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
         if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
         return notFound({ error: 'Not found', code: 'not-found' });

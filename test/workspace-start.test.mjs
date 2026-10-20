@@ -176,6 +176,52 @@ test('resume: a sign-in with no workspaces still gets the start page and its emp
   } finally { s.stop(); }
 });
 
+test('root: with the short apex sign-in gone, the rail cookie opens the last workspace on its own host (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const rail = (names) => s.apex('GET', '/', { cookie: `wv_rail=${names}` });
+    const acme = await rail('acme,net');
+    assert.deepEqual([acme.status, acme.headers.location], [302, 'http://acme.weave.test/#/resume']);
+    assert.equal((await rail('gone,net')).headers.location, 'http://net.weave.test/#/resume', 'a name no workspace holds is skipped');
+    assert.equal((await rail('weave')).headers.location, '/start', 'the docs workspace is never a landing');
+    assert.equal((await s.apex('GET', '/', { cookie: 'wv_rail=' })).headers.location, '/start');
+    const kyle = await s.signInAtStart('user_kyle');
+    assert.equal((await s.apex('GET', '/', { cookie: `${kyle.cookie}; wv_rail=acme` })).headers.location, '/start', 'a held apex sign-in still lands through /start');
+  } finally { s.stop(); }
+});
+
+test('resume: a pending invite keeps the list so it can be accepted (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const other = new Weave({ path: join(s.dir, 'other.db') });
+    other.actor = 'someone';
+    other.inviteMember({ email: 'eve@example.com', role: 'editor', issuer: s.idp.issuer });
+    other.store.close?.();
+    const eve = await s.signInAtStart('user_eve', { email: 'eve@example.com', email_verified: true });
+    const start = await s.apex('GET', '/start', { cookie: eve.cookie });
+    assert.equal(start.status, 200, 'eve opens acme, and the invite to other waits on the list');
+    assert.ok((await s.apex('GET', '/api/start', { cookie: eve.cookie })).json().rows.some((r) => r.kind === 'invite'));
+  } finally { s.stop(); }
+});
+
+test('links: an apex link to a row, table or space opens on the host of the workspace that holds it (Issue #992)', async () => {
+  const s = await serve();
+  try {
+    const acme = new Weave({ path: join(s.dir, 'acme.db') });
+    const space = acme.createSpace({ name: 'Deals' });
+    const table = acme.createTable({ space: space.id, name: 'Deal' });
+    const row = acme.createEntity(table.id, { Name: 'Receivables' });
+    acme.save();
+    acme.store.close?.();
+    for (const [kind, id] of [['e', row.id], ['t', table.id], ['s', space.id]]) {
+      const moved = await s.apex('GET', `/${kind}/${id}`);
+      assert.deepEqual([moved.status, moved.headers.location], [301, `http://acme.weave.test/${kind}/${id}`], kind);
+    }
+    const unknown = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    assert.equal((await s.apex('GET', `/e/${unknown}`)).headers.location, `http://net.weave.test/e/${unknown}`, 'a link no workspace holds goes to Net as before');
+  } finally { s.stop(); }
+});
+
 test('start: the apex shows nothing until sign-in, then lists the workspaces this identity opens', async () => {
   const s = await serve();
   try {
