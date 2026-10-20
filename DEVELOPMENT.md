@@ -405,6 +405,22 @@ raised number unless the same change writes a new reason under
 `raised["<journey|cell>"]`. The reason names the Issue or Feature that needs
 the click.
 
+## Vitals budget
+
+`test/vitals-budget-browser.test.mjs` loads home (`#/`) and a table
+(`#/table/<id>`) cold, five times each on desktop and on the phone, and reads
+LCP, CLS and INP from PerformanceObserver (`test/lib/vitals.mjs`). After the
+page is ready it makes one real interaction for INP: desktop opens the Task
+table from the sidebar or a row's dock, the phone opens the menu or taps a row.
+CLS is the largest session window of shifts without recent input. The medians
+are judged against `test/vitals-budget.json`
+(`vitals["<journey|cell|metric>"]`) and logged as
+`vitals <journey|cell|metric> <value> runs <...> budget <n>`. The phone cell runs
+Chromium with the iPhone 15 profile, because WebKit reports no `layout-shift`
+entries. Budgets hold the Linux runner's medians with headroom; a raise needs a
+new reason under `raised[...]`, checked against `HEAD^1` by
+`test/vitals-budget.test.mjs`.
+
 ## Feedback budget
 
 An action answers on screen before the server does. `test/feedback-budget-browser.test.mjs`
