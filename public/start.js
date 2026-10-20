@@ -291,6 +291,18 @@
       make('img', { src: r.logo, alt: '', onerror: (e) => e.currentTarget.parentElement.replaceWith(letter()) }));
   }
 
+  function opening(ev, row) {
+    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    main.querySelectorAll('a.ws-row[aria-busy]').forEach((link) => {
+      link.removeAttribute('aria-busy');
+      link.querySelector('[role="status"]')?.remove();
+    });
+    ev.currentTarget.setAttribute('aria-busy', 'true');
+    ev.currentTarget.querySelector('.ws-text').append(make('small', { class: 'muted', role: 'status' }, `Opening ${row.title}…`));
+  }
+
+  addEventListener('pageshow', (ev) => { if (ev.persisted && s) render(); });
+
   function list() {
     const logins = me.logins ?? [];
     const several = logins.length > 1;
@@ -302,7 +314,7 @@
           ev.currentTarget.disabled = true;
           try { const done = await post(r.accept); capture('invite_accepted', { via: 'start' }); location.href = done.open; } catch (err) { ev.currentTarget.disabled = false; dispatch({ type: 'fail', code: err.code, message: err.message }); }
         } }, COPY.accept)))
-      : make('li', {}, make('a', { class: 'ws-row', href: r.open }, wsTile(r),
+      : make('li', {}, make('a', { class: 'ws-row', href: r.open, onclick: (ev) => opening(ev, r) }, wsTile(r),
         make('span', { class: 'ws-text' }, make('span', { class: 'ws-title' }, r.title), meta(r.host ?? `${location.host}/w/${r.name}`, roleLabel(r.role)), login(r)),
         glyph('chevron-right', 'glyph ws-go')))));
     return [
