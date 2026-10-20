@@ -798,8 +798,6 @@ A table with an avatar field puts the face first in the row's chip, inside its l
 
 **System/Users** carries an Avatar field. An agent account shows its face with a small chip badge in the corner, so a person and an agent with the same initials read apart.
 
-A compact to-many relation cell whose rows all have faces draws them as a pile: up to five overlapping faces, each a link to its row, then \`+N\`. Created by, Modified by, the activity feed and the identity panel show the face from the actor's **System/Users** row. A one-word name takes its initials from the parts between its dashes or underscores, so \`weave-fixer\` reads WF.
-
 ## Gotchas
 
 The avatar is never a chip segment or a card field: it is the face, drawn once. Formulas, filters and footers skip it, as they skip attachments.` },

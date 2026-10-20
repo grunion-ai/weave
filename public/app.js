@@ -1326,18 +1326,7 @@ const ACCOUNT_ROLE_HUES = { Architect: 'purple', Editor: 'blue', Observer: 'slat
 function accountChip(me) {
   const name = accountDisplayName(me.account.name) || 'Signed in';
   const role = ACCOUNT_ROLE_LABELS[me.role] ?? me.role ?? '';
-  let avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
-  const people = workspaceUsers([me.account.name]);
-  const face = () => {
-    const u = people.rows.find((r) => r.name === me.account.name);
-    if (!u?.avatar || avatar.dataset.face) return;
-    const next = chipElFrom(chipView.avatarHtml(u.avatar, { cls: 'nav-account-av' }));
-    next.dataset.face = '1';
-    avatar.replaceWith(next);
-    avatar = next;
-  };
-  queueMicrotask(face);
-  if (!people.done) people.read?.then(face);
+  const avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
   return el('span', {
     class: 'nav-account-chip',
     title: `${name}${role ? `, ${role}` : ''} in ${accountWorkspaceName()}`,
@@ -3410,10 +3399,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const box = el('span', { class: 'ms-box' });
     const all = val == null ? [] : Array.isArray(val) ? val : [val];
     const CAP = 3;
-    const pile = compact && all.length > 1 && all.every((s) => s.avatar);
-    const current = pile ? [] : compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
-    const hidden = pile ? 0 : all.length - current.length;
-    if (pile) box.append(chipElFrom(chipView.facePileHtml(all, { href: (s) => `#/entity/${s.id}` })), ' ');
+    const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
+    const hidden = all.length - current.length;
     for (const s of current) {
       const onRemove = compact ? null : async () => {
         try {
@@ -7150,7 +7137,7 @@ function flushUsers(t) {
   return api('POST', `/tables/${t.id}/query`, { where: [['Name', 'in', want]] }).then((res) => {
     for (const u of res.items ?? []) {
       usersCache.rows.push({
-        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email, avatar: u.avatar ?? null,
+        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
         workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
       });
     }
@@ -7197,8 +7184,7 @@ function actorChipEl(actor, { link = true } = {}) {
   const chip = el('span', { class: 'k k-actor' });
   const paint = (users) => {
     const r = weaveActor.resolveActor(actor, users, { workspaceId: state.wsId });
-    const mark = r.user?.avatar ? chipElFrom(chipView.avatarHtml(r.user.avatar, { cls: 'actor-av' }))
-      : r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
+    const mark = r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
       : r.kind === 'person' ? el('span', { class: `av hue-${chipCore.hueForName(r.name)}` }, chipCore.initialsFor(r.name)) : null;
     const label = el('span', { class: 'k-label' }, r.name);
     const via = r.via ? el('span', { class: 'k-actor-via' }, `· via ${r.via}`) : null;

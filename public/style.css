@@ -668,9 +668,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-av.cell-av { --wv-av-size: 20px; }
 .wv-av.crumb-ic { --wv-av-size: 16px; color: var(--text, var(--tblr-secondary)); }
 .wv-av.cmdk-av { --wv-av-size: 18px; }
-.wv-av.actor-av { --wv-av-size: 16px; }
-.wv-av.nav-account-av { --wv-av-size: 22px; }
-.wv-av.round.nav-account-av { border-radius: 50%; }
 .entity-head textarea.name-edit { font-size: var(--fs-title); border: none; padding: 2px 4px; width: 100%; resize: none; overflow: hidden; field-sizing: content; line-height: 1.25; }
 .entity-head .dl-wrap { margin-left: auto; }
 .entity-head textarea.name-edit:hover, .entity-head textarea.name-edit:focus { background: var(--tblr-bg-surface-secondary); }
