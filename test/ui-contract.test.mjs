@@ -1158,8 +1158,8 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
 
 test('field dialogs are the unified fieldDialog, not the old string forms', () => {
   assert.match(APP, /function fieldDialog\(db, existing, after, \{ pickTables = null \} = \{\}\)/);
-  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,400}?fieldDialog\(db, null,/);
-  assert.match(APP, /function editFieldDialog\(db, f\) \{\s*fieldDialog\(db, f,/);
+  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,400}?openFieldDialog\(db, null,/);
+  assert.match(APP, /function editFieldDialog\(db, f\) \{\s*openFieldDialog\(db, f,/);
   assert.doesNotMatch(APP, /Options \(comma-separated\)/);
 });
 
