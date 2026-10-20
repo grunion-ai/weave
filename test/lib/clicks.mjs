@@ -18,7 +18,7 @@ export function unexplainedRaises(before, after, { field = 'clicks', unit = 'cli
   return Object.entries(after[field])
     .filter(([k, n]) => k in was && n > was[k])
     .filter(([k]) => !String(why[k] ?? '').trim() || why[k] === before?.raised?.[k])
-    .map(([k, n]) => `${k} rose from ${was[k]} to ${n} ${unit} with no reason: write one under raised["${k}"]`);
+    .map(([k, n]) => `${k} rose from ${was[k]} to ${n}${unit ? ` ${unit}` : ''} with no reason: write one under raised["${k}"]`);
 }
 
 export async function countClicks(page) {
