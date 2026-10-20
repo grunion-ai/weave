@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, atRest } from './lib/browser.mjs';
 
 let tableRef;
 
@@ -200,17 +200,19 @@ if (s) {
 
   const RAIL_DOC = '# One\n\ntext\n\n## Two\n\n' + 'filler\n\n'.repeat(40) + '## Three\n\nmore\n\n### Four\n\nend\n';
 
-  test('a document with 3+ headings grows a dash rail, longer dashes higher up', async () => {
+  test('a document with 3+ headings grows a dash rail, longer dashes higher up once hovered', async () => {
     const id = entityWithDoc('Rail', RAIL_DOC);
     const page = await openEntity(id);
     try {
       await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
+      await page.hover('.doc-rail .doc-rail-dash');
+      await atRest(page.locator('.doc-rail .doc-rail-tick').first());
       const r = await page.evaluate(() => {
         const dashes = [...document.querySelectorAll('.doc-rail .doc-rail-dash')];
         return {
           count: dashes.length,
-          widths: dashes.map((d) => d.getBoundingClientRect().width),
-          titles: dashes.map((d) => d.title),
+          widths: dashes.map((d) => d.querySelector('.doc-rail-tick').getBoundingClientRect().width),
+          titles: dashes.map((d) => d.getAttribute('aria-label')),
           active: dashes.findIndex((d) => d.classList.contains('active')),
         };
       });
@@ -227,11 +229,7 @@ if (s) {
     const page = await openEntity(id);
     try {
       await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
-      await page.evaluate(() => document.querySelector('.doc-rail').click());
-      await page.waitForSelector('.doc-rail.open', { timeout: 20000 });
       await page.evaluate(() => document.querySelectorAll('.doc-rail-dash')[1].click());
-      await page.waitForFunction(() => !document.querySelector('.doc-rail.open'),
-        null, { timeout: 20000 });
       await page.waitForFunction(() => {
         const h = [...document.querySelectorAll('.vditor-ir .vditor-reset h2')]
           .find((x) => x.textContent.includes('Two'));
