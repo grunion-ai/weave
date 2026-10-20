@@ -2561,7 +2561,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .desc-clamp.clamped, .view-desc-body.desc-clamp.clamped { max-height: 3lh; overflow: hidden; mask-image: linear-gradient(to bottom, black 75%, transparent); }
 .view-description-toggle .view-title-h { flex: 0 1 auto; margin-right: 0; }
 .view-description-toggle .view-title { field-sizing: content; }
-.view-title-row > .desc-info { --wv-hit: 24px; --wv-hit-top: 2px; --wv-hit-pad: calc((var(--wv-hit) - 14px) / 2); align-self: flex-start; flex-shrink: 0; width: var(--wv-hit); height: var(--wv-hit); padding: var(--wv-hit-pad); margin: calc(var(--wv-hit-top) - var(--wv-hit-pad)) calc(-1 * var(--wv-hit-pad)) calc(-1 * var(--wv-hit-pad)) calc(-6px - var(--wv-hit-pad)); }
+.view-title-row > .desc-info { --wv-hit: 24px; --wv-hit-top: 2px; align-self: flex-start; align-items: flex-start; justify-content: flex-start; flex-shrink: 0; width: var(--wv-hit); height: var(--wv-hit); padding: var(--wv-hit-top) 0 0 2px; margin: 0 calc(16px - var(--wv-hit)) calc(14px + var(--wv-hit-top) - var(--wv-hit)) -8px; }
 .view-title-row > .desc-info .wv-icon, .view-title-row > .desc-info svg { width: 14px; height: 14px; }
 .view-description-toggle .view-desc { max-width: 68ch; padding-bottom: 8px; }
 @media (pointer: coarse) { .fieldrow-note { grid-column: 1 / -1; } }

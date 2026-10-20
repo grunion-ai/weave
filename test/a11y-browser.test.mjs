@@ -100,9 +100,11 @@ if (s) {
     }
     bg ??= rgb(getComputedStyle(document.body).backgroundColor);
     const cs = getComputedStyle(target);
-    const ring = rgb(cs.outlineColor);
+    const inset = cs.boxShadow.match(/^(rgba?\([^)]*\)) 0px 0px 0px ([\d.]+)px inset$/);
+    const ring = rgb(inset && cs.outlineStyle === 'none' ? inset[1] : cs.outlineColor);
     const [a, b] = [lum(ring), lum(bg)].sort((x, y) => y - x);
     return {
+      inset: inset ? parseFloat(inset[2]) : 0,
       focused: document.activeElement === target,
       visible: target.matches(':focus-visible'),
       style: cs.outlineStyle,
@@ -138,7 +140,10 @@ if (s) {
       const ent = await open(`#/entity/${entityId}`, '.entity-head', theme);
       try {
         await ent.keyboard.press('Tab');
-        for (const sel of ['.entity-head textarea.name-edit', '#nav .nav-db', '#search-btn']) {
+        const name = await ringContrast(ent, '.entity-head textarea.name-edit');
+        assert.ok(name.focused && name.style === 'none' && name.inset === 1.5 && name.alpha === 1, `the name field draws the one .wv-edit ring, no outline (Issue #1030) (${JSON.stringify(name)})`);
+        assert.ok(name.ratio >= 3, `name field ring contrast ${name.ratio}:1 in ${theme}`);
+        for (const sel of ['#nav .nav-db', '#search-btn']) {
           const r = await ringContrast(ent, sel);
           assert.ok(r.focused && r.visible, `${sel} takes keyboard focus (${JSON.stringify(r)})`);
           assert.ok(r.style === 'solid' && r.width >= 2 && r.alpha === 1, `${sel} draws the branded ring (${JSON.stringify(r)})`);
