@@ -360,7 +360,7 @@ test('the view tool stays small: one tool, a lean schema', () => {
   const tool = TOOLS.find((t) => t.name === 'weave_table_view');
   assert.ok(tool, 'weave_table_view is a tool');
   const bytes = JSON.stringify(tool).length;
-  assert.ok(bytes <= 1520, `every agent turn pays for this schema and its annotations; keep it under 1520 bytes (is ${bytes})`);
+  assert.ok(bytes <= 1680, `every agent turn pays for this schema, its annotations and the board keys (Feature #352); keep it under 1680 bytes (is ${bytes})`);
   assert.equal(TOOLS.filter((t) => /view/.test(t.name)).length, 2, 'weave_views (share pages) and weave_table_view — no CRUD fan-out');
 });
 

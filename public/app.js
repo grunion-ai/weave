@@ -464,8 +464,8 @@ let dock = null;
 
 function markDockedRow() {
   const id = dock ? weaveEntitySurface.selectionId(dock.state) : null;
-  for (const tr of document.querySelectorAll('tr.entity-row.row-docked')) tr.classList.remove('row-docked');
-  if (id) $(`tr[data-eid="${id}"]`)?.classList.add('row-docked');
+  for (const n of document.querySelectorAll('tr.entity-row.row-docked, .wv-board .tile.row-docked')) n.classList.remove('row-docked');
+  if (id) for (const n of document.querySelectorAll(`tr[data-eid="${id}"], .wv-board .tile[data-eid="${id}"]`)) n.classList.add('row-docked');
 }
 
 function releaseDockPanel() {
@@ -3840,7 +3840,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false,
-    layout: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
+    layout: null, groups: null, picture: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -4256,7 +4256,7 @@ async function showDatabase(dbId, view) {
   try { await readAndDrawTable(db, dbId, search); } finally { release(); }
 }
 async function readAndDrawTable(db, dbId, search) {
-  if (isListLayout(db)) return readAndDrawList(db, dbId, search);
+  if (isListLayout(db) || isBoardLayout(db)) return readAndDrawList(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const query = {
@@ -4451,17 +4451,19 @@ function tableViewButton(ref) {
         document.querySelector('.table-view-btn')?.focus({ preventScroll: true });
       } catch (err) { toast(err.message, true); } finally { release(); }
     };
-    const setLayout = async (current, layout) => {
+    const setView = async (current, patch) => {
       const release = gridHold();
       try {
-        if (await gridConfigWrite(current, null, { layout })) await showDatabase(db.id, current.view?.id);
+        if (await gridConfigWrite(current, null, patch)) await showDatabase(db.id, current.view?.id);
       } catch (err) { toast(err.message, true); } finally { release(); }
     };
     const build = (current) => [
       tableControlHeader('Views', () => pop?.remove()), viewStrip(current),
       el('div', { class: 'view-layout' }, el('span', { class: 'view-layout-label' }, 'Layout'),
-        segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' }],
-          current.view?.layout === 'list' ? 'list' : 'table', (layout) => setLayout(current, layout))),
+        segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' },
+          { id: 'board', label: 'Board', title: 'Things to move or pick between: kanban columns or a picture gallery' }],
+          ['list', 'board'].includes(current.view?.layout) ? current.view.layout : 'table', (layout) => setView(current, { layout }))),
+      ...(isBoardLayout(current) ? boardControls(current, (patch) => setView(current, patch)) : []),
       el('hr'),
       el('button', { class: 'chip-pop-row view-reset', type: 'button', onclick: () => reset(true, current) }, lucideEl('undo'), 'Reset view'),
       el('button', { class: 'chip-pop-row view-clear', type: 'button', onclick: () => reset(false, current) }, lucideEl('list-filter'), 'Clear filters, search, and sorting'),
@@ -4846,7 +4848,7 @@ function tableChrome(db, trashCount) {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
         eye.setAttribute('aria-label', 'Show or hide fields');
         eye.title = 'Show or hide fields';
-        eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db)
+        eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db) && !isBoardLayout(ref.db)
           ? phoneRowPopover(eye, ref.db) : fieldVisibilityPopover(eye, ref.db, ref.trashCount)));
         return eye;
       })(),
@@ -4949,8 +4951,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   }
 
   if (list) {
-    state.inlineAdd = async () => main.querySelector('.list-add-name')?.focus();
-    renderList(main, db, items, list);
+    state.inlineAdd = list.board ? null : async () => main.querySelector('.list-add-name')?.focus();
+    (list.board ? renderBoard : renderList)(main, db, items, list);
     main.wvDraw = { db, items, trashCount, pager: null };
     syncPhoneBar();
     paintGridWait();
@@ -5019,6 +5021,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
 
 const listCore = globalThis.weaveListCore;
 const isListLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'list';
+const boardCore = globalThis.weaveBoardCore;
+const isBoardLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'board';
 function listSetup(db) {
   const v = db.view ?? {};
   const fieldOf = (n) => (n ? db.fields.find((f) => f.name === n) : null) ?? null;
@@ -5076,9 +5080,11 @@ async function listTargetRows(f) {
 }
 async function readAndDrawList(db, dbId, search) {
   const s = listSetup(db);
+  const board = isBoardLayout(db);
   const where = filterWhere(db);
   const sort = gridSort(db);
   const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
+    ...(board ? [...boardCardFields(db).map((f) => f.name), boardCore.coverField(db)?.name] : []),
     ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
   const base = { fields: [...new Set(names)], relations: 'chip' };
   const filtered = !!(where || search);
@@ -5090,7 +5096,7 @@ async function readAndDrawList(db, dbId, search) {
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
   tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
   setFilterTotal(db, result.total, result.all);
-  drawDatabase(db, result.items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort });
+  drawDatabase(db, result.items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort, board });
 }
 let listWrites = Promise.resolve();
 function listViewWrite(db, patch) {
@@ -5123,6 +5129,21 @@ function listPathValues(s, path, item = null, from = null) {
     values[level.f.name] = listLevelValue(level, item, from?.[i], path[i]);
   }
   return values;
+}
+function listHeadingEl(s, depth, node) {
+  const level = s.levels[depth];
+  const f = level?.f;
+  if (f && level.heading === 'chip' && node.value !== '' && f.type === 'relation') {
+    const summary = node.path[node.path.length - 1]?.summary ?? { id: node.value, name: node.label };
+    const chip = relationChipEl(f, summary);
+    const caret = chip.querySelector('.mention-caret');
+    if (caret) { chip.classList.add('open'); caret.setAttribute('aria-expanded', 'true'); }
+    return el('span', { class: 'list-group-chip' }, chip);
+  }
+  let hue = 'slate';
+  if (f?.type === 'select' || f?.type === 'multiselect') hue = (f.optionsFull ?? []).find((o) => o.name === node.label)?.hue || 'slate';
+  if (f?.type === 'workflow') { const st = f.states?.find((x) => x.name === node.label); if (st) hue = chipCore.stateHue(st, st.category); }
+  return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
 }
 function renderList(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
@@ -5177,21 +5198,7 @@ function renderList(main, db, items, ctx) {
     v.collapsed = collapsed;
     listViewWrite(db, { collapsed });
   };
-  const headingEl = (depth, node) => {
-    const level = s.levels[depth];
-    const f = level?.f;
-    if (f && level.heading === 'chip' && node.value !== '' && f.type === 'relation') {
-      const summary = node.path[node.path.length - 1]?.summary ?? { id: node.value, name: node.label };
-      const chip = relationChipEl(f, summary);
-      const caret = chip.querySelector('.mention-caret');
-      if (caret) { chip.classList.add('open'); caret.setAttribute('aria-expanded', 'true'); }
-      return el('span', { class: 'list-group-chip' }, chip);
-    }
-    let hue = 'slate';
-    if (f?.type === 'select' || f?.type === 'multiselect') hue = (f.optionsFull ?? []).find((o) => o.name === node.label)?.hue || 'slate';
-    if (f?.type === 'workflow') { const st = f.states?.find((x) => x.name === node.label); if (st) hue = chipCore.stateHue(st, st.category); }
-    return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
-  };
+  const headingEl = (depth, node) => listHeadingEl(s, depth, node);
   const rowEls = (item, path) => {
     const r = item.row;
     const it = r.item;
@@ -5389,6 +5396,173 @@ function renderList(main, db, items, ctx) {
     };
   }
 }
+function boardCardFields(db) {
+  const cover = boardCore.coverField(db);
+  const name = nameFieldOf(db);
+  const shown = new Set(db.columns ?? []);
+  return db.fields.filter((f) => shown.has(f.name) && f !== name && f.role !== 'name' && f.name !== cover?.name && f.type !== 'document' && f.type !== 'view');
+}
+const PICTURE_LABELS = { off: 'Off', small: 'Small', medium: 'Medium', large: 'Large' };
+function boardControls(db, put) {
+  const v = db.view ?? {};
+  const cover = boardCore.coverField(db);
+  const by = db.fields.find((f) => f.type === 'workflow') ?? db.fields.find((f) => f.type === 'select');
+  const columns = { groups: 'side', picture: 'off', sort: [], ...(!(v.group ?? []).length && by ? { group: [by.name] } : {}) };
+  const row = (cls, label, ctl) => el('div', { class: `view-layout ${cls}` }, el('span', { class: 'view-layout-label' }, label), ctl);
+  return [
+    row('board-presets', 'Start from', el('span', { class: 'board-preset-row' },
+      el('button', { class: 'btn btn-sm board-preset', type: 'button', title: 'Kanban: columns side by side, no picture, Manual order', onclick: () => put(columns) }, 'Columns'),
+      el('button', { class: 'btn btn-sm board-preset', type: 'button', title: 'Gallery: groups stacked, each card headed by its cover picture', onclick: () => put({ groups: 'stacked', picture: cover?.size ?? 'medium' }) }, 'Gallery'))),
+    row('board-groups', 'Groups', segCtl([{ id: 'stacked', label: 'Stacked' }, { id: 'side', label: 'Side by side' }], boardCore.groupsOf(v), (groups) => put({ groups }))),
+    row('board-picture', 'Picture', segCtl(boardCore.PICTURES.map((id) => ({ id, label: PICTURE_LABELS[id], ...(id !== 'off' && !cover ? { title: 'Set an attachments field to Show as cover to give cards a picture' } : {}) })),
+      boardCore.pictureOf(db, v), (picture) => put({ picture }))),
+  ];
+}
+const TILE_FORM = 'button, input, select, textarea, [contenteditable], .picker-wrap';
+const TILE_HANDS_OFF = `${TILE_FORM}, .tile-field`;
+function renderBoard(main, db, items, ctx) {
+  const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
+  const v = db.view;
+  const groups = boardCore.groupsOf(v);
+  const picture = boardCore.pictureOf(db, v);
+  const size = boardCore.widths(picture);
+  const fields = boardCardFields(db);
+  const levels = groups === 'side' ? s.levels.slice(0, 1) : s.levels;
+  const rows = items.map((it) => ({ id: it.id, keys: levels.map((l) => listKeys(l, it)), parent: null, done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, item: it }));
+  const byPid = new Map([...(everyone ?? []), ...items].map((it) => [it.publicId, it.id]));
+  const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
+  const arranged = listCore.arrange(rows, {
+    levels: levels.map((l, i) => ({ order: l.order, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` })),
+    completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered,
+  });
+  const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
+  const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
+  const reload = () => keepScroll(() => showDatabase(db.id, db.view.id));
+  const write = async (item, values, order, undo = null) => {
+    const release = gridHold();
+    try {
+      if (Object.keys(values).length) await api('PATCH', `/entities/${item.id}`, { values });
+      if (order) await listViewWrite(db, { order });
+      await reload();
+      if (undo) toast(undo.text, false, { label: 'Undo', run: () => write(item, undo.values, null) });
+    } catch (err) { toast(err.message, true); } finally { release(); }
+  };
+
+  const tileEl = (node, path) => {
+    const it = node.row.item;
+    const file = picture === 'off' ? null : boardCore.coverOf(db, it);
+    const label = it.name || `#${it.publicId}`;
+    const card = el('article', {
+      class: 'tile' + (node.row.done ? ' done' : ''), role: 'listitem', tabindex: '0',
+      dataset: { eid: it.id, href: `#/entity/${it.id}` }, 'aria-label': label,
+    },
+      picture === 'off' ? null : el('div', { class: 'tile-cover' + (file ? '' : ' is-empty') },
+        file ? el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: '', draggable: 'false' }) : iconEl('lucide:image', 'wv-icon')),
+      el('div', { class: 'tile-body' },
+        el('div', { class: 'tile-head' },
+          el('span', { class: 'tile-id' }, `#${it.publicId}`),
+          el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1', title: label }, label)),
+        fields.length ? el('dl', { class: 'tile-fields' }, ...fields.map((f) => el('div', { class: 'tile-field', dataset: { field: f.name } },
+          el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, () => reload(), { compact: true }))))) : null));
+    card.wvPath = path;
+    card.wvItem = node;
+    RO().guard(card);
+    card.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const phone = dockCoversScreen.matches;
+      if (!phone && e.target.closest('.tile-field > dd')) { if (!nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
+      if (!e.target.closest(phone ? TILE_FORM : TILE_HANDS_OFF)) boardDrag(e, card);
+    });
+    card.addEventListener('click', (e) => {
+      if (nativeClick(e) || e.target.closest('a.tile-title') || (!dockCoversScreen.matches && e.target.closest('.tile-field > dd'))) return;
+      dockEntity(db, it.id, { step: true });
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.target !== card) return;
+      e.preventDefault();
+      dockEntity(db, it.id, { step: true });
+    });
+    return card;
+  };
+  const groupEl = (node, depth, { completed = false } = {}) => {
+    const key = node.key ?? '';
+    const cards = el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)));
+    cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
+    const head = node.path?.length || completed
+      ? el('div', { class: 'board-group-head' },
+        completed ? el('span', { class: 'list-group-label' }, node.label) : listHeadingEl(s, depth, node),
+        el('span', { class: 'list-count' }, String(node.count ?? node.items.length)))
+      : null;
+    const sec = el('section', { class: 'board-group' + (completed ? ' board-completed' : ''), dataset: { key }, 'aria-label': key || db.name }, head, cards);
+    sec.wvPath = completed ? null : node.path;
+    return sec;
+  };
+  const leaves = [];
+  const walk = (node, depth) => (node.groups ? node.groups.forEach((g) => walk(g, depth + 1)) : leaves.push([node, depth]));
+  if (arranged.groups) arranged.groups.forEach((g) => walk(g, 0));
+  else leaves.push([{ key: '', path: [], items: arranged.items, count: arranged.items.length }, 0]);
+  const flat = (node) => ({ ...node, items: node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; }) });
+  const board = el('div', {
+    class: 'wv-board', 'aria-label': `${db.name} · ${v.name}`,
+    dataset: { groups: levels.length ? groups : 'stacked', picture },
+    style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}`,
+  }, ...leaves.map(([node, depth]) => groupEl(flat(node), depth)));
+  if (arranged.completed?.count) board.append(groupEl(flat(arranged.completed), 0, { completed: true }));
+  const sortName = (gridSort(db) ?? []).map((x) => x.field).join(', ');
+  const manualBtn = el('button', { class: 'btn btn-sm btn-ghost-primary tiny board-manual', type: 'button', onclick: () => listViewWrite(db, { sort: [] }).then(reload) }, 'Manual');
+  const hint = sorted
+    ? el('span', { class: 'board-hint' }, `Sorted by ${sortName}: ${levels.length ? 'drag into another group, or ' : ''}choose `, manualBtn, ' to arrange by hand')
+    : el('span', { class: 'board-hint' }, levels.length ? 'Manual: drag to arrange, or into another group to change it' : 'Manual: drag to arrange, left to right then down');
+  const footer = el('div', { class: 'list-footer board-footer', role: 'status', 'aria-live': 'polite' },
+    el('span', {}, listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term })), hint);
+  const wrap = el('div', { class: 'card board-wrap', dataset: { layout: 'board' } }, board, footer);
+  main.append(wrap);
+  board.style.setProperty('--board-top', `${Math.max(0, Math.round(board.getBoundingClientRect().top + scrollY))}px`);
+  markDockedRow();
+
+  function boardDrag(down, card) {
+    const side = board.dataset.groups === 'side';
+    let at = { x: down.clientX, y: down.clientY };
+    const track = (e) => { at = { x: e.clientX, y: e.clientY }; };
+    const stop = () => { removeEventListener('pointermove', track, true); removeEventListener('pointerup', stop, true); removeEventListener('pointercancel', stop, true); };
+    addEventListener('pointermove', track, true);
+    addEventListener('pointerup', stop, true);
+    addEventListener('pointercancel', stop, true);
+    const under = () => [...board.querySelectorAll(':scope > .board-group')].find((g) => {
+      const r = g.getBoundingClientRect();
+      return at.x >= r.left && at.x <= r.right && (side || (at.y >= r.top && at.y <= r.bottom));
+    });
+    RO().sortable(down, {
+      source: card,
+      items: () => {
+        const all = [...board.querySelectorAll('.tile, .board-tail')];
+        const group = under();
+        return group ? all.filter((n) => group.contains(n)) : all;
+      },
+      tail: (n) => n.classList.contains('board-tail'),
+      axis: side ? 'y' : 'x',
+      alsoScroll: [side ? { scroller: board, axis: 'x' } : { scroller: RO().scrollParent(board, 'y'), axis: 'y' }],
+      zone: () => board,
+      onDrop: (placed) => drop(card, placed),
+    });
+  }
+  function drop(card, { node, before }) {
+    const item = card.wvItem.row.item;
+    const from = card.wvPath;
+    const sec = node.closest('.board-group');
+    const to = sec?.wvPath;
+    if (!to) return reload();
+    const values = from ? listPathValues(s, to, item, from) : listPathValues(s, to, item, to.map(() => ({ key: null })));
+    if (!from && s.completedBy) values[s.completedBy.name] = false;
+    const target = node.classList.contains('tile') ? node : null;
+    const order = !sorted && target ? listCore.moveInOrder(effective(), item.id, target.dataset.eid, !before) : null;
+    if (!Object.keys(values).length && !order) return reload();
+    const back = from ? listPathValues(s, from, item, to) : (s.completedBy ? { [s.completedBy.name]: true } : {});
+    const where = to.map((p) => p.label).join(listCore.SEP);
+    const undo = Object.keys(values).length ? { text: `#${item.publicId} moved to ${where}`, values: back } : null;
+    write(item, values, order, undo);
+  }
+}
 function groupFieldOptions(db) {
   return db.fields.filter((f) => listCore.groupable(f))
     .map((f) => ({ id: f.name, label: f.name, hint: f.type === 'relation' ? 'link' : f.type }));
@@ -5461,7 +5635,7 @@ function groupPopoverRows(db, close, save) {
   doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
   const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
   nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
-  const list = v.layout === 'list';
+  const list = v.layout === 'list' || v.layout === 'board';
   return [
     tableControlHeader('Group', close),
     box, add,
@@ -5481,7 +5655,7 @@ function tableGroupButton(ref) {
     const text = names.length ? `Group: ${names.join(listCore.SEP)}` : 'Group';
     if (btn.querySelector('.table-control-label').textContent !== text) btn.querySelector('.table-control-label').textContent = text;
     btn.setAttribute('aria-label', text);
-    btn.hidden = !isListLayout(ref.db);
+    btn.hidden = !isListLayout(ref.db) && !isBoardLayout(ref.db);
   };
   btn.label();
   btn.addEventListener('click', () => {
@@ -9838,9 +10012,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const values = el('div', { class: 'entity-values' });
   const hidden = new Set(db.hiddenFields ?? []);
   const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
-  const coverF = shown.find((x) => x.type === 'attachments' && x.preview === 'cover');
-  const coverIds = coverF ? (entity.raw?.[coverF.name] ?? []) : [];
-  const coverFile = coverF && (entity.files ?? []).find((x) => coverIds.includes(x.id) && !x.missing && isPictureFile(x));
+  const coverF = boardCore.coverField(db);
+  const coverFile = boardCore.coverOf(db, entity);
   if (coverFile) left.prepend(entityCoverEl(coverFile, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' }));
   const blocks = new Map();
 
