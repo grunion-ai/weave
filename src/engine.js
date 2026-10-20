@@ -8398,7 +8398,7 @@ export class Weave {
     }
     const file = this.attachFile(e.id, fileInput);
     const cur = Array.isArray(e.values[field.id]) ? e.values[field.id] : [];
-    this.updateEntity(e.id, { [field.name]: field.type === 'avatar' ? [file.id] : [...cur, file.id] });
+    this.updateEntity(e.id, { [field.name]: field.type === 'avatar' || field.config.multiple === false ? [file.id] : [...cur, file.id] });
     return file;
   }
 

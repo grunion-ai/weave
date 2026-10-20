@@ -5448,6 +5448,22 @@ function renderBoard(main, db, items, ctx) {
     } catch (err) { toast(err.message, true); } finally { release(); }
   };
 
+  const addPhotoField = async (it, file) => {
+    const release = gridHold();
+    try {
+      const name = boardCore.photoFieldName(db);
+      await api('POST', `/tables/${db.id}/fields`, { name, type: 'attachments', config: { multiple: false, preview: 'cover' } });
+      await api('POST', `/entities/${it.id}/fields/${encodeURIComponent(name)}/files`, await uploadBody(file));
+      await loadSchema();
+      await reload();
+    } catch (err) { toast(err.message, true); } finally { release(); }
+  };
+  const dropCover = (it, files) => {
+    const got = boardCore.coverDrop(db, files);
+    if (got.refuse === 'not-picture') return toast(`${got.name || 'That file'} is not a picture. A cover takes a PNG, JPEG, GIF or WebP file.`, true);
+    if (got.refuse === 'no-field') return toast(`${db.name} has no picture field for covers.`, false, { label: 'Add a Photo field', run: () => addPhotoField(it, got.file) }, { kind: 'info' });
+    labeledEditorFor(got.field, it, db, () => reload(), { compact: true }).dropFiles([got.file]);
+  };
   const tileEl = (node, path) => {
     const it = node.row.item;
     const file = picture === 'off' ? null : boardCore.coverOf(db, it);
@@ -5467,6 +5483,7 @@ function renderBoard(main, db, items, ctx) {
     card.wvPath = path;
     card.wvItem = node;
     RO().guard(card);
+    fileDropZone(card, (files) => dropCover(it, files));
     card.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       const phone = dockCoversScreen.matches;
