@@ -964,10 +964,12 @@ test('an embedded grid can add a record and link it in one step', () => {
   assert.equal(rulesFor('.entity-row:hover .unlink-btn').opacity, '.7');
 });
 
-test('the board view is gone (Kyle, 2026-08-25, Issue #75)', () => {
-  assert.ok(!APP.includes('renderBoard'), 'no board renderer');
-  assert.ok(!APP.includes('view-switch'), 'no table/board switcher');
-  assert.match(fnBody('showDatabase'), /pickTableView\(table, view\)/, 'every #/table route lands on the grid');
+test('Board is a layout of the table view, never a separate board view (Kyle: Issue #75, 2026-08-25; Net Task #122, 2026-10-19)', () => {
+  assert.ok(!APP.includes('view-switch'), 'no table/board switcher: Board is picked in the Layout control (Issue #75 still holds)');
+  assert.match(fnBody('showDatabase'), /pickTableView\(table, view\)/, 'every #/table route lands on the table view');
+  assert.match(fnBody('readAndDrawTable'), /isBoardLayout\(db\)/, 'the view\'s layout key picks the board (Task #122)');
+  assert.match(fnBody('drawDatabase'), /list\.board \? renderBoard : renderList/, 'renderBoard draws only through the table view');
+  assert.match(fnBody('tableViewButton'), /\{ id: 'board', label: 'Board'/, 'Board sits beside Table and List under Layout');
 });
 
 test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #77)', () => {

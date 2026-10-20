@@ -2342,7 +2342,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .tile-field { display: contents; cursor: auto; }
 .tile-field dt { color: var(--tblr-secondary); font-weight: 400; }
 .tile-field dd { min-width: 0; margin: 0; overflow: hidden; }
-.tile-field .inline-edit { padding-block: 1px; font-size: var(--fs-secondary); }
+.tile-field .inline-edit { --wv-inline-fs: var(--fs-secondary); }
 .board-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
 .board-hint { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .board-preset-row { display: inline-flex; gap: 4px; }
