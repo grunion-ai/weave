@@ -969,7 +969,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 }
 
 .doc-rail { position: absolute; left: -26px; top: 0; bottom: 0; width: 22px; }
-.doc-rail-track { position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px) + 8px); width: max-content; display: flex; flex-direction: column;
+.doc-rail-track { position: sticky; top: calc(50% - var(--rail-h, 0px) / 2); width: max-content; display: flex; flex-direction: column;
   align-items: flex-start; padding: 8px 10px; margin: 26px -10px 0;
   max-height: calc(100vh - var(--wv-view-h, 0px) - 40px); overflow-y: auto; scrollbar-width: none; }
 .doc-rail-track::-webkit-scrollbar { display: none; }

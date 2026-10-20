@@ -46,6 +46,21 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('scrolled into the document, the rail sits in the vertical middle of the page', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 600, behavior: 'instant' }));
+      await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 595, null, { timeout: 20000 });
+      await atRest(page.locator('.doc-rail-track'));
+      const r = await page.evaluate(() => {
+        const t = document.querySelector('.doc-rail-track').getBoundingClientRect();
+        const m = document.querySelector('#main').getBoundingClientRect();
+        return { rail: t.top + t.height / 2, box: m.top + m.height / 2, h: m.height };
+      });
+      assert.ok(Math.abs(r.rail - r.box) < 60, `rail centre ${Math.round(r.rail)} near box centre ${Math.round(r.box)}`);
+    } finally { await page.close(); }
+  });
+
   test('hovering a dash grows the rail and shows that section in a card beside it', async () => {
     const page = await open();
     try {

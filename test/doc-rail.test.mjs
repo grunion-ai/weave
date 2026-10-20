@@ -73,6 +73,12 @@ test('the rail floats: its track is sticky inside a full-height gutter', () => {
   assert.match(APP, /class:\s*'doc-rail-track'/, 'the rail is built with a track to stick');
 });
 
+test('the resting rail rides the vertical middle of its scroll box, as ChatGPT does', () => {
+  assert.match(CSS, /\.doc-rail-track\s*\{[^}]*top:\s*calc\(50%[^;]*var\(--rail-h/,
+    'sticky top is the box middle less half the rail');
+  assert.match(APP, /setProperty\('--rail-h'/, 'the rail measures its own height for the offset');
+});
+
 test('a section preview is its text, whitespace collapsed and capped', () => {
   assert.equal(LIB.sectionPreview([]), '');
   assert.equal(LIB.sectionPreview(['  one\n two ', '', 'three']), 'one two three');

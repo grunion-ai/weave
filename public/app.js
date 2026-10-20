@@ -10245,6 +10245,7 @@ function refreshDashRail(st) {
     if (st.shown >= 0) st.show(Math.min(st.shown, spec.length - 1));
   }
   [...st.track.children].forEach((d, i) => d.classList.toggle('active', i === current));
+  st.track.style.setProperty('--rail-h', `${st.track.offsetHeight}px`);
   const marker = st.track.children[current];
   if (marker && st.track.scrollHeight > st.track.clientHeight && !st.rail.matches(':hover')) {
     st.track.scrollTop = Math.max(0, marker.offsetTop - st.track.clientHeight / 2);
