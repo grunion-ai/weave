@@ -564,8 +564,10 @@ if (openHub) {
     assert.equal(await p.locator('#work-details .details-lead').textContent(), `Details for ${picked}.`, 'the details text comes from the catalog');
     await p.click('.chip[data-category="all"]');
     assert.equal(await p.locator('#work-details').isVisible(), true, 'the pick stays open across chips');
+    const creating = p.waitForRequest((request) => new URL(request.url()).pathname === '/api/start/workspaces' && request.method() === 'POST');
     await go(p, 'next');
-    await step(p, 'build');
+    assert.equal((await creating).postDataJSON().template, picked);
+    await step(p, 'agent');
     await p.context().close();
   });
 
@@ -699,8 +701,10 @@ if (openHub) {
     assert.match(await p.locator('.no-match').textContent(), /submarine sonar/);
     await p.click('.card[data-template="empty"]');
     assert.equal(await p.inputValue('#work-other'), 'submarine sonar', 'the query becomes the description');
+    const creating = p.waitForRequest((request) => new URL(request.url()).pathname === '/api/start/workspaces' && request.method() === 'POST');
     await go(p, 'next');
-    await step(p, 'build');
+    assert.equal(Object.hasOwn((await creating).postDataJSON(), 'template'), false, 'Empty creates a workspace without a template');
+    await step(p, 'agent');
     await p.context().close();
   });
 
