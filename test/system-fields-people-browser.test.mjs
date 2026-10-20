@@ -53,7 +53,7 @@ if (s) {
       await by.waitFor();
       assert.match(await by.getAttribute('href'), new RegExp(`#/entity/${dana.id}$`), 'the chip opens the Users row');
       assert.equal(await by.locator('.k-label').textContent(), 'Dana Quinn');
-      assert.equal(await by.locator('.actor-av').textContent(), 'DQ', 'a person wears initials');
+      assert.equal(await by.locator('.av').textContent(), 'DQ', 'a person wears initials');
       assert.equal(await by.getAttribute('title'), 'Dana Quinn · Architect · dana@example.com');
 
       const mod = page.locator('.fieldrow-system[data-field="Modified By"] .k-actor a');

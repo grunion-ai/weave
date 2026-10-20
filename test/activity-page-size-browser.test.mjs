@@ -85,7 +85,7 @@ if (s) {
         const panelChip = page.locator('.fieldrow-system[data-field="Created By"] .k-actor');
         await panelChip.locator('.k-label').waitFor();
         assert.equal(await panelChip.locator('.k-label').textContent(), 'Dana Quinn');
-        assert.equal(await panelChip.locator('.actor-av').textContent(), 'DQ', 'a person still wears initials');
+        assert.equal(await panelChip.locator('.av').textContent(), 'DQ', 'a person still wears initials');
 
         await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
         const gridChip = page.locator('td .k-actor').first();
