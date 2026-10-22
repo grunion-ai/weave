@@ -601,7 +601,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         const root = hub.get(hub.defaultName);
         let account = null;
-        const engine = [weave, root].find((e) => (account = e.accountForIdentity(who)));
+        const engine = [weave, root].find((e) => (account = e.accountForIdentity(who)) && (e === weave || mayAdminister(root, account.role)));
         if (!engine) return deny(403, `This ${oidc.name} sign-in opens no account on this workspace. Ask an operator for an invite (weave account link <name>) and open it in a browser once; then sign in here again.`);
         oauth = { account, engine };
       }
