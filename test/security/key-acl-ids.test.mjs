@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,6 +19,11 @@ function build() {
 }
 
 const raw = (path) => JSON.parse(readFileSync(path, 'utf8')).keys;
+const legacy = (path, name, patch) => {
+  const data = JSON.parse(readFileSync(path, 'utf8'));
+  Object.assign(data.keys[name], patch);
+  writeFileSync(path, JSON.stringify(data));
+};
 
 test('setting a key records the caller\'s account id as owner, and grants store account ids', () => {
   const { w, keystorePath, kyle, sajit, as, id } = build();
@@ -43,9 +48,12 @@ test('a free-text actor that spells an account name opens nothing', () => {
 });
 
 test('a legacy free-text owner or grant no longer matches the account of that name', () => {
-  const { w, kyle, sajit, as } = build();
-  w.actor = 'kyle';
+  const { w, keystorePath, kyle, sajit, as } = build();
+  as(kyle);
   w.setKey('legacy', 'old-secret');
+  legacy(keystorePath, 'legacy', { owner: 'kyle', shared: ['sajit'] });
+  as(sajit);
+  assert.throws(() => w.revealKey('legacy'), (e) => e.code === 'forbidden', 'a grant by name is not a grant to the account');
   as(kyle);
   assert.throws(() => w.revealKey('legacy'), (e) => e.code === 'forbidden', 'the account named kyle is not the text kyle');
   assert.equal(w.ownsKey('legacy'), false);
@@ -91,8 +99,9 @@ test('over HTTP, a root editor whose name matches a legacy owner cannot rotate o
   const root = new Weave();
   root.updateWorkspace({ name: 'root' });
   const writer = root.createAccount({ name: 'root-writer', role: 'editor' });
-  root.actor = 'root-writer';
+  root.actor = `account:${writer.account.id}`;
   root.setKey('w', 'legacy-secret');
+  legacy(process.env.WEAVE_KEYSTORE, 'w', { owner: 'root-writer' });
   const call = client(createWorkspaceHub(root));
   assert.equal((await call('POST', '/api/keys', { token: writer.token, body: { name: 'w', value: 'rotated' } })).status, 403);
   assert.equal((await call('DELETE', '/api/keys/w', { token: writer.token })).status, 403);
