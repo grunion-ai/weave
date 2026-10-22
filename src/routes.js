@@ -333,7 +333,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
     }
 
-    weave.actor = String(rx.header('x-weave-actor') || 'web').slice(0, 120);
+    let actor = String(rx.header('x-weave-actor') || 'web').slice(0, 120);
+    weave.actor = actor;
     if (oidc?.issuer) (weave.registryHost ?? weave).inviteIssuer = oidc.issuer;
     path = path.replace(/^(\/api\/tables\/)([^/]+)/, (whole, head, key) => {
       if (!/%2f/i.test(key)) return whole;
@@ -613,7 +614,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (door) {
       if (!share) return door.page ? notFound({ error: 'This share link is not (or no longer) valid', code: 'not-found' }) : deny(401, 'Invalid token');
       if (share.visibility === 'private' && !sessionOn(weave)) return door.page ? wallPage() : deny(401, 'This share link is private: sign in to open it');
-      weave.actor = `share:${share.label || share.id.slice(0, 8)}`.slice(0, 120);
+      weave.actor = actor = `share:${share.label || share.id.slice(0, 8)}`.slice(0, 120);
       if (door.page) {
         const hit = sharePage(weave, share, door.rest, { method: rx.method, prefix: wsPrefix });
         if (hit.redirect) return { status: 302, headers: { Location: hit.redirect, 'Cache-Control': 'no-store' }, body: '' };
@@ -627,11 +628,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     else if (authz && /^Bearer /i.test(authz)) {
       const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
-      weave.actor = oauth ? `${accountActor(account.id)} via MCP` : actorOf(account);
+      weave.actor = actor = oauth ? `${accountActor(account.id)} via MCP` : actorOf(account);
       accountName = account.name;
       role = Weave.roleName(account.role);
     } else if ((session = sessionOn(weave))) {
-      weave.actor = actorOf(session);
+      weave.actor = actor = actorOf(session);
       accountName = session.name;
       role = Weave.roleName(session.role);
     } else if (weave.state.meta.requireAuth && !openDoor && cookies[cookieName(weave)]) {
@@ -669,9 +670,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
       }
     }
-    const actorForRequest = weave.actor;
-    const requestActor = role ? actorForRequest : 'anonymous';
     const guarded = () => !!(weave.listAccounts().length || hub.get(hub.defaultName).listAccounts().length);
+    const actorForRequest = role || share || !guarded() ? actor : 'anonymous';
+    weave.actor = actorForRequest;
+    const requestActor = role ? actorForRequest : 'anonymous';
     const cap = role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
     if (cap && cap !== 'architect') {
       const m2 = rx.method;
@@ -1241,7 +1243,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               const base = WeaveSlugs.slugify(asked) || 'workspace';
               slug = [base, ...Array.from({ length: 50 }, (_, i) => `${base}-${i + 2}`)].find((s) => hub.slugState(s) === 'available') ?? null;
             }
-            const w = hub.create(asked, { slug });
+            const w = hub.create(asked, { slug, actor: actorForRequest });
             const owner = w.createAccount({ name: ownerName, role: 'architect' }).account;
             w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
             if (!found.creator) {
@@ -1342,15 +1344,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const caller = bearer ? hubRoot.verifyToken(bearer) : sessionOn(hubRoot);
           if (!caller) return deny(401, 'Migrating a backup needs an account on the hub root');
           const archive = await cloudBackups.get(caller.id, source[1]);
-          const w = await hub.createFrom(body.name, { slug: body.slug ?? null, archive, key: body.key, workspace: body.workspace ?? null });
+          const w = await hub.createFrom(body.name, { slug: body.slug ?? null, archive, key: body.key, workspace: body.workspace ?? null, actor: actorForRequest });
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, from: `backup:${source[1]}`, entities: w.storageStats().entities });
         }
         if (route === 'POST /api/workspaces') {
-          const w = hub.create(body.name, { slug: body.slug ?? null });
+          const w = hub.create(body.name, { slug: body.slug ?? null, actor: actorForRequest });
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/` });
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          const w = hub.restore(m[1]);
+          const w = hub.restore(m[1], { actor: actorForRequest });
           return out(200, { name: w.state.meta.name, deletedAt: null });
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'PATCH') {
@@ -1361,8 +1363,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
           if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
           const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
-          if (hard) return out(200, hub.remove(m[1], { hard: true }));
-          const w = hub.remove(m[1]);
+          if (hard) return out(200, hub.remove(m[1], { hard: true, actor: actorForRequest }));
+          const w = hub.remove(m[1], { actor: actorForRequest });
           return out(200, { name: w.state.meta.name, deletedAt: w.state.meta.deletedAt });
         }
 
@@ -1920,7 +1922,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {
-          return out(201, weave.addComment(m[1], role && !['architect', 'editor'].includes(role) ? { ...body, author: actorForRequest } : body));
+          return out(201, weave.addComment(m[1], (role ? !['architect', 'editor'].includes(role) : guarded()) ? { ...body, author: actorForRequest } : body));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments\/([^/]+)$/)) && rx.method === 'DELETE') {
           weave.deleteComment(m[1], m[2]);
