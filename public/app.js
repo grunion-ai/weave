@@ -10314,7 +10314,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   if (deckRole) {
     const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
     const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
-    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, allowfullscreen: '', allow: 'fullscreen', title: label });
+    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: label });
     const body = el('div', { class: 'doc-section-body' }, frame);
     const caret = disclosure('doc-caret', true, {
       title: 'Collapse section',

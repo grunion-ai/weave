@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, logoType, inviteUrl, accountActor } from './engine.js';
+import { Weave, WeaveError, fileHeaders, sandboxedHtmlHeaders, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -820,10 +820,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (m[2] === 'json') {
           return out(200, { model: built.model, errors: built.errors, warnings: built.warnings });
         }
-        return out(200, built.html, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'X-Weave-Deck-Warnings': String(built.warnings.length),
-        });
+        return out(200, built.html, sandboxedHtmlHeaders({ 'X-Weave-Deck-Warnings': String(built.warnings.length) }));
       }
 
       if ((m = path.match(/^\/t\/([^/]+)\/new$/)) && ['GET', 'HEAD'].includes(rx.method)) {
