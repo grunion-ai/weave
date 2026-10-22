@@ -449,7 +449,7 @@ const markStuckHeads = () => {
 addEventListener('scroll', (e) => {
   const wrap = e.target;
   if (wrap instanceof HTMLElement && wrap.classList.contains('table-wrap')) {
-    wrap.classList.toggle('wv-scrolled-x', wrap.scrollLeft > 0);
+    wrap.classList.toggle('wv-scrolled-x', wrap.scrollLeft >= 1);
   }
   headCheck ||= requestAnimationFrame(markStuckHeads);
 }, { capture: true, passive: true });
@@ -6347,7 +6347,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (frozenShown) {
       const k = at + frozenShown;
       out.push(`${cell(k)}{border-right:1px solid transparent}`,
-        `.table-wrap.wv-scrolled-x ${cell(k)}{border-right-color:var(--tblr-border-color)}`);
+        `@media (min-width: 601px){${cell(k)}::before{content:"";position:absolute;top:0;bottom:0;right:0;width:1px;background:var(--tblr-border-color);opacity:0;pointer-events:none}`
+          + `.table-wrap.wv-scrolled-x ${cell(k)}::before{opacity:1}}`);
     }
     if (grabbed && cols.includes(grabbed)) out.push(`${cell(at + cols.indexOf(grabbed) + 1)}{opacity:var(--wv-source-opacity)}`);
     if (colShift) cols.forEach((c, i) => { if (colShift.get(c)) out.push(`${cell(at + i + 1)}{translate:${colShift.get(c)}px 0}`); });

@@ -336,8 +336,8 @@ if (s) {
       assert.ok(Math.abs(pinned.cell - pinned.pidRight) <= 1, 'and so are its cells');
       assert.ok(pinned.next < pinned.pidRight, 'the first scrolling field slid under the zone');
       await page.waitForFunction(() => document.querySelector('.table-wrap').classList.contains('wv-scrolled-x'));
-      const seam = await page.evaluate(() => getComputedStyle(document.querySelector('.wv-grid thead th[data-col="Owner"]')).borderRightColor);
-      assert.doesNotMatch(seam, /rgba\(0, 0, 0, 0\)/, 'the seam hairline moved to the last frozen field while scrolled');
+      const seam = await page.evaluate(() => ['th[data-col="Owner"]', 'th.pid-head'].map((s) => getComputedStyle(document.querySelector(`.wv-grid thead ${s}`), '::before').opacity));
+      assert.deepEqual(seam, ['1', '0'], 'the seam hairline moved to the last frozen field while scrolled');
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 0; });
       await page.waitForTimeout(80);
       const back = await drag(page, 'Owner', async () => {

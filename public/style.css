@@ -293,8 +293,8 @@ a.wv-menu-row, a.wv-menu-row:hover { text-decoration: none; color: var(--tblr-bo
 .wv-grid:has(th.sel-head) :is(th.pid-head, td.pid-cell) { left: calc(var(--wv-sel-lead) + var(--wv-sel-hit)); }
 .wv-grid tbody :is(td.sel-cell, td.pid-cell) { z-index: 1; background: var(--tblr-bg-surface); }
 .wv-grid thead :is(th.sel-head, th.pid-head) { z-index: 5; }
-.table-wrap.wv-scrolled-x .wv-grid :is(th.pid-head, td.pid-cell) { border-right-color: var(--tblr-border-color); }
-.table-wrap.wv-scrolled-x .wv-grid.wv-frozen-fields :is(th.pid-head, td.pid-cell) { border-right-color: transparent; }
+.wv-grid :is(th.pid-head, td.pid-cell)::before { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 1px; background: var(--tblr-border-color); opacity: 0; pointer-events: none; }
+.table-wrap.wv-scrolled-x .wv-grid:not(.wv-frozen-fields) :is(th.pid-head, td.pid-cell)::before { opacity: 1; }
 .wv-grid tbody tr.row-selected > :is(td.sel-cell, td.pid-cell),
 .wv-grid tbody tr.row-selected:hover > :is(td.sel-cell, td.pid-cell) {
   background: color-mix(in srgb, var(--tblr-primary) 9%, var(--tblr-bg-surface));
