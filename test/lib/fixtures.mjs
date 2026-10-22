@@ -54,6 +54,8 @@ export function normalise(v) {
     .map(([k, x]) => [k, normalise(x)]));
 }
 
+export const unwrapData = (text) => /^<weave_data [^>\n]*>\n([\s\S]*)\n<\/weave_data>$/.exec(text)?.[1] ?? text;
+
 export function client(hub, opts = {}) {
   const handle = createRequestHandler(hub, { version: 'test', ...opts });
   return async (method, path, { body, token, cookie } = {}) => {

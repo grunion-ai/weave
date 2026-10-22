@@ -6,8 +6,27 @@ import { submitForm, listForms, createForm, updateForm, getFormDefinition } from
 const PROTOCOL_VERSION = '2024-11-05';
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
-function textResult(data) {
-  return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data) }] };
+const seal = (text) => text.replace(/<(?=\/?weave_data)/gi, '\\u003c');
+const attr = (v) => String(v ?? '*').replace(/[\s"<>&]+/g, ' ').trim() || '*';
+function textResult(data, source = null) {
+  const text = typeof data === 'string' ? data : JSON.stringify(data);
+  if (!source) return { content: [{ type: 'text', text }] };
+  const head = `<weave_data table="${attr(source.table)}" entity="${attr(source.entity)}" field="${attr(source.field)}">`;
+  return { content: [{ type: 'text', text: `${head}\n${seal(text)}\n</weave_data>` }] };
+}
+
+function storedSource(weave, name, args) {
+  if (name === 'weave_call' && args.name !== 'help') {
+    let inner = args.args ?? {};
+    try { if (typeof inner === 'string') inner = JSON.parse(inner); } catch { inner = {}; }
+    return storedSource(weave, args.name, inner ?? {});
+  }
+  if (!READ_ONLY.has(name)) return null;
+  const tableOf = (fn) => { try { const db = fn(); return db ? weave.qualifiedName(db) : null; } catch { return null; } };
+  const ref = args.db ?? args.table ?? null;
+  const table = (ref != null ? tableOf(() => weave.findTable(ref)) ?? ref : null)
+    ?? (args.entity != null ? tableOf(() => weave.state.tables[weave.getEntity(args.entity).dbId]) : null);
+  return { table, entity: args.entity ?? null, field: args.doc ?? args.field ?? null };
 }
 
 export const COMPACT_TOOLS = new Set([
@@ -1002,7 +1021,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
         return reply({ tools: listTools(tools) });
       case 'tools/call': {
         try {
-          return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller)));
+          return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller), storedSource(weave, params.name, params.arguments ?? {})));
         } catch (err) {
           return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
         }
