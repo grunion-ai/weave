@@ -117,6 +117,46 @@ test('a reader or writer of the root, signed in by session, cannot open a walled
   assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: admin })), ['open', 'secret']);
 });
 
+test('OAuth MCP on a member: a root editor or observer opens nothing, the root architect is admitted, a member account seats with its own role (Issue #488)', async () => {
+  const { hub, root, secret } = build();
+  const issuer = 'https://idp.test';
+  const oidc = { name: 'Test IdP', issuer, identify: async (token) => ({ issuer, subject: token.slice('idp-'.length), client: null }) };
+  const pin = (w, name, subject) => w.redeemIdentityInvite(w.linkIdentity(name, { issuer }).code, { issuer, subject });
+  pin(root, 'root-admin', 'admin');
+  pin(root, 'root-writer', 'writer');
+  pin(root, 'root-reader', 'reader-only');
+  root.createAccount({ name: 'root-editor', role: 'editor' });
+  pin(root, 'root-editor', 'editor-only');
+  root.createAccount({ name: 'root-boss', role: 'architect' });
+  pin(root, 'root-boss', 'boss');
+  secret.createAccount({ name: 'boss-reader', role: 'observer' });
+  pin(secret, 'boss-reader', 'boss');
+  secret.createAccount({ name: 'writer-owner', role: 'architect' });
+  pin(secret, 'writer-owner', 'writer');
+  const call = client(hub, { oidc });
+  const rpc = (token, method, params) => call('POST', '/w/secret/mcp', { token, body: { jsonrpc: '2.0', id: 1, method, params } });
+  const create = (token, name) => rpc(token, 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Plan', name } });
+  const rows = () => secret.listEntities(secret.getTable('Ops/Plan').id).map((e) => secret.entityName(e));
+  for (const subject of ['reader-only', 'editor-only']) {
+    for (const method of ['tools/list', 'initialize']) {
+      const r = await rpc(`idp-${subject}`, method, {});
+      assert.equal(r.status, 403, `${subject} ${method}`);
+      assert.match(r.json.error, /opens no account on this workspace/, `${subject} is not signed in on secret at all`);
+    }
+    assert.equal((await create(`idp-${subject}`, `by ${subject}`)).status, 403);
+  }
+  const boss = await create('idp-admin', 'by the hub operator');
+  assert.equal(boss.status, 200);
+  assert.ok(!boss.json.result.isError, boss.json.result.content[0].text);
+  const owner = await create('idp-writer', 'by the member architect');
+  assert.equal(owner.status, 200);
+  assert.ok(!owner.json.result.isError, owner.json.result.content[0].text);
+  assert.equal(secret.actorName(secret.getEntity(JSON.parse(owner.json.result.content[0].text).id).createdBy), 'writer-owner via MCP', 'the member account, never the root one');
+  await create('idp-boss', 'by a root architect seated as a member observer');
+  assert.equal(rows().includes('by a root architect seated as a member observer'), false, 'the member role wins over the root role, as crossSeat does');
+  assert.deepEqual(rows().filter((n) => n.startsWith('by ')).sort(), ['by the hub operator', 'by the member architect']);
+});
+
 test('bug report: a writer and a reader file into weave through the form; an anonymous caller cannot reach a walled weave', async () => {
   const { call, writer, reader, docs, root, open } = build();
   const n = issues(docs);

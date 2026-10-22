@@ -16,6 +16,13 @@ read and comment, editors write rows, and architects also change structure,
 accounts and keys. No role is scoped below the workspace: nothing narrows
 access to one space, row or field.
 
+**The hub operator.** One instance can hold several workspaces, and its default
+workspace is the hub root. An architect of the root administers every workspace
+on the hub, by browser session or through `/mcp`, including a member workspace
+where that person holds no account. A root editor or observer reaches a member
+workspace only through an account of its own there, and works with that
+account's role.
+
 **Tokens and sign-in.** Agents hold `wv_` bearer tokens, stored hashed. People
 sign in through one OpenID Connect provider that the operator configures. weave
 keeps no password store of its own.
