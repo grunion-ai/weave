@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, sandboxedHtmlHeaders, logoType, inviteUrl, accountActor } from './engine.js';
+import { Weave, WeaveError, fileHeaders, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -618,7 +618,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (door.page) {
         const hit = sharePage(weave, share, door.rest, { method: rx.method, prefix: wsPrefix });
         if (hit.redirect) return { status: 302, headers: { Location: hit.redirect, 'Cache-Control': 'no-store' }, body: '' };
-        if (hit.html) return out(200, hit.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        if (hit.html) return out(200, hit.html, sandboxedHtmlHeaders({ 'Cache-Control': 'no-store' }, HTML_PAGE_POLICY));
         if (hit.status === 405) return out(405, { error: 'A share page is read-only', code: 'method-not-allowed' }, { Allow: 'GET, HEAD' });
         if (!hit.path) return notFound({ error: 'Not found', code: 'not-found' });
         path = hit.path;
@@ -786,9 +786,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, markdown, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
         }
         if (m[3] === 'html') {
-          if (isHtmlDocument(markdown)) return out(200, markdown, { 'Content-Type': 'text/html; charset=utf-8' });
+          if (isHtmlDocument(markdown)) return out(200, markdown, sandboxedHtmlHeaders());
           const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
-          return out(200, page, { 'Content-Type': 'text/html; charset=utf-8' });
+          return out(200, page, sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
         }
         const pdf = markdownToPdf(markdown, { title: entity.name || `#${entity.publicId}`, subtitle });
         return out(200, pdf, fileHeaders({ name: `${entity.name || 'document'}.pdf`, mime: 'application/pdf' }, pdf));
@@ -809,7 +809,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (m[2] === 'md') return out(200, md, { 'Content-Type': 'text/markdown; charset=utf-8' });
         if (m[2] === 'mmd') return out(200, md, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
         if (m[2] === 'html') {
-          return out(200, renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown: md, resolveMention }), { 'Content-Type': 'text/html; charset=utf-8' });
+          return out(200, renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown: md, resolveMention }), sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
         }
         const pdf = markdownToPdf(md, { title: entity.name || `#${entity.publicId}`, subtitle });
         return out(200, pdf, fileHeaders({ name: `${entity.name || 'entity'}.pdf`, mime: 'application/pdf' }, pdf));
@@ -1619,7 +1619,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { id: ws.id, url: `/w/${ws.id}/`, name: ws.name, title: ws.title, description: ws.description, linkPreview: ws.linkPreview });
         }
         if (route === 'POST /api/markdown') {
-          return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });
+          return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention, rawHtml: false }) });
         }
 
         if (route === 'GET /api/forms/manage' || route === 'POST /api/forms' || (rx.method === 'PATCH' && /^\/api\/forms\/[^/]+$/.test(path))) {
