@@ -58,7 +58,7 @@ test('every page that carries document HTML answers under the sandbox policy', a
 
 test('the doc frame for an html document is sandboxed like an HTML attachment frame', () => {
   const app = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8');
-  const frame = app.match(/el\('iframe', \{ class: 'doc-app'[^}]*\}/);
+  const frame = app.match(/el\('iframe', \{ class: 'doc-app'[^\n]*/);
   assert.ok(frame, 'the doc frame is built in app.js');
   assert.match(frame[0], /sandbox: HTML_FRAME_SANDBOX/, `the doc frame carries the attachment sandbox: ${frame[0]}`);
 });

@@ -88,7 +88,7 @@ if (ctx) {
   test("weave's own pages still frame same-origin pages", async () => {
     const page = await browser.newPage();
     try {
-      await page.goto(`${base}/e/${note.id}/doc.html`);
+      await page.goto(`${base}/auth`);
       assert.match(await frameText(page, `/e/${note.id}/doc.html`), /hello from the frame/);
     } finally { await page.close(); }
   });
