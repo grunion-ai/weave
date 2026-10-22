@@ -3415,9 +3415,9 @@ export class Weave {
   static OLD_ROLES = { admin: 'architect', writer: 'editor', reader: 'observer' };
   static roleName(role) { return Weave.OLD_ROLES[role] ?? role; }
 
-  #audit(action, detail = {}, spaces = null) {
+  #audit(action, detail = {}, spaces = null, actor = this.actor) {
     const touched = spaces ? [...new Set([].concat(spaces).filter(Boolean))] : [];
-    this.store.audit({ at: nowISO(), actor: this.actor, action, detail: touched.length ? { ...detail, spaces: touched } : detail });
+    this.store.audit({ at: nowISO(), actor, action, detail: touched.length ? { ...detail, spaces: touched } : detail });
     this.#reg.#settleWorkflows();
   }
 
@@ -3438,6 +3438,11 @@ export class Weave {
       }
     }
     return [...ids];
+  }
+
+  auditWorkspace(action, name, actor = this.actor) {
+    if (!['workspace-created', 'workspace-trashed', 'workspace-restored', 'workspace-deleted'].includes(action)) throw new WeaveError(`Unknown workspace action '${action}'`, 'invalid');
+    this.#audit(action, { name }, null, actor);
   }
 
   listAudit(opts) {
@@ -8506,6 +8511,7 @@ export class Weave {
         errors.push({ row: created + errors.length + 2, error: err.message });
       }
     }
+    this.#audit('csv-imported', { table: db.name, created });
     return { created, errors };
   }
 
@@ -8770,6 +8776,7 @@ export class Weave {
   }
 
   exportJSON({ blobs: withBlobs = true } = {}) {
+    this.#audit('workspace-exported', { blobs: withBlobs });
     const out = JSON.parse(JSON.stringify(this.state));
     delete out.fileBlobs;
     for (const a of Object.values(out.meta.accounts ?? {})) {
@@ -8843,6 +8850,7 @@ export class Weave {
     this.#landBlobs();
     this.#dirtyAll = true;
     this.save();
+    this.#audit('workspace-imported', { entities: Object.keys(this.state.entities).length });
     return this.#fileLedger();
   }
 

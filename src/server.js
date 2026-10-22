@@ -302,7 +302,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
           deletable: !!this.remove && name !== defaultName && name !== 'weave' && !w.state.meta.deletedAt,
         }));
     },
-    remove(ref, { hard = false } = {}) {
+    remove(ref, { hard = false, actor = defaultWeave.actor } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       const name = [...instances.entries()].find(([, x]) => x === w)?.[0];
@@ -313,6 +313,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
         w.state.meta.deletedAt = new Date().toISOString();
         w.save();
         w.syncRegistry();
+        defaultWeave.auditWorkspace('workspace-trashed', name, actor);
         return w;
       }
       const path = w.store.path;
@@ -328,15 +329,17 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
           if (existsSync(path + suffix)) renameSync(path + suffix, join(trashDir, `${name}-${stamp}.db${suffix}`));
         }
       }
+      defaultWeave.auditWorkspace('workspace-deleted', name, actor);
       return { name, trashed: !!path };
     },
-    restore(ref) {
+    restore(ref, { actor = defaultWeave.actor } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       if (!w.state.meta.deletedAt) return w;
       w.state.meta.deletedAt = null;
       w.save();
       w.syncRegistry();
+      defaultWeave.auditWorkspace('workspace-restored', w.state.meta.name, actor);
       return w;
     },
     slugState(slug, self = null) {
@@ -345,7 +348,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       const held = this.get(slug) ?? this.aliasOf(slug);
       return held && held !== self ? 'taken' : 'available';
     },
-    create(asked, { slug = null, from = null } = {}) {
+    create(asked, { slug = null, from = null, actor = defaultWeave.actor } = {}) {
       let title, name;
       if (slug != null && slug !== '') {
         name = String(slug);
@@ -384,9 +387,10 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       adoptedPaths.add(w.store.path);
       const order = defaultWeave.state.meta.workspaceOrder;
       if (Array.isArray(order) && !order.includes(w.state.meta.id)) { order.push(w.state.meta.id); defaultWeave.save(); }
+      defaultWeave.auditWorkspace('workspace-created', name, actor);
       return w;
     },
-    async createFrom(asked, { slug = null, archive, key, workspace = null } = {}) {
+    async createFrom(asked, { slug = null, archive, key, workspace = null, actor = defaultWeave.actor } = {}) {
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
       const scratch = mkdtempSync(join(tmpdir(), 'weave-migrate-'));
       try {
@@ -402,7 +406,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
         }
         const from = join(landed, pick);
         const refs = inspectDb(from).refs.map((f) => f.id);
-        const w = this.create(asked == null || asked === '' ? pick.slice(0, -3) : asked, { slug, from });
+        const w = this.create(asked == null || asked === '' ? pick.slice(0, -3) : asked, { slug, from, actor });
         const blobs = join(dataDir, 'files');
         for (const id of new Set(refs)) {
           const src = join(landed, 'files', id);
