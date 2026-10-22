@@ -505,7 +505,7 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .wv-load-more-in { position: sticky; left: 0; display: inline-flex; align-items: center; gap: 10px; color: var(--tblr-secondary); font-size: var(--fs-meta); }
 .wv-load-more-mark { position: relative; display: inline-block; width: 32px; height: 32px; overflow: hidden; }
 .wv-load-more-mark > .loader-mark { position: absolute; left: 0; top: 0; width: 96px; height: 96px; transform: scale(.3333); transform-origin: 0 0; }
-.wv-load-more-mark .mark-light, .wv-load-more-mark .mark-dark { position: relative; width: 96px; height: 96px; }
+.wv-load-more-mark .mark-light, .wv-load-more-mark .mark-dark { display: block; position: relative; width: 96px; height: 96px; }
 .wv-load-more-mark svg { width: 100%; height: 100%; display: block; }
 .wv-load-more-mark .mark-dark { display: none; }
 [data-bs-theme="dark"] .wv-load-more-mark .mark-light { display: none; }
@@ -1238,7 +1238,7 @@ button.wv-act-subject { border: 0; background: none; padding: 0; text-align: lef
 #page-loader.boot { animation: loader-in .18s ease 500ms both; }
 #page-loader.loader-out { animation: loader-out 160ms linear 120ms both; }
 #main > .grid-loader.loader-out { animation: loader-out 160ms linear 120ms both; }
-#page-loader .mark-light, #page-loader .mark-dark { position: relative; width: 96px; height: 96px; }
+#page-loader .mark-light, #page-loader .mark-dark { display: block; position: relative; width: 96px; height: 96px; }
 #page-loader .loader-mark { position: relative; width: 96px; height: 96px; }
 #page-loader .loader-wait { display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: auto; animation: loader-in .18s ease both; }
 #page-loader .loader-caption { margin: 0; color: var(--tblr-secondary); font-size: var(--fs-meta); }
@@ -1267,7 +1267,7 @@ button.wv-act-subject { border: 0; background: none; padding: 0; text-align: lef
   pointer-events: none;
   animation: loader-in .18s ease both;
 }
-#main > .grid-loader .mark-light, #main > .grid-loader .mark-dark { position: relative; width: 96px; height: 96px; }
+#main > .grid-loader .mark-light, #main > .grid-loader .mark-dark { display: block; position: relative; width: 96px; height: 96px; }
 #main > .grid-loader .loader-mark { position: relative; width: 96px; height: 96px; }
 #main > .grid-loader svg { width: 100%; height: 100%; display: block; }
 #main > .grid-loader .mark-dark { display: none; }
