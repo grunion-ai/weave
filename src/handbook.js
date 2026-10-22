@@ -683,13 +683,13 @@ weave key share vendor-portal --with sajit
 weave key unshare vendor-portal --with sajit
 \`\`\`
 
-A new credential is owned by whoever set it and shared with nobody. Copying counts as revealing, and every reveal and every grant lands in the audit log. **There is no MCP reveal** — an agent can name, set, share and drop a credential, never carry the secret out.
+A new credential is owned by the account that set it and shared with nobody; owners and grants are account ids, so a name typed by a caller with no account opens nothing. Copying counts as revealing, and every reveal and every grant lands in the audit log. **There is no MCP reveal** — an agent can name, set, share and drop a credential, never carry the secret out.
 
 ## Gotchas
 
 There is still no read-back GET, on any surface. Reveal is a POST because it is an act, not a read.
 
-A credential written before this — anything from the original keystore — has no owner and no grant, so nobody reveals it until someone claims it with \`key share\`. The promise the old keystore made about everything it stored still holds.
+A credential written before this (anything from the original keystore, or one whose owner or grant is a bare name rather than an account) matches nobody, so nobody reveals it until an architect on the hub root shares it with an account through \`key share\`. Sharing never makes the architect its owner. The promise the old keystore made about everything it stored still holds.
 
 Storing a name the keystore does not hold is allowed on purpose — set the row first and the secret later. An export carries the names and none of the values, and neither does a formula, a lookup or a query result.` },
 
