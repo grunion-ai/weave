@@ -3293,7 +3293,7 @@ export class Weave {
     const prior = own(data.keys, name);
     data.keys[name] = {
       ...this.#seal(secret ?? ''),
-      owner: prior?.owner ?? this.actor,
+      owner: prior?.owner ?? this.#callerAccount(),
       shared: prior?.shared ?? false,
       createdAt: prior?.createdAt ?? nowISO(),
       ...(prior ? { rotatedAt: nowISO() } : {}),
@@ -3337,8 +3337,8 @@ export class Weave {
     if (!entry) return false;
     if (!(this.registryHost ?? this).listAccounts().length) return true;
     if (entry.shared === true) return true;
-    if (Array.isArray(entry.shared) && entry.shared.some((a) => this.isActor(a))) return true;
-    return !!entry.owner && this.isActor(entry.owner);
+    if (Array.isArray(entry.shared) && entry.shared.some((a) => this.#isKeyHolder(a))) return true;
+    return this.#isKeyHolder(entry.owner);
   }
 
   revealKey(name, { via = 'show' } = {}) {
@@ -3352,8 +3352,32 @@ export class Weave {
     return 'legacy' in entry ? entry.legacy : this.#open(entry, name);
   }
 
+  ownsKey(name) {
+    return this.#isKeyHolder(own(this.#readKeystore().keys, name)?.owner);
+  }
+
+  #callerAccount() {
+    const m = /^account:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?: via MCP)?$/.exec(String(this.actor ?? ''));
+    return m && this.#accountById(m[1]) ? `account:${m[1]}` : null;
+  }
+
+  #isKeyHolder(who) {
+    const me = this.#callerAccount();
+    return !!me && who === me;
+  }
+
   #mayGrant(entry) {
-    return !entry.owner || this.isActor(entry.owner);
+    const reg = this.registryHost ?? this;
+    if (!reg.listAccounts().length) return true;
+    if (/^account:/.test(entry.owner ?? '')) return this.#isKeyHolder(entry.owner);
+    const me = this.#callerAccount();
+    const a = me && own(reg.state.meta.accounts ?? {}, me.slice(8));
+    return !!a && Weave.roleName(a.role) === 'architect';
+  }
+
+  #grantRefusal(entry, verb, name) {
+    const who = /^account:/.test(entry.owner ?? '') ? `'${this.actorName(entry.owner)}'` : 'an architect on the hub root';
+    return new WeaveError(`Only ${who} can ${verb} '${name}'`, 'forbidden');
   }
 
   grantKey(name, account) {
@@ -3361,9 +3385,9 @@ export class Weave {
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
-    if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${this.actorName(entry.owner)}' can share '${name}'`, 'forbidden');
-    entry.owner ??= this.actor;
+    if (!this.#mayGrant(entry)) throw this.#grantRefusal(entry, 'share', name);
     const who = account === true ? true : this.#actorFor(account);
+    if (who == null) throw new WeaveError(`No account named '${account}': a credential is shared with an account`, 'invalid');
     const list = Array.isArray(entry.shared) ? entry.shared : [];
     if (who !== true && !list.includes(who)) list.push(who);
     entry.shared = who === true ? true : list;
@@ -3376,7 +3400,7 @@ export class Weave {
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
-    if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${this.actorName(entry.owner)}' can unshare '${name}'`, 'forbidden');
+    if (!this.#mayGrant(entry)) throw this.#grantRefusal(entry, 'unshare', name);
     const who = this.#actorFor(account);
     entry.shared = Array.isArray(entry.shared) ? entry.shared.filter((a) => a !== account && a !== who) : false;
     this.#writeKeystore(data);
@@ -3509,7 +3533,7 @@ export class Weave {
       const a = Object.values(w.state.meta.accounts ?? {}).find((x) => x.name === name);
       if (a) return accountActor(a.id);
     }
-    return name;
+    return null;
   }
 
   #namedShared(shared) {

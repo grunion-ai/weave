@@ -1508,7 +1508,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const reveal = !!km?.[2] && rx.method === 'POST';
           const target = route === 'POST /api/keys' ? body?.name
             : km && !km[2] && rx.method === 'DELETE' ? decodeURIComponent(km[1]) : null;
-          const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === weave.actorName(actorForRequest);
+          const owns = !!rootRole && target != null && weave.ownsKey(target);
           if (!mayAdminister(root, rootRole) && !(reveal && rootRole) && !owns) {
             return deny(rootRole ? 403 : 401, 'Managing keys needs an architect on the hub root');
           }

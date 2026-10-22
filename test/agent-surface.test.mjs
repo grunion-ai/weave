@@ -89,7 +89,7 @@ const SURFACE = [
 
 const INTERNAL = {
   actorName: 'read helper (Issue #699): every read path renders a stored account:<id> actor as the account\'s current name before it answers, so an agent only ever sees names',
-  isActor: 'permission helper (Issue #699): the keystore, comment and share checks ask whether a stored actor, id or legacy name, is the caller; an agent never asks it',
+  isActor: 'permission helper (Issue #699): the comment check asks whether a stored actor, id or legacy name, is the caller; an agent never asks it',
   save: 'persistence', maybeRefresh: 'cross-process refresh',
   billing: 'read helper (Feature #256): the workspace\'s name, creation date and Clerk organization for src/billing.js; GET /api/billing is the door',
   linkBillingOrg: 'billing plumbing (Feature #256): POST /api/billing/team links the Clerk organization it creates; an agent never links one by hand',
@@ -104,6 +104,7 @@ const INTERNAL = {
   hostRegistry: 'hub plumbing (Feature #219) — the engine the hub stands on hosts the registry',
   syncRegistry: 'hub plumbing (Feature #219) — re-asserts a workspace\'s rows after a soft delete or restore; rebuildRegistry is the surfaced verb',
   dropWorkspace: 'hub plumbing (Feature #219) — a hard workspace delete drops its rows; DELETE /api/workspaces/:id is the door',
+  ownsKey: 'permission helper (Issue #497): the key routes ask whether the caller\'s account owns a credential before letting a non-architect rotate or delete it; weave_keys list shows the owner',
   auditWorkspace: 'audit plumbing (Issue #495): the hub writes one audit entry on the root for each workspace create, trash, restore and delete; GET /api/audit and weave_audit read them',
   now: 'the engine clock — the short and relative date costumes and today()/now() defaults read it; a test pins it',
   findSpace: 'ref resolver', getSpace: 'ref resolver', findTable: 'ref resolver', getTable: 'ref resolver',

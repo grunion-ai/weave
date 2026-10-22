@@ -80,13 +80,13 @@ test('a signed-in write stores the account id, and history follows a rename (Iss
   assert.equal(dispatchTool(w, 'weave_audit', { limit: -1 }).events.find((r) => r.action === 'key-set').actor, 'kyle.adriany', 'weave_audit names the current name');
 });
 
-test('a line written before the change keeps the name it holds, and a legacy credential stays its owner\'s (Issue #699)', async (t) => {
+test('a line written before the change keeps the name it holds, and a legacy credential owned by a name opens for nobody (Issues #699, #497)', async (t) => {
   const { w, legacy, call } = await signedIn(t);
-  assert.equal((await call('POST', '/api/keys/legacy/reveal', {})).status, 200, 'a credential owned by the account name still opens for that account');
+  assert.equal((await call('POST', '/api/keys/legacy/reveal', {})).status, 403, 'a credential owned by the account name is not that account\'s');
   w.renameAccount('kyle', 'kyle.adriany');
   assert.equal(w.getEntity(legacy.id).createdBy, 'kyle', 'the stored line is not rewritten');
   assert.equal((await call('GET', `/api/entities/${legacy.id}`)).body.createdBy, 'kyle', 'and renders as it was written');
-  assert.equal((await call('POST', '/api/keys/legacy/reveal', {})).status, 200, 'and after a rename');
+  assert.equal((await call('POST', '/api/keys/legacy/reveal', {})).status, 403, 'nor after a rename');
 });
 
 test('a grant names an account and follows it across a rename (Issue #699)', async (t) => {

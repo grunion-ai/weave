@@ -24,9 +24,9 @@ function build() {
   const writer = root.createAccount({ name: 'root-writer', role: 'writer' });
   const reader = root.createAccount({ name: 'root-reader', role: 'reader' });
   const memAdmin = mem.createAccount({ name: 'mem-admin', role: 'admin' });
-  root.actor = 'root-admin';
+  root.actor = `account:${admin.account.id}`;
   root.setKey('k', 's3cret');
-  root.actor = 'root-writer';
+  root.actor = `account:${writer.account.id}`;
   root.setKey('w', 'writer-secret');
   return { hub, root, open, mem, call: client(hub), admin, writer, reader, memAdmin };
 }
@@ -55,7 +55,7 @@ test('no credentials, root has accounts: every key route is refused through an a
 });
 
 test('reader and writer of the root are not key admins; the writer reveals and manages only what is theirs', async () => {
-  const { call, reader, writer, root } = build();
+  const { call, reader, writer, root , admin } = build();
   assert.equal((await call('GET', '/api/keys', { token: reader.token })).status, 403);
   assert.equal((await call('POST', '/api/keys/k/reveal', { token: reader.token })).status, 403);
   assert.equal((await call('GET', '/api/keys', { token: writer.token })).status, 403);
@@ -68,7 +68,7 @@ test('reader and writer of the root are not key admins; the writer reveals and m
   assert.equal(own.json.value, 'writer-secret');
   assert.equal((await call('POST', '/api/keys', { token: writer.token, body: { name: 'w', value: 'rotated' } })).status, 201);
   assert.equal(root.resolveKey('w'), 'rotated');
-  root.actor = 'root-admin';
+  root.actor = `account:${admin.account.id}`;
   root.grantKey('k', 'root-writer');
   assert.equal((await call('POST', '/api/keys/k/reveal', { token: writer.token })).status, 200);
   assert.equal((await call('DELETE', '/api/keys/k', { token: writer.token })).status, 403);
@@ -98,9 +98,11 @@ test('the root admin manages keys at the root, and through a member with a root 
 });
 
 test('engine: a member engine decides reveal against the root accounts', () => {
-  const { open } = build();
+  const { open, admin } = build();
   open.actor = 'someone';
   assert.throws(() => open.revealKey('k'), /not shared with you/);
   open.actor = 'root-admin';
+  assert.throws(() => open.revealKey('k'), /not shared with you/, 'a name is not an account (Issue #497)');
+  open.actor = `account:${admin.account.id}`;
   assert.equal(open.revealKey('k'), 's3cret');
 });
