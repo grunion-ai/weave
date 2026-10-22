@@ -7333,10 +7333,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const touched = press;
     press = null;
     if (touched && !touched.tap) return;
-    const chip = phoneChipAt(tr, e.clientX, e.clientY);
-    if (chip) return editPhoneField(chip, db, tr.dataset.eid, chip.dataset.field);
-    if (tr.dataset.href && !tr.dataset.href.startsWith('#/entity/')) location.href = tr.dataset.href;
-    else openEntity(tr.dataset.eid);
+    const x = touched?.x ?? e.clientX, y = touched?.y ?? e.clientY;
+    const row = (touched && document.elementFromPoint(x, y)?.closest('tbody tr.entity-row')) || tr;
+    if (!wrap.contains(row)) return;
+    const chip = phoneChipAt(row, x, y);
+    if (chip) return editPhoneField(chip, db, row.dataset.eid, chip.dataset.field);
+    if (row.dataset.href && !row.dataset.href.startsWith('#/entity/')) location.href = row.dataset.href;
+    else openEntity(row.dataset.eid);
   }, true);
   main.append(wrap);
   settle();
@@ -7348,23 +7351,14 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
 const TAP_SLOP = 10;
 const TAP_MS = 300;
-const PHONE_HIT = 44;
-
 function phoneChipAt(tr, x, y) {
-  const inside = (n, pad) => {
-    const r = n.getBoundingClientRect();
-    const px = pad ? Math.max(0, (PHONE_HIT - r.width) / 2) : 0, py = pad ? Math.max(0, (PHONE_HIT - r.height) / 2) : 0;
-    return x >= r.left - px && x <= r.right + px && y >= r.top - py && y <= r.bottom + py;
-  };
   const marks = [...tr.querySelectorAll(':scope > td.pid-cell .phone-lead, :scope > td[data-phone-chip]')]
     .filter((n) => n.getClientRects().length && !n.classList.contains('list-hide'))
     .filter((n) => phoneRowCore.tapAction(n.dataset.ftype));
-  const exact = marks.find((n) => inside(n, false));
-  if (exact) return exact;
-  if ([...tr.querySelectorAll(':scope > td.pid-cell :is(.open-link, .list-name)')].some((n) => inside(n, false))) return null;
-  const near = marks.filter((n) => inside(n, true));
-  const dist = (n) => { const r = n.getBoundingClientRect(); return Math.hypot(x - (r.left + r.right) / 2, y - (r.top + r.bottom) / 2); };
-  return near.sort((a, b) => dist(a) - dist(b))[0] ?? null;
+  const opens = [...tr.querySelectorAll(':scope > td.pid-cell :is(.open-link:not(.pid-probe), .list-name)')].filter((n) => n.getClientRects().length);
+  const boxes = phoneRowCore.hitBoxes(tr.getBoundingClientRect(), [...marks, ...opens].map((n) => n.getBoundingClientRect()));
+  const at = boxes.findIndex((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom);
+  return marks[at] ?? null;
 }
 
 async function editPhoneField(anchor, db, eid, name) {
