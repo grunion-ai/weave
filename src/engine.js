@@ -145,7 +145,8 @@ async function webhookRefusal(url) {
 
 const INLINE_FILE_TYPES = new Set(['application/pdf', 'text/plain']);
 export const HTML_VIEW_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
-export const sandboxedHtmlHeaders = (extra = {}) => ({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': HTML_VIEW_POLICY, ...extra });
+export const HTML_PAGE_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; frame-src 'self'";
+export const sandboxedHtmlHeaders = (extra = {}, policy = HTML_VIEW_POLICY) => ({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': policy, ...extra });
 const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
 export function fileHeaders(meta, bytes, { view = false } = {}) {
   const claimed = String(meta.mime ?? '').split(';')[0].trim().toLowerCase();

@@ -167,7 +167,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
       ...rowOf(weave, full),
       doc: full.doc ?? '',
       docField: full.docField,
-      docHtml: renderMarkdown(full.doc ?? ''),
+      docHtml: renderMarkdown(full.doc ?? '', { rawHtml: false }),
       createdAt: full.createdAt,
       schema,
     });
@@ -180,7 +180,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither.', 'invalid');
     weave.setDoc(e.id, text, body.field ?? null);
     const full = weave.readEntity(e.id);
-    return out(200, { ok: true, doc: full.doc ?? '', docHtml: renderMarkdown(full.doc ?? '') });
+    return out(200, { ok: true, doc: full.doc ?? '', docHtml: renderMarkdown(full.doc ?? '', { rawHtml: false }) });
   }
 
   if (path === '/t/file' && rx.method === 'POST') {

@@ -34,7 +34,7 @@ test('every response carries nosniff and Referrer-Policy; HTML adds frame-ancest
       assert.equal(res.headers['referrer-policy'], 'same-origin', path);
       assert.equal(res.headers['strict-transport-security'], undefined, `${path}: no HSTS over plain http`);
     }
-    for (const path of ['/', `/e/${note.id}/doc.html`, '/auth', '/does-not-exist']) {
+    for (const path of ['/', '/auth', '/does-not-exist']) {
       const res = await call(port, path);
       assert.match(res.headers['content-type'], /^text\/html/, path);
       assert.equal(res.headers['content-security-policy'], "frame-ancestors 'self'", path);

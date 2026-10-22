@@ -10050,7 +10050,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
     const isApp = mode === 'app';
     const isDiagram = mode === 'diagram';
-    const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, allowfullscreen: '', allow: 'fullscreen', title: f.name })
+    const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: f.name })
       : isDiagram ? el('div', { class: 'doc-diagram' }) : null;
     let sourceBox = null;
     const drawDiagram = () => {
