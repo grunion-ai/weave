@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage, listTools } from '../src/mcp.js';
+import { unwrapData } from './lib/fixtures.mjs';
 import { startServer } from '../src/server.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -204,9 +205,9 @@ test('weave_ontology is listed by default and answers plain text', () => {
   const w = tracker();
   const outline = call(w, 'weave_ontology', { depth: 'outline' });
   assert.ok(!outline.isError, outline.content[0].text);
-  assert.equal(outline.content[0].text, w.ontology());
-  assert.equal(call(w, 'weave_ontology', {}).content[0].text, w.ontology());
-  assert.equal(call(w, 'weave_ontology', { concept: 'Issue' }).content[0].text, w.ontology({ concept: 'Issue' }));
+  assert.equal(unwrapData(outline.content[0].text), w.ontology());
+  assert.equal(unwrapData(call(w, 'weave_ontology', {}).content[0].text), w.ontology());
+  assert.equal(unwrapData(call(w, 'weave_ontology', { concept: 'Issue' }).content[0].text), w.ontology({ concept: 'Issue' }));
   const { etag } = w.spaceVersions();
   assert.match(call(w, 'weave_ontology', { since: etag }).content[0].text, /unchanged/);
   assert.equal(call(w, 'weave_ontology', { concept: 'Nope' }).isError, true);

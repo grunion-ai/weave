@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { startMcpServer, TOOLS, dispatchTool } from '../src/mcp.js';
+import { unwrapData } from './lib/fixtures.mjs';
 
 function makeSession() {
   const weave = new Weave();
@@ -62,7 +63,7 @@ test('MCP tool calls drive a full workflow', async () => {
   const toolCall = async (name, args) => {
     const res = await call('tools/call', { name, arguments: args });
     assert.ok(!res.error, JSON.stringify(res.error));
-    const text = res.result.content[0].text;
+    const text = unwrapData(res.result.content[0].text);
     return { isError: res.result.isError ?? false, data: (() => { try { return JSON.parse(text); } catch { return text; } })() };
   };
 

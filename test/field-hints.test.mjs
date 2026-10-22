@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage } from '../src/mcp.js';
+import { unwrapData } from './lib/fixtures.mjs';
 import { startServer } from '../src/server.js';
 import { FIELD_PATHS, nextFor, fieldHints, containerHints } from '../src/field-hints.js';
 import { FIELD_TYPE_VOCABULARY } from '../src/vocabulary.js';
@@ -14,7 +15,7 @@ import { FIELD_TYPE_VOCABULARY } from '../src/vocabulary.js';
 let rpcId = 0;
 function call(w, name, args) {
   const res = handleMcpMessage(w, { jsonrpc: '2.0', id: ++rpcId, method: 'tools/call', params: { name, arguments: args } });
-  const text = res.result.content[0].text;
+  const text = unwrapData(res.result.content[0].text);
   assert.ok(!res.result.isError, `${name}: ${text}`);
   return JSON.parse(text);
 }
