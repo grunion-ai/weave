@@ -136,7 +136,7 @@ test('OAuth MCP on a member: a root editor or observer opens nothing, the root a
   const call = client(hub, { oidc });
   const rpc = (token, method, params) => call('POST', '/w/secret/mcp', { token, body: { jsonrpc: '2.0', id: 1, method, params } });
   const create = (token, name) => rpc(token, 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Plan', name } });
-  const rows = () => secret.listEntities(secret.getTable('Ops/Plan').id).map((e) => e.name);
+  const rows = () => secret.listEntities(secret.getTable('Ops/Plan').id).map((e) => secret.entityName(e));
   for (const subject of ['reader-only', 'editor-only']) {
     for (const method of ['tools/list', 'initialize']) {
       const r = await rpc(`idp-${subject}`, method, {});
