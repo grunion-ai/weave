@@ -140,8 +140,9 @@ test('editor: entities and comments, never structure', async () => {
     ['PATCH', `/api/tables/${tid}`, { name: 'Job' }],
     ['DELETE', `/api/tables/${tid}`, null],
     ['POST', `/api/tables/${tid}/fields`, { name: 'Due', type: 'date' }],
-    ['POST', '/api/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_create_space', arguments: { name: 'S' } } }],
   ]) assert.equal((await call(method, path, { token: t.editor, body })).status, 403, `${method} ${path}`);
+  const viaMcp = await call('POST', '/api/mcp', { token: t.editor, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_create_space', arguments: { name: 'S' } } } });
+  assert.equal(viaMcp.json.result.isError, true, 'an editor holds no structure tool over MCP');
   assert.equal(JSON.stringify(w.describeSchema()), before);
 });
 

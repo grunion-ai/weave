@@ -186,7 +186,9 @@ test('an unseated Architect keeps an AI app that reads; its writes come back as 
     assert.match(refused.json.result.content[0].text, /\/billing/);
   }
   assert.equal(w.listTables().filter((x) => !x.system).length, 1);
-  assert.equal((await mcp(call, t.ob, 'initialize', {})).status, 403, 'an Observer by role still has no MCP');
+  assert.equal((await mcp(call, t.ob, 'initialize', {})).status, 200, 'an Observer by role reads over MCP (Issue #508)');
+  const obWrite = await mcp(call, t.ob, 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Dev/Task', name: 'x' } });
+  assert.equal(obWrite.json.result.isError, true, 'and writes no row');
 });
 
 test('GET /api/billing gives an architect every seat holder\'s address and gives a member none (Issue #921)', async () => {

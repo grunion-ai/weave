@@ -676,12 +676,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (cap && cap !== 'architect') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
-        || (unseated === 'architect' && path === '/api/mcp')
+        || (m2 === 'POST' && path === '/api/mcp' && !!role)
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
         || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
       const schemaWrite = !read && (
         /^\/api\/(spaces|automations|accounts|invites|registry)/.test(path)
-        || path === '/api/mcp'
         || path === '/api/import'
         || /^\/api\/tables$/.test(path)
         || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
@@ -1581,7 +1580,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const msgs = Array.isArray(body) ? body : [body];
           const root = hub.get(hub.defaultName);
           const seat = unseated ? `${seatRequired()} Billing: ${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/billing` : null;
-          const caller = { role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto, seat };
+          const caller = { role, tier: unseated ?? role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto, seat };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };

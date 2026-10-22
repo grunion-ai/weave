@@ -675,7 +675,7 @@ function callTool(weave, name, rawArgs, caller) {
     let inner = rawArgs.args ?? {};
     if (typeof inner === 'string') inner = JSON.parse(inner);
     if (rawArgs.name === 'help') {
-      const t = TOOLS.find((x) => x.name === inner.tool);
+      const t = TOOLS.find((x) => x.name === inner.tool && mayCall(caller, x.name));
       if (!t) throw new Error(`help needs args.tool, one of the names weave_call lists (got ${JSON.stringify(inner.tool ?? null)})`);
       return { name: t.name, description: t.description, inputSchema: t.inputSchema };
     }
@@ -687,11 +687,12 @@ function callTool(weave, name, rawArgs, caller) {
   return verbose === true ? result : compactResult(name, result);
 }
 
+const systemWrite = (system) => new Error(system === 'users' ? 'Writing a Users row needs an architect token' : 'Writing a row of a system table needs an architect token');
 function refuseUsersWrite(weave, ref, caller) {
   if (!caller || mayAdminister(weave, caller.role)) return;
   let system = null;
   try { system = weave.state.tables[weave.getEntity(ref).dbId]?.system; } catch {}
-  if (system === 'users') throw new Error('Writing a Users row needs an architect token');
+  if (system) throw systemWrite(system);
 }
 
 export function mayAdminister(on, role) {
@@ -699,6 +700,12 @@ export function mayAdminister(on, role) {
 }
 const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root', weave_shares: 'workspace' };
 export const SEATLESS_TOOLS = new Set(['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_trash', 'weave_stats', 'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_relation_map', 'weave_add_comment']);
+export const ROLE_TOOLS = {
+  observer: new Set([...SEATLESS_TOOLS, 'weave_call']),
+  editor: new Set([...SEATLESS_TOOLS, 'weave_call', 'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_attach_file']),
+};
+const mayCall = (caller, name) => !ROLE_TOOLS[caller?.tier] || ROLE_TOOLS[caller.tier].has(name);
+const unknownTool = (name) => Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 function checkRowArgs(name, args, required) {
@@ -711,6 +718,7 @@ function checkRowArgs(name, args, required) {
 }
 
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
+  if (!mayCall(caller, name)) throw unknownTool(name);
   if (caller?.seat && !SEATLESS_TOOLS.has(name)) throw new Error(caller.seat);
   if (caller && ADMIN_TOOLS[name]) {
     const atRoot = ADMIN_TOOLS[name] === 'root';
@@ -740,7 +748,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.readEntity(args.entity);
     case 'weave_create_entity': {
       checkRowArgs(name, args, false);
-      if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system === 'users') throw new Error('Writing a Users row needs an architect token');
+      if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system) throw systemWrite(weave.findTable(args.db).system);
       const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc, docs: args.docs });
       const once = weave.takeOneTime(e.id);
       return { ...weave.readEntity(e.id), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(envOrigin(), once.invite.code) } } : once ?? {}) };
@@ -787,7 +795,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_doc_restore':
       return weave.restoreDocRevision(args.entity, args.field ?? null, args.seq);
     case 'weave_add_comment':
-      return weave.addComment(args.entity, { author: args.author ?? 'agent', text: args.text });
+      return weave.addComment(args.entity, { author: caller?.role && !['architect', 'editor'].includes(caller.role) ? weave.actor : args.author ?? 'agent', text: args.text });
     case 'weave_delete_comment':
       return weave.deleteComment(args.entity, args.comment);
     case 'weave_search':
@@ -972,7 +980,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_import_json':
       return { ok: true, ...weave.importJSON(args.state) };
     default:
-      throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
+      throw unknownTool(name);
   }
 }
 
@@ -999,7 +1007,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
       case 'ping':
         return reply({});
       case 'tools/list':
-        return reply({ tools: listTools(tools) });
+        return reply({ tools: listTools(tools).filter((t) => mayCall(caller, t.name)) });
       case 'tools/call': {
         try {
           return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller)));
