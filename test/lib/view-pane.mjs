@@ -38,8 +38,7 @@ export async function sortBy(page, field, dir = null) {
       await page.waitForFunction((k) => document.querySelectorAll('#view-pane .sort-level').length === k - 1, n);
     }
     await page.click('#view-pane .sort-add');
-    await page.keyboard.type(field);
-    await page.keyboard.press('Enter');
+    await page.locator('.picker-pop .picker-row').filter({ has: page.locator('.picker-label', { hasText: new RegExp(`^${field}$`) }) }).first().click();
     await page.waitForSelector(`#view-pane .sort-level[data-level="${field}"]`);
   }
   if (dir) {

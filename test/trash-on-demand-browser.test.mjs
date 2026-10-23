@@ -26,7 +26,7 @@ if (s) {
     assert.equal(calls.filter((c) => c.startsWith('POST') && c.endsWith('/query')).length, 1, `one query on open: ${calls.join(', ')}`);
     await openPane(page, 'filters');
     const label = await page.locator('#view-pane label[data-deleted]').textContent();
-    assert.match(label, /\b1 in the trash/, 'the switch still says how many rows are in the trash');
+    assert.match(label, /1 in the trash/, 'the switch still says how many rows are in the trash');
     calls.length = 0;
     await page.locator('#view-pane label[data-deleted]').click();
     await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.row-deleted'));

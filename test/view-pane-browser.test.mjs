@@ -34,7 +34,7 @@ if (s) {
   const open = async (theme = 'light', { height = 5000 } = {}) => {
     const page = await browser.newPage({ viewport: { width: 1440, height }, colorScheme: theme });
     await page.goto(`${base}/#/table/${issue.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main :is(.wv-grid tbody tr, .wv-list)');
+    await page.waitForSelector('#main :is(.wv-grid, .wv-list)');
     return page;
   };
   const api = (view) => weave.query(issue.id, { view: view.id, relations: 'chip', ...(view.group?.length ? {} : { includeDeleted: !!view.deleted }) });
@@ -44,9 +44,10 @@ if (s) {
     const page = await open('light', { height: 900 });
     try {
       const shown = await page.$$eval('#main .crumb-actions > *', (ns) => ns.filter((n) => n.offsetParent).map((n) => n.className));
-      assert.equal(shown.length, 3, `only Search, View and the table menu show: ${shown}`);
+      assert.equal(shown.length, 2, `only Search and View show beside the crumbs: ${shown}`);
       assert.match(shown[0], /table-search/);
       assert.match(shown[1], /table-view-btn/);
+      assert.equal(await page.locator('#main .crumb-row .dots-btn[title="Table actions"]').isVisible(), true, 'and the table menu');
       for (const gone of ['table-density-btn', 'eye-btn', 'table-filter-btn', 'table-sort-btn', 'table-group-btn']) assert.ok(!shown.some((c) => c.includes(gone)), gone);
       assert.equal(await page.textContent('#main .table-view-btn .view-count'), '4', 'three filter values and Include deleted');
       assert.equal(await page.locator('#main .filter-pill, #main .view-pills').count(), 0, 'no filter pills under the title');
@@ -80,8 +81,7 @@ if (s) {
       await page.click('#main .table-view-btn');
       await page.click('#view-pane .vp-acc[data-section="group"]');
       await page.click('#view-pane .group-add');
-      await page.keyboard.type('Severity');
-      await page.keyboard.press('Enter');
+      await page.locator('.picker-pop .picker-row').filter({ has: page.locator('.picker-label', { hasText: /^Severity$/ }) }).first().click();
       await page.waitForSelector('#main tr.group-head');
       await page.waitForSelector('#view-pane .vp-note');
       assert.match(await page.textContent('#view-pane .vp-note'), /Severity now orders the groups, so it left Sort/);
@@ -155,7 +155,7 @@ if (s) {
         const view = write(c);
         const q = api(view);
         await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForSelector('#main :is(.wv-grid tbody tr, .wv-list)');
+        await page.waitForSelector('#main :is(.wv-grid, .wv-list)');
         const ctx = JSON.stringify({ f: c.filters, d: c.deleted, g: c.group.map((x) => x.field), la: c.layout, ro: c.rollups, su: c.subtotals });
         if (c.layout === 'list') {
           const got = await page.$$eval('#main .wv-list', ([l]) => ({

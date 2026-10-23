@@ -138,8 +138,7 @@ if (s) {
           await page.click('#main .crumb-actions .table-sort-btn');
           await page.waitForSelector('.table-sort-popover .sort-add');
           await page.click('.table-sort-popover .sort-add');
-          await page.keyboard.type('Severity');
-          await page.keyboard.press('Enter');
+          await page.locator('.picker-pop .picker-row').filter({ has: page.locator('.picker-label', { hasText: /^Severity$/ }) }).first().click();
           await page.waitForFunction(() => document.querySelector('#main .table-sort-value')?.textContent.startsWith('Severity'), null, { timeout: 10000 });
           const saved = await page.evaluate(async (id) => (await (await fetch('/api/schema')).json()).flatMap((sp) => sp.tables).find((t) => t.id === id).sort, id);
           assert.deepEqual(saved, [{ field: 'Severity', dir: 'asc' }], 'the pick sorts the table');

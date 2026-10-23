@@ -7354,7 +7354,7 @@ export class Weave {
     try { return this.#queryIn(dbRef, opts, workspace); } finally { this.#query = null; }
   }
 
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null } = {}, workspace = null) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null } = {}, workspace = null) {
     const db = this.getTable(dbRef);
     let grouped = null;
     if (view != null && view !== '') {
@@ -7363,6 +7363,10 @@ export class Weave {
       if (!sort?.length) sort = saved.sort;
       if (!String(search ?? '').trim()) search = saved.search;
       if (saved.view.group?.length) grouped = saved.view;
+    }
+    if (groupBy != null && groupBy !== '') {
+      const v = this.#viewQueryIn(db, groupBy).view;
+      grouped = v.group?.length ? v : null;
     }
     includeDeleted = includeDeleted ?? (grouped ? !!grouped.deleted : false);
     const inWs = this.#inWorkspace(db, workspace);

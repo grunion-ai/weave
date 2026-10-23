@@ -4306,7 +4306,7 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
     ...(search ? { search } : {}),
     ...(whole ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
-    ...(group ? { view: db.view.id } : {}),
+    ...(group ? { groupBy: db.view.id } : {}),
     includeDeleted: showDeleted,
     fields: gridFields(db),
     relations: 'chip',
@@ -4482,7 +4482,6 @@ function tableControlHeader(title, close) {
 function tableViewButton(ref) {
   const btn = tableControlButton('table-view-btn', '', 'table', true);
   btn.lastElementChild.classList.add('view-btn-chev');
-  btn.querySelector('.table-control-label').before(el('span', { class: 'view-btn-word' }, 'View'));
   btn.setAttribute('aria-controls', 'view-pane');
   btn.label = () => {
     const name = ref.db.view?.name || 'Standard';
@@ -4717,8 +4716,8 @@ function phoneRowPopover(anchor, db) {
 const VP = globalThis.weaveViewPane;
 const PANE_KEY = 'weave-view-pane';
 const PANE_SECTION_KEY = 'weave-view-pane-section';
-const readPref = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
-const writePref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const readPref = (k, d) => localStorage.getItem(k) ?? d;
+const writePref = (k, v) => localStorage.setItem(k, v);
 const viewPane = { open: readPref(PANE_KEY, '') === 'open', section: readPref(PANE_SECTION_KEY, 'filters'), note: null, views: false, db: null, strip: null, fields: null };
 const PANE_SECTIONS = {
   filters: { label: 'Filters', icon: 'list-filter' },
@@ -4903,7 +4902,7 @@ function displayBlock(db, save) {
   if (cols.length) {
     const box = el('div', { class: 'vp-aggs' });
     out.push(el('div', { class: 'eye-head' }, 'Per column'), box);
-    footStatLists(db, cols).then((lists) => box.replaceChildren(...lists)).catch(() => {});
+    footStatLists(db, cols).then((lists) => box.replaceChildren(...lists)).catch((err) => toast(err.message, true));
   }
   return out;
 }
@@ -5003,7 +5002,7 @@ function paneFilters(db) {
 }
 function paneFields(db) {
   const same = viewPane.fields && viewPane.fields.wvKey === `${db.id}|${db.view?.id}`;
-  if (same) { viewPane.fields.relearnEye(); return viewPane.fields; }
+  if (same) { if (!eyeTails.has(db.id)) viewPane.fields.relearnEye(); return viewPane.fields; }
   const box = fieldVisibilityPopover(paneEl(), db, 0, { rowsSection: false, mount: true });
   box.wvKey = `${db.id}|${db.view?.id}`;
   viewPane.fields = box;
@@ -5402,7 +5401,7 @@ async function readAndDrawList(db, dbId, search) {
   const [result, everyone, domains, total] = await Promise.all([
     api('POST', `/tables/${db.id}/query`, {
       ...base, ...(where ? { where } : {}), ...(sort ? { sort } : {}), ...(search ? { search } : {}), trashCount: true, countAll: true,
-      includeDeleted: showDeleted, ...(s.levels.length && hasView(db) ? { view: db.view.id } : {}),
+      includeDeleted: showDeleted, ...(s.levels.length && hasView(db) ? { groupBy: db.view.id } : {}),
     }).then((r) => graftChips(db, r)),
     filtered && (s.nest || !sort) ? api('POST', `/tables/${db.id}/query`, base).then((r) => graftChips(db, r).items) : null,
     Promise.all(s.levels.map((l) => (l.f.type === 'relation' && l.f.targetDbId ? listTargetRows(l.f).catch(() => []) : null))),
@@ -6098,6 +6097,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       }
       const open = document.querySelector('.chip-pop');
       if (open?.eyeOf === db.id) open.relearnEye();
+      if (viewPane.fields?.eyeOf === db.id && viewPane.fields !== open && viewPane.fields.isConnected) viewPane.fields.relearnEye();
     } catch (err) { toast(err.message, true); }
   };
   const write = (make, { hides = null } = {}) => {
@@ -7338,7 +7338,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       : verb.to === 'home' ? (r === 0 ? null : { r: 0, c })
         : KM().step({ r, c, rows: total(), cols }, verb);
     if (to && slots) to = rowSlotNear(to, verb.to === 'home' ? 1 : verb.to === 'end' ? -1 : Math.sign(to.r - r) || 1);
-    if (!to || to.r === r) return td.focus();
+    if (!to) return td.focus();
     const tr = await ensureRow(to.r);
     (tr ? stops(tr)[to.c] : td)?.focus();
   };

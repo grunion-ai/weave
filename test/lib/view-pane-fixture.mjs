@@ -30,6 +30,7 @@ export function seedIssues(w) {
   w.createSpace({ name: 'Development' });
   const release = w.createTable({ space: 'Development', name: 'Release' });
   const issue = w.createTable({ space: 'Development', name: 'Issue' });
+  w.updateTable(issue, { noun: 'issue' });
   w.addField(issue, { name: 'Status', type: 'workflow', config: { states: [
     { name: 'Open', category: 'not-started', default: true },
     { name: 'In Progress', category: 'in-progress' },

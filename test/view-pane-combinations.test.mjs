@@ -19,7 +19,8 @@ const TARGETS = w.query(release.id, {}).items.map((r) => ({ id: r.id, publicId: 
 const TERM = { singular: 'issue', plural: 'issues' };
 
 function gridQuery(x, t, view) {
-  return x.query(t.id, { view: view.id, relations: 'chip', ...(view.group?.length ? {} : { includeDeleted: !!view.deleted }) });
+  const where = Object.entries(view.filters ?? {}).filter(([, v]) => v.length).map(([k, v]) => [k, 'in', v]);
+  return x.query(t.id, { where, sort: view.sort ?? [], includeDeleted: !!view.deleted, relations: 'chip', ...(view.group?.length ? { groupBy: view.id } : {}) });
 }
 
 function draw(view) {

@@ -94,7 +94,6 @@ if (s) {
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
       await openPane(page, 'filters');
       await settled(page, '1 of 5 bugs');
-      await page.keyboard.press('Escape');
       const cleared = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.request().postDataJSON()?.search === '');
       await page.fill('.table-search-input', '');
       await cleared;

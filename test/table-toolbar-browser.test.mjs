@@ -37,13 +37,13 @@ if (s) {
       assert.equal(await page.locator('#view-pane .view-clear').isVisible(), true);
     } finally { await page.close(); }
   });
-  test('View shows its word and the view name in its tooltip on desktop', async () => {
+  test('View shows as an icon with the view name in its tooltip on desktop', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
       const btn = page.locator('#main .table-view-btn');
       assert.equal(await btn.locator('.table-control-label').isVisible(), false, 'the view name moves to the tooltip and the pane');
-      assert.equal(await btn.locator('.view-btn-word').textContent(), 'View');
+      assert.ok((await btn.boundingBox()).width < 60, 'icon width');
       assert.equal(await btn.getAttribute('title'), 'View: Standard');
       assert.equal(await btn.getAttribute('aria-expanded'), 'false');
     } finally { await page.close(); }
