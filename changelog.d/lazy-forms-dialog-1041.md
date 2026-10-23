@@ -1,1 +1,0 @@
-- **The forms dialog loads when you open it** (Issue #1041): the table menu's Forms dialog and the form editor (`formsDialog`, `formEditor`) moved out of `public/app.js` into `public/forms-dialog.js`, fetched the first time someone picks Forms… from a table menu. A cold home, table or row load downloads 10.2 KB less. Gate: `test/lazy-subsystems-browser.test.mjs`.

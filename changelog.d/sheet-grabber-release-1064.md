@@ -1,1 +1,0 @@
-- The phone sheet grabber reads its dismissal distance from the release event, so a drag past a third of the sheet closes it even when the finger's last movement arrives with the pointerup instead of as a pointermove. Under load the final move could coalesce or land after the release, leaving the measured distance short, and the sheet sprang back. (Issue #1064)

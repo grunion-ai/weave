@@ -1,1 +1,0 @@
-- **The Activity head names its record** (Issue #979): the head read only "Activity", and on a phone the record sits hidden behind the sheet. It now reads `<record name> › Activity` on every width; on a phone the record crumb is a 44 px button that closes the sheet and takes back its history step. Gate: `test/phone-activity-sheet-browser.test.mjs`.
