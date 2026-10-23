@@ -4163,6 +4163,7 @@ function filterStrip(db, onChange, { filters = tableFilters(db), save = null, ex
   };
   strip.flushPending = flush;
   strip.busy = () => dirty || inflight > 0;
+  strip.current = () => active;
   const scroll = el('div', { class: 'filter-scroll' });
   for (const f of wfFields) {
     const row = el('div', { class: 'filter-group', role: 'group', 'aria-label': f.name },
@@ -4480,6 +4481,7 @@ function tableControlHeader(title, close) {
 }
 function tableViewButton(ref) {
   const btn = tableControlButton('table-view-btn', '', 'table', true);
+  btn.lastElementChild.classList.add('view-btn-chev');
   btn.querySelector('.table-control-label').before(el('span', { class: 'view-btn-word' }, 'View'));
   btn.setAttribute('aria-controls', 'view-pane');
   btn.label = () => {
@@ -4728,7 +4730,7 @@ const PANE_SECTIONS = {
 const NO_SORT_TYPES = ['view', 'document', 'attachments', 'avatar', 'key', 'field'];
 function sortFieldOptions(db) {
   return [...db.fields.filter((f) => !NO_SORT_TYPES.includes(f.type)).map((f) => ({ id: f.name, label: f.name, hint: f.type })),
-    ...Object.values(fieldDialogCore.SYSTEM_SORT).filter((f) => f.name !== 'Public Id').map((f) => ({ id: f.name, label: f.name, hint: 'system' }))];
+    ...Object.values(fieldDialogCore.SYSTEM_SORT).map((f) => ({ id: f.name, label: f.name, hint: 'system' }))];
 }
 function sortWords(db, name) {
   const f = db.fields.find((x) => x.name === name) ?? fieldDialogCore.SYSTEM_SORT[name] ?? { name, type: 'text' };
@@ -4869,30 +4871,34 @@ function drawnGroupKeys(db) {
 function rollupCells(rollups, col) {
   return (rollups ?? []).filter((r) => r.field === col && FOOT_LABELS[r.aggregate]).map((r) => ({ agg: r.aggregate, text: r.display ?? '—' }));
 }
+function keyedSeg(seg, name) {
+  for (const b of seg.querySelectorAll('.seg-opt')) b.dataset.vpKey = `${name}:${b.textContent}`;
+  return seg;
+}
 function displayBlock(db, save) {
   const v = db.view ?? {};
   const rollups = showsRollups(db);
   const layout = ['list', 'board'].includes(v.layout) ? v.layout : 'table';
   const out = [
     el('div', { class: 'view-layout vp-line' }, el('span', { class: 'view-layout-label' }, 'Layout'),
-      segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' },
+      keyedSeg(segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' },
         { id: 'board', label: 'Board', title: 'Things to move or pick between: kanban columns or a picture gallery' }],
-      layout, (next) => save({ layout: next }))),
+      layout, (next) => save({ layout: next })), 'layout')),
     el('div', { class: 'vp-line vp-density' }, el('span', { class: 'view-layout-label' }, 'Density'),
-      segCtl([{ id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }, { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
+      keyedSeg(segCtl([{ id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }, { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
         { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' }], gridDensity(db), (mode) => {
         const wrap = document.querySelector('#main .wv-grid')?.closest('.table-wrap') ?? document.querySelector('#main .list-wrap');
         if (wrap?.wvSetDensity) wrap.wvSetDensity(mode); else saveGridDensity(db, mode);
         document.querySelector('#main .table-density-btn')?.label?.(mode);
         paneSync(db);
-      })),
+      }), 'density')),
     ...(isBoardLayout(db) ? boardControls(db, save) : []),
   ];
   if (db.system) return out;
   out.push(el('hr'), paneSwitch({ label: 'Σ Rollups', hint: 'Totals for every group and the whole table', on: rollups, data: { rollups: '' }, onChange: (on) => save({ rollups: on }) }));
   if (!rollups) return out;
   out.push(el('div', { class: 'vp-line vp-subtotals' }, el('span', { class: 'view-layout-label' }, 'Subtotals'),
-    segCtl(VP.SUBTOTALS.map((id) => ({ id, label: VP.SUBTOTAL_LABELS[id] })), v.subtotals ?? 'all', (next) => save({ subtotals: next }))));
+    keyedSeg(segCtl(VP.SUBTOTALS.map((id) => ({ id, label: VP.SUBTOTAL_LABELS[id] })), v.subtotals ?? 'all', (next) => save({ subtotals: next })), 'subtotals')));
   const cols = visibleCols(db).filter((c) => footAggregatesFor(db, colField(db, c)).length);
   if (cols.length) {
     const box = el('div', { class: 'vp-aggs' });
@@ -4976,10 +4982,11 @@ function paneChanged(db, key) {
 }
 function paneFilters(db) {
   const same = viewPane.strip && viewPane.strip.wvKey === `${db.id}|${db.view?.id}`;
-  const fresh = same && (viewPane.strip.busy() || JSON.stringify(viewPane.strip.wvFilters) === JSON.stringify(tableFilters(db)));
+  const live = (f) => JSON.stringify(Object.entries(f ?? {}).filter(([, v]) => v?.length).map(([k, v]) => [k, [...v].sort()]).sort());
+  const fresh = same && (viewPane.strip.busy() || live(viewPane.strip.current?.() ?? viewPane.strip.wvFilters) === live(tableFilters(db)));
   if (fresh) { viewPane.strip.syncDeleted?.(db); return viewPane.strip; }
   const deleted = paneSwitch({
-    label: `Include deleted ${db.term.plural}`, hint: 'Struck through, never totalled', on: showsDeleted(db), data: { deleted: '' },
+    label: `Include deleted ${db.term.plural}`, hint: `${($('#main')?.wvDraw?.trashCount ?? 0).toLocaleString('en-US')} in the trash; struck through, never totalled`, on: showsDeleted(db), data: { deleted: '' },
     onChange: (on) => paneWrite(db, { deleted: on }),
   });
   const strip = filterStrip(db, () => keepScroll(() => showDatabase(db.id, db.view?.id)), { extra: db.system ? [] : [deleted] })
@@ -5036,13 +5043,29 @@ function paneSync(db) {
 }
 function renderViewPane(pane, db) {
   const same = viewPane.db?.id === db.id && viewPane.db?.view?.id === db.view?.id;
-  if (!same) { viewPane.strip = null; viewPane.fields = null; if (viewPane.db) viewPane.note = null; viewPane.views = false; }
+  if (!same) { viewPane.strip = null; viewPane.fields = null; if (viewPane.db) viewPane.note = null; if (viewPane.db?.id !== db.id) viewPane.views = false; }
   const active = pane.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = active?.dataset?.vpKey ?? null;
   const scrollTop = pane.querySelector('.vp-scroll')?.scrollTop ?? 0;
   const editing = viewEdit?.dbId === db.id ? pane.querySelector('.vp-views') : null;
   viewPane.db = db;
   pane.tableId = db.id;
+  if (!pane.wvKeys) {
+    pane.wvKeys = true;
+    pane.addEventListener('click', (e) => {
+      const hit = e.target.closest('label');
+      if (hit?.control && pane.contains(hit.control) && (document.activeElement === document.body || pane.contains(document.activeElement))) hit.control.focus({ preventScroll: true });
+    });
+    pane.addEventListener('keydown', (e) => {
+      if (!['ArrowUp', 'ArrowDown'].includes(e.key) || e.defaultPrevented) return;
+      const body = e.target.closest?.('.vp-body');
+      const walk = '.eye-row > input, .filter-chip > input';
+      if (!body || !e.target.matches(walk)) return;
+      const opts = [...body.querySelectorAll(walk)].filter((n) => !n.disabled);
+      e.preventDefault();
+      opts[(opts.indexOf(e.target) + (e.key === 'ArrowUp' ? -1 : 1) + opts.length) % opts.length]?.focus({ preventScroll: false });
+    });
+  }
   pane.refresh = (next) => { viewPane.db = null; viewPane.strip = null; viewPane.fields = null; renderViewPane(pane, next ?? db); };
   const first = (db.views ?? [])[0]?.id === db.view?.id;
   const pick = el('button', { class: 'vp-view-pick', type: 'button', 'aria-expanded': String(viewPane.views), dataset: { vpKey: 'views' },
@@ -6555,7 +6578,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       el('td', { colspan: String(colCount + sysTail.length + phone.chips.filter((x) => !cols.includes(x)).length) },
         el('div', { class: 'group-head-in', style: `--level:${n.level}` },
           el('button', { class: 'group-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `${shut ? 'Expand' : 'Collapse'} ${n.key}`, onclick: () => foldGroup(n.key) }, lucideEl('chevron-right')),
-          el('span', { class: 'group-field' }, level.f.name),
+          el('span', { class: 'group-head-field' }, level.f.name),
           listHeadingEl({ levels: grouping.levels }, n.level, n),
           el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)))));
   };

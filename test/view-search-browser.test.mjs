@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openViews } from './lib/view-pane.mjs';
 
 let jobs;
 const named = {};
@@ -39,7 +40,7 @@ if (s) {
     await wrote;
   };
   const views = async (page) => {
-    if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
+    await openViews(page);
     await page.waitForSelector('.view-strip .view-row');
   };
   const tab = (page, name) => page.locator('.view-strip .view-row').filter({ has: page.locator('.view-name', { hasText: new RegExp(`^${name}$`) }) });
