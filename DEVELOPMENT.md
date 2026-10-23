@@ -481,13 +481,16 @@ The sweep walks the flicker journeys and opens every dialog and popover listed i
 WebKit, on the messy seed. `test/cutoff-gate-browser.test.mjs` runs the same
 sweep in the gate against `test/cutoff-baseline.json`, which holds today's counts
 per platform, since system fonts differ between macOS and the Linux CI runner.
-The gate fails on a fingerprint the baseline does not hold, or more instances
-than it holds, and fails when a fingerprint disappears or drops in count until
-the change lowers the baseline. `test/cutoff-core.test.mjs` refuses a baseline
-that grows past its committed version or past the base a pull request merges
-into. **Fixing one:** fix the cut-off, run the sweep with `--lower`, and commit
-the lowered counts in the same change. A red gate prints the Linux counts it
-measured; copy them into the `linux` section.
+The baseline is a ceiling. The gate fails on a fingerprint the baseline does not
+hold, or more instances than it holds. A count under the ceiling is a stale
+baseline: the gate prints it as `stale:` and passes, since the same commit
+measured one breadcrumb fingerprint 5, 7 and 8 times on loaded runners (Issue
+#1103). `test/cutoff-core.test.mjs` refuses a baseline that grows past its
+committed version or past the base a pull request merges into, so the ceiling
+only ever comes down. **Fixing one:** fix the cut-off, run the sweep until the
+lower count holds, run it once with `--lower`, and commit the lowered counts in
+the same change. A red gate prints the Linux counts it measured; copy them into
+the `linux` section.
 
 ### Mandatory onboarding verification
 

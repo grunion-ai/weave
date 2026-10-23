@@ -178,6 +178,11 @@ export function ratchet(seen, baseline, { cells = null } = {}) {
   return { added, dropped };
 }
 
+export function verdict(seen, baseline, { cells = null } = {}) {
+  const { added, dropped } = ratchet(seen, baseline, { cells });
+  return { added, stale: dropped };
+}
+
 export function grew(before, after) {
   if (!before) return [];
   const out = [];
