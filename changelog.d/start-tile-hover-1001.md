@@ -1,1 +1,0 @@
-- **A start page tile no longer flickers under a resting pointer** (Issue #1001): hovering an agent tile on `/start` lifted it one pixel, which moved it out from under a pointer resting on its bottom edge, dropped it back, and repeated every frame. The hover now changes the border colour only. Gate: `test/start-tile-hover.test.mjs`.
