@@ -4,6 +4,10 @@
       "gzip": 3418,
       "br": 3020
     },
+    "/activity-panel.js": {
+      "gzip": 4929,
+      "br": 4460
+    },
     "/actor-core.js": {
       "gzip": 1057,
       "br": 961
@@ -68,6 +72,10 @@
       "gzip": 4465,
       "br": 4072
     },
+    "/date-picker.js": {
+      "gzip": 3662,
+      "br": 3291
+    },
     "/editor-lib.js": {
       "gzip": 4499,
       "br": 4070
@@ -95,6 +103,10 @@
     "/form.js": {
       "gzip": 1533,
       "br": 1312
+    },
+    "/forms-dialog.js": {
+      "gzip": 3261,
+      "br": 2863
     },
     "/graph-parse.js": {
       "gzip": 979,

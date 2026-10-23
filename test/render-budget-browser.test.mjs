@@ -23,7 +23,7 @@ if (s) {
   for (const j of JOURNEYS) {
     for (const cell of cellsOf(j)) {
       const key = clickKey(j.name, cell);
-      test(`${key}: the journey renders in no more frames than its budget (Issue #1003)`, async (t) => {
+      test(`${key}: the journey renders in no more frames than its budget (Issue #1042)`, async (t) => {
         const counts = [];
         for (let i = 0; i < RUNS; i++) counts.push((await walk(matrix[cell].browser, j, s, { ...matrix[cell].options, probe })).events);
         const n = median(counts);

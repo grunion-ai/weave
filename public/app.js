@@ -73,6 +73,15 @@ function warmGet(path, ready = null) {
   warmGets.set(path, { at: Date.now(), p });
   return p;
 }
+const rowRevisions = new Map();
+function noteRevisions(method, path, data) {
+  const own = path.match(/^\/entities\/([^/?]+)/)?.[1];
+  if (method !== 'GET' && own && !(data?.id === own && data.revision)) rowRevisions.delete(own);
+  for (const id of Array.isArray(data?.affected) ? data.affected : []) if (id !== data.id) rowRevisions.delete(id);
+  for (const row of [data, data?.entity, ...(Array.isArray(data?.items) ? data.items : [])]) {
+    if (row?.id && typeof row.revision === 'string') rowRevisions.set(row.id, row.revision);
+  }
+}
 async function api(method, path, body, { signal, quiet = false } = {}) {
   if (method === 'GET' && warmGets.has(path)) {
     const hit = warmGets.get(path);
@@ -80,21 +89,29 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
     if (Date.now() - hit.at < WARM_MS) return hit.p;
   }
   const payload = body === undefined ? undefined : JSON.stringify(body);
-  const res = await fetch(WS_PREFIX + '/api' + path, {
-    method,
-    signal,
-    headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE },
-    body: payload,
-    keepalive: (leaving || document.visibilityState === 'hidden')
-      && new TextEncoder().encode(payload ?? '').length < 60_000,
-  });
+  const seen = method === 'PATCH' && rowRevisions.get(path.match(/^\/entities\/([^/?]+)$/)?.[1]);
+  let res;
+  try {
+    res = await fetch(WS_PREFIX + '/api' + path, {
+      method,
+      signal,
+      headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE, ...(seen ? { 'If-Match': `"${seen}"` } : {}) },
+      body: payload,
+      keepalive: (leaving || document.visibilityState === 'hidden')
+        && new TextEncoder().encode(payload ?? '').length < 60_000,
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    throw Object.assign(new Error(method === 'GET' ? 'Could not reach the server' : 'Could not reach the server; nothing was saved'), { code: 'offline', cause: err });
+  }
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
+  if (res.ok || res.status === 412) noteRevisions(method, path, data);
   if (!res.ok && data.code === 'seat-required') {
     seatToast(data);
     throw Object.assign(new Error(data.error), { status: res.status, code: data.code, shown: true });
   }
-  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code });
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code, entity: data.entity });
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
@@ -2733,7 +2750,7 @@ const MENU_ROWS = {
         toast('Share page saved — find it on the workspace page');
       }, 'Save'),
     },
-    forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => formsDialog(db) } : null,
+    forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => openForms(db) } : null,
     icon: dockCoversScreen.matches && !db.icon && !db.system ? { label: 'Add icon…', run: () => searchPicker({
       anchor, title: 'Icon', options: iconCatalogue(), grid: true, currentId: '',
       onPick: async (o) => {
@@ -3302,7 +3319,18 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     try {
       const fresh = await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
       await onSaved(fresh, f.name);
-    } catch (err) { paint?.(val); toast(err.message, true); }
+    } catch (err) {
+      if (err.code !== 'stale' || !err.entity) {
+        paint?.(val);
+        return toast(err.code === 'offline' ? `${f.name} was not saved: could not reach the server` : err.message, true);
+      }
+      const theirs = err.entity;
+      paint?.(theirs.raw?.[f.name] ?? null);
+      await onSaved({ ...theirs, affected: [theirs.id] }, f.name);
+      const mine = fieldValueCell(value) || 'empty';
+      toast(`${theirs.modifiedBy ?? 'Someone'} changed ${f.name} to ${fieldValueCell(theirs.fields?.[f.name]) || 'empty'} first, so your ${mine} was not saved`,
+        true, { label: 'Use mine', run: () => patch(value, paint) }, { key: `stale:${id}:${f.name}` });
+    }
   };
 
   if (f.type === 'view') return viewCell(item.raw?.[f.name], f, { compact });
@@ -4251,11 +4279,18 @@ async function showDatabase(dbId, view) {
   const search = tableSearch.text.trim();
   const again = tableChromeOn(dbId);
   state.route = { page: 'db', dbId, view: db.view.id };
-  if (!again) renderNav();
+  if (!again) { renderNav(); paintTableChrome(db); }
   const release = again ? gridHold() : () => {};
-  try { await readAndDrawTable(db, dbId, search); } finally { release(); }
+  try { await readAndDrawTable(db, dbId, search, !again); } finally { release(); }
 }
-async function readAndDrawTable(db, dbId, search) {
+const FIRST_PAGES_KEPT = 24;
+const firstPages = new Map();
+function rememberFirstPage(key, result) {
+  firstPages.delete(key);
+  firstPages.set(key, result);
+  if (firstPages.size > FIRST_PAGES_KEPT) firstPages.delete(firstPages.keys().next().value);
+}
+async function readAndDrawTable(db, dbId, search, cold = false) {
   if (isListLayout(db) || isBoardLayout(db)) return readAndDrawList(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
@@ -4267,6 +4302,17 @@ async function readAndDrawTable(db, dbId, search) {
     fields: gridFields(db),
     relations: 'chip',
   };
+  const paint = (result, trash) => {
+    tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
+    setFilterTotal(db, result.total, result.all);
+    const items = showDeleted && !search
+      ? [...result.items, ...(trash?.items ?? []).map((e) => ({ ...e, deleted: true }))]
+      : result.items;
+    drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
+  };
+  const pageKey = `${db.id}|${JSON.stringify(query)}`;
+  const cached = cold && !showDeleted ? firstPages.get(pageKey) : null;
+  if (cached) paint(cached, null);
   const [result, trash] = await Promise.all([
     api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true, countAll: true }).then((res) => graftChips(db, res)),
     showDeleted
@@ -4274,12 +4320,9 @@ async function readAndDrawTable(db, dbId, search) {
       : null,
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
-  tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
-  setFilterTotal(db, result.total, result.all);
-  const items = showDeleted && !search
-    ? [...result.items, ...(trash.items ?? []).map((e) => ({ ...e, deleted: true }))]
-    : result.items;
-  drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
+  if (!showDeleted) rememberFirstPage(pageKey, result);
+  if (cached && JSON.stringify(cached) === JSON.stringify(result)) return;
+  paint(result, trash);
 }
 
 function gridMoves(db, field) {
@@ -4670,129 +4713,6 @@ function tableChromeOn(dbId) {
   const chrome = main?.wvTable;
   return !!chrome && chrome.dbId === dbId && chrome.header.parentElement === main ? chrome : null;
 }
-async function formsDialog(db) {
-  try {
-    const data = await api('GET', `/forms/manage?table=${encodeURIComponent(db.id)}`);
-    const list = el('div', { class: 'form-manager-list' });
-    const link = form => `${location.origin}${WS_PREFIX}/f/${form.id}`;
-    for (const form of data.forms) {
-      const builtIn = form.kind !== 'Row';
-      const toggle = el('button', { type: 'button', class: 'btn btn-sm', onclick: async () => {
-        toggle.disabled = true;
-        try { await api('PATCH', `/forms/${form.id}`, { enabled: !form.enabled }); await formsDialog(db); }
-        catch (err) { toggle.disabled = false; toast(err.message, true); }
-      } }, form.enabled ? 'Pause' : 'Enable');
-      list.append(el('div', { class: 'form-manager-row', dataset: { formId: form.id } },
-        el('div', {}, el('strong', {}, form.name), el('div', { class: 'text-muted' }, `${builtIn ? 'Built in · ' : ''}${form.enabled ? 'Enabled' : 'Paused'} · ${!data.requireAuth ? 'Open workspace' : form.floor === 'Anonymous' && data.anonymousAllowed ? 'Anyone with link' : 'Sign-in required'}`)),
-        el('div', { class: 'form-manager-actions' },
-          el('button', { type: 'button', class: 'btn btn-sm', onclick: () => copyText(link(form), 'Form link copied') }, 'Copy link'),
-          el('a', { class: 'btn btn-sm', href: link(form), target: '_blank', rel: 'noopener' }, 'Open'),
-          builtIn ? null : el('button', { type: 'button', class: 'btn btn-sm', onclick: () => formEditor(db, data, form) }, 'Edit'),
-          builtIn ? null : toggle)));
-    }
-    modal('Forms', [el('p', { class: 'text-muted' }, `Collect submissions into ${db.name}. Each form keeps its link when you edit it.`),
-      data.forms.length ? list : el('p', { class: 'form-manager-empty' }, 'No forms yet. Choose fields to collect your first submission.'),
-      el('button', { type: 'button', class: 'btn btn-primary', onclick: () => formEditor(db, data) }, 'Create form')], null, 'Done');
-    $('#modal').classList.add('wv-forms');
-  } catch (err) { toast(err.message, true); }
-}
-
-function formEditor(db, data, current = null) {
-  const label = (text, input) => el('label', { class: 'form-builder-label' }, el('span', {}, text), input);
-  const name = el('input', { class: 'form-control', required: '', value: current?.name ?? `${db.name} form` });
-  const description = el('textarea', { class: 'form-control', rows: '2' }, current?.description ?? '');
-  const floor = pickerSelect({ title: 'Audience', value: current?.floor ?? 'Observer', options: [{ id: 'Observer', label: 'Signed-in members' }, ...(data.anonymousAllowed || current?.floor === 'Anonymous' ? [{ id: 'Anonymous', label: 'Anyone with link' }] : [])] });
-  const enabled = el('input', { type: 'checkbox', class: 'form-check-input' });
-  enabled.checked = current?.enabled ?? true;
-  const supported = new Set(['text', 'document', 'email', 'url', 'number', 'rating', 'date', 'select', 'multiselect', 'workflow', 'checkbox', 'toggle']);
-  const hidden = new Set(Object.keys(current?.hiddenValues ?? {}));
-  const fields = el('div', { class: 'form-builder-fields' });
-  const selected = current?.fields ?? db.fields.filter(f => f.role === 'name').map(f => ({ id: f.id, key: f.id, label: f.name, required: true }));
-  const order = [...selected.map(f => db.fields.find(d => d.id === f.id)).filter(Boolean), ...db.fields.filter(f => !selected.some(s => s.id === f.id))];
-  const rows = new Map();
-  for (const field of order) {
-    const previous = selected.find(f => f.id === field.id);
-    if ((!supported.has(field.type) || field.computed || field.readOnly || hidden.has(field.id) || ['created-at', 'updated-at', 'created-by', 'updated-by'].includes(field.role)) && !previous) continue;
-    const editable = supported.has(field.type) && !field.computed && !field.readOnly;
-    const included = el('input', { type: 'checkbox', class: 'form-check-input', 'aria-label': `Include ${field.name}`, disabled: editable ? null : '' });
-    included.checked = !!previous;
-    const text = el('input', { class: 'form-control', value: previous?.label ?? field.name });
-    const key = el('input', { class: 'form-control', value: previous?.key ?? field.id });
-    const required = el('input', { type: 'checkbox', class: 'form-check-input' });
-    required.checked = previous?.required === true;
-    const hasDefault = el('input', { type: 'checkbox', class: 'form-check-input' });
-    hasDefault.checked = Object.hasOwn(previous ?? {}, 'default');
-    const choices = previous?.options ?? (field.options ?? field.states ?? []).map(o => typeof o === 'string' ? o : o.name);
-    const type = { number: 'number', rating: 'number', date: 'date', email: 'email', url: 'url' }[field.type] ?? 'text';
-    const picks = ['select', 'workflow', 'multiselect'].includes(field.type) ? choices.map(option => ({ id: option, label: option }))
-      : ['checkbox', 'toggle'].includes(field.type) ? [{ id: 'true', label: 'Yes' }, { id: 'false', label: 'No' }] : null;
-    const multi = field.type === 'multiselect';
-    const value = picks ? pickerSelect({ title: field.name, options: picks, multi, value: multi ? previous?.default ?? [] : previous?.default != null ? String(previous.default) : null })
-      : ['text', 'document'].includes(field.type) ? el('textarea', { class: 'form-control', rows: '3' })
-        : el('input', { class: 'form-control', type: field.type === 'date' && previous?.default && !/^\d{4}-\d{2}-\d{2}$/.test(previous.default) ? 'text' : type, step: type === 'number' ? 'any' : null });
-    const control = value.input ?? value;
-    if (!picks) value.value = previous?.default ?? '';
-    let defaultEdited = false;
-    for (const kind of ['input', 'change']) control.addEventListener(kind, () => defaultEdited = true);
-    hasDefault.addEventListener('change', () => defaultEdited = true);
-    const row = el('details', { class: 'form-builder-field', dataset: { formField: field.id } });
-    const move = direction => {
-      const other = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
-      if (other) fields.insertBefore(direction < 0 ? row : other, direction < 0 ? other : row);
-    };
-    row.append(el('summary', { tabindex: '0' }, el('span', {}, field.name), el('span', { class: 'text-muted' }, previous ? 'Included' : 'Available')),
-      el('div', { class: 'form-builder-settings' },
-        label(`Include ${field.name}`, included),
-        editable ? el('div', { class: 'form-builder-pair' }, label('Label', text), label('Key', key)) : el('p', { class: 'text-muted' }, 'Existing field settings are preserved. This field type is configured through the API.'),
-        editable ? label('Required', required) : null,
-        editable ? label('Use a default', hasDefault) : null,
-        editable ? label(field.type === 'multiselect' ? 'Default choices' : 'Default value', value) : null,
-        el('div', { class: 'form-manager-actions' }, el('button', { class: 'btn btn-sm', type: 'button', onclick: () => move(-1), 'aria-label': `Move ${field.name} up` }, 'Move up'), el('button', { class: 'btn btn-sm', type: 'button', onclick: () => move(1), 'aria-label': `Move ${field.name} down` }, 'Move down'))));
-    const sync = () => {
-      row.querySelector('summary .text-muted').textContent = included.checked ? 'Included' : 'Available';
-      for (const input of [text, key, required, hasDefault]) input.disabled = !included.checked || !editable;
-      (value.face ?? value).disabled = !included.checked || !hasDefault.checked || !editable;
-      text.required = key.required = included.checked && editable;
-    };
-    included.addEventListener('change', sync);
-    hasDefault.addEventListener('change', sync);
-    sync();
-    fields.append(row);
-    rows.set(field.id, () => {
-      if (!included.checked) return null;
-      if (!editable) return previous;
-      const out = { ...previous, id: field.id, key: key.value.trim(), label: text.value.trim(), required: required.checked };
-      delete out.default;
-      if (hasDefault.checked) {
-        if (!defaultEdited && Object.hasOwn(previous ?? {}, 'default')) out.default = previous.default;
-        else if (['number', 'rating'].includes(field.type)) {
-          if (!control.value.trim() || !Number.isFinite(Number(control.value))) throw new Error(`${field.name} needs a numeric default`);
-          out.default = Number(control.value);
-        } else if (['checkbox', 'toggle'].includes(field.type)) out.default = control.value === 'true';
-        else if (multi) out.default = [...control.values];
-        else out.default = control.value;
-      }
-      return out;
-    });
-  }
-  const message = el('div', { class: 'text-danger', role: 'alert' });
-  modal(current ? 'Edit form' : 'Create form', [label('Form name', name), label('Description', description), data.requireAuth ? label('Audience', floor) : el('div', { class: 'form-builder-label' }, el('span', {}, 'Audience'), el('strong', {}, 'Anyone in this open workspace'), el('p', { class: 'text-muted' }, 'Sign-in is off for this workspace. Anyone who can reach it can submit this form.')),
-    data.requireAuth && !data.anonymousAllowed ? el('p', { class: 'text-muted' }, 'Anyone with link requires public forms to be enabled by your server operator.') : null,
-    label('Enabled', enabled), el('h3', {}, 'Fields'), fields,
-    current?.hidden?.length ? el('p', { class: 'text-muted' }, `Server fields preserved: ${current.hidden.join(', ')}`) : null, message], async () => {
-    const submit = $('#modal button[type="submit"]');
-    submit.disabled = true;
-    message.textContent = '';
-    try {
-      const entries = [...fields.children].map(row => rows.get(row.dataset.formField)()).filter(Boolean);
-      if (!entries.length) throw new Error('Include at least one field');
-      await api(current ? 'PATCH' : 'POST', current ? `/forms/${current.id}` : '/forms', { name: name.value.trim(), description: description.value, ...(current ? {} : { table: db.id }), fields: entries, enabled: enabled.checked, floor: floor.input.value });
-      await formsDialog(db);
-    } catch (err) { submit.disabled = false; message.textContent = err.message; err.shown = true; throw err; }
-  }, 'Save form');
-  $('#modal').classList.add('wv-forms');
-}
-
 function tableChrome(db, trashCount) {
   const ref = { db, trashCount };
   const chrome = { dbId: db.id, sig: tableChromeSig(db), ref };
@@ -4905,6 +4825,16 @@ function tableToolsButton(header, ref) {
     addEventListener('keydown', esc, true);
   });
   return btn;
+}
+
+function paintTableChrome(db) {
+  const main = $('#main');
+  if (!main) return;
+  const chrome = tableChrome(db, 0);
+  main.wvTable = chrome;
+  main.replaceChildren(chrome.header);
+  syncPhoneBar();
+  scheduleSkeleton(isListLayout(db) || isBoardLayout(db) ? 'list' : 'db', db, chrome.header);
 }
 
 function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
@@ -7447,7 +7377,7 @@ async function editPhoneField(anchor, db, eid, name) {
       case 'date': {
         const c = { ...f };
         const { store, local } = dateStoreFns(c);
-        return datePopover({ anchor, title: f.name, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) });
+        return withDatePicker(() => datePopover({ anchor, title: f.name, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) }));
       }
       case 'value': {
         const percent = f.type === 'number' && f.format === 'percent';
@@ -7818,24 +7748,26 @@ function dateControl({ value = '', title = '', time = false, format = 'iso', cos
   text.addEventListener('change', () => {
     const typed = text.value.trim();
     if (!typed) return set('');
-    try {
-      set(store(readTypedDate(typed, c, local())));
-    } catch {
-      toast(`Could not read '${typed}' as a ${timeOnly ? 'time' : 'date'}`, true);
-      text.value = show(current);
-    }
+    withDatePicker(() => {
+      try {
+        set(store(readTypedDate(typed, c, local())));
+      } catch {
+        toast(`Could not read '${typed}' as a ${timeOnly ? 'time' : 'date'}`, true);
+        text.value = show(current);
+      }
+    }, () => { text.value = show(current); });
   });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
   const btn = el('button', {
     type: 'button', class: 'date-pick-btn', title: timeOnly ? 'Pick a time' : 'Pick from the calendar', 'aria-label': timeOnly ? 'Pick a time' : 'Open calendar',
     onclick: (e) => {
       e.stopPropagation();
-      datePopover({ anchor: btn, title, value: local(), costume: c, onPick: (localIso) => {
+      withDatePicker(() => datePopover({ anchor: btn, title, value: local(), costume: c, onPick: (localIso) => {
         try { set(localIso == null ? null : store(localIso)); } catch (err) { toast(err.message, true); }
-      } });
+      } }));
     },
   }, calendarGlyph());
-  const wrap = el('span', { class: 'date-cell' }, text, btn);
+  const wrap = el('span', { class: 'date-cell', onfocusin: warmDatePicker, onpointerdown: warmDatePicker }, text, btn);
   wrap.setValue = (iso) => { current = iso ?? ''; text.value = show(current); fit(); };
   return wrap;
 }
@@ -7870,68 +7802,33 @@ function rangeControl({ value = null, title = '', costume, compact = true, place
     const typed = text.value.trim();
     if (!typed) return set(null);
     const ends = typed.split(/\s*[–—]\s*|\s+-\s+|\s+to\s+/i).filter(Boolean);
-    try {
-      if (ends.length !== 2) throw new Error('two ends');
-      set(orderRange({ start: store(readTypedDate(ends[0], c, local(current?.start))), end: store(readTypedDate(ends[1], c, local(current?.end))) }));
-    } catch {
-      toast(`Could not read '${typed}' as a range — type start – end`, true);
-      text.value = show(current);
-    }
+    withDatePicker(() => {
+      try {
+        if (ends.length !== 2) throw new Error('two ends');
+        set(orderRange({ start: store(readTypedDate(ends[0], c, local(current?.start))), end: store(readTypedDate(ends[1], c, local(current?.end))) }));
+      } catch {
+        toast(`Could not read '${typed}' as a range — type start – end`, true);
+        text.value = show(current);
+      }
+    }, () => { text.value = show(current); });
   });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
   const btn = el('button', {
     type: 'button', class: 'date-pick-btn', title: 'Pick the range from the calendar', 'aria-label': 'Open the range calendar',
     onclick: (e) => {
       e.stopPropagation();
-      datePopover({
+      withDatePicker(() => datePopover({
         anchor: btn, title, costume: c, range: true,
         value: current ? { start: local(current.start), end: local(current.end) } : null,
         onPick: (r) => {
           try { set(r ? orderRange({ start: store(r.start), end: store(r.end) }) : null); } catch (err) { toast(err.message, true); }
         },
-      });
+      }));
     },
   }, calendarGlyph());
-  const wrap = el('span', { class: 'date-cell range-cell', onclick: (e) => e.stopPropagation() }, text, btn);
+  const wrap = el('span', { class: 'date-cell range-cell', onclick: (e) => e.stopPropagation(), onfocusin: warmDatePicker, onpointerdown: warmDatePicker }, text, btn);
   wrap.setValue = (r) => { current = r?.start && r?.end ? { start: r.start, end: r.end } : null; text.value = show(current); };
   return wrap;
-}
-function orderRange(r) {
-  return String(r.start) > String(r.end) ? { start: r.end, end: r.start } : r;
-}
-
-function readTypedDate(typed, c, current) {
-  const dc = weaveDateCore;
-  const grain = dc.grainOf(c);
-  const format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
-  const pad = (n) => String(n).padStart(2, '0');
-  const clock = c.time ? dc.parseClock(typed) : null;
-  if (!grain.length) {
-    if (!clock) throw new Error('no time of day');
-    return clock;
-  }
-  const today = dc.todayIso();
-  const [ty, tm] = today.split('-').map(Number);
-  const hasD = grain.includes('day'), hasM = grain.includes('month'), hasY = grain.includes('year');
-  const bare = typed.replace(/\b(\d{1,2}:\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))\b/i, '').trim();
-  let day = null;
-  let m;
-  if (!hasM && hasD && (m = bare.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?$/i))) day = `${ty}-${pad(tm)}-${pad(m[1])}`;
-  else if (!hasD && hasM && (m = bare.match(/^(\d{1,2})[/.\-](\d{4})$/))) day = `${m[2]}-${pad(m[1])}-01`;
-  else if (!hasD && hasM && (m = bare.match(/^(\d{4})[/.\-](\d{1,2})$/))) day = `${m[1]}-${pad(m[2])}-01`;
-  else if (!hasD && !hasM && hasY && (m = bare.match(/^(\d{4})$/))) day = `${m[1]}-01-01`;
-  else if (!hasD && hasM && !hasY && (m = bare.match(/^(\d{1,2})$/))) day = `${ty}-${pad(m[1])}-01`;
-  else if (bare) {
-    day = parseNaturalDate(bare, new Date(), { dayFirst: format === 'eu' })
-      ?? (!hasD ? parseNaturalDate('1 ' + bare, new Date(), { dayFirst: format === 'eu' }) : null);
-  } else if (clock && current) {
-    day = String(current).split('T')[0];
-  }
-  if (!day) throw new Error('unreadable');
-  if (!c.time) return day;
-  const keep = dc.partsOf(current)?.t;
-  const t = clock ?? keep;
-  return t ? `${day}T${t}` : day;
 }
 
 function calendarGlyph() {
@@ -7939,215 +7836,6 @@ function calendarGlyph() {
   svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('width', '14'); svg.setAttribute('height', '14');
   svg.innerHTML = '<rect x="1.5" y="2.5" width="13" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 6h13" stroke="currentColor" stroke-width="1.3"/><path d="M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
   return svg;
-}
-
-function datePopover({ anchor, title = '', value, time, format, costume = null, range = false, onPick }) {
-  const dc = weaveDateCore;
-  const c = costume ?? { time, format };
-  time = !!c.time;
-  format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
-  const grain = dc.grainOf(c);
-  const hasY = grain.includes('year'), hasM = grain.includes('month'), hasD = grain.includes('day');
-  const pad = (n) => String(n).padStart(2, '0');
-  document.querySelector('.date-pop')?.remove();
-  const todayIso = dc.todayIso();
-  const [ty, tm, td] = todayIso.split('-').map(Number);
-  const startVal = range ? (value?.start ?? '') : (value || '');
-  const p = dc.partsOf(startVal) ?? {};
-  let y = p.y ?? ty, m = p.m ?? tm;
-  const dayOf = (iso) => { const q = dc.partsOf(iso || ''); return q?.d != null ? `${q.y}-${pad(q.m)}-${pad(q.d)}` : ''; };
-  const clockOf = (iso) => dc.partsOf(iso || '')?.t ?? '';
-  const ends = range
-    ? { start: dayOf(value?.start), end: dayOf(value?.end) }
-    : { start: dayOf(value), end: '' };
-  const clocks = range
-    ? { start: clockOf(value?.start), end: clockOf(value?.end) }
-    : { start: clockOf(value), end: '' };
-  let picking = range && ends.start && !ends.end ? 'end' : 'start';
-  let view = !hasY && !hasM && !hasD ? 'clock' : hasD && !hasM ? 'daylist' : hasM && !hasD ? 'months' : hasY && !hasM ? 'years' : 'days';
-  let decadeBase = y;
-  const pop = el('div', { class: 'date-pop' + (range ? ' range' : ''), role: 'dialog', onclick: (e) => e.stopPropagation() });
-  const withClock = (day, which = 'start') => (time ? `${day}T${clocks[which] || '00:00'}` : day);
-  const stamp = (which) => (view === 'clock' ? clocks[which] : (ends[which] ? withClock(ends[which], which) : ''));
-  const commit = (close) => {
-    if (range) {
-      const both = view === 'clock' ? clocks.start && clocks.end : ends.start && ends.end;
-      if (both) onPick({ start: stamp('start'), end: stamp('end') });
-    } else {
-      onPick(view === 'clock' ? (clocks.start || null) : (ends.start ? stamp('start') : null));
-    }
-    if (close) pop.remove();
-    else draw();
-  };
-  const clear = () => { ends.start = ''; ends.end = ''; clocks.start = ''; clocks.end = ''; picking = 'start'; onPick(null); pop.remove(); };
-  const pick = (dayIso) => {
-    if (!range) { ends.start = dayIso; return commit(!time); }
-    if (picking === 'start') { ends.start = dayIso; ends.end = ''; picking = 'end'; return draw(); }
-    ends.end = dayIso;
-    if (ends.end < ends.start) [ends.start, ends.end] = [ends.end, ends.start];
-    picking = 'start';
-    commit(!time);
-  };
-  const dayClass = (iso) => (
-    (iso === todayIso ? ' today' : '')
-    + (iso === ends.start || iso === ends.end ? ' sel' : '')
-    + (range && ends.start && ends.end && iso > ends.start && iso < ends.end ? ' in-range' : ''));
-  const smartFor = (which) => {
-    const cur = range ? (value?.[which] ?? '') : (value || '');
-    const smart = el('input', {
-      class: 'form-control form-control-sm date-smart',
-      'aria-label': range ? (which === 'start' ? 'Start' : 'End') : 'Date',
-      placeholder: view === 'clock' ? '9:15, 5:40 pm…' : hasD ? 'today, 15 sep, 9/15/26…' : hasM ? 'aug 2026, 08/2026…' : '2026…',
-      value: dc.formatDate(cur, { ...c, viewerZone: LOCAL_ZONE }),
-    });
-    const preview = el('div', { class: 'date-smart-preview' });
-    const readSmart = () => {
-      try { return readTypedDate(smart.value, c, cur); } catch { return null; }
-    };
-    smart.addEventListener('input', () => {
-      const local = readSmart();
-      let shown = '…';
-      if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; } }
-      preview.textContent = smart.value.trim() ? shown : '';
-    });
-    smart.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const local = readSmart();
-      if (!local) return toast(`Could not read '${smart.value}' as a ${view === 'clock' ? 'time' : 'date'}`, true);
-      if (view === 'clock') { clocks[which] = local; return commit(!range || !!(clocks.start && clocks.end)); }
-      const day = local.split('T')[0];
-      const t = local.split('T')[1];
-      if (t) clocks[which] = t;
-      if (!range) { ends.start = day; return commit(true); }
-      [y, m] = day.split('-').map(Number);
-      if (which === 'start') {
-        ends.start = day; ends.end = ''; picking = 'end';
-        draw();
-        pop.querySelector('.date-pop-smart-end .date-smart')?.focus();
-        return;
-      }
-      ends.end = day;
-      if (!ends.start) { picking = 'start'; return draw(); }
-      if (ends.end < ends.start) [ends.start, ends.end] = [ends.end, ends.start];
-      picking = 'start';
-      commit(true);
-    });
-    return el('div', { class: 'date-pop-smart' + (range ? ' date-pop-smart-' + which : '') },
-      range ? el('span', { class: 'date-smart-label' }, which === 'start' ? 'Start' : 'End') : null, smart, preview);
-  };
-  const body = el('div', { class: 'date-pop-body' });
-  const timeInput = (which) => {
-    const t = el('input', { type: 'time', class: 'form-control form-control-sm date-time', 'aria-label': range ? `${which} time` : 'Time', value: clocks[which] });
-    t.addEventListener('change', () => {
-      clocks[which] = t.value;
-      if (view === 'clock') { commit(false); return; }
-      if (ends.start && (!range || ends.end)) commit(false);
-    });
-    return t;
-  };
-  const timeRow = () => el('div', { class: 'date-pop-time' },
-    el('span', {}, 'Time'), timeInput('start'),
-    ...(range ? [el('span', { class: 'range-sep' }, '–'), timeInput('end')] : []));
-  const foot = (todayPick) => el('div', { class: 'date-pop-foot' },
-    el('button', { type: 'button', class: 'date-pop-link', onclick: clear }, 'Clear'),
-    el('button', { type: 'button', class: 'date-pop-link', onclick: todayPick }, 'Today'));
-  function draw() {
-    body.replaceChildren();
-    if (view === 'days') {
-      body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, dc.MONTHS_LONG[m - 1], lucideEl('chevron-down', 'wv-icon wv-icon-xs')),
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, String(y), lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span'),
-        el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '‹'),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '›')));
-      const grid = el('div', { class: 'date-grid' }, ...dc.WEEKDAYS.map((d) => el('span', { class: 'date-wd' }, d)));
-      for (const week of dc.calendarMonth(y, m)) {
-        for (const cell of week) {
-          grid.append(el('button', {
-            type: 'button',
-            class: 'date-day' + (cell.inMonth ? ' in' : ' out') + dayClass(cell.iso),
-            onclick: () => { [y, m] = cell.iso.split('-').map(Number); pick(cell.iso); },
-          }, String(cell.day)));
-        }
-      }
-      body.append(grid);
-      if (time) body.append(timeRow());
-      body.append(foot(() => { [y, m] = [ty, tm]; pick(todayIso); }));
-    } else if (view === 'daylist') {
-      const grid = el('div', { class: 'date-grid' });
-      for (let d = 1; d <= 31; d++) {
-        const iso = `${ty}-${pad(tm)}-${pad(d)}`;
-        grid.append(el('button', {
-          type: 'button', class: 'date-day in' + dayClass(iso),
-          onclick: () => pick(iso),
-        }, String(d)));
-      }
-      body.append(grid);
-      if (time) body.append(timeRow());
-      body.append(foot(() => pick(todayIso)));
-    } else if (view === 'clock') {
-      body.append(timeRow(), el('div', { class: 'date-pop-foot' },
-        el('button', { type: 'button', class: 'date-pop-link', onclick: clear }, 'Clear'),
-        el('button', { type: 'button', class: 'date-pop-link', onclick: () => {
-          const d = new Date();
-          const now = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-          if (!range) { clocks.start = now; return commit(true); }
-          if (picking === 'start') { clocks.start = now; clocks.end = ''; picking = 'end'; return draw(); }
-          clocks.end = now; picking = 'start'; commit(true);
-        } }, 'Now')));
-    } else if (view === 'months') {
-      body.append(el('div', { class: 'date-pop-head' },
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, String(y), hasD ? null : lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span', { class: 'date-pop-title' }, 'Month'),
-        el('span', { class: 'date-pop-spacer' }),
-        ...(hasY ? [
-          el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous year', onclick: () => { y--; draw(); } }, '‹'),
-          el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next year', onclick: () => { y++; draw(); } }, '›')] : [])));
-      body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => {
-        const iso = `${y}-${pad(i + 1)}-01`;
-        return el('button', {
-          type: 'button', class: 'date-pick-cell' + (hasD ? (i + 1 === m ? ' sel' : '') : dayClass(iso).replace(' today', '')),
-          onclick: () => {
-            m = i + 1;
-            if (hasD) { view = 'days'; draw(); return; }
-            pick(iso);
-          },
-        }, name);
-      })));
-      if (!hasD && time) body.append(timeRow());
-      if (!hasD) body.append(foot(() => { y = ty; m = tm; pick(`${ty}-${pad(tm)}-01`); }));
-    } else {
-      const years = dc.decade(decadeBase);
-      body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasM) { view = hasD ? 'days' : 'months'; draw(); } } }, `${years[0]}–${years[years.length - 1]}`),
-        el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous decade', onclick: () => { decadeBase -= 10; draw(); } }, '‹'),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next decade', onclick: () => { decadeBase += 10; draw(); } }, '›')));
-      body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => {
-        const iso = `${yr}-01-01`;
-        return el('button', {
-          type: 'button', class: 'date-pick-cell' + (hasM ? (yr === y ? ' sel' : '') : dayClass(iso).replace(' today', '')),
-          onclick: () => {
-            y = yr;
-            if (hasM) { view = 'months'; draw(); return; }
-            pick(iso);
-          },
-        }, String(yr));
-      })));
-      if (!hasM) body.append(foot(() => { y = ty; pick(`${ty}-01-01`); }));
-    }
-  }
-  draw();
-  const smarts = range ? [smartFor('start'), smartFor('end')] : [smartFor('start')];
-  pop.append(...(title ? [el('div', { class: 'picker-title' }, title)] : []), ...smarts, body);
-  document.body.append(pop);
-  const r = anchor.getBoundingClientRect();
-  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
-  pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
-  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => anchor.contains(t), close: () => pop.remove() });
-  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
-  smarts[0].querySelector('.date-smart').focus();
-  return pop;
 }
 
 function segCtl(options, value, onPick) {
@@ -8176,6 +7864,13 @@ function lazyScript(src) {
   return lazyScripts.get(src);
 }
 
+const warmDatePicker = () => { lazyScript('/date-picker.js').catch(() => {}); };
+function withDatePicker(run, undo = () => {}) {
+  lazyScript('/date-picker.js').then(run, () => { undo(); toast('The calendar did not load. Check the connection and try again.', true); });
+}
+function openForms(db) {
+  lazyScript('/forms-dialog.js').then(() => formsDialog(db), () => toast('Forms did not load. Check the connection and try again.', true));
+}
 function openFieldDialog(...args) {
   lazyScript('/field-dialog.js').then(() => fieldDialog(...args), () => toast('Field settings did not load. Check the connection and try again.', true));
 }
@@ -10395,297 +10090,20 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 }
 
 const activityPanel = (() => {
-  const H = () => window.weaveHistoryCore;
-  let st = null;
-  let panel = null;
-  let sheetBack = null;
-  let fitObserver = null;
-
-  const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
-  const val = (v, cls = '') => el('span', { class: `wv-act-val ${cls}`.trim() }, H().valueText(v));
-  const arrow = () => el('span', { class: 'wv-act-arr' }, iconEl('lucide:arrow-right', 'wv-icon'));
-  const byId = (id) => st?.items.find((it) => it.id === id);
-  const revsOf = (field) => st.items.filter((it) => it.kind === 'rev' && it.field === field);
-  const prevOf = (r) => { const l = revsOf(r.field); return l[l.indexOf(r) + 1] ?? null; };
-  const sections = () => [...(st?.mount ?? document).querySelectorAll('.doc-section[data-doc-field]')];
-  const sectionFor = (field) => sections().find((s) => s.dataset.docField === field);
-
-  async function load() {
-    const [ent, act] = await Promise.all([api('GET', `/entities/${st.id}`), api('GET', `/activity?entity=${st.id}&limit=${ACTIVITY_PAGE}`)]);
-    const db = allTables().find((d) => d.id === ent.dbId);
-    const docFields = (db?.fields ?? []).filter((f) => f.type === 'document').map((f) => f.name);
-    const documents = await Promise.all(docFields.map(async (field) => ({
-      field, revisions: (await api('GET', `/entities/${st.id}/doc/revisions?field=${encodeURIComponent(field)}&limit=200`)).revisions,
-    })));
-    const optionName = (field, v) => {
-      const f = (db?.fields ?? []).find((x) => x.name === field);
-      return (f?.optionsFull ?? []).find((o) => o?.id === v)?.name ?? v;
-    };
-    st.docFields = docFields;
-    st.name = ent.name ?? '';
-    st.items = H().feed({ documents, activity: act.items, optionName });
-    if (st.sel && !byId(st.sel)) st.sel = null;
-  }
-  const text = async (r) => {
-    if (!st.texts.has(r.seq)) st.texts.set(r.seq, (await api('GET', `/entities/${st.id}/doc/revisions/${r.seq}?field=${encodeURIComponent(r.field)}`)).text);
-    return st.texts.get(r.seq);
+  let core = null;
+  const load = () => lazyScript('/activity-panel.js').then(() => (core = activityPanelCore), (err) => {
+    toast('Activity did not load. Check the connection and try again.', true);
+    throw err;
+  });
+  return {
+    toggle: (id, mount) => (core ? core.toggle(id, mount) : load().then((c) => c.toggle(id, mount), () => {})),
+    close: (opts) => core?.close(opts),
+    mounted: (id, mount) => {
+      if (core) return core.mounted(id, mount);
+      if (sideWanted() === 'activity') load().then((c) => { if (mount.isConnected) c.mounted(id, mount); }, () => {});
+    },
+    get openFor() { return core?.openFor ?? null; },
   };
-
-  const undoTop = async () => (await api('GET', '/undo?limit=1'))[0] ?? null;
-  async function afterWrite(msg, top) {
-    st.done = { id: st.sel, top };
-    await refreshView();
-    await load();
-    render();
-    toast(msg, false, { label: 'Undo', run: undo });
-  }
-  async function restore(r) {
-    try {
-      await flushDocSave(st.id, r.field);
-      const out = await api('POST', `/entities/${st.id}/doc/revisions/${r.seq}/restore`, { field: r.field });
-      if (out.changed === false) return toast(`${r.field} already reads as the version from ${stamp(r.at)}`);
-      const mine = await undoTop();
-      await load();
-      const top = revsOf(r.field)[0];
-      st.sel = top.id; st.from = null;
-      await afterWrite(`${r.field} restored from ${stamp(r.at)}`, mine);
-    } catch (err) { toast(err.message, true); }
-  }
-  async function revert(a) {
-    try {
-      await api('PATCH', `/entities/${st.id}`, { values: { [a.field]: a.from } });
-      const mine = await undoTop();
-      st.sel = a.id;
-      await afterWrite(`${a.field} reverted`, mine);
-    } catch (err) { toast(err.message, true); }
-  }
-  async function undo() {
-    const done = st?.done; if (!done) return;
-    try {
-      const top = await undoTop();
-      const same = top && done.top && top.ts === done.top.ts && top.kind === done.top.kind && top.entityId === done.top.entityId;
-      if (!same) return toast('Changed since, so nothing was undone', true);
-      await api('POST', '/undo', { steps: 1 });
-      st.done = null;
-      await refreshView();
-      await load();
-      const it = byId(st.sel);
-      if (it?.kind === 'rev') st.sel = revsOf(it.field)[0]?.id ?? null;
-      render();
-      toast('Undone');
-    } catch (err) { toast(err.message, true); }
-  }
-
-  function cmpSelect(r) {
-    const prev = prevOf(r), others = revsOf(r.field).filter((x) => x !== r);
-    if (!others.length) return null;
-    const p = pickerSelect({
-      name: 'compare', title: 'Compare with', value: st.from ?? prev?.id ?? others[0].id,
-      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${weaveActor.actorText(x.actor)}` })),
-    });
-    p.classList.add('wv-act-cmp');
-    p.input.addEventListener('change', () => { st.from = prev && p.input.value === prev.id ? null : p.input.value; render(); });
-    return p;
-  }
-  function tray(it) {
-    const btn = (label, icon, run, primary = false) => el('button', { class: `btn btn-sm${primary ? ' btn-primary' : ''}`, type: 'button', onclick: run }, iconEl(icon, 'wv-icon'), label);
-    if (st.done?.id === it.id) return el('div', { class: 'wv-act-tray' }, btn('Undo', 'lucide:undo', undo), it.kind === 'rev' ? cmpSelect(it) : null);
-    if (it.kind === 'rev') {
-      return it.current ? (cmpSelect(it) ? el('div', { class: 'wv-act-tray' }, cmpSelect(it)) : null)
-        : el('div', { class: 'wv-act-tray' }, btn('Restore', 'lucide:undo', () => restore(it), true), cmpSelect(it));
-    }
-    if (it.kind === 'undo' || it.undone) return null;
-    return el('div', { class: 'wv-act-tray' }, btn(H().revertLabel(it.from), 'lucide:undo', () => revert(it), true));
-  }
-  function row(it) {
-    const on = st.sel === it.id;
-    let icon, what, who = clock(it.at), act = null;
-    if (it.kind === 'rev') {
-      icon = it.restoredFrom != null || it.undo ? 'lucide:undo' : 'lucide:file-text';
-      what = [el('span', { class: 'name' }, it.field),
-        it.restoredFrom != null ? el('span', {
-          class: 'wv-act-src',
-          title: it.source ? `Restored the version from ${weaveDateCore.relativeOrShort(it.source.at).title}${it.source.actor ? ` by ${weaveActor.actorText(it.source.actor)}` : ''}` : 'Restored a version no longer kept',
-        }, it.source ? `restored from ${stamp(it.source.at)}` : 'restored from an earlier version') : null,
-        it.delta ? el('span', { class: `wv-act-delta ${it.delta > 0 ? 'pos' : 'neg'}` }, it.delta > 0 ? `+${it.delta}` : `−${-it.delta}`) : null];
-      if (it.current) who += ' · current'; else if (it.undo) who += ' · undo';
-      if (!it.current && !on) act = { title: 'Restore this version', icon: 'lucide:undo', run: () => restore(it) };
-    } else {
-      icon = it.kind === 'undo' ? 'lucide:undo' : it.kind === 'state' ? 'lucide:workflow' : 'lucide:pencil';
-      what = [el('span', { class: 'name' }, it.field), val(it.from), arrow(), val(it.to, 'new')];
-      if (it.undone) who += ' · undone';
-      if (!on && !it.undone && it.kind !== 'undo') act = { title: H().revertLabel(it.from), icon: 'lucide:undo', run: () => revert(it) };
-    }
-    const node = el('div', { class: `wv-act-row${on ? ' sel' : ''}${it.undone ? ' undone' : ''}`, tabindex: '0', 'data-id': it.id },
-      el('span', { class: 'wv-act-kind' }, iconEl(icon, 'wv-icon')),
-      el('span', { class: 'wv-act-what' }, ...what),
-      act ? el('button', { class: 'wv-act-icon', type: 'button', title: act.title, 'aria-label': act.title, onclick: (e) => { e.stopPropagation(); act.run(); } }, iconEl(act.icon, 'wv-icon')) : el('span'),
-      el('span', { class: 'wv-act-who' }, ...(() => { const chip = actorChipEl(it.actor, { link: false }); return chip ? [chip, ` · ${who}`] : [who]; })()),
-      on ? tray(it) : null);
-    node.addEventListener('click', (e) => {
-      if (e.target.closest('.wv-act-tray, .wv-act-view')) return;
-      st.sel = it.id; st.from = null; st.done = null; st.scroll = true; render();
-    });
-    node.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === node) node.click(); });
-    return node;
-  }
-  function fitFilters(strip) {
-    if (!strip.isConnected) return;
-    const chipEls = [...strip.querySelectorAll(':scope > button[data-filter]')];
-    const more = strip.querySelector(':scope > .wv-act-more');
-    const fits = () => {
-      const last = [...strip.children].filter((c) => !c.hidden).at(-1);
-      const edge = strip.getBoundingClientRect().right - parseFloat(getComputedStyle(strip).paddingRight);
-      return !last || last.getBoundingClientRect().right <= edge + 0.5;
-    };
-    for (const c of chipEls) c.hidden = false;
-    more.hidden = true;
-    if (fits()) return;
-    more.hidden = false;
-    const spare = chipEls.filter((c) => c.dataset.filter.startsWith('doc:') && c.getAttribute('aria-pressed') !== 'true').reverse();
-    for (const c of spare) {
-      c.hidden = true;
-      if (fits()) return;
-    }
-  }
-  function subjectCrumb() {
-    if (!st.name) return [];
-    const subject = dockCoversScreen.matches
-      ? el('button', { type: 'button', class: 'wv-act-subject', title: `Back to ${st.name}`, onclick: () => close() }, st.name)
-      : el('span', { class: 'wv-act-subject' }, st.name);
-    return [subject, el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›')];
-  }
-  function renderPanel() {
-    const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields']];
-    const pickFilter = (k) => { st.filter = k; render(); };
-    const chipEls = chips.map(([k, label]) => el('button', { type: 'button', 'data-filter': k, 'aria-pressed': String(st.filter === k), onclick: () => pickFilter(k) }, label));
-    const more = el('button', {
-      type: 'button', class: 'wv-act-more', hidden: true, 'aria-haspopup': 'menu', title: 'More filters',
-      onclick: () => menu(chipEls.filter((c) => c.hidden).map((c) => ({ label: c.textContent, section: 'organize', run: () => pickFilter(c.dataset.filter) })), { anchor: more, label: 'More filters' }),
-    }, 'More', iconEl('lucide:chevron-down', 'wv-icon'));
-    const filters = el('div', { class: 'wv-act-filters', role: 'toolbar', 'aria-label': 'Show' }, ...chipEls, more);
-    const list = el('div', { class: 'wv-act-list' });
-    let day = '';
-    for (const it of H().filterFeed(st.items, st.filter)) {
-      const d = H().dayLabel(it.at);
-      if (d !== day) { list.append(el('div', { class: 'wv-act-day' }, d)); day = d; }
-      list.append(row(it));
-    }
-    if (!list.children.length) list.append(el('div', { class: 'wv-empty' }, 'No changes yet.'));
-    const keep = panel?.querySelector('.wv-act-list')?.scrollTop ?? 0;
-    const next = el('aside', { class: 'wv-activity', 'aria-label': 'Activity' },
-      el('div', { class: 'wv-act-head' }, el('h3', {}, ...subjectCrumb(), el('span', { class: 'wv-act-section' }, 'Activity')),
-        el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
-      filters, list);
-    const side = $('#side');
-    if (panel?.parentElement === side) panel.replaceWith(next); else side.replaceChildren(next);
-    panel = next;
-    side.hidden = false;
-    wirePaneGutter(side, SIDE_PANE);
-    applyPaneWidth(side, SIDE_PANE);
-    fitObserver?.disconnect();
-    fitFilters(filters);
-    fitObserver = new ResizeObserver(() => fitFilters(filters));
-    fitObserver.observe(filters);
-    list.scrollTop = keep;
-    const s = list.querySelector('.wv-act-row.sel');
-    if (s) {
-      const lb = list.getBoundingClientRect(), sb = s.getBoundingClientRect();
-      if (sb.bottom > lb.bottom) list.scrollTop += sb.bottom - lb.bottom + 8;
-      else if (sb.top < lb.top + 28) list.scrollTop -= lb.top + 28 - sb.top;
-    }
-  }
-
-  const reveal = (node, padding = 12) => { if (st.scroll) { st.scroll = false; scrollTargetIntoView(node, { padding }); } };
-  function clearViews() {
-    for (const v of document.querySelectorAll('.wv-act-view')) {
-      const body = v.closest('.doc-section')?.querySelector(':scope > .doc-section-body');
-      if (body) body.hidden = false;
-      v.remove();
-    }
-  }
-  async function renderView() {
-    clearViews();
-    const it = byId(st?.sel);
-    if (!it) return;
-    const inSheet = dockCoversScreen.matches ? panel?.querySelector('.wv-act-row.sel') : null;
-    if (it.kind === 'rev') {
-      const sec = inSheet ? null : sectionFor(it.field); if (!inSheet && !sec) return;
-      const from = st.from ? byId(st.from) : prevOf(it);
-      const view = el('div', { class: 'wv-act-view' });
-      if (inSheet) inSheet.append(view);
-      else { const body = sec.querySelector(':scope > .doc-section-body'); body.hidden = true; body.after(view); }
-      const [ft, tt] = await Promise.all([from ? text(from) : '', text(it)]);
-      if (!view.isConnected) return;
-      const diff = el('div', { class: 'wv-act-diff' }); diff.innerHTML = H().renderDiff(ft, tt);
-      view.append(el('div', { class: 'wv-act-bar' }, from ? val(stamp(from.at), 'from') : null, from ? arrow() : null, val(stamp(it.at), 'to')), diff);
-      if (inSheet) reveal(inSheet, 36); else reveal(sec);
-      return;
-    }
-    const host = inSheet ?? st.mount?.querySelector('.entity-body'); if (!host) return;
-    const view = el('div', { class: 'wv-act-view top' }, el('div', { class: 'wv-act-card' },
-      el('b', {}, it.field), val(it.from), arrow(), val(it.to, 'new')));
-    if (inSheet) { inSheet.append(view); reveal(inSheet, 36); return; }
-    host.prepend(view);
-    reveal(view);
-  }
-  function render() {
-    if (!st) return;
-    renderPanel();
-    renderView();
-    for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
-    sideSyncUrl();
-  }
-
-  async function open(id, mount) {
-    if (st?.id !== id) st = { id, texts: new Map() };
-    Object.assign(st, { mount: mount ?? st.mount ?? $('#main'), filter: 'all', from: null, done: null, scroll: true });
-    try { await flushDocSaves(); await load(); } catch (err) { st = null; return toast(err.message, true); }
-    const first = H().filterFeed(st.items, st.filter)[0];
-    st.sel = first?.id ?? null;
-    if (dockCoversScreen.matches && !sheetBack) {
-      sheetBack = () => close({ back: true });
-      history.pushState({ ...(history.state ?? {}), wvSheet: 'activity' }, '', location.href);
-      addEventListener('popstate', sheetBack);
-    }
-    render();
-  }
-  function close({ back = false } = {}) {
-    if (sheetBack) {
-      removeEventListener('popstate', sheetBack);
-      sheetBack = null;
-      if (!back && history.state?.wvSheet === 'activity') history.back();
-    }
-    fitObserver?.disconnect(); fitObserver = null;
-    panel?.remove(); panel = null;
-    $('#side').hidden = true;
-    $('#side-gutter').hidden = true;
-    clearViews();
-    for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
-    st = null;
-    sideSyncUrl();
-  }
-  function toggle(id, mount) {
-    if (st?.id === id && panel?.isConnected) return close();
-    return open(id, mount);
-  }
-  function mounted(id, mount) {
-    if (!st || !panel) { if (sideWanted() === 'activity') open(id, mount); return; }
-    if (st.id !== id) { if (!st.mount?.isConnected || !panel.isConnected) close(); return; }
-    st.mount = mount;
-    for (const b of mount.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
-    renderPanel();
-    renderView();
-    sideSyncUrl();
-  }
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel?.isConnected || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
-    e.stopPropagation();
-    close();
-  }, true);
-  window.addEventListener('hashchange', () => setTimeout(() => { if (st && !st.mount?.isConnected) close(); }, 0));
-  return { toggle, open, close, mounted, get openFor() { return panel?.isConnected ? st?.id : null; } };
 })();
 
 function quickCreate(db) {
@@ -11736,41 +11154,44 @@ function resetGridWait() {
   hideGridLoader();
 }
 
-function paintSkeleton(kind, db) {
+function paintSkeleton(kind, db, under = null) {
   const main = $('#main');
   if (!main) return;
   const line = (w, h = 12) => el('div', { class: 'sk sk-line', style: `width:${w};height:${h}px` });
-  if (kind === 'db') {
-    const n = Math.max(2, Math.min(db ? visibleCols(db).length : 4, 8));
-    const widths = Array.from({ length: n }, (_, i) => (i === 0 ? '22%' : `${Math.max(12 - i, 7)}%`));
-    const bar = () => el('div', { class: 'sk-row' }, line('28px'), ...widths.map((w, i) => line(w, i === 0 ? 14 : 12)));
-    main.replaceChildren(
-      el('div', { class: 'sk-toolbar' }, line('180px', 22), line('120px', 22)),
-      el('div', { class: 'card panel sk-card' },
-        el('div', { class: 'sk-row sk-head' }, line('30px'), ...widths.map((w) => line(w, 13))),
-        ...Array.from({ length: 8 }, bar)));
-  } else if (kind === 'entity') {
+  if (kind === 'entity') {
     main.replaceChildren(el('div', { class: 'sk-entity' },
       el('div', { class: 'sk-main' }, line('40%', 22), el('div', { class: 'sk sk-block' }), el('div', { class: 'sk sk-block short' })),
       el('div', { class: 'sk-side' }, line('30%', 13),
         ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row' }, line('30%'), line('50%'))))));
-  } else {
-    main.replaceChildren(
-      el('div', { class: 'sk-toolbar' }, line('220px', 22)),
-      el('div', { class: 'card list-rows sk-card' },
-        ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row sk-listrow' }, line('30%'), line('10%')))));
+    return;
   }
+  let toolbar, card;
+  if (kind === 'db') {
+    const n = Math.max(2, Math.min(db ? visibleCols(db).length : 4, 8));
+    const widths = Array.from({ length: n }, (_, i) => (i === 0 ? '22%' : `${Math.max(12 - i, 7)}%`));
+    const bar = () => el('div', { class: 'sk-row' }, line('28px'), ...widths.map((w, i) => line(w, i === 0 ? 14 : 12)));
+    toolbar = el('div', { class: 'sk-toolbar' }, line('180px', 22), line('120px', 22));
+    card = el('div', { class: 'card panel sk-card' },
+      el('div', { class: 'sk-row sk-head' }, line('30px'), ...widths.map((w) => line(w, 13))),
+      ...Array.from({ length: 8 }, bar));
+  } else {
+    toolbar = el('div', { class: 'sk-toolbar' }, line('220px', 22));
+    card = el('div', { class: 'card list-rows sk-card' },
+      ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row sk-listrow' }, line('30%'), line('10%'))));
+  }
+  if (under?.parentElement === main) under.after(card);
+  else main.replaceChildren(toolbar, card);
 }
 
 const skeleton = { timer: 0, watch: null };
-function scheduleSkeleton(kind, db) {
+function scheduleSkeleton(kind, db, under = null) {
   cancelSkeleton();
   const main = $('#main');
   if (main) {
     skeleton.watch = new MutationObserver(cancelSkeleton);
     skeleton.watch.observe(main, { childList: true });
   }
-  skeleton.timer = setTimeout(() => { cancelSkeleton(); paintSkeleton(kind, db); }, SKELETON_SHOW_AFTER_MS);
+  skeleton.timer = setTimeout(() => { cancelSkeleton(); paintSkeleton(kind, db, under); }, SKELETON_SHOW_AFTER_MS);
 }
 function cancelSkeleton() {
   clearTimeout(skeleton.timer);
