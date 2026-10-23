@@ -217,8 +217,8 @@
       "br": 2653
     },
     "/style.css": {
-      "gzip": 40868,
-      "br": 33428
+      "gzip": 37512,
+      "br": 30903
     },
     "/term-core.js": {
       "gzip": 1362,
@@ -231,16 +231,11 @@
     "/view-core.js": {
       "gzip": 624,
       "br": 518
-    },
-    "/view-pane-core.js": {
-      "gzip": 2727,
-      "br": 2469
     }
   },
   "raised": {
     "/setup-core.js": "PR #347 (onboarding recovery) grew setup-core.js after PR #359 measured it: gzip 1,313 to 1,641, br 1,173 to 1,460, budget set 5% above",
     "/board-core.js": "PR #375 (Feature #353) added coverDrop and photoFieldName: gzip 744 to 895, br 623 to 767. Feature #354 (compare picked cards) added togglePick and compareRows: gzip 895 to 1,172, br 767 to 1,024. Feature #355 (swimlanes) added laneGrid, laneShut and laneFold: gzip 1,172 to 1,750, br 1,024 to 1,552. Budget set 5% above",
-    "/phone-row.js": "PR #388 (Issue #1032) added hitBoxes, the 44 px phone list hit geometry that replaced the padded lookup in app.js: gzip 1,039 to 1,585, br 899 to 1,433. Budget set 5% above",
-    "/style.css": "Feature #340 (View pane) added the pane, its accordion, sort and group level cards, grouped-table header and subtotal rows and list subtotals: gzip 37,512 to 38,922, br 30,903 to 31,836. Budget set 5% above"
+    "/phone-row.js": "PR #388 (Issue #1032) added hitBoxes, the 44 px phone list hit geometry that replaced the padded lookup in app.js: gzip 1,039 to 1,585, br 899 to 1,433. Budget set 5% above"
   }
 }

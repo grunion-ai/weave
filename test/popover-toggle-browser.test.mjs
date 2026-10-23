@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { openPane } from './lib/view-pane.mjs';
 
 let deals, acme;
 const s = await launch('popover toggle', (weave) => {
@@ -22,67 +21,70 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
     await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
-    await page.waitForSelector('#main .table-view-btn');
+    await page.waitForSelector('#main .eye-btn');
     return page;
   };
 
-  const paneOpen = (page) => page.evaluate(() => !document.querySelector('#view-pane').hidden);
   for (const theme of ['light', 'dark']) {
-    test(`a second click on View closes its pane, and a third opens it (${theme})`, async () => {
+    test(`a second click on the eye closes its popover, and a third opens it (${theme})`, async () => {
       const page = await table(theme);
-      await page.click('#main .table-view-btn');
-      await page.waitForSelector('#view-pane:not([hidden]) .vp-acc');
-      await page.click('#main .table-view-btn');
+      await page.click('#main .eye-btn');
+      await page.waitForSelector('.chip-pop .eye-row');
+      await page.click('#main .eye-btn');
       await settle(page);
-      assert.equal(await paneOpen(page), false, 'the second click closed the pane and it stayed closed');
-      await page.click('#main .table-view-btn');
-      await page.waitForSelector('#view-pane:not([hidden]) .vp-acc');
-      assert.equal(await isOpen(page), false, 'the pane is a panel, not a popover');
+      assert.equal(await isOpen(page), false, 'the second click closed the popover and it stayed closed');
+      await page.click('#main .eye-btn');
+      await page.waitForSelector('.chip-pop .eye-row');
+      assert.equal(await page.evaluate(() => document.querySelectorAll('.chip-pop').length), 1, 'one popover, open');
       await page.close();
     });
 
-    test(`Escape and an outside click leave the pane open; its close button shuts it and View reopens it (${theme})`, async () => {
+    test(`Escape and a genuine outside click still close, and the eye reopens after either (${theme})`, async () => {
       const page = await table(theme);
-      await openPane(page, 'fields');
+      await page.click('#main .eye-btn');
+      await page.waitForSelector('.chip-pop .eye-row');
       await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.chip-pop'));
+      await page.click('#main .eye-btn');
+      await page.waitForSelector('.chip-pop .eye-row');
       await page.mouse.click(4, 4);
       await settle(page);
-      assert.equal(await paneOpen(page), true, 'the pane stays beside the table');
-      await page.click('#view-pane .vp-close');
-      await settle(page);
-      assert.equal(await paneOpen(page), false, 'the close button shut it');
-      assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('table-view-btn')), true, 'focus went back to View');
-      await page.click('#main .table-view-btn');
-      await page.waitForSelector('#view-pane:not([hidden]) .eye-row');
+      assert.equal(await isOpen(page), false, 'an outside click closed the popover');
+      await page.click('#main .eye-btn');
+      await page.waitForSelector('.chip-pop .eye-row');
       await page.close();
     });
 
-    test(`after a flip redraws the grid, the View button keeps its node and still closes the pane (${theme})`, async () => {
+    test(`after a flip redraws the grid, a click on the eye still closes (${theme})`, async () => {
       const page = await table(theme);
-      await openPane(page, 'fields');
-      await page.evaluate(() => { document.querySelector('#main .table-view-btn').dataset.stamp = 'old'; });
-      await page.locator('#view-pane .eye-row', { hasText: 'Stage' }).first().click();
-      await page.waitForFunction(() => [...document.querySelectorAll('#view-pane .eye-row')]
+      await page.click('#main .eye-btn');
+      await page.waitForSelector('.chip-pop .eye-row');
+      await page.evaluate(() => { document.querySelector('#main .eye-btn').dataset.stamp = 'old'; });
+      await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().click();
+      await page.waitForFunction(() => [...document.querySelectorAll('.chip-pop .eye-row')]
         .find((r) => r.querySelector('.eye-label')?.textContent === 'Stage')?.matches(':has(input:checked), [aria-checked="true"]') === false);
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Stage'));
       await page.waitForLoadState('networkidle');
-      assert.equal(await page.evaluate(() => document.querySelector('#main .table-view-btn').dataset.stamp), 'old', 'the button kept its node');
-      await page.click('#main .table-view-btn');
+      assert.equal(await page.evaluate(() => document.querySelector('#main .eye-btn').dataset.stamp), 'old', 'the eye kept its node');
+      await page.click('#main .eye-btn');
       await settle(page);
-      assert.equal(await paneOpen(page), false, 'View closed the pane');
+      assert.equal(await isOpen(page), false, 'the eye closed the popover');
       await page.close();
     });
   }
 
-  test("with the View pane open, the docked entity's eye opens its own popover and shuts it again", async () => {
+  test("with the table's popover open, the docked entity's eye switches to its own in one click", async () => {
     const page = await table('light');
     await page.click(`tr[data-eid="${acme.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .eye-btn');
-    await openPane(page, 'fields');
-    await page.click('#dock .eye-btn');
+    await page.click('#main .eye-btn');
     await page.waitForSelector('.chip-pop .eye-row');
+    assert.ok(await page.evaluate(() => [...document.querySelectorAll('.chip-pop .eye-head')].some((h) => h.textContent === 'Rows')));
+    await page.click('#dock .eye-btn');
+    await settle(page);
     assert.equal(await page.evaluate(() => document.querySelectorAll('.chip-pop').length), 1, 'one popover open');
-    assert.equal(await paneOpen(page), true, 'the pane stays');
+    assert.ok(await page.evaluate(() => ![...document.querySelectorAll('.chip-pop .eye-head')].some((h) => h.textContent === 'Rows')),
+      "it is the entity's popover");
     await page.click('#dock .eye-btn');
     await settle(page);
     assert.equal(await isOpen(page), false, "the entity's eye closes its own popover");

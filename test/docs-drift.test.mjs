@@ -75,7 +75,7 @@ test('PARITY.md scores its own table and the build that ships', () => {
 });
 
 const BOARD_LAYOUT = [
-  'layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side)',
+  'layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery = stacked with a picture, kanban = side)',
   '[--layout table|list|board]',
 ];
 const offersBoard = /\bboards?\b/i;

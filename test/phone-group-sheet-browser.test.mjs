@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, phoneProfile, settled, atRest, PHONE } from './lib/browser.mjs';
-import { openPane } from './lib/view-pane.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
 
@@ -78,16 +77,15 @@ if (s) {
     }
   }
 
-  test('on a desktop the group levels live in the View pane, beside the table (Issue #809, Feature #340)', async () => {
+  test('on a desktop the group popover stays anchored under its button (Issue #809)', async () => {
     const page = await open(browser, { viewport: { width: 1280, height: 900 } }, 'light');
     try {
-      assert.equal(await page.locator('#main .table-group-btn').isVisible(), false, 'no Group button in the desktop toolbar');
-      await openPane(page, 'group');
-      await page.waitForSelector('#view-pane .group-level');
-      const main = await box(page, '#main');
-      const pane = await box(page, '#view-pane');
-      assert.ok(pane.left >= main.right, `the pane sits right of the main panel (${pane.left} vs ${main.right})`);
-      assert.equal(await page.locator('#view-pane .group-level').count(), 2, 'with both levels');
+      await page.click('#main .table-group-btn');
+      await page.waitForSelector('.table-group-popover .group-level');
+      const btn = await box(page, '#main .table-group-btn');
+      const pop = await box(page, '.table-group-popover');
+      assert.ok(pop.left > 0.5 && pop.bottom < pop.vh - 1, `a popover, not a sheet (${pop.left}..${pop.right}, bottom ${pop.bottom} of ${pop.vh})`);
+      assert.ok(pop.top >= btn.bottom, `opening under the button (${pop.top} below ${btn.bottom})`);
     } finally { await page.close(); }
   });
 }

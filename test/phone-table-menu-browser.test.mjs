@@ -10,8 +10,7 @@ const rgb = (c) => {
   const n = String(c).match(/[\d.]+/g).map(Number);
   return (c.startsWith('color(') ? n.slice(0, 3).map((v) => Math.round(v * 255)) : n.slice(0, 3)).join(',');
 };
-const DESKTOP = ['.table-search', '.table-view-btn'];
-const PANE_ONLY = ['.table-density-btn', '.eye-btn', '.table-filter-btn', '.table-sort-btn', '.table-group-btn'];
+const DESKTOP = ['.table-search', '.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn', '.table-sort-btn'];
 
 const s = await launch('phone table menu', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -136,9 +135,8 @@ if (s) {
           await page.click('#main .table-tools-btn');
           await settled(page.locator('#main .crumb-actions'));
           await page.click('#main .crumb-actions .table-sort-btn');
-          await page.waitForSelector('.table-sort-popover .sort-add');
-          await page.click('.table-sort-popover .sort-add');
-          await page.locator('.picker-pop .picker-row').filter({ has: page.locator('.picker-label', { hasText: /^Severity$/ }) }).first().click();
+          await page.waitForSelector('.table-sort-popover .table-sort-field');
+          await page.click('.table-sort-popover .table-sort-field:has-text("Severity")');
           await page.waitForFunction(() => document.querySelector('#main .table-sort-value')?.textContent.startsWith('Severity'), null, { timeout: 10000 });
           const saved = await page.evaluate(async (id) => (await (await fetch('/api/schema')).json()).flatMap((sp) => sp.tables).find((t) => t.id === id).sort, id);
           assert.deepEqual(saved, [{ field: 'Severity', dir: 'asc' }], 'the pick sorts the table');
@@ -173,13 +171,12 @@ if (s) {
     }
   }
 
-  test('on a desktop the toolbar is Search, View and the kebab, inline, with no sliders button (Feature #271, Issue #723, Feature #296, Feature #340)', async () => {
+  test('on a desktop the toolbar stays inline, keeps its search, Stats, Sort and kebab, and has no sliders button (Feature #271, Issue #723, Feature #296)', async () => {
     const page = await open(browser);
     try {
-      const seen = await read(page, [...DESKTOP, ...PANE_ONLY]);
+      const seen = await read(page, DESKTOP);
       assert.equal(seen.tools, null);
       for (const q of DESKTOP) assert.ok(seen.controls[q] && seen.controls[q].height < 40, `${q} shows inline at its desktop size`);
-      for (const q of PANE_ONLY) assert.equal(seen.controls[q], null, `${q} moved into the View pane`);
       assert.equal(seen.kebab?.text, '', 'the kebab keeps its icon-only face on a desktop');
       assert.ok(seen.kebab.height < 40, 'at its desktop size, on the crumb row (Issue #853)');
     } finally { await page.close(); }

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
-import { openPane } from './lib/view-pane.mjs';
 
 let deals, a;
 const s = await launch('entity eye sync', (weave) => {
@@ -16,28 +15,25 @@ if (s) {
     [...document.querySelectorAll('#main .wv-grid thead th')].some((th) => th.textContent.includes('Amount')));
   const paneHasAmount = (page) => page.evaluate(() =>
     [...document.querySelectorAll('#dock .entity-fields .fieldrow label')].some((l) => l.textContent.trim() === 'Amount'));
-  const ROWS = { '#main': '#view-pane .vp-fields .eye-row', '#dock': '.chip-pop .eye-row' };
-  const amountChecked = (rows) => [...document.querySelectorAll(rows)]
+  const amountChecked = () => [...document.querySelectorAll('.chip-pop .eye-row')]
     .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount')?.matches(':has(input:checked), [aria-checked="true"]').toString();
-  const flipAmount = async (page, scope = '#main') => {
-    const rows = ROWS[scope];
-    const before = await page.evaluate(amountChecked, rows);
-    await page.evaluate((sel) => {
-      [...document.querySelectorAll(sel)]
+  const flipAmount = async (page) => {
+    const before = await page.evaluate(amountChecked);
+    await page.evaluate(() => {
+      [...document.querySelectorAll('.chip-pop .eye-row')]
         .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount').click();
-    }, rows);
-    await page.waitForFunction(([sel, was]) => {
-      const row = [...document.querySelectorAll(sel)]
+    });
+    await page.waitForFunction((was) => {
+      const row = [...document.querySelectorAll('.chip-pop .eye-row')]
         .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount');
       return row && row.matches(':has(input:checked), [aria-checked="true"]').toString() !== was;
-    }, [rows, before]);
+    }, before);
   };
   const toggleAmount = async (page, scope) => {
-    if (scope === '#main') await openPane(page, 'fields');
-    else await page.click(`${scope} .eye-btn`);
-    await page.waitForSelector(ROWS[scope]);
-    await flipAmount(page, scope);
-    if (scope !== '#main') await page.mouse.click(4, 4);
+    await page.click(`${scope} .eye-btn`);
+    await page.waitForSelector('.chip-pop .eye-row');
+    await flipAmount(page);
+    await page.mouse.click(4, 4);
   };
 
   test("hiding a field from the table's eye also clears it from the docked pane", async () => {
@@ -84,27 +80,27 @@ if (s) {
     await page.close();
   });
 
-  test('a flip updates the Fields list in place: same node, same position, fresh rows', async () => {
+  test('a flip updates the popover in place: same node, same position, fresh rows', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
-    await openPane(page, 'fields');
-    await page.waitForSelector('#view-pane .vp-fields .eye-row');
-    await page.evaluate(() => { document.querySelector('#view-pane .vp-fields').dataset.marker = 'held'; });
-    await settled(page.locator('#view-pane'));
+    await page.click('#main .eye-btn');
+    await page.waitForSelector('.chip-pop .eye-row');
+    await page.evaluate(() => { document.querySelector('.chip-pop').dataset.marker = 'held'; });
+    await settled(page.locator('.chip-pop'));
     const before = await page.evaluate(() => {
-      const r = document.querySelector('#view-pane .vp-fields').getBoundingClientRect();
+      const r = document.querySelector('.chip-pop').getBoundingClientRect();
       return { left: r.left, top: r.top };
     });
     await flipAmount(page);
     const after = await page.evaluate(() => {
-      const pop = document.querySelector('#view-pane .vp-fields');
+      const pop = document.querySelector('.chip-pop');
       const r = pop.getBoundingClientRect();
       const amount = [...pop.querySelectorAll('.eye-row')]
         .find((x) => x.querySelector('.eye-label')?.textContent === 'Amount');
       return { marker: pop.dataset.marker, left: r.left, top: r.top, checked: amount.matches(':has(input:checked), [aria-checked="true"]').toString() };
     });
-    assert.equal(after.marker, 'held', 'the list is the SAME node, not a reopen');
+    assert.equal(after.marker, 'held', 'the popover is the SAME node, not a reopen');
     assert.equal(after.left, before.left, 'it did not jump horizontally');
     assert.equal(after.top, before.top, 'it did not jump vertically');
     assert.ok(after.checked === 'true' || after.checked === 'false', 'the row re-rendered');

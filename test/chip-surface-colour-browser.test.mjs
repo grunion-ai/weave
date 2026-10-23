@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { launch, phoneBrowser, phoneProfile } from './lib/browser.mjs';
 import { PAINT_PROBE, paintMisses } from './lib/chip-paint.mjs';
-import { openPane } from './lib/view-pane.mjs';
 
 await import('../public/chip-core.js');
 const core = globalThis.chipCore;
@@ -97,9 +96,9 @@ if (s) {
       misses.push(...expectSurface(await collect(page, 'cell picker row', '.picker-pop'), 'cell picker', STATE_NAMES));
       await page.keyboard.press('Escape');
       await page.waitForSelector('.picker-pop', { state: 'detached' });
-      await openPane(page, 'filters');
-      await page.waitForSelector('#view-pane .filter-chip');
-      misses.push(...expectSurface(await collect(page, 'filter chip', '#view-pane', '.filter-chip'), 'filter strip', Object.keys(HUE_OF)));
+      await page.click('.table-filter-btn');
+      await page.waitForSelector('.table-filter-popover .filter-chip');
+      misses.push(...expectSurface(await collect(page, 'filter chip', '.table-filter-popover', '.filter-chip'), 'filter strip', Object.keys(HUE_OF)));
       assert.deepEqual(misses, []);
       await page.close();
     });

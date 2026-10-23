@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { openPane, openViews } from './lib/view-pane.mjs';
 
 let jobs, gone;
 const s = await launch('view reset and the system default', (weave) => {
@@ -43,9 +42,9 @@ if (s) {
         assert.equal(await sigmaDrawn(page), 1, 'and its Σ row');
         await page.fill('.table-search-input', 'A');
         await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
-        await openPane(page);
-        assert.match(await page.getAttribute('#view-pane .view-reset', 'title'), /deleted rows or Σ rollups/);
-        await page.click('#view-pane .view-reset');
+        await page.click('.table-view-btn');
+        assert.match(await page.textContent('.table-view-popover .table-control-note'), /deleted rows and the Σ rollup row/);
+        await page.click('.view-reset');
         await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 3);
         await page.waitForLoadState('networkidle');
         const v = std();
@@ -59,10 +58,9 @@ if (s) {
         assert.equal(await sigmaDrawn(page), 0);
         assert.deepEqual(await heads(page), ['Name', 'Description', 'Status', 'Cost', 'Owner']);
         assert.equal(await page.getAttribute('.wv-grid', 'data-density'), 'comfortable');
-        await openPane(page, 'filters');
-        assert.equal(await page.locator('#view-pane [data-deleted] input').isChecked(), false, 'Filters: Include deleted off');
-        await openPane(page, 'display');
-        assert.equal(await page.locator('#view-pane [data-rollups] input').isChecked(), false, 'Display: Σ Rollups off');
+        await page.click('.eye-btn');
+        assert.equal(await page.locator('.table-fields-popover [data-deleted] input').isChecked(), false, 'Fields: Deleted rows off');
+        assert.equal(await page.locator('.table-fields-popover [data-rollups] input').isChecked(), false, 'Fields: Σ rollup row off');
       } finally { await page.close(); }
     });
   }
@@ -73,18 +71,18 @@ if (s) {
     try {
       await page.fill('.table-search-input', 'A');
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
-      await openViews(page);
+      await page.click('.table-view-btn');
       await page.click('.view-strip .view-add');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('View 2'));
       await page.waitForLoadState('networkidle');
       const made = weave.tableView(`${jobs.id}/View 2`);
       dirty();
-      await openViews(page);
+      if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
       await page.click('.view-strip .view-row:has(.view-name:text-is("Standard")) .view-name');
       await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Standard'));
-      await openViews(page);
-      await page.click('#view-pane .view-reset');
+      if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
+      await page.click('.view-reset');
       await page.waitForLoadState('networkidle');
       const reset = std();
       for (const k of ['fields', 'filters', 'sort', 'widths', 'frozen', 'density', 'deleted', 'rollups']) {
@@ -101,18 +99,18 @@ if (s) {
     const other = weave.tableView(`${jobs.id}/Audit`, { from: 'Standard' });
     const page = await open(`#/table/${jobs.id}/view/${other.id}`);
     try {
-      await openPane(page, 'filters');
-      await page.locator('#view-pane label[data-deleted]').click();
+      await page.click('.eye-btn');
+      await page.locator('.table-fields-popover [data-deleted] input').check();
       await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row.row-deleted'));
-      await openPane(page, 'display');
-      await page.locator('#view-pane label[data-rollups]').click();
+      await page.locator('.table-fields-popover [data-rollups] input').check();
       await page.waitForSelector('#main tr.wv-foot');
       await page.waitForLoadState('networkidle');
       assert.equal(weave.tableView(`${jobs.id}/Audit`).deleted, true, 'saved into Audit');
       assert.equal(weave.tableView(`${jobs.id}/Audit`).rollups, true);
       assert.equal(std().deleted, undefined, 'Standard did not move');
       assert.equal(std().rollups, false);
-      await openViews(page);
+      await page.keyboard.press('Escape');
+      await page.click('.table-view-btn');
       await page.click('.view-strip .view-row:has(.view-name:text-is("Standard")) .view-name');
       await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Standard'));
       await page.waitForLoadState('networkidle');

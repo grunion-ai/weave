@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { openPane } from './lib/view-pane.mjs';
 
 let sessions, wide, spacesT, quiet, scores;
 const s = await launch('grid footer reads space rollups', (weave) => {
@@ -158,11 +157,11 @@ if (s) {
     await page.close();
   });
 
-  test('the Display switch turns the Σ row off and on; the choice lives on the view and survives a reload (Issues #233, #442)', async () => {
+  test('the eye switches the Σ row off and on; the choice lives on the view and survives a reload (Issues #233, #442)', async () => {
     const page = await open(`/table/${sessions.id}`);
     await page.waitForSelector('thead tr.wv-foot');
-    await openPane(page, 'display');
-    const sw = () => page.locator('#view-pane label[data-rollups]');
+    await page.click('.crumb-actions .eye-btn');
+    const sw = () => page.locator('.chip-pop .eye-row', { hasText: 'Σ rollup row' });
     await sw().waitFor();
     assert.equal(await sw().locator('input').isChecked(), true);
     await sw().click();
@@ -173,7 +172,7 @@ if (s) {
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     assert.equal(await page.locator('tr.wv-foot').count(), 0, 'still hidden after a reload');
-    await openPane(page, 'display');
+    await page.click('.crumb-actions .eye-btn');
     await sw().waitFor();
     assert.equal(await sw().locator('input').isChecked(), false);
     await sw().click();
@@ -182,13 +181,13 @@ if (s) {
     await page.close();
   });
 
-  test('a table nobody opted in has no Σ row, and the Display switch brings it (Issue #249)', async () => {
+  test('a table nobody opted in has no Σ row, and the eye brings it (Issue #249)', async () => {
     const page = await open(`/table/${quiet.id}`);
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     assert.equal(await page.locator('tr.wv-foot, tfoot').count(), 0, 'no Σ row by default');
     assert.equal(weave.getTable(quiet.id).hideRollups, undefined, 'and nothing stored to say so');
-    await openPane(page, 'display');
-    const sw = () => page.locator('#view-pane label[data-rollups]');
+    await page.click('.crumb-actions .eye-btn');
+    const sw = () => page.locator('.chip-pop .eye-row', { hasText: 'Σ rollup row' });
     await sw().waitFor();
     assert.equal(await sw().locator('input').isChecked(), false, 'the box reads off');
     await sw().click();

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
-import { openPane, sortBy } from './lib/view-pane.mjs';
 
 const FIELDS = [
   ['Status', 'select', { options: ['Open', 'Done'] }],
@@ -294,10 +293,15 @@ if (s) {
       await drag(page, 'Due', async () => (await layout(page)).Name.left + 8);
       const want = ['Due', 'Name', 'Description', 'Status', 'Owner', 'Points', 'Price', 'Done', 'Link', 'Approved by finance'];
       assert.deepEqual(await order(page), want);
-      await sortBy(page, 'Points');
+      await page.click('#main .table-sort-btn');
+      await page.locator('.table-sort-popover .table-sort-field', { hasText: 'Points' }).click();
+      await page.waitForFunction(() => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.startsWith('Sort: Points,'));
       await page.waitForLoadState('networkidle');
-      await sortBy(page, 'Points', 'Largest to smallest');
+      await page.click('#main .table-sort-btn');
+      await page.locator('.table-sort-popover').evaluate((p) => Promise.all(p.getAnimations({ subtree: true }).map((a) => a.finished)));
+      await page.locator('.table-sort-popover .seg-opt', { hasText: 'Largest to smallest' }).click();
       await page.waitForFunction(() => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label') === 'Sort: Points, Largest to smallest');
+      await page.keyboard.press('Escape');
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
       assert.deepEqual(await order(page), want, 'the redraw kept the moved column');
       const rows = await page.locator('.wv-grid tbody tr.entity-row').evaluateAll((rs) => rs.map((r) => [...r.children].filter((c) => c.dataset.field).map((c) => c.dataset.field)));
@@ -382,14 +386,13 @@ if (s) {
     weave.tableView(`${db.id}/${view(db).id}`, { widths: { Due: 150 } });
     const page = await openGrid(db);
     const eyeFlip = async (name) => {
-      await openPane(page, 'fields');
-      await page.locator('#view-pane .eye-row', { has: page.locator(`.eye-label:text-is("${name}")`) }).click();
+      await page.click('.eye-btn');
+      await page.locator('.chip-pop .eye-row', { has: page.locator(`.eye-label:text-is("${name}")`) }).click();
       await page.waitForTimeout(400);
+      await page.keyboard.press('Escape');
       await page.waitForTimeout(100);
     };
     try {
-      await openPane(page, 'fields');
-      await page.waitForTimeout(300);
       const before = await layout(page);
       await eyeFlip('Due');
       const hidden = await layout(page);

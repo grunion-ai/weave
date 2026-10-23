@@ -172,7 +172,7 @@ if (s) {
   test('the table toolbar has no Stats control and the table menu has no stats row (Feature #308)', async () => {
     const page = await open(`#/table/${tableId}`);
     try {
-      await page.waitForSelector('#main .crumb-actions .eye-btn', { state: 'attached' });
+      await page.waitForSelector('#main .crumb-actions .eye-btn');
       const order = await page.$$eval('#main .crumb-actions > *', (ns) => ns.map((n) => `${n.className} ${n.textContent} ${n.getAttribute('aria-label') ?? ''} ${n.title ?? ''}`));
       assert.equal(await page.locator('#main .table-stats-btn').count(), 0, 'no Stats button');
       assert.deepEqual(order.filter((t) => /stat/i.test(t)), [], `no toolbar control names stats: ${order.join(' | ')}`);

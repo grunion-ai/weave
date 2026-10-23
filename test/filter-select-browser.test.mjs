@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { openPane } from './lib/view-pane.mjs';
 
 let bugs;
 const s = await launch('select filters and the count', (weave) => {
@@ -27,17 +26,17 @@ if (s) {
   const view = () => weave.tableView(bugs).views[0];
   const reset = () => weave.tableView(`${bugs.id}/${view().id}`, { filters: {}, sort: [], search: '' });
   const rows = (page) => page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.length);
-  const total = (page) => page.locator('#view-pane .filter-total');
-  const box = (page, group, name) => page.locator(`#view-pane .filter-group[aria-label="${group}"]`).getByRole('checkbox', { name, exact: true });
+  const total = (page) => page.locator('.table-filter-popover .filter-total');
+  const box = (page, group, name) => page.locator(`.table-filter-popover .filter-group[aria-label="${group}"]`).getByRole('checkbox', { name, exact: true });
   const settled = async (page, text) => {
-    await page.waitForFunction((t) => document.querySelector('#view-pane .filter-total')?.textContent === t && !document.querySelector('#main [aria-busy="true"]'), text, { timeout: 10000 });
+    await page.waitForFunction((t) => document.querySelector('.table-filter-popover .filter-total')?.textContent === t && !document.querySelector('#main [aria-busy="true"]'), text, { timeout: 10000 });
   };
   const open = async (theme = 'light') => {
     reset();
     const page = await browser.newPage({ viewport: { width: 1280, height: 860 }, colorScheme: theme });
     await page.goto(`${base}/#/table/${bugs.id}`, { waitUntil: 'networkidle' });
-    await openPane(page, 'filters');
-    await page.waitForSelector('#view-pane .filter-total');
+    await page.click('.table-filter-btn');
+    await page.waitForSelector('.table-filter-popover .filter-total');
     return page;
   };
 
@@ -45,22 +44,22 @@ if (s) {
     test(`select and multi-select fields filter beside workflow, OR within a field and AND across; the footer counts (${theme})`, async () => {
       const page = await open(theme);
       try {
-        const groups = await page.$$eval('#view-pane .filter-group', (gs) => gs.map((g) => [g.getAttribute('aria-label'), g.querySelector('.filter-type')?.textContent]));
+        const groups = await page.$$eval('.table-filter-popover .filter-group', (gs) => gs.map((g) => [g.getAttribute('aria-label'), g.querySelector('.filter-type')?.textContent]));
         assert.deepEqual(groups, [['Status', 'Workflow'], ['Severity', 'Single select'], ['Symptom', 'Multi select']]);
         assert.equal(await box(page, 'Severity', 'High').getAttribute('class'), 'form-check-input', 'the same checkbox as every other');
         const node = await total(page).elementHandle();
         assert.equal(await total(page).getAttribute('aria-live'), 'polite');
         await settled(page, '5 of 5 bugs');
-        const foot = await page.$eval('#view-pane .filter-footer', (f) => [...f.children].map((c) => c.className));
+        const foot = await page.$eval('.table-filter-popover .filter-footer', (f) => [...f.children].map((c) => c.className));
         assert.match(foot[0], /filter-total/, 'the count on the left');
         assert.match(foot.at(-1), /filter-clear/, 'Clear all on the right');
-        assert.equal(await page.locator('#view-pane .filter-clear').isDisabled(), true);
+        assert.equal(await page.locator('.table-filter-popover .filter-clear').isDisabled(), true);
 
         await box(page, 'Severity', 'High').check();
         await settled(page, '2 of 5 bugs');
         assert.equal(await rows(page), 2, 'the grid agrees');
         assert.deepEqual(view().filters, { Severity: ['High'] }, 'saved into the view');
-        assert.equal(await page.locator('#view-pane .filter-clear').isDisabled(), false);
+        assert.equal(await page.locator('.table-filter-popover .filter-clear').isDisabled(), false);
 
         await box(page, 'Severity', 'Low').check();
         await settled(page, '3 of 5 bugs');
@@ -76,7 +75,7 @@ if (s) {
         assert.deepEqual(view().filters, { Severity: ['High', 'Low'], Symptom: ['Slow', 'Wrong data'] });
         assert.equal(await node.evaluate((n) => n.isConnected), true, 'the count is updated in place, never redrawn');
 
-        await page.locator('#view-pane .filter-clear').click();
+        await page.locator('.table-filter-popover .filter-clear').click();
         await settled(page, '5 of 5 bugs');
         assert.deepEqual(view().filters ?? {}, {});
         assert.equal(await box(page, 'Severity', 'High').isChecked(), false);
@@ -92,14 +91,15 @@ if (s) {
       await page.keyboard.press('Escape');
       await page.fill('.table-search-input', 'Alpha');
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
-      await openPane(page, 'filters');
+      await page.click('.table-filter-btn');
       await settled(page, '1 of 5 bugs');
+      await page.keyboard.press('Escape');
       const cleared = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.request().postDataJSON()?.search === '');
       await page.fill('.table-search-input', '');
       await cleared;
       weave.tableView(`${bugs.id}/${view().id}`, { deleted: true });
       await page.reload({ waitUntil: 'networkidle' });
-      await openPane(page, 'filters');
+      await page.click('.table-filter-btn');
       await settled(page, '4 of 5 bugs');
     } finally { await page.close(); weave.tableView(`${bugs.id}/${view().id}`, { deleted: false }); reset(); }
   });

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { openPane } from './lib/view-pane.mjs';
 
 let cases, grid;
 const s = await launch('grid asks for its columns', (weave) => {
@@ -67,14 +66,14 @@ if (s) {
     });
   }
 
-  test('showing a hidden field from the View pane fetches it and paints its values', async () => {
+  test('showing a hidden field from the eye fetches it and paints its values', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const seen = queries(page);
     await page.goto(`${base}/#/table/${cases.id}`, { waitUntil: 'load' });
     await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 5);
     assert.equal(await page.$('.wv-grid tbody td[data-field="Owner"]'), null, 'Owner is hidden');
-    await openPane(page, 'fields');
-    await page.locator('#view-pane .eye-row', { hasText: 'Owner' }).first().click();
+    await page.click('.eye-btn');
+    await page.locator('.chip-pop .eye-row', { hasText: 'Owner' }).first().click();
     await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody td[data-field="Owner"]').length === 5);
     await page.waitForFunction(() => /owner 0/.test(document.querySelector('.wv-grid tbody td[data-field="Owner"]')?.textContent
       + (document.querySelector('.wv-grid tbody td[data-field="Owner"] input')?.value ?? '')));
