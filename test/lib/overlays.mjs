@@ -35,6 +35,14 @@ const tableMenu = (label) => async (page, ctx, cell) => {
   await menu(page, cell, '#main .dots-btn[title="Table actions"]', label);
 };
 const scope = (cell) => (cell === 'phone' ? '#dock' : '#main');
+const paneSection = (section) => async (page, ctx, cell) => {
+  if (!await page.locator('#view-pane:not([hidden]) .vp-acc').count()) await press(page, '#main .table-view-btn', cell);
+  await page.waitForSelector('#view-pane:not([hidden]) .vp-acc');
+  const acc = page.locator(`#view-pane .vp-acc[data-section="${section}"]`);
+  if (await acc.getAttribute('aria-expanded') !== 'true') await press(page, `#view-pane .vp-acc[data-section="${section}"]`, cell);
+  await page.waitForSelector(`#view-pane #vp-body-${section}`);
+};
+const paneClose = (page, ctx, cell) => press(page, '#view-pane .vp-close', cell);
 
 export const OVERLAYS = [
   {
@@ -69,11 +77,17 @@ export const OVERLAYS = [
     open: (page, ctx, cell) => tools(page, cell),
     close: (page, ctx, cell) => press(page, '#main .table-tools-btn', cell),
   },
-  { name: 'view', surface: 'table', cells: BOTH, root: '.table-view-popover', open: toolsThen('#main .table-view-btn') },
-  { name: 'density', surface: 'table', cells: BOTH, root: '.table-density-popover', open: toolsThen('#main .table-density-btn') },
-  { name: 'fields', surface: 'table', cells: DESKTOP, root: '.table-fields-popover', open: toolsThen('#main .eye-btn') },
+  { name: 'view', surface: 'table', cells: PHONE, root: '.table-view-popover', open: toolsThen('#main .table-view-btn') },
+  { name: 'density', surface: 'table', cells: PHONE, root: '.table-density-popover', open: toolsThen('#main .table-density-btn') },
   { name: 'phone-row', surface: 'table', cells: PHONE, root: '.phone-row-popover', open: toolsThen('#main .eye-btn') },
-  { name: 'filters', surface: 'table', cells: BOTH, root: '.table-filter-popover', open: toolsThen('#main .table-filter-btn') },
+  { name: 'filters', surface: 'table', cells: PHONE, root: '.table-filter-popover', open: toolsThen('#main .table-filter-btn') },
+  { name: 'sort', surface: 'table', cells: PHONE, root: '.table-sort-popover', open: toolsThen('#main .table-sort-btn') },
+  { name: 'group', surface: 'table', cells: PHONE, root: '.table-group-popover', open: toolsThen('#main .table-group-btn') },
+  { name: 'view-pane-filters', surface: 'table', cells: DESKTOP, root: '#view-pane', open: paneSection('filters'), close: paneClose },
+  { name: 'view-pane-sort', surface: 'table', cells: DESKTOP, root: '#view-pane', open: paneSection('sort'), close: paneClose },
+  { name: 'view-pane-group', surface: 'table', cells: DESKTOP, root: '#view-pane', open: paneSection('group'), close: paneClose },
+  { name: 'fields', surface: 'table', cells: DESKTOP, root: '#view-pane', open: paneSection('fields'), close: paneClose },
+  { name: 'view-pane-display', surface: 'table', cells: DESKTOP, root: '#view-pane', open: paneSection('display'), close: paneClose },
   { name: 'table-menu', surface: 'table', cells: DESKTOP, root: '.wv-menu', open: (page, ctx, cell) => press(page, '#main .dots-btn[title="Table actions"]', cell) },
   { name: 'share-table', surface: 'table', cells: BOTH, root: '#modal-back', open: tableMenu('Share…') },
   { name: 'share-page', surface: 'table', cells: BOTH, root: '#tray-back', open: tableMenu('New share page') },
