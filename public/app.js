@@ -716,7 +716,7 @@ async function drawDock() {
       }, iconEl('✕')),
     ],
   };
-  await renderEntityView(entity, { mount: host, refresh: drawDock, refs, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs, dockControls, later });
+  await renderEntityView(entity, { mount: host, refresh: drawDock, refs, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs, later, dockControls });
   markDockedRow();
 }
 
