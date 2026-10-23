@@ -1,0 +1,89 @@
+name: coverage-map
+
+on:
+  pull_request:
+    paths:
+      - scripts/coverage-map.mjs
+      - scripts/coverage-hook.mjs
+      - .github/workflows/coverage-map.yml
+  schedule:
+    - cron: "43 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLAYWRIGHT_VERSION: "1.62.1"
+
+jobs:
+  shard:
+    name: coverage ${{ matrix.shard }}/8
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - name: Install pinned browser driver
+        run: |
+          npm ci --ignore-scripts --prefix .github/test-tools
+          ln -s .github/test-tools/node_modules node_modules
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Install browsers and system dependencies
+        run: npx --no-install playwright install --with-deps chromium webkit
+      - name: Record one shard of browser coverage
+        continue-on-error: true
+        env:
+          SHARD: ${{ matrix.shard }}
+          WEAVE_TEST_QUEUE_WAIT_MS: "60000"
+        run: node scripts/coverage-map.mjs "--shard=$SHARD/8"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-${{ matrix.shard }}
+          path: test/coverage-map.json
+          if-no-files-found: error
+          retention-days: 14
+
+  merge:
+    name: coverage map
+    needs: shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: coverage-*
+          path: parts
+      - name: Merge every shard into one map
+        run: |
+          test "$(find parts -name coverage-map.json | wc -l)" -eq 8
+          node scripts/coverage-map.mjs --merge parts/*/coverage-map.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-map
+          path: test/coverage-map.json
+          if-no-files-found: error
+          retention-days: 30

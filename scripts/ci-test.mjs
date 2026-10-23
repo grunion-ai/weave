@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -63,11 +63,54 @@ export const SMOKE = [
   'test/table-views-browser.test.mjs',
 ];
 
-export function touchedBrowser(changed, browser, read) {
+export const BUDGET = 80;
+
+export function hunks(diff) {
+  const out = {};
+  let file = null, old = null, header = false;
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('diff --git ')) header = true;
+    else if (header && line.startsWith('--- ')) old = line.slice(4).replace(/^a\//, '');
+    else if (header && line.startsWith('+++ ')) { const p = line.slice(4); file = p === '/dev/null' ? old : p.replace(/^b\//, ''); }
+    else if (line.startsWith('@@ ')) {
+      header = false;
+      const m = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+      (out[file] ??= []).push([+m[1], +(m[2] ?? 1), +m[3], +(m[4] ?? 1)]);
+    }
+  }
+  return out;
+}
+
+export const touchedLines = list => list.flatMap(([start, count]) => count ? Array.from({ length: count }, (_, i) => start + i) : [Math.max(1, start), start + 1]);
+
+export function toMap(line, drift) {
+  let delta = 0;
+  for (const [os, oc, ns, nc] of drift) {
+    const start = nc ? ns : ns + 1;
+    if (line < start) break;
+    const from = oc ? os : os + 1;
+    if (line < start + nc) return from;
+    delta = from + oc - start - nc;
+  }
+  return line + delta;
+}
+
+const innermost = (entries, line) => entries.reduce((best, e) => e[0] <= line && line <= e[1] && (!best || e[1] - e[0] < best[1] - best[0]) ? e : best, null);
+
+export function touchedBrowser(changed, browser, read, { map, lines = {} } = {}) {
   for (const file of SMOKE) if (!browser.includes(file)) throw new Error(`Missing required journey suite ${file}`);
   const picked = new Set(SMOKE);
+  const lane = new Set(browser);
+  if (map) { const known = new Set(map.tests); for (const test of browser) if (!known.has(test)) picked.add(test); }
+  const score = new Map();
   for (const file of changed) {
-    if (browser.includes(file)) { picked.add(file); continue; }
+    if (lane.has(file)) { picked.add(file); continue; }
+    const entries = map?.files[file];
+    if (entries) {
+      const hit = new Set((lines[file]?.length ? lines[file] : [1]).map(line => innermost(entries, line)).filter(Boolean));
+      for (const [, , set] of hit) for (const i of map.sets[set]) score.set(map.tests[i], (score.get(map.tests[i]) ?? 0) + 1);
+      continue;
+    }
     const name = basename(file);
     const stem = name.replace(/\.[^.]+$/, '').replace(/-core$/, '');
     for (const test of browser) {
@@ -75,11 +118,15 @@ export function touchedBrowser(changed, browser, read) {
       if (testStem === stem || testStem.startsWith(`${stem}-`) || read(test).includes(name)) picked.add(test);
     }
   }
-  return [...picked].sort();
+  const ranked = [...score].filter(([test]) => lane.has(test) && !picked.has(test)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([test]) => test);
+  const room = Math.max(1, BUDGET - picked.size);
+  for (const test of ranked.slice(0, room)) picked.add(test);
+  return { files: [...picked].sort(), dropped: ranked.slice(room) };
 }
 
-export function prPlan({ unit, browser }, changed, read, weight) {
-  const touched = touchedBrowser(changed, browser, read);
+export function prPlan({ unit, browser }, changed, read, weight, coverage) {
+  const { files: touched, dropped } = touchedBrowser(changed, browser, read, coverage);
+  if (dropped.length) console.error(`PR plan: ${touched.length} browser files selected, ${dropped.length} covering tests dropped over the ${BUDGET}-file budget: ${dropped.join(' ')}`);
   return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
 }
 
@@ -99,9 +146,22 @@ function currentPlan() {
   return plan(files, lanes(files, ROOT), weightOf);
 }
 
+const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 28 });
+
+function currentCoverage() {
+  const path = join(ROOT, 'test/coverage-map.json');
+  if (!existsSync(path)) return undefined;
+  const map = JSON.parse(readFileSync(path, 'utf8'));
+  const pr = hunks(git('diff', '-U0', '--no-renames', 'HEAD^1', 'HEAD', '--', ...Object.keys(map.files)));
+  const touched = Object.keys(pr);
+  let drift = {};
+  if (touched.length) try { drift = hunks(git('diff', '-U0', '--no-renames', map.commit, 'HEAD^1', '--', ...touched)); } catch { console.error(`PR plan: coverage map commit ${map.commit} is not in this history, reading lines as they are`); }
+  return { map, lines: Object.fromEntries(touched.map(file => [file, touchedLines(pr[file]).map(line => toMap(line, drift[file] ?? []))])) };
+}
+
 function currentPrPlan() {
-  const changed = execFileSync('git', ['diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
-  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightOf);
+  const changed = git('diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD').split('\n').filter(Boolean);
+  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightOf, currentCoverage());
 }
 
 async function main() {

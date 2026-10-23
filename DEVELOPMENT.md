@@ -57,11 +57,40 @@ the dev soak.
 The `pr` workflow runs on every ready pull request. Its plan, `node
 scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
 four shards, plus the browser tests the diff maps to, sharded at about twenty
-files each, four at most. A changed browser test runs itself. Any other changed
-file maps to browser tests named for its module (`public/chip-core.js` maps to
-`test/chip-*-browser.test.mjs`) or whose source cites its file name. A fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`) always runs, so a
-diff nothing maps to still boots the app in a browser. `PR gate` succeeds only
-when every shard succeeded and `pr-aggregate` finds executed evidence for every
+files each, four at most. A changed browser test runs itself. A changed file
+under `src/`, `bin/` or `public/` that the coverage map knows selects the
+browser tests that executed the functions its diff hunks touch.
+`test/coverage-map.json` records, for each source file, every executed
+function's line span and the browser test files that ran it (server code
+through `NODE_V8_COVERAGE`, client code through Chromium's JS coverage). The
+planner reads `git diff -U0 HEAD^1 HEAD`, moves each hunk line back to the
+commit the map was generated at and takes the innermost mapped function at that
+line, so a hunk inside one `public/app.js` function runs that function's tests
+rather than the whole lane. Covering tests are ranked by how many touched
+functions they ran and fill the budget of 80 browser files (`BUDGET`); the plan
+prints the ones it dropped to stderr. A file the map does not know (a new file,
+CSS, a test helper) falls back to name matching: browser tests named for its
+module (`public/chip-core.js` maps to `test/chip-*-browser.test.mjs`) or whose
+source cites its file name. Two groups run on every PR: browser tests missing
+from the map, and the fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`), so a
+diff nothing maps to still boots the app in a browser.
+
+The `coverage-map` workflow regenerates the map on GitHub runners every Monday,
+on demand (`gh workflow run coverage-map`) and on pull requests that change
+the generator: eight jobs each run `node scripts/coverage-map.mjs
+--shard=<n>/8`, and a merge job joins them with `--merge` and uploads
+`test/coverage-map.json` as the `coverage-map` artifact. Commit that file in
+its own pull request (`gh run download <run id> -n coverage-map -D test`).
+The map records the newest commit that changed `src/`, `bin/` or `public/`, so
+the commit stays on main after a squash merge. `test/coverage-map.test.mjs`
+fails once more than 20 browser tests are missing from the map, since each one
+runs on every PR. Locally, `node scripts/coverage-map.mjs` runs the browser
+lane in 20-file test-manager jobs from a checkout whose `src/`, `bin/` and
+`public/` match `HEAD`; naming test files re-runs only those and keeps the rest
+of a map generated at the same commit. WebKit and phone tests contribute
+server coverage only.
+
+`PR gate` succeeds only when every shard succeeded and `pr-aggregate` finds executed evidence for every
 planned file at the exact commit. A newer push to the same pull request cancels
 the running one.
 
