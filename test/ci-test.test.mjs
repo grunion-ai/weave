@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, SMOKE, ONBOARDING, newestAttempts } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts } from '../scripts/ci-test.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
 const manifest = plan(files, { unit: files.slice(0, 2), browser: files.slice(2) }, () => 10, 2, 2);
@@ -109,6 +109,88 @@ test('the smoke set names browser tests that exist in this repository', async ()
   const { testFiles, lanes } = await import('../scripts/test.mjs');
   const { browser } = lanes(testFiles());
   assert.deepEqual(SMOKE.filter(f => !browser.includes(f)), []);
+});
+
+const sheetSources = {
+  'test/phone-new-row-sheet-browser.test.mjs': "await page.locator('.sheet-grip').hover();",
+  'test/phone-picker-sheet-browser.test.mjs': "const pill = page.locator('.sheet-grip-pill');",
+  'test/phone-bottom-bar-browser.test.mjs': "await styleOf(page, '.phone-bottom-bar');",
+};
+const sheetBrowser = [...Object.keys(sheetSources), ...browserFiles];
+const sheetRead = (file) => sheetSources[file] ?? sources[file] ?? '';
+const sheetDiff = [
+  'diff --git a/public/app.js b/public/app.js',
+  'index 83152140..1a5732e1 100644',
+  '--- a/public/app.js',
+  '+++ b/public/app.js',
+  '@@ -11291,10 +11291,11 @@ function sheetGrip(sheet, close) {',
+  "   const grip = el('div', { class: 'sheet-grip' }, el('span', { class: 'sheet-grip-pill' }));",
+  '-    const speed = Math.max(0, e.clientY - y) / span;',
+  "+    const reach = e.type === 'pointerup' ? Math.max(at, e.clientY - y) : at;",
+].join('\n');
+
+test('hunk tokens are the dashed and slashed literals of the changed blocks, never the diff headers', () => {
+  assert.deepEqual(reachTokens(sheetDiff), ['sheet-grip', 'sheet-grip-pill']);
+  assert.deepEqual(reachTokens(''), []);
+  assert.deepEqual(reachTokens('diff --git a/public/field-dialog-core.js b/public/field-dialog-core.js'), []);
+});
+
+test('a changed public module selects every browser suite naming the DOM tokens of the block it changed', () => {
+  assert.deepEqual(touchedBrowser(['public/app.js'], sheetBrowser, sheetRead), [...SMOKE].sort());
+  assert.deepEqual(
+    touchedBrowser(['public/app.js'], sheetBrowser, sheetRead, sheetDiff),
+    [...SMOKE, 'test/phone-new-row-sheet-browser.test.mjs', 'test/phone-picker-sheet-browser.test.mjs'].sort(),
+  );
+});
+
+test('a changed server module selects the browser suites naming the paths its block serves', () => {
+  const routes = {
+    'test/footer-rollups-browser.test.mjs': "await page.request.post('/api/tables/subtotals');",
+    'test/table-views-browser.test.mjs': 'const open = true;',
+  };
+  const browser = [...Object.keys(routes), ...browserFiles];
+  const read = (file) => routes[file] ?? sources[file] ?? '';
+  const diff = ["@@ -820,6 +820,7 @@ function routeTable(req) {", "+  if (path === '/api/tables/subtotals') return subtotals(req);"].join('\n');
+  assert.deepEqual(touchedBrowser(['src/routes.js'], browser, read), [...SMOKE].sort());
+  assert.deepEqual(
+    touchedBrowser(['src/routes.js'], browser, read, diff),
+    [...SMOKE, 'test/footer-rollups-browser.test.mjs'].sort(),
+  );
+});
+
+test('the reached tier drops a token the whole lane names and stops at its file cap', () => {
+  const wide = Array.from({ length: 120 }, (_, i) => `test/w${String(i).padStart(3, '0')}-browser.test.mjs`);
+  const browser = [...wide, ...SMOKE];
+  const read = (file) => (wide.includes(file) ? `const token = 'wv-token-${file.slice(6, 9)}'; const shared = 'wv-whole-lane';` : '');
+  assert.deepEqual(touchedBrowser(['public/app.js'], browser, read, "+  const shared = 'wv-whole-lane';"), [...SMOKE].sort());
+  const everyToken = wide.map((file) => `+  const token = 'wv-token-${file.slice(6, 9)}';`).join('\n');
+  const picked = touchedBrowser(['public/app.js'], browser, read, everyToken);
+  assert.equal(picked.length, SMOKE.length + REACH_CAP);
+  assert.ok(REACH_CAP >= 20 && REACH_SPREAD >= 1);
+  assert.deepEqual(picked.filter((file) => SMOKE.includes(file)).sort(), [...SMOKE].sort());
+});
+
+test('the PR plan shards the reached browser suites beside the named ones', () => {
+  const unit = Array.from({ length: 30 }, (_, i) => `test/u${String(i).padStart(2, '0')}.test.mjs`);
+  const browser = [...Object.keys(sheetSources), ...SMOKE];
+  const shards = prPlan({ unit, browser }, ['public/app.js'], sheetRead, () => 1, sheetDiff);
+  const picked = shards.filter((s) => s.lane === 'browser').flatMap((s) => s.files);
+  assert.ok(picked.includes('test/phone-picker-sheet-browser.test.mjs'));
+  assert.equal(picked.length, SMOKE.length + 2);
+});
+
+test('the sheet grabber tokens reach the phone sheet suites of this repository, which file names cannot', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { testFiles, lanes } = await import('../scripts/test.mjs');
+  const { browser } = lanes(testFiles());
+  const read = (file) => readFileSync(file, 'utf8');
+  const diff = "+  const grip = el('div', { class: 'sheet-grip' }, el('span', { class: 'sheet-grip-pill' }));";
+  const named = touchedBrowser(['public/app.js'], browser, read);
+  const reached = touchedBrowser(['public/app.js'], browser, read, diff);
+  const beyond = reached.filter((file) => !named.includes(file));
+  assert.ok(beyond.length >= 2, `sheet-grip reached ${beyond.length} suites beyond the name match`);
+  assert.ok(reached.includes('test/phone-picker-sheet-browser.test.mjs'));
+  assert.ok(reached.length <= SMOKE.length + REACH_CAP + named.length);
 });
 
 test('the PR plan runs every unit file and the touched browser tests through the full-suite planner', () => {

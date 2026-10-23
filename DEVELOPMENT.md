@@ -59,8 +59,18 @@ scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
 four shards, plus the browser tests the diff maps to, sharded at about twenty
 files each, four at most. A changed browser test runs itself. Any other changed
 file maps to browser tests named for its module (`public/chip-core.js` maps to
-`test/chip-*-browser.test.mjs`) or whose source cites its file name. A fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`) always runs, so a
-diff nothing maps to still boots the app in a browser. `PR gate` succeeds only
+`test/chip-*-browser.test.mjs`) or whose source cites its file name. The diff
+also maps by what it names: the plan reads the changed blocks with
+`git diff -W`, takes every dashed or slashed literal of six characters or more
+out of them (`sheet-grip`, `/api/tables/subtotals`), and adds each browser test
+whose source names one. A literal more than `REACH_SPREAD` browser tests name
+is too common to place a change, so it is dropped, and the reached tier stops
+at `REACH_CAP` files beyond the name matches, which holds the gate inside its
+fifteen-minute job timeout. A change to `public/app.js` or `src/routes.js`
+therefore runs the journeys that name the DOM classes and routes it touches,
+which file names alone never reach (Issue #1075). A fixed smoke set (`SMOKE` in
+`scripts/ci-test.mjs`) always runs, so a diff nothing maps to still boots the
+app in a browser. `PR gate` succeeds only
 when every shard succeeded and `pr-aggregate` finds executed evidence for every
 planned file at the exact commit. A newer push to the same pull request cancels
 the running one.
