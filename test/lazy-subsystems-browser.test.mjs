@@ -72,6 +72,34 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('Forms in the table menu loads the forms dialog once, and the keyboard creates a form', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      const fetched = watch(page);
+      await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      const forms = page.getByRole('heading', { name: 'Forms', exact: true });
+      const open = async () => {
+        await page.getByRole('button', { name: 'Table actions', exact: true }).filter({ visible: true }).click();
+        await page.getByRole('menuitem', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
+        await forms.waitFor();
+      };
+      await open();
+      assert.deepEqual(fetched, ['/forms-dialog.js']);
+      await page.getByRole('button', { name: 'Create form', exact: true }).focus();
+      await page.keyboard.press('Enter');
+      const name = page.getByLabel('Form name', { exact: true });
+      await name.fill('Deal intake');
+      await page.getByRole('button', { name: 'Save form', exact: true }).focus();
+      await page.keyboard.press('Enter');
+      await page.locator('[data-form-id]', { hasText: 'Deal intake' }).waitFor();
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#modal-back', { state: 'detached' });
+      await open();
+      assert.deepEqual(fetched, ['/forms-dialog.js'], 'the second open reuses the loaded file');
+    } finally { await page.close(); }
+  });
+
   test('the activity log loads its page on first visit, once, and opens an entry', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     try {
