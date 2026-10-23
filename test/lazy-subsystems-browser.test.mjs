@@ -125,9 +125,9 @@ if (s) {
       assert.deepEqual(fetched, ['/date-picker.js']);
       await due.locator('.date-pick-btn').click();
       const pop = page.locator('.date-pop');
-      await pop.locator('.date-smart:focus').waitFor();
-      await page.keyboard.type('2026-10-09');
-      await page.keyboard.press('Enter');
+      const smart = pop.locator('.date-smart:focus');
+      await smart.fill('2026-10-09');
+      await smart.press('Enter');
       await pop.waitFor({ state: 'detached' });
       assert.equal(await eventually(() => weave.readEntity(big.id).raw.Due, '2026-10-09'), '2026-10-09');
       const range = page.locator(`tr[data-eid="${big.id}"] td[data-field="Window"]`);
