@@ -225,23 +225,26 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
   assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
 });
 
-test('a stalled browser install costs one retry, not the PR gate', async () => {
+test('every gating workflow bounds each browser install attempt and retries it once', async () => {
   const { readFileSync } = await import('node:fs');
-  const workflow = readFileSync('.github/workflows/pr.yml', 'utf8');
-  const job = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:'));
-  const step = job.match(/- name: Install browsers and system dependencies\n        if: matrix\.lane == 'browser'\n        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)\n      - name:/);
-  assert.ok(step, 'the install step carries a backstop of its own');
-  const attempts = [...step[2].matchAll(/timeout (\d+)m npx --no-install playwright install --with-deps chromium webkit/g)].map(m => Number(m[1]));
-  assert.equal(attempts.length, 2, 'the install is attempted twice, each attempt bounded in the shell');
-  for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `an attempt waits ${budget} minutes`);
-  assert.match(step[2], /dpkg --configure -a \|\| true/);
-  assert.match(step[2], /Acquire::Retries/);
-  assert.doesNotMatch(step[2], /continue-on-error/);
-  assert.doesNotMatch(job, /continue-on-error/);
-  const backstop = Number(step[1]);
-  const jobBudget = Number(workflow.match(/timeout-minutes: (\d+)\n    strategy/)[1]);
-  assert.ok(attempts[0] + attempts[1] <= backstop && backstop < jobBudget, 'both attempts fit the step backstop, which fits the job');
-  assert.equal(job.match(/playwright install --with-deps chromium webkit/g).length, 2);
+  for (const [file, from, to, jobBudget] of [['pr.yml', '  test:', '  gate:', 15], ['test.yml', '  test:', '  gate:', 30], ['dev-soak.yml', '  soak:', null, 30]]) {
+    const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
+    const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
+    assert.ok(job.length > 200, `${file} has a ${from.trim()} job`);
+    assert.match(job, new RegExp(`timeout-minutes: ${jobBudget}\\n`), `${file} declares the job budget this test reasons about`);
+    const steps = [...job.matchAll(/- name: Install [^\n]*\n(?:        if: [^\n]*\n)?        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)(?=\n      - )/g)];
+    assert.equal(steps.length, 1, `${file} has one bounded install step`);
+    const [, backstop, body] = steps[0];
+    const attempts = [...body.matchAll(/timeout (\d+)m npx --no-install playwright install --with-deps /g)].map((m) => Number(m[1]));
+    assert.equal(attempts.length, 2, `${file} attempts the install twice`);
+    for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `${file} waits ${budget} minutes on an attempt`);
+    assert.match(body, /dpkg --configure -a \|\| true/, `${file} repairs an interrupted unpack before the second attempt`);
+    assert.match(body, /Acquire::Retries/, `${file} bounds apt's own connections`);
+    assert.ok(attempts[0] + attempts[1] <= Number(backstop), `${file} fits both attempts in the step backstop`);
+    assert.ok(Number(backstop) < jobBudget, `${file} leaves the job room to run its work`);
+    assert.doesNotMatch(job, /continue-on-error/, `${file} does not lean on continue-on-error, which a killed step does not survive`);
+    assert.equal(job.match(/playwright install --with-deps /g).length, 2, `${file} installs browsers in one place`);
+  }
 });
 test('a re-run shard replaces its earlier attempt, so the gate judges the newest result', () => {
   const failed = { ...evidence()[0], attempt: 1, code: 1 };

@@ -1,0 +1,1 @@
+- The `tests` and `dev-soak` workflows bound each `playwright install --with-deps` attempt at five minutes and retry it once, the way `pr.yml` already does, after a trickling mirror held that step for thirty minutes and cancelled two jobs of the `CI gate` on main (Issue #1107).
