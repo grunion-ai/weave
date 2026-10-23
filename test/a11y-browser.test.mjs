@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { launch, settled, atRest } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 import { createForm } from '../src/forms.js';
 import { createOidc } from '../src/oidc.js';
 import { createBilling } from '../src/billing.js';
@@ -91,8 +92,8 @@ if (s && doors) {
       await page.waitForSelector('#cmdk-input');
     } },
     { name: 'share dialog', root: '#modal-back', open: tableMenu('Share…') },
-    { name: 'filter popover', root: '.table-filter-popover', open: (page) => press(page, '#main .table-filter-btn') },
-    { name: 'sort popover', root: '.table-sort-popover', open: (page) => press(page, '#main .table-sort-btn') },
+    { name: 'filter popover', root: '#view-pane', open: (page) => openPane(page, 'filters') },
+    { name: 'sort popover', root: '#view-pane', open: (page) => openPane(page, 'sort') },
     { name: 'row menu', root: '.wv-menu', async open(page) {
       await page.locator(`${ROW} td.pid-cell a.open-link`).first().click();
       await page.waitForSelector('#dock .pose-btn');
@@ -258,7 +259,7 @@ if (s && doors) {
       const page = await at(`#/table/${issue.id}`, ROW, theme);
       try {
         await page.keyboard.press('Tab');
-        for (const sel of ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn']) {
+        for (const sel of ['#main .table-view-btn']) {
           const r = await ringContrast(page, sel);
           assert.ok(r.focused && r.visible, `${sel} takes keyboard focus (${JSON.stringify(r)})`);
           assert.equal(r.style, 'solid', `${sel} draws the outline ring`);

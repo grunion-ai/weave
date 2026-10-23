@@ -8,7 +8,7 @@
     "scroll-grid|phone": 0,
     "edit-cell|desktop": 1,
     "open-row|desktop": 2,
-    "switch-view|desktop": 4,
+    "switch-view|desktop": 5,
     "type-doc|desktop": 1,
     "type-doc|phone": 1,
     "trash-undo|desktop": 4,
@@ -19,5 +19,7 @@
     "phone-picker|phone": 2,
     "phone-open-row|phone": 1
   },
-  "raised": {}
+  "raised": {
+    "switch-view|desktop": "Feature #340 moved the view list from a popover into the View pane: the journey opens the pane, opens its view picker, picks two views and closes the pane, where the popover took a click to open before each pick"
+  }
 }
