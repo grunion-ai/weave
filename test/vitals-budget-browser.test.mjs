@@ -28,7 +28,7 @@ if (s) {
 
   for (const j of VITALS) {
     for (const cell of ['desktop', 'phone']) {
-      test(`${j.name}|${cell}: LCP, CLS and INP stay inside their budgets (Issue #1003)`, async (t) => {
+      test(`${j.name}|${cell}: LCP, CLS and INP stay inside their budgets (Issue #1042)`, async (t) => {
         await once(j, cell);
         const runs = [];
         for (let i = 0; i < RUNS; i++) runs.push(await once(j, cell));

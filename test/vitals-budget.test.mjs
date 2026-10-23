@@ -45,6 +45,6 @@ test('the budget file covers LCP, CLS and INP for load-home and open-table on de
 
 const budgetAt = (rev) => { try { return JSON.parse(execFileSync('git', ['show', `${rev}:${BUDGET_FILE}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return null; } };
 
-test('this change raises no vitals budget without a reason (Issue #1003)', () => {
+test('this change raises no vitals budget without a reason (Issue #1042)', () => {
   assert.deepEqual(unexplainedRaises(budgetAt('HEAD^1'), budget, VITAL), []);
 });
