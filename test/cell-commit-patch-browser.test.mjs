@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { sortBy } from './lib/view-pane.mjs';
 
 const N = 500;
 let cases, small, smallIds = [], ids = [];
@@ -157,7 +156,8 @@ if (s) {
       await landed;
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
-      await sortBy(page, 'Name');
+      await page.click('#main .table-sort-btn');
+      await page.locator('.table-sort-popover .table-sort-field').filter({ has: page.locator('.table-sort-name', { hasText: /^Name$/ }) }).click();
       await page.waitForFunction(() => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.startsWith('Sort: Name,'));
       await page.waitForLoadState('networkidle');
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row')[0]?.querySelector('td[data-field="Name"] input')?.value === 'a row', null, { timeout: 5000 });

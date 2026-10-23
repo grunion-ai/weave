@@ -1171,8 +1171,8 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | Alt+\u2190 / \u2192 on a focused header | table view | narrows or widens the column by 8px, down to its label |
 | Double-click that edge | table view | fits the column to its longest value, up to the type's maximum and never under its label |
 | Click a header, or Return on a focused one | table view | opens the field tray to rename, retype or reconfigure. The click that ends a drag or a resize opens nothing |
-| **Sort** in the View pane | table view | sorts by up to three fields, stored on the view for everyone. The two directions read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The system columns and **Public Id** (the **#** column) are in its list too; a column's ⋮ holds no sort rows |
-| **Fields** in the View pane | table view | show or hide any field and the system columns |
+| **Sort** in the toolbar | table view | sorts by the field you pick, stored on the table for everyone. The two directions read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The system columns and **Public Id** (the **#** column) are in its list too; a column's ⋮ holds no sort rows |
+| 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
 | Drag the grip | entity page | reorders fields; the table's columns follow. On a phone, press and hold a field to pick it up |
 | Tap a field row | entity page, phone | opens that field's picker sheet. At 600px and below the fields block is one inset group of 50px rows: label on the left, value chip, chevron on the right, and an empty value as a single + chip. The grips are gone, the label still opens the field tray, and a relation that carries chips takes its own full-width row |
 | Tap a chip on a list row | table view, phone | edits that field without opening the row. The state mark and every chip own a 44px target around the drawn pill, the size the pill keeps; where two targets meet, or a target meets the **#** link or the name, the gap splits at its midpoint, so a tap a little wide of the state still picks a state and a tap nearer the **#** opens the row. The name always holds its two lines, so the chip line sits at the same height in every row. A drag never edits |
@@ -1186,7 +1186,7 @@ Every field type opens at a default width: Name 260px, text, links and multi-sel
 
 A table or field description stays behind the raised info icon beside its name. Click the icon, or focus it and press Enter or Space, to show or hide the text below. Descriptions fold after three lines; **Show more** expands them. Each viewer's browser remembers the open descriptions. Click an open table description to edit it; for an empty table, use **Add description…** in its menu. Field settings keep the field's description editor. Grid column tooltips are unchanged.
 
-The four system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\` — are off by default. Turn them on where provenance is part of the record. A view shows the ones you turn on in its own list: each one drags, freezes across the seam and sizes like any field, and its place and width are the view's. A record's history lives in two places: the Activity button in the record's header and the Activity system table. Every one sorts from **Sort** in the View pane; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
+The four system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\` — are off by default. Turn them on where provenance is part of the record. A view shows the ones you turn on in its own list: each one drags, freezes across the seam and sizes like any field, and its place and width are the view's. A record's history lives in two places: the Activity button in the record's header and the Activity system table. Every one sorts from the toolbar **Sort**; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
 
 \`Created By\` and \`Modified By\` show a person as their name on an initial, followed by "via MCP" when they wrote through an MCP client. A signed-in write records the account, never its name, so these columns, the activity feed, the audit log, document revisions and credential owners all show the account's current name and follow it across a rename; a line written before accounts were recorded keeps the name it was written with, and an account since removed shows as \`removed account\`. A write an automation made shows the rule's Workflows row instead, and the chip opens that row. When a rule writes to a row you have open, in the grid or on its page, each cell it changed lights up in the order the rule wrote it, Modified By last, and a toast names the rule and the row. With reduced motion on, the cells stay still and the chip and the toast still show.
 
@@ -2426,36 +2426,23 @@ A table can be read several ways. Each **view** keeps which columns show, their 
 
 ## The toolbar
 
-The controls sit beside the breadcrumb: **Search → View → Table actions (⋮)**. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **Share…**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
+The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Filters → Group (List layout only) → Sort → Table actions (⋮)**. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **Share…**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
 
 | Control | What it does |
 | --- | --- |
 | **Search** | Narrows this table by name, public id or text. Click the visible search box or press **/** when not editing. It searches all pages, combines with filters and preserves sorting. **Escape** clears the search. **⌘K / Ctrl+K** remains workspace search. |
-| **View** | Opens the View pane beside the table, and closes it again. Its badge counts the active filters, deleted rows included. Closing the pane gives the table the full width. |
-
-## The View pane
-
-The pane holds the view picker at the top, then five sections. One section is open at a time. Each header shows its current value, and turns blue when the view differs from the system default. **Reset view** and **Clear all** sit at the foot. Every change saves into the current view at once.
-
-| Section | What it does |
-| --- | --- |
-| **Filters** | Narrows rows by workflow states, toggle labels and single-select or multi-select options, and holds the **Include deleted** switch. Deleted rows show struck through and never count toward a total. |
-| **Sort** | Up to three levels: primary, secondary and tertiary. Each level has a field, a direction worded by type, move up, move down and remove. Rows that tie on every level fall back to **#**. Empty values sort last in both directions. |
-| **Group** | Up to five nested levels, in Table and List layouts. Each level has a field, an order, move up, move down and remove. **Collapse all** and **Expand all** fold every group. Empty values gather under **No value**, listed last. A row with several values in a multi-select appears under each one, and every total above that level counts it once. In List layout the section also holds **Completed by** and **Nest by**. |
-| **Fields** | Shows, hides and reorders columns, with a **Group n** or **Sort n** tag on a field in use; opens the field tray to add a field. |
-| **Display** | **Layout** (Table or List), **Density** (Compact 32, Comfortable 44 or Spacious 72 pixels), the **Σ Rollups** switch, **Subtotals** (Every level, Top level, None) and the aggregation for each column. |
-
-A field sits in Sort or Group, never both: grouping by a sorted field takes it out of Sort, and the Sort section says so. Groups order the rows first; the sort levels order the rows inside each innermost group. A collapsed group keeps its header and its subtotal, so collapsing every group turns the table into a summary. Hiding a grouped field keeps its group headers. Changing the group fields opens every group again.
-
-A subtotal row shows the group's live row count and, for each column, the aggregations picked in Display. The server computes them; an agent reads the same numbers from \`weave_query\` with the view, in its \`groups\` and \`groupTotal\`.
-
-On a phone the sliders button keeps the table menu: View, Density, Fields, Filters, Group and Sort, with the same sort and group levels.
+| **Current view name ▾** | Selects and manages saved views. Changes save automatically. |
+| **Compact ▾**, **Comfortable ▾** or **Spacious ▾** | Sets the row height: 32, 44 or 72 pixels, with two lines of text at Spacious. Only the height changes; text size and column widths stay the same. The row under your eye stays put, and the choice saves into the current view like its filters and sorting, so each view keeps its own. A cell shows the chips that fit whole and a +N for the rest; hover it to see them all. |
+| **Fields** | Shows, hides and reorders columns; opens the field tray to add a field. |
+| **Filters** | Narrows rows by workflow states, toggle labels and single-select or multi-select options. The badge counts fields with active filters. |
+| **Group** | Shows in List layout. Sets the list's group levels, its **Completed by** checkbox and its **Nest by** link. The button names the levels: **Group: Trip › Priority**. |
+| **Sort** | Picks the field the table sorts by and its direction, worded by type; **Clear sort** removes it. |
 
 Search is temporary: it is not saved into a view or shared with other people, and leaving the table clears it.
 
 ## Managing views
 
-| You do in the view picker | What happens |
+| You do in the view menu | What happens |
 | --- | --- |
 | Select a view | Opens its saved layout, filters and sorting. |
 | Drag a view by its handle | Reorders the list; a dashed placeholder opens where it lands. Drop it first to make it open with the table. With a finger, press and hold the handle to pick it up. |
@@ -2464,9 +2451,10 @@ Search is temporary: it is not saved into a view or shared with other people, an
 | **Rename** | Edits the name in place. **Enter** or clicking away saves; **Escape** cancels. |
 | **Duplicate** | Adds a row under the view with its name focused (\`Open bugs 2\`). **Enter** or clicking away creates the copy and opens it; **Escape** drops the row. |
 | **Delete** | Hold the button until it fills. The last view cannot be deleted. |
-| **+ Add view** | Adds a row with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view from the system default that **Reset view** restores, and opens it; **Escape** drops the row. The pane stays open throughout. |
+| **+ Add view** | Adds a row with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view from the system default that **Reset view** restores, and opens it; **Escape** drops the row. The menu stays open throughout. |
+| **Layout: Table · List** | Shows the view as the grid or as a list. Switching loses nothing: Table keeps the list settings and ignores them. |
 | **Reset view** | Returns the view to the system default: a Table with no grouping, every regular field in schema order with the table's default system columns, no filters, sorting, search, custom widths or frozen columns, no deleted rows, no Σ rollup row, and Comfortable density. **+ Add view** starts from the same default. The view keeps its name. |
-| **Clear all** | Removes filters, deleted rows, search, sorting and grouping while keeping the column layout and density. |
+| **Clear filters, search, and sorting** | Removes those restrictions while keeping the column layout and density. |
 
 A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` link still opens the raw table, read-only. Choose **+ Add view** to make an editable view.
 
@@ -2474,11 +2462,11 @@ A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` l
 
 Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; a dashed placeholder opens where it will land and the other fields slide aside. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
 
-These changes save into the current view. Hiding a column does not delete its data. **New field** opens the same field tray as the **+** at the end of the grid's field headers. Deleted rows moved to the **Include deleted** switch in Filters, and the Σ row to **Σ Rollups** in Display; each saves into the current view, so another view keeps its own.
+These changes save into the current view. Hiding a column does not delete its data. **New field** opens the same field tray as the **+** at the end of the grid's field headers. The **Rows** section shows deleted records and the Σ rollup row; each box saves into the current view, so another view keeps its own.
 
 ## Filters
 
-Open **Filters** in the View pane and tick options under a workflow, toggle, single-select or multi-select field. Each tick applies at once and saves into the current view; the pane stays open as results update. Untick an option to remove it. Several options in one field include any of them, and filters on different fields must all match. A multi-select row matches when it has any ticked option. A field with nothing ticked adds no restriction. The footer counts what is left as **X of N**, in the table's own word for its rows (\`7 of 413 bugs\`): X after the filters and the search, N every row that is not deleted.
+Open **Filters** and tick options under a workflow, toggle, single-select or multi-select field. Each tick applies at once and saves into the current view; the popover stays open as results update. Untick an option to remove it. Several options in one field include any of them, and filters on different fields must all match. A multi-select row matches when it has any ticked option. A field with nothing ticked adds no restriction. The footer counts what is left as **X of N**, in the table's own word for its rows (\`7 of 413 bugs\`): X after the filters and the search, N every row that is not deleted.
 
 **Clear all** removes all filters from the view while keeping search, sorting and column layout. If the table has no workflow, toggle or select fields, the popover offers **New field**, opening the usual field tray.
 

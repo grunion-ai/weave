@@ -385,23 +385,6 @@ weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name
 - `filters` (`{Field: [names]}`: a workflow's states, a toggle's labels, or a
   single-select's or multi-select's options; Issue #319) and `sort`
   (`[{field, dir}]`) are `weave_update_table`'s shapes and validators.
-- `sort` takes up to three levels, each field once; rows that tie on every
-  level fall back to `#`, and empty values sort last in both directions.
-  `group` takes up to five levels (`{field, heading, order, dir, grain}`). A
-  field sits in one or the other: a field in `group` leaves `sort`, and the
-  write answers `notes` naming it. Changing the group fields clears
-  `collapsed`. `subtotals` (`all`, `top` or `none`) picks which group levels
-  draw a Σ row when `rollups` is on (Feature #340).
-- `weave_query` with a grouped view returns `groups`: one entry per group at
-  every level, in display order, each with `path` (`[{field, value}]`, `No
-  value` for an empty one), `count` (live rows, a multi-select row once) and
-  `rollups` (`[{field, aggregate, value, display}]`, one per space rollup
-  over the table, the value the grid's subtotal row shows), plus
-  `groupTotal`. A grouped view brings its deleted rows when it shows them;
-  they never count. `groupBy: <view>` returns the same `groups` over your
-  own `where`, `sort` and `search`, leaving the view's filters and search
-  out (`weave query --group-by`). `weave_stats` with `by` carries the same
-  `rollups` on each group.
 - `default: true` moves a view first (the default is the first view); `position`
   sets its place in the list; `name` renames; `delete: true` removes it.
 - The same verb is `weave table view Issue/Open --fields Name,Status`

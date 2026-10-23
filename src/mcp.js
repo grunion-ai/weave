@@ -81,14 +81,13 @@ export const TOOLS = [
         limit: { type: 'number' },
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
-        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
+        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out; weave_get_entity carries an entity\'s activity. Not with select.' },
         relations: { type: 'string', enum: ['full', 'chip'], description: 'chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). Default full: every row embeds its related rows\' summaries.' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
         countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted rows before where and search' },
-        search: { type: 'string', description: 'Only the rows weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
-        view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
-        groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
+        search: { type: 'string', description: 'Keep only the rows the weave_search matcher finds in this table: name, publicId (#143), text fields, documents, comments. Composes with where and sort; total counts the matches.' },
+        view: { type: 'string', description: 'A saved view, by id or name: the rows it shows. Its filters AND where; its sort and search apply unless you pass your own.' },
       },
       required: ['db'],
     },
@@ -135,7 +134,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_stats',
-    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the row count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces row (weave_add_field, config.via).',
+    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the row count rides with the name column). Nothing is stored — to keep a figure on the record, add a rollup on the System/Spaces row instead (weave_add_field with config.via).',
     inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {}, field: { type: 'string' } }, required: ['table'] },
   },
   {
@@ -331,7 +330,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side). group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. nest: Parent link. collapsed: paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
+    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates the view (from: copy). fields: columns in order. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}]. search. position: 0 = first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery = stacked with a picture, kanban = side). group: ≤3 levels, field or {field, heading: label|chip, order: option|table|az, grain}. completedBy: checkbox. nest: Parent link. collapsed: group paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -339,7 +338,7 @@ export const TOOLS = [
         move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
         position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
         widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
-        layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
+        layout: { type: 'string' }, groups: {}, picture: {}, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
       },
       required: ['view'],
     },
@@ -761,9 +760,8 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.query(args.db, {
         where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
         offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'full',
-        includeDeleted: args.includeDeleted == null ? null : Boolean(args.includeDeleted),
+        includeDeleted: Boolean(args.includeDeleted),
         trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
-        groupBy: args.groupBy ?? null,
       });
     case 'weave_get_entity':
       return weave.readEntity(args.entity);

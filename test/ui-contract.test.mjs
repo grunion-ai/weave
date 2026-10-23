@@ -35,7 +35,7 @@ test('the first rail chip is centred on the sidebar wordmark', () => {
 });
 
 test('an unavailable trash count cannot stop a table from rendering', () => {
-  assert.match(fnBody('readAndDrawTable'), /result\.trashCount \?\? 0/);
+  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)\.catch\(\(\) => \(\{ total: 0, items: \[\] \}\)\)/);
 });
 
 test('.hidden beats id-selector display rules', () => {
@@ -255,7 +255,7 @@ test('popover options are keyboard navigable', () => {
 test('focus survives the redraw a pick causes', () => {
   assert.match(APP, /state\.refocus/);
   assert.match(APP, /function restoreGridFocus/);
-  assert.match(APP, /else await keepScroll\(\(\) => showDatabase\(db\.id, db\.view\?\.id\)\);\s*\n\s*restoreGridFocus\(\{ now: true \}\);/);
+  assert.match(APP, /await keepScroll\(\(\) => drawDatabase\(db, fresh, trashCount, pager\)\);\s*\n\s*restoreGridFocus\(\{ now: true \}\);/);
   assert.match(APP, /refocus: null/, 'state must declare the slot');
 });
 
@@ -331,9 +331,8 @@ test('deleted rows are reached through the eyeball; the toolbar has no trash bad
   assert.doesNotMatch(fnBody('drawDatabase'), /#\/trash\//, 'no 🗑 control on the toolbar');
   assert.doesNotMatch(fnBody('tableChrome'), /#\/trash\//, 'nor on the chrome built once per table (Issue #444)');
   assert.match(fnBody('readAndDrawTable'), /trashCount: true/, 'the count still feeds the eyeball');
-  assert.match(fnBody('readAndDrawTable'), /includeDeleted: showDeleted/,
-    'deleted rows ride the one query, under the view\'s filters and sort, only when the view shows them (Feature #340)');
-  assert.match(fnBody('paneFilters'), /Include deleted \$\{db\.term\.plural\}/, 'the View pane switch speaks the row term too');
+  assert.match(fnBody('readAndDrawTable'), /showDeleted\s*\?\s*api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/,
+    'the trash list is fetched only when deleted rows are shown');
   assert.match(fnBody('fieldVisibilityPopover'), /Deleted \$\{db\.term\.plural\}/, 'the toggle speaks the table\'s row term');
 });
 
@@ -477,7 +476,7 @@ test('every column header carries a field menu; a header click edits, and sortin
   assert.match(menu, /stopPropagation/, 'opening the menu must not also open the editor');
   assert.match(menu, /if \(!menuFor\('field', f, \{ db \}\)\.length\) return null/, 'a column with nothing to offer carries no ⋮');
   assert.match(FIELD_ROWS, /label: 'Field settings…'[\s\S]*editFieldDialog\(db, f\)/, 'Settings opens the field editor');
-  assert.match(fnBody('sortFieldOptions'), /Object\.values\(fieldDialogCore\.SYSTEM_SORT\)/, 'the Sort levels reach the system columns the header menus used to sort');
+  assert.match(fnBody('tableSortButton'), /Object\.values\(fieldDialogCore\.SYSTEM_SORT\)/, 'the toolbar Sort reaches the system columns the header menus used to sort');
 });
 
 test('the field menu edits a field rather than dropping and rebuilding it', () => {
@@ -971,7 +970,7 @@ test('Board is a layout of the table view, never a separate board view (Kyle: Is
   assert.match(fnBody('showDatabase'), /pickTableView\(table, view\)/, 'every #/table route lands on the table view');
   assert.match(fnBody('readAndDrawTable'), /isBoardLayout\(db\)/, 'the view\'s layout key picks the board (Task #122)');
   assert.match(fnBody('drawDatabase'), /list\.board \? renderBoard : renderList/, 'renderBoard draws only through the table view');
-  assert.match(fnBody('displayBlock'), /\{ id: 'board', label: 'Board'/, 'Board sits beside Table and List under Layout');
+  assert.match(fnBody('tableViewButton'), /\{ id: 'board', label: 'Board'/, 'Board sits beside Table and List under Layout');
 });
 
 test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #77)', () => {
@@ -1006,7 +1005,7 @@ test('the filter strip drives the engine where-language, not a client sort (Feat
   assert.ok(app.includes("['in', states]") || app.includes("'in', states]"), 'workflow states use the in operator');
   const loads = app.match(/query`, w(here)?2? \? \{ where/g) ?? app.match(/\{ where \}/g) ?? [];
   assert.ok(app.includes('where ? { where } : {}'), 'showDatabase queries through the filters');
-  assert.ok(app.includes('else await keepScroll(() => showDatabase(db.id, db.view?.id));'), 'onSaved refreshes through the view and its filters');
+  assert.ok(app.includes('w2 ? { where: w2 } : {}'), 'onSaved refreshes through the filters');
   const chips = rulesFor('.filter-chip');
   assert.ok(chips['cursor'] === 'pointer');
 });
@@ -1294,7 +1293,7 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   assert.match(eye, /deleted: !showsDeleted\(t\)/, 'deleted rows are a view switch');
   assert.match(eye, /rollups: !showsRollups\(t\)/, 'the Σ row switch is read live from the view (Issues #240, #442)');
   assert.match(eye, /checkRow\(showsRollups\(db\), 'Σ rollup row'/, 'the box reads checked only when the view or table opted in');
-  assert.match(fnBody('renderTable'), /showsRollups\(db\) && !slots \? renderFooter\(db, cols\) : null/, 'no Σ row until the view or table opts in (Issues #249, #442); a grouped table draws its totals as rows');
+  assert.match(fnBody('renderTable'), /showsRollups\(db\) \? renderFooter\(db, cols\) : null/, 'no Σ row until the view or table opts in (Issues #249, #442)');
   assert.match(readFileSync(join(ROOT, 'public/app.js'), 'utf8'), /const showsRollups = \(db\) => !db\.system && \(db\.view && !db\.view\.blank && typeof db\.view\.rollups === 'boolean' \? db\.view\.rollups : db\.hideRollups === false\);/, 'the view decides; a silent view follows the table opt-in');
   assert.match(eye, /new Set\(t\.hiddenFields \?\? \[\]\)/, 'the hidden set is read from the table the turn hands over');
   assert.match(eye, /new Set\(t\[key\] \?\? \[\]\)/, 'so is the system set');

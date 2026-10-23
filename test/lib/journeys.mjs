@@ -121,17 +121,14 @@ export const JOURNEYS = [
     setup: table,
     async run(page) {
       for (const name of ['Compact', 'All']) {
-        if (!await page.locator('#view-pane:not([hidden]) .vp-acc').count()) await page.click('#main .table-view-btn');
-        if (await page.getAttribute('#view-pane .vp-view-pick', 'aria-expanded') !== 'true') await page.click('#view-pane .vp-view-pick');
+        await page.click('.table-view-btn');
         await page.waitForSelector('.view-strip .view-row');
         await page.locator('.view-strip .view-row').filter({ has: page.locator('.view-name', { hasText: new RegExp(`^${name}$`) }) }).click();
         await page.waitForFunction((n) => location.hash.includes('/view/') || n === 'All', name);
         await page.waitForSelector(ROW);
+        await page.keyboard.press('Escape');
         await frames(page, 3);
       }
-      await page.click('#view-pane .vp-close');
-      await page.waitForSelector('#view-pane', { state: 'hidden' });
-      await frames(page, 3);
     },
   },
   {

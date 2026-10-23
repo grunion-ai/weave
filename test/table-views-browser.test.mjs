@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, styleOf } from './lib/browser.mjs';
-import { openPane, openViews } from './lib/view-pane.mjs';
 
 let jobs;
 const s = await launch('table view strip', (weave) => {
@@ -29,12 +28,12 @@ if (s) {
   const open = async (hash = `#/table/${jobs.id}`, theme = 'light', opts = {}) => {
     const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, colorScheme: theme, ...opts });
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
-    await openViews(page);
+    await page.click('.table-view-btn');
     await page.waitForSelector('.view-strip .view-row');
     return page;
   };
   const ensureViews = async (page) => {
-    await openViews(page);
+    if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
   };
   const tabs = async (page) => {
     await ensureViews(page);
@@ -58,7 +57,7 @@ if (s) {
   const rows = (page) => page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.length);
   const heads = (page) => page.$$eval('.wv-grid thead th .col-label', (hs) => hs.map((h) => h.textContent.trim()));
 
-  test('the View pane picker lists the first view active, then Add view; no star, no dots, no Blank tab', async () => {
+  test('the menu opens from the eyebrow: the first view active, then Add view; no star, no dots, no Blank tab', async () => {
     reset();
     const page = await open();
     try {
@@ -68,7 +67,7 @@ if (s) {
       assert.equal(await page.locator('.view-strip .dots-btn').count(), 0, 'no ⋯ button in the strip');
       assert.equal(await page.locator('.view-strip .view-tab.blank').count(), 0, 'no Blank tab');
       assert.ok(!/blank/i.test(await page.locator('.view-strip').textContent()), 'Blank is not in the strip at all');
-      assert.equal(await page.locator('#view-pane .view-strip').isVisible(), true, 'views live in the View pane picker');
+      assert.equal(await page.locator('.table-view-popover .view-strip').isVisible(), true, 'views live inside their eyebrow dropdown');
     } finally { await page.close(); }
   });
 
@@ -79,7 +78,7 @@ if (s) {
     const page = await open(`#/table/${jobs.id}/view/${mine.id}`);
     try {
       const patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes(`/tables/${jobs.id}/views/`));
-      await openPane(page, 'filters');
+      await page.click('.table-filter-btn');
       await page.click('.filter-strip .filter-chip-label:text-is("Done")');
       await patched;
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
@@ -87,7 +86,7 @@ if (s) {
       assert.equal(weave.tableView(`${jobs.id}/Standard`).filters, undefined, 'the default did not move');
       assert.deepEqual(await heads(page), ['Name', 'Status'], "the grid shows Mine's columns, in Mine's order");
       await page.reload({ waitUntil: 'networkidle' });
-      await openViews(page);
+      await page.click('.table-view-btn');
       await page.waitForSelector('.view-tab.active');
       assert.equal((await tabs(page)).find((t) => t.active).name, 'Mine', 'the permalink reopens the view');
       assert.equal(await rows(page), 1);
@@ -102,7 +101,7 @@ if (s) {
       assert.equal(await rows(page), 4, 'every row');
       assert.ok((await heads(page)).includes('Owner'), 'every field');
       assert.deepEqual(await tabs(page), [{ name: 'Standard', active: false }], 'no tab is lit: the raw table has none');
-      await openPane(page, 'filters');
+      await page.click('.table-filter-btn');
       await page.click('.filter-strip .filter-chip-label:text-is("Done")');
       await page.waitForFunction(() => /read-only/.test(document.body.textContent));
       const note = await page.evaluate(() => [...document.querySelectorAll('.toast, .wv-toast, [role=alert], [role=status]')].map((t) => t.textContent).join(' ') || document.body.textContent);
@@ -154,7 +153,7 @@ if (s) {
       await input.fill('Open copy');
       await input.press('Enter');
       await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Open copy'));
-      assert.equal(await page.locator('#view-pane').isVisible(), true, 'the pane stays open');
+      assert.equal(await page.locator('.table-view-popover').isVisible(), true, 'the dropdown stays open');
       await waitOrder(page, ['Standard', 'Open copy']);
       const copy = weave.tableView(`${jobs.id}/Open copy`);
       assert.deepEqual(copy.filters, { Status: ['Open'] }, 'the copy carries the filter');
@@ -177,7 +176,7 @@ if (s) {
       assert.equal(await page.locator('#modal:visible').count(), 0, 'no modal');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('View 2'));
-      assert.equal(await page.locator('#view-pane').isVisible(), true, 'the pane stays open');
+      assert.equal(await page.locator('.table-view-popover').isVisible(), true, 'the dropdown stays open');
       const fresh = weave.tableView(`${jobs.id}/View 2`);
       assert.deepEqual(fresh.fields, ['Name', 'Description', 'Status', 'Owner']);
       assert.ok(!fresh.filters && !fresh.sort, 'the system default: no filter, no sort');
@@ -188,7 +187,7 @@ if (s) {
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => !document.querySelector('.view-strip .view-name-input'));
       assert.deepEqual(order(), ['Standard', 'View 2'], 'Escape drops the row and makes nothing');
-      assert.equal(await page.locator('#view-pane').isVisible(), true);
+      assert.equal(await page.locator('.table-view-popover').isVisible(), true);
     } finally { reset(); await page.close(); }
   });
 
@@ -225,7 +224,7 @@ if (s) {
       await input.press('Escape');
       await waitOrder(page, ['Standard', 'Alpha']);
       assert.deepEqual(order(), ['Standard', 'Alpha'], 'Escape leaves the name alone');
-      assert.equal(await page.locator('#view-pane').isVisible(), true, 'and keeps the pane open');
+      assert.equal(await page.locator('.table-view-popover').isVisible(), true, 'and keeps the dropdown open');
       await tab(page, 'Alpha').hover();
       await tab(page, 'Alpha').locator('.view-rename-btn').click();
       await input.waitFor();
@@ -260,7 +259,7 @@ if (s) {
       assert.equal((await tabs(page)).find((t) => t.active).name, 'A', 'the drag is not a click: the view on screen stays');
       await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
       await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
-      await openViews(page);
+      await page.click('.table-view-btn');
       await page.waitForSelector('.view-row.active');
       assert.equal((await tabs(page)).find((t) => t.active).name, 'B', 'the first view opens with the table');
       assert.equal(await rows(page), 1, "and it is B's grid");
@@ -359,8 +358,8 @@ if (s) {
     weave.tableView(`${jobs.id}/Narrow`, { from: 'Standard' });
     const page = await open(`#/table/${jobs.id}/view/${weave.tableView(`${jobs.id}/Narrow`).id}`);
     try {
-      await openPane(page, 'fields');
-      await page.click('#view-pane .eye-row:has(.eye-label:text-is("Owner"))');
+      await page.click('.eye-btn');
+      await page.click('.chip-pop .eye-row:has(.eye-label:text-is("Owner"))');
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid thead .col-label')].some((h) => h.textContent.trim() === 'Owner'));
       assert.ok(!weave.tableView(`${jobs.id}/Narrow`).fields.includes('Owner'));
       assert.ok(weave.tableView(`${jobs.id}/Standard`).fields.includes('Owner'), 'the default still shows it');
@@ -374,6 +373,8 @@ if (s) {
     try {
       assert.equal(await rows(page), 1);
       const before = weave.query(jobs).total;
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.table-view-popover', { state: 'detached' });
       await page.click('.wv-grid tr.add-entity-row .add-entity-btn');
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 2);
       assert.equal(weave.query(jobs).total, before + 1);
@@ -392,7 +393,7 @@ if (s) {
       try {
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         const { fill, pop, color, check } = await page.$eval('.view-row.active', (r) => ({
-          fill: getComputedStyle(r).backgroundColor, pop: getComputedStyle(r.closest('.chip-pop, #view-pane')).backgroundColor,
+          fill: getComputedStyle(r).backgroundColor, pop: getComputedStyle(r.closest('.chip-pop')).backgroundColor,
           color: getComputedStyle(r.querySelector('.view-name')).color, check: r.querySelector('.view-check').textContent,
         }));
         assert.notEqual(fill, pop, `${theme}: the active row has its own fill`);

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { paneOnLoad } from './lib/view-pane.mjs';
 
 const N = 800;
 let wide, tall;
@@ -105,10 +104,8 @@ if (s) {
   test('a density flip re-measures the row the spacer stands in for (Issue #324)', async () => {
     const page = await browser.newPage({ viewport: { width: 2187, height: 1359 } });
     try {
-      await paneOnLoad(page, 'display');
       await page.goto(`${base}/#/table/${tall.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      await page.waitForSelector('#view-pane .vp-density');
       await page.mouse.move(1000, 1000);
       for (let i = 0; i < 12; i++) { await page.mouse.wheel(0, 900); await page.waitForTimeout(25); }
       await page.waitForTimeout(600);
@@ -122,7 +119,8 @@ if (s) {
       });
       const roomy = await spacerRow();
       assert.ok(Math.abs(roomy.estimate - roomy.real) < 2, `the spacer stands in at the row's own height: ${JSON.stringify(roomy)}`);
-      await page.click('#view-pane .vp-density .seg-opt[title="Short rows, for scanning"]');
+      await page.click('.table-density-btn');
+      await page.click('.seg-opt[title="Short rows, for scanning"]');
       await page.waitForTimeout(600);
       for (let i = 0; i < 12; i++) { await page.mouse.wheel(0, 900); await page.waitForTimeout(25); }
       await page.waitForTimeout(600);
