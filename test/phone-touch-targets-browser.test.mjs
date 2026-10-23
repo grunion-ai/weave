@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, openBugReport, phoneProfile } from './lib/browser.mjs';
+import { openViews } from './lib/view-pane.mjs';
 
 const MIN = 44;
 const STEP = 0.5;
@@ -196,9 +197,12 @@ if (s) {
     }
   }
   test('on a desktop the view reorder grip keeps its drawn size (Issue #804)', async () => {
-    const page = await open(browser, { viewport: { width: 1280, height: 900 } }, 'light', viewSwitcher);
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
-      const box = await page.locator('.table-view-popover .view-grip').first().boundingBox();
+      await page.goto(`${base}/#/table/${table}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+      await openViews(page);
+      const box = await page.locator('#view-pane .view-strip .view-grip').first().boundingBox();
       assert.ok(box.width < MIN && box.height < MIN, `the desktop grip stays ${Math.round(box.width)}x${Math.round(box.height)}`);
     } finally { await page.close(); }
   });
