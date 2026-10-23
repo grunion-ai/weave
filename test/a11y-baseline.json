@@ -1,0 +1,22 @@
+{
+  "_": "axe violations the a11y gate tolerates today (Issue #1081), keyed 'route | open state | theme | rule | target' with the Issue row that tracks each. It only shrinks: a new violation fails test/a11y-browser.test.mjs, and so does an entry that no longer reproduces, so a fix removes its entries in the same change.",
+  "violations": {
+    "Task list | at rest | light | color-contrast | span[data-field=\"Issues\"] > .mention-f-label": 1096,
+    "Task list | at rest | light | color-contrast | span[data-field=\"Notes\"] > .mention-f-label": 1096,
+    "Task table | field dialog | light | color-contrast | .cat-done": 1100,
+    "Task table | filter popover | light | color-contrast | .cat-done > .filter-chip-label": 1100,
+    "Task table | row menu | dark | color-contrast | .wv-menu-danger > .wv-menu-label": 1099,
+    "billing | at rest | light | color-contrast | #back": 1097,
+    "billing | at rest | light | color-contrast | #summary": 1097,
+    "forms builder | at rest | dark | color-contrast | details:nth-child(1) > summary > .text-muted": 1098,
+    "forms builder | at rest | dark | color-contrast | details:nth-child(2) > summary > .text-muted": 1098,
+    "forms builder | at rest | dark | color-contrast | details:nth-child(3) > summary > .text-muted": 1098,
+    "forms builder | at rest | dark | color-contrast | details:nth-child(4) > summary > .text-muted": 1098,
+    "forms builder | at rest | dark | color-contrast | p": 1098,
+    "settings | at rest | dark | color-contrast | .btn-outline-danger": 1099,
+    "start | at rest | dark | region | .brand": 1101,
+    "start | at rest | dark | region | footer": 1101,
+    "start | at rest | light | region | .brand": 1101,
+    "start | at rest | light | region | footer": 1101
+  }
+}
