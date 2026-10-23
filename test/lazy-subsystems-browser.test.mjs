@@ -11,6 +11,7 @@ const s = await launch('lazy subsystems', (weave) => {
   weave.addField(deals, { name: 'Due', type: 'date', config: { format: 'iso' } });
   weave.addField(deals, { name: 'Window', type: 'daterange', config: { format: 'iso' } });
   big = weave.createEntity(deals, { name: 'Big', values: { Amount: 3, Due: '2026-09-15', Window: { start: '2026-09-01', end: '2026-09-05' } } });
+  weave.updateEntity(big.id, { Amount: 4 });
 });
 
 if (s) {
@@ -86,6 +87,44 @@ if (s) {
       await page.evaluate(() => { location.hash = '#/activity'; });
       await page.waitForSelector('tr.activity-row');
       assert.deepEqual(fetched, ['/activity-log.js'], 'later visits reuse the loaded file');
+    } finally { await page.close(); }
+  });
+
+  test('the row Activity button loads the activity panel once, and the keyboard drives it', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      const fetched = watch(page);
+      await page.goto(`${base}/#/entity/${big.id}`, { waitUntil: 'networkidle' });
+      const btn = page.locator('#main .activity-btn');
+      await btn.waitFor();
+      assert.deepEqual(fetched, []);
+      await btn.focus();
+      await page.keyboard.press('Enter');
+      const row = page.locator('aside.wv-activity .wv-act-row').first();
+      await row.waitFor();
+      assert.deepEqual(fetched, ['/activity-panel.js']);
+      assert.equal(await btn.getAttribute('aria-pressed'), 'true');
+      await row.focus();
+      await page.keyboard.press('Enter');
+      await page.locator('aside.wv-activity .wv-act-row.sel').waitFor();
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('aside.wv-activity', { state: 'detached' });
+      assert.equal(await btn.getAttribute('aria-pressed'), 'false');
+      await btn.click();
+      await row.waitFor();
+      assert.deepEqual(fetched, ['/activity-panel.js'], 'the second open reuses the loaded file');
+    } finally { await page.close(); }
+  });
+
+  test('a row link that names the activity pane opens it once the panel loads, and holds the row still', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      const fetched = watch(page);
+      await page.goto(`${base}/#/table/${deals.id}?e=${big.id}&side=activity`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
+      assert.deepEqual(fetched, ['/activity-panel.js']);
+      assert.equal(await page.locator('#dock .activity-btn').getAttribute('aria-pressed'), 'true');
+      assert.match(await page.evaluate(() => location.hash), /[?&]side=activity\b/, 'the URL still names the pane');
     } finally { await page.close(); }
   });
 
