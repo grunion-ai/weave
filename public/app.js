@@ -11291,10 +11291,11 @@ function sheetGrip(sheet, close) {
     if (from === null || e.pointerId !== from.id) return;
     const { height, y, t } = from;
     const span = Math.max(1, last - t);
-    const speed = Math.max(0, e.clientY - y) / span;
+    const reach = e.type === 'pointerup' ? Math.max(at, e.clientY - y) : at;
+    const speed = reach / span;
     from = null;
     grip.releasePointerCapture?.(e.pointerId);
-    if (at > height * 0.3 || (at > 24 && speed > 0.5)) {
+    if (reach > height * 0.3 || (reach > 24 && speed > 0.5)) {
       settle();
       close();
       return;
