@@ -17,6 +17,7 @@ import { uuid, slug } from './ids.js';
 import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
+import { parseCron, dueBetween } from './schedule.js';
 import * as Shares from './shares.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
@@ -324,6 +325,7 @@ const WORKFLOW_STATES = [
   { name: 'Ready', category: 'done' },
 ];
 const workflowActor = (rowId) => `workflow:${rowId}`;
+const scheduleOut = (t) => ({ cron: t.cron, zone: t.zone, ...(t.where != null ? { where: t.where } : {}) });
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 const UPSERT_KEY_TYPES = ['text', 'number', 'url', 'email'];
 const blankSource = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
@@ -478,7 +480,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.entities',
-      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
+      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed, or schedule: a cron expression, a zone and an optional where clause, Feature #312) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
@@ -7692,11 +7694,22 @@ export class Weave {
     if (spec.table == null || spec.table === '') throw new WeaveError('The Script names no table', 'invalid');
     const db = this.getTable(spec.table);
     const { trigger, actions } = spec;
-    if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed'].includes(trigger.type)) {
+    if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed', 'schedule'].includes(trigger.type)) {
       throw new WeaveError(`Invalid automation trigger`, 'invalid');
     }
     const t = { type: trigger.type };
-    if (trigger.type !== 'entity-created') {
+    if (trigger.type === 'schedule') {
+      if (trigger.cron == null || trigger.cron === '') throw new WeaveError('A schedule trigger needs a cron expression: minute hour day month weekday, as in "0 9 * * 1-5"', 'invalid');
+      try { t.cron = parseCron(trigger.cron).text; } catch (err) { throw new WeaveError(err.message, 'invalid'); }
+      const zone = trigger.zone ?? 'UTC';
+      if (!DG.isZone(zone)) throw new WeaveError(`'${zone}' is not a time zone`, 'invalid');
+      t.zone = zone;
+      if (trigger.where != null) {
+        if (typeof trigger.where !== 'object') throw new WeaveError('A schedule where clause is a query filter: a list of [field, op, value] terms, or {and}/{or}', 'invalid');
+        this.query(db.id, { where: trigger.where, limit: 1, relations: 'chip' });
+        t.where = trigger.where;
+      }
+    } else if (trigger.type !== 'entity-created') {
       const f = this.getField(db.id, trigger.field);
       t.fieldId = f.id;
       if (trigger.type === 'state-changed' && trigger.toState) {
@@ -7768,6 +7781,7 @@ export class Weave {
     };
     try {
       const trigger = { type: c.trigger.type };
+      if (c.trigger.type === 'schedule') Object.assign(trigger, scheduleOut(c.trigger));
       if (c.trigger.fieldId) trigger.field = fname(c.trigger.fieldId);
       if (c.trigger.toStateId) {
         const st = db.fields[c.trigger.fieldId].config.states?.find((s) => s.id === c.trigger.toStateId);
@@ -7918,11 +7932,11 @@ export class Weave {
     return rule;
   }
 
-  #stampRun(row, failure) {
+  #stampRun(row, failure, at = nowISO()) {
     const health = this.#wfField('Health');
     const reasonF = this.#wfField('Health Reason');
     this.#stamp(row, () => {
-      row.values[this.#wfField('Last Run').id] = nowISO();
+      row.values[this.#wfField('Last Run').id] = at;
       this.#setOption(row, health, failure ? 'Failed' : 'Healthy');
       row.values[reasonF.id] = failure ?? null;
     });
@@ -7976,6 +7990,7 @@ export class Weave {
       const db = auto.dbId ? this.state.tables[auto.dbId] : null;
       const fieldName = (fid) => db?.fields[fid]?.name ?? null;
       const trigger = auto.trigger ? { type: auto.trigger.type } : null;
+      if (auto.trigger?.type === 'schedule') Object.assign(trigger, scheduleOut(auto.trigger));
       if (auto.trigger?.fieldId) trigger.field = fieldName(auto.trigger.fieldId);
       if (auto.trigger?.toStateId && auto.trigger.fieldId) {
         trigger.toState = db.fields[auto.trigger.fieldId]?.config.states
@@ -8081,24 +8096,61 @@ export class Weave {
       if (t.type !== event.type) continue;
       if (t.fieldId && t.fieldId !== event.fieldId) continue;
       if (t.toStateId && t.toStateId !== event.toStateId) continue;
-      const name = reg.entityName(rule.row);
-      let failure = null;
-      const run = { failed: false };
-      reg.#wfRun.set(rule.row.id, run);
-      const person = this.actor;
-      this.actor = workflowActor(rule.row.id);
-      try {
-        for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth, run);
-      } catch (err) {
-        failure = err.message;
-        run.failed = true;
-      } finally {
-        this.actor = person;
-      }
-      this.#logActivity(e, 'automation-ran', { name, workflow: rule.row.id });
-      reg.#stampRun(rule.row, failure);
-      if (reg !== this) reg.save();
+      this.#fireRule(rule, db, [e], event, depth);
     }
+  }
+
+  #fireRule(rule, db, rows, event, depth, at = nowISO()) {
+    const reg = this.#reg;
+    const name = reg.entityName(rule.row);
+    let failure = null;
+    const run = { failed: false };
+    reg.#wfRun.set(rule.row.id, run);
+    const person = this.actor;
+    this.actor = workflowActor(rule.row.id);
+    let reached = 0;
+    try {
+      for (const e of rows) {
+        reached++;
+        for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth, run);
+      }
+    } catch (err) {
+      failure = err.message;
+      run.failed = true;
+    } finally {
+      this.actor = person;
+    }
+    for (const e of rows.slice(0, reached)) this.#logActivity(e, 'automation-ran', { name, workflow: rule.row.id });
+    reg.#stampRun(rule.row, failure, at);
+    if (reg !== this) reg.save();
+  }
+
+  #scheduleSince = new Map();
+
+  runSchedules({ now = this.now() } = {}) {
+    const reg = this.#reg;
+    const F = (n) => reg.#wfField(n);
+    let fired = 0;
+    for (const rule of reg.#allRules()) {
+      if (rule.owner !== this || rule.trigger?.type !== 'schedule') continue;
+      const row = rule.row;
+      if (rule.problem || row.deletedAt || row.values[F('On').id] !== true) {
+        this.#scheduleSince.set(row.id, now.getTime());
+        continue;
+      }
+      const seen = this.#scheduleSince.get(row.id);
+      const lastRun = row.values[F('Last Run').id];
+      if (seen === undefined && lastRun == null) { this.#scheduleSince.set(row.id, now.getTime()); continue; }
+      const since = new Date(Math.max(lastRun ? Date.parse(lastRun) : 0, seen ?? 0));
+      if (!dueBetween(parseCron(rule.trigger.cron), rule.trigger.zone, since, now)) continue;
+      const db = this.state.tables[rule.dbId];
+      const rows = this.query(db.id, { where: rule.trigger.where ?? [], relations: 'chip' }).items
+        .map((item) => own(this.state.entities, item.id)).filter(Boolean);
+      this.#fireRule(rule, db, rows, { type: 'schedule' }, 0, now.toISOString());
+      fired++;
+    }
+    if (fired) this.save();
+    return fired;
   }
 
   #runAction(rule, name, action, db, e, event, depth, run) {

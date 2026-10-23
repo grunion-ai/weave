@@ -8374,7 +8374,8 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
       const ay = y + n.h + 6 + i * 25;
       const actions = a.actions.map((x) => (AUTO_ACTION[x.type] ?? (() => 'webhook'))(x)).join(', ');
       const trig = a.trigger.type === 'state-changed' ? `${a.trigger.field}→${a.trigger.toState ?? '*'}`
-        : a.trigger.type === 'field-updated' ? `${a.trigger.field} changed` : 'created';
+        : a.trigger.type === 'field-updated' ? `${a.trigger.field} changed`
+        : a.trigger.type === 'schedule' ? `cron ${a.trigger.cron}` : 'created';
       const full = `⚡ ${trig} ⇒ ${actions}`;
       const fits = Math.floor((n.w - 16) / 5.8);
       const label = full.length > fits ? full.slice(0, fits - 1).trimEnd() + '…' : full;

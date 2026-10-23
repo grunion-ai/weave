@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "50a971dac32dcfc9ced8dc66537b67838cb3e3a5"
+      "revision": "9c4dd1526f745d7ac673427e31d4ff29ebccbaf2"
     },
     "views": [
       {
@@ -394,7 +394,8 @@
         "src/applet.js, src/bugreport.js, src/legal.js, src/mail.js, src/mail-send.js: routes, legal pages, invite mail",
         "src/billing.js: paid seats read from Clerk Billing, Editors and Architects mirrored into a Clerk organization",
         "src/forms.js: Workspace/Forms rows, one-row submissions, the built-in weave docs workspace",
-        "src/shares.js: share grants, the withinScope check and the /s/ pages"
+        "src/shares.js: share grants, the withinScope check and the /s/ pages",
+        "src/schedule.js: cron parsing, zone wall clocks and the minute ticker behind schedule triggers"
       ]
     },
     {
