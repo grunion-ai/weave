@@ -81,13 +81,14 @@ export const TOOLS = [
         limit: { type: 'number' },
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
-        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out; weave_get_entity carries an entity\'s activity. Not with select.' },
+        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
         relations: { type: 'string', enum: ['full', 'chip'], description: 'chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). Default full: every row embeds its related rows\' summaries.' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
         countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted rows before where and search' },
-        search: { type: 'string', description: 'Keep only the rows the weave_search matcher finds in this table: name, publicId (#143), text fields, documents, comments. Composes with where and sort; total counts the matches.' },
+        search: { type: 'string', description: 'Only the rows weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
         view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
+        groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
       },
       required: ['db'],
     },
@@ -762,6 +763,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'full',
         includeDeleted: args.includeDeleted == null ? null : Boolean(args.includeDeleted),
         trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
+        groupBy: args.groupBy ?? null,
       });
     case 'weave_get_entity':
       return weave.readEntity(args.entity);

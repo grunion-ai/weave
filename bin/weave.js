@@ -156,7 +156,7 @@ Schema
   map                                 Relation map as mermaid
 
 Entities
-  query <db> [--view name] [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
+  query <db> [--view name] [--group-by view] [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
         [--fields 'A,B'] [--relations chip]   Entity rows cut to these fields; related rows as references + chips
   get <ref> [--db name]               Read one entity ("Task#3" or id)
   create <db> <name> [--values '{json}'] [--doc 'markdown']
@@ -745,6 +745,7 @@ async function main() {
         search: flags.search ? String(flags.search) : '',
         countAll: Boolean(flags['count-all']),
         view: flags.view ? String(flags.view) : null,
+        groupBy: flags['group-by'] ? String(flags['group-by']) : null,
       });
       return out(result);
     }

@@ -398,8 +398,10 @@ weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name
   `rollups` (`[{field, aggregate, value, display}]`, one per space rollup
   over the table, the value the grid's subtotal row shows), plus
   `groupTotal`. A grouped view brings its deleted rows when it shows them;
-  they never count. `weave_stats` with `by` carries the same `rollups` on
-  each group.
+  they never count. `groupBy: <view>` returns the same `groups` over your
+  own `where`, `sort` and `search`, leaving the view's filters and search
+  out (`weave query --group-by`). `weave_stats` with `by` carries the same
+  `rollups` on each group.
 - `default: true` moves a view first (the default is the first view); `position`
   sets its place in the list; `name` renames; `delete: true` removes it.
 - The same verb is `weave table view Issue/Open --fields Name,Status`
