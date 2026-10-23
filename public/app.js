@@ -4271,11 +4271,18 @@ async function showDatabase(dbId, view) {
   const search = tableSearch.text.trim();
   const again = tableChromeOn(dbId);
   state.route = { page: 'db', dbId, view: db.view.id };
-  if (!again) renderNav();
+  if (!again) { renderNav(); paintTableChrome(db); }
   const release = again ? gridHold() : () => {};
-  try { await readAndDrawTable(db, dbId, search); } finally { release(); }
+  try { await readAndDrawTable(db, dbId, search, !again); } finally { release(); }
 }
-async function readAndDrawTable(db, dbId, search) {
+const FIRST_PAGES_KEPT = 24;
+const firstPages = new Map();
+function rememberFirstPage(key, result) {
+  firstPages.delete(key);
+  firstPages.set(key, result);
+  if (firstPages.size > FIRST_PAGES_KEPT) firstPages.delete(firstPages.keys().next().value);
+}
+async function readAndDrawTable(db, dbId, search, cold = false) {
   if (isListLayout(db) || isBoardLayout(db)) return readAndDrawList(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
@@ -4287,6 +4294,17 @@ async function readAndDrawTable(db, dbId, search) {
     fields: gridFields(db),
     relations: 'chip',
   };
+  const paint = (result, trash) => {
+    tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
+    setFilterTotal(db, result.total, result.all);
+    const items = showDeleted && !search
+      ? [...result.items, ...(trash?.items ?? []).map((e) => ({ ...e, deleted: true }))]
+      : result.items;
+    drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
+  };
+  const pageKey = `${db.id}|${JSON.stringify(query)}`;
+  const cached = cold && !showDeleted ? firstPages.get(pageKey) : null;
+  if (cached) paint(cached, null);
   const [result, trash] = await Promise.all([
     api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true, countAll: true }).then((res) => graftChips(db, res)),
     showDeleted
@@ -4294,12 +4312,9 @@ async function readAndDrawTable(db, dbId, search) {
       : null,
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
-  tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
-  setFilterTotal(db, result.total, result.all);
-  const items = showDeleted && !search
-    ? [...result.items, ...(trash.items ?? []).map((e) => ({ ...e, deleted: true }))]
-    : result.items;
-  drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
+  if (!showDeleted) rememberFirstPage(pageKey, result);
+  if (cached && JSON.stringify(cached) === JSON.stringify(result)) return;
+  paint(result, trash);
 }
 
 function gridMoves(db, field) {
@@ -4925,6 +4940,16 @@ function tableToolsButton(header, ref) {
     addEventListener('keydown', esc, true);
   });
   return btn;
+}
+
+function paintTableChrome(db) {
+  const main = $('#main');
+  if (!main) return;
+  const chrome = tableChrome(db, 0);
+  main.wvTable = chrome;
+  main.replaceChildren(chrome.header);
+  syncPhoneBar();
+  scheduleSkeleton(isListLayout(db) || isBoardLayout(db) ? 'list' : 'db', db, chrome.header);
 }
 
 function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
@@ -11486,41 +11511,44 @@ function resetGridWait() {
   hideGridLoader();
 }
 
-function paintSkeleton(kind, db) {
+function paintSkeleton(kind, db, under = null) {
   const main = $('#main');
   if (!main) return;
   const line = (w, h = 12) => el('div', { class: 'sk sk-line', style: `width:${w};height:${h}px` });
-  if (kind === 'db') {
-    const n = Math.max(2, Math.min(db ? visibleCols(db).length : 4, 8));
-    const widths = Array.from({ length: n }, (_, i) => (i === 0 ? '22%' : `${Math.max(12 - i, 7)}%`));
-    const bar = () => el('div', { class: 'sk-row' }, line('28px'), ...widths.map((w, i) => line(w, i === 0 ? 14 : 12)));
-    main.replaceChildren(
-      el('div', { class: 'sk-toolbar' }, line('180px', 22), line('120px', 22)),
-      el('div', { class: 'card panel sk-card' },
-        el('div', { class: 'sk-row sk-head' }, line('30px'), ...widths.map((w) => line(w, 13))),
-        ...Array.from({ length: 8 }, bar)));
-  } else if (kind === 'entity') {
+  if (kind === 'entity') {
     main.replaceChildren(el('div', { class: 'sk-entity' },
       el('div', { class: 'sk-main' }, line('40%', 22), el('div', { class: 'sk sk-block' }), el('div', { class: 'sk sk-block short' })),
       el('div', { class: 'sk-side' }, line('30%', 13),
         ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row' }, line('30%'), line('50%'))))));
-  } else {
-    main.replaceChildren(
-      el('div', { class: 'sk-toolbar' }, line('220px', 22)),
-      el('div', { class: 'card list-rows sk-card' },
-        ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row sk-listrow' }, line('30%'), line('10%')))));
+    return;
   }
+  let toolbar, card;
+  if (kind === 'db') {
+    const n = Math.max(2, Math.min(db ? visibleCols(db).length : 4, 8));
+    const widths = Array.from({ length: n }, (_, i) => (i === 0 ? '22%' : `${Math.max(12 - i, 7)}%`));
+    const bar = () => el('div', { class: 'sk-row' }, line('28px'), ...widths.map((w, i) => line(w, i === 0 ? 14 : 12)));
+    toolbar = el('div', { class: 'sk-toolbar' }, line('180px', 22), line('120px', 22));
+    card = el('div', { class: 'card panel sk-card' },
+      el('div', { class: 'sk-row sk-head' }, line('30px'), ...widths.map((w) => line(w, 13))),
+      ...Array.from({ length: 8 }, bar));
+  } else {
+    toolbar = el('div', { class: 'sk-toolbar' }, line('220px', 22));
+    card = el('div', { class: 'card list-rows sk-card' },
+      ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row sk-listrow' }, line('30%'), line('10%'))));
+  }
+  if (under?.parentElement === main) under.after(card);
+  else main.replaceChildren(toolbar, card);
 }
 
 const skeleton = { timer: 0, watch: null };
-function scheduleSkeleton(kind, db) {
+function scheduleSkeleton(kind, db, under = null) {
   cancelSkeleton();
   const main = $('#main');
   if (main) {
     skeleton.watch = new MutationObserver(cancelSkeleton);
     skeleton.watch.observe(main, { childList: true });
   }
-  skeleton.timer = setTimeout(() => { cancelSkeleton(); paintSkeleton(kind, db); }, SKELETON_SHOW_AFTER_MS);
+  skeleton.timer = setTimeout(() => { cancelSkeleton(); paintSkeleton(kind, db, under); }, SKELETON_SHOW_AFTER_MS);
 }
 function cancelSkeleton() {
   clearTimeout(skeleton.timer);
