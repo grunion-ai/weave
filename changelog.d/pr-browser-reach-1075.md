@@ -1,0 +1,1 @@
+- The PR browser tier now selects by the DOM classes and route literals the changed blocks name, not by file name alone, so a change to a shared module such as `public/app.js` or `src/routes.js` runs the journeys that exercise it before it merges (Issue #1075).

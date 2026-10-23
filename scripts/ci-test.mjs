@@ -63,8 +63,23 @@ export const SMOKE = [
   'test/table-views-browser.test.mjs',
 ];
 
-export function touchedBrowser(changed, browser, read) {
+export const REACH_CAP = 60;
+export const REACH_SPREAD = 8;
+const TOKEN = /[a-z][a-z0-9]*(?:[-/][a-z0-9]+)+/g;
+const DIFF_HEADER = /^(diff --git|index |\+\+\+|---|@@|new file|deleted file|old mode|new mode|similarity|rename|Binary)/;
+
+export function reachTokens(diff) {
+  const tokens = new Set();
+  for (const line of String(diff).split('\n')) {
+    if (DIFF_HEADER.test(line)) continue;
+    for (const [token] of line.matchAll(TOKEN)) if (token.length >= 6) tokens.add(token);
+  }
+  return [...tokens].sort();
+}
+
+export function touchedBrowser(changed, browser, read, diff = '') {
   for (const file of SMOKE) if (!browser.includes(file)) throw new Error(`Missing required journey suite ${file}`);
+  const source = new Map(browser.map(file => [file, read(file)]));
   const picked = new Set(SMOKE);
   for (const file of changed) {
     if (browser.includes(file)) { picked.add(file); continue; }
@@ -72,14 +87,24 @@ export function touchedBrowser(changed, browser, read) {
     const stem = name.replace(/\.[^.]+$/, '').replace(/-core$/, '');
     for (const test of browser) {
       const testStem = basename(test).replace(/(-browser)?\.test\.mjs$/, '');
-      if (testStem === stem || testStem.startsWith(`${stem}-`) || read(test).includes(name)) picked.add(test);
+      if (testStem === stem || testStem.startsWith(`${stem}-`) || source.get(test).includes(name)) picked.add(test);
     }
+  }
+  const named = picked.size;
+  const groups = reachTokens(diff)
+    .map(token => [token, browser.filter(file => source.get(file).includes(token))])
+    .filter(([, files]) => files.length && files.length <= REACH_SPREAD)
+    .sort((a, b) => a[1].length - b[1].length || a[0].localeCompare(b[0]));
+  for (const [, files] of groups) {
+    const adds = files.filter(file => !picked.has(file));
+    if (picked.size + adds.length > named + REACH_CAP) continue;
+    for (const file of adds) picked.add(file);
   }
   return [...picked].sort();
 }
 
-export function prPlan({ unit, browser }, changed, read, weight) {
-  const touched = touchedBrowser(changed, browser, read);
+export function prPlan({ unit, browser }, changed, read, weight, diff = '') {
+  const touched = touchedBrowser(changed, browser, read, diff);
   return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
 }
 
@@ -101,7 +126,8 @@ function currentPlan() {
 
 function currentPrPlan() {
   const changed = execFileSync('git', ['diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
-  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightOf);
+  const diff = execFileSync('git', ['diff', '-W', '--no-renames', 'HEAD^1', 'HEAD', '--', 'public', 'src', 'bin'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightOf, diff);
 }
 
 async function main() {
