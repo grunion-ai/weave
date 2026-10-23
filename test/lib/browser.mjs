@@ -1,6 +1,5 @@
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { join, relative } from 'node:path';
 import { Weave } from '../../src/engine.js';
 import { startServer } from '../../src/server.js';
 
@@ -52,7 +51,6 @@ export const chromium = browserType && new Proxy(browserType, {
       let connected;
       try { connected = await target.connect(endpoint); }
       catch (error) { leased?.release(); throw error; }
-      if (process.env.WEAVE_CLIENT_COVERAGE) await clientCoverage(connected);
       if (leased) {
         const close = connected.close.bind(connected);
         connected.close = async () => { try { await close(); } finally { leased.release(); } };
@@ -62,44 +60,6 @@ export const chromium = browserType && new Proxy(browserType, {
     };
   },
 });
-
-async function clientCoverage(browser) {
-  const { writeFileSync } = await import('node:fs');
-  const { lineIndex, executed, SOURCE } = await import('../../scripts/coverage-map.mjs');
-  const test = relative(ROOT, process.argv[1] ?? '');
-  const pages = new Set();
-  let dumps = 0;
-  const dump = async (page) => {
-    if (!pages.delete(page)) return;
-    const scripts = [];
-    for (const entry of await page.coverage.stopJSCoverage().catch(() => [])) {
-      const url = URL.canParse(entry.url) ? new URL(entry.url) : null;
-      const path = url && /^(?:127\.0\.0\.1|localhost)$/.test(url.hostname) ? `public${url.pathname.replace(/^\/w\/[^/]+/, '')}` : '';
-      if (SOURCE.test(path)) scripts.push([path, executed(entry.functions, lineIndex(entry.source ?? ''))]);
-    }
-    if (scripts.length) writeFileSync(join(process.env.WEAVE_CLIENT_COVERAGE, `client-${process.pid}-${++dumps}.json`), JSON.stringify({ test, scripts }));
-  };
-  const track = async (page) => {
-    await page.coverage.startJSCoverage({ resetOnNavigation: false }).catch(() => {});
-    pages.add(page);
-    const close = page.close.bind(page);
-    page.close = async (...a) => { await dump(page); return close(...a); };
-    return page;
-  };
-  const newPage = browser.newPage.bind(browser);
-  browser.newPage = async (...a) => track(await newPage(...a));
-  const newContext = browser.newContext.bind(browser);
-  browser.newContext = async (...a) => {
-    const ctx = await newContext(...a);
-    const ctxPage = ctx.newPage.bind(ctx);
-    ctx.newPage = async (...b) => track(await ctxPage(...b));
-    const ctxClose = ctx.close.bind(ctx);
-    ctx.close = async (...b) => { for (const page of ctx.pages()) await dump(page); return ctxClose(...b); };
-    return ctx;
-  };
-  const close = browser.close.bind(browser);
-  browser.close = async (...a) => { for (const page of [...pages]) await dump(page); return close(...a); };
-}
 
 const engineFor = (engine) => (!engine || pw[engine] === browserType ? chromium : pw[engine]);
 

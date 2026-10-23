@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - scripts/coverage-map.mjs
+      - scripts/coverage-hook.mjs
       - .github/workflows/coverage-map.yml
   schedule:
     - cron: "43 6 * * 1"
@@ -78,7 +79,7 @@ jobs:
           path: parts
       - name: Merge every shard into one map
         run: |
-          test "$(ls parts/*/coverage-map.json | wc -l)" -eq 8
+          test "$(find parts -name coverage-map.json | wc -l)" -eq 8
           node scripts/coverage-map.mjs --merge parts/*/coverage-map.json | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

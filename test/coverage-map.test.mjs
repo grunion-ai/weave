@@ -51,11 +51,11 @@ test('records from many tests merge into sorted entries over shared, deduplicate
 test('the coverage-map workflow records eight shards on GitHub runners and merges them into one artifact', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync('.github/workflows/coverage-map.yml', 'utf8');
-  assert.match(src, /^on:\n  pull_request:\n    paths:\n      - scripts\/coverage-map\.mjs\n/m);
+  assert.match(src, /^on:\n  pull_request:\n    paths:\n      - scripts\/coverage-map\.mjs\n      - scripts\/coverage-hook\.mjs\n/m);
   assert.match(src, /schedule:\n    - cron: "\d+ \d+ \* \* 1"\n  workflow_dispatch:\n/);
   assert.match(src, /shard: \[1, 2, 3, 4, 5, 6, 7, 8\]/);
   assert.match(src, /node scripts\/coverage-map\.mjs "--shard=\$SHARD\/8"/);
-  assert.match(src, /test "\$\(ls parts\/\*\/coverage-map\.json \| wc -l\)" -eq 8/);
+  assert.match(src, /test "\$\(find parts -name coverage-map\.json \| wc -l\)" -eq 8/);
   assert.match(src, /node scripts\/coverage-map\.mjs --merge parts\/\*\/coverage-map\.json/);
   assert.match(src, /name: coverage-map\n          path: test\/coverage-map\.json/);
 });

@@ -97,7 +97,7 @@ async function main() {
     const server = join(dir, 'server'), client = join(dir, 'client');
     mkdirSync(server); mkdirSync(client);
     const status = await new Promise(done => spawn(process.execPath, ['scripts/test.mjs', '--targeted', ...files.slice(i, i + CHUNK)], {
-      cwd: ROOT, stdio: 'inherit', env: { ...process.env, NODE_V8_COVERAGE: server, WEAVE_CLIENT_COVERAGE: client },
+      cwd: ROOT, stdio: 'inherit', env: { ...process.env, NODE_V8_COVERAGE: server, WEAVE_CLIENT_COVERAGE: client, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${pathToFileURL(join(ROOT, 'scripts/coverage-hook.mjs')).href}`.trim() },
     }).on('exit', s => done(s ?? 1)));
     code ||= status;
     for (const name of readdirSync(server)) {
