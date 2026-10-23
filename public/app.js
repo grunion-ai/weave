@@ -73,6 +73,15 @@ function warmGet(path, ready = null) {
   warmGets.set(path, { at: Date.now(), p });
   return p;
 }
+const rowRevisions = new Map();
+function noteRevisions(method, path, data) {
+  const own = path.match(/^\/entities\/([^/?]+)/)?.[1];
+  if (method !== 'GET' && own && !(data?.id === own && data.revision)) rowRevisions.delete(own);
+  for (const id of Array.isArray(data?.affected) ? data.affected : []) if (id !== data.id) rowRevisions.delete(id);
+  for (const row of [data, data?.entity, ...(Array.isArray(data?.items) ? data.items : [])]) {
+    if (row?.id && typeof row.revision === 'string') rowRevisions.set(row.id, row.revision);
+  }
+}
 async function api(method, path, body, { signal, quiet = false } = {}) {
   if (method === 'GET' && warmGets.has(path)) {
     const hit = warmGets.get(path);
@@ -80,21 +89,29 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
     if (Date.now() - hit.at < WARM_MS) return hit.p;
   }
   const payload = body === undefined ? undefined : JSON.stringify(body);
-  const res = await fetch(WS_PREFIX + '/api' + path, {
-    method,
-    signal,
-    headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE },
-    body: payload,
-    keepalive: (leaving || document.visibilityState === 'hidden')
-      && new TextEncoder().encode(payload ?? '').length < 60_000,
-  });
+  const seen = method === 'PATCH' && rowRevisions.get(path.match(/^\/entities\/([^/?]+)$/)?.[1]);
+  let res;
+  try {
+    res = await fetch(WS_PREFIX + '/api' + path, {
+      method,
+      signal,
+      headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE, ...(seen ? { 'If-Match': `"${seen}"` } : {}) },
+      body: payload,
+      keepalive: (leaving || document.visibilityState === 'hidden')
+        && new TextEncoder().encode(payload ?? '').length < 60_000,
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    throw Object.assign(new Error(method === 'GET' ? 'Could not reach the server' : 'Could not reach the server; nothing was saved'), { code: 'offline', cause: err });
+  }
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
+  if (res.ok || res.status === 412) noteRevisions(method, path, data);
   if (!res.ok && data.code === 'seat-required') {
     seatToast(data);
     throw Object.assign(new Error(data.error), { status: res.status, code: data.code, shown: true });
   }
-  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code });
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code, entity: data.entity });
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
@@ -3294,7 +3311,18 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     try {
       const fresh = await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
       await onSaved(fresh, f.name);
-    } catch (err) { paint?.(val); toast(err.message, true); }
+    } catch (err) {
+      if (err.code !== 'stale' || !err.entity) {
+        paint?.(val);
+        return toast(err.code === 'offline' ? `${f.name} was not saved: could not reach the server` : err.message, true);
+      }
+      const theirs = err.entity;
+      paint?.(theirs.raw?.[f.name] ?? null);
+      await onSaved({ ...theirs, affected: [theirs.id] }, f.name);
+      const mine = fieldValueCell(value) || 'empty';
+      toast(`${theirs.modifiedBy ?? 'Someone'} changed ${f.name} to ${fieldValueCell(theirs.fields?.[f.name]) || 'empty'} first, so your ${mine} was not saved`,
+        true, { label: 'Use mine', run: () => patch(value, paint) }, { key: `stale:${id}:${f.name}` });
+    }
   };
 
   if (f.type === 'view') return viewCell(item.raw?.[f.name], f, { compact });

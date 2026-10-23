@@ -6228,7 +6228,8 @@ export class Weave {
     return e;
   }
 
-  updateEntity(id, valuesByName, { depth = 0 } = {}) {
+  updateEntity(id, valuesByName, { depth = 0, expectedRevision = null } = {}) {
+    if (expectedRevision != null) return this.#updateAtRevision(id, valuesByName, expectedRevision);
     const e = this.getEntity(id);
     const db = this.state.tables[e.dbId];
     const meta = this.#interceptUpdate(e, db, valuesByName);
@@ -7103,6 +7104,21 @@ export class Weave {
     }
   }
 
+  #updateAtRevision(id, valuesByName, expectedRevision) {
+    let attempted = false;
+    try {
+      return this.store.batch(() => {
+        this.maybeRefresh();
+        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('This row changed since you read it; nothing was written', 'stale');
+        attempted = true;
+        return this.updateEntity(id, valuesByName);
+      });
+    } catch (err) {
+      if (attempted) this.#adoptRolledBack();
+      throw err;
+    }
+  }
+
   #adoptRolledBack() {
     const loaded = this.store.reload();
     if (!loaded) return;
@@ -7157,6 +7173,7 @@ export class Weave {
       const files = held.size ? e.files.filter((f) => held.has(f.id)).map((f) => (this.#hasBlob(f.id) ? f : { ...f, missing: true })) : null;
       return {
         id: e.id,
+        revision: this.entityRevision(e.id),
         publicId: e.publicId,
         db: this.qualifiedName(db),
         dbId: db.id,
