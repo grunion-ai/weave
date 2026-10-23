@@ -79,3 +79,10 @@ test('the system registry is not the document business', () => {
   const plan = w.applySchema(doc, { dryRun: true });
   assert.deepEqual(plan, [], 'omitting system spaces deletes nothing');
 });
+
+test('a refused apply writes nothing (Issue #996)', () => {
+  const w = fresh();
+  const before = w.listSpaces().map((s) => s.name);
+  assert.throws(() => w.applySchema([{ space: 'Design', tables: [] }]), /would delete space/);
+  assert.deepEqual(w.listSpaces().map((s) => s.name), before, 'the refused document created no space');
+});
