@@ -167,7 +167,7 @@ test('a load shorter than the flash ceiling paints no skeleton (Issue #630)', ()
   assert.equal(after, FLASH_MS, 'the skeleton is earned at the same ceiling the flicker probe calls a flash');
   assert.ok(after < Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]),
     'the skeleton still comes before the rope');
-  assert.match(APP, /function scheduleSkeleton\(kind, db\) \{[\s\S]*?setTimeout\([\s\S]*?paintSkeleton\(kind, db\)[\s\S]*?SKELETON_SHOW_AFTER_MS\)/,
+  assert.match(APP, /function scheduleSkeleton\(kind, db, under = null\) \{[\s\S]*?setTimeout\([\s\S]*?paintSkeleton\(kind, db, under\)[\s\S]*?SKELETON_SHOW_AFTER_MS\)/,
     'renderRoute schedules the skeleton rather than painting it');
   assert.match(APP, /function renderRoute\(\) \{\s*return Promise\.resolve\(\)\.then\(dispatchRoute\)\.finally\(cancelSkeleton\);/,
     'every route path cancels the pending skeleton when it paints, so the old page holds');
@@ -175,10 +175,25 @@ test('a load shorter than the flash ceiling paints no skeleton (Issue #630)', ()
 });
 
 test('the table skeleton draws the destination table\'s real columns', () => {
-  assert.match(APP, /function paintSkeleton\(kind, db\)/);
+  assert.match(APP, /function paintSkeleton\(kind, db, under = null\)/);
   const fn = APP.slice(APP.indexOf('function paintSkeleton'));
   assert.match(fn.slice(0, 1200), /visibleCols\(db\)/,
     'db skeletons take their column count from the destination table');
+});
+
+test('a cold table open paints its chrome before the rows and the skeleton beneath it (Issue #1056)', () => {
+  assert.match(APP, /if \(!again\) \{ renderNav\(\); paintTableChrome\(db\); \}\n\s*const release = again \? gridHold\(\) : \(\) => \{\};\n\s*try \{ await readAndDrawTable\(db, dbId, search, !again\); \}/,
+    'showDatabase paints the table chrome from the schema before the rows request');
+  const paint = APP.slice(APP.indexOf('function paintTableChrome'), APP.indexOf('function drawDatabase'));
+  assert.match(paint, /main\.replaceChildren\(chrome\.header\);/, 'the header replaces the old page in the same frame');
+  assert.match(paint, /scheduleSkeleton\([^;]*, chrome\.header\);/, 'the skeleton rows wait their delay and land under the header');
+  const skeleton = APP.slice(APP.indexOf('function paintSkeleton'), APP.indexOf('const skeleton = {'));
+  assert.match(skeleton, /if \(under\?\.parentElement === main\) under\.after\(card\);\n\s*else main\.replaceChildren\(toolbar, card\);/,
+    'a skeleton under a header keeps the header and drops the skeleton toolbar');
+  assert.match(APP, /const cached = cold && !showDeleted \? firstPages\.get\(pageKey\) : null;\n\s*if \(cached\) paint\(cached, null\);/,
+    'a first page fetched earlier in the session paints at once');
+  assert.match(APP, /if \(cached && JSON\.stringify\(cached\) === JSON\.stringify\(result\)\) return;/,
+    'an unchanged fresh page does not redraw the grid');
 });
 
 

@@ -3,7 +3,7 @@
     "load-home|desktop": 700,
     "load-home|phone": 550,
     "open-table|desktop": 120,
-    "open-table|phone": 2150,
+    "open-table|phone": 120,
     "scroll-grid|desktop": 120,
     "scroll-grid|phone": 120,
     "edit-cell|desktop": 120,
@@ -23,7 +23,7 @@
     "switch-view|desktop": "Issue #1062: a grid hold sets aria-busy at once, so closing the view strip flips it for 95 to 141 ms"
   },
   "raised": {
-    "open-table|phone": "Issue #1056: the phone paints nothing but the skeleton until the rows arrive; measured 1499 to 1648 ms",
+    "open-table|phone": "Issue #1042: fixed for Issue #1056 (PR #399), measured 9 to 10 ms locally; PR gate run 39875308002 read 52, 156 and 457 ms on a loaded runner and 42, 42, 42 on the retry, so it sits on the 120 ms fast-journey floor rather than its measured value",
     "open-row|desktop": "Issue #1057: the dock waits for the entity request; measured 1052 to 1056 ms",
     "trash-undo|desktop": "Issue #1058: Move to trash waits for the delete before the rows leave; measured 905 to 908 ms",
     "phone-search|phone": "Issue #1042: main CI runs every browser suite at once, and medians there drift past the PR gate baseline: main run 39377260173 read 298,145,214 ms against 210 (Issue #1060 tracks the slow sheet)",

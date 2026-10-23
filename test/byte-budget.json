@@ -4,6 +4,10 @@
       "gzip": 3418,
       "br": 3020
     },
+    "/activity-panel.js": {
+      "gzip": 4929,
+      "br": 4460
+    },
     "/actor-core.js": {
       "gzip": 1057,
       "br": 961
