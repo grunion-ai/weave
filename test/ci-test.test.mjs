@@ -229,17 +229,20 @@ test('a stalled browser install costs one retry, not the PR gate', async () => {
   const { readFileSync } = await import('node:fs');
   const workflow = readFileSync('.github/workflows/pr.yml', 'utf8');
   const job = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:'));
-  const first = job.match(/- name: Install browsers and system dependencies\n        if: matrix\.lane == 'browser'\n        id: (\w+)\n        continue-on-error: true\n        timeout-minutes: (\d+)\n        run: npx --no-install playwright install --with-deps chromium webkit\n/);
-  assert.ok(first, 'the first install attempt is bounded by its own timeout and does not fail the job');
-  const retry = job.match(new RegExp(`- name: [^\\n]+\\n        if: matrix\\.lane == 'browser' && steps\\.${first[1]}\\.outcome == 'failure'\\n        timeout-minutes: (\\d+)\\n`));
-  assert.ok(retry, 'a second attempt runs only when the first one failed');
-  assert.equal(job.match(/playwright install --with-deps chromium webkit/g).length, 2);
-  const minutes = [Number(first[2]), Number(retry[1])];
-  for (const budget of minutes) assert.ok(budget >= 1 && budget <= 5, `an install attempt waits ${budget} minutes`);
+  const step = job.match(/- name: Install browsers and system dependencies\n        if: matrix\.lane == 'browser'\n        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)\n      - name:/);
+  assert.ok(step, 'the install step carries a backstop of its own');
+  const attempts = [...step[2].matchAll(/timeout (\d+)m npx --no-install playwright install --with-deps chromium webkit/g)].map(m => Number(m[1]));
+  assert.equal(attempts.length, 2, 'the install is attempted twice, each attempt bounded in the shell');
+  for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `an attempt waits ${budget} minutes`);
+  assert.match(step[2], /dpkg --configure -a \|\| true/);
+  assert.match(step[2], /Acquire::Retries/);
+  assert.doesNotMatch(step[2], /continue-on-error/);
+  assert.doesNotMatch(job, /continue-on-error/);
+  const backstop = Number(step[1]);
   const jobBudget = Number(workflow.match(/timeout-minutes: (\d+)\n    strategy/)[1]);
-  assert.ok(minutes[0] + minutes[1] < jobBudget, 'both attempts fit the job timeout with the shard still to run');
+  assert.ok(attempts[0] + attempts[1] <= backstop && backstop < jobBudget, 'both attempts fit the step backstop, which fits the job');
+  assert.equal(job.match(/playwright install --with-deps chromium webkit/g).length, 2);
 });
-
 test('a re-run shard replaces its earlier attempt, so the gate judges the newest result', () => {
   const failed = { ...evidence()[0], attempt: 1, code: 1 };
   const rerun = { ...evidence()[0], attempt: 2 };
