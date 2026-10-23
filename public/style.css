@@ -1811,7 +1811,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .bug-cat-icon svg { width: 100%; height: 100%; }
 
 .bug-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
-.bug-captured { flex: 1; min-width: 0; font-size: var(--fs-meta); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bug-captured { flex: 1; min-width: 0; font-size: var(--fs-meta); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); }
 .bug-send { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; font-size: var(--fs-secondary); }
 .bug-kbd { flex: 0 0 auto; font-size: var(--fs-meta); }
 .bug-send-kbd { background: rgba(255,255,255,.24); color: inherit; }
