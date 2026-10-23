@@ -174,6 +174,7 @@ const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
 
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
+const DERIVED_CACHE_CAP = 32;
 export const SYSTEM_SORT_KEYS = {
   'Created At': 'createdAt', 'Modified At': 'updatedAt',
   'Created By': 'createdBy', 'Modified By': 'modifiedBy',
@@ -1397,6 +1398,7 @@ export class Weave {
     }
     this.#schemaVersion = null;
     this.#scales.clear();
+    this.#forgetDerived();
   }
 
   #touching = null;
@@ -1433,6 +1435,7 @@ export class Weave {
     }
     const id = typeof entityOrId === 'string' ? entityOrId : entityOrId.id;
     this.#dirty.add(id);
+    this.#forgetDerived();
     this.#touching?.add(id);
     if (db?.system === 'workflows' && !this.#stamping) { this.#wfQueue.add(id); this.#wfEpoch++; }
   }
@@ -1456,6 +1459,7 @@ export class Weave {
     }
     this.#schemaVersion = null;
     this.#scales.clear();
+    this.#forgetDerived();
     return true;
   }
 
@@ -6037,10 +6041,37 @@ export class Weave {
   #rowIndex() {
     const entities = this.state.entities;
     if (this.#rows?.entities !== entities) {
-      this.#rows = { entities, byTable: new Map(), byPublicId: new Map() };
+      this.#rows = { entities, byTable: new Map(), byPublicId: new Map(), sortKeys: new Map(), sortOrders: new Map(), whereHits: new Map(), liveCounts: null };
       for (const e of Object.values(entities)) this.#indexRow(e);
     }
     return this.#rows;
+  }
+
+  #forgetDerived() {
+    const index = this.#rows;
+    if (!index) return;
+    index.sortKeys.clear();
+    index.sortOrders.clear();
+    index.whereHits.clear();
+    index.liveCounts = null;
+  }
+
+  #derivedKey(db, ...parts) {
+    const d = this.now();
+    const day = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    return [db.id, ...parts, this.viewerZone ?? '', day].join('\n');
+  }
+
+  #remember(map, key, value) {
+    if (map.size >= DERIVED_CACHE_CAP) map.delete(map.keys().next().value);
+    map.set(key, value);
+    return value;
+  }
+
+  #sortKeys(db, path) {
+    const index = this.#rowIndex();
+    const key = this.#derivedKey(db, String(path));
+    return index.sortKeys.get(key) ?? this.#remember(index.sortKeys, key, new Map());
   }
 
   #indexRow(e) {
@@ -6080,11 +6111,15 @@ export class Weave {
   }
 
   #liveRowCounts() {
+    const index = this.#rowIndex();
+    if (index.liveCounts) return index.liveCounts;
     const counts = new Map();
-    for (const e of Object.values(this.state.entities)) {
-      if (e.deletedAt) continue;
-      counts.set(e.dbId, (counts.get(e.dbId) ?? 0) + 1);
+    for (const [dbId, table] of index.byTable) {
+      let live = 0;
+      for (const e of table.values()) if (!e.deletedAt) live++;
+      if (live) counts.set(dbId, live);
     }
+    index.liveCounts = counts;
     return counts;
   }
 
@@ -7108,6 +7143,7 @@ export class Weave {
     this.state = loaded;
     this.#schemaVersion = null;
     this.#scales.clear();
+    this.#forgetDerived();
   }
 
   readEntity(id, { viewerZone = null } = {}) {
@@ -7308,21 +7344,44 @@ export class Weave {
       rows = rows.filter((e) => hit.has(e.id));
     }
     const trashed = trashCount ? table.length - live : null;
-    if (where && (Array.isArray(where) ? where.length : true)) {
-      rows = rows.filter((e) => this.#matchNode(e, db, Array.isArray(where) ? { and: where } : where));
+    const filtered = where && (Array.isArray(where) ? where.length : true);
+    if (filtered) {
+      const index = this.#rowIndex();
+      const whereKey = this.#derivedKey(db, JSON.stringify(where));
+      const hits = index.whereHits.get(whereKey);
+      if (hits) rows = rows.filter((e) => hits.has(e.id));
+      else {
+        const node = Array.isArray(where) ? { and: where } : where;
+        const matched = new Set();
+        for (const e of table) if (this.#matchNode(e, db, node)) matched.add(e.id);
+        this.#remember(index.whereHits, whereKey, matched);
+        rows = rows.filter((e) => matched.has(e.id));
+      }
     }
-    for (const s of [...sort].reverse()) {
-      const { field, dir = 'asc' } = typeof s === 'string' ? { field: s } : s;
-      if (rows.length < 2) continue;
-      const mul = dir === 'desc' ? -1 : 1;
-      const keyed = rows.map((e) => ({ e, v: this.#pathValue(e, db, field, { undressed: true }) }));
-      rows = keyed.sort(({ v: av }, { v: bv }) => {
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
-        return String(av).localeCompare(String(bv)) * mul;
-      }).map(({ e }) => e);
+    const orderKey = sort.length && !inWs && !filtered && !String(search ?? '').trim() ? this.#derivedKey(db, JSON.stringify(sort), String(!!includeDeleted)) : null;
+    const ordered = orderKey ? this.#rowIndex().sortOrders.get(orderKey) : undefined;
+    if (ordered) rows = ordered;
+    else {
+      for (const s of [...sort].reverse()) {
+        const { field, dir = 'asc' } = typeof s === 'string' ? { field: s } : s;
+        if (rows.length < 2) continue;
+        const mul = dir === 'desc' ? -1 : 1;
+        const keys = this.#sortKeys(db, field);
+        const keyed = rows.map((e) => {
+          if (keys.has(e.id)) return { e, v: keys.get(e.id) };
+          const v = this.#pathValue(e, db, field, { undressed: true });
+          keys.set(e.id, v);
+          return { e, v };
+        });
+        rows = keyed.sort(({ v: av }, { v: bv }) => {
+          if (av == null && bv == null) return 0;
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
+          return String(av).localeCompare(String(bv)) * mul;
+        }).map(({ e }) => e);
+      }
+      if (orderKey) this.#remember(this.#rowIndex().sortOrders, orderKey, rows);
     }
     const total = rows.length;
     rows = rows.slice(offset, limit != null ? offset + limit : undefined);
