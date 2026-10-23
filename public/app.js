@@ -5041,13 +5041,13 @@ function paneSync(db) {
   pane.hidden = false;
   renderViewPane(pane, db);
 }
-function renderViewPane(pane, db) {
+function renderViewPane(pane, db, { force = false } = {}) {
+  if (!force && pane.querySelector('.view-name-input')) return;
   const same = viewPane.db?.id === db.id && viewPane.db?.view?.id === db.view?.id;
   if (!same) { viewPane.strip = null; viewPane.fields = null; if (viewPane.db) viewPane.note = null; if (viewPane.db?.id !== db.id) viewPane.views = false; }
   const active = pane.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = active?.dataset?.vpKey ?? null;
   const scrollTop = pane.querySelector('.vp-scroll')?.scrollTop ?? 0;
-  const editing = viewEdit?.dbId === db.id ? pane.querySelector('.vp-views') : null;
   viewPane.db = db;
   pane.tableId = db.id;
   if (!pane.wvKeys) {
@@ -5066,13 +5066,13 @@ function renderViewPane(pane, db) {
       opts[(opts.indexOf(e.target) + (e.key === 'ArrowUp' ? -1 : 1) + opts.length) % opts.length]?.focus({ preventScroll: false });
     });
   }
-  pane.refresh = (next) => { viewPane.db = null; viewPane.strip = null; viewPane.fields = null; renderViewPane(pane, next ?? db); };
+  pane.refresh = (next) => renderViewPane(pane, next ?? db, { force: true });
   const first = (db.views ?? [])[0]?.id === db.view?.id;
   const pick = el('button', { class: 'vp-view-pick', type: 'button', 'aria-expanded': String(viewPane.views), dataset: { vpKey: 'views' },
     onclick: () => { viewPane.views = !viewPane.views; renderViewPane(pane, db); } },
   lucideEl('bookmark'), el('span', { class: 'vp-view-name' }, db.view?.name ?? 'Standard'),
   first ? el('span', { class: 'view-first' }, 'Opens first') : null, lucideEl(viewPane.views ? 'chevron-up' : 'chevron-down'));
-  const views = editing ?? (viewPane.views ? el('div', { class: 'vp-views' }, viewStrip(db)) : null);
+  const views = viewPane.views ? el('div', { class: 'vp-views' }, viewStrip(db)) : null;
   const sections = Object.entries(PANE_SECTIONS).map(([key, s]) => {
     const open = viewPane.section === key;
     const value = paneValue(db, key);
