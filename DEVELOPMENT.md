@@ -81,7 +81,9 @@ down with it. The bound lives in the shell, not in `timeout-minutes`: a step
 the runner kills on its own timeout cancels the whole job, so `continue-on-error`
 never reaches the retry (measured on PR #430, 2026-10-23). The step also writes
 an apt drop-in with a twenty-second acquire timeout and three retries, so one
-stalled connection no longer costs minutes (Issue #1107).
+stalled connection no longer costs minutes. The `tests` shard job and the dev
+soak carry the same bound, after the mirror held their install for thirty
+minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
 The `tests` workflow runs the full inventory on every main push. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can
