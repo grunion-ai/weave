@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { Weave } from '../src/engine.js';
+import { Weave, FIELD_TYPES } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { GUIDES } from '../src/handbook.js';
 import {
-  packTar, readTar, encryptFile, decryptFile, isEncrypted, resolvePassphrase,
+  packTar, readTar, streamTar, tarWriter, classify, heldOpen, encryptFile, decryptFile, isEncrypted, resolvePassphrase,
   backup, restore, signV4, s3, scheduleNightly, nextFireAt, ARCHIVE_PREFIX, RETAIN,
 } from '../src/backup.js';
 
@@ -448,3 +448,239 @@ test('the Handbook guide and AGENTS.md name the verbs, the variables, the nightl
 });
 
 test('RETAIN is thirty, per the spec', () => assert.equal(RETAIN, 30));
+
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5f3a8d40000000049454e44ae426082', 'hex');
+const SPEC_BYTES = Buffer.from(Array.from({ length: 3000 }, (_, i) => (i * 7 + 3) % 256));
+const UNCOVERED_TYPES = ['view'];
+
+const openFull = (dir) => new Weave({ path: join(dir, 'full.db'), keystorePath: join(dir, 'keystore.json'), revisionWindowMs: 0 });
+const snap = (w) => JSON.parse(JSON.stringify(w.state));
+
+function seedEveryField() {
+  const dir = tmp('every');
+  const w = openFull(dir);
+  w.createSpace({ name: 'Lab' });
+  w.createTable({ space: 'Lab', name: 'Group' });
+  w.createTable({ space: 'Lab', name: 'Item' });
+  const fields = [
+    { name: 'Note', type: 'text' },
+    { name: 'Price', type: 'number', config: { format: 'currency', currency: 'USD' } },
+    { name: 'Stars', type: 'rating' },
+    { name: 'Due', type: 'date', config: { grain: ['year', 'month'] } },
+    { name: 'Window', type: 'daterange' },
+    { name: 'Done', type: 'checkbox' },
+    { name: 'Flag', type: 'toggle' },
+    { name: 'Site', type: 'url' },
+    { name: 'Contact', type: 'email' },
+    { name: 'Kind', type: 'select', config: { options: ['A', 'B'] } },
+    { name: 'Tags', type: 'multiselect', config: { options: ['x', 'y', 'z'] } },
+    { name: 'Stage', type: 'workflow', config: { states: [{ name: 'New', category: 'not-started', default: true }, { name: 'Done', category: 'done' }] } },
+    { name: 'Secret', type: 'key' },
+    { name: 'Ref', type: 'field' },
+    { name: 'Files', type: 'attachments' },
+    { name: 'Face', type: 'avatar' },
+    { name: 'Spec', type: 'document' },
+  ];
+  for (const f of fields) w.addField('Item', f);
+  w.addRelation('Item', { name: 'Group', targetDb: 'Group', cardinality: 'many-to-one', inverseName: 'Items' });
+  w.addRelation('Item', { name: 'Related', targetDb: 'Item', cardinality: 'many-to-many', inverseName: 'Related by' });
+  w.addField('Item', { name: 'Group label', type: 'lookup', config: { relationField: 'Group', targetField: 'Name' } });
+  w.addField('Item', { name: 'Price doubled', type: 'formula', config: { expression: 'Price * 2' } });
+  w.addField('Group', { name: 'Item count', type: 'rollup', config: { relationField: 'Items', aggregate: 'count' } });
+  w.addField('Group', { name: 'Total price', type: 'rollup', config: { relationField: 'Items', targetField: 'Price', aggregate: 'sum' } });
+  const group = w.createEntity('Lab/Group', { name: 'Core' });
+  const alpha = w.createEntity('Lab/Item', {
+    name: 'Alpha',
+    values: {
+      Note: 'first row', Price: 12.5, Stars: 4, Due: '2026-03', Window: { start: '2026-01-01', end: '2026-02-01' },
+      Done: true, Flag: true, Site: 'https://example.com', Contact: 'ada@example.com', Kind: 'A', Tags: ['x', 'z'],
+      Stage: 'Done', Group: group.id,
+    },
+    doc: 'draft one',
+  });
+  const beta = w.createEntity('Lab/Item', { name: 'Beta', values: { Price: 7.25, Group: group.id, Related: [alpha.id] } });
+  const gone = w.createEntity('Lab/Item', { name: 'Trashed' });
+  w.deleteEntity(gone.id);
+  w.setDoc(alpha.id, 'draft two, revised');
+  const spec = w.attachToField(alpha.id, 'Files', { name: 'spec.bin', mime: 'application/octet-stream', bytes: SPEC_BYTES });
+  const face = w.attachToField(alpha.id, 'Face', { name: 'face.png', mime: 'image/png', bytes: PNG });
+  w.addComment(alpha.id, { author: 'ada', text: 'ship it' });
+  const automation = w.createAutomation('Lab/Item', { name: 'Greet', trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'hi' }] });
+  return { dir, w, group, alpha, beta, gone, spec, face, automation, blobs: { [spec.id]: SPEC_BYTES, [face.id]: PNG } };
+}
+
+const revisionsOf = (w, id) => w.listDocRevisions(id).revisions.map((r) => ({ ...r, text: w.getDocRevision(id, null, r.seq).text }));
+
+async function roundTrip({ passphrase = null } = {}) {
+  const src = seedEveryField();
+  src.w.store.close?.();
+  const reopened = openFull(src.dir);
+  const before = { state: snap(reopened), revisions: revisionsOf(reopened, src.alpha.id) };
+  closeAll(reopened);
+  const env = passphrase ? { WEAVE_BACKUP_PASSPHRASE: passphrase } : {};
+  const made = await backup({ dataDir: src.dir, out: tmp('rt-out'), env });
+  const fresh = tmp('rt-fresh');
+  const landed = await restore({ source: made.path, dataDir: fresh, env });
+  const back = openFull(fresh);
+  return { src, before, made, landed, back, fresh };
+}
+
+function assertRoundTrip({ src, before, back }) {
+  assert.deepStrictEqual(snap(back), before.state, 'every table, field, row, doc, comment and automation survives with its ids');
+  assert.deepStrictEqual(revisionsOf(back, src.alpha.id), before.revisions, 'the document keeps both revisions, text and sequence');
+  assert.equal(before.revisions.length, 2);
+  for (const [id, bytes] of Object.entries(src.blobs)) {
+    assert.equal(sha256(back.readFile(id).bytes), sha256(bytes), `blob ${id} is byte-identical by sha256`);
+  }
+  assert.equal(back.getEntity(src.alpha.id).comments[0].text, 'ship it');
+  assert.equal(back.listAutomations('Lab/Item').find((a) => a.id === src.automation.id)?.name, 'Greet');
+  assert.ok(back.getEntity(src.gone.id).deletedAt, 'the trashed row is still trashed');
+}
+
+test('the seed offers every field type the engine has', () => {
+  const src = seedEveryField();
+  const used = new Set();
+  for (const db of Object.values(src.w.state.tables)) for (const f of Object.values(db.fields)) used.add(f.type);
+  assert.deepEqual(FIELD_TYPES.filter((t) => !used.has(t) && !UNCOVERED_TYPES.includes(t)), [], 'a new engine field type must join the round-trip seed');
+  assert.equal(src.w.readEntity(src.alpha.id).raw['Group label'], 'Core', 'the lookup computes');
+  src.w.store.close?.();
+});
+
+test('backup → restore → boot keeps every field value, document revision, comment, automation and blob byte', async () => {
+  const rt = await roundTrip();
+  assert.equal(rt.made.encrypted, false);
+  assertRoundTrip(rt);
+  closeAll(rt.back);
+});
+
+test('the same round trip holds through an encrypted archive', async () => {
+  const rt = await roundTrip({ passphrase: PASS });
+  assert.equal(rt.made.encrypted, true);
+  assert.ok(isEncrypted(rt.made.path));
+  assert.doesNotMatch(readFileSync(rt.made.path, 'latin1'), /first row|ship it/, 'nothing readable rides in the envelope');
+  assertRoundTrip(rt);
+  closeAll(rt.back);
+});
+
+test('a restore with the wrong passphrase fails clearly and writes nothing into the target', async () => {
+  const src = seedEveryField();
+  src.w.store.close?.();
+  const made = await backup({ dataDir: src.dir, out: tmp('wrong-out'), env: { WEAVE_BACKUP_PASSPHRASE: PASS } });
+  const fresh = tmp('wrong-fresh');
+  await assert.rejects(restore({ source: made.path, dataDir: fresh, env: { WEAVE_BACKUP_PASSPHRASE: 'not the passphrase' } }), /Cannot decrypt the archive.*wrong passphrase/);
+  assert.deepEqual(readdirSync(fresh), [], 'no database, blob or keystore landed');
+  await assert.rejects(restore({ source: made.path, dataDir: fresh, env: {} }), /archive is encrypted.*WEAVE_BACKUP_PASSPHRASE/);
+  assert.deepEqual(readdirSync(fresh), []);
+});
+
+function chunked(buf, size) {
+  return (async function* () { for (let i = 0; i < buf.length; i += size) yield buf.subarray(i, i + size); })();
+}
+
+async function streamed(buf, size) {
+  const seen = [];
+  await streamTar(chunked(buf, size), (name, bytes) => {
+    const parts = [];
+    const entry = { name, bytes, parts, closed: false };
+    seen.push(entry);
+    return { write: (c) => parts.push(Buffer.from(c)), close: () => { entry.closed = true; } };
+  });
+  return seen.map((e) => ({ name: e.name, bytes: e.bytes, closed: e.closed, data: Buffer.concat(e.parts) }));
+}
+
+test('streamTar reads back what tarWriter wrote, across block boundaries and in any chunking', async () => {
+  const dir = tmp('stream');
+  const sizes = { 'empty.txt': 0, 'one-byte.bin': 1, 'block-minus.bin': 511, 'block.bin': 512, 'block-plus.bin': 513, 'across.bin': 1100, 'two-blocks.bin': 1024 };
+  const payload = Object.fromEntries(Object.entries(sizes).map(([n, len], k) => [n, Buffer.from(Array.from({ length: len }, (_, i) => (i * 31 + k) % 256))]));
+  const out = join(dir, 'x.tar');
+  const t = tarWriter(out, { mtime: 1_700_000_000 });
+  const digests = Object.entries(payload).map(([name, data]) => t.add({ name, data }));
+  t.close();
+  assert.deepEqual(digests.map((d) => [d.name, d.bytes, d.sha256]), Object.entries(payload).map(([n, d]) => [n, d.length, sha256(d)]));
+  const whole = readFileSync(out);
+  for (const size of [whole.length, 4096, 512, 100, 7, 1]) {
+    const got = await streamed(whole, size);
+    assert.deepEqual(got.map((e) => e.name), Object.keys(payload), `entries in order at chunk size ${size}`);
+    for (const e of got) {
+      assert.equal(e.bytes, payload[e.name].length);
+      assert.ok(e.closed, `${e.name} closed at chunk size ${size}`);
+      assert.ok(e.data.equals(payload[e.name]), `${e.name} bytes exact at chunk size ${size}`);
+    }
+  }
+});
+
+test('streamTar skips non-file entries, refuses a truncated archive and a corrupt header', async () => {
+  const dir = tmp('stream-edge');
+  const out = join(dir, 'x.tar');
+  packTar(out, [{ name: 'meta', data: Buffer.alloc(600, 7) }, { name: 'after.bin', data: Buffer.from('after') }]);
+  const buf = readFileSync(out);
+  buf[156] = 0x78;
+  buf.fill(0x20, 148, 156);
+  let sum = 0;
+  for (const b of buf.subarray(0, 512)) sum += b;
+  buf.write(sum.toString(8).padStart(6, '0') + '\0 ', 148);
+  const got = await streamed(buf, 100);
+  assert.deepEqual(got.map((e) => e.name), ['after.bin'], 'the extended-header entry is read past, never opened');
+  assert.equal(got[0].data.toString(), 'after');
+  assert.deepEqual(readTar(buf).map((e) => e.name), ['after.bin'], 'readTar agrees');
+
+  packTar(out, [{ name: 'big.bin', data: Buffer.alloc(1100, 9) }]);
+  const whole = readFileSync(out);
+  const sinks = [];
+  await assert.rejects(streamTar(chunked(whole.subarray(0, 900), 64), (n) => { const s = { closed: false, write() {}, close() { s.closed = true; } }; sinks.push(s); return s; }), /truncated at byte 900/);
+  assert.ok(sinks.every((s) => s.closed), 'a sink left mid-file is closed when the stream fails');
+
+  const bad = Buffer.from(whole);
+  bad[0] ^= 0xff;
+  await assert.rejects(streamTar(chunked(bad, 512), () => ({ write() {}, close() {} })), /checksum mismatch at byte 0/);
+});
+
+test('classify sorts a data directory into databases, directories and sidecars to leave out', () => {
+  const dir = tmp('classify');
+  for (const f of ['zeta.db', 'alpha.db', 'alpha.db-wal', 'alpha.db-shm', 'keystore.key', 'keystore.json', 'notes.txt']) writeFileSync(join(dir, f), 'x');
+  mkdirSync(join(dir, 'files'));
+  assert.deepEqual(classify(readdirSync(dir, { withFileTypes: true })), {
+    databases: ['alpha.db', 'zeta.db'],
+    dirs: ['files'],
+    skipped: ['alpha.db-shm', 'alpha.db-wal', 'keystore.key'],
+  });
+});
+
+test('heldOpen sees a live WAL and a writer lock, and clears for a closed database', () => {
+  const dir = tmp('held');
+  const db = join(dir, 'held.db');
+  const writer = new DatabaseSync(db);
+  writer.exec('PRAGMA journal_mode = DELETE');
+  writer.exec('CREATE TABLE t (x)');
+  assert.equal(heldOpen(db), false, 'a quiet rollback-journal database is not held');
+  writer.exec('BEGIN IMMEDIATE');
+  assert.equal(heldOpen(db), true, 'a writer holding the lock is');
+  writer.exec('ROLLBACK');
+  writer.close();
+  assert.equal(heldOpen(db), false);
+  writeFileSync(`${db}-wal`, '');
+  assert.equal(heldOpen(db), true, 'a leftover -wal sidecar counts');
+});
+
+const FIXTURE = join(ROOT, 'test', 'fixtures', 'backup-v0.4.100.tar');
+
+test('an archive taken by release v0.4.100 restores with today\'s code and reads back its seeded rows', async () => {
+  const names = readTar(FIXTURE).map((e) => e.name);
+  assert.deepEqual(names.filter((n) => !n.startsWith('files/')), ['ledger.db', 'manifest.json']);
+  const fresh = tmp('v04100');
+  const rr = await restore({ source: FIXTURE, dataDir: fresh, env: {} });
+  assert.equal(rr.archive.weave, '0.4.100', 'the archive names the release that wrote it');
+  assert.equal(rr.verified, 2, 'the database and the one blob match the old manifest');
+  assert.equal(rr.orphans.count, 0);
+  const w = new Weave({ path: join(fresh, 'ledger.db') });
+  const inv = w.findEntity('Finance/Invoice', 'INV-0042');
+  const raw = w.readEntity(inv.id).raw;
+  assert.equal(raw.Amount, 1234.5);
+  assert.equal(raw.Issued, '2026-03-14');
+  assert.equal(raw.Terms, 'net-30');
+  assert.equal(w.getDoc(inv.id), 'Paid in full on receipt.');
+  assert.equal(w.getEntity(inv.id).files.length, 1);
+  assert.equal(w.readFile(w.getEntity(inv.id).files[0].id).bytes.toString(), 'invoice 0042 attachment bytes\n');
+  assert.equal(w.readEntity(w.findEntity('Finance/Invoice', 'INV-0043').id).raw.Amount, 99);
+  closeAll(w);
+});
