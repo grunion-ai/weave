@@ -17,7 +17,9 @@
     "phone-menu|phone": 4,
     "phone-table-sheet|phone": 4,
     "phone-picker|phone": 5,
-    "phone-open-row|phone": 6
+    "phone-open-row|phone": 10
   },
-  "raised": {}
+  "raised": {
+    "phone-open-row|phone": "Issue #1059: the record now paints from the list row in its own frame and the entity request fills it in a second, so the journey writes the DOM in two more frames; measured 7 (runs 6 to 8) on macOS WebKit, budget set as that median plus a quarter and one frame"
+  }
 }
