@@ -1,0 +1,1 @@
+- A bounded browser install now kills the `apt-get` the timeout orphaned before it retries, so the second attempt acquires the dpkg lock and resumes the download instead of reporting `E: Could not get lock` (Issue #1107).

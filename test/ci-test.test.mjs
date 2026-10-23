@@ -239,7 +239,7 @@ test('every gating workflow bounds each browser install attempt and retries it o
     const attempts = [...body.matchAll(/timeout (\d+)m npx --no-install playwright install --with-deps /g)].map((m) => Number(m[1]));
     assert.equal(attempts.length, 2, `${file} attempts the install twice`);
     for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `${file} waits ${budget} minutes on an attempt`);
-    assert.match(body, /dpkg --configure -a \|\| true/, `${file} repairs an interrupted unpack before the second attempt`);
+    assert.match(body, /sudo pkill -KILL -x apt-get \|\| true\n\s+sudo pkill -KILL -x dpkg \|\| true\n\s+sudo dpkg --configure -a \|\| true/, `${file} frees the dpkg lock and repairs an interrupted unpack before the second attempt`);
     assert.match(body, /Acquire::Retries/, `${file} bounds apt's own connections`);
     assert.ok(attempts[0] + attempts[1] <= Number(backstop), `${file} fits both attempts in the step backstop`);
     assert.ok(Number(backstop) < jobBudget, `${file} leaves the job room to run its work`);
