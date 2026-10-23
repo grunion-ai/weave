@@ -1,0 +1,1 @@
+- A stalled `playwright install --with-deps` in a PR browser job now ends after four minutes and runs once more, so a hung apt mirror costs a retry instead of the `PR gate` (Issue #1107).

@@ -73,7 +73,10 @@ which file names alone never reach (Issue #1075). A fixed smoke set (`SMOKE` in
 app in a browser. `PR gate` succeeds only
 when every shard succeeded and `pr-aggregate` finds executed evidence for every
 planned file at the exact commit. A newer push to the same pull request cancels
-the running one.
+the running one. A browser job bounds `playwright install --with-deps` at four
+minutes and runs it once more when the first attempt does not finish, since a
+stalled apt mirror held that step for fifteen minutes three times on
+2026-10-23 and took the gate down with it (Issue #1107).
 
 The `tests` workflow runs the full inventory on every main push. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can

@@ -61,7 +61,16 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
       - name: Install browsers and system dependencies
         if: matrix.lane == 'browser'
+        id: browsers
+        continue-on-error: true
+        timeout-minutes: 4
         run: npx --no-install playwright install --with-deps chromium webkit
+      - name: Retry the browser install once
+        if: matrix.lane == 'browser' && steps.browsers.outcome == 'failure'
+        timeout-minutes: 4
+        run: |
+          sudo dpkg --configure -a
+          npx --no-install playwright install --with-deps chromium webkit
       - name: Run fast shard
         env:
           SHARD: ${{ matrix.id }}
