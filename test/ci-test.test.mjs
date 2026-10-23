@@ -225,6 +225,24 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
   assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
 });
 
+test('a stalled browser install costs one retry, not the PR gate', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/pr.yml', 'utf8');
+  const job = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:'));
+  const step = job.match(/- name: Install browsers and system dependencies\n        if: matrix\.lane == 'browser'\n        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)\n      - name:/);
+  assert.ok(step, 'the install step carries a backstop of its own');
+  const attempts = [...step[2].matchAll(/timeout (\d+)m npx --no-install playwright install --with-deps chromium webkit/g)].map(m => Number(m[1]));
+  assert.equal(attempts.length, 2, 'the install is attempted twice, each attempt bounded in the shell');
+  for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `an attempt waits ${budget} minutes`);
+  assert.match(step[2], /dpkg --configure -a \|\| true/);
+  assert.match(step[2], /Acquire::Retries/);
+  assert.doesNotMatch(step[2], /continue-on-error/);
+  assert.doesNotMatch(job, /continue-on-error/);
+  const backstop = Number(step[1]);
+  const jobBudget = Number(workflow.match(/timeout-minutes: (\d+)\n    strategy/)[1]);
+  assert.ok(attempts[0] + attempts[1] <= backstop && backstop < jobBudget, 'both attempts fit the step backstop, which fits the job');
+  assert.equal(job.match(/playwright install --with-deps chromium webkit/g).length, 2);
+});
 test('a re-run shard replaces its earlier attempt, so the gate judges the newest result', () => {
   const failed = { ...evidence()[0], attempt: 1, code: 1 };
   const rerun = { ...evidence()[0], attempt: 2 };

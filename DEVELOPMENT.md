@@ -73,7 +73,15 @@ which file names alone never reach (Issue #1075). A fixed smoke set (`SMOKE` in
 app in a browser. `PR gate` succeeds only
 when every shard succeeded and `pr-aggregate` finds executed evidence for every
 planned file at the exact commit. A newer push to the same pull request cancels
-the running one.
+the running one. A browser job bounds each
+`playwright install --with-deps` attempt at five minutes with `timeout` and
+runs a second one after `dpkg --configure -a`, since a trickling apt mirror
+held that step for fifteen minutes three times on 2026-10-23 and took the gate
+down with it. The bound lives in the shell, not in `timeout-minutes`: a step
+the runner kills on its own timeout cancels the whole job, so `continue-on-error`
+never reaches the retry (measured on PR #430, 2026-10-23). The step also writes
+an apt drop-in with a twenty-second acquire timeout and three retries, so one
+stalled connection no longer costs minutes (Issue #1107).
 
 The `tests` workflow runs the full inventory on every main push. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can
