@@ -2617,6 +2617,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 #view-pane .vp-fields .table-field-list { max-height: none; overflow: visible; scroll-snap-type: none; padding-right: 0; }
 #view-pane .vp-tag, #view-pane .view-first { flex: none; margin-left: auto; padding: 1px 6px; font-size: var(--fs-meta); color: var(--tblr-primary); background: var(--tblr-primary-lt); border-radius: 4px; white-space: nowrap; }
 #view-pane .vp-view-pick .view-first { margin-left: 0; }
+:root:not([data-bs-theme="dark"]) #view-pane :is(.vp-tag, .view-first) { color: var(--tblr-primary-darken); }
 .vp-levels { display: flex; flex-direction: column; gap: 6px; }
 .vp-level { display: grid; gap: 6px; padding: 7px 8px; margin-left: calc(var(--depth, 0) * 10px); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 8px; }
 .vp-level-top { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: var(--fs-meta); letter-spacing: .05em; text-transform: uppercase; color: var(--tblr-secondary); }

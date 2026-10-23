@@ -6,7 +6,12 @@ export function paneOnLoad(page, section = 'display') {
   }, section);
 }
 
+export async function tableDrawn(page) {
+  await page.waitForFunction(() => document.querySelector('#main .table-view-btn') && document.querySelector('#main')?.wvDraw?.db?.id === state.route?.dbId);
+}
+
 export async function openPane(page, section = null) {
+  await tableDrawn(page);
   if (!await page.locator('#view-pane:not([hidden]) .vp-acc').count()) await page.click('#main .table-view-btn');
   await page.waitForSelector('#view-pane:not([hidden]) .vp-acc');
   if (section) {

@@ -392,7 +392,7 @@ if (s) {
       try {
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         const { fill, pop, color, check } = await page.$eval('.view-row.active', (r) => ({
-          fill: getComputedStyle(r).backgroundColor, pop: getComputedStyle(r.closest('.chip-pop')).backgroundColor,
+          fill: getComputedStyle(r).backgroundColor, pop: getComputedStyle(r.closest('.chip-pop, #view-pane')).backgroundColor,
           color: getComputedStyle(r.querySelector('.view-name')).color, check: r.querySelector('.view-check').textContent,
         }));
         assert.notEqual(fill, pop, `${theme}: the active row has its own fill`);
