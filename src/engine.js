@@ -6301,6 +6301,7 @@ export class Weave {
         e.docs[field.id] = md;
         e.updatedAt = nowISO();
         e.modifiedBy = this.actor;
+        this.#mark(e);
         if (!isCreate) this.#logActivity(e, 'doc-updated', docChange(field.name, before, md));
         this.#recordDocRevision(e, field, before, md, { prior });
         continue;
@@ -6322,6 +6323,7 @@ export class Weave {
       e.values[field.id] = val;
       e.updatedAt = nowISO();
       e.modifiedBy = this.actor;
+      this.#mark(e);
       if (!isCreate) this.#logActivity(e, 'field-updated', { field: field.name, from: old ?? null, to: val });
       this.#runAutomations(db, e, { type: 'field-updated', fieldId: field.id }, depth);
     }
