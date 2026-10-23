@@ -99,9 +99,7 @@ if (s) {
       await btn.focus();
       await page.keyboard.press('Enter');
       const row = page.locator('aside.wv-activity .wv-act-row').first();
-      await row.waitFor({ timeout: 8000 }).catch(async (err) => {
-        throw new Error(`${err.message}\n${JSON.stringify(await page.evaluate(() => ({ hash: location.hash, side: document.querySelector('#side')?.outerHTML.slice(0, 900), toast: document.querySelector('#wv-toasts')?.textContent, pressed: document.querySelector('#main .activity-btn')?.getAttribute('aria-pressed'), active: document.activeElement?.outerHTML.slice(0, 200) })))}`);
-      });
+      await row.waitFor();
       assert.deepEqual(fetched, ['/activity-panel.js']);
       assert.equal(await btn.getAttribute('aria-pressed'), 'true');
       await row.focus();
