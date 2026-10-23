@@ -227,14 +227,15 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
 
 test('every gating workflow bounds each browser install attempt and retries it once', async () => {
   const { readFileSync } = await import('node:fs');
-  for (const [file, from, to, jobBudget] of [['pr.yml', '  test:', '  gate:', 15], ['test.yml', '  test:', '  gate:', 30], ['dev-soak.yml', '  soak:', null, 30]]) {
+  for (const [file, from, to, jobBudget, lane] of [['pr.yml', '  test:', '  gate:', 15, true], ['test.yml', '  test:', '  gate:', 30, true], ['dev-soak.yml', '  soak:', null, 30, false]]) {
     const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
     const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
     assert.ok(job.length > 200, `${file} has a ${from.trim()} job`);
     assert.match(job, new RegExp(`timeout-minutes: ${jobBudget}\\n`), `${file} declares the job budget this test reasons about`);
-    const steps = [...job.matchAll(/- name: Install [^\n]*\n(?:        if: [^\n]*\n)?        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)(?=\n      - )/g)];
+    const steps = [...job.matchAll(/- name: Install [^\n]*\n(?:        if: ([^\n]*)\n)?        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)(?=\n      - )/g)];
     assert.equal(steps.length, 1, `${file} has one bounded install step`);
-    const [, backstop, body] = steps[0];
+    const [, guard, backstop, body] = steps[0];
+    if (lane) assert.equal(guard, "matrix.lane == 'browser'", `${file} installs browsers for the browser lane only`);
     const attempts = [...body.matchAll(/timeout (\d+)m npx --no-install playwright install --with-deps /g)].map((m) => Number(m[1]));
     assert.equal(attempts.length, 2, `${file} attempts the install twice`);
     for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `${file} waits ${budget} minutes on an attempt`);

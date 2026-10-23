@@ -1,0 +1,1 @@
+- The main `tests` workflow installs browsers for its browser shards only, the way the PR workflow already does, so a unit shard no longer waits on 119 MB of browser packages it never loads (Issue #1107).
