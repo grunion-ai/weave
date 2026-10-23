@@ -232,6 +232,11 @@ function dropToast(item) {
   item.node.remove();
 }
 
+function dropToastNode(node) {
+  const item = toastsUp.find((t) => t.node === node);
+  if (item) dropToast(item);
+}
+
 let toastTick = null;
 function toastClock() {
   if (toastTick) return;
@@ -2684,24 +2689,27 @@ function reopenAfterUndo(href, open, stayed) {
 function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
   return {
     label: 'Move to trash', danger: true,
-    run: async () => {
-      try {
+    run: () => {
+      let where = null, landed = null;
+      const settled = (async () => {
         await remove();
         await loadSchema();
-        const where = await after();
-        const landed = location.hash;
-        toast(TRASHED, false, {
-          label: 'Undo',
-          run: async () => {
-            try {
-              await restore();
-              await loadSchema();
-              const href = await undone(where, location.hash === landed);
-              toast('Restored', false, typeof href === 'string' ? { label: 'Open', run: () => { location.hash = href; } } : null);
-            } catch (err) { toast(err.message, true); }
-          },
-        });
-      } catch (err) { toast(err.message, true); }
+        where = await after();
+        landed = location.hash;
+      })();
+      const undo = toast(TRASHED, false, {
+        label: 'Undo',
+        run: async () => {
+          try {
+            await settled;
+            await restore();
+            await loadSchema();
+            const href = await undone(where, location.hash === landed);
+            toast('Restored', false, typeof href === 'string' ? { label: 'Open', run: () => { location.hash = href; } } : null);
+          } catch (err) { toast(err.message, true); }
+        },
+      });
+      return settled.catch((err) => { dropToastNode(undo); toast(err.message, true); });
     },
   };
 }
@@ -6001,33 +6009,62 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const MORE_ICON = { move: 'send', rollup: 'sigma', copy: 'link' };
   const puck = el('div', { class: 'sel-puck-wrap' });
 
-  const runOnSelection = async (verb, each, undoable = null) => {
+  const runOnSelection = async (verb, each) => {
     const ids = [...chosen()];
     const failed = [];
     for (const id of ids) {
       try { await each(id); } catch { failed.push(id); }
     }
     const done = ids.filter((id) => !failed.includes(id));
-    const action = undoable && done.length ? undoable(done) : null;
-    if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true, action);
-    else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`, false, action);
+    if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true);
+    else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`);
     clearChosen();
     await onSaved?.();
     return done;
   };
 
-  const trashChosen = async () => {
-    const ids = chosen(), drawn = drawnIds();
-    const last = Math.max(...[...ids].map((id) => drawn.indexOf(id)));
-    const keep = (id) => !ids.has(id);
+  const dropRows = (ids) => {
+    const gone = new Set(ids);
+    const strip = (arr) => {
+      let k = 0;
+      for (let i = arr.length - 1; i >= 0; i--) if (arr[i] && gone.has(arr[i].id)) { arr.splice(i, 1); k++; }
+      return k;
+    };
+    strip(items);
+    if (pager) {
+      const k = strip(pager.rows);
+      pager.total -= k;
+      pager.reach = Math.max(0, pager.reach - k);
+    } else strip(sortedItems);
+    for (const tr of live.values()) tr.remove();
+    live.clear();
+    for (const id of ids) built.delete(id);
+    rewindow();
+  };
+
+  const trashChosen = () => {
+    const ids = [...chosen()], drawn = drawnIds();
+    const last = Math.max(...ids.map((id) => drawn.indexOf(id)));
+    const keep = (id) => !ids.includes(id);
     const next = drawn.slice(last + 1).find(keep) ?? drawn.slice(0, last).reverse().find(keep) ?? null;
-    const gesture = { kind: 'delete', ids: [] };
-    await runOnSelection(TRASHED, (id) => api('DELETE', `/entities/${id}`), (done) => {
-      gesture.ids = done;
-      lastGesture = gesture;
-      return { label: 'Undo', run: () => undoGesture(gesture) };
-    });
+    const gesture = { kind: 'delete', ids };
+    lastGesture = gesture;
+    clearChosen();
+    if (dock && ids.includes(weaveEntitySurface.selectionId(dock.state))) { dockClose(); dockSyncUrl(); }
+    dropRows(ids);
+    const undo = toast(`${TRASHED} ${SEL().countLabel(ids.length, db.term)}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
     focusGridRow(next, main);
+    gesture.settled = (async () => {
+      const results = await Promise.allSettled(ids.map((id) => api('DELETE', `/entities/${id}`)));
+      gesture.ids = ids.filter((id, i) => results[i].status === 'fulfilled');
+      const failed = ids.length - gesture.ids.length;
+      if (failed) {
+        if (!gesture.ids.length) dropToastNode(undo);
+        toast(`${TRASHED}: ${failed} of ${ids.length} failed`, true);
+      }
+      await onSaved?.();
+    })();
+    return gesture.settled;
   };
 
   const runBulk = async (verb, op, params) => {
@@ -10791,6 +10828,8 @@ document.addEventListener('keydown', (e) => {
 let lastGesture = null;
 
 async function gestureTop(g) {
+  await g.settled;
+  if (!g.ids.length) return [];
   const top = await api('GET', `/undo?limit=${g.ids.length}`);
   const ours = [];
   for (const u of top) {
@@ -10804,6 +10843,7 @@ async function undoGesture(g) {
   if (lastGesture === g) lastGesture = null;
   try {
     const ours = await gestureTop(g);
+    if (!g.ids.length) return;
     if (ours.length) await api('POST', '/undo', { steps: ours.length });
     for (const id of g.ids) if (!ours.includes(id)) await api('POST', `/entities/${id}/restore`);
     await refreshView();
