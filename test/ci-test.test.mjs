@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, SMOKE, ONBOARDING, newestAttempts } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, SMOKE, ONBOARDING, newestAttempts, BUDGET, hunks, touchedLines, toMap } from '../scripts/ci-test.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
 const manifest = plan(files, { unit: files.slice(0, 2), browser: files.slice(2) }, () => 10, 2, 2);
@@ -85,22 +85,22 @@ const sources = { 'test/oidc-login-browser.test.mjs': "import { startIdp } from 
 const read = file => sources[file] ?? '';
 
 test('a changed browser test runs itself beside the smoke set', () => {
-  assert.deepEqual(touchedBrowser(['test/grid-keymap-browser.test.mjs'], browserFiles, read), [...SMOKE, 'test/grid-keymap-browser.test.mjs'].sort());
+  assert.deepEqual(touchedBrowser(['test/grid-keymap-browser.test.mjs'], browserFiles, read).files, [...SMOKE, 'test/grid-keymap-browser.test.mjs'].sort());
 });
 
 test('a changed module maps to browser tests named for it, its -core twin included', () => {
-  assert.deepEqual(touchedBrowser(['public/grid-keymap.js'], browserFiles, read), [...SMOKE, 'test/grid-keymap-browser.test.mjs'].sort());
-  assert.deepEqual(touchedBrowser(['public/chip-core.js'], browserFiles, read), [...SMOKE, 'test/chip-browser.test.mjs', 'test/chip-width-browser.test.mjs'].sort());
+  assert.deepEqual(touchedBrowser(['public/grid-keymap.js'], browserFiles, read).files, [...SMOKE, 'test/grid-keymap-browser.test.mjs'].sort());
+  assert.deepEqual(touchedBrowser(['public/chip-core.js'], browserFiles, read).files, [...SMOKE, 'test/chip-browser.test.mjs', 'test/chip-width-browser.test.mjs'].sort());
 });
 
 test('a changed file maps to browser tests whose source cites it', () => {
-  assert.deepEqual(touchedBrowser(['src/oidc.js'], browserFiles, read), [...SMOKE, 'test/oidc-login-browser.test.mjs'].sort());
-  assert.deepEqual(touchedBrowser(['test/lib/idp.mjs'], browserFiles, read), [...SMOKE, 'test/oidc-login-browser.test.mjs'].sort());
+  assert.deepEqual(touchedBrowser(['src/oidc.js'], browserFiles, read).files, [...SMOKE, 'test/oidc-login-browser.test.mjs'].sort());
+  assert.deepEqual(touchedBrowser(['test/lib/idp.mjs'], browserFiles, read).files, [...SMOKE, 'test/oidc-login-browser.test.mjs'].sort());
 });
 
 test('a diff nothing maps to falls back to the fixed smoke set, never an empty browser lane', () => {
-  assert.deepEqual(touchedBrowser(['DEVELOPMENT.md', 'test/formula.test.mjs'], browserFiles, read), [...SMOKE].sort());
-  assert.deepEqual(touchedBrowser([], browserFiles, read), [...SMOKE].sort());
+  assert.deepEqual(touchedBrowser(['DEVELOPMENT.md', 'test/formula.test.mjs'], browserFiles, read).files, [...SMOKE].sort());
+  assert.deepEqual(touchedBrowser([], browserFiles, read).files, [...SMOKE].sort());
   assert.ok(SMOKE.length > 0 && SMOKE.length <= 12);
   assert.ok(SMOKE.every(f => f.endsWith('-browser.test.mjs')));
 });
@@ -176,10 +176,105 @@ test('the main tests gate judges each shard by its newest attempt, so Re-run fai
 });
 
 test('onboarding journeys are mandatory even for unrelated changes and cannot silently disappear', () => {
-  const selected = touchedBrowser(['README.md'], browserFiles, read);
+  const selected = touchedBrowser(['README.md'], browserFiles, read).files;
   for (const file of ONBOARDING) {
     assert.ok(selected.includes(file));
     assert.throws(() => touchedBrowser([], browserFiles.filter(f => f !== file), read), /Missing required journey suite/);
   }
   assert.equal(ONBOARDING.length, 4);
+});
+
+const covTests = Array.from({ length: 315 }, (_, i) => `test/t${String(i).padStart(3, '0')}-browser.test.mjs`);
+const covLane = [...covTests, ...SMOKE];
+const covBrowser = [...covLane, 'test/new-thing-browser.test.mjs'];
+const covMap = {
+  commit: 'a'.repeat(40),
+  tests: [...covTests, ...SMOKE].sort(),
+  sets: [],
+  files: {},
+};
+const setOf = names => { covMap.sets.push(names.map(n => covMap.tests.indexOf(n)).sort((a, b) => a - b)); return covMap.sets.length - 1; };
+covMap.files['public/app.js'] = [[1, 12000, setOf(covMap.tests)], [100, 140, setOf([covTests[1], covTests[2]])], [120, 130, setOf([covTests[3]])]];
+covMap.files['src/routes.js'] = [[1, 900, setOf([covTests[10], covTests[11]])]];
+const beyondSmoke = files => files.filter(f => !SMOKE.includes(f));
+
+test('a change to a mapped server module selects the browser tests that executed it', () => {
+  const { files } = touchedBrowser(['src/routes.js'], covLane, read, { map: covMap, lines: { 'src/routes.js': [50] } });
+  assert.deepEqual(beyondSmoke(files), [covTests[10], covTests[11]]);
+});
+
+test('a hunk inside one app.js function selects the tests mapped to that function, innermost first, never all of them', () => {
+  const outer = touchedBrowser(['public/app.js'], covLane, read, { map: covMap, lines: { 'public/app.js': [105] } }).files;
+  assert.deepEqual(beyondSmoke(outer), [covTests[1], covTests[2]]);
+  const inner = touchedBrowser(['public/app.js'], covLane, read, { map: covMap, lines: { 'public/app.js': [125] } }).files;
+  assert.deepEqual(beyondSmoke(inner), [covTests[3]]);
+  assert.ok(outer.length < covLane.length && inner.length < covLane.length);
+});
+
+test('a file the map does not know falls back to name matching', () => {
+  const { files } = touchedBrowser(['public/new-thing.js'], covBrowser, read, { map: covMap, lines: {} });
+  assert.deepEqual(beyondSmoke(files), ['test/new-thing-browser.test.mjs']);
+});
+
+test('a browser test the map does not know always runs, and a mapped test the lane no longer has never does', () => {
+  const stale = { ...covMap, tests: [...covMap.tests, 'test/zz-removed-browser.test.mjs'] };
+  const { files } = touchedBrowser(['README.md'], [...covBrowser, 'test/brand-new-browser.test.mjs'], read, { map: stale, lines: {} });
+  assert.ok(files.includes('test/brand-new-browser.test.mjs'));
+  assert.ok(files.includes('test/new-thing-browser.test.mjs'));
+  assert.ok(!files.includes('test/zz-removed-browser.test.mjs'));
+});
+
+test('a change wider than the budget keeps the highest-ranked tests, names the rest as dropped and never runs zero', () => {
+  const lines = { 'public/app.js': [5, 105, 125], 'src/routes.js': [50] };
+  const first = touchedBrowser(['public/app.js', 'src/routes.js'], covBrowser, read, { map: covMap, lines });
+  assert.equal(first.files.length, BUDGET);
+  assert.equal(first.files.length + first.dropped.length, covBrowser.length);
+  for (const top of [covTests[1], covTests[2], covTests[3], covTests[10], covTests[11]]) assert.ok(first.files.includes(top), top);
+  assert.deepEqual(touchedBrowser(['src/routes.js', 'public/app.js'], [...covBrowser].reverse(), read, { map: covMap, lines }), first);
+  const tiny = { commit: covMap.commit, tests: [covTests[3], ...SMOKE].sort(), sets: [], files: {} };
+  tiny.sets.push([tiny.tests.indexOf(covTests[3])]);
+  tiny.files['public/app.js'] = [[1, 10, 0]];
+  const crowded = touchedBrowser(['public/app.js'], covBrowser, read, { map: tiny, lines: { 'public/app.js': [5] } });
+  assert.ok(crowded.files.includes(covTests[3]));
+  assert.ok(beyondSmoke(touchedBrowser(['public/app.js'], covBrowser, read, { map: covMap, lines: {} }).files).length > 0);
+});
+
+test('diff hunks become old-side lines, translated back to the commit the map was generated at', () => {
+  const diff = [
+    'diff --git a/public/app.js b/public/app.js', 'index 1..2 100644', '--- a/public/app.js', '+++ b/public/app.js',
+    '@@ -10,3 +10,6 @@ function x() {', '--- not a header', '+a', '@@ -40,0 +44,2 @@', '+b',
+    'diff --git a/src/gone.js b/src/gone.js', 'deleted file mode 100644', '--- a/src/gone.js', '+++ /dev/null', '@@ -1 +0,0 @@', '-x',
+  ].join('\n');
+  const h = hunks(diff);
+  assert.deepEqual(h, { 'public/app.js': [[10, 3, 10, 6], [40, 0, 44, 2]], 'src/gone.js': [[1, 1, 0, 0]] });
+  assert.deepEqual(touchedLines(h['public/app.js']), [10, 11, 12, 40, 41]);
+  assert.equal(toMap(5, h['public/app.js']), 5);
+  assert.equal(toMap(12, h['public/app.js']), 10);
+  assert.equal(toMap(20, h['public/app.js']), 17);
+  assert.equal(toMap(44, h['public/app.js']), 41);
+  assert.equal(toMap(50, h['public/app.js']), 45);
+  assert.equal(toMap(10, [[10, 3, 9, 0]]), 13);
+  assert.equal(toMap(9, [[10, 3, 9, 0]]), 9);
+});
+
+test('the committed coverage map routes a src/routes.js change and an app.js function hunk to real browser tests', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { testFiles, lanes } = await import('../scripts/test.mjs');
+  const map = JSON.parse(readFileSync('test/coverage-map.json', 'utf8'));
+  const { browser } = lanes(testFiles());
+  assert.match(map.commit, /^[0-9a-f]{40}$/);
+  assert.ok(map.tests.length > 200 && map.tests.every((t, i) => !i || map.tests[i - 1] < t));
+  const routes = touchedBrowser(['src/routes.js'], browser, read, { map, lines: { 'src/routes.js': [map.files['src/routes.js'].at(-1)[0]] } });
+  assert.ok(beyondSmoke(routes.files).length > 0);
+  const app = map.files['public/app.js'];
+  assert.ok(app.length > 100);
+  const narrow = app.find(([s, e, set]) => e > s && map.sets[set].length < 40 && map.sets[set].length > 0);
+  const picked = touchedBrowser(['public/app.js'], browser, read, { map, lines: { 'public/app.js': [narrow[0]] } });
+  assert.ok(beyondSmoke(picked.files).length > 0);
+  assert.ok(picked.files.length < browser.length / 2);
+});
+
+test('pr.yml checks out full history so the planner can diff against the commit the map was generated at', async () => {
+  const { readFileSync } = await import('node:fs');
+  assert.match(readFileSync('.github/workflows/pr.yml', 'utf8'), /fetch-depth: 0/);
 });
