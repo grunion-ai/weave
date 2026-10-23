@@ -63,3 +63,11 @@ test('dateadd on an empty date is null, not the epoch (Issue #237)', () => {
   assert.equal(evaluate('dateadd("", 1, "days")', () => null), null);
   assert.equal(evaluate('dateadd("2026-10-01", 1, "days")', () => null), '2026-10-02');
 });
+
+test('the literals true, false and null evaluate to themselves (Issue #1084)', () => {
+  assert.equal(evaluate('IF(true, 1, 2)', get), 1);
+  assert.equal(evaluate('IF(false, 1, 2)', get), 2);
+  assert.equal(evaluate('true', get), true);
+  assert.equal(evaluate('false', get), false);
+  assert.equal(evaluate('null', get), null);
+});

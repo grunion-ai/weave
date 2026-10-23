@@ -2458,6 +2458,7 @@ export class Weave {
 
   applySchema(doc, { dryRun = false, allowDestructive = false, partial = false } = {}) {
     if (!Array.isArray(doc)) throw new WeaveError('A schema document is the array describeSchema() returns', 'invalid');
+    if (!dryRun) this.applySchema(doc, { dryRun: true, allowDestructive, partial });
     const plan = [];
     const act = (action, subject, fn) => {
       plan.push({ action, subject });

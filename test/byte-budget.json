@@ -72,6 +72,10 @@
       "gzip": 4465,
       "br": 4072
     },
+    "/date-picker.js": {
+      "gzip": 3662,
+      "br": 3291
+    },
     "/editor-lib.js": {
       "gzip": 4499,
       "br": 4070

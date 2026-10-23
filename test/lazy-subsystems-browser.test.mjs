@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { eventually, launch } from './lib/browser.mjs';
 import { LAZY } from './lib/source.mjs';
 
 let deals, big;
@@ -8,12 +8,14 @@ const s = await launch('lazy subsystems', (weave) => {
   weave.createSpace({ name: 'Sales' });
   deals = weave.createTable({ space: 'Sales', name: 'Deal' });
   weave.addField(deals, { name: 'Amount', type: 'number' });
-  big = weave.createEntity(deals, { name: 'Big', values: { Amount: 3 } });
+  weave.addField(deals, { name: 'Due', type: 'date', config: { format: 'iso' } });
+  weave.addField(deals, { name: 'Window', type: 'daterange', config: { format: 'iso' } });
+  big = weave.createEntity(deals, { name: 'Big', values: { Amount: 3, Due: '2026-09-15', Window: { start: '2026-09-01', end: '2026-09-05' } } });
   weave.updateEntity(big.id, { Amount: 4 });
 });
 
 if (s) {
-  const { base, browser } = s;
+  const { base, browser, weave } = s;
   const lazyPaths = LAZY.map((file) => file.replace(/^public/, ''));
   const watch = (page) => {
     const fetched = [];
@@ -142,6 +144,54 @@ if (s) {
       await page.click('#search-btn');
       await page.waitForSelector('#cmdk-input');
       assert.deepEqual(fetched, ['/command-palette.js'], 'the second open reuses the loaded file');
+    } finally { await page.close(); }
+  });
+
+  test('a date cell paints without the date picker, then takes a typed date and the calendar', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      const fetched = watch(page);
+      await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+      const due = page.locator(`tr[data-eid="${big.id}"] td[data-field="Due"]`);
+      const text = due.locator('input.date-text');
+      assert.equal(await text.inputValue(), '2026-09-15', 'the cell paints its date before the picker loads');
+      assert.deepEqual(fetched, []);
+      await text.focus();
+      await text.fill('2026-10-02');
+      await text.press('Enter');
+      assert.equal(await eventually(() => weave.readEntity(big.id).raw.Due, '2026-10-02'), '2026-10-02');
+      assert.equal(await text.inputValue(), '2026-10-02');
+      assert.deepEqual(fetched, ['/date-picker.js']);
+      await due.locator('.date-pick-btn').click();
+      const pop = page.locator('.date-pop');
+      const smart = pop.locator('.date-smart:focus');
+      await smart.fill('2026-10-09');
+      await smart.press('Enter');
+      await pop.waitFor({ state: 'detached' });
+      assert.equal(await eventually(() => weave.readEntity(big.id).raw.Due, '2026-10-09'), '2026-10-09');
+      const range = page.locator(`tr[data-eid="${big.id}"] td[data-field="Window"]`);
+      await range.locator('.date-pick-btn').click();
+      await page.locator('.date-pop.range .date-day.in', { hasText: /^20$/ }).click();
+      await page.locator('.date-pop.range .date-day.in', { hasText: /^22$/ }).click();
+      const span = { start: '2026-09-20', end: '2026-09-22' };
+      assert.deepEqual(await eventually(() => weave.readEntity(big.id).raw.Window, span), span);
+      assert.deepEqual(fetched, ['/date-picker.js'], 'every later use reuses the loaded file');
+    } finally { await page.close(); }
+  });
+
+  test('a cold date cell commits a typed date on Enter before the picker has loaded', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      const fetched = watch(page);
+      await page.route('**/date-picker.js', async (route) => { await new Promise((r) => setTimeout(r, 400)); await route.continue(); });
+      await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+      const text = page.locator(`tr[data-eid="${big.id}"] td[data-field="Due"] input.date-text`);
+      await text.focus();
+      await text.fill('2026-11-03');
+      await text.press('Enter');
+      assert.equal(await eventually(() => weave.readEntity(big.id).raw.Due, '2026-11-03'), '2026-11-03');
+      assert.equal(await text.inputValue(), '2026-11-03');
+      assert.deepEqual(fetched, ['/date-picker.js']);
     } finally { await page.close(); }
   });
 }

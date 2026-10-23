@@ -87,6 +87,6 @@ test('a journey let off the busy check names a journey and the Issue that will f
 
 const budgetAt = (rev) => { try { return JSON.parse(execFileSync('git', ['show', `${rev}:${BUDGET_FILE}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return null; } };
 
-test('this change raises no feedback budget without a reason (Issue #1003)', () => {
+test('this change raises no feedback budget without a reason (Issue #1042)', () => {
   assert.deepEqual(unexplainedRaises(budgetAt('HEAD^1'), budget, MS), []);
 });

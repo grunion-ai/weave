@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Weave } from '../src/engine.js';
+import { mint, revoke } from '../src/shares.js';
 
 await import('../public/actor-core.js');
 const A = globalThis.weaveActor;
@@ -90,4 +92,34 @@ test('writes with no automation-ran after them are still a run, unnamed', () => 
     entry(2, 'field-updated', 'workflow:wf1', { field: 'Resolved' }),
   ], { now: NOW });
   assert.deepEqual(run.runs, [{ name: null, workflowId: 'wf1', fields: ['Resolved'] }]);
+});
+
+test('an editor revokes the link it made, found by account name; another editor is refused (Issue #1084)', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Task' });
+  const ann = w.createAccount({ name: 'ann', role: 'editor' }).account;
+  w.createAccount({ name: 'bob', role: 'editor' });
+  w.actor = `account:${ann.id}`;
+  const g = mint(w, { scope: { kind: 'workspace', id: w.state.meta.id } });
+  w.state.meta.shares[g.id].createdBy = 'ann';
+  assert.equal(revoke(w, g.id, { any: false }).changed, true, 'ann revokes the link recorded under her name');
+  w.state.meta.shares[g.id].revokedAt = null;
+  w.actor = `account:${w.listAccounts().find((a) => a.name === 'bob').id}`;
+  assert.throws(() => revoke(w, g.id, { any: false }), (e) => e.code === 'forbidden');
+  assert.equal(w.state.meta.shares[g.id].revokedAt, null, 'the refused revoke changed nothing');
+});
+
+test('two actors that both resolve to the removed account are never the same actor (Issue #1084)', () => {
+  const w = new Weave();
+  const gone = ['x', 'y'].map((name) => {
+    const { account } = w.createAccount({ name, role: 'editor' });
+    w.deleteAccount(name);
+    return `account:${account.id}`;
+  });
+  assert.equal(w.actorName(gone[0]), 'removed account');
+  assert.equal(w.actorName(gone[1]), 'removed account');
+  w.actor = gone[0];
+  assert.equal(w.isActor(gone[1]), false);
+  assert.equal(w.isActor(gone[0]), true, 'the identical stored actor still matches');
 });
