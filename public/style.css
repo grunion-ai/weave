@@ -117,6 +117,7 @@ button.nav-space:focus-visible { outline: 2px solid var(--tblr-primary); outline
 .nav-db { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: var(--tblr-border-radius); cursor: pointer; color: var(--tblr-body-color); text-decoration: none; }
 .nav-db:hover { background: var(--wv-pill-hover); color: var(--tblr-body-color); }
 .nav-db.active { background: var(--wv-pill-active); color: var(--tblr-body-color); font-weight: 600; }
+.nav-db-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-db .nav-db-menu { margin-left: auto; margin-right: 0; opacity: 0; }
 .nav-db.active .nav-db-menu, .nav-db .nav-db-menu:focus-within, .nav-db .nav-db-menu:has(.dots-btn[aria-expanded="true"]) { opacity: 1; }
 @media (hover: hover) { .nav-db:hover .nav-db-menu { opacity: 1; } }
