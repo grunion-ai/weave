@@ -1,0 +1,1 @@
+- A field or document write inside one create or update marks its row dirty, so a value applied after a nested save in the same call reaches disk. An automation created enabled now reads as enabled after the workspace is reopened, and still fires (Issue #1085).
