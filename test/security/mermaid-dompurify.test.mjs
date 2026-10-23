@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, readLock } from '../../scripts/vendor-lock.mjs';
 
-const FIRST_PATCHED = '3.4.13';
+const FIRST_PATCHED = '3.4.17';
 const bundle = readFileSync(join(ROOT, 'public/vendor/mermaid.min.js'), 'utf8');
 const parts = (v) => v.split('.').map(Number);
 const atLeast = (v, floor) => {
@@ -13,12 +13,12 @@ const atLeast = (v, floor) => {
   return true;
 };
 
-test('the DOMPurify bundled in mermaid.min.js is past GHSA-55q2-fjhq-7xh7 and is the version the lock records', () => {
+test('the DOMPurify bundled in mermaid.min.js is past GHSA-55q2-fjhq-7xh7, GHSA-c6gr-qvv4-5v3f, GHSA-cg2g-xh64-v4q7 and GHSA-mrv2-3pqr-j5jr and is the version the lock records', () => {
   const banner = bundle.match(/DOMPurify (\d+\.\d+\.\d+)/)?.[1];
   const property = bundle.match(/\.version="(\d+\.\d+\.\d+)"/)?.[1];
   assert.ok(banner, 'mermaid.min.js carries the DOMPurify license banner');
   assert.equal(property, banner, 'the banner and the DOMPurify.version property agree');
-  assert.ok(atLeast(banner, FIRST_PATCHED), `DOMPurify ${banner} is inside the GHSA-55q2-fjhq-7xh7 range; ${FIRST_PATCHED} is the first patched release`);
+  assert.ok(atLeast(banner, FIRST_PATCHED), `DOMPurify ${banner} is inside an advisory range; ${FIRST_PATCHED} is the first release past all four`);
   const by = Object.fromEntries(readLock().libraries.map((l) => [l.name, l]));
   assert.equal(by.dompurify.version, banner, 'security/vendor.lock.json records the bundled DOMPurify version');
   assert.ok(bundle.includes(`version:"${by.mermaid.version}"`), `mermaid.min.js is the ${by.mermaid.version} build the lock records`);
