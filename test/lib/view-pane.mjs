@@ -7,7 +7,8 @@ export function paneOnLoad(page, section = 'display') {
 }
 
 export async function tableDrawn(page) {
-  await page.waitForFunction(() => document.querySelector('#main .table-view-btn') && document.querySelector('#main')?.wvDraw?.db?.id === state.route?.dbId);
+  await page.waitForFunction(() => document.querySelector('#main .table-view-btn') && document.querySelector('#main')?.wvDraw?.db?.id === state.route?.dbId
+    && (localStorage.getItem('weave-view-pane') !== 'open' || viewPane.db?.id === state.route?.dbId));
 }
 
 export async function openPane(page, section = null) {

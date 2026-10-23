@@ -17,7 +17,7 @@ const SAMPLE = [];
   }
 }
 const EVERYTHING = {
-  filters: { Severity: ['Medium', 'High'] }, deleted: true, layout: 'table', rollups: true, subtotals: 'all', hidden: ['Severity'],
+  filters: { Severity: ['Low', 'High'] }, deleted: true, layout: 'table', rollups: true, subtotals: 'all', hidden: ['Severity'],
   sort: [{ field: 'Name', dir: 'asc' }, { field: 'Modified At', dir: 'desc' }, { field: 'Created At', dir: 'desc' }],
   group: [{ field: 'Area' }, { field: 'Severity' }, { field: 'Status', dir: 'desc' }, { field: 'Symptom' }, { field: 'Fixed in' }],
 };
@@ -155,7 +155,7 @@ if (s) {
         const view = write(c);
         const q = api(view);
         await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForSelector('#main :is(.wv-grid, .wv-list)');
+        await page.waitForSelector('#main :is(.wv-grid, .wv-list)', { state: 'attached' });
         const ctx = JSON.stringify({ f: c.filters, d: c.deleted, g: c.group.map((x) => x.field), la: c.layout, ro: c.rollups, su: c.subtotals });
         if (c.layout === 'list') {
           const got = await page.$$eval('#main .wv-list', ([l]) => ({
