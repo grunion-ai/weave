@@ -14,7 +14,7 @@
     "open-table|phone|inp": 64
   },
   "raised": {
-    "open-table|desktop|lcp": "Issue #1003: main run 39378994075 read 480, 512, 764, 916 and 716 ms against 750",
-    "open-table|phone|lcp": "Issue #1003: main run 39378994075 read single loads up to 1204 ms"
+    "open-table|desktop|lcp": "Issue #1042: main run 39378994075 read 480, 512, 764, 916 and 716 ms against 750",
+    "open-table|phone|lcp": "Issue #1042: main run 39378994075 read single loads up to 1204 ms"
   }
 }

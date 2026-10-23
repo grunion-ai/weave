@@ -23,7 +23,7 @@ if (s) {
       const key = clickKey(j.name, cell);
       const run = (delay) => walk(matrix[cell].browser, j, s, { ...matrix[cell].options, probe: feedbackProbe({ delay }) });
 
-      test(`${key}: the action paints its answer before a slow server does, within its feedback budget (Issue #1003)`, async (t) => {
+      test(`${key}: the action paints its answer before a slow server does, within its feedback budget (Issue #1042)`, async (t) => {
         const times = [];
         let acts = [];
         for (let i = 0; i < RUNS; i++) {
@@ -36,7 +36,7 @@ if (s) {
         assert.equal(judgeMs(key, ms, budget), null, judgeMs(key, ms, budget) ?? '');
       });
 
-      test(`${key}: an action that settles inside the skeleton delay shows no spinner and no aria-busy (Issue #1003)`, async (t) => {
+      test(`${key}: an action that settles inside the skeleton delay shows no spinner and no aria-busy (Issue #1042)`, async (t) => {
         const { events } = await run(0);
         const faults = busyFaults(events.spans, skeletonMs);
         if (allowed[key]) return t.diagnostic(`busy ${key} held open by ${allowed[key]}: ${faults.join('; ') || 'none this run'}`);
