@@ -47,7 +47,7 @@ if (s) {
     test(`the docked table's crumb holds one line clear of the toolbar ${label}`, async () => {
       const page = await openDocked(opts);
       const m = await measure(page);
-      assert.ok(m.main.w < 700, `the dock squeezes the table panel: ${m.main.w}px`);
+      assert.ok(m.main.w < 720, `the dock squeezes the table panel: ${m.main.w}px`);
       assert.ok(m.path.h <= m.lineHeight * 1.5, `crumb is one line: ${m.path.h}px tall at line-height ${m.lineHeight}px`);
       assert.ok(m.path.w > 40, `crumb keeps visible room: ${m.path.w}px`);
       for (const c of m.controls) {
