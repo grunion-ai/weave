@@ -1,8 +1,6 @@
 {
   "_": "axe violations the a11y gate tolerates today (Issue #1081), keyed 'route | open state | theme | rule | target' with the Issue row that tracks each. It only shrinks: a new violation fails test/a11y-browser.test.mjs, and so does an entry that no longer reproduces, so a fix removes its entries in the same change.",
   "violations": {
-    "Task list | at rest | light | color-contrast | span[data-field=\"Issues\"] > .mention-f-label": 1096,
-    "Task list | at rest | light | color-contrast | span[data-field=\"Notes\"] > .mention-f-label": 1096,
     "Task table | field dialog | light | color-contrast | .cat-done": 1100,
     "Task table | filter popover | light | color-contrast | .cat-done > .filter-chip-label": 1100,
     "Task table | row menu | dark | color-contrast | .wv-menu-danger > .wv-menu-label": 1099,
