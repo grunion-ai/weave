@@ -2307,7 +2307,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .list-title:hover { color: var(--tblr-primary); text-decoration: underline; }
 .list-segs { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--tblr-secondary); font-size: var(--fs-secondary); }
 .list-segs .mention-f { display: inline-flex; align-items: center; gap: 4px; }
-.list-segs .mention-f-label { opacity: .75; }
+.list-segs .mention-f-label { opacity: 1; }
 .list-add { display: flex; align-items: center; gap: 6px; padding: 4px 12px 6px 30px; color: var(--tblr-secondary); }
 .list-add > .wv-icon svg { width: 14px; height: 14px; }
 .list-add .form-control { border-color: transparent; background: transparent; box-shadow: none; }
