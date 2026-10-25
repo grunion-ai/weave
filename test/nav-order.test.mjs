@@ -271,7 +271,7 @@ test('CLI reads and writes the same order (Feature #284)', () => tempDir((dir) =
   assert.deepEqual(cli('space', 'list').filter((s) => !s.system).map((s) => s.name), ['Bravo', 'Alpha']);
   cli('table', 'update', 'Alpha/Three', '--position', '0');
   cli('table', 'move', 'Alpha/Two', 'Bravo', '--position', '0');
-  assert.deepEqual(cli('table', 'list').filter((n) => !n.startsWith('Workspace/')), ['Bravo/Two', 'Alpha/Three', 'Alpha/One']);
+  assert.deepEqual(cli('table', 'list').filter((n) => !n.startsWith('System/')), ['Bravo/Two', 'Alpha/Three', 'Alpha/One']);
   const order = cli('workspace', 'order');
   assert.equal(order.length, 1, 'a lone workspace file is its own registry');
   assert.equal(order[0].position, 0);

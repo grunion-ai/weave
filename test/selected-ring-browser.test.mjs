@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let jobs;
 const s = await launch('one selected ring', (weave) => {
@@ -33,12 +34,12 @@ if (s) {
         const token = await table.evaluate(() =>
           getComputedStyle(document.documentElement).getPropertyValue('--wv-chip-selected-ring').trim());
         assert.notEqual(token, '', 'the shared ring token from Issue #769 is there to read');
-        await table.click('.table-filter-btn');
-        await table.waitForSelector('.table-filter-popover .filter-chip');
-        await table.evaluate(() => [...document.querySelectorAll('.table-filter-popover .filter-chip')]
+        await openPane(table, 'filters');
+        await table.waitForSelector('#view-pane .filter-chip');
+        await table.evaluate(() => [...document.querySelectorAll('#view-pane .filter-chip')]
           .find((k) => k.textContent.trim() === 'Done').click());
-        await table.waitForSelector('.table-filter-popover .filter-chip.on');
-        const filter = await ringOf(table, '.table-filter-popover .filter-chip.on');
+        await table.waitForSelector('#view-pane .filter-chip.on');
+        const filter = await ringOf(table, '#view-pane .filter-chip.on');
 
         const id = weave.createEntity(jobs, { name: 'Ring case' }).id;
         await entity.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });

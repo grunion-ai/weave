@@ -297,7 +297,7 @@ const viewRows = (w) => {
   return w.listEntities(t.id).map((e) => w.readEntity(e.id));
 };
 
-test('every view is a Workspace/Views row, related to its table', () => {
+test('every view is a System/Views row, related to its table', () => {
   const w = fresh();
   w.tableView('Task/Open work', { fields: ['Name', 'State'], filters: { State: ['Open'] }, sort: [{ field: 'Due', dir: 'desc' }] });
   const rows = viewRows(w).filter((r) => r.fields.Table?.[0]?.name === 'Task' || r.fields.Table?.name === 'Task');
@@ -360,7 +360,7 @@ test('the view tool stays small: one tool, a lean schema', () => {
   const tool = TOOLS.find((t) => t.name === 'weave_table_view');
   assert.ok(tool, 'weave_table_view is a tool');
   const bytes = JSON.stringify(tool).length;
-  assert.ok(bytes <= 1400, `every agent turn pays for this schema; keep it under 1400 bytes (is ${bytes})`);
+  assert.ok(bytes <= 1680, `every agent turn pays for this schema, its annotations and the board keys (Feature #352); keep it under 1680 bytes (is ${bytes})`);
   assert.equal(TOOLS.filter((t) => /view/.test(t.name)).length, 2, 'weave_views (share pages) and weave_table_view — no CRUD fan-out');
 });
 

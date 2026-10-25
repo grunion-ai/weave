@@ -35,7 +35,7 @@ test('the first rail chip is centred on the sidebar wordmark', () => {
 });
 
 test('an unavailable trash count cannot stop a table from rendering', () => {
-  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)\.catch\(\(\) => \(\{ total: 0, items: \[\] \}\)\)/);
+  assert.match(fnBody('readAndDrawTable'), /result\.trashCount \?\? 0/);
 });
 
 test('.hidden beats id-selector display rules', () => {
@@ -144,8 +144,8 @@ test('full-width grid rows derive their span from one column count', () => {
   assert.match(APP, /const colCount = cols\.length \+ 3;/, 'the table view derives it once');
   assert.match(APP, /const colCount = cols\.length \+ 2;/, 'so does the embedded related grid, from its own columns');
   assert.doesNotMatch(APP, /colspan: String\(cols\.length/, 'never restated at a use site');
-  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 4,
-    'the table view\'s spacer rows (one builder), its pending row and its new-entity row, plus the related grid\'s add row');
+  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 5,
+    'the table view\'s spacer rows (one builder), its pending row, its load-more row and its new-entity row, plus the related grid\'s add row');
 });
 
 test('grid create controls are styled', () => {
@@ -175,7 +175,7 @@ test('spaces and tables have exactly one create flow', () => {
   assert.doesNotMatch(APP, /function newSpaceModal/);
   assert.doesNotMatch(APP, /function newTableModal/);
   assert.match(APP, /function inlineNameInput/);
-  assert.ok(rulesFor('.nav-inline-add').padding, 'the inline input must be styled as a nav row');
+  assert.ok(rulesFor('.nav-inline-add')['--wv-edit-pad'], 'the inline input must be styled as a nav row');
 });
 
 test('one tray creates a table, and every trigger opens it (Issue #778)', () => {
@@ -255,7 +255,7 @@ test('popover options are keyboard navigable', () => {
 test('focus survives the redraw a pick causes', () => {
   assert.match(APP, /state\.refocus/);
   assert.match(APP, /function restoreGridFocus/);
-  assert.match(APP, /await keepScroll\(\(\) => drawDatabase\(db, fresh, trashCount, pager\)\);\s*\n\s*restoreGridFocus\(\{ now: true \}\);/);
+  assert.match(APP, /else await keepScroll\(\(\) => showDatabase\(db\.id, db\.view\?\.id\)\);\s*\n\s*restoreGridFocus\(\{ now: true \}\);/);
   assert.match(APP, /refocus: null/, 'state must declare the slot');
 });
 
@@ -313,13 +313,14 @@ test('the entity menu moves to trash with an undo, not a hold-to-confirm', () =>
   assert.doesNotMatch(APP, /holdToConfirm\('Delete entity'/,
     'a recoverable delete must not demand a hold');
   assert.match(APP, /label: 'Undo'[\s\S]{0,200}\/restore/, 'the toast must offer restore');
-  assert.match(APP, /function toast\(msg, isErr = false, action = null(, \{ kind \} = \{\})?\)/,
-    'every caller keeps the (msg, isErr, action) shape (Issue #380 added an optional kind)');
+  assert.match(APP, /function toast\(msg, isErr = false, action = null(, \{ kind(, key = null)? \} = \{\})?\)/,
+    'every caller keeps the (msg, isErr, action) shape (Issue #380 added an optional kind, Issue #917 an optional key)');
   assert.ok(rulesFor('.wv-toast-action').cursor, '.wv-toast-action must be styled as a control');
 });
 
 test('purging keeps the hold-to-confirm and is the only hard delete in the UI', () => {
-  assert.match(APP, /holdToConfirm\('Delete forever'/);
+  assert.match(fnBody('showSettings'), /label: 'Delete forever', hold: true/, 'the purge is a hold row from the menu builder, in Settings (Feature #295)');
+  assert.doesNotMatch(fnBody('showTrash'), /hard=1|holdToConfirm/, 'the Trash page restores and never purges');
   const hard = [...APP.matchAll(/\?hard=1/g)];
   assert.equal(hard.length, 1, 'exactly one call site may purge');
   assert.match(APP, /function showTrash/);
@@ -330,8 +331,9 @@ test('deleted rows are reached through the eyeball; the toolbar has no trash bad
   assert.doesNotMatch(fnBody('drawDatabase'), /#\/trash\//, 'no 🗑 control on the toolbar');
   assert.doesNotMatch(fnBody('tableChrome'), /#\/trash\//, 'nor on the chrome built once per table (Issue #444)');
   assert.match(fnBody('readAndDrawTable'), /trashCount: true/, 'the count still feeds the eyeball');
-  assert.match(fnBody('readAndDrawTable'), /showDeleted\s*\?\s*api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/,
-    'the trash list is fetched only when deleted rows are shown');
+  assert.match(fnBody('readAndDrawTable'), /includeDeleted: showDeleted/,
+    'deleted rows ride the one query, under the view\'s filters and sort, only when the view shows them (Feature #340)');
+  assert.match(fnBody('paneFilters'), /Include deleted \$\{db\.term\.plural\}/, 'the View pane switch speaks the row term too');
   assert.match(fnBody('fieldVisibilityPopover'), /Deleted \$\{db\.term\.plural\}/, 'the toggle speaks the table\'s row term');
 });
 
@@ -341,7 +343,7 @@ test('the description block is compact', () => {
   assert.ok(px(desc['margin-top']) <= 3, `view-desc margin-top too large: ${desc['margin-top']}`);
   assert.ok(px(desc['font-size']) <= 12.5, `view-desc font-size too large: ${desc['font-size']}`);
   assert.ok(px(edit['min-height']) <= 40, `editor min-height too large: ${edit['min-height']}`);
-  assert.ok(px(edit.padding) <= 4, `editor padding too large: ${edit.padding}`);
+  assert.ok(px(edit['--wv-edit-pad']) <= 4, `editor padding too large: ${edit['--wv-edit-pad']}`);
   const floor = Number(APP.match(/Math\.max\((\d+), ta\.scrollHeight\)/)?.[1]);
   assert.equal(floor, px(edit['min-height']), 'autosize floor must match CSS min-height');
 });
@@ -475,7 +477,7 @@ test('every column header carries a field menu; a header click edits, and sortin
   assert.match(menu, /stopPropagation/, 'opening the menu must not also open the editor');
   assert.match(menu, /if \(!menuFor\('field', f, \{ db \}\)\.length\) return null/, 'a column with nothing to offer carries no ⋮');
   assert.match(FIELD_ROWS, /label: 'Field settings…'[\s\S]*editFieldDialog\(db, f\)/, 'Settings opens the field editor');
-  assert.match(fnBody('tableSortButton'), /Object\.values\(fieldDialogCore\.SYSTEM_SORT\)/, 'the toolbar Sort reaches the system columns the header menus used to sort');
+  assert.match(fnBody('sortFieldOptions'), /Object\.values\(fieldDialogCore\.SYSTEM_SORT\)/, 'the Sort levels reach the system columns the header menus used to sort');
 });
 
 test('the field menu edits a field rather than dropping and rebuilding it', () => {
@@ -697,11 +699,10 @@ test('the <select> era leaves nothing behind', () => {
 });
 
 test('an idle inline-edit cell casts no shadow', () => {
-  const idle = rulesFor('.inline-edit:not(:focus)');
-  assert.equal(idle['box-shadow'], 'none',
-    '.inline-edit:not(:focus) must zero Tabler\'s --tblr-shadow-input');
-  assert.equal(rulesFor('.inline-edit')['box-shadow'], undefined,
-    'the reset must not be unscoped — that would kill the focus ring too');
+  assert.equal(rulesFor('.wv-edit')['box-shadow'], 'none',
+    '.wv-edit must zero Tabler\'s --tblr-shadow-input');
+  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 1.5px var(--tblr-primary)',
+    'and the focus rule draws the one ring over that reset (Issue #1030)');
 });
 
 test('the entity ⋮ sits at the right end of the title row, like every other view', () => {
@@ -719,7 +720,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
   assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
   assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the side column is gone, not blank');
-  assert.match(APP, /class: 'wv-toolbar entity-head' \}, nameInput\)/, 'the title row holds only the name');
+  assert.match(APP, /class: 'wv-toolbar entity-head' \}, entityAvatarEl\(entity, db, refresh\), nameInput\)/, 'the title row holds the row\'s face, when its table has an avatar field, and the name (Feature #349)');
   assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb crumb-row' \}/,
     'the entity crumb + title row live in a .view-header, so crumb spacing matches');
   assert.match(body, /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false \}\)/,
@@ -729,11 +730,11 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(eyeFn, /if \(redraw\) await redraw\(\);/, 'the popover redraws whatever view opened it');
   assert.match(eyeFn, /rowsSection \? \[/, 'the Rows section is optional');
   assert.match(eyeFn, /pop\.relearnEye = refresh/, 'a flip teaches the rows in place');
-  assert.match(eyeFn, /showSwitch\(r\.querySelector\('\.eye-row'\), shown\.has\(r\.dataset\.field\)\)/, 'each row wears the new switch state');
+  assert.match(eyeFn, /r\.querySelector\('input'\)\.checked = shown\.has\(r\.dataset\.field\)/, 'each row wears the new checkbox state');
   assert.doesNotMatch(eyeFn, /replaceChildren/, 'and never swaps them wholesale');
   assert.doesNotMatch(eyeFn, /fieldVisibilityPopover\(again/, 'the close-and-reopen dance is gone');
   const relearn = fnBody('relearnRows');
-  assert.match(relearn, /classList\.toggle\('on', on\)/, 'a taught row wears the new switch state');
+  assert.match(relearn, /querySelector\('input'\)\.checked = next\[i\]\.querySelector\('input'\)\.checked/, 'a taught row wears the new checkbox state');
   assert.match(relearn, /pop\.replaceChildren\(\.\.\.next\)/, 'a row set that changed is still rebuilt');
   assert.match(fnBody('footerPicker'), /relearnRows\(pop, build\(\)/, 'the Σ picker shares the one tail');
   assert.equal(rulesFor('.entity-head')['margin-bottom'], '0',
@@ -759,8 +760,10 @@ test('reference panels join the side column as card panels, wearing the pointer-
     'a side-column card panel');
   assert.doesNotMatch(block, /left\.append/, 'the entity body stays quiet');
   assert.doesNotMatch(block, /el\('details'|el\('summary'/, 'no disclosure of its own: the side column is the disclosure');
-  assert.match(block, /el\('div', \{ class: 'card-header' \},\s*el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
-    'the header is title + count');
+  assert.match(block, /el\('div', \{ class: 'card-header' \},\s*caret, el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
+    'the header is fold caret + title + count (Issue #993)');
+  assert.match(block, /disclosure\('doc-caret', true/, 'the caret is the shared doc-caret disclosure');
+  assert.match(block, /docSectionCollapse\(db\.id, extraClass/, 'the fold is remembered per table and per card');
   assert.match(APP, /const entityRefs = \(id\) => Promise\.all\(\['references-from', 'references'\]/,
     'both directions load with the record (Feature #315)');
   for (const fn of ['showEntity', 'drawDock']) {
@@ -963,10 +966,12 @@ test('an embedded grid can add a record and link it in one step', () => {
   assert.equal(rulesFor('.entity-row:hover .unlink-btn').opacity, '.7');
 });
 
-test('the board view is gone (Kyle, 2026-08-25, Issue #75)', () => {
-  assert.ok(!APP.includes('renderBoard'), 'no board renderer');
-  assert.ok(!APP.includes('view-switch'), 'no table/board switcher');
-  assert.match(fnBody('showDatabase'), /pickTableView\(table, view\)/, 'every #/table route lands on the grid');
+test('Board is a layout of the table view, never a separate board view (Kyle: Issue #75, 2026-08-25; Net Task #122, 2026-10-19)', () => {
+  assert.ok(!APP.includes('view-switch'), 'no table/board switcher: Board is picked in the Layout control (Issue #75 still holds)');
+  assert.match(fnBody('showDatabase'), /pickTableView\(table, view\)/, 'every #/table route lands on the table view');
+  assert.match(fnBody('readAndDrawTable'), /isBoardLayout\(db\)/, 'the view\'s layout key picks the board (Task #122)');
+  assert.match(fnBody('drawDatabase'), /list\.board \? renderBoard : renderList/, 'renderBoard draws only through the table view');
+  assert.match(fnBody('displayBlock'), /\{ id: 'board', label: 'Board'/, 'Board sits beside Table and List under Layout');
 });
 
 test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #77)', () => {
@@ -1001,7 +1006,7 @@ test('the filter strip drives the engine where-language, not a client sort (Feat
   assert.ok(app.includes("['in', states]") || app.includes("'in', states]"), 'workflow states use the in operator');
   const loads = app.match(/query`, w(here)?2? \? \{ where/g) ?? app.match(/\{ where \}/g) ?? [];
   assert.ok(app.includes('where ? { where } : {}'), 'showDatabase queries through the filters');
-  assert.ok(app.includes('w2 ? { where: w2 } : {}'), 'onSaved refreshes through the filters');
+  assert.ok(app.includes('else await keepScroll(() => showDatabase(db.id, db.view?.id));'), 'onSaved refreshes through the view and its filters');
   const chips = rulesFor('.filter-chip');
   assert.ok(chips['cursor'] === 'pointer');
 });
@@ -1157,8 +1162,8 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
 
 test('field dialogs are the unified fieldDialog, not the old string forms', () => {
   assert.match(APP, /function fieldDialog\(db, existing, after, \{ pickTables = null \} = \{\}\)/);
-  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,400}?fieldDialog\(db, null,/);
-  assert.match(APP, /function editFieldDialog\(db, f\) \{\s*fieldDialog\(db, f,/);
+  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,400}?openFieldDialog\(db, null,/);
+  assert.match(APP, /function editFieldDialog\(db, f\) \{\s*openFieldDialog\(db, f,/);
   assert.doesNotMatch(APP, /Options \(comma-separated\)/);
 });
 
@@ -1288,8 +1293,8 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   assert.match(eye, /return \{ table: \{ \[key\]: \[\.\.\.next\] \} \};/, 'one table write per flip');
   assert.match(eye, /deleted: !showsDeleted\(t\)/, 'deleted rows are a view switch');
   assert.match(eye, /rollups: !showsRollups\(t\)/, 'the Σ row switch is read live from the view (Issues #240, #442)');
-  assert.match(eye, /switchRow\(showsRollups\(db\), 'Σ rollup row'/, 'the switch reads on only when the view or table opted in');
-  assert.match(fnBody('renderTable'), /showsRollups\(db\) \? renderFooter\(db, cols\) : null/, 'no Σ row until the view or table opts in (Issues #249, #442)');
+  assert.match(eye, /checkRow\(showsRollups\(db\), 'Σ rollup row'/, 'the box reads checked only when the view or table opted in');
+  assert.match(fnBody('renderTable'), /showsRollups\(db\) && !slots \? renderFooter\(db, cols\) : null/, 'no Σ row until the view or table opts in (Issues #249, #442); a grouped table draws its totals as rows');
   assert.match(readFileSync(join(ROOT, 'public/app.js'), 'utf8'), /const showsRollups = \(db\) => !db\.system && \(db\.view && !db\.view\.blank && typeof db\.view\.rollups === 'boolean' \? db\.view\.rollups : db\.hideRollups === false\);/, 'the view decides; a silent view follows the table opt-in');
   assert.match(eye, /new Set\(t\.hiddenFields \?\? \[\]\)/, 'the hidden set is read from the table the turn hands over');
   assert.match(eye, /new Set\(t\[key\] \?\? \[\]\)/, 'so is the system set');
@@ -1357,33 +1362,62 @@ test('lookup / rollup pick their relation and target field from what exists; no 
   assert.doesNotMatch(fnBody('drawDatabase'), /🗑/, 'the eyeball shows deleted rows; the toolbar badge is gone');
 });
 
-test('the view controls sit on the crumb line; Fields has a bundled eye icon and visibility switches', () => {
+test('the view controls sit on the crumb line; Fields has a bundled eye icon and visibility checkboxes', () => {
   const vh = fnBody('viewHeader');
-  assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.actions\.filter\(Boolean\)/, 'actions render beside the crumb');
+  assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.tools\), dots\)/, 'actions render beside the crumb, the trailing ⋮ pinned to the crumb row (Issue #853)');
   assert.doesNotMatch(vh, /titleInput, \.\.\.actions/, 'and no longer on the title row');
-  assert.match(fnBody('fieldVisibilityPopover'), /class: 'switch' \+ \(on \? ' on' : ''\)/, 'rows are toggle switches');
+  assert.match(fnBody('fieldVisibilityPopover'), /el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'rows are the shared checkbox (Issue #915)');
   assert.match(fnBody('tableChrome'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');
   assert.match(fnBody('tableControlButton'), /lucideEl\(icon\)/, 'toolbar controls use the bundled icon renderer');
   assert.doesNotMatch(fnBody('fieldVisibilityPopover'), /field-visible-check/, 'and no hand-drawn box');
   assert.ok(rulesFor('.switch.on').background?.includes('--tblr-primary'));
 });
 
-test('one builder draws the Fields menu for the table and the record, in switch rows (Issue #910)', () => {
+test('one builder draws the Fields menu for the table and the record, in checkbox rows (Issues #910, #915)', () => {
   assert.doesNotMatch(APP, /function tableFieldsPopover\(/, 'the second builder is gone');
   assert.match(fnBody('tableChrome'), /fieldVisibilityPopover\(eye, ref\.db, ref\.trashCount\)/, 'the table opens it');
   assert.match(fnBody('renderEntityView'), /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false \}\)/, 'the record opens it');
   const eye = fnBody('fieldVisibilityPopover');
   assert.match(eye, /tableControlPopover\(anchor, db, 'table-fields-popover'/, 'one shell for both surfaces');
-  assert.match(eye, /role: 'switch'/, 'every row is a switch');
-  assert.doesNotMatch(eye, /type: 'checkbox'/, 'and none is a checkbox');
+  assert.match(eye, /el\('label', \{ class: 'chip-pop-row eye-row', dataset \},\s*el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'every row is a label holding the shared checkbox');
+  assert.doesNotMatch(eye, /role: 'switch'|class: 'switch|showSwitch/, 'and none is a switch');
   assert.match(eye, /startRowDrag\(/, 'rows drag wherever field order is writable');
   assert.match(eye, /fieldOrder: order\.filter\(isField\)/, 'the record writes the table field order');
 });
 
-test('the Fields list reserves its scrollbar gutter and insets its switches to match the grip (Issue #909)', () => {
+test('show/hide lists in popovers use the checkbox; settings keep the switch (Issue #915)', () => {
+  const foot = fnBody('footerPicker');
+  assert.match(foot, /el\('label', \{\s*class: 'chip-pop-row eye-row foot-row'/, 'a Σ picker row is a label');
+  assert.match(foot, /el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'holding the shared checkbox');
+  assert.doesNotMatch(foot, /role: 'switch'|class: 'switch|switch-knob/, 'and no switch');
+  assert.doesNotMatch(APP, /function showSwitch\(/, 'the switch painter for show/hide rows is gone');
+  assert.match(fnBody('showPopover'), /o\.matches\('label'\) \? o\.querySelector\('input'\)/, 'the arrow keys walk the checkbox inside a label row');
+  assert.match(fnBody('menuRow'), /it\.switch != null \? el\('span', \{ class: `switch/, 'a settings row keeps its switch');
+  assert.match(fnBody('toggleSwitch'), /role: 'switch'/, 'a boolean field value keeps its switch');
+});
+
+test('the Fields list reserves its scrollbar gutter and insets its rows to match the grip (Issue #909)', () => {
   const list = rulesFor('.table-field-list');
   assert.equal(list['scrollbar-gutter'], 'stable', 'rows do not shift when the list starts scrolling');
   assert.equal(px(list['padding-right']), px(rulesFor('.field-reorder-handle').padding), 'the right inset matches the grip inset on the left');
+});
+
+test('one thin scroll bar spec overrides Tabler in every engine (Issue #956)', () => {
+  assert.equal(rulesFor('*')['scrollbar-width'], 'thin', 'Chromium, Firefox and a WebKit that reads scrollbar-width draw the native thin bar and skip the pseudo rules');
+  for (const scope of ['', '.modal-body', 'pre']) {
+    const bar = rulesFor(`${scope}::-webkit-scrollbar`);
+    assert.equal(bar.width, '8px', `${scope || 'every element'}: a WebKit without scrollbar-width gets 8px in place of Tabler's 1rem`);
+    assert.equal(bar.height, '8px');
+    assert.equal(rulesFor(`${scope}::-webkit-scrollbar-thumb`)['box-shadow'], 'none', `${scope || 'every element'}: Tabler's inset shadow thumb is gone`);
+  }
+  const thumb = rulesFor('::-webkit-scrollbar-thumb');
+  assert.equal(thumb['background-clip'], 'padding-box', 'the transparent border insets the thumb');
+  assert.match(thumb['background-color'] ?? '', /20%/, 'the thumb matches Tabler\'s 20% mix');
+  assert.match(rulesFor(':hover::-webkit-scrollbar-thumb')['background-color'] ?? '', /40%/, 'and darkens to 40% on hover');
+  for (const hidden of ['#ws-rail', '.doc-rail-track', '.view-strip']) {
+    assert.equal(rulesFor(hidden)['scrollbar-width'], 'none', `${hidden} still hides its bar in Chromium`);
+    assert.equal(rulesFor(`${hidden}::-webkit-scrollbar`).display, 'none', `${hidden} still hides its bar in WebKit`);
+  }
 });
 
 test('system columns are toggled only from the eye — not from the table ⋮ menu (Kyle, 2026-08-23)', () => {
@@ -1600,7 +1634,7 @@ test('workspace links and rename use the workspace id permalink', () => {
 });
 
 test('dock: the surface core loads before app.js and #dock is a sibling of #main', () => {
-  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8').replace(/<template\b[\s\S]*?<\/template>/g, '');
   const core = html.indexOf('entity-surface-core.js');
   assert.ok(core > -1 && core < html.indexOf('"/app.js"'), 'entity-surface-core.js must load before app.js');
   const main = html.indexOf('<main id="main">');
@@ -1625,7 +1659,7 @@ test('dock: Escape defers to every overlay app.js can raise', () => {
   const pops = [...new Set([...APP.matchAll(/class: '([a-z]+-pop)'/g)].map((x) => `.${x[1]}`))];
   assert.ok(backs.length >= 4 && pops.length >= 3, `the derivation found ${backs.length} backdrops and ${pops.length} popovers`);
   for (const sel of [...backs, ...pops]) assert.ok(owners.includes(sel), `${sel} owns Escape but the dock does not defer to it`);
-  assert.ok(owners.includes('.doc-rail.open'), 'an open document outline owns Escape too');
+  assert.ok(owners.includes('.doc-rail.peek'), 'an outline preview card owns Escape too');
   const esc = APP.match(/if \(e\.key !== 'Escape' \|\| !dock\) return;[\s\S]{0,400}?\}\);/)[0];
   assert.match(esc, /closest\?\.\('input, textarea, select, \[contenteditable\]'\)/, 'a focused editor keeps its Escape');
   assert.match(esc, /weaveBreadcrumbs\.navCanBack\(crumbNav\)[\s\S]*weaveBreadcrumbs\.navBack\(crumbNav\)/, 'the step back is the nav core\'s rule, not a hand-rolled one');
@@ -1715,7 +1749,6 @@ test('no surface says "entity" to a reader where a table has a row term', () => 
   assert.match(APP, /countLabel\(sel\.size, db\.term\)/, 'the puck count');
   assert.match(APP, /Search \$\{term\.plural\} to link as/, 'relation pickers speak the target\'s plural');
   assert.match(APP, /WeaveTerm\.count\(n\.entityCount, n\.term\)/, 'relation-map nodes');
-  assert.match(APP, /WeaveTerm\.DEFAULT\.singular : WeaveTerm\.DEFAULT\.plural/, 'the workspace total speaks the default term');
   assert.doesNotMatch(APP, /\?\? 'record'/, 'no surface carries its own copy of the default noun');
 });
 
@@ -1826,4 +1859,42 @@ test('no searchPicker call types its own placeholder, and the chip pickers title
   assert.match(fnBody('chipPicker'), /title: field\?\.name/, 'chipPicker titles the picker with the field name');
   assert.match(fnBody('chipPickerMulti'), /title: field\?\.name/, 'chipPickerMulti titles the picker with the field name');
   assert.doesNotMatch(fnBody('searchPicker'), /st\.staged\.length \? '' : placeholder/, 'a set value keeps the hint');
+});
+
+test('the date picker steps sideways: date-pop-arrow never renders ↑ or ↓ (Issue #801)', () => {
+  const body = fnBody('datePopover');
+  const arrows = [];
+  for (let at = body.indexOf("class: 'date-pop-arrow'"); at >= 0; at = body.indexOf("class: 'date-pop-arrow'", at + 1)) {
+    const start = body.lastIndexOf("el('button'", at);
+    let depth = 0, end = start + 2;
+    for (; end < body.length; end++) {
+      if (body[end] === '(') depth++;
+      else if (body[end] === ')' && --depth === 0) break;
+    }
+    arrows.push(body.slice(start, end + 1));
+  }
+  assert.equal(arrows.length, 6, 'month, year and decade steps, back and forward');
+  for (const a of arrows) assert.doesNotMatch(a, /[↑↓]/, a);
+  assert.equal(arrows.filter((a) => a.includes("'‹'")).length, 3, 'three steps back');
+  assert.equal(arrows.filter((a) => a.includes("'›'")).length, 3, 'three steps forward');
+  assert.match(body, /'aria-label': 'Previous month'/);
+  assert.match(body, /'aria-label': 'Next month'/);
+});
+
+test('the view panes style their children without :has(), which stalled a 1,200-chip cell for 11 s (Issue #920)', () => {
+  const costly = CSS.match(/#(?:main|dock)\b[^{},]*:has\([^)]*\)\s*(?:[>~+]|\s(?=[^\s{]))[^{]*\{/g) ?? [];
+  assert.deepEqual(costly, []);
+});
+
+test('one meta tag style names a field type, in the sans face, with layout from the parent (Issue #773)', () => {
+  const tag = rulesFor('.wv-tag');
+  assert.equal(tag['font-family'], 'var(--tblr-font-sans-serif)', 'the type word names the sans face, so no second tag class can drift to mono');
+  assert.equal(tag['font-size'], 'var(--fs-meta)', 'the type word is 11px wherever it appears');
+  assert.equal(tag.color, 'var(--tblr-secondary)', 'the type word reads as meta, not as content');
+  assert.ok(!tag.flex && !tag['text-align'], `layout belongs to the parent, not the tag: ${JSON.stringify(tag)}`);
+  assert.deepEqual(rulesFor('.term-tag'), {}, '.term-tag is gone: one name for the type word');
+  assert.ok(!APP.includes('term-tag'), 'app.js builds no .term-tag');
+  const plural = rulesFor('.term-plural-row .wv-tag');
+  assert.equal(plural.flex, '0 0 44px', 'the plural row keeps its 44px column through its parent rule');
+  assert.equal(plural['text-align'], 'right', 'and keeps its right edge through that same rule');
 });

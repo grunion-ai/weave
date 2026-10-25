@@ -23,7 +23,7 @@ function member(name = 'uno') {
 
 test('the root carries a Workspaces table and its own row; every registry table has a Workspace relation', () => {
   const r = root();
-  const wsT = r.getTable('Workspace/Workspaces');
+  const wsT = r.getTable('System/Workspaces');
   assert.equal(wsT.system, 'workspaces');
   const rows = r.listEntities(wsT.id);
   assert.deepEqual(rows.map((e) => r.entityName(e)), ['root']);
@@ -34,9 +34,9 @@ test('the root carries a Workspaces table and its own row; every registry table 
     assert.equal(f.config.targetDb, wsT.id);
     assert.ok(f.system);
   }
-  const wsF = field(r, 'Workspace/Tables', 'Workspace');
-  assert.equal(rowNamed(r, 'Workspace/Tables', 'Guide').values[wsF.id], rows[0].id);
-  assert.equal(r.readEntity(rowNamed(r, 'Workspace/Tables', 'Guide').id).sysWorkspaceId, r.state.meta.id);
+  const wsF = field(r, 'System/Tables', 'Workspace');
+  assert.equal(rowNamed(r, 'System/Tables', 'Guide').values[wsF.id], rows[0].id);
+  assert.equal(r.readEntity(rowNamed(r, 'System/Tables', 'Guide').id).sysWorkspaceId, r.state.meta.id);
 });
 
 test('a member joins the root registry: no Workspace space of its own, its structure as root rows', () => {
@@ -46,19 +46,19 @@ test('a member joins the root registry: no Workspace space of its own, its struc
   assert.equal(m.registryHost, r);
   assert.equal(m.state.meta.registry, 'hub');
   assert.deepEqual(m.listSpaces().map((s) => s.name), ['Dev']);
-  assert.throws(() => m.getTable('Workspace/Tables'), WeaveError);
-  const wsRow = rowNamed(r, 'Workspace/Workspaces', 'uno');
+  assert.throws(() => m.getTable('System/Tables'), WeaveError);
+  const wsRow = rowNamed(r, 'System/Workspaces', 'uno');
   assert.equal(wsRow.sysId, m.state.meta.id);
-  const wsF = field(r, 'Workspace/Tables', 'Workspace');
-  const taskRow = rowNamed(r, 'Workspace/Tables', 'Task');
+  const wsF = field(r, 'System/Tables', 'Workspace');
+  const taskRow = rowNamed(r, 'System/Tables', 'Task');
   assert.equal(taskRow.sysId, m.getTable('Dev/Task').id);
   assert.equal(taskRow.values[wsF.id], wsRow.id);
   assert.equal(r.readEntity(taskRow.id).sysWorkspaceId, m.state.meta.id);
-  const spaceF = field(r, 'Workspace/Tables', 'Space');
-  assert.equal(taskRow.values[spaceF.id], rowNamed(r, 'Workspace/Spaces', 'Dev').id);
-  const costRow = rowNamed(r, 'Workspace/Fields', 'Cost');
-  assert.equal(costRow.values[field(r, 'Workspace/Fields', 'Table').id], taskRow.id);
-  assert.equal(costRow.values[field(r, 'Workspace/Fields', 'Workspace').id], wsRow.id);
+  const spaceF = field(r, 'System/Tables', 'Space');
+  assert.equal(taskRow.values[spaceF.id], rowNamed(r, 'System/Spaces', 'Dev').id);
+  const costRow = rowNamed(r, 'System/Fields', 'Cost');
+  assert.equal(costRow.values[field(r, 'System/Fields', 'Table').id], taskRow.id);
+  assert.equal(costRow.values[field(r, 'System/Fields', 'Workspace').id], wsRow.id);
   assert.ok(r.members.includes(m));
   assert.deepEqual(m.registryReport().problems, []);
   assert.deepEqual(r.registryReport().problems, []);
@@ -69,18 +69,18 @@ test('a member\'s structural verbs keep the root rows true', () => {
   const m = member();
   m.joinRegistry(r);
   m.updateTable('Dev/Task', { name: 'Job', description: 'work', hiddenFields: ['Cost'] });
-  const row = rowNamed(r, 'Workspace/Tables', 'Job');
+  const row = rowNamed(r, 'System/Tables', 'Job');
   assert.ok(row);
-  assert.equal(row.values[field(r, 'Workspace/Tables', 'Hidden Fields').id], 'Cost');
+  assert.equal(row.values[field(r, 'System/Tables', 'Hidden Fields').id], 'Cost');
   m.addField('Dev/Job', { name: 'Due', type: 'date' });
-  assert.ok(rowNamed(r, 'Workspace/Fields', 'Due'));
+  assert.ok(rowNamed(r, 'System/Fields', 'Due'));
   m.createSpace({ name: 'Ops' });
-  assert.ok(rowNamed(r, 'Workspace/Spaces', 'Ops'));
+  assert.ok(rowNamed(r, 'System/Spaces', 'Ops'));
   m.deleteTable('Dev/Job', { hard: true });
-  assert.equal(rowNamed(r, 'Workspace/Tables', 'Job'), undefined);
-  assert.equal(rowNamed(r, 'Workspace/Fields', 'Due'), undefined);
+  assert.equal(rowNamed(r, 'System/Tables', 'Job'), undefined);
+  assert.equal(rowNamed(r, 'System/Fields', 'Due'), undefined);
   m.deleteSpace('Ops');
-  assert.ok(rowNamed(r, 'Workspace/Spaces', 'Ops') === undefined || r.state.entities[rowNamed(r, 'Workspace/Spaces', 'Ops').id].deletedAt);
+  assert.ok(rowNamed(r, 'System/Spaces', 'Ops') === undefined || r.state.entities[rowNamed(r, 'System/Spaces', 'Ops').id].deletedAt);
   assert.deepEqual(r.registryReport().problems, []);
 });
 
@@ -88,21 +88,21 @@ test('a root row edit routes to the owning member', () => {
   const r = root();
   const m = member();
   m.joinRegistry(r);
-  const row = rowNamed(r, 'Workspace/Tables', 'Task');
+  const row = rowNamed(r, 'System/Tables', 'Task');
   r.updateEntity(row.id, { Name: 'Job', 'Field Order': 'Cost, Name, Description, Chip, Card' });
   const t = m.getTable('Dev/Job');
   assert.equal(t.name, 'Job');
   assert.deepEqual(t.fieldOrder.map((id) => t.fields[id].name), ['Cost', 'Name', 'Description', 'Chip', 'Card']);
-  const made = r.createEntity(r.getTable('Workspace/Tables').id, { name: 'Bug', values: { Space: rowNamed(r, 'Workspace/Spaces', 'Dev').id } });
+  const made = r.createEntity(r.getTable('System/Tables').id, { name: 'Bug', values: { Space: rowNamed(r, 'System/Spaces', 'Dev').id } });
   assert.ok(m.getTable('Dev/Bug'));
   assert.equal(made.sysId, m.getTable('Dev/Bug').id);
-  const f = r.createEntity(r.getTable('Workspace/Fields').id, { name: 'Severity', values: { Table: made.id, Definition: { type: 'text', config: {} } } });
+  const f = r.createEntity(r.getTable('System/Fields').id, { name: 'Severity', values: { Table: made.id, Definition: { type: 'text', config: {} } } });
   assert.ok(m.getField('Dev/Bug', 'Severity'));
   assert.equal(f.sysId, m.getField('Dev/Bug', 'Severity').id);
-  const sp = r.createEntity(r.getTable('Workspace/Spaces').id, { name: 'Ops', values: { Workspace: rowNamed(r, 'Workspace/Workspaces', 'uno').id } });
+  const sp = r.createEntity(r.getTable('System/Spaces').id, { name: 'Ops', values: { Workspace: rowNamed(r, 'System/Workspaces', 'uno').id } });
   assert.ok(m.getSpace('Ops'));
   assert.equal(sp.sysId, m.getSpace('Ops').id);
-  const rootSp = r.createEntity(r.getTable('Workspace/Spaces').id, { name: 'Wiki' });
+  const rootSp = r.createEntity(r.getTable('System/Spaces').id, { name: 'Wiki' });
   assert.equal(rootSp.sysId, r.getSpace('Wiki').id);
   r.deleteEntity(made.id, { hard: true });
   assert.throws(() => m.getTable('Dev/Bug'), WeaveError);
@@ -114,7 +114,7 @@ test('a legacy member tombstones its own Workspace space and carries its space r
   const m = member();
   m.createEntity('Dev/Task', { name: 'a', values: { Cost: 10 } });
   m.createEntity('Dev/Task', { name: 'b', values: { Cost: 30 } });
-  const localSpaces = m.getTable('Workspace/Spaces');
+  const localSpaces = m.getTable('System/Spaces');
   m.addField(localSpaces.id, { name: 'Task · Cost · sum', type: 'rollup', config: { via: 'Dev/Task', targetField: 'Cost', aggregate: 'sum' } });
   assert.equal(m.tableRollups('Dev/Task')[0].value, 40);
   m.joinRegistry(r);
@@ -122,21 +122,21 @@ test('a legacy member tombstones its own Workspace space and carries its space r
   assert.ok(ws.deletedAt, 'the legacy space is tombstoned, not purged');
   assert.ok(Object.values(m.state.tables).filter((t) => t.system).every((t) => t.deletedAt));
   assert.equal(m.listSpaces().length, 1);
-  const rf = field(r, 'Workspace/Spaces', 'Task · Cost · sum');
+  const rf = field(r, 'System/Spaces', 'Task · Cost · sum');
   assert.equal(rf?.type, 'rollup');
   assert.equal(rf.config.via, m.getTable('Dev/Task').id);
   const rolled = m.tableRollups('Dev/Task');
   assert.equal(rolled.length, 1);
   assert.equal(rolled[0].value, 40);
-  r.addField(r.getTable('Workspace/Spaces').id, { name: 'Task · count', type: 'rollup', config: { via: m.getTable('Dev/Task').id, aggregate: 'count' } });
+  r.addField(r.getTable('System/Spaces').id, { name: 'Task · count', type: 'rollup', config: { via: m.getTable('Dev/Task').id, aggregate: 'count' } });
   assert.equal(m.tableRollups('Dev/Task').find((x) => x.name === 'Task · count').value, 2);
-  const devRow = rowNamed(r, 'Workspace/Spaces', 'Dev');
-  const docsRow = rowNamed(r, 'Workspace/Spaces', 'Docs');
+  const devRow = rowNamed(r, 'System/Spaces', 'Dev');
+  const docsRow = rowNamed(r, 'System/Spaces', 'Docs');
   assert.equal(r.readEntity(devRow.id).fields['Task · count'], 2);
   assert.equal(r.readEntity(docsRow.id).fields['Task · count'], null);
   m.deleteTable('Dev/Task', { hard: true });
-  assert.equal(field(r, 'Workspace/Spaces', 'Task · count'), undefined);
-  assert.equal(field(r, 'Workspace/Spaces', 'Task · Cost · sum'), undefined);
+  assert.equal(field(r, 'System/Spaces', 'Task · count'), undefined);
+  assert.equal(field(r, 'System/Spaces', 'Task · Cost · sum'), undefined);
 });
 
 test('joining is idempotent and a re-opened member mints nothing until it hosts again', () => {
@@ -144,16 +144,16 @@ test('joining is idempotent and a re-opened member mints nothing until it hosts 
   const m = member();
   m.joinRegistry(r);
   m.joinRegistry(r);
-  assert.equal(r.listEntities(r.getTable('Workspace/Workspaces').id).length, 2);
-  assert.equal(r.listEntities(r.getTable('Workspace/Tables').id).filter((e) => r.entityName(e) === 'Task').length, 1);
+  assert.equal(r.listEntities(r.getTable('System/Workspaces').id).length, 2);
+  assert.equal(r.listEntities(r.getTable('System/Tables').id).filter((e) => r.entityName(e) === 'Task').length, 1);
   const again = new Weave();
   again.importJSON(m.exportJSON());
   assert.equal(again.state.meta.registry, 'hub');
   assert.deepEqual(again.listSpaces().map((s) => s.name), ['Dev']);
   again.hostRegistry();
   assert.equal(again.state.meta.registry, undefined);
-  assert.ok(again.getTable('Workspace/Tables'));
-  assert.ok(rowNamed(again, 'Workspace/Tables', 'Task'));
+  assert.ok(again.getTable('System/Tables'));
+  assert.ok(rowNamed(again, 'System/Tables', 'Task'));
 });
 
 test('leaving the hub drops the member\'s rows from the root', () => {
@@ -161,8 +161,8 @@ test('leaving the hub drops the member\'s rows from the root', () => {
   const m = member();
   m.joinRegistry(r);
   r.dropWorkspace(m.state.meta.id);
-  assert.equal(rowNamed(r, 'Workspace/Workspaces', 'uno'), undefined);
-  assert.equal(rowNamed(r, 'Workspace/Tables', 'Task'), undefined);
-  assert.equal(rowNamed(r, 'Workspace/Spaces', 'Dev'), undefined);
+  assert.equal(rowNamed(r, 'System/Workspaces', 'uno'), undefined);
+  assert.equal(rowNamed(r, 'System/Tables', 'Task'), undefined);
+  assert.equal(rowNamed(r, 'System/Spaces', 'Dev'), undefined);
   assert.deepEqual(r.registryReport().problems, []);
 });

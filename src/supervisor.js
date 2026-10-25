@@ -1,15 +1,18 @@
 import { createServer, request } from 'node:http';
 import { spawn } from 'node:child_process';
 import { timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gunzipSync } from 'node:zlib';
+import { createGunzip } from 'node:zlib';
+import { pipeline } from 'node:stream/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { createReleaseCheck, newerVersion } from './update-check.js';
-import { readTar } from './backup.js';
+import { streamTar } from './backup.js';
 
 export const REPO_API = 'https://api.github.com/repos/grunion-ai/weave';
+export const REPO_GIT = 'https://github.com/grunion-ai/weave.git';
+export const REPO_CODELOAD = 'https://codeload.github.com/grunion-ai/weave';
 const IMAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const INTERVAL = 10 * 60 * 1000;
 const WATCH = 10 * 60 * 1000;
@@ -18,6 +21,24 @@ const COMMIT = /^[0-9a-f]{40}$/;
 const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const HOP = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
 const GITHUB = { accept: 'application/vnd.github+json', 'user-agent': 'weave' };
+const GIT = { accept: 'application/x-git-upload-pack-advertisement', 'user-agent': 'weave' };
+const UA = { 'user-agent': 'weave' };
+const REF_LINE = /([0-9a-f]{40}) ([^\0\n]+)/;
+
+export function shaFromRefs(advertisement, ref) {
+  for (const line of String(advertisement).split('\n')) {
+    const m = REF_LINE.exec(line);
+    if (m && m[2].trim() === ref) return m[1];
+  }
+  return null;
+}
+
+export function rateLimitReset(status, headers) {
+  if (status !== 403 && status !== 429) return null;
+  if (headers?.get?.('x-ratelimit-remaining') !== '0') return null;
+  const reset = Number(headers.get('x-ratelimit-reset'));
+  return Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString() : '';
+}
 
 export const autoUpdateFromEnv = (env = process.env) => ['1', 'true', 'yes', 'on'].includes(String(env.WEAVE_AUTO_UPDATE ?? '').trim().toLowerCase());
 
@@ -36,16 +57,18 @@ const versionOf = (dir) => { try { return JSON.parse(readFileSync(join(dir, 'pac
 const forwardable = (headers, drop = []) => Object.fromEntries(Object.entries(headers).filter(([k]) => !HOP.has(k) && !drop.includes(k)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export function unpackRelease(tgz, dir) {
+export async function unpackRelease(tgz, dir) {
   const root = resolve(dir);
-  for (const { name, data } of readTar(gunzipSync(tgz))) {
+  const open = (name) => {
     const rel = name.split('/').slice(1).join('/');
-    if (!rel) continue;
+    if (!rel) return null;
     const out = resolve(root, rel);
     if (!out.startsWith(root + sep)) throw new Refusal(`a tarball entry escapes the release directory: ${name}`);
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, data);
-  }
+    const fd = openSync(out, 'w');
+    return { write: (buf) => writeSync(fd, buf), close: () => closeSync(fd) };
+  };
+  await pipeline(Buffer.isBuffer(tgz) ? [tgz] : tgz, createGunzip(), (chunks) => streamTar(chunks, open));
 }
 
 function goodReleases(releasesDir, failed) {
@@ -96,7 +119,7 @@ export async function startSupervisor({
   interval = INTERVAL, healthTimeoutMs = 60_000, drainTimeoutMs = 30_000, log = console, onEvent = () => {},
   onWorkerDied = () => process.exit(1),
   watchMs = Number(env.WEAVE_WATCH_MS ?? WATCH), watchPollMs = 10_000,
-  watchErrorRate = Number(env.WEAVE_WATCH_5XX_RATE ?? 0.25), watchMinRequests = 20,
+  watchErrorRate = Number(env.WEAVE_WATCH_5XX_RATE ?? 0.25), watchMinRequests = 20, retryMs = 1000,
 } = {}) {
   const releasesDir = join(dirname(resolve(dataPath)), 'releases');
   const track = trackFromEnv(env);
@@ -234,18 +257,35 @@ export async function startSupervisor({
     route(req, res);
   });
 
-  async function github(url) {
-    const r = await fetch(url, { headers: GITHUB, signal: AbortSignal.timeout(15_000) });
-    if (!r.ok) throw new Error(`GitHub answered HTTP ${r.status} for ${url}`);
-    return r.json();
+  async function github(url, tries = 3) {
+    for (let attempt = 1; ; attempt++) {
+      const r = await fetch(url, { headers: GITHUB, signal: AbortSignal.timeout(15_000) });
+      if (r.ok) return r.json();
+      const reset = rateLimitReset(r.status, r.headers);
+      if (reset === null || attempt >= tries) {
+        const when = reset ? ` (rate limit resets ${reset})` : '';
+        throw new Error(`GitHub answered HTTP ${r.status} for ${url}${when}`);
+      }
+      log.warn(`weave supervise: GitHub rate limit on ${url}${reset ? `, resets ${reset}` : ''}; retrying`);
+      await sleep(retryMs * attempt);
+    }
+  }
+
+  async function refSha(branch) {
+    const url = `${REPO_GIT}/info/refs?service=git-upload-pack`;
+    const r = await fetch(url, { headers: GIT, signal: AbortSignal.timeout(15_000) });
+    if (!r.ok) throw new Error(`the grunion-ai/weave ref advertisement answered HTTP ${r.status}`);
+    const sha = shaFromRefs(await r.text(), `refs/heads/${branch}`);
+    if (!COMMIT.test(sha ?? '')) throw new Error(`grunion-ai/weave advertises no refs/heads/${branch}`);
+    return sha;
   }
 
   async function unpackCommit(name, sha) {
-    const r = await fetch(`${REPO_API}/tarball/${sha}`, { headers: GITHUB, signal: AbortSignal.timeout(120_000) });
+    const r = await fetch(`${REPO_CODELOAD}/tar.gz/${sha}`, { headers: UA, signal: AbortSignal.timeout(120_000) });
     if (!r.ok) throw new Error(`the ${name} tarball answered HTTP ${r.status}`);
     const part = join(releasesDir, `${name}.part`);
     rmSync(part, { recursive: true, force: true });
-    unpackRelease(Buffer.from(await r.arrayBuffer()), part);
+    await unpackRelease(r.body, part);
     return part;
   }
 
@@ -443,8 +483,7 @@ export async function startSupervisor({
 
   async function tick() {
     if (track) {
-      const sha = (await github(`${REPO_API}/commits/${track}`)).sha;
-      if (!COMMIT.test(sha ?? '')) throw new Error(`GitHub named no commit for ${track}`);
+      const sha = await refSha(track);
       if (sha === current.commit) return { action: 'current', commit: sha };
       if (state.failed[sha]) return { action: 'skipped', version: sha, reason: state.failed[sha].reason };
       return swapTo(sha, `c${sha}`, () => downloadCommit(sha));

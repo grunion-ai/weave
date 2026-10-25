@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let trip, todo, ids;
 const s = await launch('list layout', (weave) => {
@@ -177,25 +178,63 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the View menu switches Table and List without losing the grouping; the Group menu autosaves levels', async () => {
+  test('the View pane switches Table and List without losing the grouping; its Group section autosaves levels', async () => {
     seed();
     const page = await open();
     try {
-      await page.click('.table-view-btn');
-      await page.click('.view-layout .seg-opt:text-is("Table")');
+      await openPane(page, 'display');
+      await page.click('#view-pane .view-layout .seg-opt:text-is("Table")');
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      assert.equal(view().layout, undefined);
+      assert.equal(view().layout, 'table', 'a Table choice is kept (Issue #740)');
       assert.deepEqual(view().group, [{ field: 'Trip', heading: 'chip' }, { field: 'Priority' }], 'Table keeps the list keys');
-      if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
-      await page.click('.view-layout .seg-opt:text-is("List")');
+      await openPane(page, 'display');
+      await page.click('#view-pane .view-layout .seg-opt:text-is("List")');
       await page.waitForSelector('.wv-list .list-row');
-      await page.keyboard.press('Escape');
-      await page.click('.table-group-btn');
-      await page.click('.table-group-popover .group-level[data-level="Priority"] .group-remove');
+      await openPane(page, 'group');
+      await page.click('#view-pane .group-level[data-level="Priority"] .group-remove');
       await eventually(() => view().group?.length, 1);
       assert.deepEqual(view().group, [{ field: 'Trip', heading: 'chip' }]);
       await page.waitForFunction(() => document.querySelector('.table-group-btn')?.textContent.includes('Group: Trip') && !document.querySelector('.table-group-btn').textContent.includes('Priority'));
       assert.equal(await page.locator('.wv-list > .list-group[data-key="Japan"] .list-group').count(), 0, 'one level now');
     } finally { await page.close(); }
+  });
+
+  const labelContrast = (page) => page.evaluate(() => {
+    const rgb = (c) => {
+      const cv = document.createElement('canvas').getContext('2d');
+      cv.fillStyle = c; cv.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = cv.getImageData(0, 0, 1, 1).data;
+      return { r, g, b, a: a / 255 };
+    };
+    const lum = ({ r, g, b }) => {
+      const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const label = document.querySelector('.list-segs .mention-f-label');
+    if (!label) return { missing: true };
+    let alpha = 1;
+    for (let n = label; n && n !== document.documentElement; n = n.parentElement) alpha *= parseFloat(getComputedStyle(n).opacity);
+    let bg = null;
+    for (let n = label.parentElement; n && !bg; n = n.parentElement) {
+      const c = rgb(getComputedStyle(n).backgroundColor);
+      if (c.a > 0.9) bg = c;
+    }
+    bg ??= rgb(getComputedStyle(document.body).backgroundColor);
+    const fg = rgb(getComputedStyle(label).color);
+    const over = { r: fg.r * alpha + bg.r * (1 - alpha), g: fg.g * alpha + bg.g * (1 - alpha), b: fg.b * alpha + bg.b * (1 - alpha) };
+    const [hi, lo] = [lum(over), lum(bg)].sort((x, y) => y - x);
+    return { text: label.textContent, alpha: Number(alpha.toFixed(3)), ratio: Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100 };
+  });
+
+  test('every shown field label reads 4.5:1 against the list row in both themes (Issue #1096)', async () => {
+    seed();
+    for (const theme of ['light', 'dark']) {
+      const page = await open(theme);
+      try {
+        const r = await labelContrast(page);
+        assert.ok(!r.missing, 'a list row shows a field label');
+        assert.ok(r.ratio >= 4.5, `${theme}: the "${r.text}" label reads ${r.ratio}:1 on the row at alpha ${r.alpha}`);
+      } finally { await page.close(); }
+    }
   });
 }

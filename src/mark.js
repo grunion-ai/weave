@@ -45,3 +45,14 @@ export function markParts({ c1, c2, sw = 3.5, id = "w", r = H3, kids = {} }) {
     r.overs.map(o => stroke(o, c1, sw, "", kids.over || "")).join("");
   return { defs, body };
 }
+
+export function markSvg({ cls, id, c2, viewBox = "0 0 48 48", attrs = 'aria-hidden="true"' }) {
+  const { defs, body } = markParts({ c1: PALETTE.blue, c2, id });
+  return `<svg class="${cls}" viewBox="${viewBox}" ${attrs}><defs>${defs}</defs>${body}</svg>`;
+}
+
+export function markPair(prefix, { cls = "", ...opts } = {}) {
+  const named = (theme) => [cls, `mark-${theme}`].filter(Boolean).join(" ");
+  return markSvg({ cls: named("light"), id: `${prefix}L`, c2: PALETTE.ink, ...opts }) +
+    markSvg({ cls: named("dark"), id: `${prefix}D`, c2: PALETTE.sky, ...opts });
+}

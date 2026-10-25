@@ -255,7 +255,7 @@ test('once per person: each account carries its own mark, and its first name is 
     assert.equal((await f.call('GET', '/api/onboarding', undefined, as(kyle))).body.show, false);
     assert.equal((await f.call('GET', '/api/onboarding', undefined, as(maya))).body.show, true);
     const minted = f.root.createSession(maya.account.id, { ua: 'test' });
-    const cookie = { Cookie: `wv_session=${minted.token}` };
+    const cookie = { Cookie: `wv_session_${f.root.state.meta.id}=${minted.token}` };
     assert.equal((await f.call('GET', '/api/onboarding', undefined, cookie)).body.show, true);
     await f.call('POST', '/api/onboarding', { name: 'maya-team' }, cookie);
     assert.ok(f.root.onboardedAt(maya.account.id));

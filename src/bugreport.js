@@ -79,24 +79,29 @@ const secondsBefore = (t, at) => {
   return Number.isFinite(d) ? `-${d.toFixed(1)}s` : '';
 };
 
+const flat = (v) => String(v ?? '').replace(/[\s`]+/g, ' ').trim();
+const code = (v) => `\`${flat(v)}\``;
+const num = (v) => (Number.isFinite(Number(v)) ? String(Number(v)) : '?');
+
 function replayStep(ev) {
   switch (ev.kind) {
     case 'nav':
-      return `navigated to \`${ev.to}\``;
+      return `navigated to ${code(ev.to)}`;
     case 'click':
-      return `clicked ${ev.target}`;
+      return `clicked ${code(ev.target)}`;
     case 'key':
-      return `pressed \`${ev.key}\`${ev.target ? ` on ${ev.target}` : ''}`;
+      return `pressed ${code(ev.key)}${ev.target ? ` on ${code(ev.target)}` : ''}`;
     case 'api': {
-      const verdict = ev.status >= 400 || ev.status === 0 ? `**${ev.status || 'failed'}**` : String(ev.status);
-      return `**${ev.method}** \`${ev.path}\` → ${verdict} in ${ev.ms}ms`;
+      const status = Number(ev.status);
+      const verdict = status >= 400 || status === 0 ? `**${status || 'failed'}**` : num(ev.status);
+      return `**${code(ev.method)}** ${code(ev.path)} → ${verdict} in ${num(ev.ms)}ms`;
     }
     case 'error':
-      return `error: \`${ev.message}\`${ev.source ? ` (${ev.source}:${ev.line ?? '?'})` : ''}`;
+      return `error: ${code(ev.message)}${ev.source ? ` (${code(ev.source)}:${num(ev.line)})` : ''}`;
     case 'console':
-      return `console.${ev.level ?? 'error'}: \`${ev.message}\``;
+      return `console ${code(ev.level ?? 'error')}: ${code(ev.message)}`;
     default:
-      return `${ev.kind}${ev.target ? ` ${ev.target}` : ''}`;
+      return `${code(ev.kind)}${ev.target ? ` ${code(ev.target)}` : ''}`;
   }
 }
 
@@ -156,7 +161,7 @@ export function renderBugReport({ categories = [], note = '', events = [], clien
     '',
     '| | |',
     '| --- | --- |',
-    ...facts.map(([k, v]) => `| ${k} | \`${redact(String(v))}\` |`),
+    ...facts.map(([k, v]) => `| ${k} | ${code(redact(String(v))).replace(/\|/g, '\\|')} |`),
     '',
     '## Replay',
     '',

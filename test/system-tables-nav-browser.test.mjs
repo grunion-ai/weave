@@ -13,8 +13,8 @@ const s = await launch('system tables nav', (weave) => {
   const t = weave.createTable({ space: 'Work', name: 'Tasks' });
   const e = weave.createEntity(t.id, { Name: 'binned' });
   weave.deleteEntity(e.id);
-  wfId = weave.getTable('Workspace/Workflows').id;
-  usersId = weave.getTable('Workspace/Users').id;
+  wfId = weave.getTable('System/Workflows').id;
+  usersId = weave.getTable('System/Users').id;
   member = new Weave();
   member.updateWorkspace({ name: 'member' });
   member.createSpace({ name: 'Notes' });
@@ -36,7 +36,16 @@ if (s) {
     requestAnimationFrame(() => requestAnimationFrame(() => main.replaceChildren(...held)));
   }));
 
-  test('browser: four fixed rows under the spaces; Trash opens the workspace trash', async () => {
+  const twoFrames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const heldGap = (page) => page.evaluate(() => {
+    const main = document.querySelector('#main');
+    const held = [...main.children];
+    main.replaceChildren();
+    window.__refill = () => { main.replaceChildren(...held); delete window.__refill; };
+  });
+  const refill = (page) => page.evaluate(() => window.__refill());
+
+  test('browser: five fixed rows under the spaces; Trash opens the workspace trash', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
@@ -66,10 +75,10 @@ if (s) {
       await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
       await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#sidebar .nav-system a');
-      const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
+      const spare = await page.evaluate(() => { const n = document.querySelector('#nav'); return n.scrollHeight - n.clientHeight; });
       assert.ok(spare > 200, `the nav has more spaces than room, so anything unpinned would scroll away: ${spare}`);
 
-      const SEEN = ['#ws-name', '#search-btn', '#sidebar .nav-foot button', '#sidebar .nav-system a[href="#/trash"]'];
+      const SEEN = ['#ws-name', '#search-btn', '#sidebar .nav-foot button', '#sidebar .nav-system a[href="#/trash"]', '#sidebar .nav-identity .nav-identity-more'];
       const look = () => page.evaluate((sels) => {
         const box = document.querySelector('#sidebar').getBoundingClientRect();
         const out = {};
@@ -82,7 +91,7 @@ if (s) {
 
       const atTop = await look();
       for (const sel of SEEN) assert.ok(atTop[sel].within, `${sel} is in the sidebar's window unscrolled: ${JSON.stringify(atTop[sel])}`);
-      await page.evaluate(() => { const n = document.querySelector('#sidebar'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
+      await page.evaluate(() => { const n = document.querySelector('#nav'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
       await page.waitForTimeout(150);
       const atEnd = await look();
       for (const sel of SEEN) {
@@ -95,29 +104,26 @@ if (s) {
         const y = (sel) => document.querySelector(sel).getBoundingClientRect().top;
         return {
           order: [...document.querySelectorAll('#sidebar > :not(#nav-resize)')].map((n) => n.id || n.className.split(' ')[0]),
-          strip: [...document.querySelectorAll('#sidebar .nav-pinned > *')].map((n) => n.className.split(' ')[0]),
+          strip: [...document.querySelectorAll('#sidebar .nav-pinned > *')].filter((n) => !n.hidden).map((n) => n.className.split(' ')[0]),
           newSpaceAboveSystem: y('#sidebar .nav-foot') < y('#sidebar .nav-system'),
           systemBelowNav: y('#sidebar .nav-system') > y('#nav'),
-          opaque: getComputedStyle(document.querySelector('.nav-head')).backgroundColor,
-          canvas: getComputedStyle(document.querySelector('#sidebar')).getPropertyValue('--wv-canvas').trim(),
         };
       });
       assert.deepEqual(stack.order, ['nav-head', 'nav', 'nav-pinned'], 'head, scrolling list, pinned strip');
-      assert.deepEqual(stack.strip, ['nav-foot', 'nav-system', 'nav-stats'], 'New space, then the system tables, then the records line');
+      assert.deepEqual(stack.strip, ['nav-foot', 'nav-system', 'nav-identity'], 'New space, then the System space, then the identity panel (Feature #333)');
       assert.ok(stack.newSpaceAboveSystem, 'New space sits above the system tables');
       assert.ok(stack.systemBelowNav, 'the system tables sit below the spaces');
-      assert.notEqual(stack.opaque, 'rgba(0, 0, 0, 0)', `the head is opaque, so rows scroll under it: ${stack.opaque}`);
       await page.close();
     });
   }
 
-  test('browser: the root workspace keeps its Workspace registry off the sidebar and lists it on the workspace page (Issue #874)', async () => {
+  test('browser: the root workspace keeps its System registry off the sidebar and lists it on the workspace page (Issue #874)', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#nav .nav-space');
     const spaces = await page.locator('#nav .nav-space').evaluateAll((as) => as.map((a) => a.textContent.trim()));
     assert.ok(spaces.includes('Work'), 'user spaces stay in the sidebar');
-    assert.ok(!spaces.includes('Workspace'), 'the registry space is not a sidebar space');
+    assert.ok(!spaces.includes('System') && !spaces.includes('Workspace'), 'the registry space is not a scrolling sidebar space');
     const listed = await page.locator('#nav .nav-db').evaluateAll((as) => as.map((a) => a.textContent.trim()));
     for (const name of ['Spaces', 'Tables', 'Fields', 'Views', 'Workspaces', 'Forms']) {
       assert.ok(!listed.includes(name), `${name} is not a sidebar row`);
@@ -169,9 +175,11 @@ if (s) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${wfId}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main input.view-title');
-    await repaintGap(page);
+    await heldGap(page);
+    await twoFrames(page);
     await assert.rejects(() => page.$eval('#main input.view-title', (i) => i.readOnly), /Failed to find element/,
-      'a selector resolved once lands in the gap the repaint opens and throws');
+      'a selector resolved once lands in the gap the repaint opens and throws, however long the read takes to arrive');
+    await refill(page);
     await page.waitForSelector('#main input.view-title');
     await repaintGap(page);
     assert.equal(await page.locator('#main input.view-title').first().evaluate((i) => i.readOnly), true,

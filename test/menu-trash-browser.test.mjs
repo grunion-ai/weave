@@ -70,7 +70,7 @@ if (s) {
         await page.waitForSelector('#main .wv-grid');
         const before = await navTables(page, 'Product');
         assert.ok(before.includes(name));
-        const undo = await trashOnce(page, '#main .crumb-actions .dots-btn[title="Table actions"]');
+        const undo = await trashOnce(page, '#main .crumb-row .dots-btn[title="Table actions"]');
         assert.ok(await eventually(() => !!weave.state.tables[db.id]?.deletedAt, true), 'the table is in the trash');
         await page.waitForFunction((nm) => ![...document.querySelectorAll('#nav a.nav-db')].some((a) => a.textContent.trim() === nm), name);
         await undo.click();
@@ -109,7 +109,7 @@ if (s) {
       const sp = weave.getSpace(name);
       const page = await open(`#/space/${sp.id}`, theme);
       try {
-        const undo = await trashOnce(page, '#main .view-header .crumb-actions .dots-btn');
+        const undo = await trashOnce(page, '#main .view-header .crumb-row .dots-btn');
         await page.waitForFunction((h) => location.hash !== h, `#/space/${sp.id}`);
         await undo.click();
         await hashIs(page, `#/space/${sp.id}`);
@@ -123,7 +123,7 @@ if (s) {
       const page = await open(`#/entity/${e.id}`, theme);
       try {
         await page.waitForSelector('#main textarea.name-edit');
-        const undo = await trashOnce(page, '#main .view-header .crumb-actions .dots-btn');
+        const undo = await trashOnce(page, '#main .view-header .crumb-row .dots-btn');
         assert.ok(await eventually(() => !!weave.state.entities[e.id]?.deletedAt, true), 'the record is in the trash');
         await hashIs(page, `#/table/${db.id}`);
         await undo.click();
@@ -192,6 +192,49 @@ if (s) {
     });
   }
 
+  for (const kind of ['table', 'space', 'share page']) {
+    test(`a ${kind} trashed while open restores in place on Undo after the reader moved on, with Open in the toast (Issue #856)`, async () => {
+      let href;
+      let trigger;
+      let gone;
+      if (kind === 'table') {
+        const db = weave.createTable({ space: 'Product', name: uniq('Left') });
+        href = `#/table/${db.id}`;
+        trigger = '#main .crumb-row .dots-btn[title="Table actions"]';
+        gone = () => !weave.state.tables[db.id]?.deletedAt;
+      } else if (kind === 'space') {
+        const name = uniq('Away');
+        weave.createSpace({ name });
+        const sp = weave.getSpace(name);
+        href = `#/space/${sp.id}`;
+        trigger = '#main .view-header .crumb-row .dots-btn';
+        gone = () => !weave.state.spaces[sp.id]?.deletedAt;
+      } else {
+        const v = weave.createView({ name: uniq('Elsewhere'), blocks: [{ table: 'Task' }] });
+        href = `#/view/${v.id}`;
+        trigger = '#main .share-page-head .dots-btn';
+        gone = () => weave.listViews().some((x) => x.id === v.id);
+      }
+      const other = weave.getTable('Log');
+      const page = await open(href, 'light');
+      try {
+        const undo = await trashOnce(page, trigger);
+        await page.waitForFunction((h) => location.hash !== h, href);
+        await page.evaluate((h) => { location.hash = h; }, `#/table/${other.id}`);
+        await page.waitForSelector('#main .wv-grid');
+        await undo.click();
+        assert.ok(await eventually(gone, true), `the ${kind} is live again`);
+        const restored = page.locator('.wv-toast', { hasText: 'Restored' }).last();
+        await restored.waitFor();
+        assert.equal(await page.evaluate(() => location.hash), `#/table/${other.id}`, 'Undo leaves the reader where they are');
+        const openBtn = restored.locator('.wv-toast-action');
+        assert.equal((await openBtn.textContent()).trim(), 'Open', 'the Restored toast offers Open');
+        await openBtn.click();
+        await hashIs(page, href);
+      } finally { await page.close(); }
+    });
+  }
+
   test('the multi-select trash and the record menu give the same toast and the same Undo (Feature #296, D6)', async () => {
     const db = weave.createTable({ space: 'Ops', name: uniq('Pair') });
     const a = weave.createEntity(db, { name: 'Alpha' });
@@ -219,7 +262,7 @@ if (s) {
 
       await page.goto(`${base}/#/table/${db.id}?e=${b.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      await page.locator('#dock .view-header .crumb-actions .dots-btn').click();
+      await page.locator('#dock .view-header .crumb-row .dots-btn').click();
       await page.locator(`${MENU} .wv-menu-row`, { hasText: 'Move to trash' }).click();
       const one = await read();
       assert.ok(await eventually(() => !!weave.state.entities[b.id].deletedAt, true));

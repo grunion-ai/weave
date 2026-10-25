@@ -7,14 +7,14 @@ export const PAGE_LIB = () => {
     ['toast', '.wv-toast'],
   ];
   const LEAVES = [
-    ['chip', '.chip, .chip-trigger, .k-select, .k-state, .k-multi, .wv-tag, .filter-chip, .auto-pill, .share-chip, .doc-chip, .picker-chip, .list-chip, .fx-chip, .term-tag, .badge, .list-group-chip, .nav-account-chip, .wv-chip-id, .opt-dot, .wv-card-state'],
+    ['chip', '.chip, .chip-trigger, .k-select, .k-state, .k-multi, .wv-tag, .filter-chip, .auto-pill, .share-chip, .doc-chip, .picker-chip, .list-chip, .fx-chip, .badge, .list-group-chip, .nav-account-chip, .wv-chip-id, .opt-dot, .wv-card-state'],
     ['toggle', 'input[type=checkbox], input[type=radio], [role=switch], .wv-toggle, .switch, .form-check, .form-switch'],
     ['tabs', '[role=tablist], .seg-ctl, .list-segs, .new-row-seg, .view-tab'],
     ['button', 'button, a.btn, [role=button], summary, input[type=button], input[type=submit]'],
     ['input', 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=button]):not([type=submit]), textarea, select'],
     ['card', '.wv-card, .card, .sk-card, .fx-sigcard, .wv-act-card'],
     ['empty', '.wv-empty, .is-empty, .empty-note, .k-empty, .picker-empty, .table-search-empty, .wv-members-empty, .cmdk-empty, .view-desc-empty'],
-    ['nav', '.crumb-row, .nav-space-row, .nav-db, .ws-icon, .nav-foot, .nav-account, .nav-menu-row, .crumb-nav'],
+    ['nav', '.crumb-row, .nav-space-row, .nav-db, .ws-icon, .nav-foot, .nav-account, .nav-identity, .nav-menu-row, .crumb-nav'],
     ['bar', '.wv-toolbar, .table-tools, .view-header, .sk-toolbar, .vditor-toolbar, .wv-act-bar, .wv-bar-dock, .phone-bar, .file-viewer-bar, .fsv-bar, .doc-expand-bar'],
     ['cell', '.table-wrap tbody td, .table-wrap thead th, .table-wrap tfoot td, .fieldrow'],
   ];
@@ -144,7 +144,7 @@ export const TOASTS = [
 ];
 
 const TRIG = 'button, [role=button], [aria-haspopup], .crumb-item, .table-wrap thead th, .chip-trigger, .picker-face, .search-like, .nav-account-chip, .view-tab';
-const NEVER = '#theme-toggle, [title^="Theme"], [aria-label^="Theme"]';
+const NEVER = '.nav-theme-row, [title^="Theme"], [aria-label^="Theme"]';
 const SKIP = /theme|delete|remove|trash|archive|sign ?out|log ?out|discard|purge|empty trash|restore|duplicate|clear/i;
 const SUB_SKIP = /delete|remove|trash|archive|sign ?out|discard|purge|theme/i;
 

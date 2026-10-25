@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 import { seedReorder, surfaces, exerciseSurface, pointer, centre, aimAt, quiet } from './lib/reorder-surfaces.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let ids;
 const s = await launch('drag to reorder, desktop (Feature #282)', (weave) => { ids = seedReorder(weave); });
@@ -123,24 +124,24 @@ if (s) {
     const p = await page({ viewport: { width: 1280, height: 640 } });
     try {
       await p.goto(`${base}/#/table/${ids.tall.id}`, { waitUntil: 'networkidle' });
-      await p.click('.eye-btn');
-      await p.waitForSelector('.table-fields-popover .table-field-row');
+      await openPane(p, 'fields');
+      await p.waitForSelector('#view-pane .table-field-row');
       await quiet(p);
-      const list = p.locator('.table-field-list');
+      const list = p.locator('#view-pane .vp-scroll');
       const box = await list.boundingBox();
       assert.ok(await list.evaluate((n) => n.scrollHeight > n.clientHeight + 40), 'the list scrolls');
       const hand = pointer(p);
       await hand.press(await centre(p.locator('.table-field-row').nth(2).locator('.field-reorder-handle')));
       await hand.nudge();
       await hand.to({ x: box.x + 40, y: box.y + box.height - 8 }, 4);
-      await p.waitForFunction(() => document.querySelector('.table-field-list').scrollTop > 60, null, { timeout: 5000 });
+      await p.waitForFunction(() => document.querySelector('#view-pane .vp-scroll').scrollTop > 60, null, { timeout: 5000 });
       await hand.to({ x: box.x + 40, y: box.y + box.height / 2 }, 2);
       const a = await list.evaluate((n) => n.scrollTop);
       await p.waitForTimeout(300);
       const b = await list.evaluate((n) => n.scrollTop);
-      assert.equal(b, a, 'out of the band the list holds still');
+      assert.equal(b, a, 'out of the band the pane holds still');
       await hand.to({ x: box.x + 40, y: box.y + 6 }, 4);
-      await p.waitForFunction((top) => document.querySelector('.table-field-list').scrollTop < top - 30, b, { timeout: 5000 });
+      await p.waitForFunction((top) => document.querySelector('#view-pane .vp-scroll').scrollTop < top - 30, b, { timeout: 5000 });
       await p.keyboard.press('Escape');
       await hand.release();
     } finally { await p.close(); }

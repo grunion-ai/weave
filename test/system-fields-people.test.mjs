@@ -83,8 +83,7 @@ test('the system columns render through the shared stamp and the Users resolver'
   assert.match(APP, /'Modified At': \(e\) => stampEl\(e\.updatedAt\)/);
   const chip = fnBodyOf('actorChipEl');
   assert.match(chip, /weaveActor\.resolveActor\(/);
-  assert.match(chip, /workspaceUsers\(\)/);
-  const users = fnBodyOf('workspaceUsers');
-  assert.match(users, /registryTable\('users'\)/);
-  assert.match(users, /api\('POST', `\/tables\/\$\{t\.id\}\/query`/, 'one read path: the member route hands a registry table to the hub');
+  assert.match(chip, /workspaceUsers\(\[a\.handle\]\)/, 'a chip asks for the one handle it draws (Issue #850)');
+  assert.match(fnBodyOf('workspaceUsers'), /registryTable\('users'\)/);
+  assert.match(fnBodyOf('flushUsers'), /api\('POST', `\/tables\/\$\{t\.id\}\/query`/, 'one read path: the member route hands a registry table to the hub');
 });

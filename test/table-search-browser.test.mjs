@@ -172,4 +172,20 @@ if (s) {
       await page.waitForFunction((id) => document.activeElement?.closest?.('tr.entity-row')?.dataset.eid === id, created.id);
     } finally { await page.close(); }
   });
+  test('the toolbar search icon draws no border of its own while the search box keeps its border', async () => {
+    const page = await open();
+    try {
+      const ring = () => page.evaluate(() => {
+        const btn = getComputedStyle(document.querySelector('.crumb-actions .table-search-btn'));
+        const box = getComputedStyle(document.querySelector('.crumb-actions .table-search'));
+        return { btn: [btn.borderTopWidth, btn.boxShadow, btn.backgroundColor], box: box.borderTopWidth };
+      });
+      const bare = ['0px', 'none', 'rgba(0, 0, 0, 0)'];
+      assert.deepEqual(await ring(), { btn: bare, box: '1px' }, 'at rest');
+      await page.hover('.crumb-actions .table-search-btn');
+      assert.deepEqual(await ring(), { btn: bare, box: '1px' }, 'on hover');
+      await page.focus('.crumb-actions .table-search-btn');
+      assert.deepEqual(await ring(), { btn: bare, box: '1px' }, 'on focus');
+    } finally { await page.close(); }
+  });
 }

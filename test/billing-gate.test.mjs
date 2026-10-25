@@ -28,7 +28,7 @@ function clerk(routes) {
 }
 
 let tableId = null;
-function build(routes = {}, { comped = false, billingOn = true } = {}) {
+function build(routes = {}, { comped = false, billingOn = true, trialFrom = null, trialDays = 14 } = {}) {
   const w = new Weave();
   w.updateWorkspace({ name: 'acme' });
   w.createSpace({ name: 'Dev' });
@@ -40,8 +40,9 @@ function build(routes = {}, { comped = false, billingOn = true } = {}) {
   }
   w.setRequireAuth(true);
   if (comped) w.state.meta.createdAt = '2026-01-01T00:00:00.000Z';
+  if (trialFrom) w.state.meta.trialFrom = trialFrom;
   const fake = clerk(routes);
-  const billing = billingOn ? createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', since: Date.parse('2026-06-01T00:00:00Z'), issuer: ISSUER, publishableKey: PUBLISHABLE, fetch: fake.fetch }) : null;
+  const billing = billingOn ? createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', since: Date.parse('2026-06-01T00:00:00Z'), issuer: ISSUER, publishableKey: PUBLISHABLE, trialDays, fetch: fake.fetch }) : null;
   tableId = w.findTable('Dev/Task').id;
   return { w, call: client(createWorkspaceHub(w), { billing }), t, calls: fake.calls };
 }
@@ -137,4 +138,74 @@ test('linkBillingOrg refuses anything but a Clerk organization id', () => {
   assert.throws(() => w.linkBillingOrg('acme'), /Clerk organization id/);
   assert.equal(w.linkBillingOrg('org_abc'), 'org_abc');
   assert.equal(w.billing().billing.orgId, 'org_abc');
+});
+
+const daysAgo = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
+const mcp = (call, token, method, params) => call('POST', '/api/mcp', { token, body: { jsonrpc: '2.0', id: 1, method, params } });
+
+test('a trial workspace: every paid role writes, the AI app works, and /api/billing names the end', async () => {
+  const { call, t } = build({}, { trialFrom: daysAgo(3) });
+  assert.equal((await write(call, t.ed)).status, 201);
+  assert.equal((await write(call, t.arc)).status, 201);
+  assert.equal((await mcp(call, t.arc, 'initialize', {})).status, 200);
+  const made = await mcp(call, t.arc, 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Dev/Task', name: 'from the agent' } });
+  assert.equal(made.status, 200);
+  assert.notEqual(made.json.result.isError, true, JSON.stringify(made.json));
+  const res = await call('GET', '/api/billing', { token: t.ob });
+  assert.equal(res.json.plan, 'trial');
+  assert.equal(res.json.trial.daysLeft, 11);
+  assert.ok(Date.parse(res.json.trial.endsAt) > Date.now());
+  assert.ok(res.json.members.every((m) => m.seated));
+});
+
+test('after the trial: writes need a seat again, existing rows stay, and /api/billing has no trial', async () => {
+  const { w, call, t } = build({}, { trialFrom: daysAgo(20) });
+  w.createEntity('Dev/Task', { name: 'kept' });
+  assert.equal((await write(call, t.arc)).status, 402);
+  const res = await call('GET', '/api/billing', { token: t.arc });
+  assert.deepEqual([res.json.plan, res.json.trial], [null, null]);
+  const rows = await call('POST', `/api/tables/${tableId}/query`, { token: t.arc, body: {} });
+  assert.deepEqual(rows.json.items.map((e) => e.name), ['kept']);
+});
+
+test('an unseated Architect keeps an AI app that reads; its writes come back as a seat-required tool error', async () => {
+  const { w, call, t } = build();
+  w.createEntity('Dev/Task', { name: 'kept' });
+  const init = await mcp(call, t.arc, 'initialize', {});
+  assert.equal(init.status, 200);
+  assert.equal((await mcp(call, t.arc, 'tools/list', {})).status, 200);
+  const read = await mcp(call, t.arc, 'tools/call', { name: 'weave_query', arguments: { db: 'Dev/Task' } });
+  assert.equal(read.json.result.isError, undefined, JSON.stringify(read.json));
+  assert.match(read.json.result.content[0].text, /kept/);
+  const wrapped = await mcp(call, t.arc, 'tools/call', { name: 'weave_call', arguments: { name: 'weave_search', args: { query: 'kept' } } });
+  assert.equal(wrapped.json.result.isError, undefined, JSON.stringify(wrapped.json));
+  for (const [name, args] of [['weave_create_entity', { db: 'Dev/Task', name: 'x' }], ['weave_call', { name: 'weave_create_space', args: { name: 'Ops' } }]]) {
+    const refused = await mcp(call, t.arc, 'tools/call', { name, arguments: args });
+    assert.equal(refused.json.result.isError, true, name);
+    assert.match(refused.json.result.content[0].text, /paid seat/);
+    assert.match(refused.json.result.content[0].text, /\/billing/);
+  }
+  assert.equal(w.listTables().filter((x) => !x.system).length, 1);
+  assert.equal((await mcp(call, t.ob, 'initialize', {})).status, 200, 'an Observer by role reads over MCP (Issue #508)');
+  const obWrite = await mcp(call, t.ob, 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Dev/Task', name: 'x' } });
+  assert.equal(obWrite.json.result.isError, true, 'and writes no row');
+});
+
+test('GET /api/billing gives an architect every seat holder\'s address and gives a member none (Issue #921)', async () => {
+  const { w, call, t } = build();
+  for (const [name, subject] of [['arc', 'user_arc'], ['ed', 'user_ed'], ['ob', 'user_ob']]) {
+    assert.equal(w.accountForIdentity({ issuer: ISSUER, subject, email: `${name}@example.com` }).name, name);
+  }
+  const mine = await call('GET', '/api/billing', { token: t.arc });
+  assert.equal(mine.status, 200);
+  assert.deepEqual(mine.json.members.map((m) => [m.name, m.email]).sort(), [['arc', 'arc@example.com'], ['ed', 'ed@example.com'], ['ob', 'ob@example.com']]);
+  const theirs = await call('GET', '/api/billing', { token: t.ob });
+  assert.equal(theirs.status, 200);
+  assert.deepEqual(theirs.json.members.map((m) => m.email), [undefined, undefined, undefined], 'only an architect reads addresses, as in Members');
+});
+
+test('GET /api/billing leaves out the address of an account that has never signed in (Issue #921)', async () => {
+  const { call, t } = build();
+  const res = await call('GET', '/api/billing', { token: t.arc });
+  assert.deepEqual(res.json.members.map((m) => m.email), [undefined, undefined, undefined]);
 });

@@ -1,2 +1,0 @@
-- The security scan's gitleaks step reads only the checked-out history, so a finding on another open branch no longer fails every pull request's required check. (#913)
-- The PR gate accepts the security scan test's `gitleaks not installed` skip in lanes without the gitleaks binary, as it already accepts `semgrep not installed`. (#913)

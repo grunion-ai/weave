@@ -84,24 +84,69 @@ export function packTar(out, entries) {
 
 const field = (h, off, len) => h.toString('utf8', off, off + len).replace(/\0.*$/s, '');
 
+function tarHeader(h, off) {
+  if (h.every((b) => b === 0)) return null;
+  let sum = 0;
+  for (let i = 0; i < BLOCK; i++) sum += (i >= 148 && i < 156) ? 32 : h[i];
+  if (sum !== parseInt(field(h, 148, 8).trim(), 8)) throw new WeaveError(`Tar header checksum mismatch at byte ${off}`, 'invalid');
+  const size = parseInt(field(h, 124, 12).trim(), 8);
+  const prefix = field(h, 345, 155);
+  const name = (prefix ? `${prefix}/` : '') + field(h, 0, 100);
+  const type = h[156];
+  return { name, size, file: type === 0x30 || type === 0 };
+}
+
 export function readTar(path) {
   const buf = Buffer.isBuffer(path) ? path : readFileSync(path);
   const entries = [];
   for (let off = 0; off + BLOCK <= buf.length; ) {
-    const h = buf.subarray(off, off + BLOCK);
-    if (h.every((b) => b === 0)) break;
-    let sum = 0;
-    for (let i = 0; i < BLOCK; i++) sum += (i >= 148 && i < 156) ? 32 : h[i];
-    if (sum !== parseInt(field(h, 148, 8).trim(), 8)) throw new WeaveError(`Tar header checksum mismatch at byte ${off}`, 'invalid');
-    const size = parseInt(field(h, 124, 12).trim(), 8);
-    const prefix = field(h, 345, 155);
-    const name = (prefix ? `${prefix}/` : '') + field(h, 0, 100);
-    const type = h[156];
+    const h = tarHeader(buf.subarray(off, off + BLOCK), off);
+    if (!h) break;
     off += BLOCK;
-    if (type === 0x30 || type === 0) entries.push({ name, data: buf.subarray(off, off + size) });
-    off += Math.ceil(size / BLOCK) * BLOCK;
+    if (h.file) entries.push({ name: h.name, data: buf.subarray(off, off + h.size) });
+    off += Math.ceil(h.size / BLOCK) * BLOCK;
   }
   return entries;
+}
+
+export async function streamTar(chunks, open) {
+  let head = Buffer.alloc(0), at = 0, left = 0, skip = 0, sink = null, done = false;
+  try {
+    for await (const chunk of chunks) {
+      let buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      while (buf.length && !done) {
+        let n;
+        if (left) {
+          n = Math.min(left, buf.length);
+          sink?.write(buf.subarray(0, n));
+          left -= n;
+          if (!left) { sink?.close(); sink = null; }
+        } else if (skip) {
+          n = Math.min(skip, buf.length);
+          skip -= n;
+        } else {
+          n = Math.min(BLOCK - head.length, buf.length);
+          head = Buffer.concat([head, buf.subarray(0, n)]);
+          if (head.length === BLOCK) {
+            const h = tarHeader(head, at + n - BLOCK);
+            head = Buffer.alloc(0);
+            if (!h) done = true;
+            else {
+              left = h.size;
+              skip = (BLOCK - (h.size % BLOCK)) % BLOCK;
+              sink = h.file ? open(h.name, h.size) : null;
+              if (!left) { sink?.close(); sink = null; }
+            }
+          }
+        }
+        at += n;
+        buf = buf.subarray(n);
+      }
+    }
+    if (!done && (left || skip || head.length)) throw new WeaveError(`Tar archive truncated at byte ${at}`, 'invalid');
+  } finally {
+    sink?.close();
+  }
 }
 
 const MAGIC = Buffer.from('WVBK1\0');
@@ -214,7 +259,10 @@ export function inspect(path) {
       let e;
       try { e = JSON.parse(json); } catch { continue; }
       if (!e.deletedAt) entities += 1;
-      for (const f of e.files ?? []) if (f?.id) refs.push({ id: String(f.id), name: f.name ?? '' });
+      for (const f of e.files ?? []) {
+        if (f?.id) refs.push({ id: String(f.id), name: f.name ?? '' });
+        if (f?.preview?.id) refs.push({ id: String(f.preview.id), name: `${f.name ?? ''} (preview)` });
+      }
     }
     return { entities, refs };
   } finally { db.close(); }

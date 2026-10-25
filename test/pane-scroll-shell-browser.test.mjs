@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, styleOf, PHONE, phoneBrowser, phonePage, phoneProfile, touchScroll } from './lib/browser.mjs';
+import { launch, engineOf, styleOf, settled, PHONE, phoneBrowser, phonePage, phoneProfile, touchScroll } from './lib/browser.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 const ROWS = 2000;
@@ -23,8 +23,8 @@ const s = await launch('pane scroll shell', (weave) => {
 if (s) {
   const { base, browser, big, first } = s;
 
-  const open = async (hash, { width = 1440, height = 900, theme = 'light', dockWidth = null, ready = '#main .wv-grid tbody tr[data-i]', phone = false } = {}) => {
-    const page = phone ? await phonePage(await phoneBrowser()) : await browser.newPage({ viewport: { width, height } });
+  const open = async (hash, { width = 1440, height = 900, theme = 'light', dockWidth = null, ready = '#main .wv-grid tbody tr[data-i]', phone = false, engine = browser } = {}) => {
+    const page = phone ? await phonePage(await phoneBrowser()) : await engine.newPage({ viewport: { width, height } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     if (dockWidth) await page.addInitScript((w) => localStorage.setItem('wv-dock-width', w), String(dockWidth));
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
@@ -38,7 +38,7 @@ if (s) {
       if (!n) return null;
       return [...n.querySelectorAll('.table-wrap')].reduce((t, w) => t + w.scrollTop, n.scrollTop);
     };
-    return { doc: document.scrollingElement.scrollTop, rail: top('#ws-rail'), sidebar: top('#sidebar'), main: top('#main'), dock: top('#dock') };
+    return { doc: document.scrollingElement.scrollTop, rail: top('#ws-rail'), sidebar: top('#sidebar'), nav: top('#nav'), main: top('#main'), dock: top('#dock') };
   });
   const centreOf = (page, q) => page.evaluate((sel) => {
     const r = document.querySelector(sel).getBoundingClientRect();
@@ -54,7 +54,7 @@ if (s) {
   const onlyMoved = (before, after, pane) => {
     assert.equal(after.doc, 0, `the document never scrolls (wheel over ${pane}): ${JSON.stringify(after)}`);
     assert.ok(after[pane] > before[pane] + 50, `a wheel over ${pane} scrolls ${pane}: ${before[pane]} -> ${after[pane]}`);
-    for (const other of ['rail', 'sidebar', 'main', 'dock']) {
+    for (const other of ['rail', 'sidebar', 'nav', 'main', 'dock']) {
       if (other === pane) continue;
       assert.equal(after[other], before[other], `a wheel over ${pane} leaves ${other} where it was: ${JSON.stringify({ before, after })}`);
     }
@@ -66,14 +66,14 @@ if (s) {
       await page.waitForSelector('#dock:not([hidden]) .name-edit');
       await page.waitForTimeout(300);
       assert.ok(await page.locator('#main .table-wrap.wv-fit').count(), 'the grid fits its panel, so the panel is the box that scrolls');
-      const room = await page.evaluate(() => Object.fromEntries(['#sidebar', '#main', '#dock'].map((q) => {
+      const room = await page.evaluate(() => Object.fromEntries(['#nav', '#main', '#dock'].map((q) => {
         const n = document.querySelector(q);
         const boxes = [n, ...n.querySelectorAll('.table-wrap')];
         return [q, Math.max(...boxes.map((b) => b.scrollHeight - b.clientHeight))];
       })));
       for (const [q, spare] of Object.entries(room)) assert.ok(spare > 300, `${q} has more content than room, so it must scroll: ${spare}`);
 
-      for (const pane of ['sidebar', 'main', 'dock']) {
+      for (const pane of ['nav', 'main', 'dock']) {
         const before = await tops(page);
         await wheelOver(page, `#${pane}`);
         onlyMoved(before, await tops(page), pane);
@@ -99,18 +99,19 @@ if (s) {
 
   test('scroll chaining stops at the nav edge: a wheel past the bottom of the left nav moves nothing (Issue #451)', async () => {
     const page = await open(`#/table/${big.id}`, { width: 1470, height: 794 });
-    const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
+    const spare = await page.evaluate(() => { const n = document.querySelector('#nav'); return n.scrollHeight - n.clientHeight; });
     assert.ok(spare > 300, `the nav has more content than room, so it can run out: ${spare}`);
-    await page.evaluate(() => { const n = document.querySelector('#sidebar'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
+    await page.evaluate(() => { const n = document.querySelector('#nav'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
     const before = await tops(page);
-    assert.ok(before.sidebar >= spare - 1, `the nav starts at its end: ${before.sidebar} of ${spare}`);
-    await wheelOver(page, '#sidebar', 800);
+    assert.ok(before.nav >= spare - 1, `the nav starts at its end: ${before.nav} of ${spare}`);
+    await wheelOver(page, '#nav', 800);
     const after = await tops(page);
     assert.equal(after.doc, 0, `the document did not take the leftover wheel: ${JSON.stringify(after)}`);
     assert.equal(after.main, before.main, 'the main panel did not take the leftover wheel');
     assert.equal(after.rail, before.rail, 'the workspace rail did not take it either');
-    assert.ok(after.sidebar >= before.sidebar - 1, 'the nav stays at its end');
-    const chain = () => styleOf(page.locator('#sidebar'), 'overscrollBehaviorY', 'contain');
+    assert.equal(after.sidebar, 0, 'the sidebar around the list did not take it');
+    assert.ok(after.nav >= before.nav - 1, 'the nav stays at its end');
+    const chain = () => styleOf(page.locator('#nav'), 'overscrollBehaviorY', 'contain');
     assert.equal(await chain(), 'contain', 'the in-flow nav contains its chain');
     await page.evaluate(() => document.querySelector('#app').classList.add('nav-collapsed', 'nav-peek'));
     assert.equal(await chain(), 'contain', 'the nav-peek overlay contains its chain');
@@ -122,25 +123,24 @@ if (s) {
   for (const theme of ['light', 'dark']) {
     test(`${theme}: + New space holds the sidebar's bottom edge however far the nav scrolls (Issue #452)`, async () => {
       const page = await open(`#/table/${big.id}`, { theme, width: 1470, height: 794 });
-      const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
+      const spare = await page.evaluate(() => { const n = document.querySelector('#nav'); return n.scrollHeight - n.clientHeight; });
       assert.ok(spare > 300, `the nav has more content than room, so an unpinned foot would scroll away: ${spare}`);
       const seen = (q) => page.evaluate((sel) => {
-        const n = document.querySelector('#sidebar');
-        const box = n.getBoundingClientRect();
+        const box = document.querySelector('#sidebar').getBoundingClientRect();
         const r = document.querySelector(sel)?.getBoundingClientRect();
-        return r && { top: r.top, bottom: r.bottom, within: r.top >= box.top - 1 && r.bottom <= box.bottom + 1, scroll: n.scrollTop };
+        return r && { top: r.top, bottom: r.bottom, within: r.top >= box.top - 1 && r.bottom <= box.bottom + 1, scroll: document.querySelector('#nav').scrollTop };
       }, q);
       const btn = '#sidebar .nav-foot button';
       const atTop = await seen(btn);
       assert.ok(atTop?.within, `+ New space is in the sidebar's window with the nav unscrolled: ${JSON.stringify(atTop)}`);
-      await page.evaluate(() => { const n = document.querySelector('#sidebar'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
+      await page.evaluate(() => { const n = document.querySelector('#nav'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
       await page.waitForTimeout(150);
       const atEnd = await seen(btn);
       assert.ok(atEnd.scroll >= spare - 1, `the nav is at its end: ${atEnd.scroll} of ${spare}`);
       assert.ok(atEnd.within, `+ New space is still in the sidebar's window at the nav's end: ${JSON.stringify(atEnd)}`);
       assert.ok(Math.abs(atEnd.top - atTop.top) <= 20, `the button held its place while the nav ran ${spare}px: ${atTop.top} -> ${atEnd.top}`);
-      const order = await page.evaluate(() => [...document.querySelectorAll('#sidebar .nav-pinned > *')].map((n) => n.className.split(' ')[0]));
-      assert.deepEqual(order, ['nav-foot', 'nav-system', 'nav-stats'], `the button leads the strip, the system tables follow, the records line last (Issue #854): ${order}`);
+      const order = await page.evaluate(() => [...document.querySelectorAll('#sidebar .nav-pinned > *')].filter((n) => !n.hidden).map((n) => n.className.split(' ')[0]));
+      assert.deepEqual(order, ['nav-foot', 'nav-system', 'nav-identity'], `the button leads the strip, the System space follows, the identity panel last (Issue #854, Feature #333): ${order}`);
       await page.click(btn);
       await page.waitForTimeout(150);
       const input = await seen('.nav-inline-add');
@@ -149,6 +149,56 @@ if (s) {
       await page.close();
     });
   }
+
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: WebKit reserves at most 8px for the nav, main panel and dock bars, never Tabler's 16px (Issue #956)`, async () => {
+      const webkit = await engineOf('webkit');
+      assert.ok(webkit, 'WebKit is installed, so the Safari bar is measured');
+      const page = await open(`#/table/${big.id}?e=${first.id}`, { theme, width: 1600, dockWidth: 380, engine: webkit });
+      await page.waitForSelector('#dock:not([hidden]) .name-edit');
+      const bars = await page.evaluate(() => Object.fromEntries(['#nav', '#main', '#dock'].map((q) => {
+        const n = document.querySelector(q);
+        const cs = getComputedStyle(n);
+        return [q, { bar: n.offsetWidth - n.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth), spare: n.scrollHeight - n.clientHeight }];
+      })));
+      for (const [q, m] of Object.entries(bars)) {
+        assert.ok(m.spare > 100, `${q} overflows, so it draws a bar: ${JSON.stringify(bars)}`);
+        assert.ok(m.bar <= 8, `${q} reserves ${m.bar}px for its bar, wanted at most 8: ${JSON.stringify(bars)}`);
+      }
+      await page.close();
+    });
+  }
+
+  test('the nav list is the one scroll box, between the head and the pinned foot, in the sidebar, the peek overlay and the phone drawer (Issue #957)', async () => {
+    const page = await open(`#/table/${big.id}`, { width: 1470, height: 794 });
+    const frame = () => page.evaluate(() => {
+      const nav = document.querySelector('#nav');
+      const side = document.querySelector('#sidebar');
+      const head = document.querySelector('#sidebar .nav-head');
+      const foot = document.querySelector('#sidebar .nav-pinned');
+      const n = nav.getBoundingClientRect();
+      const s = side.getBoundingClientRect();
+      return {
+        navScrolls: nav.scrollHeight > nav.clientHeight + 100 && /auto|scroll/.test(getComputedStyle(nav).overflowY),
+        sidebarScrolls: side.scrollHeight > side.clientHeight + 1 || /auto|scroll/.test(getComputedStyle(side).overflowY),
+        holdsHead: nav.contains(head),
+        holdsFoot: nav.contains(foot),
+        clearOfHead: n.top >= head.getBoundingClientRect().bottom - 0.5,
+        clearOfFoot: n.bottom <= foot.getBoundingClientRect().top + 0.5,
+        barAtEdge: Math.round(s.right - n.right),
+      };
+    });
+    const want = { navScrolls: true, sidebarScrolls: false, holdsHead: false, holdsFoot: false, clearOfHead: true, clearOfFoot: true, barAtEdge: 0 };
+    assert.deepEqual(await frame(), want, 'the in-flow sidebar');
+    for (const [label, viewport] of [['peek', { width: 1470, height: 794 }], ['tablet peek', { width: 800, height: 1000 }], ['phone drawer', phoneProfile().page.viewport]]) {
+      await page.setViewportSize(viewport);
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      await page.evaluate(() => document.querySelector('#app').classList.add('nav-collapsed', 'nav-peek'));
+      await settled(page.locator('#sidebar'));
+      assert.deepEqual(await frame(), want, `the ${label}`);
+    }
+    await page.close();
+  });
 
   test(`the ${ROWS}-row grid still paints rows as the main panel scrolls to its bottom`, async () => {
     const page = await open(`#/table/${big.id}`);
@@ -185,10 +235,11 @@ if (s) {
     await page.click('#main .nav-menu');
     await page.waitForTimeout(250);
     before = await tops(page);
-    await swipeOver(page, '#sidebar');
+    await swipeOver(page, '#nav');
     after = await tops(page);
     assert.equal(after.doc, 0);
-    assert.ok(after.sidebar > before.sidebar + 50, `the drawer nav scrolls: ${before.sidebar} -> ${after.sidebar}`);
+    assert.ok(after.nav > before.nav + 50, `the drawer nav scrolls: ${before.nav} -> ${after.nav}`);
+    assert.equal(after.sidebar, 0, 'the drawer around the list holds still');
     assert.equal(after.main, before.main, 'the page under the drawer holds');
     await page.close();
 

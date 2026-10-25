@@ -8,8 +8,8 @@ fields along with its documents, comments, files and activity.
 
 Workspaces, spaces, tables, and the rows inside tables **are all entities**.
 They differ by *level*, not by kind. This is not a metaphor in weave: creating a
-space writes a row in `Workspace/Spaces`, creating a table writes one in
-`Workspace/Tables`, adding a field writes one in `Workspace/Fields` — through
+space writes a row in `System/Spaces`, creating a table writes one in
+`System/Tables`, adding a field writes one in `System/Fields` — through
 the same verbs a customer row answers to, with the same entity view.
 
 What a row is called downstream is a **naming convention and nothing more**: a
@@ -39,10 +39,10 @@ Both lists are exported from the engine — `ONTOLOGY` and `FIELD_TYPES` in
 | Kind | Level of | Registry | Lives in | What it is |
 | --- | --- | --- | --- | --- |
 | **Entity** | — | — | `state.entities` | One addressable thing: id, public id (`Table#n`), fields, and an entity view. Everything below is one. |
-| **Workspace** | contains spaces | `Workspace/Workspaces` | `state.meta` | One workspace file and everything in it. The top of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and the Spaces, Tables, Fields and Workflows rows relate back to it through a `Workspace` relation. |
-| **Space** | contains tables | `Workspace/Spaces` | `state.spaces` | The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest. |
-| **Table** | contains rows | `Workspace/Tables` | `state.tables` | An entity that is also an **entity type**: the ordered set of fields every row in it follows. |
-| **Field** | describes a slot | `Workspace/Fields` | `table.fields` | One typed, named slot on a table. Not a row of data, but it has a registry row carrying its type and definition, which is how the schema stays editable as data. |
+| **Workspace** | contains spaces | `System/Workspaces` | `state.meta` | One workspace file and everything in it. The top of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and the Spaces, Tables, Fields and Workflows rows relate back to it through a `Workspace` relation. |
+| **Space** | contains tables | `System/Spaces` | `state.spaces` | The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest. |
+| **Table** | contains rows | `System/Tables` | `state.tables` | An entity that is also an **entity type**: the ordered set of fields every row in it follows. |
+| **Field** | describes a slot | `System/Fields` | `table.fields` | One typed, named slot on a table. Not a row of data, but it has a registry row carrying its type and definition, which is how the schema stays editable as data. |
 | **Row** | the data itself | *(it is the data)* | `state.entities` | An entity inside a table, typed by that table, addressed `Task#42`. Call it a record, an item, an entry, a customer — it is a row. |
 
 ### What an entity is made of
@@ -66,7 +66,7 @@ or an entity view.
 | Kind | Lives in | What it is |
 | --- | --- | --- |
 | **Saved view** | `state.meta.views` | A saved arrangement of table blocks with filters and layouts, optionally shared by token. Distinct from the entity view every entity has by existing. |
-| **Automation** | a `Workspace/Workflows` row | A rule bound to one table: a trigger, and the actions it fires. Its verbs read and write the row. |
+| **Automation** | a `System/Workflows` row | A rule bound to one table: a trigger, and the actions it fires. Its verbs read and write the row. |
 | **Account** | `state.meta.accounts` | A named token holder with a role — architect, editor, observer. Only the hash is kept. |
 | **Credential** | the keystore, *outside* the workspace | A named secret — API key, token, password, id or pair. A key field stores the NAME; the value never enters the .db, and reading it back is gated by the credential's own access list. |
 | **Audit entry** | `store.audit_log` | A workspace-level record of a structural change. |
@@ -78,8 +78,8 @@ The claim "everything is an entity" has a twin: **every level is itself
 structured as a table with fields.**
 
 - The **workspace** is a table whose rows are its spaces — literally
-  `Workspace/Spaces`.
-- A **space** is a table whose rows are its tables — `Workspace/Tables`,
+  `System/Spaces`.
+- A **space** is a table whose rows are its tables — `System/Tables`,
   scoped to the space through the `Space` relation; a space's entity view
   lists exactly its own tables.
 - A **table** is a table whose rows are its rows — that one needs no
@@ -102,11 +102,11 @@ deleting, or reordering columns through the schema verbs updates the row.
 ## How it nests
 
 ```
-Workspace ......................... entity (level 1) — row in Workspace/Workspaces, at the hub root
-└── Space ......................... entity (level 2) — row in Workspace/Spaces
-    └── Table ..................... entity (level 3) — row in Workspace/Tables
+Workspace ......................... entity (level 1) — row in System/Workspaces, at the hub root
+└── Space ......................... entity (level 2) — row in System/Spaces
+    └── Table ..................... entity (level 3) — row in System/Tables
         │                             …and the ENTITY TYPE of everything in it
-        ├── Field ................. entity (level 4) — row in Workspace/Fields
+        ├── Field ................. entity (level 4) — row in System/Fields
         └── Row ................... entity (level 5) — record / item / entry /
             │                         customer / company / account / task /
             │                         deal / ticket / contact — all the same kind
@@ -135,9 +135,9 @@ Tracked as weave Feature #121.
 | Kind | Created by | Ends by |
 | --- | --- | --- |
 | Workspace | opening a path | deleting the file |
-| Space | `createSpace`, or a row in `Workspace/Spaces` | `deleteSpace` — cascades to its tables |
-| Table | `createTable`, or a row in `Workspace/Tables` | `deleteTable` — cascades to its rows, paired relation ends, dependent computed fields |
-| Field | `addField` / `addRelation`, or a row in `Workspace/Fields` | `deleteField` — takes its inverse end and dependent lookups/rollups with it |
+| Space | `createSpace`, or a row in `System/Spaces` | `deleteSpace` — cascades to its tables |
+| Table | `createTable`, or a row in `System/Tables` | `deleteTable` — cascades to its rows, paired relation ends, dependent computed fields |
+| Field | `addField` / `addRelation`, or a row in `System/Fields` | `deleteField` — takes its inverse end and dependent lookups/rollups with it |
 | Row | `createEntity` | soft delete to trash, then `restoreEntity` or a hard delete |
 | Value, Document, Comment, File, Activity | writing to an entity | with their entity (files also individually) |
 | Saved view, Automation, Account | their `create*` verb | their `delete*` verb |
@@ -149,9 +149,9 @@ are part of the engine, not user data.
 
 ## The other axis: field types
 
-Twenty-one, and not one of them is a kind of entity. Sixteen store a value —
+Twenty-two, and not one of them is a kind of entity. Seventeen store a value —
 `text`, `number`, `rating`, `date`, `daterange`, `checkbox`, `toggle`, `url`, `email`, `select`,
-`multiselect`, `workflow`, `relation`, `field`, `key`, `attachments`. Four
+`multiselect`, `workflow`, `relation`, `field`, `key`, `attachments`, `avatar`. Four
 compute one from other fields — `lookup`, `rollup`, `formula`, and `view`,
 which computes the row's own chip or card. One holds a body — `document`.
 
@@ -187,23 +187,23 @@ customer all have one, because all three are entities.
 ### Workspace
 One weave file — a SQLite `.db` — holding spaces, tables, rows and the
 machinery around them. The top level of the hierarchy. A row in
-`Workspace/Workspaces` at the hub root: the registry lives once, in the engine
+`System/Workspaces` at the hub root: the registry lives once, in the engine
 the hub stands on, and member workspaces project their structure into it
 (Feature #219) instead of minting a `Workspace` space of their own.
 
 ### Space
 The unit of meaning in a workspace: the tables of one area, under one schema
 version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces
-never nest. A row in `Workspace/Spaces`.
+never nest. A row in `System/Spaces`.
 
 ### Table
 An entity that is also an entity type: the ordered set of fields every row in
-it follows. A row in `Workspace/Tables`. Called a *database* in Fibery, a
+it follows. A row in `System/Tables`. Called a *database* in Fibery, a
 *table* in Airtable.
 
 ### Field
 One typed, named slot on a table. Not a row of data, but described by a row in
-`Workspace/Fields` carrying its type and definition.
+`System/Fields` carrying its type and definition.
 
 ### Row
 An entity inside a table, typed by that table and addressed `Table#n`. The
@@ -224,6 +224,10 @@ An authored, time-ordered note on an entity, kept separate from its documents.
 ### File
 A blob attached to an entity, stored beside the workspace file and referenced by
 id from attachments fields.
+
+### Avatar
+The face of one row, drawn first on its chip, card, crumb and header. An
+`avatar` field holds it; with no image the row shows its initials.
 
 ### Activity
 An append-only entry recording one change to an entity — created, field-updated,
@@ -249,7 +253,7 @@ view.
 ### Automation
 A rule bound to one table: a trigger — entity-created, field-updated,
 state-changed — and the actions it fires: set-field, append-doc, add-comment,
-webhook. Since Feature #249 every rule is a row of `Workspace/Workflows`: the
+webhook. Since Feature #249 every rule is a row of `System/Workflows`: the
 row's Script document holds it as JSON, `{table, trigger, actions}` with
 names, and `createAutomation`, `listAutomations`, `updateAutomation` and
 `deleteAutomation` (REST, MCP and the CLI alike) read and write that row.
@@ -307,13 +311,13 @@ survives every rename; mentions may use a bare uuid (`[[<uuid>]]`) for the
 same reason.
 
 ### Registry
-A system table whose rows are structure: `Workspace/Workspaces`,
-`Workspace/Spaces`, `Workspace/Tables`, `Workspace/Fields`. Readable, queryable
+A system table whose rows are structure: `System/Workspaces`,
+`System/Spaces`, `System/Tables`, `System/Fields`. Readable, queryable
 and editable like any table; not deletable, not redefinable. There is one
 registry per hub, at the root; every row carries a `Workspace` relation naming
 the workspace it describes, and a row edit routes to that workspace's engine.
 
-Not every system table is a registry. `Workspace/Workflows` is a system table
+Not every system table is a registry. `System/Workflows` is a system table
 whose rows are the workspace's automations, one row per rule, and the table
 is their control panel (Feature #249). A row carries an On toggle (worded
 On / Off, off until switched, the first column after Name), the tables and
@@ -394,6 +398,10 @@ The name of a secret. Displays redacted, and says whether the keystore holds it.
 
 ### `attachments`
 File ids — one, or many.
+
+### `avatar`
+The row's face: one image file from the row, or initials on a hue from its
+name. One per table. An icon names the kind of row; an avatar names the row.
 
 ### `lookup`
 A value pulled through a relation from a field on the far side.

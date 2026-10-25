@@ -52,4 +52,27 @@ if (s) {
     assert.equal(await page.evaluate(() => globalThis.__undone), true);
     await page.close();
   });
+
+  test('a seat-required refusal shows one toast with an Open billing action, however often it repeats (Issue #917)', async () => {
+    const page = await browser.newPage();
+    await page.goto(base, { waitUntil: 'networkidle' });
+    const seen = await page.evaluate(async () => {
+      const body = { error: 'The free trial of acme has ended, so creating and editing there needs a paid seat. Subscribe on the billing page to keep editing.', code: 'seat-required', billing: '/w/acme/billing' };
+      const real = window.fetch;
+      window.fetch = async () => new Response(JSON.stringify(body), { status: 402, headers: { 'Content-Type': 'application/json' } });
+      const shown = [];
+      for (let i = 0; i < 3; i++) {
+        try { await api('POST', '/tables/x/entities', { name: 'n' }); } catch (err) {
+          shown.push(err.shown === true);
+          if (!err.shown) toast(err.message, true);
+        }
+      }
+      toast(body.error, true);
+      window.fetch = real;
+      const toasts = [...document.querySelectorAll('.wv-toast')];
+      return { shown, count: toasts.length, action: toasts[0]?.querySelector('.wv-toast-action')?.textContent, times: toasts[0]?.querySelector('.wv-toast-count')?.textContent };
+    });
+    assert.deepEqual(seen, { shown: [true, true, true], count: 1, action: 'Open billing', times: '×4' });
+    await page.close();
+  });
 }

@@ -11,16 +11,39 @@ export function signJwt(payload, { privateKey, kid = 'k1', alg = 'RS256' } = {})
   return `${head}.${sig}`;
 }
 
-export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cret', claimsInIdToken = true, endSession = false } = {}) {
+const page = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui;margin:24px">${body}</body>`;
+const cookieIn = (req, name) => new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(req.headers.cookie ?? '')?.[1] ?? null;
+
+export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cret', claimsInIdToken = true, endSession = false, sessions = false, host = '127.0.0.1' } = {}) {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const codes = new Map();
-  const seen = { token: [], userinfo: 0, discovery: 0, jwks: 0 };
+  const live = new Map();
+  const seen = { token: [], userinfo: 0, discovery: 0, jwks: 0, registered: [], authorized: 0, signInPages: 0, signIns: 0, consentPages: 0 };
+  const clients = new Map();
   let issuer = '';
   let tamper = null;
+  let browserLogin = null;
+  const grant = (q, claims) => {
+    const code = randomBytes(12).toString('hex');
+    codes.set(code, { claims, nonce: q.get('nonce'), challenge: q.get('code_challenge'), redirectUri: q.get('redirect_uri'), clientId: q.get('client_id') });
+    const back = new URL(q.get('redirect_uri'));
+    back.searchParams.set('code', code);
+    if (q.get('state') != null) back.searchParams.set('state', q.get('state'));
+    return back;
+  };
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, issuer);
     const json = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+    const html = (status, body) => { res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(body); };
+    if (sessions && url.pathname === '/sign-in' && req.method === 'GET') {
+      if (!browserLogin) return json(401, { error: 'login_required' });
+      seen.signIns += 1;
+      const id = randomBytes(16).toString('hex');
+      live.set(id, browserLogin);
+      res.writeHead(302, { Location: url.searchParams.get('return') ?? '/', 'Set-Cookie': `__client=${id}; Path=/; HttpOnly; SameSite=Lax` });
+      return res.end();
+    }
     if (url.pathname === '/.well-known/openid-configuration') {
       seen.discovery += 1;
       return json(200, {
@@ -32,8 +55,106 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
         id_token_signing_alg_values_supported: ['RS256'],
         token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
         code_challenge_methods_supported: ['S256'],
+        registration_endpoint: `${issuer}/oauth/register`,
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
         ...(endSession ? { end_session_endpoint: `${issuer}/oauth/logout` } : {}),
       });
+    }
+    if (url.pathname === '/.well-known/oauth-authorization-server') {
+      return json(200, { issuer, authorization_endpoint: `${issuer}/oauth/authorize`, token_endpoint: `${issuer}/oauth/token`, registration_endpoint: `${issuer}/oauth/register`, code_challenge_methods_supported: ['S256'], token_endpoint_auth_methods_supported: ['none', 'client_secret_basic'], response_types_supported: ['code'] });
+    }
+    if (url.pathname === '/oauth/register' && req.method === 'POST') {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      const meta = JSON.parse(raw || '{}');
+      if (!Array.isArray(meta.redirect_uris) || !meta.redirect_uris.length) return json(400, { error: 'invalid_redirect_uri' });
+      const id = `dyn_${randomBytes(6).toString('hex')}`;
+      clients.set(id, { redirectUris: meta.redirect_uris, name: meta.client_name ?? null });
+      seen.registered.push({ id, name: meta.client_name ?? null });
+      return json(201, { client_id: id, client_id_issued_at: Math.floor(Date.now() / 1000), redirect_uris: meta.redirect_uris, token_endpoint_auth_method: 'none', grant_types: ['authorization_code'], response_types: ['code'] });
+    }
+    if (url.pathname === '/oauth/authorize' && req.method === 'GET') {
+      seen.authorized += 1;
+      const q = url.searchParams;
+      const dyn = clients.get(q.get('client_id'));
+      if (q.get('client_id') !== clientId && !dyn) return json(400, { error: 'invalid_client' });
+      if (dyn && !dyn.redirectUris.includes(q.get('redirect_uri'))) return json(400, { error: 'invalid_redirect_uri' });
+      if (q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge')) return json(400, { error: 'invalid_request', error_description: 'PKCE S256 required' });
+      if (sessions) {
+        const who = live.get(cookieIn(req, '__client'));
+        if (!who) {
+          seen.signInPages += 1;
+          return html(200, page('Sign in', `<h1>Sign in to weave</h1><a id="idp-sign-in" href="/sign-in?return=${encodeURIComponent(url.href)}">Continue</a>`));
+        }
+        if (dyn && q.get('consented') !== '1') {
+          seen.consentPages += 1;
+          const allow = new URL(url.href);
+          allow.searchParams.set('consented', '1');
+          return html(200, page('Allow access', `<h1>${String(dyn.name ?? 'An app').replace(/[<>&"]/g, '')} wants to access weave</h1><a id="idp-allow" href="${allow.pathname}${allow.search}">Allow</a>`));
+        }
+        res.writeHead(302, { Location: grant(q, who).href });
+        return res.end();
+      }
+      if (!browserLogin) return json(401, { error: 'login_required' });
+      if (browserLogin.deny) {
+        const back = new URL(q.get('redirect_uri'));
+        back.searchParams.set('error', 'access_denied');
+        if (q.get('state') != null) back.searchParams.set('state', q.get('state'));
+        res.writeHead(302, { Location: back.href });
+        return res.end();
+      }
+      res.writeHead(302, { Location: grant(q, browserLogin).href });
+      return res.end();
+    }
+    if (url.pathname === '/npm/@clerk/clerk-js@6/dist/clerk.browser.js') {
+      seen.clerkScript = (seen.clerkScript ?? 0) + 1;
+      res.writeHead(200, { 'Content-Type': 'text/javascript', 'Access-Control-Allow-Origin': '*' });
+      return res.end(`(() => {
+        const form = (kind) => (el, o) => {
+          window.__clerkOptions = o;
+          window.__clerkMounted = kind;
+          const v = o.appearance?.variables ?? {};
+          const box = document.createElement('div');
+          box.dataset.fakeClerk = kind;
+          box.style.cssText = 'display:grid;gap:12px;font-family:' + (v.fontFamily ?? 'inherit') + ';color:' + (v.colorText ?? 'inherit');
+          const google = document.createElement('button');
+          google.type = 'button';
+          google.textContent = 'Continue with Google';
+          google.dataset.fakeClerk = 'google';
+          google.style.cssText = 'padding:9px 12px;border:1px solid color-mix(in srgb, ' + (v.colorNeutral ?? '#24292e') + ' 22%, transparent)' + ';border-radius:' + (v.borderRadius ?? '8px') + ';background:' + (v.colorBackground ?? '#fff') + ';color:inherit;font:inherit;font-weight:600;cursor:pointer';
+          const viaIdp = ${sessions ? JSON.stringify(issuer) : 'null'};
+          google.onclick = () => { location.href = viaIdp ? viaIdp + '/sign-in?return=' + encodeURIComponent(new URL(o.forceRedirectUrl, location.href).href) : o.forceRedirectUrl; };
+          const or = document.createElement('div');
+          or.textContent = 'or';
+          or.style.cssText = 'text-align:center;font-size:13px;color:' + (v.colorTextSecondary ?? 'gray');
+          const label = document.createElement('label');
+          label.textContent = 'Email address';
+          label.style.cssText = 'display:grid;gap:4px;font-size:14px;font-weight:600';
+          const input = document.createElement('input');
+          input.type = 'email';
+          input.style.cssText = 'padding:9px 11px;border:1px solid color-mix(in srgb, ' + (v.colorNeutral ?? '#24292e') + ' 22%, transparent)' + ';border-radius:' + (v.borderRadius ?? '8px') + ';background:' + (v.colorInputBackground ?? '#fff') + ';color:inherit;font:inherit';
+          label.append(input);
+          const go = document.createElement('button');
+          go.type = 'button';
+          go.textContent = 'Continue';
+          go.style.cssText = 'padding:10px 12px;border:0;border-radius:' + (v.borderRadius ?? '8px') + ';background:' + (v.colorPrimary ?? '#3a5bc7') + ';color:' + (v.colorTextOnPrimaryBackground ?? '#fff') + ';font:inherit;font-weight:600';
+          box.append(google, or, label, go);
+          el.replaceChildren(box);
+        };
+        const unmount = (el) => { el.replaceChildren(); window.__clerkMounted = null; };
+        let ui = null;
+        const needsUi = (mount) => (el, o) => {
+          if (!ui) throw new Error('Clerk was not loaded with Ui components');
+          return mount(el, o);
+        };
+        window.Clerk = { user: null, load: async (o) => { ui = o?.ui?.ClerkUI ?? null; window.__clerkLoadedWithUi = !!ui; }, mountSignIn: needsUi(form('signin')), mountSignUp: needsUi(form('signup')), unmountSignIn: unmount, unmountSignUp: unmount };
+      })();`);
+    }
+    if (url.pathname === '/npm/@clerk/ui@1/dist/ui.browser.js') {
+      seen.clerkUi = (seen.clerkUi ?? 0) + 1;
+      res.writeHead(200, { 'Content-Type': 'text/javascript', 'Access-Control-Allow-Origin': '*' });
+      return res.end('window.__internal_ClerkUICtor = function ClerkUI() {};');
     }
     if (url.pathname === '/jwks') {
       seen.jwks += 1;
@@ -48,8 +169,10 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       seen.token.push({ form: Object.fromEntries(form), basic: Boolean(basic) });
       const grant = codes.get(form.get('code'));
       codes.delete(form.get('code'));
-      if (id !== clientId || secret !== clientSecret) return json(401, { error: 'invalid_client' });
+      const publicClient = clients.has(id) && !secret;
+      if (!publicClient && (id !== clientId || secret !== clientSecret)) return json(401, { error: 'invalid_client' });
       if (!grant || form.get('grant_type') !== 'authorization_code') return json(400, { error: 'invalid_grant' });
+      if (publicClient && grant.clientId !== id) return json(400, { error: 'invalid_grant', error_description: 'code was issued to another client' });
       if (form.get('redirect_uri') !== grant.redirectUri) return json(400, { error: 'invalid_grant', error_description: 'redirect_uri mismatch' });
       const challenge = createHash('sha256').update(form.get('code_verifier') ?? '').digest('base64url');
       if (challenge !== grant.challenge) return json(400, { error: 'invalid_grant', error_description: 'PKCE verifier mismatch' });
@@ -80,19 +203,15 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
     json(404, { error: 'not_found' });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  issuer = `http://127.0.0.1:${server.address().port}`;
+  issuer = `http://${host}:${server.address().port}`;
 
   return {
     issuer, clientId, clientSecret, seen, privateKey,
+    get publishableKey() { return `pk_test_${Buffer.from(`${new URL(issuer).host}$`).toString('base64')}`; },
     tamper: (what) => { tamper = what; },
+    signInBrowserAs: (claims) => { browserLogin = claims; },
     approve(authorizeUrl, claims) {
-      const q = new URL(authorizeUrl).searchParams;
-      const code = randomBytes(12).toString('hex');
-      codes.set(code, { claims, nonce: q.get('nonce'), challenge: q.get('code_challenge'), redirectUri: q.get('redirect_uri') });
-      const back = new URL(q.get('redirect_uri'));
-      back.searchParams.set('code', code);
-      back.searchParams.set('state', q.get('state'));
-      return back;
+      return grant(new URL(authorizeUrl).searchParams, claims);
     },
     mint(claims, { jwt = null } = {}) {
       const access = jwt ? signJwt({ iss: issuer, sub: claims.sub, ...jwt }, { privateKey }) : randomBytes(16).toString('hex');

@@ -58,14 +58,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: var(--wv-chip-font); font-weight: 400; line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
 .k .ico { font-size: var(--fs-meta); line-height: 1; opacity: .85; flex: none; }
 .k-state, .k-select, .k-multi, .k-key { background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); border: 0; }
-.k-state.cat-not-started { --fill: rgba(0, 5, 20, .05); --text: #60646c; }
-.k-state.cat-in-progress { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; }
-.k-state.cat-done { --fill: rgba(46, 160, 67, .14); --text: #218358; }
-.k-state.cat-canceled { --fill: rgba(229, 72, 77, .12); --text: #ce2c31; text-decoration: line-through; }
-[data-bs-theme="dark"] .k-state.cat-not-started { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
-[data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18); --text: #bccaff; }
-[data-bs-theme="dark"] .k-state.cat-done { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
-[data-bs-theme="dark"] .k-state.cat-canceled { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
+.k-state.cat-canceled { text-decoration: line-through; }
 .k-rel, .k-doc, .k-attach, .k-more { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-body-color); cursor: pointer; }
 .k-rel:hover, .k-doc:hover, .k-attach:hover, .k-more:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); }
 .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: var(--fs-meta); margin-left: 1px; }
@@ -104,6 +97,12 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .wv-prose .k-rel :is(.wv-chip-id, .k-home, .mention-f, .mention-f-label) { line-height: 1; }
 .wv-prose .k-rel .k { font-size: inherit; }
 .wv-prose .k-rel.open > .mention-fields { display: inline; }
+.k-rel.has-av > a.mention { padding-left: 3px; }
+.k-rel.has-av > .mention-entity::before { content: none; }
+.wv-card-head > .wv-card-av { --wv-av-size: 32px; font-size: var(--fs-body); }
+.wv-card-head:has(> .wv-card-av) { justify-content: flex-start; gap: 10px; }
+.wv-card-head:has(> .wv-card-av) > .wv-card-title { flex: 1 1 auto; min-width: 0; }
+.wv-prose .k-rel .wv-av { vertical-align: -3px; margin-right: 4px; }
 .hue-slate { --fill: rgba(0, 5, 20, .05); --text: #60646c; --dot: transparent; }
 .hue-blue { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; --dot: #4769eb; }
 .hue-green { --fill: rgba(46, 160, 67, .14); --text: #218358; --dot: #2ea043; }
@@ -192,6 +191,10 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .k-actor.is-unknown { color: var(--tblr-secondary); }
 .k-actor-via { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tblr-secondary); }
 .k-actor-wf .wv-icon { flex: none; }
+.av-control { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.av-pick { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
+.av-pick:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
+.av-control.is-file-drop .wv-av { box-shadow: 0 0 0 2px var(--tblr-primary); }
 .mention-caret svg { width: 12px; height: 12px; display: block; }
 .wv-card { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: var(--fs-grid); line-height: 1.35; white-space: normal; }
 .wv-card.compact { gap: 3px; padding: 5px 8px; font-size: var(--fs-secondary); max-width: 280px; }
@@ -248,7 +251,7 @@ th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vert
 </div>
 <p>The grey box is the link to the row. The state mark, the segments, the caret and the × sit beside it, each its own target: the chip is the link, and the controls are the pixels that do not navigate.</p>
 <table><thead><tr><th>№</th><th>Element</th><th>What it does</th><th>How you use it</th><th>Hitbox</th></tr></thead><tbody><tr><td>1</td><td><strong>State mark</strong> (<code>.wv-chip-mark</code>)</td><td>the workflow state as the same state chip the grid cell wears, leading the line because the category reads before the words do</td><td><strong>click</strong> opens the state picker, grouped by category — Not started, In progress, Done, Canceled — and the state you pick is written to the row</td><td>its own box, outside the link</td></tr><tr><td>2</td><td><strong>Public id</strong> (<code>.wv-chip-id</code>)</td><td>the row's number in mono; shows when the chip's <code>link</code> setting is on</td><td>read it, quote it — <code>[[Task#12]]</code> written in any document becomes this chip</td><td>inside the link</td></tr><tr><td>3</td><td><strong>Name</strong> (<code>.k-label</code>)</td><td>the row's <code>Name</code> field</td><td><strong>click</strong> opens the row; <strong>⌘/Ctrl/Shift-click or middle-click</strong> opens it in a new tab; <strong>right-click → Copy Link</strong> copies its permalink (the chip is a real anchor); <strong>hover</strong> turns the outline brand-blue</td><td>inside the link — the label, its padding, and the id beside it all count</td></tr><tr><td>4</td><td><strong>Segments</strong> (<code>.mention-fields</code>)</td><td>the configured <code>fields</code>, three at most: a select or multiselect as its own chip, anything else as a label·value pair</td><td>a <strong>select</strong> or <strong>multiselect</strong> segment opens its picker and writes the row; a label·value pair is read-only</td><td>each segment is its own box; none of them navigate</td></tr><tr><td>5</td><td><strong>Home badge</strong> (<code>.k-home</code>)</td><td>names the far table when a relation can point at several (a target set), and on a document reference it always names the row's table</td><td>read it</td><td>display only</td></tr><tr><td>6</td><td><strong>Caret</strong> (<code>›</code> / <code>‹</code>)</td><td>folds the segments in and out; shows only when there is a segment to show</td><td><strong>click to expand</strong>; it turns to face the label (<code>‹</code>) and a second click <strong>collapses</strong></td><td>a 24×24px square around the glyph; the click stops there</td></tr><tr><td>7</td><td><strong>Remove</strong> (<code>×</code>)</td><td>in a relation cell only: unlinks this row from the field — never deletes it</td><td><strong>click to unlink</strong>; <code>weave undo</code> (or the activity row) puts it back</td><td>its own box, outside the link</td></tr></tbody></table>
-<p>There is no open mark and no avatar. The chip is the link, so a separate <code>↗</code> promises nothing, and a person table asks for its avatar through its own Chip config. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in <code>--wv-chip-font</code> and <code>--wv-chip-line</code>, and a segment is drawn at that same size rather than shrunk.</p>
+<p>There is no open mark. The chip is the link, so a separate <code>↗</code> promises nothing. A table with an <span class="k k-rel kind-table"><a class="mention mention-table" href="#fields" title="avatar" data-name="Fields"><span class="k-label">avatar</span></a></span> field puts the row's face first inside the link, before the <code>#id</code>; a table without one draws no face. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in <code>--wv-chip-font</code> and <code>--wv-chip-line</code>, and a segment is drawn at that same size rather than shrunk.</p>
 <p>One renderer draws this markup: <code>public/chip-view.js</code>, loaded by the browser and by <code>src/markdown.js</code>, with one stylesheet, <code>public/chip.css</code>, behind both. A relation cell, a document page and an HTML export of the same row therefore print the same chip, down to the class names.</p>
 <h2>The card</h2>
 <div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-block;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">

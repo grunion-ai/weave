@@ -152,3 +152,45 @@ test('MCP, REST and CLI speak phoneRow by name', async () => {
     assert.deepEqual(cli('table', 'view', 'Task/Standard', '--phone-row', '{"chips":["Size"],"labels":true}').phoneRow, { lead: null, chips: ['Size'], labels: true });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+const box = (left, top, width, height) => ({ left, top, right: left + width, bottom: top + height });
+const size = (b) => [b.right - b.left, b.bottom - b.top];
+const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+
+test('a phone row gives the state mark and each chip a 44 px hit box that keeps its drawn pill and splits every gap at its midpoint (Issue #1032)', () => {
+  const row = box(14, 140, 339, 88);
+  const lead = box(28, 152, 49, 20), link = box(85, 152, 30, 20), name = box(123, 152, 216, 20);
+  const sev = box(66, 198, 44, 24), ms = box(116, 198, 42, 24);
+  const rects = [lead, sev, ms, link, name];
+  const boxes = PR.hitBoxes(row, rects);
+  assert.equal(PR.HIT, 44);
+  for (const [i, b] of boxes.entries()) {
+    const r = rects[i];
+    assert.ok(b.left <= r.left && b.right >= r.right && b.top <= r.top && b.bottom >= r.bottom, `box ${i} keeps its pill`);
+    assert.ok(b.left >= row.left && b.right <= row.right && b.top >= row.top && b.bottom <= row.bottom, `box ${i} stays in its row`);
+    for (const o of boxes.slice(i + 1)) assert.ok(apart(b, o), `box ${i} overlaps no other box`);
+  }
+  for (const i of [0, 1, 2]) for (const side of size(boxes[i])) assert.ok(side >= 44, `mark ${i} is ${size(boxes[i]).join('x')}`);
+  assert.equal(boxes[0].right, 81, 'the state mark owns its half of the 8 px gap before the #id');
+  assert.equal(boxes[3].left, 81, 'and the #id owns the other half');
+  assert.equal(boxes[1].right, 113, 'two chips split their 6 px gap');
+  assert.equal(boxes[0].bottom, 184, 'the state band ends where the chip band starts');
+  assert.equal(boxes[1].top, 184);
+});
+
+test('a phone row too short for two 44 px bands splits the gap between the state mark and the chip line at its midpoint (Issue #1032)', () => {
+  const row = box(0, 0, 339, 68);
+  const [lead, chip] = PR.hitBoxes(row, [box(14, 12, 49, 20), box(52, 38, 44, 24)]);
+  assert.equal(lead.top, 0);
+  assert.equal(lead.bottom, 35);
+  assert.equal(chip.top, 35);
+  assert.equal(chip.bottom, 68);
+});
+
+test('a phone chip beside a two-line name splits across, so the chip keeps its full height (Issue #1032)', () => {
+  const row = box(0, 0, 339, 88);
+  const [chip, name] = PR.hitBoxes(row, [box(102, 58, 42, 24), box(144, 12, 181, 40)]);
+  assert.deepEqual(size(chip), [chip.right - chip.left, 44]);
+  assert.equal(chip.right, 144);
+  assert.equal(name.left, 144);
+});

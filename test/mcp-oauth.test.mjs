@@ -107,7 +107,7 @@ test('token: the provider\'s userinfo names the subject, and the account it is p
     assert.equal(made.res.status, 200);
     assert.ok(!made.data.result.isError, made.data.result.content[0].text);
     const row = s.w.getEntity(JSON.parse(made.data.result.content[0].text).id);
-    assert.equal(row.createdBy, 'kyle via MCP', 'the account is the actor and the door is its label');
+    assert.equal(s.w.actorName(row.createdBy), 'kyle via MCP', 'the account is the actor and the door is its label');
   } finally { s.stop(); }
 });
 
@@ -117,8 +117,8 @@ test('Issue #675: a JWT access token that names its client stores the account an
     const token = s.idp.mint(KYLE, { jwt: { client_id: 'claude-code_123' } });
     const made = await s.rpc('/mcp', token, 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Task', name: 'jwt row' } });
     const row = s.w.getEntity(JSON.parse(made.data.result.content[0].text).id);
-    assert.equal(row.createdBy, 'kyle via MCP');
-    assert.equal(row.modifiedBy, 'kyle via MCP');
+    assert.equal(s.w.actorName(row.createdBy), 'kyle via MCP');
+    assert.equal(s.w.actorName(row.modifiedBy), 'kyle via MCP');
     assert.doesNotMatch(JSON.stringify(s.w.getEntity(row.id)), /claude-code_123/, 'the client id lands nowhere on the row');
   } finally { s.stop(); }
 });
@@ -196,7 +196,7 @@ test('workspace: /w/<name>/mcp opens that workspace for an account linked there,
     assert.equal(made.res.status, 200);
     assert.ok(!made.data.result.isError, made.data.result.content[0].text);
     const id = JSON.parse(made.data.result.content[0].text).id;
-    assert.equal(s.docs.getEntity(id).createdBy, 'ann via MCP', 'the row lands in docs');
+    assert.equal(s.docs.actorName(s.docs.getEntity(id).createdBy), 'ann via MCP', 'the row lands in docs');
     assert.throws(() => s.w.getEntity(id), /not found/);
     assert.equal((await s.rpc('/mcp', ann, 'tools/list')).res.status, 403, 'ann has no account on the root workspace');
   } finally { s.stop(); }
@@ -222,7 +222,7 @@ test('cached provider identity uses the current account role after demotion', as
     assert.equal(changed.res.status, 200);
     assert.equal(changed.data.result.isError, undefined);
     assert.equal(s.w.listAccounts().find(a => a.name === 'kyle').role, 'observer');
-    assert.equal((await create()).res.status, 403);
+    assert.equal((await create()).data.result.isError, true, 'an observer holds no row tool (Issue #508)');
     assert.equal(s.idp.seen.userinfo, calls, 'provider identity remains cached; account permissions do not');
   } finally { s.stop(); }
 });

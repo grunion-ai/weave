@@ -13,6 +13,10 @@ const s = await launch('account chip', (root) => {
   uno = new Weave();
   uno.updateWorkspace({ name: 'uno' });
   uno.createSpace({ name: 'Agent' });
+  const issuer = 'https://idp.weave.test';
+  const unoAda = uno.createAccount({ name: 'Ada Lovelace', role: 'editor' }).account;
+  root.redeemIdentityInvite(root.linkIdentity(ada.id, { issuer }).code, { issuer, subject: 'user_ada' });
+  uno.redeemIdentityInvite(uno.linkIdentity(unoAda.id, { issuer }).code, { issuer, subject: 'user_ada' });
   uno.setRequireAuth(true);
 }, { server: () => ({ workspaces: { uno } }) });
 
@@ -22,7 +26,7 @@ if (s) {
 
   const open = async (path, { account = ada, theme } = {}) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    if (account) await ctx.addCookies([{ name: 'wv_session', value: root.createSession(account.id).token, url: base }]);
+    if (account) await ctx.addCookies([{ name: `wv_session_${root.state.meta.id}`, value: root.createSession(account.id).token, url: base }]);
     if (theme) await ctx.addInitScript((t) => { try { localStorage.setItem('weave-theme', t); } catch {} }, theme);
     const page = await ctx.newPage();
     await page.goto(base + path, { waitUntil: 'load' });
@@ -31,21 +35,19 @@ if (s) {
   };
   const logoutCalls = (page) => {
     const seen = [];
-    page.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/api/auth/logout')) seen.push(new URL(r.url()).pathname); });
+    page.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/api/auth/logout')) { const u = new URL(r.url()); seen.push(u.pathname + u.search); } });
     return seen;
   };
 
-  test('the chip at the sidebar foot shows the account name, initials and role in this workspace', async () => {
+  test('the identity panel at the sidebar foot shows the account name, initials and role in this workspace', async () => {
     const { ctx, page } = await open('/');
     const chip = page.locator('#sidebar .nav-account-chip');
     assert.equal(await page.locator('#sidebar .nav-account').getAttribute('data-state'), 'signed-in');
     assert.equal((await chip.locator('.nav-account-name').innerText()).trim(), 'Ada Lovelace');
     assert.equal((await chip.locator('.nav-account-role').innerText()).trim(), 'Editor');
-    assert.equal((await chip.locator('.av').innerText()).trim(), 'AL');
-    const line = await page.locator('#sidebar .nav-stats-line').boundingBox();
-    const box = await chip.boundingBox();
-    assert.ok(box.y >= line.y + line.height, `chip top ${box.y} sits below the stats line bottom ${line.y + line.height}`);
-    assert.equal(await chip.evaluate((n) => n.closest('.nav-stats')?.lastElementChild?.contains(n)), true);
+    assert.match(await chip.locator('.nav-account-role').getAttribute('class'), /\bk-select\b.*\bhue-blue\b|\bhue-blue\b.*\bk-select\b/, 'the role is a blue chip');
+    assert.equal((await chip.locator('.nav-account-av').innerText()).trim(), 'AL');
+    assert.equal(await chip.evaluate((n) => n.closest('.nav-pinned')?.lastElementChild?.matches('.nav-identity') && !!n.closest('.nav-identity')), true, 'the panel closes the pinned strip');
     await ctx.close();
   });
 
@@ -60,14 +62,15 @@ if (s) {
 
   test('the menu opens from the keyboard, moves with the arrows and closes on Escape and an outside click', async () => {
     const { ctx, page } = await open('/');
-    const chip = page.locator('#sidebar .nav-account-chip');
+    const chip = page.locator('#sidebar .nav-identity .nav-identity-more');
     await chip.focus();
     await page.keyboard.press('Enter');
-    const menu = page.locator('.nav-account-menu');
+    const menu = page.locator('.nav-personal-menu');
     await menu.waitFor();
     assert.equal(await chip.getAttribute('aria-expanded'), 'true');
     const rows = menu.locator('[role="menuitem"]');
-    assert.deepEqual((await rows.allInnerTexts()).map((t) => t.trim()), ['Sign out of root', 'Sign out everywhere']);
+    assert.deepEqual((await rows.locator('.wv-menu-label').allInnerTexts()).map((t) => t.trim()), ['Theme', 'Keyboard shortcuts', 'Settings', 'Sign out', 'Sign out everywhere']);
+    assert.equal(await rows.nth(3).getAttribute('title'), 'Sign out of root');
     assert.equal(await rows.nth(0).evaluate((n) => n === document.activeElement), true);
     await page.keyboard.press('ArrowDown');
     assert.equal(await rows.nth(1).evaluate((n) => n === document.activeElement), true);
@@ -91,20 +94,32 @@ if (s) {
   test('sign out of one workspace posts only that workspace\'s logout and lands on its sign-in page', async () => {
     const { ctx, page } = await open(`${unoPath()}/`);
     const calls = logoutCalls(page);
-    await page.locator('#sidebar .nav-account-chip').click();
-    const row = page.locator('.nav-account-menu [role="menuitem"]', { hasText: 'Sign out of uno' });
+    await page.locator('#sidebar .nav-identity .nav-identity-more').click();
+    const row = page.locator('.nav-personal-menu [role="menuitem"][title="Sign out of uno"]');
     await Promise.all([page.waitForURL(`**${unoPath()}/auth?signed-out=1`), row.click()]);
     assert.deepEqual(calls, [`${unoPath()}/api/auth/logout`]);
     await ctx.close();
   });
 
-  test('sign out everywhere posts the logout of every workspace in the rail', async () => {
+  test('sign out everywhere sends one logout?everywhere=1 call, whatever the rail holds (Issue #719)', async () => {
     const { ctx, page } = await open('/');
     const calls = logoutCalls(page);
-    await page.locator('#sidebar .nav-account-chip').click();
-    const row = page.locator('.nav-account-menu [role="menuitem"]', { hasText: 'Sign out everywhere' });
+    await page.locator('#sidebar .nav-identity .nav-identity-more').click();
+    const row = page.locator('.nav-personal-menu [role="menuitem"]', { hasText: 'Sign out everywhere' });
     await Promise.all([page.waitForURL('**/auth?signed-out=1'), row.click()]);
-    assert.deepEqual([...calls].sort(), ['/api/auth/logout', '/w/uno/api/auth/logout']);
+    assert.deepEqual(calls, ['/api/auth/logout?everywhere=1']);
+    await ctx.close();
+  });
+
+  test('sign out everywhere falls back to one logout per workspace when the single call answers 404 (Issue #719)', async () => {
+    const { ctx, page } = await open('/');
+    const calls = logoutCalls(page);
+    await page.route('**/api/auth/logout?everywhere=1', (route) => route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"Not found"}' }));
+    await page.locator('#sidebar .nav-identity .nav-identity-more').click();
+    const row = page.locator('.nav-personal-menu [role="menuitem"]', { hasText: 'Sign out everywhere' });
+    await Promise.all([page.waitForURL('**/auth?signed-out=1'), row.click()]);
+    assert.equal(calls[0], '/api/auth/logout?everywhere=1');
+    assert.deepEqual(calls.slice(1).sort(), ['/api/auth/logout', '/w/uno/api/auth/logout']);
     await ctx.close();
   });
 
@@ -122,12 +137,13 @@ if (s) {
     await ctx.close();
   });
 
-  test('an open workspace with nobody signed in shows no chip', async () => {
+  test('an open workspace with nobody signed in says Open access, never an empty gap', async () => {
     const { ctx, page } = await open('/', { account: null });
     const slot = page.locator('#sidebar .nav-account');
     assert.equal(await slot.getAttribute('data-state'), 'none');
-    assert.equal(await slot.evaluate((n) => n.childElementCount), 0);
-    assert.equal(await styleOf(slot, 'display', 'none'), 'none');
+    assert.equal((await slot.locator('.nav-account-name').innerText()).trim(), 'Open access');
+    assert.notEqual(await styleOf(slot, 'display', 'block'), 'none');
+    assert.equal(await page.locator('#sidebar button.nav-account-chip').count(), 0, 'nothing to open: the menu lives on the dots button');
     await ctx.close();
   });
 

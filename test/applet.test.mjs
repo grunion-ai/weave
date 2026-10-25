@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { MAX_TRIES, WINDOW_MS } from '../src/applet.js';
+import { GUIDES } from '../src/handbook.js';
 
 const PASSCODE = '11243947';
 
@@ -50,6 +52,15 @@ async function stand(passcode = PASSCODE) {
   };
 }
 
+const WORDS = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'.split(' ');
+const spell = (n) => WORDS[n] ?? String(n);
+function appletRow() {
+  const ref = GUIDES.find((g) => g.name === 'Environment reference');
+  assert.ok(ref, 'the handbook has an Environment reference guide');
+  const row = ref.doc.split('\n').find((line) => line.includes('`WEAVE_APPLET_PASSCODE`'));
+  assert.ok(row, 'the Environment reference has a WEAVE_APPLET_PASSCODE row');
+  return row;
+}
 const unlock = async (base, code = PASSCODE) => fetch(`${base}/t/unlock`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -262,6 +273,40 @@ test('applet: with no passcode configured there is no applet at all', async () =
   try {
     const res = await fetch(`http://127.0.0.1:${server.address().port}/t`);
     assert.equal(res.status, 404, 'an unconfigured applet must not serve a gate to guess at');
+  } finally {
+    server.close();
+    if (prior !== undefined) process.env.WEAVE_APPLET_PASSCODE = prior;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('applet: the Environment reference counts the wrong answers the gate really allows (Issue #814)', async () => {
+  const s = await stand();
+  try {
+    const wrong = [];
+    for (let i = 0; i < MAX_TRIES; i++) wrong.push((await unlock(s.base, '00000000')).status);
+    assert.deepEqual(wrong, Array(MAX_TRIES).fill(401), `the gate takes ${MAX_TRIES} wrong answers before it locks`);
+    assert.equal((await unlock(s.base, '00000000')).status, 429, `wrong answer ${MAX_TRIES + 1} is refused, not counted`);
+    assert.equal((await unlock(s.base)).status, 429, 'the right passcode is refused too while the window holds');
+    const row = appletRow();
+    assert.ok(row.includes(`${spell(MAX_TRIES)} wrong`), `the row counts ${spell(MAX_TRIES)} wrong answers, not whatever it says now: ${row}`);
+    assert.ok(row.includes(`inside ${spell(WINDOW_MS / 60000)} minutes`), `the row names the ${spell(WINDOW_MS / 60000)}-minute window: ${row}`);
+    assert.match(row, /`429`/, 'the row names the status a locked gate answers');
+  } finally { s.stop(); }
+});
+
+test('applet: the Environment reference says an unset passcode shuts the applet, not opens it (Issue #814)', async () => {
+  const prior = process.env.WEAVE_APPLET_PASSCODE;
+  delete process.env.WEAVE_APPLET_PASSCODE;
+  const dir = mkdtempSync(join(tmpdir(), 'weave-applet-doc-'));
+  const w = new Weave({ path: join(dir, 'uno.json') });
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/t`);
+    assert.equal(res.status, 404, 'an unset passcode leaves no applet to reach');
+    const row = appletRow();
+    assert.match(row, /`404`/, 'the row names what an unset passcode answers');
+    assert.doesNotMatch(row, /opens to anyone/, 'an unset passcode shuts the applet; the row must not promise the opposite');
   } finally {
     server.close();
     if (prior !== undefined) process.env.WEAVE_APPLET_PASSCODE = prior;
@@ -610,8 +655,8 @@ test('applet: bug reports are asked of the workspace that can file them', async 
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
   assert.match(src, /'\/w\/weave\/api\/bug-report'/,
-    "on Cloudflare each workspace is its own DO: asked from uno, hub.get('weave') is null and the endpoint 501s");
-  assert.doesNotMatch(src, /fetch\('\/api\/bug-report'/, 'the un-prefixed path only works on the node adapter');
+    'the Issue is filed into the weave docs workspace, so the applet asks that workspace directly');
+  assert.doesNotMatch(src, /fetch\('\/api\/bug-report'/, 'never the un-prefixed path of whichever workspace the applet sits in');
 });
 
 test('applet: the bug reporter is the desktop one, parts and all', async () => {

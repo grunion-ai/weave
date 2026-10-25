@@ -4,13 +4,29 @@ import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
-let VERSION = 'dev';
-try {
-  VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-} catch {}
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
-function textResult(data) {
-  return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data) }] };
+const seal = (text) => text.replace(/<(?=\/?weave_data)/gi, '\\u003c');
+const attr = (v) => String(v ?? '*').replace(/[\s"<>&]+/g, ' ').trim() || '*';
+function textResult(data, source = null) {
+  const text = typeof data === 'string' ? data : JSON.stringify(data);
+  if (!source) return { content: [{ type: 'text', text }] };
+  const head = `<weave_data table="${attr(source.table)}" entity="${attr(source.entity)}" field="${attr(source.field)}">`;
+  return { content: [{ type: 'text', text: `${head}\n${seal(text)}\n</weave_data>` }] };
+}
+
+function storedSource(weave, name, args) {
+  if (name === 'weave_call' && args.name !== 'help') {
+    let inner = args.args ?? {};
+    try { if (typeof inner === 'string') inner = JSON.parse(inner); } catch { inner = {}; }
+    return storedSource(weave, args.name, inner ?? {});
+  }
+  if (!READ_ONLY.has(name)) return null;
+  const tableOf = (fn) => { try { const db = fn(); return db ? weave.qualifiedName(db) : null; } catch { return null; } };
+  const ref = args.db ?? args.table ?? null;
+  const table = (ref != null ? tableOf(() => weave.findTable(ref)) ?? ref : null)
+    ?? (args.entity != null ? tableOf(() => weave.state.tables[weave.getEntity(args.entity).dbId]) : null);
+  return { table, entity: args.entity ?? null, field: args.doc ?? args.field ?? null };
 }
 
 export const COMPACT_TOOLS = new Set([
@@ -65,12 +81,14 @@ export const TOOLS = [
         limit: { type: 'number' },
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
-        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out; weave_get_entity carries an entity\'s activity. Not with select.' },
+        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
         relations: { type: 'string', enum: ['full', 'chip'], description: 'chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). Default full: every row embeds its related rows\' summaries.' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
         countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted rows before where and search' },
-        search: { type: 'string', description: 'Keep only the rows the weave_search matcher finds in this table: name, publicId (#143), text fields, documents, comments. Composes with where and sort; total counts the matches.' },
+        search: { type: 'string', description: 'Only the rows weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
+        view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
+        groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
       },
       required: ['db'],
     },
@@ -117,7 +135,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_stats',
-    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the row count rides with the name column). Nothing is stored — to keep a figure on the record, add a rollup on the Workspace/Spaces row instead (weave_add_field with config.via).',
+    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the row count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces row (weave_add_field, config.via).',
     inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {}, field: { type: 'string' } }, required: ['table'] },
   },
   {
@@ -204,7 +222,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_field',
-    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; the value is a whole number 0..max); {on, off} for toggle (the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the Workspace/Spaces registry row only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table, the figure under a grid column (where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a row. Replies list open settings in next[] (number: format currency, unit, display) and slips in hints[].',
+    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; the value is a whole number 0..max); {on, off} for toggle (the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the System/Spaces registry row only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table, the figure under a grid column (where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a row. Replies list open settings in next[] (number: format currency, unit, display) and slips in hints[].',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
@@ -222,7 +240,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_relation',
-    description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include Workspace/Spaces and Workspace/Tables): a target-set (polymorphic) relation — one field whose values may point at rows of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
+    description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include System/Spaces and System/Tables): a target-set (polymorphic) relation — one field whose values may point at rows of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, targetDb: { type: 'string' }, targetDbs: { type: 'array', items: { type: 'string' } }, cardinality: { type: 'string' }, inverseName: { type: 'string' } },
@@ -231,7 +249,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_automation',
-    description: 'Create an automation rule as a Workspace/Workflows row; its Script holds the rule as JSON. enabled (default true) is the row\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url}] — text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) templates.',
+    description: 'Create an automation rule as a System/Workflows row; its Script holds the rule as JSON. enabled (default true) is the row\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a row of another table matched on its key field (text, number, url or email); source paths read row.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) templates.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' }, enabled: { type: 'boolean' } },
@@ -273,7 +291,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_template_list',
-    description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its Workspace/Spaces row). Each is a space record: id, name, description, icon.',
+    description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces row). Each is a space record: id, name, description, icon.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -313,7 +331,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write, creating the view if new (from: copy). fields: columns in order. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}]. search: text. position: 0 = first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. layout: table|list. group: ≤3 levels, field or {field, heading: label|chip, order: option|table|az, grain}. completedBy: checkbox. nest: Parent link. collapsed: group paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
+    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side). group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. nest: Parent link. collapsed: paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -321,7 +339,7 @@ export const TOOLS = [
         move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
         position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
         widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
-        layout: { type: 'string' }, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
+        layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
       },
       required: ['view'],
     },
@@ -376,10 +394,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_apply_schema',
-    description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
+    description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing; partial adds or updates only what the document names and leaves every other space alone. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
     inputSchema: {
       type: 'object',
-      properties: { document: { type: 'array' }, dryRun: { type: 'boolean' }, allowDestructive: { type: 'boolean' } },
+      properties: { document: { type: 'array' }, dryRun: { type: 'boolean' }, allowDestructive: { type: 'boolean' }, partial: { type: 'boolean' } },
       required: ['document'],
     },
   },
@@ -420,7 +438,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_automations',
-    description: 'Automations already on a table, read from their Workspace/Workflows rows: action list | describe (rules in prose) | update (patch: name, enabled = the row\'s On) | delete (to the trash). Create one with weave_create_automation.',
+    description: 'Automations already on a table, read from their System/Workflows rows: action list | describe (rules in prose) | update (patch: name, enabled = the row\'s On) | delete (to the trash). Create one with weave_create_automation.',
     inputSchema: {
       type: 'object',
       properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' } },
@@ -429,7 +447,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_activity',
-    description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
+    description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -484,7 +502,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_registry',
-    description: 'The meta-model registries (Workspace/Workspaces, Spaces, Tables, Fields) whose rows ARE the schema. The registry lives once, at the weave root — the default workspace — and every row carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
+    description: 'The meta-model registries (System/Workspaces, Spaces, Tables, Fields) whose rows ARE the schema. The registry lives once, at the weave root — the default workspace — and every row carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
     inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
   },
   {
@@ -512,7 +530,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_form_submit',
-    description: 'Submit one row through a Workspace/Forms form without write access to its table. form is its id or name; values accepts stable input keys, field IDs, aliases, names or labels. Reuse idempotencyKey when retrying the same request: it returns the original receipt; changed input with the same key is refused. Server-filled and unlisted fields are refused. Bug forms take note and categories (slow, broken-ui, wrong-data, error).',
+    description: 'Submit one row through a System/Forms form without write access to its table. form is its id or name; values accepts stable input keys, field IDs, aliases, names or labels. Reuse idempotencyKey when retrying the same request: it returns the original receipt; changed input with the same key is refused. Server-filled and unlisted fields are refused. Bug forms take note and categories (slow, broken-ui, wrong-data, error).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -618,7 +636,52 @@ TOOLS.push({
   },
 });
 
-export function toolProfile(env = globalThis.process?.env ?? {}) {
+const TITLES = {
+  weave_ontology: 'Read schema outline', weave_schema: 'Read full schema', weave_query: 'Query rows',
+  weave_get_entity: 'Read row', weave_create_entity: 'Create row', weave_update_entity: 'Update row',
+  weave_delete_entity: 'Delete row', weave_restore_entity: 'Restore row', weave_trash: 'List trash',
+  weave_stats: 'Summarize table', weave_undo: 'Undo edits', weave_bulk: 'Edit rows in bulk',
+  weave_set_state: 'Set workflow state', weave_link: 'Link rows', weave_unlink: 'Unlink rows',
+  weave_get_doc: 'Read document', weave_set_doc: 'Write document', weave_doc_revisions: 'List document revisions',
+  weave_doc_restore: 'Restore document revision', weave_add_comment: 'Add comment', weave_delete_comment: 'Delete comment',
+  weave_search: 'Search workspace', weave_create_space: 'Create space', weave_create_table: 'Create table',
+  weave_add_field: 'Add field', weave_check_formula: 'Check formula', weave_add_relation: 'Add relation',
+  weave_create_automation: 'Create automation', weave_export_csv: 'Export table as CSV', weave_import_csv: 'Import CSV rows',
+  weave_attach_file: 'Attach file', weave_vocabulary: 'Look up allowed values', weave_update_space: 'Update space',
+  weave_template_list: 'List templates', weave_template_use: 'Use template', weave_delete_space: 'Delete space',
+  weave_restore_space: 'Restore space', weave_update_table: 'Update table', weave_table_view: 'Read or write table views',
+  weave_move_table: 'Move table', weave_duplicate_table: 'Duplicate table', weave_delete_table: 'Delete table',
+  weave_restore_table: 'Restore table', weave_update_field: 'Update field', weave_rollback_field: 'Roll back field config',
+  weave_delete_field: 'Delete field', weave_restore_field: 'Restore field', weave_apply_schema: 'Apply schema document',
+  weave_build: 'Build workspace', weave_views: 'Manage saved views', weave_shares: 'Manage share links',
+  weave_automations: 'Manage automations', weave_activity: 'Read activity feed', weave_audit: 'Read audit log',
+  weave_workspace: 'Read or update workspace', weave_accounts: 'Manage accounts', weave_keys: 'Manage credential keys',
+  weave_files: 'Read or delete files', weave_registry: 'Check workspace registry', weave_relation_map: 'Draw relation map',
+  weave_export_json: 'Export workspace as JSON', weave_forms: 'Manage forms', weave_form_submit: 'Submit form',
+  weave_import_json: 'Replace workspace from JSON', weave_call: 'Call any weave tool',
+};
+const READ_ONLY = new Set([
+  'weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_stats', 'weave_trash',
+  'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_export_json',
+  'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_audit', 'weave_relation_map',
+]);
+const DESTRUCTIVE = new Set([
+  'weave_delete_entity', 'weave_delete_comment', 'weave_delete_space', 'weave_delete_table', 'weave_delete_field',
+  'weave_bulk', 'weave_undo', 'weave_set_doc', 'weave_doc_restore', 'weave_update_field', 'weave_rollback_field',
+  'weave_apply_schema', 'weave_import_json', 'weave_automations', 'weave_accounts', 'weave_keys', 'weave_files',
+  'weave_views', 'weave_shares', 'weave_workspace', 'weave_call',
+]);
+const OPEN_WORLD = new Set(['weave_create_automation', 'weave_automations', 'weave_call']);
+for (const t of TOOLS) {
+  t.annotations = { title: TITLES[t.name], readOnlyHint: READ_ONLY.has(t.name), destructiveHint: DESTRUCTIVE.has(t.name), openWorldHint: OPEN_WORLD.has(t.name) };
+}
+
+export function toolTable() {
+  const effect = (a) => [a.readOnlyHint ? 'Read-only' : a.destructiveHint ? 'Destructive' : 'Adds or edits', ...(a.openWorldHint ? ['can call a webhook'] : [])].join(', ');
+  return ['| Tool | What it does | Effect |', '| --- | --- | --- |', ...TOOLS.map((t) => `| \`${t.name}\` | ${t.annotations.title} | ${effect(t.annotations)} |`)].join('\n');
+}
+
+export function toolProfile(env = process.env) {
   return env.WEAVE_MCP_TOOLS === 'all' ? 'all' : 'core';
 }
 export function listTools(profile = toolProfile()) {
@@ -632,7 +695,7 @@ function callTool(weave, name, rawArgs, caller) {
     let inner = rawArgs.args ?? {};
     if (typeof inner === 'string') inner = JSON.parse(inner);
     if (rawArgs.name === 'help') {
-      const t = TOOLS.find((x) => x.name === inner.tool);
+      const t = TOOLS.find((x) => x.name === inner.tool && mayCall(caller, x.name));
       if (!t) throw new Error(`help needs args.tool, one of the names weave_call lists (got ${JSON.stringify(inner.tool ?? null)})`);
       return { name: t.name, description: t.description, inputSchema: t.inputSchema };
     }
@@ -644,17 +707,25 @@ function callTool(weave, name, rawArgs, caller) {
   return verbose === true ? result : compactResult(name, result);
 }
 
+const systemWrite = (system) => new Error(system === 'users' ? 'Writing a Users row needs an architect token' : 'Writing a row of a system table needs an architect token');
 function refuseUsersWrite(weave, ref, caller) {
   if (!caller || mayAdminister(weave, caller.role)) return;
   let system = null;
   try { system = weave.state.tables[weave.getEntity(ref).dbId]?.system; } catch {}
-  if (system === 'users') throw new Error('Writing a Users row needs an architect token');
+  if (system) throw systemWrite(system);
 }
 
 export function mayAdminister(on, role) {
   return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
 }
 const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root', weave_shares: 'workspace' };
+export const SEATLESS_TOOLS = new Set(['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_trash', 'weave_stats', 'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_relation_map', 'weave_add_comment']);
+export const ROLE_TOOLS = {
+  observer: new Set([...SEATLESS_TOOLS, 'weave_call']),
+  editor: new Set([...SEATLESS_TOOLS, 'weave_call', 'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_attach_file']),
+};
+const mayCall = (caller, name) => !ROLE_TOOLS[caller?.tier] || ROLE_TOOLS[caller.tier].has(name);
+const unknownTool = (name) => Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 function checkRowArgs(name, args, required) {
@@ -667,6 +738,8 @@ function checkRowArgs(name, args, required) {
 }
 
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
+  if (!mayCall(caller, name)) throw unknownTool(name);
+  if (caller?.seat && !SEATLESS_TOOLS.has(name)) throw new Error(caller.seat);
   if (caller && ADMIN_TOOLS[name]) {
     const atRoot = ADMIN_TOOLS[name] === 'root';
     if (!mayAdminister(atRoot ? caller.root ?? weave : weave, atRoot ? caller.rootRole : caller.role)) {
@@ -688,14 +761,15 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.query(args.db, {
         where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
         offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'full',
-        includeDeleted: Boolean(args.includeDeleted),
-        trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '',
+        includeDeleted: args.includeDeleted == null ? null : Boolean(args.includeDeleted),
+        trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
+        groupBy: args.groupBy ?? null,
       });
     case 'weave_get_entity':
       return weave.readEntity(args.entity);
     case 'weave_create_entity': {
       checkRowArgs(name, args, false);
-      if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system === 'users') throw new Error('Writing a Users row needs an architect token');
+      if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system) throw systemWrite(weave.findTable(args.db).system);
       const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc, docs: args.docs });
       const once = weave.takeOneTime(e.id);
       return { ...weave.readEntity(e.id), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(envOrigin(), once.invite.code) } } : once ?? {}) };
@@ -742,7 +816,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_doc_restore':
       return weave.restoreDocRevision(args.entity, args.field ?? null, args.seq);
     case 'weave_add_comment':
-      return weave.addComment(args.entity, { author: args.author ?? 'agent', text: args.text });
+      return weave.addComment(args.entity, { author: caller?.role && !['architect', 'editor'].includes(caller.role) ? weave.actor : args.author ?? 'agent', text: args.text });
     case 'weave_delete_comment':
       return weave.deleteComment(args.entity, args.comment);
     case 'weave_search':
@@ -796,8 +870,12 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return { table: args.db, deleted: true, hard: Boolean(args.hard) };
     case 'weave_restore_table':
       return weave.restoreTable(args.db);
-    case 'weave_update_field':
-      return guided(weave, 'field', weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config'])), args.type == null ? args.config : {});
+    case 'weave_update_field': {
+      const seq = weave.state.meta.activitySeq ?? 0;
+      const field = weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config']));
+      const formulas = weave.fieldChangeSince(args.db, field.id, seq)?.detail.formulas;
+      return { ...guided(weave, 'field', field, args.type == null ? args.config : {}), ...(formulas ? { formulas } : {}) };
+    }
     case 'weave_rollback_field':
       return weave.rollbackFieldConfig(args.activity, { table: args.db ?? null, field: args.field ?? null });
     case 'weave_delete_field':
@@ -805,7 +883,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_restore_field':
       return weave.restoreField(args.db, args.field);
     case 'weave_apply_schema':
-      return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive) }) };
+      return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive), partial: Boolean(args.partial) }) };
     case 'weave_build': {
       const { spec, dryRun, skipExistingRows, ...bare } = args;
       return JSON.stringify(weave.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) }));
@@ -848,7 +926,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         limit: args.limit ?? null, offset: args.offset ?? 0,
       });
     case 'weave_audit':
-      return { events: weave.listAudit({ limit: args.limit ?? null, since: args.since ?? null }) };
+      return { events: weave.listAudit({ limit: args.limit ?? undefined, since: args.since ?? null }) };
     case 'weave_forms':
       if (args.action === 'list') return listForms(weave);
       if (args.action === 'get') return getFormDefinition(weave, args.form);
@@ -923,17 +1001,12 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_import_json':
       return { ok: true, ...weave.importJSON(args.state) };
     default:
-      throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
+      throw unknownTool(name);
   }
 }
 
-let PRIMER;
-export function primer() {
-  if (PRIMER === undefined) {
-    try { PRIMER = readFileSync(new URL('./mcp-primer.md', import.meta.url), 'utf8'); } catch { PRIMER = null; }
-  }
-  return PRIMER;
-}
+const PRIMER = readFileSync(new URL('./mcp-primer.md', import.meta.url), 'utf8');
+export const primer = () => PRIMER;
 
 export function handleMcpMessage(weave, msg, { version = VERSION, caller = null, tools = toolProfile() } = {}) {
   const { id, method, params } = msg ?? {};
@@ -947,7 +1020,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
           protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
           capabilities: { tools: {} },
           serverInfo: { name: 'weave', version },
-          ...(primer() ? { instructions: primer() } : {}),
+          instructions: PRIMER,
         });
       case 'notifications/initialized':
       case 'initialized':
@@ -955,10 +1028,10 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
       case 'ping':
         return reply({});
       case 'tools/list':
-        return reply({ tools: listTools(tools) });
+        return reply({ tools: listTools(tools).filter((t) => mayCall(caller, t.name)) });
       case 'tools/call': {
         try {
-          return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller)));
+          return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller), storedSource(weave, params.name, params.arguments ?? {})));
         } catch (err) {
           return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
         }

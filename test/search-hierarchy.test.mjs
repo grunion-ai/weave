@@ -29,12 +29,12 @@ test('rows filling the limit never crowd out the workspace, space, table or view
 test('saved views are searched, with a #/view/ permalink', () => {
   const { w } = crowded('Ticket', 0);
   const [view] = w.listViews();
-  const hits = w.universalSearch('triage', { prefix: '/w/demo' });
+  const hits = w.universalSearch('triage');
   assert.equal(hits.length, 1);
   assert.equal(hits[0].kind, 'view');
   assert.equal(hits[0].id, view.id);
   assert.equal(hits[0].name, 'Issue triage');
-  assert.equal(hits[0].url, `/w/demo/#/view/${view.id}`);
+  assert.equal(hits[0].url, `/w/${w.state.meta.name}/#/view/${view.id}`);
   w.deleteView(view.id);
   assert.equal(w.universalSearch('triage').length, 0, 'a deleted view is no longer found');
 });
@@ -50,6 +50,7 @@ test('GET /api/search keeps hierarchy past the limit, scoped and across workspac
   const { w: uno } = crowded();
   uno.state.meta.name = 'uno';
   const { w: other } = crowded('Issue');
+  other.state.meta.name = 'issues';
   const { server } = await startServer(uno, { port: 0, workspaces: { issues: other } });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -78,5 +79,5 @@ test('a registry row never shadows its own space or table hit (Issue #382)', () 
   assert.deepEqual(hits.map((h) => `${h.kind}:${h.db ?? ''}${h.name}`), ['table:Issue desk/Onboarding']);
   const desk = w.universalSearch('issue desk');
   assert.deepEqual(desk.map((h) => h.kind), ['space', 'table'].filter((k) => desk.some((h) => h.kind === k)));
-  assert.ok(!desk.some((h) => h.kind === 'entity' && /^Workspace\//.test(h.db)), `no registry rows: ${desk.map((h) => h.db ?? h.kind)}`);
+  assert.ok(!desk.some((h) => h.kind === 'entity' && /^(System|Workspace)\//.test(h.db)), `no registry rows: ${desk.map((h) => h.db ?? h.kind)}`);
 });

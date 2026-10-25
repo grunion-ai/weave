@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
+import { openPane, openViews, closePane } from './lib/view-pane.mjs';
 let table;
 const s = await launch('table toolbar', weave => {
   weave.createSpace({ name: 'Ops' });
@@ -9,12 +10,12 @@ const s = await launch('table toolbar', weave => {
   weave.createEntity(table, { name: 'Alpha' });
 });
 if (s) {
-  test('search, view, density, fields and filter precede the unchanged rightmost table menu', async () => {
+  test('search and View precede the unchanged rightmost table menu; View opens the pane with its views, Reset view and Clear all', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
       assert.equal(await page.locator('.table-search-input').isVisible(), true);
-      const controls = ['.table-search-input', '.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn', '[title="Table actions"]'];
+      const controls = ['.table-search-input', '.table-view-btn', '[title="Table actions"]'];
       const boxes = [];
       for (const selector of controls) {
         assert.equal(await page.locator(selector).isVisible(), true, selector);
@@ -25,18 +26,33 @@ if (s) {
         assert.ok(boxes[i].x > boxes[i - 1].x, `${controls[i]} follows ${controls[i - 1]}`);
         assert.ok(Math.abs(boxes[i].y - boxes[0].y) < 12, 'all controls share the eyebrow');
       }
-      assert.equal(await page.locator('.table-view-popover').count(), 0);
-      await page.click('.table-view-btn');
-      assert.equal(await page.locator('.table-view-popover .view-add').isVisible(), true);
-      assert.equal(await page.locator('.table-view-popover .view-reset').isVisible(), true);
-      assert.equal(await page.locator('.table-view-popover .view-clear').isVisible(), true);
+      for (const gone of ['.table-density-btn', '.eye-btn', '.table-filter-btn', '.table-sort-btn', '.table-group-btn']) {
+        assert.equal(await page.locator(`#main ${gone}`).isVisible(), false, `${gone} moved into the View pane`);
+      }
+      assert.equal(await page.locator('#view-pane').isVisible(), false);
+      await openViews(page);
+      assert.doesNotMatch(await page.locator('#view-pane').textContent(), /undefined/, 'every pane icon is in the vendored set');
+      assert.equal(await page.locator('#view-pane .view-add').isVisible(), true);
+      assert.equal(await page.locator('#view-pane .view-reset').isVisible(), true);
+      assert.equal(await page.locator('#view-pane .view-clear').isVisible(), true);
+    } finally { await page.close(); }
+  });
+  test('View shows as an icon with the view name in its tooltip on desktop', async () => {
+    const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
+      const btn = page.locator('#main .table-view-btn');
+      assert.equal(await btn.locator('.table-control-label').isVisible(), false, 'the view name moves to the tooltip and the pane');
+      assert.ok((await btn.boundingBox()).width < 60, 'icon width');
+      assert.equal(await btn.getAttribute('title'), 'View: Standard');
+      assert.equal(await btn.getAttribute('aria-expanded'), 'false');
     } finally { await page.close(); }
   });
   test('Fields reorders with keyboard, hides independently, and both New field controls open the field tray', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
-      await page.click('.eye-btn');
+      await openPane(page, 'fields');
       const owner = page.locator('.table-field-row[data-field="Owner"]');
       await owner.locator('.field-reorder-handle').focus();
       await page.keyboard.press('ArrowUp');
@@ -47,14 +63,14 @@ if (s) {
       await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
       await page.mouse.down();
       await page.mouse.move(grip.x + grip.width / 2, target.y + 2, { steps: 4 });
-      assert.equal(await page.locator('.table-fields-popover .wv-reorder-slot').count(), 1, 'one placeholder (Feature #282)');
+      assert.equal(await page.locator('#view-pane .wv-reorder-slot').count(), 1, 'one placeholder (Feature #282)');
       await page.keyboard.press('Escape');
       await page.mouse.up();
       await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
-      assert.equal(await page.locator('.table-fields-popover .wv-reorder-slot').count(), 0, 'Escape drops the drag');
+      assert.equal(await page.locator('#view-pane .wv-reorder-slot').count(), 0, 'Escape drops the drag');
       await owner.locator('.eye-row').click();
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some(h => h.textContent.trim() === 'Owner'));
-      await page.locator('.table-fields-popover').getByRole('button', { name: 'New field', exact: true }).click();
+      await page.locator('#view-pane').getByRole('button', { name: 'New field', exact: true }).click();
       await page.waitForSelector('#tray .tray-form');
       assert.match(await page.textContent('#tray'), /field/i);
       await page.keyboard.press('Escape');
@@ -69,7 +85,7 @@ if (s) {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
-      await page.click('.table-view-btn');
+      await openPane(page);
       await page.click('.view-reset');
       await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].some(h => h.textContent.trim() === 'Owner'));
       await page.waitForLoadState('networkidle');
@@ -89,7 +105,7 @@ if (s) {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
       await page.fill('.table-search-input', 'no matching record');
       await page.waitForSelector('.table-search-empty');
-      await page.click('.table-view-btn');
+      await openPane(page);
       await page.click('.view-clear');
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
       await page.waitForLoadState('networkidle');
@@ -106,8 +122,8 @@ if (s) {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
-      await page.click('.eye-btn');
-      const pop = page.locator('.table-fields-popover');
+      await openPane(page, 'fields');
+      const pop = page.locator('#view-pane');
       await pop.getByRole('button', { name: 'Show all', exact: true }).click();
       await page.waitForFunction(() => [...document.querySelectorAll('.table-field-row .eye-row')].every(row => row.matches(':has(input:checked), [aria-checked="true"]')));
       const fields = await pop.locator('.table-field-row').evaluateAll(rows => rows.map(row => row.dataset.field));
@@ -132,13 +148,13 @@ if (s) {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
-      await page.click('.eye-btn');
+      await openPane(page, 'fields');
       const owner = page.locator('.table-field-row[data-field="Owner"]');
       const waitOwner = checked => page.waitForFunction(value => document.querySelector('.table-field-row[data-field="Owner"] .eye-row')?.matches(':has(input:checked), [aria-checked="true"]') === (value === 'true'), String(checked));
       await owner.locator('.eye-row').click();
       await waitOwner(false);
-      await page.keyboard.press('Escape');
-      await page.click('.eye-btn');
+      await closePane(page);
+      await openPane(page, 'fields');
       await owner.locator('.eye-row').click();
       await waitOwner(true);
       const fields = () => s.weave.tableView(table).views[0].fields;
@@ -160,8 +176,7 @@ if (s) {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
-      await page.click('.eye-btn');
-      await page.locator('.table-fields-popover').evaluate(pop => Promise.all(pop.getAnimations().map(a => a.finished)));
+      await openPane(page, 'fields');
       await page.locator('.table-field-row[data-field="Owner"] .field-reorder-handle').dragTo(
         page.locator('.table-field-row[data-field="Name"]'), { targetPosition: { x: 10, y: 2 } });
       await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].map(h => h.textContent.trim()).slice(0, 3).join(',') === 'Owner,Name,Description');

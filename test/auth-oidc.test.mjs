@@ -212,7 +212,7 @@ test('routes: start sends the browser to the provider with state, nonce and a PK
     assert.equal(q.get('response_type'), 'code');
     assert.equal(q.get('client_id'), s.idp.clientId);
     assert.equal(q.get('redirect_uri'), `${s.base}/api/auth/oidc/callback`);
-    assert.equal(q.get('scope'), 'openid email', 'the email claim and no profile (Feature #290 reverses #252 for email only)');
+    assert.equal(q.get('scope'), 'openid email profile', 'the email claim (Feature #290) and the profile name (Issue #935)');
     assert.equal(q.get('code_challenge_method'), 'S256');
     for (const k of ['state', 'nonce', 'code_challenge']) assert.ok(q.get(k)?.length >= 32, k);
     assert.notEqual(q.get('state'), q.get('nonce'));
@@ -526,7 +526,7 @@ test('routes: an invite link signs the person in through the provider and pins t
     const inv = await (await s.call('POST', '/api/accounts/kyle/identities', { body: {}, token: s.admin })).json();
     const { start, res, cookie } = await s.signIn(KYLE, { invite: inv.code });
     assert.equal(start.status, 302);
-    assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'openid email');
+    assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'openid email profile');
     assert.equal(res.status, 302);
     assert.equal(res.headers.get('location'), '/');
     const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();

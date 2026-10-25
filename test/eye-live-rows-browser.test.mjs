@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane, closePane } from './lib/view-pane.mjs';
 
 let deals, contacts, ann;
 const s = await launch('eye rows are taught, not swapped', (weave) => {
@@ -20,7 +21,7 @@ if (s) {
   const { base, browser, weave } = s;
   const hiddenOf = (table) => [...(weave.describeSchema().flatMap((sp) => sp.tables).find((t) => t.id === table.id).hiddenFields ?? [])].sort();
   const hiddenNow = () => hiddenOf(deals);
-  const switchReads = ([name, want]) => [...document.querySelectorAll('.chip-pop .eye-row')]
+  const switchReads = ([name, want]) => [...document.querySelectorAll(':is(.chip-pop, .vp-fields) .eye-row')]
     .find((r) => r.querySelector('.eye-label')?.textContent === name)
     ?.matches(':has(input:checked), [aria-checked="true"]') === (want === 'true');
   const focusedLabel = () => document.activeElement?.closest?.('.eye-row')?.querySelector('.eye-label')?.textContent ?? null;
@@ -30,7 +31,7 @@ if (s) {
       await new Promise((r) => setTimeout(r, 20));
     }
   };
-  const flip = (page, name) => page.locator('.chip-pop .eye-row', { hasText: name }).first().click();
+  const flip = (page, name) => page.locator(':is(.chip-pop, .vp-fields) .eye-row', { hasText: name }).first().click();
   const tableWrites = (table) => new RegExp(`/api/tables/${table.id}(/views/[^/?]+)?$`);
   const holdFirstPatch = async (page, table) => {
     let release, seen = 0;
@@ -47,9 +48,8 @@ if (s) {
     weave.updateTable(deals, { hiddenFields: [] });
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'load' });
-    await page.click('.eye-btn');
-    await page.waitForSelector('.chip-pop .eye-row');
-    await page.locator('.chip-pop').evaluate(pop => Promise.all(pop.getAnimations().map(a => a.finished)));
+    await openPane(page, 'fields');
+    await page.waitForSelector('#view-pane .vp-fields .eye-row');
     return page;
   };
 
@@ -59,8 +59,8 @@ if (s) {
       await new Promise((r) => setTimeout(r, 700));
       await route.continue();
     });
-    const stage = await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().boundingBox();
-    await page.locator('.chip-pop .eye-row', { hasText: 'Amount' }).first().click();
+    const stage = await page.locator(':is(.chip-pop, .vp-fields) .eye-row', { hasText: 'Stage' }).first().boundingBox();
+    await page.locator(':is(.chip-pop, .vp-fields) .eye-row', { hasText: 'Amount' }).first().click();
     await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
     await page.mouse.down();
     await page.waitForFunction(switchReads, ['Amount', 'false']);
@@ -68,8 +68,8 @@ if (s) {
     await page.waitForFunction(switchReads, ['Stage', 'false']);
     await until(() => JSON.stringify(hiddenNow()) === JSON.stringify(['Amount', 'Stage']), 'the hidden set').catch(() => {});
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'both flips reached the table');
-    assert.ok(await page.evaluate(() => !!document.activeElement?.closest?.('.chip-pop')),
-      'focus stayed inside the popover');
+    assert.ok(await page.evaluate(() => !!document.activeElement?.closest?.('#view-pane')),
+      'focus stayed inside the pane');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
     await page.close();
@@ -78,19 +78,19 @@ if (s) {
   test('the rows stay the same nodes, and their handlers read the live table', async () => {
     const page = await open();
     const rowCount = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('.chip-pop .eye-row')];
+      const rows = [...document.querySelectorAll(':is(.chip-pop, .vp-fields) .eye-row')];
       rows.forEach((r, i) => { r.dataset.stamp = String(i); });
       return rows.length;
     });
-    await page.locator('.chip-pop .eye-row', { hasText: 'Amount' }).first().click();
+    await page.locator(':is(.chip-pop, .vp-fields) .eye-row', { hasText: 'Amount' }).first().click();
     await page.waitForFunction(switchReads, ['Amount', 'false']);
     assert.equal(
-      await page.evaluate(() => document.querySelectorAll('.chip-pop .eye-row[data-stamp]').length),
+      await page.evaluate(() => document.querySelectorAll(':is(.chip-pop, .vp-fields) .eye-row[data-stamp]').length),
       rowCount, 'every row is the node it was before the flip');
     assert.equal(await page.evaluate(focusedLabel), 'Amount', 'the pressed row kept focus');
     await page.keyboard.press('ArrowDown');
     assert.notEqual(await page.evaluate(focusedLabel), 'Amount', 'ArrowDown still walks the rows');
-    await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().click();
+    await page.locator(':is(.chip-pop, .vp-fields) .eye-row', { hasText: 'Stage' }).first().click();
     await page.waitForFunction(switchReads, ['Stage', 'false']);
     await until(() => JSON.stringify(hiddenNow()) === JSON.stringify(['Amount', 'Stage']), 'the hidden set').catch(() => {});
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'the second flip added to the hidden set');
@@ -112,9 +112,9 @@ if (s) {
     page.on('request', (r) => {
       if (r.method() === 'POST' && r.url().endsWith(`/api/tables/${deals.id}/query`)) draws++;
     });
-    await page.locator('.chip-pop .eye-row', { hasText: 'Amount' }).first().click();
+    await page.locator(':is(.chip-pop, .vp-fields) .eye-row', { hasText: 'Amount' }).first().click();
     await until(() => patches.length === 1, 'the first PATCH');
-    await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().click();
+    await page.locator(':is(.chip-pop, .vp-fields) .eye-row', { hasText: 'Stage' }).first().click();
     await page.waitForTimeout(400);
     assert.equal(patches.length, 1, 'the second flip is not on the wire while the first PATCH is out');
     release();
@@ -134,17 +134,17 @@ if (s) {
     const hold = await holdFirstPatch(page, deals);
     await flip(page, 'Amount');
     await until(() => hold.seen() === 1, 'the PATCH');
-    await page.click('#main .eye-btn');
+    await closePane(page);
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
     await page.evaluate(() => document.querySelector('#main .wv-grid thead th:has(.field-menu[aria-label="Configure field Stage"])')
       .scrollIntoView({ block: 'nearest', inline: 'center' }));
     await page.locator('#main .wv-grid thead th:has(.field-menu[aria-label="Configure field Stage"]) .field-menu').click({ force: true });
     await page.waitForSelector('.chip-pop');
-    assert.equal(await page.evaluate(() => document.querySelectorAll('.chip-pop .eye-row').length), 0, 'the ⋮ menu opened');
+    assert.equal(await page.evaluate(() => document.querySelectorAll(':is(.chip-pop, .vp-fields) .eye-row').length), 0, 'the ⋮ menu opened');
     hold.release();
     await page.waitForFunction(() => ![...document.querySelectorAll('#main .wv-grid thead th')].some((th) => th.textContent.includes('Amount')));
     await page.waitForTimeout(300);
-    assert.equal(await page.evaluate(() => document.querySelectorAll('.chip-pop .eye-row').length), 0,
+    assert.equal(await page.evaluate(() => document.querySelectorAll(':is(.chip-pop, .vp-fields) .eye-row').length), 0,
       'the eye did not swap its switches into the ⋮ menu');
     await page.close();
   });
@@ -156,8 +156,8 @@ if (s) {
     await page.goto(`${base}/#/table/${deals.id}?e=${ann.id}`, { waitUntil: 'load' });
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
     const hold = await holdFirstPatch(page, deals);
-    await page.click('#main .eye-btn');
-    await page.waitForSelector('.chip-pop .eye-row');
+    await openPane(page, 'fields');
+    await page.waitForSelector('#view-pane .vp-fields .eye-row');
     await flip(page, 'Amount');
     await until(() => hold.seen() === 1, 'the PATCH');
     await page.click('#dock .eye-btn');
@@ -192,9 +192,9 @@ if (s) {
   test('a row set that actually changed still rebuilds, and focus follows the pressed row', async () => {
     const page = await open();
     weave.addField(deals, { name: 'Owner', type: 'text' });
-    await page.locator('.chip-pop .eye-row', { hasText: 'Amount' }).first().click();
+    await page.locator(':is(.chip-pop, .vp-fields) .eye-row', { hasText: 'Amount' }).first().click();
     await page.waitForFunction(switchReads, ['Amount', 'false']);
-    await page.waitForFunction(() => [...document.querySelectorAll('.chip-pop .eye-row')]
+    await page.waitForFunction(() => [...document.querySelectorAll(':is(.chip-pop, .vp-fields) .eye-row')]
       .some((r) => r.querySelector('.eye-label')?.textContent === 'Owner'));
     assert.equal(await page.evaluate(focusedLabel), 'Amount',
       'focus followed the pressed row onto its replacement');
@@ -220,7 +220,7 @@ if (s) {
     assert.equal(
       await page.evaluate(() => document.querySelectorAll('.chip-pop .foot-row[data-stamp]').length),
       rowCount, 'every aggregate row is the node it was before the flip');
-    assert.equal(await page.evaluate(() => document.activeElement?.dataset?.agg), 'sum', 'the pressed row kept focus');
+    assert.equal(await page.evaluate(() => document.activeElement?.closest('.foot-row')?.dataset.agg), 'sum', 'the pressed row kept focus');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
     await page.close();

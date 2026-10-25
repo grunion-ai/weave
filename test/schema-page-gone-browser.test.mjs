@@ -45,7 +45,7 @@ if (s) {
     assert.equal(await page.locator('#main h1:has-text("— fields")').count(), 0, 'the schema page never appears');
     assert.equal(await page.evaluate(() => location.hash || '#/'), '#/', 'still on the workspace home');
     assert.ok(await page.locator('.wv-grid tbody tr.entity-row').count() >= 1, 'the Spaces grid is back, with the new column');
-    assert.ok(weave.getField('Workspace/Spaces', 'Region'), 'the field landed on the registry table');
+    assert.ok(weave.getField('System/Spaces', 'Region'), 'the field landed on the registry table');
     await page.close();
   });
 

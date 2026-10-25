@@ -36,7 +36,7 @@ export const recat = (s) => {
   if (['dialog', 'popover', 'picker', 'menu'].includes(s.cat)) {
     if (/picker-pop|date-pop|cell-pop|value-pop/.test(sig)) return 'picker';
     if (/popover/.test(sig)) return 'popover';
-    if (/dl-menu|nav-menu|field-menu|wv-menu|dropdown-menu|crumb-fold|account-menu/.test(sig)) return 'menu';
+    if (/dl-menu|nav-menu|field-menu|wv-menu|dropdown-menu|crumb-fold|account-menu|personal-menu/.test(sig)) return 'menu';
     if (/chip-pop/.test(sig) && /table-field|wv-toggle|switch/.test(s.html)) return 'popover';
     if (/chip-pop/.test(sig)) return 'colmenu';
     if (/modal|sheet|cmdk|bug|tray|role="dialog"|role="alertdialog"/.test(sig + s.html.slice(0, 400))) return 'dialog';
@@ -75,7 +75,7 @@ export const inChain = (s, cls) => s.chain.some((c) => (' ' + (c.a.class || '') 
 
 const CHIPS = [
   ['k-state', 'State chip'], ['filter-chip', 'Filter chip'], ['k-multi', 'Multi-select chip'], ['ms-box', 'Multi-select chip'],
-  ['k-select', 'Select chip'], ['k-doc', 'Document chip'], ['doc-chip', 'Document chip'], ['wv-tag', 'Field kind tag'], ['term-tag', 'Term tag'],
+  ['k-select', 'Select chip'], ['k-doc', 'Document chip'], ['doc-chip', 'Document chip'], ['wv-tag', 'Field kind tag'],
   ['wv-chip-id', 'ID chip'], ['auto-pill', 'Automation pill'], ['share-chip', 'Share chip'], ['fx-chip', 'Formula chip'], ['list-chip', 'List chip'],
   ['list-group-chip', 'List group chip'], ['opt-dot', 'Option dot'], ['wv-card-state', 'Card state'], ['nav-account-chip', 'Account chip'], ['badge', 'Badge'],
 ];

@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { TOOLS, listTools } from '../src/mcp.js';
+import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
+import { startServer } from '../src/server.js';
+import { seedWeaver } from '../src/weaver-seed.js';
+import { unwrapData } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = readFileSync(join(ROOT, 'bin/weave.js'), 'utf8');
@@ -88,11 +93,14 @@ const SURFACE = [
 ];
 
 const INTERNAL = {
+  actorName: 'read helper (Issue #699): every read path renders a stored account:<id> actor as the account\'s current name before it answers, so an agent only ever sees names',
+  isActor: 'permission helper (Issue #699): the comment check asks whether a stored actor, id or legacy name, is the caller; an agent never asks it',
   save: 'persistence', maybeRefresh: 'cross-process refresh',
   billing: 'read helper (Feature #256): the workspace\'s name, creation date and Clerk organization for src/billing.js; GET /api/billing is the door',
   linkBillingOrg: 'billing plumbing (Feature #256): POST /api/billing/team links the Clerk organization it creates; an agent never links one by hand',
+  fieldChangeSince: 'read helper (Feature #241): the field-config Activity entry a field update just wrote; PATCH /api/tables/:id/fields/:id, weave field update and weave_update_field answer with its activity and the formulas a repoint breaks',
   entityRevision: 'read helper (Issue #902): entity reads carry the opaque stored-row revision',
-  conditionalWrite: 'HTTP concurrency boundary (Issue #902): POST /api/entities/:id/conditional applies the existing append or state verb under an observed-revision write lock',
+  conditionalWrite: 'HTTP concurrency boundary (Issue #902): POST /api/entities/:id/conditional applies the existing append or state verb, or both together as close, under an observed-revision write lock; the CLI and MCP doors keep the plain doc and state verbs, since a revision a caller never observed is not a conditional write',
   settleDeferred: 'process plumbing (Feature #250): runDeferredMigrations settles each workspace a supervised worker opened while the old worker still served; an agent never calls it',
   userTables: 'read helper (Issue #386) — the tables a person made, registry excluded; the hub list\'s `tables` count reads it, and describeSchema already carries the `system` flag an agent filters on',
   schemaVersion: 'read helper (Issue #274) — the structure\'s fingerprint; every API response stamps it as X-Weave-Schema-Version and GET /api/workspace ships it in the body, so an agent reads it without a verb of its own',
@@ -101,6 +109,8 @@ const INTERNAL = {
   hostRegistry: 'hub plumbing (Feature #219) — the engine the hub stands on hosts the registry',
   syncRegistry: 'hub plumbing (Feature #219) — re-asserts a workspace\'s rows after a soft delete or restore; rebuildRegistry is the surfaced verb',
   dropWorkspace: 'hub plumbing (Feature #219) — a hard workspace delete drops its rows; DELETE /api/workspaces/:id is the door',
+  ownsKey: 'permission helper (Issue #497): the key routes ask whether the caller\'s account owns a credential before letting a non-architect rotate or delete it; weave_keys list shows the owner',
+  auditWorkspace: 'audit plumbing (Issue #495): the hub writes one audit entry on the root for each workspace create, trash, restore and delete; GET /api/audit and weave_audit read them',
   now: 'the engine clock — the short and relative date costumes and today()/now() defaults read it; a test pins it',
   findSpace: 'ref resolver', getSpace: 'ref resolver', findTable: 'ref resolver', getTable: 'ref resolver',
   findField: 'ref resolver', getField: 'ref resolver', findEntity: 'ref resolver', qualifiedName: 'ref formatter',
@@ -125,10 +135,15 @@ const INTERNAL = {
   touching: 'write plumbing (Issue #257) — collects the ids one write marked, so a caller can say what went stale; the PATCH route\'s `affected` is the door',
   onboardedAt: 'first-run state (Feature #248) — a person\'s welcome mark; GET /api/onboarding is the door, and an agent never onboards',
   markOnboarded: 'first-run state (Feature #248) — POST /api/onboarding sets it as the welcome finishes; nothing for an agent to do',
+  agentSeen: 'setup state (Feature #326) — the setup page polls GET /api/start/workspaces/:slug/agent to learn an AI app connected; the agent is the thing being watched',
+  noteAgent: 'auth path (Feature #326, Issue #915) — the /mcp door stamps an account\'s first answered agent call itself; an agent never calls it',
+  startTrial: 'billing state (Feature #329) — POST /api/start/workspaces starts the free trial of the workspace it makes; nothing for an agent to do',
   affectedBy: 'read helper (Issue #257) — the rows a client must re-read after writing one; PATCH /api/entities/:ref ships it as `affected`',
   invitesForEmail: 'auth path (Feature #290) — the pending invites sent to the signed-in person\'s verified address; GET /api/start lists them as rows of kind "invite", and an agent holds no browser session',
   acceptInvite: 'auth path (Feature #290) — accepts one of those invites by its id through the same path as the link; POST /api/start/invites/:slug/:ref is the door',
   renameAccount: 'Users row door (Feature #318) — editing a Users row\'s Name renames the account; weave_update_entity is the tool',
+  viewQuery: 'read helper (Issue #839): the where, sort and search one saved view applies; weave_query {view}, CLI query --view and POST /tables/:id/query {view} run it',
+  permalink: 'link formatter (Feature #203): the one /w/<ws>/e/<uuid> path every door emits as `url`; the permalink gate below holds every emitter to it',
   takeOneTime: 'write plumbing (Feature #318) — the invite link or token a Users row create hands back once; every create door ships it beside the row',
 };
 
@@ -239,7 +254,7 @@ test('every CLI command is documented in AGENTS.md', () => {
 
 test('the docs say the registry rows are schema writes', () => {
   for (const [doc, name] of [[AGENTS, 'AGENTS.md'], [README, 'README.md']]) {
-    assert.match(doc, /Workspace\/Fields/, `${name} must name the field registry`);
+    assert.match(doc, /System\/Fields/, `${name} must name the field registry`);
   }
   assert.match(AGENTS, /Definition/, 'AGENTS.md must name the Definition write');
   assert.match(AGENTS, /Field Order/, 'AGENTS.md must name the column-order write');
@@ -296,4 +311,79 @@ test('every query option reaches every door', () => {
   }
   assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
   assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, viewerZone, workspace: member\.state\.meta\.id \}\)/, 'POST /api/tables/:ref/query passes its body through, scoped to the asking workspace (Issue #875)');
+});
+
+test('every door emits the one permalink a row has, and no door builds its own (Feature #203)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-permalink-'));
+  const data = join(dir, 'uno.db');
+  const w = new Weave({ path: data, name: 'uno' });
+  w.createSpace({ name: 'Ops' });
+  const table = w.createTable({ space: 'Ops', name: 'Task' });
+  const row = w.createEntity('Task', { Name: 'ship the zebrafinch' });
+  const link = w.permalink('entity', row.id);
+  assert.equal(link, `/w/uno/e/${row.id}`);
+  assert.equal(w.permalink('table', table.id), `/w/uno/t/${table.id}`);
+  const space = w.getSpace('Ops');
+  assert.equal(w.permalink('space', space.id), `/w/uno/s/${space.id}`);
+
+  const rpc = (name, args) => {
+    const res = handleMcpMessage(w, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+    const text = unwrapData(res.result.content[0].text);
+    assert.ok(!res.result.isError, `${name}: ${text}`);
+    return JSON.parse(text);
+  };
+  const docs = new Weave({ name: 'weave' });
+  seedWeaver(docs);
+  const { server } = await startServer(new Weave({ name: 'main' }), { port: 0, workspaces: { uno: w, weave: docs } });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const http = async (method, path, body) => (await fetch(base + path, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) })).json();
+  try {
+    const schema = w.describeSchema().find((x) => x.spaceId === space.id);
+    const emitted = {
+      'engine readEntity': w.readEntity(row.id).url,
+      'engine query row': w.query('Task', {}).items[0].url,
+      'engine query picked row': w.query('Task', { fields: ['Name'] }).items[0].url,
+      'chip': w.renderView(row.id, 'chip').url,
+      'card': w.renderView(row.id, 'card').url,
+      'engine search': w.search('zebrafinch')[0].url,
+      'universal search': w.universalSearch('zebrafinch').find((h) => h.kind === 'entity').url,
+      'scoped search': w.universalSearch('', { tables: ['Task'] })[0].url,
+      'GET /api/entities/:id': (await http('GET', `/w/uno/api/entities/${row.id}`)).url,
+      'GET /api/search': (await http('GET', '/w/uno/api/search?q=zebrafinch')).find((h) => h.kind === 'entity').url,
+      'GET /api/search?all': (await http('GET', '/api/search?all=1&q=zebrafinch')).find((h) => h.kind === 'entity').url,
+      'MCP weave_get_entity': rpc('weave_get_entity', { entity: row.id }).url,
+      'MCP weave_update_entity': rpc('weave_update_entity', { entity: row.id, values: { Name: 'ship the zebrafinch' }, verbose: true }).url,
+      'MCP weave_search': rpc('weave_search', { query: 'zebrafinch' }).find((h) => h.kind === 'entity').url,
+    };
+    for (const [door, url] of Object.entries(emitted)) assert.equal(url, link, `${door} emits the row permalink`);
+
+    const posted = await http('POST', '/w/uno/api/tables/Task/entities', { name: 'posted' });
+    assert.equal(posted.url, w.permalink('entity', posted.id), 'POST /api/tables/:t/entities');
+    const made = rpc('weave_create_entity', { db: 'Task', name: 'made', verbose: true });
+    assert.equal(made.url, w.permalink('entity', made.id), 'MCP weave_create_entity');
+    const filed = await http('POST', '/api/bug-report', { categories: ['slow'], note: 'permalink door', events: [], client: { url: '/', route: '/', viewport: '1x1', ua: 'test' } });
+    assert.equal(filed.url, docs.permalink('entity', filed.id), 'bug reporter');
+
+    assert.equal(w.universalSearch('Task').find((h) => h.kind === 'table').url, w.permalink('table', table.id));
+    assert.equal(w.universalSearch('Ops').find((h) => h.kind === 'space').url, w.permalink('space', space.id));
+    assert.equal(schema.url, w.permalink('space', space.id), 'describeSchema space');
+    assert.equal(schema.tables.find((t) => t.id === table.id).url, w.permalink('table', table.id), 'describeSchema table');
+  } finally {
+    server.close();
+  }
+  try {
+    const cli = (...args) => JSON.parse(execFileSync(process.execPath, ['--no-warnings', join(ROOT, 'bin/weave.js'), ...args, '--data', data], { encoding: 'utf8' }));
+    assert.equal(cli('get', row.id).url, link, 'CLI get');
+    assert.equal(cli('get', link).url, link, 'CLI get takes the permalink it printed');
+    assert.equal(cli('update', row.id, '--values', '{"Name":"ship the zebrafinch"}').url, link, 'CLI update');
+    assert.equal(cli('search', 'zebrafinch')[0].url, link, 'CLI search');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  const emitterSources = ['src/engine.js', 'src/forms.js', 'src/mcp.js', 'bin/weave.js'];
+  for (const file of emitterSources) {
+    const src = readFileSync(join(ROOT, file), 'utf8');
+    assert.doesNotMatch(src, /url:\s*`[^`]*\/(?:e|t|s|#\/entity|#\/table|#\/space|#\/view)\/\$\{/, `${file} builds a row, table, space or view url by hand; emit permalink(kind, id)`);
+  }
 });

@@ -87,7 +87,7 @@ test('one function builds a role="menu" panel, and every action menu goes throug
   assert.equal((APP.match(/role: 'menu'/g) ?? []).length, 1, 'one role: menu in app.js');
   assert.doesNotMatch(APP, /role="menu"'|setAttribute\('role', 'menu'\)/, 'no second spelling of it');
   assert.match(fnBody('menu'), /role: 'menu'/, 'and it is the builder');
-  for (const fn of ['dotsMenu', 'crumbFoldMenu', 'accountMenu', 'fieldMenuButton', 'buildWsRail']) {
+  for (const fn of ['dotsMenu', 'crumbFoldMenu', 'personalMenu', 'fieldMenuButton', 'buildWsRail']) {
     assert.match(fnBody(fn), /\bmenu\(/, `${fn} opens through menu()`);
   }
   assert.doesNotMatch(fnBody('fieldMenuButton'), /showPopover/, 'the column menu is a menu, not a panel');
@@ -110,7 +110,7 @@ test('rows carry menu roles and the trigger reports its state', () => {
 });
 
 test('the phone sheet reuses the picker sheet rules and gives rows 44px', () => {
-  assert.match(CSS, /\.chip-pop\.picker-pop, \.chip-pop\.wv-menu-sheet \{ position: fixed;/, 'one sheet rule for pickers and menus');
+  assert.match(CSS, /\.chip-pop\.picker-pop, \.chip-pop\.wv-menu-sheet, \.chip-pop\.table-group-popover \{ position: fixed;/, 'one sheet rule for pickers, menus and the group levels (Issue #809)');
   assert.match(CSS, /\.wv-menu-sheet \.wv-menu-row \{ min-height: 44px;/);
   assert.match(fnBody('menu'), /sheet = MENU_SHEET\.matches/, 'the sheet is the default under the phone breakpoint');
   assert.match(APP, /const MENU_SHEET = matchMedia\('\(max-width: 600px\)'\)/);

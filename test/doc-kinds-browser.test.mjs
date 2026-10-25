@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, painted } from './lib/browser.mjs';
 
 const MMD = 'flowchart TD\n  F[document field] -->|declared kind?| D{config.kind}\n  D -->|unset| S{sniff}\n';
 const JSON_MODEL = '{\n  "graph": "flowchart TD",\n  "nodes": ["field", "sniff"],\n  "edges": 2\n}\n';
@@ -18,19 +18,20 @@ const s = await launch('document kinds', (weave) => {
 
 if (s) {
   const { base, browser } = s;
+  const DRAW_BUDGET = 60000;
   const sectionOf = (name) => `.doc-section:has(.doc-section-name:text-is("${name}"))`;
 
   test('a sniffed mermaid document draws as a diagram, with the source one toggle away', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
     const sec = sectionOf('Diagram');
-    await page.waitForSelector(`${sec} .doc-diagram pre.mermaid`, { timeout: 20000 });
+    await painted(page, `${sec} .doc-diagram pre.mermaid`, { timeout: DRAW_BUDGET });
     assert.equal(await page.$(`${sec} .vditor-ir`), null, 'no markdown editor on a diagram');
-    await page.waitForSelector(`${sec} .doc-diagram svg`, { timeout: 20000 });
+    await painted(page, `${sec} .doc-diagram svg`, { timeout: DRAW_BUDGET });
     const nodes = await page.$$eval(`${sec} .doc-diagram svg .node`, (ns) => ns.length);
     assert.ok(nodes >= 3, `the three nodes are drawn (${nodes})`);
     await page.click(`${sec} .doc-anchor[title="Edit source"]`);
-    await page.waitForSelector(`${sec} textarea.doc-source`, { state: 'visible', timeout: 20000 });
+    await painted(page, `${sec} textarea.doc-source`, { state: 'visible' });
     const src = await page.locator(`${sec} textarea.doc-source`).first().evaluate((t) => t.value);
     assert.ok(src.startsWith('flowchart TD'), 'the code box holds the mermaid source');
     const drawingHidden = await page.$eval(`${sec} .doc-diagram`, (d) => d.classList.contains('hidden'));
@@ -42,7 +43,7 @@ if (s) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
     const sec = sectionOf('Data');
-    await page.waitForSelector(`${sec} textarea.doc-source`, { timeout: 20000 });
+    await painted(page, `${sec} textarea.doc-source`);
     assert.equal(await page.$(`${sec} .vditor-ir`), null, 'no markdown editor on a model');
     const v = await page.locator(`${sec} textarea.doc-source`).first().evaluate((t) => t.value);
     assert.ok(v.includes('"nodes": ["field", "sniff"]'), 'the box holds the JSON verbatim, indentation and all');

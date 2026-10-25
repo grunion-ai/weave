@@ -89,14 +89,14 @@ test('universalSearch returns permalinks for all kinds', () => {
   assert.ok(kinds.has('table'));
   assert.ok(kinds.has('entity'));
   const space = hits.find((h) => h.kind === 'space');
-  assert.match(space.url, /^\/#\/space\//);
+  assert.equal(space.url, w.permalink('space', space.id));
   const table = hits.find((h) => h.kind === 'table');
-  assert.match(table.url, /^\/#\/table\//);
+  assert.equal(table.url, w.permalink('table', table.id));
   const entity = hits.find((h) => h.kind === 'entity');
-  assert.match(entity.url, /^\/e\//);
+  assert.equal(entity.url, w.permalink('entity', entity.id));
   const ws = w.universalSearch('personal-workspace');
   assert.equal(ws[0].kind, 'workspace');
-  assert.equal(ws[0].url, '/');
+  assert.equal(ws[0].url, '/w/personal-workspace/');
 });
 
 test('search ranks an exact publicId match above text matches', () => {
@@ -194,9 +194,9 @@ test('HTTP: per-field doc endpoints and universal search', async () => {
     assert.ok(pageCount >= 3, `expected ≥3 pages (fields + 2 docs), got ${pageCount}`);
 
     const search = await (await fetch(`${base}/api/search?q=widget`)).json();
-    assert.ok(search.some((h) => h.kind === 'entity' && h.url.startsWith('/e/')));
+    assert.ok(search.some((h) => h.kind === 'entity' && h.url === w.permalink('entity', e.id)));
     const tables = await (await fetch(`${base}/api/search?q=task`)).json();
-    assert.ok(tables.some((h) => h.kind === 'table' && h.url.includes('#/table/')));
+    assert.ok(tables.some((h) => h.kind === 'table' && h.url === w.permalink('table', w.getTable(tasks).id)));
   } finally {
     server.close();
   }

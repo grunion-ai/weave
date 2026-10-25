@@ -66,6 +66,39 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('the submit control names the action and wears its key (Issue #847)', async () => {
+    for (const theme of ['light', 'dark']) {
+      const page = await open();
+      try {
+        await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
+        const seen = await page.$eval('#bug-panel .bug-send', (b) => {
+          const k = b.querySelector('kbd');
+          const r = k?.getBoundingClientRect();
+          return {
+            label: b.querySelector('.bug-send-label')?.textContent ?? null,
+            key: k?.textContent ?? null,
+            keyShown: !!r && r.width > 0 && r.height > 0,
+            strayFootKey: !!b.parentElement?.querySelector(':scope > kbd'),
+          };
+        });
+        assert.deepEqual(seen, { label: 'Report issue', key: '\u2318\u21b5', keyShown: true, strayFootKey: false },
+          `the button says Report issue and holds the key in ${theme}`);
+      } finally { await page.close(); }
+    }
+  });
+
+  test('a filed report turns the same control into Reported (Issue #847)', async () => {
+    const page = await open();
+    try {
+      await page.fill('#bug-panel .bug-note', 'the dots left the breadcrumb header');
+      await page.click('#bug-panel .bug-send');
+      await page.waitForFunction(
+        () => document.querySelector('#bug-panel .bug-send')?.textContent.trim() === 'Reported',
+        null, { timeout: 5000 });
+      assert.equal(await page.locator('#bug-panel .bug-send.sent').count(), 1, 'and wears the confirmation style');
+    } finally { await page.close(); }
+  });
+
   test('the email link carries the report as written and no workspace name', async () => {
     const page = await browser.newPage();
     try {

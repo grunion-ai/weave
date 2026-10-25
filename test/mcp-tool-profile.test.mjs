@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage, startMcpServer, TOOLS, CORE_TOOLS, listTools } from '../src/mcp.js';
+import { unwrapData } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const CORE = ['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
@@ -19,7 +20,8 @@ const rpc = (w, method, params, opts) => handleMcpMessage(w, { jsonrpc: '2.0', i
 const callTool = (w, name, args, opts) => rpc(w, 'tools/call', { name, arguments: args }, opts).result;
 const ok = (res) => {
   assert.ok(!res.isError, res.content[0].text);
-  try { return JSON.parse(res.content[0].text); } catch { return res.content[0].text; }
+  const text = unwrapData(res.content[0].text);
+  try { return JSON.parse(text); } catch { return text; }
 };
 
 function withEnv(value, fn) {
@@ -44,7 +46,7 @@ test('the core list costs well under half the full one', () => withEnv(null, () 
   const core = JSON.stringify(rpc(w, 'tools/list').result).length;
   const all = JSON.stringify(rpc(w, 'tools/list', {}, { tools: 'all' }).result).length;
   assert.ok(core * 2.5 < all, `core ${core} bytes vs all ${all}`);
-  assert.ok(core < 15400, `core tools/list is ${core} bytes`);
+  assert.ok(core < 17400, `core tools/list is ${core} bytes; the Feature #331 annotations raised the Issue #857 budget from 15400`);
 }));
 
 test('--tools all, WEAVE_MCP_TOOLS=all and listTools("all") list every tool', () => {

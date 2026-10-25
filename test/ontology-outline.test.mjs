@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage, listTools } from '../src/mcp.js';
+import { unwrapData } from './lib/fixtures.mjs';
 import { startServer } from '../src/server.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,7 +42,7 @@ test('outline: one line per table, grouped by space, ending with the etag', () =
   assert.equal(lines.at(-1), `etag ${w.spaceVersions().etag}`);
   const tableLines = lines.filter((l) => l.startsWith('  '));
   assert.equal(tableLines.length, w.listTables().filter((t) => !t.system).length, 'one line per table');
-  assert.match(text, /\nWorkspace \(system registry[^\n]*: Spaces, Tables/, 'the registry is one line of names');
+  assert.match(text, /\nSystem \(system registry[^\n]*: Spaces, Tables/, 'the registry is one line of names');
   const dev = lines.findIndex((l) => l.startsWith('Dev'));
   const crm = lines.findIndex((l) => l.startsWith('CRM'));
   assert.ok(dev >= 0 && crm > dev, 'spaces head their tables');
@@ -204,9 +205,9 @@ test('weave_ontology is listed by default and answers plain text', () => {
   const w = tracker();
   const outline = call(w, 'weave_ontology', { depth: 'outline' });
   assert.ok(!outline.isError, outline.content[0].text);
-  assert.equal(outline.content[0].text, w.ontology());
-  assert.equal(call(w, 'weave_ontology', {}).content[0].text, w.ontology());
-  assert.equal(call(w, 'weave_ontology', { concept: 'Issue' }).content[0].text, w.ontology({ concept: 'Issue' }));
+  assert.equal(unwrapData(outline.content[0].text), w.ontology());
+  assert.equal(unwrapData(call(w, 'weave_ontology', {}).content[0].text), w.ontology());
+  assert.equal(unwrapData(call(w, 'weave_ontology', { concept: 'Issue' }).content[0].text), w.ontology({ concept: 'Issue' }));
   const { etag } = w.spaceVersions();
   assert.match(call(w, 'weave_ontology', { since: etag }).content[0].text, /unchanged/);
   assert.equal(call(w, 'weave_ontology', { concept: 'Nope' }).isError, true);

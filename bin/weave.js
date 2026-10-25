@@ -144,7 +144,7 @@ Schema
   table move <ref> <space> [--position N]
                                       Another space, last there unless --position says
   table view <table/view> [--fields A,B] [--filters '{json}'] [--sort '[json]'] [--search text] [--density compact]
-              [--layout table|list] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
+              [--layout table|list|board] [--subtotals all|top|none] [--groups stacked|side] [--picture off|small|medium|large] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
               [--completed-by Done|none] [--nest Parent|none] [--order 3,1,2] [--collapsed '["Completed"]']
               [--phone-row '{"lead":"Status","chips":["Severity"],"labels":true,"wrap":true}'|none]
   field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
@@ -156,7 +156,7 @@ Schema
   map                                 Relation map as mermaid
 
 Entities
-  query <db> [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
+  query <db> [--view name] [--group-by view] [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
         [--fields 'A,B'] [--relations chip]   Entity rows cut to these fields; related rows as references + chips
   get <ref> [--db name]               Read one entity ("Task#3" or id)
   create <db> <name> [--values '{json}'] [--doc 'markdown']
@@ -231,12 +231,13 @@ The workspace itself
   workspace migrate --from weave://host/account[/archive] [--name N] [--workspace W] [--passphrase-env NAME]
                                       Create a cloud workspace from a stored archive; the key
                                       travels once and is never stored
-  form [list] | get <form>            The forms whose table lives here (Workspace/Forms rows)
+  form [list] | get <form>            The forms whose table lives here (System/Forms rows)
   form config <form>                 Editable form definition
   form create --definition '{json}'  Create a native table form
   form update <form> --definition '{json}'  Edit or pause; preserve its link
   form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]   One row through a form
-  activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n]
+  activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n|-1]
+     (prints one page of 500 by default; --limit -1 prints the whole log)
 
 Collaboration & data
   comment <ref> <text> [--author name]
@@ -258,11 +259,13 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      WEAVE_AUTO_UPDATE=1 (supervise: install each newer release from grunion-ai/weave main in place),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
      others get 421), WEAVE_BASE_DOMAIN (e.g. weave.example.com: each workspace also answers at <slug>.<base>,
-     sign-in finishes at WEAVE_ORIGIN and hands a one-time code back to the workspace host), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
+     sign-in finishes at WEAVE_ORIGIN and hands a one-time code back to the workspace host), WEAVE_OPEN_SIGNUP=1 (anyone who signs in may
+     create workspaces from /start, WEAVE_SIGNUP_LIMIT each, default 1), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
      with one OpenID Connect provider, redirect URI <origin>/api/auth/oidc/callback; /mcp then signs agents in through it),
      WEAVE_MAIL_KEY + WEAVE_MAIL_FROM (email each invite through Resend; both or neither),
      WEAVE_CLERK_SECRET_KEY + WEAVE_BILLING_SOLO_PLAN + WEAVE_BILLING_TEAM_PLAN (bill paid seats through Clerk Billing; all three or none),
      WEAVE_CLERK_PUBLISHABLE_KEY (checkout on the billing page), WEAVE_BILLING_SINCE (workspaces made before it are never billed),
+     WEAVE_TRIAL_DAYS (free trial for a workspace made at /start, default 14, 0 for none),
      WEAVE_WEBHOOK_ALLOW_PRIVATE=1 (let workflow webhooks post to loopback, link-local and private addresses;
      off, those deliveries are refused and the rule's Health says so),
      WEAVE_MCP_ORIGINS (comma-separated other origins the /mcp door answers on), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
@@ -660,7 +663,7 @@ async function main() {
         if (flags.move != null) patch.move = { field: flags.move, ...(flags.before != null ? { before: flags.before } : { after: flags.after }) };
         for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
         if (flags.frozen != null) patch.frozen = Number(flags.frozen);
-        for (const k of ['density', 'layout', 'search']) if (flags[k] != null) patch[k] = flags[k] === true ? '' : String(flags[k]);
+        for (const k of ['density', 'layout', 'subtotals', 'groups', 'picture', 'search']) if (flags[k] != null) patch[k] = flags[k] === true ? '' : String(flags[k]);
         if (flags.group != null) patch.group = String(flags.group).trim().startsWith('[') ? parseJsonFlag('group') : String(flags.group);
         for (const [flag, key] of [['completed-by', 'completedBy'], ['nest', 'nest']]) if (flags[flag] != null) patch[key] = flags[flag] === 'none' ? null : flags[flag];
         if (flags.collapsed != null) patch.collapsed = parseJsonFlag('collapsed');
@@ -705,7 +708,10 @@ async function main() {
         if (flags.default != null) config.default = flags.default === 'null' ? null : flags.default;
         if (flags.description != null) config.description = flags.description === 'null' ? null : String(flags.description);
         if (Object.keys(config).length) patch.config = config;
-        return out(guided(w, 'field', w.updateField(db, name, patch), patch.type == null ? patch.config : {}));
+        const seq = w.state.meta.activitySeq ?? 0;
+        const field = w.updateField(db, name, patch);
+        const formulas = w.fieldChangeSince(db, field.id, seq)?.detail.formulas;
+        return out({ ...guided(w, 'field', field, patch.type == null ? patch.config : {}), ...(formulas ? { formulas } : {}) });
       }
       if (sub === 'rollback') return out(w.rollbackFieldConfig(flags.activity, { table: db ?? null, field: name ?? null }));
       if (sub === 'delete') return out(w.deleteField(db, name, { hard: Boolean(flags.hard) }));
@@ -738,6 +744,8 @@ async function main() {
         offset: flags.offset ? Number(flags.offset) : 0,
         search: flags.search ? String(flags.search) : '',
         countAll: Boolean(flags['count-all']),
+        view: flags.view ? String(flags.view) : null,
+        groupBy: flags['group-by'] ? String(flags['group-by']) : null,
       });
       return out(result);
     }

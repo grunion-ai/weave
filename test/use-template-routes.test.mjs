@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer, createWorkspaceHub } from '../src/server.js';
+import { unwrapData } from './lib/fixtures.mjs';
 
 const post = (url, body, headers = {}) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
 
@@ -96,7 +97,7 @@ test('weave_template_use over HTTP MCP reaches the hub', async () => {
   const { acme, server, base } = await hub();
   try {
     const rpc = async (name, args) => (await (await post(`${base}/api/mcp`, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })).json()).result;
-    const listed = JSON.parse((await rpc('weave_template_list', {})).content[0].text);
+    const listed = JSON.parse(unwrapData((await rpc('weave_template_list', {})).content[0].text));
     assert.deepEqual(listed.templates.map((s) => s.name), ['CRM']);
     const used = await rpc('weave_template_use', { space: 'CRM', workspace: 'acme', name: 'Sales' });
     assert.ok(!used.isError, used.content[0].text);
@@ -114,7 +115,7 @@ test('a member\'s space is marked a template from its row in the root registry',
   const { root, acme, server, base } = await hub();
   try {
     acme.createSpace({ name: 'Kit' });
-    const spaces = root.getTable('Workspace/Spaces');
+    const spaces = root.getTable('System/Spaces');
     const row = root.listEntities(spaces.id).find((e) => root.entityName(e) === 'Kit');
     const res = await fetch(`${base}/api/entities/${row.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Template: true }) });
     assert.equal(res.status, 200, await res.clone().text());
@@ -134,7 +135,7 @@ test('a space rollup travels into a hub member, where the root registry holds it
   root.createSpace({ name: 'CRM', template: true });
   const deal = root.createTable({ space: 'CRM', name: 'Deal' });
   root.addField(deal.id, { name: 'Amount', type: 'number' });
-  const spaces = root.getTable('Workspace/Spaces');
+  const spaces = root.getTable('System/Spaces');
   root.addField(spaces.id, { name: 'Deal sum', type: 'rollup', config: { via: deal.id, targetField: 'Amount', aggregate: 'sum' } });
   root.useTemplate('CRM', acme, { name: 'Sales' });
   const via = (n) => root.findField(spaces, n)?.config.via;

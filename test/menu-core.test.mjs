@@ -114,12 +114,12 @@ test('every kind has exactly one definition, and the registry names them all', (
 
 test('the definitions match the target menu table', () => {
   const shape = (kind) => Object.fromEntries(core.SECTIONS.map((s) => [s, core.definition(kind)[s] ?? []]).filter(([, ids]) => ids.length));
-  assert.deepEqual(shape('table'), { settings: ['description'], organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
+  assert.deepEqual(shape('table'), { settings: ['icon', 'description'], organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
   assert.deepEqual(shape('record'), { organize: ['duplicate'], share: ['share'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
   assert.deepEqual(shape('space'), { delete: ['delete'] });
   assert.deepEqual(shape('share-page'), { delete: ['delete'] });
-  assert.deepEqual(shape('workspace'), { share: ['link-preview'] });
+  assert.deepEqual(shape('workspace'), { share: ['invite', 'link-preview'] });
   assert.deepEqual(shape('field'), { settings: ['settings'], organize: ['insert'], delete: ['delete'] });
 });
 

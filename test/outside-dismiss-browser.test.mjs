@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
+import { engineOf, launch, openBugReport, phoneProfile } from './lib/browser.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
 
@@ -53,7 +53,7 @@ if (s) {
     { name: 'the table sheet', at: () => table, show: '#main .crumb-row.tools-open > .crumb-actions', open: async (p) => { await p.click('#main .table-tools-btn'); } },
     { name: 'the filter popover', at: () => table, show: '.table-filter-popover', open: async (p) => { await p.click('#main .table-tools-btn'); await p.click('#main .crumb-actions .table-filter-btn'); } },
     { name: 'the view popover', at: () => table, show: '.table-view-popover', open: async (p) => { await p.click('#main .table-tools-btn'); await p.click('#main .crumb-actions .table-view-btn'); } },
-    { name: 'the bug panel', at: () => table, show: '#bug-panel', open: async (p) => { await p.click('.bug-fab'); } },
+    { name: 'the bug panel', at: () => table, show: '#bug-panel', open: (p) => openBugReport(p) },
     { name: 'the row menu', at: () => docked, show: '.wv-menu[role="menu"]', open: async (p) => { await p.click('#dock .dots-btn'); } },
     { name: 'the picker sheet', at: () => docked, show: '.picker-pop', open: async (p) => { await p.click('#dock .chip-trigger[title="Area"]'); } },
   ];
@@ -79,23 +79,21 @@ if (s) {
     }
   }
 
-  test('on a desktop a click away still closes a popover and a second click on its button toggles it shut (Issue #726)', async () => {
+  test('on a desktop the View button toggles its pane, and a click away still shuts the table menu (Issue #726)', async () => {
     const page = await open(browser, { viewport: { width: 1280, height: 844 } }, 'light', table);
     try {
-      await page.click('#main .table-filter-btn');
-      await page.waitForSelector('.table-filter-popover');
-      await page.mouse.click(640, 800);
-      await page.waitForSelector('.table-filter-popover', { state: 'detached' });
-      await page.click('#main .table-filter-btn');
-      await page.waitForSelector('.table-filter-popover');
-      await page.click('#main .table-filter-btn');
+      await page.click('#main .table-view-btn');
+      await page.waitForSelector('#view-pane:not([hidden])');
+      await page.mouse.click(400, 800);
       await page.waitForTimeout(150);
-      assert.equal(await page.locator('.table-filter-popover').count(), 0, 'the button shuts its own popover');
-      await page.click('#main .crumb-actions .dots-btn');
+      assert.equal(await page.locator('#view-pane').isVisible(), true, 'the View pane is a panel: a click away leaves it open');
+      await page.click('#main .table-view-btn');
+      await page.waitForSelector('#view-pane', { state: 'hidden' });
+      await page.click('#main .crumb-row .dots-btn');
       assert.ok(await shown(page, '.wv-menu[role="menu"]'), 'the table menu opens');
-      await page.click('#main .crumb-actions .dots-btn');
+      await page.click('#main .crumb-row .dots-btn');
       assert.equal(await shown(page, '.wv-menu[role="menu"]'), false, 'and its button shuts it');
-      await page.click('#main .crumb-actions .dots-btn');
+      await page.click('#main .crumb-row .dots-btn');
       await page.mouse.click(640, 800);
       assert.equal(await shown(page, '.wv-menu[role="menu"]'), false, 'a click away shuts it');
     } finally { await page.close(); }

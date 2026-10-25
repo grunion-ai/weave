@@ -313,7 +313,7 @@ test('a submitted report becomes an Issue in the weave workspace', async () => {
   assert.equal(r.status, 201);
   assert.equal(r.data.table, 'Development/Issue');
   assert.equal(r.data.workspace, 'weave');
-  assert.match(r.data.url, /^\/w\/weave\/#\/entity\/[0-9a-f-]{36}$/, 'a link the reporter can open');
+  assert.match(r.data.url, /^\/w\/weave\/e\/[0-9a-f-]{36}$/, 'a link the reporter can open');
 
   const found = await post('/w/weave/api/tables/Issue/query', {});
   const issue = found.data.items.find((i) => i.id === r.data.id);
@@ -465,7 +465,10 @@ test('a symptom is a toggle, not a radio', () => {
 
 test('the button becomes the receipt', () => {
   const body = APP.slice(APP.indexOf('function openBugPanel'), APP.indexOf('// The loader is fetched'));
-  assert.match(body, /send\.textContent = 'Sent'/);
+  assert.match(body, /sendLabel\.textContent = 'Reported'/);
+  assert.match(body, /class: 'bug-send-label' \}, 'Report issue'/, 'and it names the action before it is pressed');
+  assert.match(body, /class: 'bug-kbd bug-send-kbd' \}, '⌘↵'/, 'with ⌘↵ inside the button, not beside it (Issue #847)');
+  assert.match(CSS, /\.bug-send-kbd\s*{/, 'and the key is styled for the primary button');
   assert.match(CSS, /\.bug-send\.sent/, 'and it is styled as a confirmation, not a dead control');
 });
 

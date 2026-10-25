@@ -19,7 +19,7 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`the grid of a table with no term says row in its toolbar, its add row and the rail (${theme})`, async () => {
+    test(`the grid of a table with no term says row in its toolbar and its add row (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
       await page.goto(`${base}/#/table/${months.id}`, { waitUntil: 'networkidle' });
       await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
@@ -29,8 +29,6 @@ if (s) {
         'the toolbar search still offers records');
       assert.equal((await page.textContent('.add-entity-btn')).trim(), '+ New row',
         'the add row still offers a record');
-      assert.match(await page.textContent('.nav-stats-line'), /\b\d+ rows\b/,
-        'the rail footer still counts records');
       await page.close();
     });
   }

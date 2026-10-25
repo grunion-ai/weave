@@ -87,10 +87,15 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`the rail's ? chip opens the same sheet, and Esc gives the chip its focus back (${theme})`, async () => {
+    test(`Keyboard shortcuts in the identity panel's menu opens the same sheet, and Esc gives its button the focus back (${theme}, Feature #333)`, async () => {
       const page = await grid(theme);
       try {
-        await page.focus('#rail-help');
+        assert.equal(await page.locator('#rail-help').count(), 0, 'the rail carries no ? chip');
+        await page.focus('#sidebar .nav-identity .nav-identity-more');
+        await page.keyboard.press('Enter');
+        const row = page.locator('.nav-personal-menu [role="menuitem"]', { hasText: 'Keyboard shortcuts' });
+        await row.waitFor();
+        await row.focus();
         await page.keyboard.press('Enter');
         await page.waitForSelector('#modal.wv-keys');
         assert.equal((await readSheet(page)).title, 'Keyboard shortcuts');
@@ -98,7 +103,7 @@ if (s) {
         assert.deepEqual((await focusIs(page)).tag, 'BUTTON', 'the sheet holds focus, so the grid behind it does not take the keys');
         await page.keyboard.press('Escape');
         await page.waitForSelector('#modal-back', { state: 'detached' });
-        assert.equal((await focusIs(page)).id, 'rail-help', 'focus is back on the chip');
+        assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('nav-identity-more')), true, 'focus is back on the menu button');
       } finally { await page.close(); }
     });
 
@@ -126,10 +131,10 @@ if (s) {
         const hint = await page.$eval('#bug-panel .bug-foot', (foot) => {
           const k = foot.querySelector('kbd');
           const r = k?.getBoundingClientRect();
-          return k ? { text: k.textContent, shown: r.width > 0 && r.height > 0, nextIsSend: k.nextElementSibling?.classList.contains('bug-send') } : null;
+          return k ? { text: k.textContent, shown: r.width > 0 && r.height > 0, insideSend: !!k.closest('.bug-send') } : null;
         });
-        assert.deepEqual(hint, { text: '⌘↵', shown: true, nextIsSend: true }, 'a visible ⌘↵ beside Send');
-        assert.match(await page.$eval('#bug-panel .bug-send', (b) => b.title), /⌘Return/, 'and Send names its key');
+        assert.deepEqual(hint, { text: '⌘↵', shown: true, insideSend: true }, 'a visible ⌘↵ inside Report issue');
+        assert.match(await page.$eval('#bug-panel .bug-send', (b) => b.title), /⌘Return/, 'and the button names its key');
       } finally { await page.close(); }
     });
   }

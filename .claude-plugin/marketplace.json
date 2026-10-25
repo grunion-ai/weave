@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "weave",
+  "description": "weave: connected tables, relations, workflows and documents your agent builds and edits over MCP.",
+  "owner": {
+    "name": "grunion-ai",
+    "url": "https://weave.grunion.ai"
+  },
+  "plugins": [
+    {
+      "name": "weave",
+      "displayName": "weave",
+      "source": "./plugins/weave",
+      "description": "Connects Claude Code to your hosted weave workspace. Sign in on first use.",
+      "homepage": "https://weave.grunion.ai/docs",
+      "repository": "https://github.com/grunion-ai/weave",
+      "license": "MIT",
+      "category": "productivity"
+    }
+  ]
+}

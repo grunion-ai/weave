@@ -25,10 +25,9 @@ if (app) for (const theme of ['light', 'dark']) for (const width of [390, 1280])
     const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: theme });
     const page = await context.newPage();
     try {
-      await page.context().addCookies([{ name: 'wv_session', value: weave.createSession(architect.account.id).token, url: base }]);
+      await page.context().addCookies([{ name: `wv_session_${weave.state.meta.id}`, value: weave.createSession(architect.account.id).token, url: base }]);
       await page.goto(`${base}/#/db/${table.id}`);
       await page.locator('.table-tools-btn').waitFor({ state: 'attached' });
-      if (width < 600) await page.getByRole('button', { name: 'View, filters, fields and row height', exact: true }).click();
       await page.getByRole('button', { name: 'Table actions', exact: true }).filter({ visible: true }).click();
       await page.getByRole('menuitem', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
       await page.getByRole('button', { name: 'Create form', exact: true }).click();
@@ -79,7 +78,7 @@ if (app) test('editing preserves hidden fields and aliases, and observers have n
   const { browser, base, table, weave, preserved, observer, architect } = app;
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   try {
-    await page.context().addCookies([{ name: 'wv_session', value: weave.createSession(architect.account.id).token, url: base }]);
+    await page.context().addCookies([{ name: `wv_session_${weave.state.meta.id}`, value: weave.createSession(architect.account.id).token, url: base }]);
     await page.goto(`${base}/#/db/${table.id}`);
     await page.getByRole('button', { name: 'Table actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Forms…', exact: true }).filter({ visible: true }).click();
@@ -107,7 +106,7 @@ if (app) test('editing preserves hidden fields and aliases, and observers have n
   } finally { await page.close(); }
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   try {
-    await context.addCookies([{ name: 'wv_session', value: weave.createSession(observer.account.id).token, url: base }]);
+    await context.addCookies([{ name: `wv_session_${weave.state.meta.id}`, value: weave.createSession(observer.account.id).token, url: base }]);
     const viewer = await context.newPage();
     await viewer.goto(`${base}/#/db/${table.id}`);
     await viewer.getByRole('button', { name: 'Table actions', exact: true }).click();
@@ -119,7 +118,7 @@ if (app) test('a choice default is picked through the picker: several for a mult
   const { browser, base, table, weave, architect } = app;
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   try {
-    await page.context().addCookies([{ name: 'wv_session', value: weave.createSession(architect.account.id).token, url: base }]);
+    await page.context().addCookies([{ name: `wv_session_${weave.state.meta.id}`, value: weave.createSession(architect.account.id).token, url: base }]);
     await page.goto(`${base}/#/db/${table.id}`);
     await page.getByRole('button', { name: 'Table actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Forms…', exact: true }).filter({ visible: true }).click();

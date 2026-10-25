@@ -122,6 +122,106 @@ test('create: the server re-checks, so a slug lost to a race is slug_taken with 
   } finally { s.stop(); }
 });
 
+test('resume: a signed-in start visit goes straight to the last workspace and its last page (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name: 'Harbor', slug: 'harbor' } })).status, 201);
+    await s.follow((await s.apex('GET', '/api/start/open/harbor', { cookie: kyle.cookie })).headers.location);
+    const start = await s.apex('GET', '/start', { cookie: kyle.cookie });
+    assert.deepEqual([start.status, start.headers.location], [302, '/api/start/open/harbor?to=resume']);
+    const open = await s.apex('GET', start.headers.location, { cookie: kyle.cookie });
+    assert.equal(new URL(open.headers.location).host, 'harbor.weave.test');
+    const landed = await s.follow(open.headers.location);
+    assert.deepEqual([landed.status, landed.headers.location], [302, '/#/resume'], 'the workspace app turns the mark into the last page it had open');
+    const picked = await s.apex('GET', '/start?pick=1', { cookie: kyle.cookie });
+    assert.equal(picked.status, 200, 'the in-app switcher can still ask for the list');
+  } finally { s.stop(); }
+});
+
+test('resume: a deep link wins over the last workspace (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    const moved = await s.apex('GET', `/e/${id}`, { cookie: kyle.cookie });
+    assert.deepEqual([moved.status, moved.headers.location], [301, `http://net.weave.test/e/${id}`]);
+  } finally { s.stop(); }
+});
+
+test('resume: a gone or revoked last workspace falls back to the first one this sign-in opens (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const other = new Weave({ path: join(s.dir, 'other.db') });
+    other.createAccount({ name: 'eve', role: 'editor' });
+    other.redeemIdentityInvite(other.linkIdentity('eve', { issuer: s.idp.issuer }).code, { issuer: s.idp.issuer, subject: 'user_eve' });
+    other.store.close?.();
+    const eve = await s.signInAtStart('user_eve');
+    await s.follow((await s.apex('GET', '/api/start/open/other', { cookie: eve.cookie })).headers.location);
+    assert.equal((await s.apex('GET', '/start', { cookie: eve.cookie })).headers.location, '/api/start/open/other?to=resume');
+    const revoke = new Weave({ path: join(s.dir, 'other.db') });
+    revoke.deleteAccount('eve');
+    revoke.store.close?.();
+    assert.equal((await s.apex('GET', '/start', { cookie: eve.cookie })).headers.location, '/api/start/open/acme?to=resume');
+  } finally { s.stop(); }
+});
+
+test('resume: a sign-in with no workspaces still gets the start page and its empty state (Issue #977)', async () => {
+  const s = await serve();
+  try {
+    const nobody = await s.signInAtStart('user_nobody');
+    const page = await s.apex('GET', '/start', { cookie: nobody.cookie });
+    assert.equal(page.status, 200);
+    assert.deepEqual((await s.apex('GET', '/api/start', { cookie: nobody.cookie })).json().rows, []);
+  } finally { s.stop(); }
+});
+
+test('root: with the short apex sign-in gone, the rail cookie opens the last workspace on its own host (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const rail = (names) => s.apex('GET', '/', { cookie: `wv_rail=${names}` });
+    const acme = await rail('acme,net');
+    assert.deepEqual([acme.status, acme.headers.location], [302, 'http://acme.weave.test/#/resume']);
+    assert.equal((await rail('gone,net')).headers.location, 'http://net.weave.test/#/resume', 'a name no workspace holds is skipped');
+    assert.equal((await rail('weave')).headers.location, '/start', 'the docs workspace is never a landing');
+    assert.equal((await s.apex('GET', '/', { cookie: 'wv_rail=' })).headers.location, '/start');
+    const kyle = await s.signInAtStart('user_kyle');
+    assert.equal((await s.apex('GET', '/', { cookie: `${kyle.cookie}; wv_rail=acme` })).headers.location, '/start', 'a held apex sign-in still lands through /start');
+  } finally { s.stop(); }
+});
+
+test('resume: a pending invite keeps the list so it can be accepted (Net #124)', async () => {
+  const s = await serve();
+  try {
+    const other = new Weave({ path: join(s.dir, 'other.db') });
+    other.actor = 'someone';
+    other.inviteMember({ email: 'eve@example.com', role: 'editor', issuer: s.idp.issuer });
+    other.store.close?.();
+    const eve = await s.signInAtStart('user_eve', { email: 'eve@example.com', email_verified: true });
+    const start = await s.apex('GET', '/start', { cookie: eve.cookie });
+    assert.equal(start.status, 200, 'eve opens acme, and the invite to other waits on the list');
+    assert.ok((await s.apex('GET', '/api/start', { cookie: eve.cookie })).json().rows.some((r) => r.kind === 'invite'));
+  } finally { s.stop(); }
+});
+
+test('links: an apex link to a row, table or space opens on the host of the workspace that holds it (Issue #992)', async () => {
+  const s = await serve();
+  try {
+    const acme = new Weave({ path: join(s.dir, 'acme.db') });
+    const space = acme.createSpace({ name: 'Deals' });
+    const table = acme.createTable({ space: space.id, name: 'Deal' });
+    const row = acme.createEntity(table.id, { Name: 'Receivables' });
+    acme.save();
+    acme.store.close?.();
+    for (const [kind, id] of [['e', row.id], ['t', table.id], ['s', space.id]]) {
+      const moved = await s.apex('GET', `/${kind}/${id}`);
+      assert.deepEqual([moved.status, moved.headers.location], [301, `http://acme.weave.test/${kind}/${id}`], kind);
+    }
+    const unknown = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    assert.equal((await s.apex('GET', `/e/${unknown}`)).headers.location, `http://net.weave.test/e/${unknown}`, 'a link no workspace holds goes to Net as before');
+  } finally { s.stop(); }
+});
+
 test('start: the apex shows nothing until sign-in, then lists the workspaces this identity opens', async () => {
   const s = await serve();
   try {
@@ -138,7 +238,9 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
     assert.deepEqual([eve.res.status, eve.res.headers.location], [302, '/start']);
     assert.match([eve.res.headers['set-cookie']].flat().join('\n'), /wv_start=[\w-]{40,}; HttpOnly; SameSite=Lax; Path=\/; Max-Age=1800/);
     const list = (await s.apex('GET', '/api/start', { cookie: eve.cookie })).json();
-    assert.deepEqual(list.rows, [{ kind: 'workspace', name: 'acme', title: 'acme', login: 'eve', open: '/api/start/open/acme' }]);
+    const acmeId = list.rows[0]?.id;
+    assert.match(String(acmeId), /^[0-9a-f-]{36}$/, 'each row carries the workspace id the rail tints its letter tile from');
+    assert.deepEqual(list.rows, [{ kind: 'workspace', name: 'acme', id: acmeId, title: 'acme', login: 'eve', host: 'acme.weave.test', role: 'editor', logo: null, seenAt: null, open: '/api/start/open/acme', trial: null }]);
     assert.deepEqual([list.signedIn, list.canCreate, list.accountName, list.base], [true, false, 'eve', 'weave.test']);
 
     const open = await s.apex('GET', list.rows[0].open, { cookie: eve.cookie });
@@ -158,12 +260,49 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
   } finally { s.stop(); }
 });
 
+test('start: rows name host and role, show the logo through the start door, and the last opened sorts first (Issue #964)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    for (const [name, slug] of [['Harbor', 'harbor'], ['Dock', 'dock']]) {
+      assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name, slug } })).status, 201);
+    }
+    const before = (await s.apex('GET', '/api/start', { cookie: kyle.cookie })).json().rows;
+    const row = (rows, name) => rows.find((r) => r.name === name);
+    assert.deepEqual([row(before, 'harbor').role, row(before, 'harbor').host, row(before, 'harbor').title], ['architect', 'harbor.weave.test', 'Harbor']);
+    assert.equal(row(before, 'acme').role, 'architect', 'a hub-root architect opens acme as an architect');
+    assert.ok(before.every((r) => r.seenAt === null), 'nothing opened yet');
+
+    const opened = await s.apex('GET', row(before, 'harbor').open, { cookie: kyle.cookie });
+    await s.follow(opened.headers.location);
+    const after = (await s.apex('GET', '/api/start', { cookie: kyle.cookie })).json().rows;
+    assert.equal(after[0].name, 'harbor', 'the workspace opened last leads the list');
+    assert.match(after[0].seenAt, /^\d{4}-\d\d-\d\dT/);
+    assert.deepEqual(after.slice(1).map((r) => r.name), before.filter((r) => r.name !== 'harbor').map((r) => r.name), 'the rest keep their order');
+
+    const acme = new Weave({ path: join(s.dir, 'acme.db') });
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    acme.setWorkspaceLogo({ name: 'logo.png', mime: 'image/png', bytes: png.toString('base64') });
+    acme.store.close?.();
+    const eve = await s.signInAtStart('user_eve');
+    const [acmeRow] = (await s.apex('GET', '/api/start', { cookie: eve.cookie })).json().rows;
+    assert.match(acmeRow.logo, /^\/api\/start\/logo\/acme\?v=[0-9a-f]{8}$/);
+    const logo = await s.apex('GET', acmeRow.logo, { cookie: eve.cookie });
+    assert.deepEqual([logo.status, logo.headers['content-type']], [200, 'image/png']);
+    const nobody = await s.signInAtStart('user_nobody');
+    assert.equal((await s.apex('GET', acmeRow.logo, { cookie: nobody.cookie })).status, 403, 'only a sign-in that opens the workspace sees its logo');
+    assert.equal((await s.apex('GET', acmeRow.logo)).status, 401);
+    assert.equal((await s.apex('GET', '/api/start/logo/harbor', { cookie: kyle.cookie })).status, 404, 'no logo, no bytes');
+  } finally { s.stop(); }
+});
+
 test('apex: a browser at the apex root gets the start page signed in or not, Net moves to its host, /api and /mcp stay', async () => {
   const s = await serve();
   try {
     const t = s.rootToken;
     const kyle = await s.signInAtStart('user_kyle');
     assert.deepEqual([(await s.apex('GET', '/', { cookie: kyle.cookie })).status, (await s.apex('GET', '/', { cookie: kyle.cookie })).headers.location], [302, '/start']);
+    assert.match((await s.apex('GET', '/start', { cookie: kyle.cookie })).headers.location, /^\/api\/start\/open\/[^/?]+\?to=resume$/, 'signed in, the start page hands straight on to a workspace');
     assert.equal((await s.apex('GET', '/', { token: t })).headers.location, '/start');
     const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
     const moved = await s.apex('GET', `/e/${id}`);
@@ -189,7 +328,8 @@ test('start: an architect creates a workspace from a name and a slug, and become
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Acme', slug: 'acme' } })).json().code, 'slug_taken');
     const made = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Harbor Launch', slug: 'harbor-launch' } });
     assert.equal(made.status, 201);
-    assert.deepEqual(made.json(), { name: 'harbor-launch', open: '/api/start/open/harbor-launch' });
+    const { name, open, mcp, table, templateError } = made.json();
+    assert.deepEqual({ name, open, mcp, table, templateError }, { name: 'harbor-launch', open: '/api/start/open/harbor-launch', mcp: 'http://harbor-launch.weave.test/mcp', table: null, templateError: null });
     const w = new Weave({ path: join(s.dir, 'harbor-launch.db') });
     const owner = w.listAccounts()[0];
     assert.deepEqual([owner.name, Weave.roleName(owner.role), owner.identities[0].subject], ['Kyle Adriany', 'architect', 'user_kyle']);
@@ -207,7 +347,7 @@ const SOLO = [200, { subscription_items: [{ status: 'active', plan: { slug: 'sol
 
 test('start: with billing on, a new person creates a first workspace and is its Observer-only Architect until the solo plan', async () => {
   const routes = {};
-  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', fetch: clerkAt(routes) });
+  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', trialDays: 0, fetch: clerkAt(routes) });
   const s = await serve({ billing });
   try {
     const dana = await s.signInAtStart('user_dana', { email: 'dana@example.com', email_verified: true });
@@ -215,7 +355,7 @@ test('start: with billing on, a new person creates a first workspace and is its 
     assert.deepEqual([list.rows, list.canCreate, list.accountName], [[], true, 'dana']);
     const made = await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Dana Desk', slug: 'dana-desk' } });
     assert.equal(made.status, 201);
-    assert.deepEqual(made.json(), { name: 'dana-desk', open: '/api/start/open/dana-desk' });
+    assert.deepEqual([made.json().name, made.json().open], ['dana-desk', '/api/start/open/dana-desk']);
     const w = new Weave({ path: join(s.dir, 'dana-desk.db') });
     const owner = w.listAccounts()[0];
     assert.deepEqual([w.listAccounts().length, owner.name, Weave.roleName(owner.role), owner.identities[0].subject], [1, 'dana', 'architect', 'user_dana']);
@@ -255,4 +395,22 @@ test('start: the page and the in-app form read their words from slug-core, the o
   for (const line of [WeaveSlugs.COPY.taken, WeaveSlugs.COPY.chipLead, WeaveSlugs.COPY.submit]) assert.ok(!form.includes(line), `slug-form.js repeats copy: ${line}`);
   const index = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(index.indexOf('/slug-form.js') > -1 && index.indexOf('/slug-form.js') < index.indexOf('/app.js'));
+});
+
+test('resume: explicit workspace choice survives listing and root-backed sessions (Issue #957)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signInAtStart('user_kyle');
+    const chosen = await s.apex('GET', '/api/start/open/other', { cookie: kyle.cookie });
+    const rail = cookieOf(chosen, 'wv_rail');
+    assert.ok(rail?.startsWith('wv_rail=other,'), 'opening a workspace moves it to the front');
+    await s.follow(chosen.headers.location);
+    const cookie = `${kyle.cookie}; ${rail}`;
+    assert.equal((await s.apex('GET', '/start', { cookie })).headers.location, '/api/start/open/other?to=resume');
+    const listed = await s.apex('GET', '/api/start', { cookie });
+    assert.equal(cookieOf(listed, 'wv_rail'), rail, 'listing preserves this browser choice');
+    const eve = await s.signInAtStart('user_eve');
+    assert.equal((await s.apex('GET', '/start', { cookie: `${eve.cookie}; ${rail}` })).headers.location, '/api/start/open/acme?to=resume', 'a stale preference cannot grant access');
+    assert.equal((await s.apex('GET', '/start?pick=1', { cookie })).status, 200);
+  } finally { s.stop(); }
 });

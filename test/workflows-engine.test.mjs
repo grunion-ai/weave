@@ -9,7 +9,7 @@ import { Weave } from '../src/engine.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 
-const wf = (w) => w.getTable('Workspace/Workflows');
+const wf = (w) => w.getTable('System/Workflows');
 const read = (w, id) => w.readEntity(id);
 
 function demo() {
@@ -31,7 +31,7 @@ test('createAutomation writes a Workflows row: Script JSON with names, On, State
   const { w, t } = demo();
   const auto = w.createAutomation(t.id, closeOut);
   const row = read(w, auto.id);
-  assert.equal(row.db, 'Workspace/Workflows', 'the rule IS the row');
+  assert.equal(row.db, 'System/Workflows', 'the rule IS the row');
   assert.equal(row.name, 'Close out on Done');
   assert.deepEqual(JSON.parse(row.docs.Script), {
     table: 'Workflow Demo/Request',
@@ -249,7 +249,7 @@ test('a hub member\'s automation is a root Workflows row that fires in the membe
   m.joinRegistry(r);
   const auto = m.createAutomation(t.id, closeOut);
   const row = r.readEntity(auto.id);
-  assert.equal(row.db, 'Workspace/Workflows', 'the row lives at the root');
+  assert.equal(row.db, 'System/Workflows', 'the row lives at the root');
   assert.equal(row.fields.State, 'Ready');
   assert.deepEqual(m.listAutomations().map((a) => a.id), [auto.id]);
   assert.deepEqual(r.listAutomations(), [], 'the root lists its own rules, not the member\'s');

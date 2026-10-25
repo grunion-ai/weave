@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rope, weaveSvg, VARIANTS, build, LOADERS, loaderSvg, LOADER_CYCLE_MS,
-  loaderBootHtml, loaderStill, shellWithBootMark, PALETTE } from "./build-logos.mjs";
+  loaderBootHtml, loaderStill, shellWithBootMark, PALETTE, lockupLayout, lockupSvg, LOCKUP_SIZES } from "./build-logos.mjs";
 
 test("rope(3,8) produces the selected h3 geometry", () => {
   const r = rope(3, 8);
@@ -99,8 +99,8 @@ test("variant manifest covers the decided asset set with unique filenames", () =
 test("email lockups carry the invite emails' approved palettes (Feature #216)", () => {
   const light = VARIANTS.find(v => v.file === "weave-lockup-email-light.svg").svg;
   const dark = VARIANTS.find(v => v.file === "weave-lockup-email-dark.svg").svg;
-  assert.ok(light.includes('stroke="#2563eb"') && light.includes('stroke="#0c1b33"') && light.includes('fill="#0c1b33">weave'));
-  assert.ok(dark.includes('stroke="#3b82f6"') && dark.includes('stroke="#60a5fa"') && dark.includes('fill="#eef2f8">weave'));
+  assert.ok(light.includes('stroke="#2563eb"') && light.includes('stroke="#0c1b33"') && light.includes('fill="#0c1b33" transform'));
+  assert.ok(dark.includes('stroke="#3b82f6"') && dark.includes('stroke="#60a5fa"') && dark.includes('fill="#eef2f8" transform'));
 });
 
 test("favicon variant is thickened mono blue (decision 2B)", () => {
@@ -301,4 +301,54 @@ test("build() rewrites the shell it is given, and leaves it alone otherwise (Iss
   assert.ok(readFileSync(shell, "utf8").includes(loaderBootHtml()));
   const plain = mkdtempSync(join(tmpdir(), "weave-brand-noshell-"));
   assert.equal(build(plain).length, VARIANTS.length + 1, "no shell argument, no shell write");
+});
+
+const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 0.02, `${msg}: ${a} vs ${b}`);
+const centre = ([x, y, w, h]) => [x + w / 2, y + h / 2];
+const inside = ([x, y, w, h], [vx, vy, vw, vh]) => x >= vx && y >= vy && x + w <= vx + vw && y + h <= vy + vh;
+
+test("inline lockup: the mark is 1.6x and the word sits on the mark's centre line (2026-10-22, option A)", () => {
+  const { mark, word, viewBox } = lockupLayout("inline");
+  close(mark[3] / word[3], 11.5 * 1.6 / word[3], "mark height is 1.6x the old x-height mark");
+  close(mark[3], 18.4, "mark height");
+  close(centre(mark)[1], centre(word)[1], "word centred on the mark");
+  close(word[0] - (mark[0] + mark[2]), 0.6 * word[3], "gap is 0.6 of the word height");
+  assert.ok(inside(mark, viewBox) && inside(word, viewBox), "both sit inside the viewBox");
+});
+
+test("stacked lockup: mark 75% of the word width, half the word height above it, both centred (2026-10-22, option C)", () => {
+  const { mark, word, viewBox } = lockupLayout("stacked");
+  close(mark[2], 0.75 * word[2], "mark width");
+  close(word[1] - (mark[1] + mark[3]), word[3] / 2, "gap is half the word height");
+  close(centre(mark)[0], centre(word)[0], "mark centred over the word");
+  close(centre(word)[0], viewBox[0] + viewBox[2] / 2, "word centred in the viewBox");
+  assert.ok(inside(mark, viewBox) && inside(word, viewBox), "both sit inside the viewBox");
+});
+
+test("lockups outline the wordmark, so they draw the same with or without Outfit installed", () => {
+  for (const layout of ["inline", "stacked"]) {
+    const svg = lockupSvg(PALETTE.ink, { layout });
+    assert.ok(!svg.includes("<text"), `${layout} has no live text`);
+    assert.match(svg, /<path d="M28\.1 0L18\.7 0L0\.6-48\.3/, `${layout} draws the outlined wordmark`);
+    assert.match(svg, / width="\d+" height="\d+"/, `${layout} carries an intrinsic size`);
+  }
+});
+
+test("light lockups pair blue with ink, dark lockups pair blue with sky (decision 5B)", () => {
+  for (const file of ["weave-lockup-light.svg", "weave-lockup-stacked-light.svg"]) {
+    const svg = VARIANTS.find(v => v.file === file).svg;
+    assert.ok(svg.includes('stroke="#0c1b33"') && !svg.includes('stroke="#60a5fa"'), `${file} strands`);
+    assert.ok(svg.includes('fill="#0c1b33"'), `${file} word`);
+  }
+  for (const file of ["weave-lockup-dark.svg", "weave-lockup-stacked-dark.svg"]) {
+    const svg = VARIANTS.find(v => v.file === file).svg;
+    assert.ok(svg.includes('stroke="#60a5fa"') && svg.includes('fill="#e0dcd4"'), `${file} strands and word`);
+  }
+});
+
+test("the email lockup size matches the inline lockup's shape", () => {
+  const [, , vw, vh] = lockupLayout("inline").viewBox;
+  const { width, height } = LOCKUP_SIZES.email;
+  assert.equal(height, 24);
+  assert.ok(Math.abs(width / height - vw / vh) < 0.03, `${width}x${height} vs ${vw}x${vh}`);
 });

@@ -20,17 +20,21 @@ const loadClerk = async (key) => {
   if (clerk) return clerk;
   const host = frontendApi(key);
   if (!host) return null;
-  await new Promise((resolve, reject) => {
+  const inject = (src, data = {}) => new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = `https://${host}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`;
+    script.src = src;
     script.async = true;
     script.crossOrigin = 'anonymous';
-    script.dataset.clerkPublishableKey = key;
+    Object.assign(script.dataset, data);
     script.onload = resolve;
     script.onerror = () => reject(new Error('Clerk checkout did not load'));
     document.head.append(script);
   });
-  await window.Clerk.load();
+  await Promise.all([
+    inject(`https://${host}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, { clerkPublishableKey: key }),
+    inject(`https://${host}/npm/@clerk/ui@1/dist/ui.browser.js`),
+  ]);
+  await window.Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
   clerk = window.Clerk;
   return clerk;
 };
@@ -61,20 +65,34 @@ const render = (state) => {
   const seated = state.members.filter((m) => m.paid && m.seated).length;
   $('summary').textContent = state.plan === 'comped'
     ? 'This workspace was made before billing began, so it is never charged.'
+    : state.plan === 'trial'
+    ? `This workspace is on its free trial until ${new Date(state.trial.endsAt).toLocaleDateString()} (${state.trial.daysLeft === 1 ? 'less than a day' : `${state.trial.daysLeft} days`} left). Everyone can create and edit until then; after it, Editors and Architects need a plan to keep editing. Your rows stay either way.`
     : state.plan
     ? `This workspace is on ${PLAN_NAMES[state.plan] ?? state.plan}. ${seated} of ${state.seats} paid ${state.seats === 1 ? 'seat is' : 'seats are'} covered.`
     : state.seats === 0 ? 'Nobody here takes a paid seat yet.' : `No plan covers this workspace, so its ${state.seats === 1 ? 'Editor or Architect works' : `${state.seats} Editors and Architects work`} as Observers until one is bought.`;
   $('seats').replaceChildren(...state.members.map((m) => {
     const li = document.createElement('li');
+    const id = document.createElement('span');
+    id.className = 'seat-id';
     const who = document.createElement('span');
-    who.textContent = m.name;
+    const name = document.createElement('span');
+    name.className = 'seat-who';
+    name.textContent = m.name;
     const role = document.createElement('small');
+    role.className = 'seat-role';
     role.textContent = ` ${m.role}`;
-    who.append(role);
+    who.append(name, role);
+    id.append(who);
+    if (m.email) {
+      const mail = document.createElement('small');
+      mail.className = 'seat-mail';
+      mail.textContent = m.email;
+      id.append(mail);
+    }
     const mark = document.createElement('span');
     mark.className = !m.paid ? 'muted' : m.seated ? 'state-ok' : 'state-bad';
     mark.textContent = !m.paid ? 'Free' : m.seated ? 'Seat covered' : 'Needs a seat';
-    li.append(who, mark);
+    li.append(id, mark);
     return li;
   }));
   const needsTeam = state.plan !== 'comped' && !state.orgId && state.seats > 1;

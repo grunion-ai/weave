@@ -163,48 +163,88 @@ test('routes: an Architect removing an account revokes its sessions there at onc
   } finally { s.stop(); }
 });
 
-test('routes: a plain wv_session cookie from before the upgrade still opens its workspace and moves to the per-workspace name (Feature #280)', async () => {
+test('routes: a plain wv_session cookie opens nothing and is cleared on the next response (Issue #717)', async () => {
   const s = await serve();
   try {
     const b = browser(s);
     const token = s.alpha.w.createSession('kyle').token;
     b.jar.set('wv_session', token);
     const first = await b.call('GET', '/w/alpha/api/schema');
-    assert.equal(first.status, 200);
-    assert.deepEqual(first.headers.getSetCookie().sort(), [
-      `${nameOf(s.alpha.w)}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`,
-      'wv_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0',
-    ].sort());
-    assert.deepEqual([...b.jar.keys()], [nameOf(s.alpha.w)]);
-    const second = await b.call('GET', '/w/alpha/api/schema');
-    assert.equal(second.status, 200);
-    assert.deepEqual(second.headers.getSetCookie(), []);
-    assert.equal((await s.call('GET', '/w/alpha/api/schema', { cookie: `wv_session=${token}` })).status, 200, 'the plain cookie is still read on its own');
-
-    const other = browser(s);
-    const missing = s.alpha.w.createSession('kyle').token;
-    other.jar.set('wv_session', missing);
-    assert.equal((await other.call('GET', '/w/beta/api/schema')).status, 401, 'a plain cookie for alpha opens nothing in beta');
-    assert.equal(other.jar.get('wv_session'), missing, 'and is not thrown away there, so alpha still moves it later');
+    assert.equal(first.status, 401, 'the plain cookie no longer authenticates');
+    assert.deepEqual(first.headers.getSetCookie(), ['wv_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0']);
+    assert.deepEqual([...b.jar.keys()], [], 'the browser drops it');
+    const bare = await s.call('GET', '/w/alpha/api/schema', { cookie: `wv_session=${token}` });
+    assert.equal(bare.status, 401);
+    const own = browser(s);
+    own.jar.set('wv_session', 'stale');
+    own.jar.set(nameOf(s.alpha.w), token);
+    const both = await own.call('GET', '/w/alpha/api/schema');
+    assert.equal(both.status, 200, 'the per-workspace cookie still opens its workspace');
+    assert.deepEqual([...own.jar.keys()], [nameOf(s.alpha.w)], 'and the plain one is cleared beside it');
+    const quiet = await own.call('GET', '/w/alpha/api/schema');
+    assert.equal(quiet.status, 200);
+    assert.deepEqual(quiet.headers.getSetCookie(), [], 'once cleared, nothing more is sent');
   } finally { s.stop(); }
 });
-
-test('routes: the hub-root fallthrough still opens a member workspace for a root session, under the new names and the old one (Feature #280)', async () => {
+test('routes: the hub-root fallthrough opens a member workspace by shared identity and refuses a non-member one (Feature #280, Feature #280 security)', async () => {
   const s = await serve();
   try {
     const b = browser(s);
     const back = await b.signIn('gamma');
     assert.equal(back.status, 302, 'gamma has no kyle, so the root account signs in');
     assert.deepEqual([...b.jar.keys()].filter((k) => k.startsWith('wv_session')), [nameOf(s.home.w)], 'the session lives on the root, so it carries the root\'s name');
-    assert.equal((await b.call('GET', '/w/gamma/api/schema')).status, 200);
+    assert.equal((await b.call('GET', '/w/gamma/api/schema')).status, 401, 'gamma holds no account for this identity, so the fallthrough keeps it shut');
+    assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 200, 'alpha shares the signed-in identity, so it opens');
+    assert.equal((await b.call('GET', '/w/beta/api/schema')).status, 200, 'beta shares the identity too');
     assert.equal((await b.call('GET', '/api/schema')).status, 200);
+  } finally { s.stop(); }
+});
 
-    const legacy = browser(s);
-    const token = s.home.w.createSession('kyle').token;
-    legacy.jar.set('wv_session', token);
-    const res = await legacy.call('GET', '/w/gamma/api/schema');
-    assert.equal(res.status, 200);
-    assert.deepEqual([...legacy.jar.keys()], [nameOf(s.home.w)], 'the plain cookie moves to the root\'s name, where it lives');
-    assert.equal((await legacy.call('GET', '/w/gamma/api/schema')).status, 200);
+test('routes: a workspace reached through the fallthrough is governed by its own role, not the root role (Feature #280 security)', async () => {
+  const s = await serve();
+  s.home.w.setAccountRole('kyle', 'architect');
+  s.alpha.w.setAccountRole('kyle', 'observer');
+  try {
+    const b = browser(s);
+    await b.signIn('home');
+    assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 200, 'an observer on alpha may read');
+    const write = await b.call('POST', '/w/alpha/api/spaces', { body: { name: 'Nope' } });
+    assert.equal(write.status, 403, 'the root architect role does not carry into alpha');
+  } finally { s.stop(); }
+});
+
+test('routes: all-workspace search returns only workspaces the signed-in identity is a member of (Feature #280 security)', async () => {
+  const s = await serve();
+  try {
+    const b = browser(s);
+    await b.signIn('home');
+    const hits = async (q) => (await (await b.call('GET', `/api/search?all=1&q=${q}`)).json());
+    assert.ok((await hits('alpha')).some((r) => r.workspace === 'alpha'), 'alpha is a member workspace, so it is searchable');
+    assert.ok(!(await hits('gamma')).some((r) => r.workspace === 'gamma'), 'gamma is not a member, so it never surfaces in all-workspace search');
+  } finally { s.stop(); }
+});
+
+test('routes: signing out of a workspace opened through the hub-root fallthrough leaves the root and other members signed in (Issue #716)', async () => {
+  const s = await serve();
+  try {
+    const b = browser(s);
+    await b.signIn('home');
+    assert.equal((await b.call('GET', '/w/gamma/api/schema')).status, 401, 'gamma holds no account for this identity, so the fallthrough refuses it');
+    assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 200, 'alpha opens through the identity fallthrough');
+    assert.equal((await b.call('POST', '/w/alpha/api/auth/logout')).status, 200);
+    assert.equal((await b.call('GET', '/api/schema')).status, 200, 'the root is still signed in');
+    assert.equal(s.home.w.listSessions('kyle').length, 1, 'the root session is not revoked');
+    assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 401, 'alpha is signed out in this browser');
+    assert.equal((await b.call('GET', '/w/beta/api/schema')).status, 200, 'the sign-out is scoped to alpha');
+
+    await b.signIn('alpha');
+    assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 200, 'signing in to alpha again opens it');
+
+    await b.call('POST', '/w/alpha/api/auth/logout');
+    const rootCookie = `${nameOf(s.home.w)}=${b.jar.get(nameOf(s.home.w))}`;
+    assert.equal((await s.call('GET', '/api/schema', { cookie: rootCookie })).status, 200);
+    assert.equal((await b.call('POST', '/api/auth/logout?everywhere=1')).status, 200);
+    assert.equal(b.jar.size, 0, 'sign out everywhere clears the root session and the gamma marker');
+    assert.equal((await s.call('GET', '/api/schema', { cookie: rootCookie })).status, 401, 'and ends the root session');
   } finally { s.stop(); }
 });

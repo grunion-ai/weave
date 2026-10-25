@@ -1,5 +1,6 @@
-import { JOURNEYS, cellsOf, seed as journeySeed, walk } from './journeys.mjs';
-import { OVERLAYS, SURFACES, overlaysFor } from './overlays.mjs';
+import { cellsOf, walk } from './journeys.mjs';
+import { OVERLAYS, overlaysFor } from './overlays.mjs';
+import { ROUTES, SEEDS, journeyOf, plan, statesOf, walked } from './states.mjs';
 
 export const KINDS = ['clipped', 'ellipsis', 'line-clamp', 'field-value', 'field-placeholder'];
 export const DESKTOP = 'desktop';
@@ -40,6 +41,7 @@ export function probe(rootSelector = null) {
   const unseen = (e) => {
     const own = e.getBoundingClientRect();
     if (!own.width || !own.height || style(e).visibility !== 'visible') return true;
+    if (own.right <= 0 || own.bottom <= 0 || own.left >= innerWidth || own.top >= innerHeight) return true;
     for (let x = e; x && x.nodeType === 1; x = x.parentElement) {
       const cs = style(x);
       if (Number(cs.opacity) === 0) return true;
@@ -177,6 +179,11 @@ export function ratchet(seen, baseline, { cells = null } = {}) {
   return { added, dropped };
 }
 
+export function verdict(seen, baseline, { cells = null } = {}) {
+  const { added, dropped } = ratchet(seen, baseline, { cells });
+  return { added, stale: dropped };
+}
+
 export function grew(before, after) {
   if (!before) return [];
   const out = [];
@@ -205,56 +212,10 @@ export function lower(file, counts, { cells, platform = PLATFORM }) {
   return out;
 }
 
-export function seed(weave) {
-  const handles = journeySeed(weave);
-  const { tasks, ids } = handles;
-  weave.addField(tasks, { name: 'Due', type: 'date' });
-  weave.addField(tasks, { name: 'Window', type: 'daterange', config: { format: 'long' } });
-  weave.addField(tasks, { name: 'Link', type: 'url' });
-  weave.addField(tasks, { name: 'Tags', type: 'multiselect', config: { options: ['Short', 'A tag whose label runs long enough to need a wrap'] } });
-  for (const [i, id] of ids.entries()) {
-    if (i % 3) continue;
-    weave.updateEntity(id, {
-      Due: `2026-${String((i % 12) + 1).padStart(2, '0')}-15`,
-      Window: { start: '2026-08-01', end: '2026-09-15' },
-      Link: i % 2 ? 'https://example.com/' : `https://docs.example.com/guides/a-path-that-keeps-going/${i}/and-going`,
-      Tags: i % 2 ? ['Short'] : ['Short', 'A tag whose label runs long enough to need a wrap'],
-    });
-  }
-  const notes = weave.createTable({ space: 'Work', name: 'Note' });
-  weave.addField(notes, { name: 'Link', type: 'url' });
-  for (const name of ['Spec', 'Release note', 'Customer summary']) weave.addField(notes, { name, type: 'document' });
-  const activity = weave.createEntity(notes, { name: 'Log', doc: 'First draft.' }).id;
-  weave.setDoc(activity, 'Spec text.', 'Spec');
-  weave.setDoc(activity, 'Release text.', 'Release note');
-  weave.setDoc(activity, 'Summary text.', 'Customer summary');
-  weave.updateEntity(activity, { Link: 'https://adriany.fibery.io/Task_Management/Task/a-path-that-keeps-going-past-the-panel-1234' });
-  return { ...handles, notes, activity };
-}
+export const seed = SEEDS.messy;
 
-const phoneCell = (page) => (page.viewportSize()?.width ?? 1440) < 768;
-
-export const ACTIVITY_JOURNEY = {
-  name: 'activity-panel',
-  cells: ['desktop', 'phone'],
-  root: 'aside.wv-activity, .wv-act-view',
-  async setup(page, ctx) {
-    const phone = phoneCell(page);
-    await page.goto(phone ? `${ctx.base}/#/table/${ctx.notes.id}?e=${ctx.activity}` : `${ctx.base}/#/entity/${ctx.activity}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`${phone ? '#dock:not([hidden])' : '#main'} .activity-btn`);
-  },
-  async run(page) {
-    const phone = phoneCell(page);
-    const btn = page.locator(`${phone ? '#dock' : '#main'} .activity-btn >> visible=true`).first();
-    await (phone ? btn.tap() : btn.click());
-    const link = page.locator('.wv-activity .wv-act-row').filter({ has: page.locator('.name', { hasText: /^Link$/ }) }).first();
-    await link.waitFor();
-    await (phone ? link.locator('.wv-act-what').tap() : link.locator('.wv-act-what').click());
-    await page.waitForSelector('.wv-activity .wv-act-row.sel .wv-act-tray');
-  },
-};
-
-export const SWEEP_JOURNEYS = [...JOURNEYS, ACTIVITY_JOURNEY];
+export const SWEEP_JOURNEYS = statesOf(plan('cutoff'), 'journey');
+export const restsFor = (entries, cell) => entries.filter((p) => p.cell === cell && p.state.open === 'rest').map((p) => p.state);
 
 const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
 
@@ -264,7 +225,7 @@ export async function settle(page) {
   await frames(page, 2);
 }
 
-export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS } = {}) {
+export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS, rests = restsFor(walked('cutoff'), cell) } = {}) {
   const findings = [];
   const failed = [];
   const timings = [];
@@ -276,23 +237,25 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
     for (const f of got) findings.push({ ...f, cell, where });
   };
   const noop = async () => {};
-  for (const j of journeys.filter((x) => cellsOf(x).includes(cell))) {
+  const walks = [...journeys.filter((x) => cellsOf(x).includes(cell)), ...rests.map((x) => journeyOf(x, cell))];
+  for (const j of walks) {
+    const where = `${j.open}:${j.name}`;
     try {
-      await walk(browser, j, ctx, { ...pageOptions, probe: { install: noop, reset: noop, read: (page) => read(page, `journey:${j.name}`, j.root ?? null) } });
+      await walk(browser, j, ctx, { ...pageOptions, probe: { install: noop, reset: noop, read: (page) => read(page, where, j.root ?? null) } });
     } catch (err) {
-      failed.push({ where: `journey:${j.name}`, cell, error: String(err.message).split('\n')[0] });
+      failed.push({ where, cell, error: String(err.message).split('\n')[0] });
     }
   }
   const page = await browser.newPage(pageOptions);
   page.setDefaultTimeout(8000);
   try {
-    for (const surface of Object.keys(SURFACES)) {
-      const mine = overlaysFor(overlays, surface, cell);
+    for (const route of Object.keys(ROUTES)) {
+      const mine = overlaysFor(overlays, route, cell);
       if (!mine.length) continue;
-      const ready = SURFACES[surface].ready(cell);
+      const ready = ROUTES[route].ready(cell);
       const fresh = async () => {
         await page.goto('about:blank');
-        await page.goto(SURFACES[surface].url(ctx, cell), { waitUntil: 'networkidle' });
+        await page.goto(ROUTES[route].url(ctx, cell), { waitUntil: 'networkidle' });
         await page.waitForSelector(ready);
         await settle(page);
       };
@@ -301,7 +264,7 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
         try {
           if (!clean) await fresh();
           clean = false;
-          await o.open(page, ctx, cell);
+          await o.act(page, ctx, cell);
           await page.locator(`${o.root} >> visible=true`).first().waitFor({ timeout: 8000 });
           await read(page, `overlay:${o.name}`, o.root);
           await (o.close ?? ((p) => p.keyboard.press('Escape')))(page, ctx, cell);

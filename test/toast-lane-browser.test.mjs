@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch, PHONE, phoneBrowser, phonePage, phoneProfile } from './lib/browser.mjs';
+import { launch, openBugReport, PHONE, phoneBrowser, phonePage, phoneProfile } from './lib/browser.mjs';
 
 const LONG_ERR = "Couldn't open that record: Entity 'does-not-exist' not found";
 const STALE_MSG = 'This page was served by bbbbbbb but the server is still running aaaaaaa; restart weave, until then saving can fail silently';
@@ -27,7 +27,7 @@ if (s) {
     await page.waitForSelector('#sidebar .nav-health', { state: 'attached' });
     return page;
   }
-  const rect = (page, sel) => page.evaluate((q) => [...document.querySelectorAll(q)].map((n) => {
+  const rect = (page, sel) => page.evaluate((q) => [...document.querySelectorAll(q)].filter((n) => n.getClientRects().length).map((n) => {
     const r = n.getBoundingClientRect();
     return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
   }), sel);
@@ -38,8 +38,7 @@ if (s) {
     test(`${device ?? w}: toasts never touch the bug button or its open panel`, async () => {
       const page = await open(w, h, 'light', device);
       try {
-        await page.click('.bug-fab');
-        await page.waitForSelector('#bug-panel');
+        await openBugReport(page);
         await page.evaluate(([a, b]) => {
           toast(a, true);
           toast('Deleted Task', false, { label: 'Undo', run() {} });
@@ -48,7 +47,7 @@ if (s) {
         assert.equal(await toasts(page).count(), 3);
         const stack = await rect(page, '#wv-toasts .wv-toast');
         const chrome = [...await rect(page, '.bug-fab'), ...await rect(page, '#bug-panel')];
-        assert.equal(chrome.length, 2, 'bug button and open panel are both drawn');
+        assert.equal(chrome.length, device ? 1 : 2, device ? 'a phone draws the open panel and no floating bug button (Issue #983)' : 'bug button and open panel are both drawn');
         for (const t of stack) {
           for (const c of chrome) assert.ok(!hits(t, c), `${w}: toast ${JSON.stringify(t)} overlaps ${JSON.stringify(c)}`);
           assert.ok(t.x >= 0 && t.right <= w && t.y >= 0 && t.bottom <= h, `${w}: toast inside the viewport`);
@@ -87,20 +86,21 @@ if (s) {
     });
   }
 
-  test('the version chip lives in the sidebar under the stats line', async () => {
+  test('a healthy instance shows no version chip; the version sits in the identity panel menu (Feature #333)', async () => {
     const page = await open(1440, 900);
     try {
       const g = await page.evaluate(() => {
         const chip = document.querySelector('.nav-health');
-        return { inSidebar: !!chip.closest('#sidebar'), inCorner: !!chip.closest('#hub-foot'), count: document.querySelectorAll('.nav-health').length,
-          stats: document.querySelector('.nav-stats-line').getBoundingClientRect().bottom, chip: chip.getBoundingClientRect().top, title: chip.title };
+        return { inSidebar: !!chip.closest('#sidebar'), inCorner: !!chip.closest('#hub-foot'), count: document.querySelectorAll('.nav-health').length, hidden: chip.hidden, title: chip.title };
       });
-      assert.deepEqual([g.inSidebar, g.inCorner, g.count], [true, false, 1]);
-      assert.ok(g.chip >= g.stats, 'under the stats line');
-      assert.match(g.title, /weave instance/, 'the tooltip survives the move');
+      assert.deepEqual([g.inSidebar, g.inCorner, g.count, g.hidden], [true, false, 1, true]);
+      assert.match(g.title, /weave instance/);
       await page.evaluate(() => loadSchema());
-      assert.equal(await page.locator('#sidebar .nav-health').count(), 1);
+      assert.equal(await page.locator('#sidebar .nav-health').count(), 1, 'a redraw never stacks a second chip');
       assert.equal(await page.locator('#hub-foot .nav-health').count(), 0);
+      await page.click('#sidebar .nav-identity .nav-identity-more');
+      const version = (await page.evaluate(() => fetch('/api/health').then((r) => r.json()))).version;
+      assert.match(await page.locator('.nav-personal-menu').innerText(), new RegExp(`v${version.replace(/\./g, '\\.')}`));
     } finally { await page.close(); }
   });
 
@@ -109,10 +109,10 @@ if (s) {
     try {
       const g = await page.evaluate(() => {
         const side = document.querySelector('#sidebar').getBoundingClientRect();
-        const foot = document.querySelector('.nav-stats').getBoundingClientRect();
+        const foot = document.querySelector('.nav-identity').getBoundingClientRect();
         const below = document.elementFromPoint(foot.x + 40, side.bottom - 3);
-        return { footBottom: foot.bottom, sideBottom: side.bottom, scrolls: document.querySelector('#sidebar').scrollHeight > document.querySelector('#sidebar').clientHeight,
-          below: below?.closest('.nav-stats') ? 'foot' : (below?.className || below?.tagName) };
+        return { footBottom: foot.bottom, sideBottom: side.bottom, scrolls: document.querySelector('#nav').scrollHeight > document.querySelector('#nav').clientHeight,
+          below: below?.closest('.nav-identity') ? 'foot' : (below?.className || below?.tagName) };
       });
       assert.ok(g.scrolls, 'the seed makes the nav scroll');
       assert.ok(g.footBottom >= g.sideBottom - 0.5, `the foot reaches the sidebar's bottom edge (${g.footBottom} vs ${g.sideBottom})`);
@@ -181,10 +181,11 @@ if (s) {
         const bar = (await rect(page, '#tray .tray-actions'))[0];
         const save = (await rect(page, '#tray .tray-actions .btn-primary'))[0];
         const fab = (await rect(page, '.bug-fab'))[0];
-        assert.ok(!hits(fab, bar), `the bug button clears the tray's action bar (${JSON.stringify(fab)} vs ${JSON.stringify(bar)})`);
+        if (device) assert.equal(fab, undefined, 'a phone draws no floating bug button over the tray (Issue #983)');
+        else assert.ok(!hits(fab, bar), `the bug button clears the tray's action bar (${JSON.stringify(fab)} vs ${JSON.stringify(bar)})`);
         for (const t of await rect(page, '#wv-toasts .wv-toast')) {
           assert.ok(!hits(t, save), 'no toast on Save changes');
-          assert.ok(!hits(t, fab), 'nor on the bug button');
+          if (fab) assert.ok(!hits(t, fab), 'nor on the bug button');
         }
       } finally { await page.close(); }
     });

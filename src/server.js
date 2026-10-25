@@ -3,7 +3,7 @@ import { spawnSync, execFile } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, extname, basename } from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, brotliCompress, constants as zlibConstants } from 'node:zlib';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
@@ -13,6 +13,7 @@ import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
 import { billingFromEnv } from './billing.js';
+import { createMinified } from './minify.js';
 import { cloudStore, restore as restoreArchive, isEncrypted, inspect as inspectDb } from './backup.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -73,22 +74,31 @@ export const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.ico': 'image/x-icon',
   '.json': 'application/json',
 };
 
 const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i;
 const GZIP_MIN = 1024;
 
-export function acceptsGzip(header) {
+export function acceptsCoding(header, coding) {
   const q = {};
   for (const part of String(header ?? '').toLowerCase().split(',')) {
-    const [coding, ...params] = part.split(';').map((x) => x.trim());
-    if (!coding) continue;
+    const [name, ...params] = part.split(';').map((x) => x.trim());
+    if (!name) continue;
     const qp = params.find((x) => x.startsWith('q='));
-    q[coding] = qp ? Number(qp.slice(2)) : 1;
+    q[name] = qp ? Number(qp.slice(2)) : 1;
   }
-  const v = q.gzip ?? q['*'];
+  const v = q[coding] ?? q['*'];
   return v > 0;
+}
+
+export const acceptsGzip = (header) => acceptsCoding(header, 'gzip');
+
+function brotliLater(cache, key, body, size) {
+  cache.set(key, null);
+  const params = { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: size };
+  brotliCompress(body, { params }, (err, out) => (err ? cache.delete(key) : cache.set(key, out)));
 }
 
 export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache = null, path = '' } = {}) {
@@ -96,14 +106,32 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
   if (!COMPRESSIBLE.test(type) || headers['Content-Encoding']) return { headers, body };
   const vary = headers.Vary ? `${headers.Vary}, Accept-Encoding` : 'Accept-Encoding';
   const size = typeof body === 'string' ? Buffer.byteLength(body) : body?.length ?? 0;
-  if (status !== 200 || size < GZIP_MIN || !acceptsGzip(acceptEncoding)) return { headers: { ...headers, Vary: vary }, body };
-  const key = headers.ETag && `${path} ${headers.ETag}`;
+  if (status !== 200 || size < GZIP_MIN) return { headers: { ...headers, Vary: vary }, body };
+  const key = headers.ETag && !/\bprivate\b/.test(headers['Cache-Control'] ?? '') && `${path} ${headers.ETag}`;
+  if (key && cache && acceptsCoding(acceptEncoding, 'br')) {
+    const br = cache.get(`br ${key}`);
+    if (br) return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'br' }, body: br };
+    if (br === undefined) brotliLater(cache, `br ${key}`, body, size);
+  }
+  if (!acceptsGzip(acceptEncoding)) return { headers: { ...headers, Vary: vary }, body };
   let zipped = key && cache?.get(key);
   if (!zipped) {
     zipped = gzipSync(body);
     if (key && cache) cache.set(key, zipped);
   }
   return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'gzip' }, body: zipped };
+}
+
+export const etagMatches = (header, etag) => !!header && String(header).split(',').map((t) => t.trim().replace(/^W\//, '')).some((t) => t === '*' || t === etag.slice(2));
+
+const API_PATH = /^(?:\/w\/[^/]+)?\/api\//;
+export function revalidateApi(outcome, { method, path, ifNoneMatch }) {
+  const { status, headers, body } = outcome;
+  if (method !== 'GET' || status !== 200 || !API_PATH.test(path) || body == null
+    || headers.ETag || headers['Cache-Control'] || headers['Set-Cookie'] || headers['Content-Encoding']) return outcome;
+  const etag = `W/"${createHash('sha1').update(body).digest('base64url').slice(0, 22)}"`;
+  const tagged = { ...headers, ETag: etag, 'Cache-Control': 'private, no-cache' };
+  return etagMatches(ifNoneMatch, etag) ? { status: 304, headers: tagged, body: '' } : { status, headers: tagged, body };
 }
 
 const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -274,7 +302,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
           deletable: !!this.remove && name !== defaultName && name !== 'weave' && !w.state.meta.deletedAt,
         }));
     },
-    remove(ref, { hard = false } = {}) {
+    remove(ref, { hard = false, actor = defaultWeave.actor } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       const name = [...instances.entries()].find(([, x]) => x === w)?.[0];
@@ -285,6 +313,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
         w.state.meta.deletedAt = new Date().toISOString();
         w.save();
         w.syncRegistry();
+        defaultWeave.auditWorkspace('workspace-trashed', name, actor);
         return w;
       }
       const path = w.store.path;
@@ -300,15 +329,17 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
           if (existsSync(path + suffix)) renameSync(path + suffix, join(trashDir, `${name}-${stamp}.db${suffix}`));
         }
       }
+      defaultWeave.auditWorkspace('workspace-deleted', name, actor);
       return { name, trashed: !!path };
     },
-    restore(ref) {
+    restore(ref, { actor = defaultWeave.actor } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       if (!w.state.meta.deletedAt) return w;
       w.state.meta.deletedAt = null;
       w.save();
       w.syncRegistry();
+      defaultWeave.auditWorkspace('workspace-restored', w.state.meta.name, actor);
       return w;
     },
     slugState(slug, self = null) {
@@ -317,7 +348,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       const held = this.get(slug) ?? this.aliasOf(slug);
       return held && held !== self ? 'taken' : 'available';
     },
-    create(asked, { slug = null, from = null } = {}) {
+    create(asked, { slug = null, from = null, actor = defaultWeave.actor } = {}) {
       let title, name;
       if (slug != null && slug !== '') {
         name = String(slug);
@@ -356,9 +387,10 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       adoptedPaths.add(w.store.path);
       const order = defaultWeave.state.meta.workspaceOrder;
       if (Array.isArray(order) && !order.includes(w.state.meta.id)) { order.push(w.state.meta.id); defaultWeave.save(); }
+      defaultWeave.auditWorkspace('workspace-created', name, actor);
       return w;
     },
-    async createFrom(asked, { slug = null, archive, key, workspace = null } = {}) {
+    async createFrom(asked, { slug = null, archive, key, workspace = null, actor = defaultWeave.actor } = {}) {
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
       const scratch = mkdtempSync(join(tmpdir(), 'weave-migrate-'));
       try {
@@ -374,7 +406,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
         }
         const from = join(landed, pick);
         const refs = inspectDb(from).refs.map((f) => f.id);
-        const w = this.create(asked == null || asked === '' ? pick.slice(0, -3) : asked, { slug, from });
+        const w = this.create(asked == null || asked === '' ? pick.slice(0, -3) : asked, { slug, from, actor });
         const blobs = join(dataDir, 'files');
         for (const id of new Set(refs)) {
           const src = join(landed, 'files', id);
@@ -406,6 +438,17 @@ export function originFromEnv(env = process.env, name = 'WEAVE_ORIGIN') {
 export const mcpOriginsFromEnv = (env = process.env) => String(env.WEAVE_MCP_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean)
   .map((o) => originFromEnv({ WEAVE_MCP_ORIGINS: o }, 'WEAVE_MCP_ORIGINS'));
 export const deployTokenFromEnv = (env = process.env) => (String(env.WEAVE_DEPLOY_TOKEN ?? '').length >= 32 ? env.WEAVE_DEPLOY_TOKEN : null);
+export const clerkKeyFromEnv = (env = process.env) => (/^pk_(test|live)_[A-Za-z0-9+/=]+$/.test(String(env.WEAVE_CLERK_PUBLISHABLE_KEY ?? '').trim()) ? env.WEAVE_CLERK_PUBLISHABLE_KEY.trim() : null);
+export function posthogFromEnv(env = process.env) {
+  const key = String(env.POSTHOG_KEY ?? '').trim();
+  if (!/^phc_[A-Za-z0-9_-]+$/.test(key)) return null;
+  const host = (String(env.POSTHOG_HOST ?? '').trim() || 'https://us.i.posthog.com').replace(/\/+$/, '');
+  return { key, host, assets: host.replace(/^(https:\/\/)(us|eu)\.i\.posthog\.com$/, '$1$2-assets.i.posthog.com') };
+}
+export function openSignupFromEnv(env = process.env) {
+  const limit = Number.parseInt(env.WEAVE_SIGNUP_LIMIT ?? '', 10);
+  return { on: ['1', 'true', 'yes'].includes(String(env.WEAVE_OPEN_SIGNUP ?? '').toLowerCase()), limit: limit > 0 ? limit : 1 };
+}
 export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
 const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -454,21 +497,27 @@ const VENDOR_CACHE = 'public, max-age=3600';
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv() } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), openSignup = openSignupFromEnv(), clerkKey = clerkKeyFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv(), posthog = posthogFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces, walled: !!origin });
   const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
+  const publicNames = origin ? [new URL(origin).hostname, ...mcpOrigins.map((o) => new URL(o).hostname)] : [];
+  const elsewhere = new Set(origin ? allowedHosts.filter((h) => !LOOPBACK_NAMES.has(h) && !publicNames.includes(h)) : []);
+  const NOT_A_PAGE = /^(?:\/w\/[^/]+)?\/(?:api|mcp|ingest)(?:\/|$)|^\/(?:_supervisor|\.well-known)\//;
 
   const assets = createAssetVersions(PUBLIC_DIR);
+  const minified = createMinified();
   const serveStatic = (path, rx, { head = null } = {}) => {
     const file = path === '/' ? '/index.html'
+      : path === '/favicon.ico' ? '/brand/favicon.ico'
       : path === '/vendor/vditor/dist/js/mermaid/mermaid.min.js' ? '/vendor/mermaid.min.js'
       : path;
     const full = join(PUBLIC_DIR, file.replace(/\.\./g, ''));
     if (!existsSync(full) || full.endsWith('/')) return null;
     const match = rx?.header?.('if-none-match');
-    const matches = (etag) => match && match.split(',').map((t) => t.trim().replace(/^W\//, '')).some((t) => t === '*' || t === etag.slice(2));
+    const matches = (etag) => etagMatches(match, etag);
     if (file === '/index.html') {
-      const shell = readFileSync(full, 'utf8');
+      const raw = readFileSync(full, 'utf8');
+      const shell = posthog ? raw.replace('<script src="/app.js" defer></script>', (tag) => `<script src="/consent.js" data-posthog-key="${posthog.key}" defer></script>\n${tag}`) : raw;
       const body = assets.rewrite(head ? shell.replace(/<title>[^<]*<\/title>/, () => head) : shell);
       const headers = {
         'Content-Type': MIME['.html'],
@@ -478,19 +527,21 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body };
     }
     const v = rx?.searchParams?.get?.('v');
-    const { mtime, size } = statSync(full);
+    const st = statSync(full);
+    const { mtime, size } = st;
     const headers = {
       'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
       'Cache-Control': v ? (v === assets.version(file) ? IMMUTABLE : 'no-cache') : file.startsWith('/vendor/') ? VENDOR_CACHE : 'no-cache',
       'Last-Modified': mtime.toUTCString(),
       ETag: `W/"${size.toString(16)}-${Math.floor(mtime.getTime()).toString(16)}"`,
     };
-    if (match) return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body: readFileSync(full) };
+    const read = () => (/\.(?:m?js|css)$/.test(file) && !file.startsWith('/vendor/') ? minified(full, st, () => readFileSync(full)) : readFileSync(full));
+    if (match) return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body: read() };
     const since = Date.parse(rx?.header?.('if-modified-since') ?? '');
     if (since && Math.floor(mtime.getTime() / 1000) <= Math.floor(since / 1000)) {
       return { status: 304, headers, body: '' };
     }
-    return { status: 200, headers, body: readFileSync(full) };
+    return { status: 200, headers, body: read() };
   };
 
   const handle = createRequestHandler(hub, {
@@ -507,6 +558,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     mail,
     baseDomain,
     billing,
+    openSignup,
+    clerkKey,
+    posthog,
     ...(limits ? { limits } : {}),
   });
 
@@ -524,6 +578,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       try { path = decodePath(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
       if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts: answers, baseDomain })) {
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
+      }
+      if (elsewhere.size && ['GET', 'HEAD'].includes(req.method) && elsewhere.has(hostnameOf(String(req.headers.host ?? ''))) && !NOT_A_PAGE.test(path)) {
+        res.writeHead(308, secure(req, { Location: `${origin}${req.url}`, 'Cache-Control': 'no-store' }));
+        return res.end();
       }
       if (path === '/_supervisor/workspaces' && deployToken) {
         const given = Buffer.from(String(req.headers.authorization ?? ''));
@@ -543,8 +601,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         readBytes: (max) => readBytes(req, max),
         remote: req.socket?.remoteAddress ?? null,
       });
-      const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
-      res.writeHead(outcome.status, secure(req, headers));
+      const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });
+      const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
+      res.writeHead(fresh.status, secure(req, headers));
       res.end(body);
     } catch (err) {
       console.error(`weave: ${req.method} ${req.url} failed:`, err);
@@ -555,10 +614,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, deployToken, billing } = {}) {
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, openSignup, clerkKey, deployToken, billing, posthog } = {}) {
   const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length || baseDomain ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(deployToken !== undefined ? { deployToken } : {}), ...(billing !== undefined ? { billing } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(openSignup !== undefined ? { openSignup } : {}), ...(clerkKey !== undefined ? { clerkKey } : {}), ...(deployToken !== undefined ? { deployToken } : {}), ...(billing !== undefined ? { billing } : {}), ...(posthog !== undefined ? { posthog } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

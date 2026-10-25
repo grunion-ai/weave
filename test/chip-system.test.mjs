@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { read, APP, HTML, CSS, rulesFor, fnBodyOf } from './lib/source.mjs';
+import { readdirSync } from 'node:fs';
+import { ROOT, read, APP, HTML, CSS, rulesFor, fnBodyOf } from './lib/source.mjs';
 
 await import('../public/chip-core.js');
 const chips = globalThis.chipCore;
@@ -113,13 +114,78 @@ test("a state stored as 'other' migrates rather than failing validation", () => 
   assert.equal(chips.categoryOrDefault('done'), 'done');
 });
 
-test('each category carries a default hue and glyph, and styles a chip', () => {
+test('each category carries a default hue and glyph', () => {
   for (const c of chips.CATEGORIES) {
     assert.ok(chips.HUES.includes(c.hue), `${c.id} names a real hue`);
     assert.ok(c.icon && c.icon.length, `${c.id} has a default glyph`);
-    assert.ok(Object.keys(rulesFor(`.k-state.cat-${c.id}`)).length,
-      `.k-state.cat-${c.id} has no rule`);
   }
+});
+
+function cssRules(file) {
+  const src = read(file).replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  const out = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '}') { depth = Math.max(0, depth - 1); start = i + 1; continue; }
+    if (ch === ';' && !depth) { start = i + 1; continue; }
+    if (ch !== '{') continue;
+    const prelude = src.slice(start, i);
+    if (prelude.trim().startsWith('@')) { depth++; start = i + 1; continue; }
+    const end = src.indexOf('}', i);
+    const lead = prelude.length - prelude.trimStart().length;
+    const line = src.slice(0, start + lead).split('\n').length;
+    for (const selector of prelude.trim().split(/,(?![^(]*\))/)) {
+      out.push({ where: `${file}:${line}`, selector: selector.trim(), body: src.slice(i + 1, end) });
+    }
+    i = end;
+    start = end + 1;
+  }
+  return out;
+}
+
+const PUBLIC_CSS = readdirSync(join(ROOT, 'public')).filter((f) => f.endsWith('.css')).map((f) => `public/${f}`);
+const HUE_SOURCE = new RegExp(`^(\\[data-bs-theme="dark"\\] )?\\.hue-(${chips.HUES.join('|')})$`);
+const SUBJECT_CHIP = /\.(k-state|k-select|k-multi|k-key|hue-[a-z]+|cat-[a-z-]+)(?![\w-])/;
+const subjectOf = (selector) => selector.split(/[\s>+~]+/).filter(Boolean).pop() ?? '';
+
+test('only .hue-<name> sets a chip colour token, so nothing can re-tint a chip by category, type or state', () => {
+  const offenders = [];
+  for (const file of PUBLIC_CSS) {
+    for (const r of cssRules(file)) {
+      if (/--(fill|text|dot)\s*:/.test(r.body) && !HUE_SOURCE.test(r.selector)) {
+        offenders.push(`${r.where} ${r.selector} sets ${r.body.match(/--(fill|text|dot)/)[0]}`);
+      }
+    }
+  }
+  assert.ok(PUBLIC_CSS.includes('public/chip.css') && PUBLIC_CSS.includes('public/style.css'));
+  assert.deepEqual(offenders, [], 'a chip paints from its hue class and nothing else');
+});
+
+test('no rule paints a value chip directly around its hue tokens', () => {
+  const offenders = [];
+  for (const file of PUBLIC_CSS) {
+    for (const r of cssRules(file)) {
+      if (!SUBJECT_CHIP.test(subjectOf(r.selector))) continue;
+      const paint = r.body.match(/(?:^|[;\s])(background|background-color|color)\s*:\s*([^;]+)/g) ?? [];
+      const base = VALUE.includes(r.selector) && paint.every((d) => /var\(--(fill|text),/.test(d));
+      if (paint.length && !base) offenders.push(`${r.where} ${r.selector} paints ${paint.map((d) => d.trim()).join('; ')}`);
+    }
+  }
+  assert.deepEqual(offenders, [], 'value chips take background and text from --fill and --text only');
+});
+
+test('the lint reads a re-tint rule as an offence and names where it lives', () => {
+  const rules = cssRules('public/chip.css');
+  const hue = rules.find((r) => r.selector === '.hue-green');
+  assert.ok(hue && /^public\/chip\.css:\d+$/.test(hue.where), 'a rule carries file:line');
+  assert.ok(HUE_SOURCE.test('[data-bs-theme="dark"] .hue-amber'), 'the dark twin is a source');
+  for (const bad of ['.k-state.cat-done', '[data-bs-theme="dark"] .k-state.cat-done', '.k-select.hue-green', '.wv-grid .hue-blue', '.hue-chartreuse']) {
+    assert.ok(!HUE_SOURCE.test(bad), `${bad} is not a hue source`);
+  }
+  assert.ok(SUBJECT_CHIP.test(subjectOf('.wv-grid td .k-state.cat-done')), 'a scoped state chip is still a chip');
+  assert.ok(!SUBJECT_CHIP.test(subjectOf('.fx-ac-item .k')), 'a bare .k label is not a value chip');
 });
 
 test('canceled reads as ended, not as finished', () => {

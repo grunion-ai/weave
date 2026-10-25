@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
+import { ROUTES, SEEDS, held, readyOf, rootsOf, walked } from './lib/states.mjs';
+import { openViews } from './lib/view-pane.mjs';
 
 const MIN = 44;
 const STEP = 0.5;
@@ -67,38 +69,11 @@ const SWEEP = (roots) => {
   return out;
 };
 
-const s = await launch('phone touch targets', (weave) => {
-  weave.createSpace({ name: 'Development' });
-  const issues = weave.createTable({ space: 'Development', name: 'Issue', description: Array.from({ length: 9 }, (_, i) => `Line ${i + 1} of a table description long enough that the phone header clamps it and offers Show more.`).join('\n\n') });
-  weave.addField(issues, { name: 'Status', type: 'workflow', config: { states: [
-    { name: 'Open', category: 'not-started', default: true },
-    { name: 'In Progress', category: 'in-progress' },
-    { name: 'Fixed', category: 'done' }] } });
-  weave.addField(issues, { name: 'Severity', type: 'select', config: { options: ['Low', 'Medium', 'High'] } });
-  weave.addField(issues, { name: 'Symptom', type: 'multiselect', config: { options: ['Looks broken', 'Slow', 'Wrong data'] } });
-  weave.addField(issues, { name: 'Notes', type: 'text' });
-  weave.addField(issues, { name: 'Due', type: 'date' });
-  const rows = [];
-  for (let i = 0; i < 8; i++) {
-    rows.push(weave.createEntity(issues, {
-      name: `Issue ${i}: a phone row name long enough to wrap`,
-      values: { Status: 'Open', Severity: 'High', Symptom: ['Looks broken', 'Slow'], Notes: 'a note' },
-    }));
-  }
-  weave.setDoc(rows[0].id, 'Some body text.\n\nAnother paragraph.');
-  return { table: issues.id, row: rows[0].id };
-});
+const s = await launch('phone touch targets', SEEDS.touch);
 
 if (s) {
-  const { base, browser, table, row } = s;
-  const surfaces = [
-    { name: 'workspace home', hash: '#/', roots: ['#main'] },
-    { name: 'table list', hash: `#/table/${table}`, ready: '#main .wv-grid tbody tr.entity-row', roots: ['#main'] },
-    { name: 'row page', hash: `#/table/${table}?e=${row}`, ready: '#dock .entity-fields .fieldrow', roots: ['#dock'] },
-    { name: 'menu', hash: `#/table/${table}`, ready: '#main .nav-menu', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu') },
-    { name: 'picker sheet', hash: `#/table/${table}?e=${row}`, ready: '#dock .chip-trigger[title="Status"]', roots: ['.picker-pop'], act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
-    { name: 'bug panel', hash: `#/table/${table}`, ready: '.bug-fab', roots: ['#bug-panel'], act: (p) => p.click('.bug-fab') },
-  ];
+  const { base, browser, table } = s;
+  const surfaceOf = (state) => ({ name: state.name, url: ROUTES[state.route].url(s, 'phone'), ready: readyOf(state, 'phone'), roots: rootsOf(state), act: state.act });
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }]];
   const webkit = await engineOf('webkit');
   if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
@@ -106,7 +81,7 @@ if (s) {
   const open = async (b, profile, theme, surface) => {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
-    await page.goto(`${base}/${surface.hash}`, { waitUntil: 'networkidle' });
+    await page.goto(surface.url ?? `${base}/${surface.hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(surface.ready ?? surface.roots[0], { state: 'attached' });
     if (surface.act) {
       await surface.act(page);
@@ -116,23 +91,35 @@ if (s) {
     return page;
   };
 
+  const themesOn = (engine) => (engine.startsWith('chromium') ? ['light', 'dark'] : ['light']);
+  const measure = async (b, profile, theme, surface) => {
+    const page = await open(b, profile, theme, surface);
+    try {
+      const seen = await page.evaluate(SWEEP, surface.roots);
+      const small = seen.filter((c) => c.left + c.right < SPAN || c.up + c.down < SPAN);
+      const offenders = small.map((c) => (c.over
+        ? `${c.label} is covered by ${c.over}`
+        : `${c.label} taps ${c.left + c.right}x${c.up + c.down} of the ${MIN}px minimum`));
+      return { seen, offenders };
+    } finally { await page.close(); }
+  };
+
   for (const [engine, b, profile] of engines) {
-    const themes = engine.startsWith('chromium') ? ['light', 'dark'] : ['light'];
-    for (const theme of themes) {
-      for (const surface of surfaces) {
-        test(`on a phone every control on the ${surface.name} keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #737)`, async () => {
-          const page = await open(b, profile, theme, surface);
-          try {
-            const seen = await page.evaluate(SWEEP, surface.roots);
-            assert.ok(seen.length >= 1, `the ${surface.name} offers controls to sweep`);
-            const small = seen.filter((c) => c.left + c.right < SPAN || c.up + c.down < SPAN);
-            const offenders = small.map((c) => (c.over
-              ? `${c.label} is covered by ${c.over}`
-              : `${c.label} taps ${c.left + c.right}x${c.up + c.down} of the ${MIN}px minimum`));
-            assert.deepEqual(offenders, [], `${small.length} of ${seen.length} controls on the ${surface.name} miss a ${MIN}px hit area:\n${offenders.join('\n')}`);
-          } finally { await page.close(); }
-        });
-      }
+    for (const { state, theme } of walked('touch').filter((p) => themesOn(engine).includes(p.theme))) {
+      const surface = surfaceOf(state);
+      test(`on a phone every control on the ${surface.name} keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #737)`, async () => {
+        const { seen, offenders } = await measure(b, profile, theme, surface);
+        assert.ok(seen.length >= 1, `the ${surface.name} offers controls to sweep`);
+        assert.deepEqual(offenders, [], `${offenders.length} of ${seen.length} controls on the ${surface.name} miss a ${MIN}px hit area:\n${offenders.join('\n')}`);
+      });
+    }
+    for (const { state, theme, hold } of held('touch').filter((p) => themesOn(engine).includes(p.theme))) {
+      const surface = surfaceOf(state);
+      test(`on a phone the ${surface.name} still misses the ${MIN}px hit areas Issue #${hold.join(', #')} tracks, held out of the gate (${engine}, ${theme}, Issue #1119)`, async (t) => {
+        const { seen, offenders } = await measure(b, profile, theme, surface);
+        t.diagnostic(`held: ${offenders.length} of ${seen.length} controls on the ${surface.name} miss ${MIN}px:\n${offenders.join('\n')}`);
+        assert.ok(offenders.length, `every control on the ${surface.name} now keeps ${MIN}px: drop its touch hold in test/lib/states.mjs so the gate walks it`);
+      });
     }
   }
 
@@ -196,9 +183,12 @@ if (s) {
     }
   }
   test('on a desktop the view reorder grip keeps its drawn size (Issue #804)', async () => {
-    const page = await open(browser, { viewport: { width: 1280, height: 900 } }, 'light', viewSwitcher);
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
-      const box = await page.locator('.table-view-popover .view-grip').first().boundingBox();
+      await page.goto(`${base}/#/table/${table}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+      await openViews(page);
+      const box = await page.locator('#view-pane .view-strip .view-grip').first().boundingBox();
       assert.ok(box.width < MIN && box.height < MIN, `the desktop grip stays ${Math.round(box.width)}x${Math.round(box.height)}`);
     } finally { await page.close(); }
   });

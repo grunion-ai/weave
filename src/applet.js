@@ -1,5 +1,6 @@
 import '../public/vendor/lucide-moving.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { renderMarkdown } from './markdown.js';
 import { markParts, PALETTE } from './mark.js';
 import { fileHeaders, WeaveError } from './engine.js';
@@ -8,8 +9,8 @@ import { esc } from './mail.js';
 const COOKIE = 'wv_applet';
 const YEAR = 31536000;
 
-const MAX_TRIES = 8;
-const WINDOW_MS = 10 * 60 * 1000;
+export const MAX_TRIES = 8;
+export const WINDOW_MS = 10 * 60 * 1000;
 const tries = new WeakMap();
 
 const passcodeOf = () => (process.env.WEAVE_APPLET_PASSCODE ?? '').trim();
@@ -166,7 +167,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
       ...rowOf(weave, full),
       doc: full.doc ?? '',
       docField: full.docField,
-      docHtml: renderMarkdown(full.doc ?? ''),
+      docHtml: renderMarkdown(full.doc ?? '', { rawHtml: false }),
       createdAt: full.createdAt,
       schema,
     });
@@ -179,7 +180,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither.', 'invalid');
     weave.setDoc(e.id, text, body.field ?? null);
     const full = weave.readEntity(e.id);
-    return out(200, { ok: true, doc: full.doc ?? '', docHtml: renderMarkdown(full.doc ?? '') });
+    return out(200, { ok: true, doc: full.doc ?? '', docHtml: renderMarkdown(full.doc ?? '', { rawHtml: false }) });
   }
 
   if (path === '/t/file' && rx.method === 'POST') {
@@ -219,6 +220,12 @@ const HEAD = (mount, title, extra) => `<!doctype html>
 <style>${CSS}${extra ?? ''}</style>
 </head><body>`;
 
+const CHIP_CSS = readFileSync(new URL('../public/chip.css', import.meta.url), 'utf8');
+const hueRules = (dark) => [...CHIP_CSS.matchAll(/^(\[data-bs-theme="dark"\] )?\.hue-([a-z]+)\s*\{([^}]*)\}/gm)]
+  .filter((m) => !!m[1] === dark)
+  .map((m) => `.k.${m[2]}{background:${m[3].match(/--fill:\s*([^;]+);/)[1]}; color:${m[3].match(/--text:\s*([^;]+);/)[1]}}`)
+  .join('\n');
+const HUE_CSS = `${hueRules(false)}\n@media (prefers-color-scheme: dark){\n${hueRules(true)}\n}`;
 const CSS = `
 :root{
   --ground:#eceff3; --surface:#ffffff; --sunk:#e2e6ec;
@@ -331,11 +338,7 @@ button,input,textarea{font:inherit; color:inherit}
 
 .k{font-size:11.5px; line-height:18px; padding:1px 8px; border-radius:4px; display:inline-flex;
   align-items:center; gap:4px; white-space:nowrap; border:0; font-family:inherit}
-.k.slate{background:var(--slate-soft); color:var(--slate)}
-.k.blue{background:var(--accent-soft); color:var(--accent)}
-.k.green{background:var(--ok-soft); color:var(--ok)}
-.k.amber{background:var(--warn-soft); color:var(--warn)}
-.k.red{background:var(--bad-soft); color:var(--bad)}
+${HUE_CSS}
 .k.ghost{background:none; color:var(--muted); padding:1px 0}
 .k.pointer{background:none; color:var(--accent); padding:1px 0}
 .k.pointer::after{content:"\\2197"; font-size:9px; opacity:.6; margin-left:1px}
@@ -1152,16 +1155,6 @@ const CLIENT = `
       });
   }
 
-  /* The bug reporter, with the desktop's own parts: bug-core's categories,
-     its ring-buffer recorder, its client context, and the payload
-     /api/bug-report actually reads. The applet is a weave surface; a report
-     from it should be indistinguishable from one filed at a desk.
-
-     The report goes to /w/weave/api/bug-report, not /api/bug-report. The
-     Issue is filed into the weave docs workspace, and on Cloudflare each
-     workspace is its own Durable Object with a single-member hub — asked
-     from uno, hub.get('weave') is null and the endpoint answers 501. Asking
-     the weave workspace directly works on both adapters. */
   if (rec) {
     rec.record({ kind: 'nav', to: location.pathname, t: now() });
     addEventListener('error', (e) => rec.record({

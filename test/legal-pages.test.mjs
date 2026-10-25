@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-import { WeaveWorkspace } from '../src/worker.js';
 import { PRIVACY, TERMS } from '../src/legal.js';
 
 const ATTRIBUTION = /Adapted from the Basecamp open-source policies.*github\.com\/basecamp\/policies.*CC BY 4\.0/s;
@@ -29,7 +27,7 @@ test('with requireAuth on, an anonymous visitor reads /privacy and /terms', asyn
       assert.match(html, new RegExp(`<h1>${heading}</h1>`), `${path} lacks its heading`);
       assert.match(html, new RegExp(`<title>${heading}`), `${path} lacks its title`);
       assert.match(html, ATTRIBUTION, `${path} lacks the CC BY attribution`);
-      assert.match(html, path === '/privacy' ? /Effective date: 2026-10-08/ : /Effective date: 2026-10-02/);
+      assert.match(html, path === '/privacy' ? /Effective date: 2026-10-16/ : /Effective date: 2026-10-02/);
       assert.ok(html.includes('[Entity name]'), `${path} lost the entity placeholder`);
       assert.ok(!html.includes('[Contact email]'), `${path} still shows the contact email slot`);
       assert.ok(!html.includes('[Address]'), `${path} still shows the address slot`);
@@ -59,32 +57,6 @@ test('the sign-in page links Privacy and Terms', async () => {
   } finally { stop(); }
 });
 
-test('the Worker serves the same pages through the shared dispatcher', async () => {
-  const db = new DatabaseSync(':memory:');
-  const storage = {
-    sql: {
-      exec(query, ...params) {
-        if (params.length === 0 && !/^\s*SELECT/i.test(query)) db.exec(query);
-        const stmt = db.prepare(query);
-        if (/^\s*SELECT/i.test(query)) return { toArray: () => stmt.all(...params) };
-        stmt.run(...params);
-      },
-    },
-    transactionSync(fn) {
-      db.exec('BEGIN');
-      try { const r = fn(); db.exec('COMMIT'); return r; } catch (err) { db.exec('ROLLBACK'); throw err; }
-    },
-  };
-  const dobj = new WeaveWorkspace({ storage }, { WEAVE_VERSION: '0.0.0-test' });
-  for (const [path, heading] of PAGES) {
-    const res = await dobj.fetch(new Request(`http://do${path}`, { headers: { 'x-weave-workspace': 'scratch' } }));
-    assert.equal(res.status, 200, path);
-    const html = await res.text();
-    assert.match(html, new RegExp(`<h1>${heading}</h1>`));
-    assert.match(html, ATTRIBUTION);
-  }
-});
-
 test('the legal text names the contact address, keeps the entity slot and carries no em dash', () => {
   for (const [name, md] of [['privacy', PRIVACY], ['terms', TERMS]]) {
     assert.ok(!md.includes('—'), `${name} carries an em dash`);
@@ -94,5 +66,5 @@ test('the legal text names the contact address, keeps the entity slot and carrie
     assert.ok(!/37signals|Basecamp(?! open-source policies)/.test(md.replace(/github\.com\/basecamp\/policies/g, '')), `${name} still names the source company`);
   }
   assert.ok(PRIVACY.includes('please contact us at [weave@grunion.ai](mailto:weave@grunion.ai). If an authorized agent'), 'privacy contact sentence lost its address clause');
-  for (const vendor of ['Clerk', 'Railway', 'Cloudflare']) assert.ok(PRIVACY.includes(vendor), `privacy lacks ${vendor}`);
+  for (const vendor of ['Clerk', 'Railway', 'Cloudflare', 'PostHog']) assert.ok(PRIVACY.includes(vendor), `privacy lacks ${vendor}`);
 });

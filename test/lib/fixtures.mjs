@@ -54,13 +54,15 @@ export function normalise(v) {
     .map(([k, x]) => [k, normalise(x)]));
 }
 
+export const unwrapData = (text) => /^<weave_data [^>\n]*>\n([\s\S]*)\n<\/weave_data>$/.exec(text)?.[1] ?? text;
+
 export function client(hub, opts = {}) {
   const handle = createRequestHandler(hub, { version: 'test', ...opts });
   return async (method, path, { body, token, cookie } = {}) => {
     const url = new URL(path, 'http://localhost:4400');
     const headers = { host: 'localhost:4400' };
     if (token) headers.authorization = `Bearer ${token}`;
-    if (cookie) headers.cookie = `wv_session=${cookie}`;
+    if (cookie) headers.cookie = hub.entries().map(([, w]) => `wv_session_${w.state.meta.id}=${cookie}`).join('; ');
     const res = await handle({
       method, path: decodeURIComponent(url.pathname), searchParams: url.searchParams,
       header: (n) => headers[n.toLowerCase()], readBody: async () => body ?? {}, remote: '127.0.0.1',

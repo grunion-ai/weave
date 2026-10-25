@@ -31,7 +31,7 @@ if (s) {
       await chip(page, name).click({ button: 'right' });
       await page.waitForSelector('.ws-ctx .wv-menu-row');
       const items = (await menuItems(page)).map((t) => t.trim());
-      assert.deepEqual(items, ['Link preview before sign-in'], `${name} opens its menu without a delete: ${items}`);
+      assert.deepEqual(items.filter((t) => t !== 'Invite people…'), ['Link preview before sign-in'], `${name} opens its menu without a delete: ${items}`);
       await page.keyboard.press('Escape');
       assert.equal(await page.locator('.ws-ctx').count(), 0, 'Escape closes the menu');
     }
@@ -88,5 +88,9 @@ if (s) {
       assert.equal(await page.locator('#modal input[name="confirm"]').count(), 0, 'and no confirm dialog');
       await page.close();
     }
+    const settings = await open('/#/settings');
+    await settings.waitForSelector('#main .settings-workspaces');
+    assert.match(await settings.textContent('#main .settings-workspaces'), /scratch/, 'Settings is the one place that moves a workspace to the trash');
+    await settings.close();
   });
 }

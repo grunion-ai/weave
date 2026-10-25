@@ -140,8 +140,9 @@ test('editor: entities and comments, never structure', async () => {
     ['PATCH', `/api/tables/${tid}`, { name: 'Job' }],
     ['DELETE', `/api/tables/${tid}`, null],
     ['POST', `/api/tables/${tid}/fields`, { name: 'Due', type: 'date' }],
-    ['POST', '/api/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_create_space', arguments: { name: 'S' } } }],
   ]) assert.equal((await call(method, path, { token: t.editor, body })).status, 403, `${method} ${path}`);
+  const viaMcp = await call('POST', '/api/mcp', { token: t.editor, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_create_space', arguments: { name: 'S' } } } });
+  assert.equal(viaMcp.json.result.isError, true, 'an editor holds no structure tool over MCP');
   assert.equal(JSON.stringify(w.describeSchema()), before);
 });
 
@@ -218,7 +219,7 @@ test('account role changes reject invalid roles, unauthorized actors and the las
   }
   assert.equal((await call('PATCH', '/api/accounts/missing', { token: t.architect, body: { role: 'editor' } })).status, 404);
   assert.throws(() => w.setAccountRole('arc', 'observer'), /last architect/i);
-  const user = w.findEntity('Workspace/Users', 'arc');
+  const user = w.findEntity('System/Users', 'arc');
   assert.throws(() => w.updateEntity(user.id, { Role: 'Observer' }), /last architect/i);
   assert.equal(w.readEntity(user.id).fields.Role, 'Architect');
   assert.equal(w.verifyToken(t.architect).role, 'architect');

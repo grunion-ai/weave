@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
+import { engineOf, launch, openBugReport, phoneProfile } from './lib/browser.mjs';
+import { openViews } from './lib/view-pane.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
 
@@ -65,8 +66,7 @@ if (s) {
         } finally { await page.close(); }
         page = await open(b, { profile, theme });
         try {
-          await page.click('.bug-fab');
-          await page.waitForSelector('#bug-panel .bug-note');
+          await openBugReport(page);
           seen.push(...await sweep(page, 'bug panel'));
           await page.keyboard.press('Escape');
           await page.click('.phone-search');
@@ -99,10 +99,10 @@ if (s) {
       await page.waitForSelector('#bug-panel .bug-note');
       assert.equal(await page.locator('#bug-panel .bug-note').first().evaluate((n) => getComputedStyle(n).fontSize), '12px', 'the bug note stays 12px');
       await page.keyboard.press('Escape');
-      await page.click('#main .table-view-btn');
-      await page.click('.table-view-popover .view-add');
-      await page.waitForSelector('.table-view-popover .view-name-input');
-      assert.equal(await page.locator('.table-view-popover .view-name-input').first().evaluate((n) => getComputedStyle(n).fontSize), '13px', 'the view name input stays 13px');
+      await openViews(page);
+      await page.click('#view-pane .view-add');
+      await page.waitForSelector('#view-pane .view-name-input');
+      assert.equal(await page.locator('#view-pane .view-name-input').first().evaluate((n) => getComputedStyle(n).fontSize), '13px', 'the view name input stays 13px');
     } finally { await page.close(); }
   });
 }

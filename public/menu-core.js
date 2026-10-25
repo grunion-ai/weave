@@ -59,12 +59,12 @@
   }
 
   const KINDS = {
-    table: { settings: ['description'], organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] },
+    table: { settings: ['icon', 'description'], organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] },
     record: { organize: ['duplicate'], share: ['share'], export: ['md', 'html', 'pdf'], delete: ['delete'] },
     doc: { export: ['md', 'mmd', 'html', 'pdf'] },
     space: { delete: ['delete'] },
     'share-page': { delete: ['delete'] },
-    workspace: { share: ['link-preview'] },
+    workspace: { share: ['invite', 'link-preview'] },
     field: { settings: ['settings'], organize: ['insert'], delete: ['delete'] },
   };
 

@@ -15,16 +15,16 @@ test('rulesFor reads merged declarations for a selector', () => {
 });
 
 test('fnBody stops at the closing brace; fnBodyOf runs to the next top-level function', () => {
-  const body = fnBody('fmtSize');
-  assert.ok(body.startsWith('function fmtSize(') && body.endsWith('\n}'), 'one declaration, closed at column 0');
-  const region = fnBodyOf('fmtSize');
+  const body = fnBody('accountDisplayName');
+  assert.ok(body.startsWith('function accountDisplayName(') && body.endsWith('\n}'), 'one declaration, closed at column 0');
+  const region = fnBodyOf('accountDisplayName');
   assert.ok(region.startsWith(body.trimEnd()), 'the region begins with the same declaration');
   assert.ok(region.length >= body.length, 'and carries what sits between it and the next one');
   assert.throws(() => fnBody('noSuchFunctionAnywhere'), /must exist/);
 });
 
 test('liftFunction returns a callable lifted from the source', () => {
-  const fmtSize = liftFunction('fmtSize');
-  assert.equal(typeof fmtSize, 'function');
-  assert.match(fmtSize(0), /GB$/);
+  const accountDisplayName = liftFunction('accountDisplayName');
+  assert.equal(typeof accountDisplayName, 'function');
+  assert.equal(accountDisplayName('ada@example.com'), 'ada');
 });

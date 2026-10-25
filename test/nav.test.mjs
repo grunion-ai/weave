@@ -40,7 +40,7 @@ test('a table row carries the kebab instead of a count, and registry tables carr
   assert.ok(!/class: 'count'/.test(row), 'the entity count is gone from the row');
   assert.ok(!/entityCount/.test(row), 'and nothing else on the row reads it');
   assert.match(row, /if \(!db\.system\) \{\s*row\.append\(navTableMenu\(db\)\);\s*kindContext\(row, 'table', db\);/,
-    'the kebab and the right-click hang on user tables only — Workspace/Tables and friends take none of its verbs');
+    'the kebab and the right-click hang on user tables only — System/Tables and friends take none of its verbs');
 });
 
 test('the nav kebab opens the one table definition (Feature #296)', () => {

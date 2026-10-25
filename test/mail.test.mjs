@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { inviteEmail, inviteAcceptedEmail, ROLES, art, longDate } from '../src/mail.js';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { LOCKUP_SIZES } from '../brand/build-logos.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ORIGIN = 'https://weave.example.com';
@@ -103,8 +104,8 @@ test('the html is mail-client safe: no SVG, no rope, no web font, a PNG mark on 
     assert.ok(!/<svg/i.test(html), 'Gmail strips SVG');
     assert.ok(!/<path/i.test(html), 'no rope graphic, only the lockup image');
     assert.ok(!html.includes('fonts.googleapis'), 'no Google Fonts link');
-    assert.match(html, /<img class="mark-light" style="[^"]*" src="https:\/\/weave\.example\.com\/brand\/email-lockup-light\.png" width="104" height="24" alt="weave">/);
-    assert.match(html, /<!--\[if !mso\]><!--><img class="mark-dark" style="display:none[^"]*" src="https:\/\/weave\.example\.com\/brand\/email-lockup-dark\.png" width="104" height="24" alt="weave"><!--<!\[endif\]-->/);
+    assert.match(html, /<img class="mark-light" style="[^"]*" src="https:\/\/weave\.example\.com\/brand\/email-lockup-light\.png" width="131" height="24" alt="weave">/);
+    assert.match(html, /<!--\[if !mso\]><!--><img class="mark-dark" style="display:none[^"]*" src="https:\/\/weave\.example\.com\/brand\/email-lockup-dark\.png" width="131" height="24" alt="weave"><!--<!\[endif\]-->/);
     assert.equal(html.match(/<img /g).length, 2, 'the lockup is the only image');
   }
 });
@@ -139,17 +140,17 @@ test('production html carries color-scheme metas and a dark block; a theme paint
   assert.ok(!forced.includes('prefers-color-scheme'), 'a forced theme needs no media query');
 });
 
-test('the lockup PNGs are served from public/brand at 2x of 104x24', () => {
+test('the lockup PNGs are served from public/brand at 3x of the 131x24 the email draws', () => {
+  const { email, emailScale } = LOCKUP_SIZES;
+  assert.deepEqual([email.width, email.height, emailScale], [131, 24, 3]);
   for (const t of ['light', 'dark']) {
     const png = readFileSync(join(ROOT, 'public', 'brand', `email-lockup-${t}.png`));
     assert.equal(png.toString('latin1', 1, 4), 'PNG');
-    assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [208, 48], `${t} is 208x48`);
+    assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [393, 72], `${t} is 393x72`);
   }
 });
 
-test('the templates import nothing, so they run under workerd too', () => {
-  const src = readFileSync(join(ROOT, 'src', 'mail.js'), 'utf8');
-  assert.ok(!/^\s*import\s/m.test(src));
+test('longDate names the month and day', () => {
   assert.equal(longDate('2026-10-10T17:00:00.000Z'), 'October 10');
 });
 

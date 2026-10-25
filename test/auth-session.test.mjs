@@ -90,7 +90,7 @@ test('routes: a provider sign-in sets a session cookie that opens the wall; logo
     assert.equal(me.sessions.length, 1);
     assert.equal(me.sessions[0].current, true);
     const row = await (await s.call('POST', '/api/tables/Task/entities', { cookie: kyle.cookie, body: { name: 'By cookie' } })).json();
-    assert.equal(s.w.getEntity(row.id).createdBy, 'kyle');
+    assert.equal(s.w.readEntity(row.id).createdBy, 'kyle');
     const bye = await s.call('POST', '/api/auth/logout', { cookie: kyle.cookie });
     assert.match(bye.headers.get('set-cookie'), new RegExp(`^wv_session_${s.w.state.meta.id}=; .*Max-Age=0`));
     const after = await s.call('GET', `/e/${s.task.id}/doc.html`, { cookie: kyle.cookie });
@@ -137,7 +137,7 @@ test('routes: with requireAuth off the page is open, a session still names the a
     assert.equal(kyle.res.status, 302);
     assert.match(kyle.res.headers.get('set-cookie'), /; Secure$/);
     const row = await (await s.call('POST', '/api/tables/Task/entities', { cookie: kyle.cookie, body: { name: 'named' } })).json();
-    assert.equal(s.w.getEntity(row.id).createdBy, 'kyle');
+    assert.equal(s.w.readEntity(row.id).createdBy, 'kyle');
   } finally { s.stop(); }
 });
 
@@ -201,4 +201,19 @@ test('WEAVE_ORIGIN is read as a bare origin, and refused otherwise; WEAVE_TRUST_
   assert.throws(() => originFromEnv({ WEAVE_ORIGIN: 'https://weave.example.com/w/uno' }), /bare origin/);
   assert.equal(trustProxyFromEnv({}), false);
   assert.equal(trustProxyFromEnv({ WEAVE_TRUST_PROXY: '1' }), true);
+});
+
+test('routes: a non-Bearer Authorization header beside a valid session cookie leaves the session in charge (Issue #1084)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signIn(KYLE);
+    const basic = { Authorization: 'Basic eDp5' };
+    const withCookie = await s.call('GET', '/api/auth/me', { cookie: kyle.cookie, headers: basic });
+    assert.equal(withCookie.status, 200);
+    assert.equal((await withCookie.json()).account.name, 'kyle', 'the session account answers, not an anonymous caller');
+    const bare = await s.call('GET', '/api/auth/me', { headers: basic });
+    const anon = await s.call('GET', '/api/auth/me');
+    assert.equal(bare.status, anon.status, 'a Basic header alone is the usual anonymous answer');
+    assert.equal(bare.status, 401);
+  } finally { s.stop(); }
 });

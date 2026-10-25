@@ -19,7 +19,7 @@ const ROWS = {
   doc: ['Markdown', 'Mermaid', 'HTML', 'PDF'],
   space: ['Move to trash'],
   'share-page': ['Move to trash'],
-  workspace: ['Link preview before sign-in'],
+  workspace: ['Invite people…', 'Link preview before sign-in'],
   field: ['Field settings…', 'Insert field…', 'Move to trash'],
 };
 
@@ -57,7 +57,7 @@ if (s) {
     {
       kind: 'table', hash: `#/table/${tableId}`, ready: '#main .wv-grid',
       triggers: {
-        'header ⋮': via('#main .crumb-actions .dots-btn[title="Table actions"]'),
+        'header ⋮': via('#main .crumb-row .dots-btn[title="Table actions"]'),
         'header right-click': via('#main .view-header', 'corner'),
         'nav row ⋮': via(`#nav .nav-db[data-db="${tableId}"] .nav-db-menu .dots-btn`),
         'nav row right-click': via(`#nav .nav-db[data-db="${tableId}"]`, 'right'),
@@ -73,14 +73,14 @@ if (s) {
     {
       kind: 'record', hash: `#/entity/${entityId}`, ready: '#main textarea.name-edit',
       triggers: {
-        'header ⋮': via('#main .view-header .crumb-actions .dots-btn'),
+        'header ⋮': via('#main .view-header .crumb-row .dots-btn'),
         'header right-click': via('#main .view-header .activity-btn', 'right'),
       },
     },
     {
       kind: 'record', label: 'record in peek', hash: `#/table/${tableId}?e=${entityId}`, ready: '#dock:not([hidden]) textarea.name-edit',
       triggers: {
-        'peek ⋮': via('#dock .view-header .crumb-actions .dots-btn'),
+        'peek ⋮': via('#dock .view-header .crumb-row .dots-btn'),
         'peek right-click': via('#dock .view-header .activity-btn', 'right'),
       },
     },
@@ -94,7 +94,7 @@ if (s) {
     {
       kind: 'space', hash: `#/space/${spaceId}`, ready: '#main .view-header .dots-btn',
       triggers: {
-        'header ⋮': via('#main .view-header .crumb-actions .dots-btn'),
+        'header ⋮': via('#main .view-header .crumb-row .dots-btn'),
         'header right-click': via('#main .view-header .view-desc', 'right'),
         'nav row ⋮': via(`#nav .nav-space-row:has(a.nav-space[href="#/space/${spaceId}"]) .nav-space-menu .dots-btn`),
         'nav row right-click': via(`#nav .nav-space-row a.nav-space[href="#/space/${spaceId}"]`, 'right'),
@@ -130,7 +130,7 @@ if (s) {
           const names = Object.keys(seen);
           const want = ROWS[k.kind] ?? seen[names[0]].rows;
           for (const name of names) assert.deepEqual(seen[name].rows, want, `${name} opens the ${k.kind} menu`);
-          if (k.kind === 'workspace') assert.equal(want[0], 'Link preview before sign-in', 'the workspace Share section is the link preview switch');
+          if (k.kind === 'workspace') assert.deepEqual(want, ['Invite people…', 'Link preview before sign-in'], 'the workspace Share section invites, then the link preview switch (Issue #759)');
           for (const name of names.filter((n) => /right-click|nav row|tray/.test(n))) assert.equal(seen[name].head, 1, `${name} names the object in a head row`);
         } finally { await page.close(); }
       });
@@ -138,8 +138,8 @@ if (s) {
   }
 
   const EXPORTS = [
-    { kind: 'table', hash: `#/table/${tableId}`, trigger: '#main .crumb-actions .dots-btn[title="Table actions"]', rows: [['CSV', '.csv']] },
-    { kind: 'record', hash: `#/entity/${entityId}`, trigger: '#main .view-header .crumb-actions .dots-btn', rows: [['Markdown', '.md'], ['HTML', '.html'], ['PDF', '.pdf']] },
+    { kind: 'table', hash: `#/table/${tableId}`, trigger: '#main .crumb-row .dots-btn[title="Table actions"]', rows: [['CSV', '.csv']] },
+    { kind: 'record', hash: `#/entity/${entityId}`, trigger: '#main .view-header .crumb-row .dots-btn', rows: [['Markdown', '.md'], ['HTML', '.html'], ['PDF', '.pdf']] },
     { kind: 'doc', hash: `#/entity/${entityId}`, trigger: '#main .doc-section[data-doc-field="Notes"] .doc-dl .dots-btn', rows: [['Markdown', '.md'], ['Mermaid', '.mmd'], ['HTML', '.html'], ['PDF', '.pdf']] },
   ];
   for (const x of EXPORTS) {
@@ -172,13 +172,13 @@ if (s) {
   test('the table toolbar has no Stats control and the table menu has no stats row (Feature #308)', async () => {
     const page = await open(`#/table/${tableId}`);
     try {
-      await page.waitForSelector('#main .crumb-actions .eye-btn');
+      await page.waitForSelector('#main .crumb-actions .eye-btn', { state: 'attached' });
       const order = await page.$$eval('#main .crumb-actions > *', (ns) => ns.map((n) => `${n.className} ${n.textContent} ${n.getAttribute('aria-label') ?? ''} ${n.title ?? ''}`));
       assert.equal(await page.locator('#main .table-stats-btn').count(), 0, 'no Stats button');
       assert.deepEqual(order.filter((t) => /stat/i.test(t)), [], `no toolbar control names stats: ${order.join(' | ')}`);
       const eye = order.findIndex((c) => /eye-btn/.test(c));
       assert.match(order[eye + 1], /table-filter-btn/, 'Filters sits right after Fields');
-      const { rows } = await via('#main .crumb-actions .dots-btn[title="Table actions"]')(page);
+      const { rows } = await via('#main .crumb-row .dots-btn[title="Table actions"]')(page);
       assert.deepEqual(rows.filter((r) => /stat/i.test(r)), [], `no table menu row names stats: ${rows.join(' | ')}`);
       assert.equal(await page.locator('#modal.wv-stats').count(), 0);
     } finally { await page.close(); }

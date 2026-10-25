@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let wide, narrow, loaded, broad;
 const s = await launch('fields popover drag and height', (weave) => {
@@ -39,8 +40,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${narrow.id}`, { waitUntil: 'networkidle' });
-      await page.click('.eye-btn');
-      await page.locator('.table-fields-popover').evaluate((pop) => Promise.all(pop.getAnimations().map((a) => a.finished)));
+      await openPane(page, 'fields');
       const owner = await page.locator('.table-field-row[data-field="Owner"] .eye-label').boundingBox();
       const grip = await page.locator('.table-field-row[data-field="Owner"] .field-reorder-handle').boundingBox();
       const name = await page.locator('.table-field-row[data-field="Name"]').boundingBox();
@@ -60,7 +60,7 @@ if (s) {
       assert.deepEqual(weave.tableView(narrow).views[0].fields, ['Owner', 'Name', 'Description']);
       assert.equal(await page.evaluate(() => document.documentElement.classList.contains('wv-grabbing')), false, 'the drop lets the cursor go');
       await page.waitForFunction(() => !document.querySelector('.wv-reorder-slot, .wv-reorder-lift'));
-      assert.equal(await page.locator('.table-field-row[data-field="Owner"] [role="switch"]').getAttribute('aria-checked'), 'true', 'a drag is not a click: the field still shows');
+      assert.equal(await page.locator('.table-field-row[data-field="Owner"] input').isChecked(), true, 'a drag is not a click: the field still shows');
       const desc = await page.locator('.table-field-row[data-field="Description"] .eye-label').boundingBox();
       await page.mouse.move(desc.x + 4, desc.y + desc.height / 2);
       await page.mouse.down();
@@ -106,15 +106,16 @@ if (s) {
       };
       await page.goto(`${base}/#/table/${loaded.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#main .wv-grid thead th.col-head[data-col="Stage"]');
+      await openPane(page, 'fields');
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(300);
       const before = await colWidths();
       assert.deepEqual(await columns(), ['Name', 'Owner', 'Stage', 'Amount']);
 
       queries = 0;
-      await page.click('.eye-btn');
-      await page.locator('.table-fields-popover').evaluate((pop) => Promise.all(pop.getAnimations().map((a) => a.finished)));
       let release;
       gate = { held: new Promise((r) => { release = r; }) };
-      await page.click('.table-field-row[data-field="Stage"] .switch');
+      await page.click('.table-field-row[data-field="Stage"] input');
       await page.waitForFunction(() => ![...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === 'Stage'), null, { timeout: 2000 });
       assert.equal(patches.length, 1, 'the hide is on the wire');
       assert.equal(queries, 0, 'the column left the grid before its PATCH answered, with no table read');
@@ -131,7 +132,7 @@ if (s) {
 
       gate = null;
       queries = 0;
-      await page.click('.table-field-row[data-field="Stage"] .switch');
+      await page.click('.table-field-row[data-field="Stage"] input');
       await page.waitForFunction(() => [...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === 'Stage'), null, { timeout: 4000 });
       await page.waitForTimeout(600);
       assert.deepEqual(await cellsOf('Stage'), ['Open', 'Open', 'Open'], 'the shown column carries its data');
@@ -149,6 +150,7 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${broad.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#main .wv-grid thead th.col-head');
+      await openPane(page, 'fields');
       await page.waitForTimeout(400);
       const widths = () => page.evaluate(() => Object.fromEntries(
         [...document.querySelectorAll('#main .wv-grid thead th.col-head')]
@@ -165,9 +167,7 @@ if (s) {
         return getComputedStyle(td).paddingRight;
       }, col);
 
-      await page.click('.eye-btn');
-      await page.locator('.table-fields-popover').evaluate((pop) => Promise.all(pop.getAnimations().map((a) => a.finished)));
-      await page.click(`.table-field-row[data-field="${last}"] .switch`);
+      await page.click(`.table-field-row[data-field="${last}"] input`);
       await page.waitForFunction((c) => ![...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === c), last, { timeout: 4000 });
       await page.waitForTimeout(600);
       const afterHide = await widths();
@@ -175,7 +175,7 @@ if (s) {
         assert.equal(afterHide[c], before[c], `${c} kept its width when ${last}, the last column, was hidden`);
       }
 
-      await page.click(`.table-field-row[data-field="${last}"] .switch`);
+      await page.click(`.table-field-row[data-field="${last}"] input`);
       await page.waitForFunction((c) => [...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === c), last, { timeout: 4000 });
       await page.waitForTimeout(600);
       const afterShow = await widths();
@@ -189,40 +189,26 @@ if (s) {
   });
 
   for (const height of [900, 560]) {
-    test(`the Fields list grows to the room below its button before it scrolls, header outside the scroll box (Issue #446, ${height}px)`, async () => {
+    test(`the View pane keeps its head and footer still and scrolls only its sections (Issue #446, ${height}px)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height } });
       try {
         await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'networkidle' });
-        await page.click('.eye-btn');
-        await page.locator('.table-fields-popover').evaluate((pop) => Promise.all(pop.getAnimations().map((a) => a.finished)));
+        await openPane(page, 'fields');
         const m = await page.evaluate(() => {
-          const pop = document.querySelector('.table-fields-popover');
-          const list = pop.querySelector('.table-field-list');
-          const btn = document.querySelector('.eye-btn').getBoundingClientRect();
+          const pane = document.querySelector('#view-pane');
+          const scroll = pane.querySelector('.vp-scroll');
           return {
-            popScrolls: pop.scrollHeight > pop.clientHeight + 1,
-            listScrolls: list.scrollHeight > list.clientHeight + 1,
-            bottomGap: innerHeight - pop.getBoundingClientRect().bottom,
-            below: pop.getBoundingClientRect().top >= btn.bottom,
-            legendInList: !!list.querySelector('.table-field-legend'),
-            headInList: !!list.querySelector('.table-control-head'),
+            paneScrolls: pane.scrollHeight > pane.clientHeight + 1,
+            scrolls: scroll.scrollHeight > scroll.clientHeight + 1,
+            headInScroll: !!scroll.querySelector('.vp-head'),
+            footInScroll: !!scroll.querySelector('.vp-foot'),
+            bottom: Math.round(innerHeight - pane.getBoundingClientRect().bottom),
           };
         });
-        assert.equal(m.popScrolls, false, 'the popover itself never scrolls; only the list does');
-        assert.equal(m.below, true, 'it opens under its button');
-        assert.equal(m.legendInList || m.headInList, false, 'the header sits outside the scroll box');
-        if (m.listScrolls) assert.ok(m.bottomGap <= 32, `a scrolling list has used the room below (${m.bottomGap}px left)`);
-        if (height === 560) assert.equal(m.listScrolls, true, 'a short window scrolls the list');
-        if (m.listScrolls) {
-          await page.$eval('.table-field-list', (l) => { l.scrollTop = 50; });
-          await page.waitForTimeout(400);
-          const cut = await page.$eval('.table-field-list', (l) => {
-            const top = l.getBoundingClientRect().top;
-            const first = [...l.querySelectorAll('.table-field-row')].find((r) => r.getBoundingClientRect().bottom > top + 1);
-            return first.getBoundingClientRect().top - top;
-          });
-          assert.ok(Math.abs(cut) <= 3, `the first visible row starts at the top of the list, not half under it (${cut}px)`);
-        }
+        assert.equal(m.paneScrolls, false, 'the pane itself never scrolls; its sections do');
+        assert.equal(m.headInScroll || m.footInScroll, false, 'the head and the Reset and Clear footer sit outside the scroll box');
+        assert.equal(m.scrolls, true, 'twenty-four fields scroll the sections');
+        assert.ok(m.bottom >= 0 && m.bottom <= 12, `the pane fills the window height (${m.bottom}px left)`);
       } finally { await page.close(); }
     });
   }

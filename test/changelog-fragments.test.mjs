@@ -134,6 +134,14 @@ test('the guard refuses CHANGELOG.md lines added without a version bump', () => 
     'rewriting a version heading is not release notes written by hand (Issue #566)');
 });
 
+test('the guard refuses a CHANGELOG.md line added beside a removed one without a version bump (Issue #917)', () => {
+  const at = { versionBefore: '0.4.99', versionAfter: '0.4.99' };
+  const removed = ['- **One** \u2014 body.'];
+  assert.match(changelogGuard({ addedLines: ['- **Unrelated**: new.'], removedLines: removed, ...at }), /changelog\.d\//, 'an unrelated line beside a removal');
+  assert.match(changelogGuard({ addedLines: ['- **One**: body.'], removedLines: removed, ...at }), /changelog\.d\//, 'a rewrite of a released line');
+  assert.equal(changelogGuard({ addedLines: ['- **Unrelated**: new.'], removedLines: removed, versionBefore: '0.4.99', versionAfter: '0.5.0' }), null, 'a release commit');
+});
+
 const FIX = {
   subject: 'grid: tab starts from the focused row (Issue #551)',
   message: 'grid: tab starts from the focused row (Issue #551)\n\nBody.\n\nChange-Id: I0123456789abcdef\n',
@@ -189,6 +197,8 @@ const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8'
 const parentsOf = (rev) => git('rev-list', '--parents', '-n', '1', rev).split(' ').slice(1);
 const versionAt = (rev) => { try { return JSON.parse(git('show', `${rev}:package.json`)).version; } catch { return null; } };
 const pathsIn = (...args) => git(...args).split('\n').filter(Boolean);
+const addedFragments = (sha) => pathsIn('diff', '--name-only', '--diff-filter=AM', `${sha}^`, sha, '--', 'changelog.d')
+  .map((f) => ({ name: f.replace(/^changelog\.d\//, ''), text: git('show', `${sha}:${f}`) }));
 const underTest = () => {
   const parents = parentsOf('HEAD');
   return parents.length > 1 ? parents.filter((p) => parentsOf(p).length === 1) : parents.length ? ['HEAD'] : [];
@@ -196,9 +206,9 @@ const underTest = () => {
 
 test('this commit edits CHANGELOG.md only if it bumps the version', () => {
   for (const sha of underTest()) {
-    const addedLines = git('diff', '--unified=0', `${sha}^`, sha, '--', 'CHANGELOG.md')
-      .split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1));
-    const why = changelogGuard({ addedLines, versionBefore: versionAt(`${sha}^`), versionAfter: versionAt(sha) });
+    const diff = git('diff', '--unified=0', `${sha}^`, sha, '--', 'CHANGELOG.md').split('\n');
+    const side = (mark) => diff.filter((l) => l.startsWith(mark) && !l.startsWith(mark.repeat(3))).map((l) => l.slice(1));
+    const why = changelogGuard({ addedLines: side('+'), versionBefore: versionAt(`${sha}^`), versionAfter: versionAt(sha) });
     assert.equal(why, null, `${sha.slice(0, 8)}: ${why}`);
   }
 });
@@ -210,6 +220,7 @@ test('this commit ships the changelog.d fragment the code it changes owes', () =
       message: git('log', '-1', '--format=%B', sha),
       files: pathsIn('diff', '--name-only', `${sha}^`, sha),
       fragmentsAdded: pathsIn('diff', '--name-only', '--diff-filter=A', `${sha}^`, sha, '--', 'changelog.d').length,
+      addedFragments: addedFragments(sha),
       versionBefore: versionAt(`${sha}^`),
       versionAfter: versionAt(sha),
     });
@@ -224,12 +235,33 @@ test('the version heading carries no em dash: the date sits in parentheses (Issu
   assert.ok(!out.includes('\u2014'), 'nothing the fold writes carries U+2014');
 });
 
-test('no version heading in CHANGELOG.md carries an em dash (Issue #566)', () => {
-  const headings = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8').split('\n').filter((l) => l.startsWith('## v'));
+test('no line of CHANGELOG.md carries an em dash: headings (Issue #566) and body prose (Issue #722)', () => {
+  const lines = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8').split('\n');
+  const headings = lines.filter((l) => l.startsWith('## v'));
   assert.ok(headings.length > 1, 'the file holds released sections');
-  const dashed = headings.filter((l) => l.includes('\u2014'));
-  assert.deepEqual(dashed, [], 'a heading written before Issue #566 was swept in the same change');
   for (const l of headings) assert.match(l, /^## v\d+\.\d+\.\d+ \(\d{4}-\d{2}-\d{2}\)$/);
+  const dashed = lines.map((l, i) => (l.includes('\u2014') ? i + 1 : 0)).filter(Boolean);
+  assert.deepEqual(dashed, [], 'CHANGELOG.md lines carrying U+2014: use a comma, colon, parentheses or a hyphen');
+});
+
+test('every changelog.d fragment on disk is free of em dashes (Issue #722)', () => {
+  const dir = join(ROOT, 'changelog.d');
+  const names = existsSync(dir) ? readdirSync(dir) : [];
+  const dashed = names.filter((n) => readFileSync(join(dir, n), 'utf8').includes('\u2014'));
+  assert.deepEqual(dashed, []);
+});
+
+test('the fragment guard refuses a new fragment that carries an em dash and names it (Issue #722)', () => {
+  const dashed = { name: 'dash-9.md', text: '- **Dash** (Issue #9): one thing \u2014 and another.\n' };
+  const clean = { name: 'clean-9.md', text: '- **Clean** (Issue #9): one thing, and another.\n' };
+  const why = fragmentGuard({ ...FIX, fragmentsAdded: 2, addedFragments: [clean, dashed] });
+  assert.match(why, /changelog\.d\/dash-9\.md/, 'names the fragment');
+  assert.match(why, /U\+2014/, 'names the character');
+  assert.doesNotMatch(why, /clean-9/);
+  assert.equal(fragmentGuard({ ...FIX, fragmentsAdded: 1, addedFragments: [clean] }), null, 'a clean fragment passes');
+  assert.match(fragmentGuard({ ...FIX, subject: 'grid: tab order', message: 'grid: tab order\n', fragmentsAdded: 1, addedFragments: [dashed] }), /dash-9\.md/, 'refused even when the subject names no row');
+  assert.match(fragmentGuard({ ...FIX, message: `${FIX.message}No-changelog: x\n`, fragmentsAdded: 1, addedFragments: [dashed] }), /dash-9\.md/, 'the opt-out trailer does not excuse a dash');
+  assert.equal(fragmentGuard({ ...FIX, versionAfter: '0.4.64', addedFragments: [dashed] }), null, 'a release commit folds and deletes fragments');
 });
 
 test('fold finds a heading it wrote itself, so a second fold of one version appends to it (Issue #566)', () => {

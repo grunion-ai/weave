@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "a2c0ab3d0253544bccee24b078be571b395396f1"
+      "revision": "9e875c6112477e69dd914d49aa413ae1246df284"
     },
     "views": [
       {
@@ -21,17 +21,6 @@
           "sqlite"
         ],
         "note": "A browser request on :4400 from the adapter to the workspace file."
-      },
-      {
-        "id": "cloudflare-port",
-        "label": "Cloudflare port",
-        "focus": [
-          "worker",
-          "routes",
-          "engine",
-          "durable"
-        ],
-        "note": "The same request core under workerd, one Durable Object per workspace."
       },
       {
         "id": "agents",
@@ -114,27 +103,6 @@
       ]
     },
     {
-      "id": "worker",
-      "type": "cloud",
-      "label": "Worker adapter",
-      "sublabel": "workerd",
-      "pos": [
-        250,
-        420
-      ],
-      "size": [
-        140,
-        60
-      ],
-      "sources": [
-        {
-          "path": "src/worker.js",
-          "line": 5,
-          "label": "WeaveWorkspace DO"
-        }
-      ]
-    },
-    {
       "id": "auth",
       "type": "security",
       "label": "Sign-in",
@@ -164,7 +132,7 @@
       "id": "routes",
       "type": "backend",
       "label": "Request core",
-      "sublabel": "runtime-agnostic",
+      "sublabel": "createRequestHandler",
       "pos": [
         470,
         320
@@ -301,27 +269,6 @@
       ]
     },
     {
-      "id": "durable",
-      "type": "database",
-      "label": "Durable Object SQL",
-      "sublabel": "ctx.storage.sql",
-      "pos": [
-        910,
-        420
-      ],
-      "size": [
-        150,
-        60
-      ],
-      "sources": [
-        {
-          "path": "src/store-cf.js",
-          "line": 29,
-          "label": "CFStore"
-        }
-      ]
-    },
-    {
       "id": "backup",
       "type": "backend",
       "label": "Backup",
@@ -350,14 +297,6 @@
   ],
   "boundaries": [
     {
-      "kind": "region",
-      "label": "Cloudflare Workers",
-      "wraps": [
-        "worker",
-        "durable"
-      ]
-    },
-    {
       "kind": "security-group",
       "label": "shared core",
       "wraps": [
@@ -380,11 +319,6 @@
       "from": "node",
       "to": "routes",
       "variant": "emphasis"
-    },
-    {
-      "id": "worker-routes",
-      "from": "worker",
-      "to": "routes"
     },
     {
       "id": "routes-auth",
@@ -411,12 +345,6 @@
       "to": "sqlite",
       "label": "WAL rows",
       "variant": "emphasis"
-    },
-    {
-      "id": "engine-durable",
-      "from": "engine",
-      "to": "durable",
-      "label": "same Store API"
     },
     {
       "id": "agents-node",
@@ -449,17 +377,17 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "One core, two hosts",
+      "title": "One core, one host",
       "items": [
-        "src/routes.js imports no node:http or node:fs",
-        "src/server.js wraps it for node, src/worker.js for workerd",
-        "src/store.js and src/store-cf.js share one Store interface",
+        "src/server.js wraps src/routes.js in node:http",
+        "src/minify.js strips whitespace from first-party scripts and styles before src/server.js compresses them",
+        "src/store.js keeps one node:sqlite .db per workspace",
         "src/server.js answers each workspace at <slug>.WEAVE_BASE_DOMAIN"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Shared by every runtime",
+      "title": "Shared modules",
       "items": [
         "src/vocabulary.js and src/field-hints.js: one field vocabulary, schema-write hints",
         "src/ids.js, src/mark.js, src/workspace-name.js: ids, mark, names",

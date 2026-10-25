@@ -16,6 +16,7 @@
     { id: 'field', label: 'field', icon: 'lucide:sliders-horizontal' },
     { id: 'key', label: 'key', icon: '✱' },
     { id: 'attachments', label: 'files', icon: 'lucide:folder' },
+    { id: 'avatar', label: 'avatar', icon: 'lucide:user' },
     { id: 'relation', label: 'relation', icon: 'lucide:arrow-left-right', relation: true },
     { id: 'lookup', label: 'lookup', icon: 'lucide:arrow-up-right', computed: true },
     { id: 'rollup', label: 'rollup', icon: 'Σ', computed: true },
@@ -55,6 +56,7 @@
   const FORMULA_UNREADABLE = {
     document: "document fields don't compute — a formula reads values, not prose",
     attachments: "attachment fields don't compute — a formula reads values, not files",
+    avatar: "an avatar doesn't compute — a formula reads values, not pictures",
   };
   function formulaFieldChoices(fields, selfName = null) {
     return fields
@@ -191,11 +193,11 @@
       flat: ['triangle-alert', 'info', 'square-x', 'square-check', 'shield-check', 'shield-x', 'file-x', 'file-minus', 'bug'] },
     { name: 'people', marks: [], flat: ['user', 'users', 'users-round', 'user-plus', 'briefcase', 'heart', 'user-cog', 'award'] },
     { name: 'documents', marks: [], flat: ['file-text', 'file', 'file-plus', 'file-up', 'file-down', 'folder', 'bookmark',
-             'pencil', 'square-pen', 'upload', 'download', 'paperclip', 'archive', 'copy', 'clipboard', 'history'] },
+             'pencil', 'square-pen', 'upload', 'download', 'paperclip', 'archive', 'copy', 'copy-plus', 'clipboard', 'history'] },
     { name: 'writing', marks: [], flat: ['pilcrow', 'heading', 'bold', 'italic', 'strikethrough', 'list', 'list-ordered', 'list-indent-decrease', 'list-indent-increase',
              'quote', 'code', 'code-xml', 'braces', 'table', 'minus', 'corner-down-left', 'hash', 'link', 'workflow'] },
   { name: 'data', marks: ['⛓', '⌁'], flat: ['chart-bar', 'chart-pie', 'activity', 'layout-grid', 'funnel', 'search', 'scan', 'sliders-horizontal',
-             'compass', 'arrow-left-right', 'list-filter', 'kanban', 'list-checks', 'chart-column', 'layers', 'blocks', 'route', 'gauge', 'terminal', 'cpu'] },
+             'compass', 'arrow-left-right', 'list-filter', 'kanban', 'list-checks', 'chart-column', 'folder-kanban', 'group', 'sigma', 'blocks', 'route', 'gauge', 'terminal', 'cpu'] },
     { name: 'money', marks: [], flat: ['dollar-sign', 'euro', 'credit-card', 'coins', 'receipt', 'landmark', 'trending-up',
              'percent', 'wallet', 'shopping-cart', 'shopping-bag', 'badge-percent', 'ticket', 'ticket-check'] },
     { name: 'time', marks: [], flat: ['calendar', 'calendar-range', 'clock', 'timer'] },
@@ -423,6 +425,8 @@
       config.depth = state.depth ?? 1;
     } else if (t === 'text') {
       if (state.literal) config.literal = true;
+    } else if (t === 'avatar') {
+      config.shape = state.avatarShape === 'square' ? 'square' : 'round';
     } else if (t === 'attachments') {
       if (state.multiple === false) config.multiple = false;
       const fl = state.files ?? {};
@@ -508,6 +512,8 @@
       state.toggle = { on: c.on ?? 'On', off: c.off ?? 'Off' };
     } else if (def.type === 'rating') {
       state.rating = { max: c.max ?? 5, icon: c.icon ?? 'lucide:star', color: c.color ?? 'ink' };
+    } else if (def.type === 'avatar') {
+      state.avatarShape = c.shape ?? 'round';
     } else if (def.type === 'attachments') {
       state.multiple = c.multiple !== false;
       state.files = { preview: c.preview ?? '', size: c.size ?? 'medium', fit: c.fit ?? 'trim' };
@@ -597,6 +603,7 @@
       c.multiple = f.multiple !== false;
       for (const k of ATTACHMENT_LOOK_KEYS) if (f[k] != null) c[k] = f[k];
     }
+    if (f.type === 'avatar') c.shape = f.shape ?? 'round';
     if (f.type === 'toggle') { c.on = f.on ?? 'On'; c.off = f.off ?? 'Off'; }
     if (f.type === 'rating') { c.max = f.max ?? 5; c.icon = f.icon ?? 'lucide:star'; if (f.color && f.color !== 'ink') c.color = f.color; }
     if (f.type === 'document' && f.kind) c.kind = f.kind;
@@ -629,11 +636,17 @@
       patch.states = (c.states ?? []).filter((s) => s.name && s.name.trim());
     }
     if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
+    if ((existing.type === 'lookup' || existing.type === 'rollup') && !existing.viaTable) {
+      patch.relationField = c.relationField;
+      patch.targetField = c.targetField || null;
+      if (existing.type === 'rollup') patch.aggregate = c.aggregate ?? 'count';
+    }
     if (existing.type === 'text') patch.literal = !!state.literal;
     if (existing.type === 'attachments') {
       patch.multiple = state.multiple !== false;
       for (const k of ATTACHMENT_LOOK_KEYS) patch[k] = c[k] ?? null;
     }
+    if (existing.type === 'avatar') patch.shape = c.shape ?? 'round';
     if (existing.type === 'toggle') { patch.on = c.on; patch.off = c.off; }
     if (existing.type === 'rating') { patch.max = c.max; patch.icon = c.icon; patch.color = c.color ?? null; }
     if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }
@@ -644,6 +657,19 @@
     return patch;
   }
 
+  const RESULT_WORDS = { list: 'a list', text: 'text', number: 'a number', date: 'a date' };
+  function recipeResult(type, aggregate, targetType) {
+    if (type === 'lookup') return 'list';
+    if (aggregate === 'join') return 'text';
+    if (aggregate !== 'min' && aggregate !== 'max') return 'number';
+    if (targetType === 'date' || targetType === 'daterange') return 'date';
+    return ['number', 'rating', 'rollup', 'formula'].includes(targetType) ? 'number' : 'text';
+  }
+  function recipeChangeNote(name, was, now) {
+    if (!was || !now || was === now) return null;
+    return `${name} gives ${RESULT_WORDS[now]} instead of ${RESULT_WORDS[was]} after this change: a filter, a sort or a formula that reads it may stop matching.`;
+  }
+
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, sortLabels, SYSTEM_SORT, migrateState, moveItem,
@@ -651,6 +677,6 @@
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS,
     blankState, definitionFromState, stateFromDefinition, choiceItems, setChoiceDefault,
-    definitionFromFieldView, editPatchConfig,
+    definitionFromFieldView, editPatchConfig, recipeResult, recipeChangeNote,
   };
 })(globalThis);

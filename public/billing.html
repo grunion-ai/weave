@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Billing · weave</title>
-<link rel="icon" href="/brand/weave-favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg">
+<link rel="alternate icon" href="/brand/favicon.ico">
 <style>
-  :root { --fs-h1: 24px; --fs-body: 15px; --fs-small: 13px; --bg: #eceff3; --card: #ffffff; --fg: #1d273b; --muted: #667085; --line: #dce1e7; --ok: #2b8a3e; --bad: #c92a2a; --accent: #206bc4; }
+  :root { --fs-h1: 24px; --fs-body: 15px; --fs-small: 13px; --bg: #eceff3; --card: #ffffff; --fg: #1d273b; --muted: #5f6474; --line: #dce1e7; --ok: #2b8a3e; --bad: #c92a2a; --accent: #206bc4; }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #0f1115; --card: #181b21; --fg: #dce1e7; --muted: #8a97ab; --line: #2c3340; --ok: #69db7c; --bad: #ff8787; --accent: #4dabf7; }
   }
@@ -19,6 +20,8 @@
   .seats li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 2px; }
   .seats li + li { border-top: 1px solid var(--line); }
   .seats small { color: var(--muted); font-size: var(--fs-small); }
+  .seats .seat-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .seats .seat-mail { overflow-wrap: anywhere; }
   .state-ok { color: var(--ok); }
   .state-bad { color: var(--bad); }
   .btn { display: inline-block; padding: 7px 16px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
