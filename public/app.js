@@ -1209,7 +1209,7 @@ function renderNav() {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
         dataset: { db: db.id },
-      }, iconEl(db.icon, 'wv-icon nav-icon'), db.name);
+      }, iconEl(db.icon, 'wv-icon nav-icon'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
       if (!db.system) {
         row.append(navTableMenu(db));
         kindContext(row, 'table', db);
