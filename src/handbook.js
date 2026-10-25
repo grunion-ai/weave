@@ -977,7 +977,7 @@ A space is the unit of meaning in a workspace: it groups the tables of one area,
 
 ## Sharing a link
 
-Every row, table, space and workspace has a permalink built from its id, so a rename never breaks it: \`/w/<ws>/e/<id>\` for a row (\`/w/<ws>/e/Issue%23287\` works too), \`/w/<ws>/t/<id>\` for a table, \`/w/<ws>/s/<id>\` for a space and \`/w/<ws>/\` for the workspace. The ⧉ beside a row's \`#id\`, a table's title or a space's title copies it.
+Every row, table, space and workspace has a permalink built from its id, so a rename never breaks it: \`/e/<id>\` for a row, \`/t/<id>\` for a table, \`/s/<id>\` for a space and \`/w/<ws>/\` for the workspace. A row, table or space link names no workspace: on a workspace host such as \`net.weave.grunion.ai\` the host names it, and anywhere else the link opens in whichever workspace holds that id. Links that do carry \`/w/<ws>/\` (\`/w/<ws>/e/Issue%23287\` too) keep working. The ⧉ beside a row's \`#id\`, a table's title or a space's title copies it.
 
 The same row permalink comes back as \`url\` from every door: the API, MCP, the CLI, chips and cards, search hits and the bug reporter. It works as input too. Paste a row's link, with or without the origin, its \`/e/<id>\` path or its bare id into search or ⌘K and that row comes first; pass it to any API, MCP or CLI call that names a row and it names that row.
 

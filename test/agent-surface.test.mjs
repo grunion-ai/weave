@@ -321,10 +321,10 @@ test('every door emits the one permalink a row has, and no door builds its own (
   const table = w.createTable({ space: 'Ops', name: 'Task' });
   const row = w.createEntity('Task', { Name: 'ship the zebrafinch' });
   const link = w.permalink('entity', row.id);
-  assert.equal(link, `/w/uno/e/${row.id}`);
-  assert.equal(w.permalink('table', table.id), `/w/uno/t/${table.id}`);
+  assert.equal(link, `/e/${row.id}`);
+  assert.equal(w.permalink('table', table.id), `/t/${table.id}`);
   const space = w.getSpace('Ops');
-  assert.equal(w.permalink('space', space.id), `/w/uno/s/${space.id}`);
+  assert.equal(w.permalink('space', space.id), `/s/${space.id}`);
 
   const rpc = (name, args) => {
     const res = handleMcpMessage(w, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });

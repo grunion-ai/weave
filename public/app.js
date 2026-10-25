@@ -5142,7 +5142,7 @@ function tableChrome(db, trashCount) {
     permalink: () => {
       const v = ref.db.view;
       const byDefault = !v || v.id === pickTableView(allTables().find((d) => d.id === ref.db.id) ?? ref.db, null)?.id;
-      return `${location.origin}${WS_PREFIX}/${byDefault ? `t/${ref.db.id}` : viewHref(ref.db, v)}`;
+      return byDefault ? `${location.origin}/t/${ref.db.id}` : `${location.origin}${WS_PREFIX}/${viewHref(ref.db, v)}`;
     },
     title: db.name,
     icon: db.icon,
@@ -6438,7 +6438,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       valuePop({ anchor, title: `New ${term.singular}`, placeholder: 'Name', apply: 'Create & link',
         onApply: (name) => runBulk('Rolled up', 'rollup', { field: f.name, name }) });
     }),
-    copy: () => copyText([...chosen()].map((id) => `${location.origin}${WS_PREFIX}/e/${id}`).join('\n'),
+    copy: () => copyText([...chosen()].map((id) => `${location.origin}/e/${id}`).join('\n'),
       `${SEL().countLabel(chosen().size, db.term)} — links copied`),
   };
   const more = (anchor) => picker(anchor, {
@@ -8483,7 +8483,7 @@ async function showSpace(spaceId) {
   main.replaceChildren(
     viewHeader({
       crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
-      permalink: `${location.origin}${WS_PREFIX}/s/${spaceId}`,
+      permalink: `${location.origin}/s/${spaceId}`,
       title: space.space,
       kind: 'space',
       onRename: async (name) => {
@@ -10076,7 +10076,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         crumbPath(inPeek
           ? (crumbs ?? weaveBreadcrumbs.dockCrumbs([entityHop(entity)]))
           : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity)), {
-          copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') },
+          copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}/e/${id}`, 'Permalink copied') },
           foldFrom: inPeek ? 1 : 4,
         }),
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
@@ -11099,7 +11099,7 @@ function noteEntityRecent(entity) {
   const st = wf ? entity.fields?.[wf.name] : null;
   noteRecent({
     kind: 'entity', id: entity.id, name: entity.name, db: entity.db, publicId: entity.publicId,
-    url: `${WS_PREFIX}/e/${entity.id}`,
+    url: `/e/${entity.id}`,
     ...(st ? { chip: { state: { name: st, category: stateCategory(wf, st) } } } : {}),
   });
 }
@@ -11138,7 +11138,7 @@ function linkSearch(f, { linked = [], commit }) {
         label: targets.length > 1 ? `+ New ${noun} in ${t.qualified}` : `+ New ${noun}`,
         run: async (q) => {
           const made = await api('POST', `/tables/${t.id}/entities`, { values: { Name: q || `New ${t.name}` } });
-          return { kind: 'entity', id: made.id, publicId: made.publicId, name: made.name, db: made.db ?? t.qualified, url: `${WS_PREFIX}/e/${made.id}` };
+          return { kind: 'entity', id: made.id, publicId: made.publicId, name: made.name, db: made.db ?? t.qualified, url: `/e/${made.id}` };
         },
       };
     }),
