@@ -101,6 +101,27 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('Undo pressed before the delete answers goes from the delete straight to the undo, with no grid reload between (Issue #1058)', async () => {
+    const ids = fill();
+    const page = await grid('light');
+    try {
+      const sent = [];
+      page.on('request', (r) => {
+        const path = new URL(r.url()).pathname;
+        if (r.method() === 'DELETE' || /\/api\/undo$|\/query$/.test(path)) sent.push(`${r.method()} ${path.replace(/\/[0-9a-f-]{36}/g, '/:id')}`);
+      });
+      await holdDeletes(page, { ms: 800 });
+      await pressTrash(page, ids);
+      const toast = trashToast(page);
+      await toast.waitFor();
+      await toast.locator('.wv-toast-action').click();
+      await page.locator('.wv-toast', { hasText: 'Restored' }).last().waitFor();
+      const after = sent.slice(sent.lastIndexOf('DELETE /api/entities/:id') + 1);
+      assert.deepEqual(after.slice(0, 2), ['GET /api/undo', 'POST /api/undo'], `the undo follows the delete at once: ${sent.join(', ')}`);
+      assert.ok(ids.every(live), 'both rows are out of the trash');
+    } finally { await page.close(); }
+  });
+
   test('trashing the docked row closes its dock in the same frame (Issue #1058)', async () => {
     const ids = fill();
     const page = await grid('light', { query: `?e=${ids[1]}`, width: 1280 });

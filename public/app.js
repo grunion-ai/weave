@@ -6398,7 +6398,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         if (!gesture.ids.length) dropToastNode(undo);
         toast(`${TRASHED}: ${failed} of ${ids.length} failed`, true);
       }
-      await onSaved?.();
+      if (!gesture.undoing) await onSaved?.();
     })();
     return gesture.settled;
   };
@@ -11210,6 +11210,7 @@ async function gestureTop(g) {
 }
 
 async function undoGesture(g) {
+  g.undoing = true;
   if (lastGesture === g) lastGesture = null;
   try {
     const ours = await gestureTop(g);
