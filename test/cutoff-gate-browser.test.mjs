@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
 import { CELLS, PLATFORM, fingerprint, probe, sectionOf, seed, sweepCell, tally, verdict } from './lib/cutoff.mjs';
-import { held } from './lib/states.mjs';
+import { STATES, held } from './lib/states.mjs';
 
 const baseline = sectionOf(JSON.parse(readFileSync(new URL('./cutoff-baseline.json', import.meta.url), 'utf8')));
 
@@ -86,6 +86,19 @@ if (s) {
       assert.ok(after.rows > before.rows, `a wider window draws more rows (${before.rows} then ${after.rows})`);
       assert.equal(after.found, before.found, `${after.found - before.found} findings came from rows nobody can see`);
     } finally { await page.close(); }
+  });
+
+  test('Issue #1153: a long key in a tile field or a field row is reachable, not cut', async (t) => {
+    const sinks = STATES.filter((x) => x.name === 'sink-board' || x.name === 'sink-row');
+    for (const cell of Object.keys(CELLS)) {
+      const m = matrix[cell];
+      if (!m) { t.diagnostic(`${cell}: ${CELLS[cell].engine} cannot launch here`); continue; }
+      const { findings, failed } = await sweepCell(m.browser, cell, s, { page: m.page, journeys: [], overlays: [], rests: sinks });
+      assert.deepEqual(failed, [], 'a kitchen-sink state could not open: its selectors rotted');
+      const keys = findings.filter((f) => String(f.selector).includes('k-key'))
+        .map((f) => `${f.where} ${fingerprint(f, cell)} ${JSON.stringify(f.text)} cut by ${f.px}px`);
+      assert.deepEqual(keys, [], `${cell}: a key chip still cuts its key`);
+    }
   });
 
   for (const cell of Object.keys(CELLS)) {

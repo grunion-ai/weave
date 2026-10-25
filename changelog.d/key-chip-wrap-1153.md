@@ -1,0 +1,1 @@
+- **Key chips wrap a long key** (Issue #1153): a key chip in a board tile field or a record page field row breaks its key anywhere instead of cutting it, so the whole value is reachable.
