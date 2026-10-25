@@ -167,6 +167,8 @@ if (s) {
     await page.mouse.move(4, 400);
     await page.clock.runFor(150);
     assert.equal(await page.locator('#app.nav-peek').count(), 1, 'resting at the edge opens the peek');
+    await page.clock.runFor(600);
+    assert.equal(await page.locator('#app.nav-peek').count(), 1, 'the rail opening under the resting pointer keeps the peek open');
     await page.mouse.move(700, 400);
     await page.clock.runFor(399);
     assert.equal(await page.locator('#app.nav-peek').count(), 1, 'a brief departure keeps the peek');
@@ -185,6 +187,8 @@ if (s) {
     await page.mouse.move(4, 400);
     await page.evaluate(() => setNavCollapsed(true));
     await page.waitForSelector('#app.nav-collapsed');
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 1000));
     const peeked = await page.evaluate(() => {
       const strip = document.querySelector('#nav-hot-strip');
       const at = { clientX: 4, clientY: 400, bubbles: true };
@@ -196,6 +200,8 @@ if (s) {
       strip.dispatchEvent(new MouseEvent('mousemove', at));
       return document.querySelector('#app').classList.contains('nav-peek');
     });
+    await page.clock.runFor(150);
+    assert.equal(await page.locator('#app.nav-peek').count(), 0, 'a stationary pointer schedules no delayed peek');
     assert.equal(peeked, false, 'the hover a layout change or a scroll reports, with no movement, leaves the nav hidden');
     assert.equal(await seen(page, '#sidebar'), false, 'the nav stays hidden');
     await page.close();

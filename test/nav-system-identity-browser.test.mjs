@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch, styleOf } from './lib/browser.mjs';
+import { launch } from './lib/browser.mjs';
 
 let uno, ada, unoAda, wfId, usersId;
 const s = await launch('nav system space and identity panel', (root) => {
@@ -37,7 +37,6 @@ if (s) {
     await page.waitForSelector('#sidebar .nav-identity .nav-account[data-state]', { state: 'attached' });
     return { ctx, page };
   };
-  const systemRows = (page) => page.$$eval('#sidebar .nav-system a.nav-db', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
 
   for (const theme of ['light', 'dark']) {
     test(`System lives in the workspace rail while expanded, hidden and peeking (${theme})`, async () => {
@@ -65,6 +64,24 @@ if (s) {
       await page.click('#main .nav-menu');
       await page.waitForSelector('#ws-rail .nav-system a.active');
       assert.equal(await page.locator('#ws-rail .nav-system a[aria-current="page"]').getAttribute('aria-label'), 'Trash');
+      await ctx.close();
+    });
+  }
+
+  for (const theme of ['light', 'dark']) {
+    test(`phone System controls remain reachable and close the drawer after navigation (${theme})`, async () => {
+      const { ctx, page } = await open('/', { theme });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.click('#main .nav-menu');
+      await page.waitForSelector('#app.nav-held');
+      const trash = page.locator('#ws-rail .nav-system a[aria-label="Trash"]');
+      await trash.scrollIntoViewIfNeeded();
+      const bounds = await trash.boundingBox();
+      assert.ok(bounds.width >= 44 && bounds.height >= 44);
+      await trash.click();
+      await page.waitForSelector('#app:not(.nav-peek):not(.nav-held)');
+      await page.waitForFunction(() => location.hash === '#/trash');
+      assert.equal(await page.locator('#main').evaluate((n) => n.inert), false);
       await ctx.close();
     });
   }

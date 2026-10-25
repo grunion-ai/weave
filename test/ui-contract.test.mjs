@@ -43,7 +43,9 @@ test('.hidden beats id-selector display rules', () => {
 test('wireNavCollapse wires both directions and persists the state', () => {
   const fn = APP.slice(APP.indexOf('function wireNavCollapse'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
-  assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(narrowShell\.matches \? app\.classList\.remove\('nav-peek'\) : apply\(true\)\)\)/);
+  assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(narrowShell\.matches \? closeNavPeek\(\) : apply\(true\)\)\)/);
+  assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekDwell\)/);
+  assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekLeave\)/);
   assert.match(fnBody('setNavCollapsed'), /localStorage\.setItem\('weave-nav-collapsed'/);
   assert.match(body, /localStorage\.getItem\('weave-nav-collapsed'\)/);
 });

@@ -1259,29 +1259,19 @@ function renderNav() {
         await loadSchema();
       })),
     }, '+ New space'));
-  const systemFolded = folded.has(SYSTEM_FOLD_KEY);
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
   const peopleHere = !!people && allTables().some((d) => d.id === people.id);
-  const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
-  const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
-    el('div', { class: 'nav-space-row nav-system-head' },
-      el('button', {
-        class: 'nav-space', type: 'button', 'aria-expanded': String(!systemFolded),
-        title: systemFolded ? 'Expand System' : 'Collapse System',
-        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
-      }, lucideEl('settings', 'wv-icon nav-icon'), 'System'),
-      disclosure('nav-caret', !systemFolded, {
-        title: systemFolded ? 'Expand System' : 'Collapse System',
-        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
-      })),
-    ...(systemFolded ? [] : [
-      sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
-      ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
-      sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
-      sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
-    ]));
+  const sysRow = (href, icon, label, on) => el('a', {
+    class: 'ws-icon' + (on ? ' active' : ''), href, title: label, 'aria-label': label,
+    ...(on ? { 'aria-current': 'page' } : {}),
+  }, lucideEl(icon, 'wv-icon'), el('span', { class: 'visually-hidden' }, label));
+  $('#rail-system').replaceChildren(
+    sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
+    ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
+    sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
+    sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
@@ -1323,10 +1313,9 @@ function renderNav() {
   }
   const identity = el('div', { class: 'nav-identity' }, accountSlot(), personalMenuButton());
   document.querySelector('#sidebar .nav-pinned')?.remove();
-  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, state.healthChip, state.trialChip, identity));
+  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, state.healthChip, state.trialChip, identity));
 }
 
-const SYSTEM_FOLD_KEY = 'system';
 const TRIAL_NOTICE_DAYS = 3;
 
 const ACCOUNT_ROLE_LABELS = { architect: 'Architect', editor: 'Editor', observer: 'Observer', admin: 'Architect', writer: 'Editor', reader: 'Observer' };
@@ -12246,10 +12235,17 @@ function wireWsNew() {
 }
 
 const narrowShell = matchMedia('(max-width: 900px)');
+let navPeekDwell, navPeekLeave;
+function closeNavPeek() {
+  clearTimeout(navPeekDwell);
+  clearTimeout(navPeekLeave);
+  navPeekDwell = navPeekLeave = null;
+  $('#app').classList.remove('nav-peek');
+}
 function setNavCollapsed(collapsed) {
   const app = $('#app');
   app.classList.toggle('nav-collapsed', collapsed);
-  app.classList.remove('nav-peek');
+  closeNavPeek();
   localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
 }
 function wireNavCollapse() {
@@ -12259,22 +12255,28 @@ function wireNavCollapse() {
   const rail = $('#ws-rail');
   if (!app || !collapse || !sidebar || !rail) return;
   const apply = setNavCollapsed;
-  collapse.addEventListener('click', () => (narrowShell.matches ? app.classList.remove('nav-peek') : apply(true)));
+  collapse.addEventListener('click', () => (narrowShell.matches ? closeNavPeek() : apply(true)));
   const strip = el('div', { id: 'nav-hot-strip', 'aria-hidden': 'true' });
   app.append(strip);
   const panel = [sidebar, rail, strip];
-  let settle = null;
   let pointer = null;
+  const leave = () => {
+    clearTimeout(navPeekDwell);
+    navPeekDwell = null;
+    if (!narrowShell.matches && app.classList.contains('nav-peek') && !navPeekLeave) navPeekLeave = setTimeout(closeNavPeek, 400);
+  };
   addEventListener('pointermove', (e) => {
     const moved = pointer && (pointer.x !== e.clientX || pointer.y !== e.clientY);
     pointer = { x: e.clientX, y: e.clientY };
-    if (!moved || e.target !== strip) return;
-    if (!app.classList.contains('nav-collapsed') || app.classList.contains('nav-peek')) return;
-    app.classList.add('nav-peek');
-    clearTimeout(settle);
-    settle = setTimeout(() => {
-      if (!panel.some((n) => n.matches(':hover'))) app.classList.remove('nav-peek');
-    }, 400);
+    if (!moved || narrowShell.matches) return;
+    if (!panel.some((n) => n.contains(e.target)) && !e.target.closest('.wv-menu')) return leave();
+    clearTimeout(navPeekLeave);
+    navPeekLeave = null;
+    if (e.target !== strip || !app.classList.contains('nav-collapsed') || app.classList.contains('nav-peek') || navPeekDwell) return;
+    navPeekDwell = setTimeout(() => {
+      navPeekDwell = null;
+      if (app.classList.contains('nav-collapsed') && !narrowShell.matches && strip.matches(':hover')) app.classList.add('nav-peek');
+    }, 150);
   }, true);
   strip.addEventListener('click', () => apply(false));
   sidebar.addEventListener('click', (e) => {
@@ -12282,18 +12284,18 @@ function wireNavCollapse() {
     if (e.target.closest('a,button,input,textarea,select,label')) return;
     apply(false);
   });
-  for (const side of [sidebar, rail]) {
+  for (const side of panel) {
     side.addEventListener('mouseleave', (e) => {
       if (e.relatedTarget?.closest?.('.wv-menu, #sidebar, #ws-rail, #nav-hot-strip')) return;
-      if (app.classList.contains('nav-peek') && !narrowShell.matches) app.classList.remove('nav-peek');
+      leave();
     });
   }
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') app.classList.remove('nav-peek'); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNavPeek(); });
   apply(localStorage.getItem('weave-nav-collapsed') === '1');
-  const shut = () => app.classList.remove('nav-peek');
+  const shut = closeNavPeek;
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);
-  sidebar.addEventListener('click', (e) => { if (narrowShell.matches && e.target.closest('a[href]')) shut(); }, true);
+  for (const side of [sidebar, rail]) side.addEventListener('click', (e) => { if (narrowShell.matches && e.target.closest('a[href]')) shut(); }, true);
   narrowShell.addEventListener('change', () => {
     shut();
     for (const btn of document.querySelectorAll('.nav-menu')) labelNavMenu(btn);

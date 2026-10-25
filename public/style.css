@@ -107,8 +107,8 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .nav-add-table:focus-visible, .nav-space-menu:focus-within, .nav-space-menu:has(.dots-btn[aria-expanded="true"]) { opacity: 1; }
 @media (hover: hover) { .nav-space-row:hover .nav-add-table, .nav-space-row:hover .nav-space-menu { opacity: 1; } }
 .nav-foot { align-self: stretch; margin: 0 -10px; padding-top: 8px; border-top: 1px solid var(--wv-pill-hover); }
-.nav-system { border-top: 1px solid var(--wv-pill-hover); padding-top: 2px; flex: none; align-self: stretch; }
-.nav-system-head { margin: 6px 0 2px; }
+.nav-system { display: flex; flex: none; flex-direction: column; align-items: center; gap: 8px; border-top: 1px solid var(--tblr-border-color); padding-top: 8px; }
+.nav-system .wv-icon { width: 18px; height: 18px; }
 button.nav-space { display: flex; align-items: center; gap: 7px; padding: 0; background: none; border: 0; font-family: inherit; line-height: inherit; text-align: left; cursor: pointer; }
 button.nav-space:hover { color: var(--tblr-primary); }
 button.nav-space:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; border-radius: 3px; }
@@ -2112,6 +2112,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #app.nav-peek #sidebar #nav { margin: 0 -16px; padding: 0 16px; }
   #app.nav-peek #ws-rail { top: auto; bottom: 0; right: 0; width: auto; height: calc(64px + env(safe-area-inset-bottom, 0px)); flex-direction: row; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--tblr-border-color); overflow-x: auto; overflow-y: hidden; z-index: 72; }
   #app.nav-peek #ws-list { flex-direction: row; }
+  #app.nav-peek .nav-system { flex-direction: row; border-top: 0; border-left: 1px solid var(--tblr-border-color); padding-top: 0; padding-left: 8px; }
   #app.nav-peek #ws-rail .ws-icon { width: 44px; height: 44px; }
   #app.nav-peek #ws-rail .ws-icon.ws-weave { width: 46px; height: 46px; }
   #sidebar .brand { min-height: 44px; }
