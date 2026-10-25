@@ -157,11 +157,7 @@ happened, the worker's pid never changed and dev answered no 5xx. It then
 posts the commit status `dev-soak` (success) on that SHA; promotion reads that
 context. A failure posts `dev-soak` failure linking the run and sends one line
 to `SHERIFF_ALERT_URL` and the job summary. A newer main commit cancels the
-older run. A soak that watched the commit pass and held dev for the whole
-window still succeeds when dev moves on the poll that completes it, so a busy
-main still yields commits promotion can take. A soak cut short before its
-window elapses posts `dev-soak` pending on that SHA, described as superseded,
-which reads apart from both a pass and a failure and which promotion skips.
+older run, and a soak that sees dev move to newer main posts nothing.
 
 With the `DEV_SMOKE_TOKEN` secret (an editor `wv_` token on dev) the smoke
 also creates a row through the API, sees it in the grid, and hard-deletes it,
