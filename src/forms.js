@@ -507,7 +507,7 @@ function submitResolved(w, ref, input = {}, { actor = null, server = {}, idempot
     return owner.store.batch(() => {
       const e = owner.createEntity(form.tableId, row);
       const ws = owner.state.meta.name;
-      const receipt = { id: e.id, publicId: e.publicId, form: form.id, workspace: ws, table: form.table, ...extra, url: `/w/${ws}/#/entity/${e.id}` };
+      const receipt = { id: e.id, publicId: e.publicId, form: form.id, workspace: ws, table: form.table, ...extra, url: owner.permalink('entity', e.id) };
       owner.state.meta.formReceipts = [...receipts, { group, dedupGroup, key, digest, rawDigest, at: now, receipt }];
       owner.save();
       return receipt;

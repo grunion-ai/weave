@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { createServer } from '../src/server.js';
 import { fresh } from './lib/fixtures.mjs';
+import { dispatchTool } from '../src/mcp.js';
+import { startServer } from '../src/server.js';
 
 const listen = (srv) => new Promise((res) => srv.listen(0, '127.0.0.1', () => res(srv.address().port)));
 const req = async (port, path, opts = {}) => {
@@ -45,12 +47,13 @@ test('every level answers to its id and reports an id-based permalink', () => {
   assert.equal(w.getTable(db.id).name, 'Story');
   assert.equal(w.readEntity(row.id).name, 'ship it');
 
-  assert.equal(w.readEntity(row.id).url, `/e/${row.id}`);
+  const ws = `/w/${w.state.meta.name}`;
+  assert.equal(w.readEntity(row.id).url, `${ws}/e/${row.id}`);
   const schema = w.describeSchema();
   const sp = schema.find((x) => x.spaceId === space.id);
-  assert.equal(sp.url, `#/space/${space.id}`);
+  assert.equal(sp.url, `${ws}/s/${space.id}`);
   const tb = sp.tables.find((x) => x.id === db.id);
-  assert.equal(tb.url, `#/table/${db.id}`);
+  assert.equal(tb.url, `${ws}/t/${db.id}`);
 });
 
 test('GET /api/workspace exposes the id and its permalink', async () => {
@@ -407,4 +410,56 @@ test('the default workspace: og:url names its slug, the jump keeps the bare root
       assert.equal(routeOf(html), route, `${path}: the address bar stays under the prefix it came in on`);
     }
   } finally { srv.close(); }
+});
+
+const pasted = (id) => [
+  `http://127.0.0.1:4400/w/uno/e/${id}`,
+  `https://weave.grunion.ai/w/uno/e/${id}`,
+  `/w/uno/e/${id}`,
+  `/w/uno/e/${id}/doc.html`,
+  `/e/${id}`,
+  id,
+  id.toUpperCase(),
+  ` ${id} `,
+];
+
+test('a pasted permalink, its path, /e/<uuid> or a bare uuid names the row on every door (Feature #203)', () => {
+  const w = new Weave({ name: 'uno' });
+  w.createSpace({ name: 'Ops' });
+  w.createTable({ space: 'Ops', name: 'Task' });
+  const row = w.createEntity('Task', { Name: 'target' });
+  for (const ref of pasted(row.id)) {
+    assert.equal(w.getEntity(ref).id, row.id, `getEntity ${ref}`);
+    assert.equal(w.findEntity('Task', ref).id, row.id, `findEntity ${ref}`);
+    assert.equal(dispatchTool(w, 'weave_get_entity', { entity: ref }).id, row.id, `weave_get_entity ${ref}`);
+  }
+  dispatchTool(w, 'weave_update_entity', { entity: `http://127.0.0.1:4400/w/uno/e/${row.id}`, values: { Name: 'renamed' } });
+  assert.equal(w.readEntity(row.id).name, 'renamed', 'a write takes the pasted link');
+  assert.throws(() => w.getEntity(`/w/uno/e/${'0'.repeat(8)}-0000-0000-0000-${'0'.repeat(12)}`), /not found/);
+});
+
+test('search treats a pasted permalink or uuid as the exact row, ahead of every text hit (Feature #203)', async () => {
+  const w = new Weave({ name: 'uno' });
+  w.createSpace({ name: 'Ops' });
+  w.createTable({ space: 'Ops', name: 'Task' });
+  const row = w.createEntity('Task', { Name: 'target' });
+  const link = `https://weave.grunion.ai/w/uno/e/${row.id}`;
+  const mention = w.createEntity('Task', { Name: `cites ${row.id}` });
+  w.setDoc(mention.id, `see ${link}`);
+  for (const q of [link, `/w/uno/e/${row.id}`, row.id, row.id.toUpperCase()]) {
+    assert.equal(w.search(q)[0].id, row.id, `search ${q}`);
+    assert.equal(w.universalSearch(q)[0].id, row.id, `universalSearch ${q}`);
+    assert.equal(w.universalSearch(q, { tables: ['Task'] })[0].id, row.id, `scoped search ${q}`);
+  }
+  const { server } = await startServer(new Weave({ name: 'main' }), { port: 0, workspaces: { uno: w } });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}/w/uno/api/search?q=`;
+    for (const q of [link, row.id]) {
+      const hits = await (await fetch(base + encodeURIComponent(q))).json();
+      assert.equal(hits[0].id, row.id, `GET /api/search?q=${q}`);
+      assert.equal(hits[0].url, w.permalink('entity', row.id));
+    }
+  } finally {
+    server.close();
+  }
 });

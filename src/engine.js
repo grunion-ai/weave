@@ -92,6 +92,8 @@ const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
+const PASTED_ENTITY = /^\s*(?:(?:[a-z][a-z0-9+.-]*:\/\/[^/\s]+)?(?:\/w\/[^/\s]+)?\/e\/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]\S*)?\s*$/i;
+export const pastedEntityId = (ref) => PASTED_ENTITY.exec(String(ref ?? ''))?.[1].toLowerCase() ?? null;
 const byPosition = (list) => list.map((x, i) => [x, i])
   .sort(([a, i], [b, j]) => (Number.isInteger(a.position) ? a.position : Infinity) - (Number.isInteger(b.position) ? b.position : Infinity) || i - j)
   .map(([x]) => x);
@@ -1296,7 +1298,7 @@ export class Weave {
     const cfg = config
       ? this.#normalizeViewConfig(db, field ?? { config: { ...VIEW_DEFAULTS[shape] } }, config)
       : (field?.config ?? VIEW_DEFAULTS[shape]);
-    const out = { shape, id: e.id, publicId: e.publicId, url: `/e/${e.id}`, name: this.entityName(e), link: cfg.link, state: null, description: null, fields: [] };
+    const out = { shape, id: e.id, publicId: e.publicId, url: this.permalink('entity', e.id), name: this.entityName(e), link: cfg.link, state: null, description: null, fields: [] };
     const face = this.#faceOf(e);
     if (face) out.avatar = face;
     const wf = Object.values(db.fields).find((f) => f.type === 'workflow');
@@ -6163,8 +6165,15 @@ export class Weave {
     return e;
   }
 
+  permalink(kind, id) {
+    const ws = `/w/${this.state.meta.name}`;
+    if (kind === 'workspace') return `${ws}/`;
+    if (kind === 'view') return `${ws}/#/view/${id}`;
+    return `${ws}/${{ entity: 'e', table: 't', space: 's' }[kind]}/${id}`;
+  }
+
   getEntity(id) {
-    const e = own(this.state.entities, id);
+    const e = own(this.state.entities, id) ?? own(this.state.entities, pastedEntityId(id));
     if (e) return e;
     const m = /^(.+)#(\d+)$/.exec(String(id));
     if (m && this.findTable(m[1])) {
@@ -6179,7 +6188,8 @@ export class Weave {
 
   findEntity(dbRef, ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
-    if (own(this.state.entities, ref)) return this.state.entities[ref];
+    const byId = own(this.state.entities, ref) ?? own(this.state.entities, pastedEntityId(ref));
+    if (byId) return byId;
     const db = this.getTable(dbRef);
     const q = /^(.+)#(\d+)$/.exec(String(ref));
     if (q) {
@@ -7248,7 +7258,7 @@ export class Weave {
         createdBy: this.actorName(e.createdBy ?? null),
         modifiedBy: this.actorName(e.modifiedBy ?? null),
         deletedAt: e.deletedAt ?? null,
-        url: `/e/${e.id}`,
+        url: this.permalink('entity', e.id),
         ...(face ? { avatar: face } : {}),
         ...(Object.keys(scales).length ? { scales } : {}),
         ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
@@ -7276,7 +7286,7 @@ export class Weave {
       createdBy: this.actorName(e.createdBy ?? null),
       modifiedBy: this.actorName(e.modifiedBy ?? null),
       deletedAt: e.deletedAt ?? null,
-      url: `/e/${e.id}`,
+      url: this.permalink('entity', e.id),
       ...(Object.keys(scales).length ? { scales } : {}),
       ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
     };
@@ -8385,7 +8395,7 @@ export class Weave {
   search(text, { limit = 25, table = null } = {}) {
     const scope = table == null ? null : this.getTable(table).id;
     return this.#searchHits(text, scope)
-      .map(({ e, score, snippet }) => ({ ...this.#summary(e.id), score, snippet }))
+      .map(({ e, score, snippet }) => ({ ...this.#summary(e.id), url: this.permalink('entity', e.id), score, snippet }))
       .sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
@@ -8395,6 +8405,7 @@ export class Weave {
     const idm = /^(.*?)#\s*(\d+)$/.exec(needle) ?? /^()(\d+)$/.exec(needle);
     const idNum = idm ? Number(idm[2]) : null;
     const idTable = idm ? idm[1].trim() : '';
+    const exact = pastedEntityId(needle);
     const results = [];
     for (const e of dbId ? this.listEntities(dbId) : Object.values(this.state.entities)) {
       if (e.deletedAt) continue;
@@ -8406,7 +8417,7 @@ export class Weave {
       const textValues = Object.values(home.fields)
         .filter((f) => SEARCHED_VALUE_TYPES.has(f.type) && f.id !== home.nameFieldId && typeof e.values?.[f.id] === 'string')
         .map((f) => e.values[f.id]).join('\n');
-      let score = 0;
+      let score = e.id === exact ? 20 : 0;
       let snippet = '';
       if (idNum !== null && e.publicId === idNum) {
         if (!idTable
@@ -8425,17 +8436,17 @@ export class Weave {
     return results;
   }
 
-  universalSearch(text, { limit = 25, prefix = '', tables = null } = {}) {
-    if (tables != null) return this.#scopedSearch(text, { limit, prefix, tables });
+  universalSearch(text, { limit = 25, tables = null } = {}) {
+    if (tables != null) return this.#scopedSearch(text, { limit, tables });
     const needle = String(text).toLowerCase().trim();
     if (!needle) return [];
     const results = [];
     if (this.state.meta.name.toLowerCase().includes(needle)) {
-      results.push({ kind: 'workspace', id: 'workspace', name: this.state.meta.name, url: prefix + '/', score: 8 });
+      results.push({ kind: 'workspace', id: 'workspace', name: this.state.meta.name, url: this.permalink('workspace'), score: 8 });
     }
     for (const sp of this.listSpaces()) {
       if (sp.name.toLowerCase().includes(needle)) {
-        results.push({ kind: 'space', id: sp.id, name: sp.name, url: `${prefix}/#/space/${sp.id}`, score: 9 });
+        results.push({ kind: 'space', id: sp.id, name: sp.name, url: this.permalink('space', sp.id), score: 9 });
       }
     }
     let tableCounts = null;
@@ -8444,27 +8455,27 @@ export class Weave {
         tableCounts ??= this.#liveRowCounts();
         results.push({
           kind: 'table', id: db.id, name: this.qualifiedName(db),
-          url: `${prefix}/#/table/${db.id}`, entityCount: tableCounts.get(db.id) ?? 0, score: 9,
+          url: this.permalink('table', db.id), entityCount: tableCounts.get(db.id) ?? 0, score: 9,
         });
       }
     }
     for (const v of this.listViews()) {
       if (v.name.toLowerCase().includes(needle)) {
-        results.push({ kind: 'view', id: v.id, name: v.name, url: `${prefix}/#/view/${v.id}`, score: 8 });
+        results.push({ kind: 'view', id: v.id, name: v.name, url: this.permalink('view', v.id), score: 8 });
       }
     }
     const rows = this.#searchHits(text)
       .filter(({ e }) => !REGISTRY_HITS.has(this.state.tables[e.dbId]?.system))
       .sort((a, b) => b.score - a.score).slice(0, limit);
     for (const { e, score, snippet } of rows) {
-      results.push({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
+      results.push({ kind: 'entity', url: this.permalink('entity', e.id), ...this.#summary(e.id), score, snippet });
     }
     return Weave.capRows(results, limit);
   }
 
-  #scopedSearch(text, { limit, prefix, tables }) {
+  #scopedSearch(text, { limit, tables }) {
     const ids = [...new Set((Array.isArray(tables) ? tables : [tables]).map((t) => this.getTable(t).id))];
-    const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
+    const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: this.permalink('entity', e.id), ...this.#summary(e.id), score, snippet });
     if (!String(text ?? '').trim()) {
       return ids.flatMap((id) => this.listEntities(id))
         .filter((e) => this.#liveEntity(e.id))
@@ -8871,7 +8882,7 @@ export class Weave {
     return this.listSpaces().map((sp) => ({
       space: sp.name,
       spaceId: sp.id,
-      url: `#/space/${sp.id}`,
+      url: this.permalink('space', sp.id),
       description: sp.description ?? '',
       ...(sp.system ? { system: sp.system } : {}),
       ...(sp.icon ? { icon: sp.icon } : {}),
@@ -8879,7 +8890,7 @@ export class Weave {
       tables: this.listTables(sp.id).map((db) => ({
         id: db.id,
         name: db.name,
-        url: `#/table/${db.id}`,
+        url: this.permalink('table', db.id),
         description: db.description ?? '',
         ...(db.system ? { system: db.system } : {}),
         ...(db.icon ? { icon: db.icon } : {}),
