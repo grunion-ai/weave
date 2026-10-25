@@ -93,7 +93,7 @@ const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
 const PASTED_ENTITY = /^\s*(?:(?:[a-z][a-z0-9+.-]*:\/\/[^/\s]+)?(?:\/w\/[^/\s]+)?\/e\/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]\S*)?\s*$/i;
-export const pastedEntityId = (ref) => PASTED_ENTITY.exec(String(ref ?? ''))?.[1].toLowerCase() ?? null;
+export const pastedEntityId = (ref) => PASTED_ENTITY.exec(String(ref ?? '').replace(/%2f/gi, '/'))?.[1].toLowerCase() ?? null;
 const byPosition = (list) => list.map((x, i) => [x, i])
   .sort(([a, i], [b, j]) => (Number.isInteger(a.position) ? a.position : Infinity) - (Number.isInteger(b.position) ? b.position : Infinity) || i - j)
   .map(([x]) => x);
