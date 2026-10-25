@@ -73,7 +73,7 @@
         try { win.sessionStorage.removeItem(storageKey); } catch {}
         send.textContent = 'Sent';
         form.classList.add('sent');
-        receipt.textContent = `Filed as ${data.table} #${data.publicId}.`;
+        receipt.textContent = data.table && data.publicId != null ? `Filed as ${data.table} #${data.publicId}.` : 'Your response was received.';
       } catch (err) {
         send.disabled = false;
         send.textContent = 'Send';

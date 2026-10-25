@@ -308,7 +308,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
     if (wsM && wsM[1] !== 'undefined') {
-      const target = hub.get(wsM[1]) ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
+      const target = hub.get(wsM[1]) ?? hub.entries().find(([, w]) => w.state.meta.id === wsM[1])?.[1] ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
       if (!target) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
       weave = target;
       wsPrefix = `/w/${wsM[1]}`;
@@ -647,14 +647,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (!share) return door.page ? notFound({ error: 'This share link is not (or no longer) valid', code: 'not-found' }) : deny(401, 'Invalid token');
       if (share.visibility === 'private' && !sessionOn(weave)) return door.page ? wallPage() : deny(401, 'This share link is private: sign in to open it');
       weave.actor = actor = `share:${share.label || share.id.slice(0, 8)}`.slice(0, 120);
-      if (door.page) {
-        const hit = sharePage(weave, share, door.rest, { method: rx.method, prefix: wsPrefix });
+      if (share.mode === 'submit') {
+        if (door.rest === '' || door.rest === '/') path = `/f/${share.formId}`;
+        else if (door.rest.startsWith('/api/')) path = door.rest;
+        else return notFound({ error: 'Not found', code: 'not-found' });
+        if (!((['GET', 'HEAD'].includes(rx.method) && path === `/f/${share.formId}`) || (rx.method === 'POST' && path === `/api/forms/${share.formId}/submit`))) return deny(403, 'A submission link only accepts its form');
+      } else if (door.page) {
+        const hit = sharePage(weave, share, door.rest, { method: rx.method, prefix: wsPrefix, searchParams: rx.searchParams });
         if (hit.redirect) return { status: 302, headers: { Location: hit.redirect, 'Cache-Control': 'no-store' }, body: '' };
         if (hit.html) return out(200, hit.html, sandboxedHtmlHeaders({ 'Cache-Control': 'no-store' }, HTML_PAGE_POLICY));
         if (hit.status === 405) return out(405, { error: 'A share page is read-only', code: 'method-not-allowed' }, { Allow: 'GET, HEAD' });
         if (!hit.path) return notFound({ error: 'Not found', code: 'not-found' });
         path = hit.path;
-      }
+      } else if (door.rest.startsWith('/api/')) path = door.rest;
     }
     if (share) role = null;
     else if (authz && /^Bearer /i.test(authz)) {
@@ -890,16 +895,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (err instanceof WeaveError && err.code === 'not-found' && weave.state.meta.requireAuth && role == null) return { form: null, admitted: false };
           throw err;
         }
+        if (share) return { form, admitted: share.mode === 'submit' && form.enabled && share.formId === form.id && form.shareOnly && form.owner === weave && share.scope.id === form.tableId };
         return { form, admitted: formAdmits(form, { role: roleOn(form.owner), anonymous: anonymousForms }) };
       };
       if ((m = path.match(/^\/f\/([^/]+)$/)) && ['GET', 'HEAD'].includes(rx.method)) {
         const { form, admitted } = formFor(m[1]);
         if (!admitted) return wall();
         formClient();
-        return out(200, renderFormPage(form, { mount: wsPrefix, searchParams: rx.searchParams }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        const formParams = new URLSearchParams(rx.searchParams);
+        if (share) formParams.delete('preview');
+        return out(200, renderFormPage(form, { mount: share ? `${wsPrefix}/s/${share.token}` : wsPrefix, ...(share && rx.searchParams.get('preview') === '1' ? { submitUrl: `${wsPrefix}/s/${share.token}/api/forms/${form.id}/submit?preview=1` } : {}), searchParams: formParams }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
 
       if ((m = path.match(/^\/api\/forms\/([^/]+)\/submit$/)) && rx.method === 'POST') {
+        if (share && rx.searchParams.get('preview') === '1') return deny(403, 'Preview does not submit entries');
         const { form, admitted } = formFor(m[1]);
         if (!admitted) return deny(401, 'Sign in to submit this form');
         const ip = clientIp(rx);
@@ -915,12 +924,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const input = form.kind === 'Row' && body && typeof body === 'object' && !Array.isArray(body) && !Object.hasOwn(body, 'values') ? { values: Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'idempotencyKey')) } : body;
         const result = submitForm(weave, form.id, input ?? {}, {
           actor,
+          ...(share ? { authorize: freshForm => {
+            const current = weave.shareByToken(door.token);
+            if (!current || current.mode !== 'submit' || current.formId !== freshForm.id || current.scope.id !== freshForm.tableId || !freshForm.shareOnly || freshForm.owner !== weave) throw new WeaveError('This submission link is no longer valid', 'forbidden');
+          } } : {}),
           server: { version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name },
           idempotencyKey,
-          scope: signedIn ? '' : idempotencyKey != null ? `key:${await digest(idempotencyKey)}` : `client:${client}`,
-          dedupScope: signedIn ? '' : `client:${client}`,
+          scope: `${share ? `share:${share.token}:` : ''}${signedIn ? '' : idempotencyKey != null ? `key:${await digest(idempotencyKey)}` : `client:${client}`}`,
+          dedupScope: `${share ? `share:${share.token}:` : ''}${signedIn ? '' : `client:${client}`}`,
         });
-        return out(result.replayed ? 200 : 201, result);
+        return out(result.replayed ? 200 : 201, share ? { submitted: true, ...(result.replayed ? { replayed: true } : {}), ...(result.duplicate ? { duplicate: true } : {}) } : result);
       }
 
       if (statusPage) {
@@ -1582,14 +1595,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const { token, url, ...grant } = share;
           return out(200, grant);
         }
+        const shareLink = grant => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` });
         if (path.startsWith('/api/shares') && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Share links are minted, listed, renewed and revoked by an architect');
-        if (route === 'GET /api/shares') return out(200, weave.listShares({ kind: rx.searchParams.get('kind'), id: rx.searchParams.get('id') }));
-        if (route === 'POST /api/shares') return out(201, weave.mintShare(body ?? {}));
+        if (route === 'GET /api/shares') return out(200, weave.listShares({ kind: rx.searchParams.get('kind'), id: rx.searchParams.get('id'), includeInactive: rx.searchParams.get('includeInactive') === '1' }).map(shareLink));
+        if (route === 'POST /api/shares') return out(201, shareLink(weave.mintShare(body ?? {})));
+        if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'PATCH') return out(200, shareLink(weave.updateShare(decodeURIComponent(m[1]), body ?? {})));
+        if ((m = path.match(/^\/api\/shares\/([^/]+)\/regenerate$/)) && rx.method === 'POST') return out(200, shareLink(weave.regenerateShare(decodeURIComponent(m[1]), body ?? {})));
         if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'DELETE') {
-          return out(200, weave.revokeShare(decodeURIComponent(m[1])));
+          return out(200, shareLink(weave.revokeShare(decodeURIComponent(m[1]))));
         }
         if ((m = path.match(/^\/api\/shares\/([^/]+)\/renew$/)) && rx.method === 'POST') {
-          return out(200, weave.renewShare(decodeURIComponent(m[1])));
+          return out(200, shareLink(weave.renewShare(decodeURIComponent(m[1]))));
         }
         if (route === 'GET /api/views') return out(200, weave.listViews({ trash: ['1', 'true'].includes(rx.searchParams.get('trash') ?? '') }));
         if (route === 'POST /api/views') return out(201, weave.createView(body ?? {}));

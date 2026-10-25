@@ -1,10 +1,11 @@
 import { randomBytes } from 'node:crypto';
+import { getForm } from './forms.js';
 import { uuid } from './ids.js';
 import { WeaveError } from './store.js';
-import { renderDocumentPage } from './markdown.js';
+import { renderDocumentPage, escapeHtml } from './markdown.js';
 
-export const SHARE_KINDS = ['entity', 'table', 'space', 'view', 'workspace'];
-export const SHARE_MODES = ['read', 'comment', 'edit', 'manage'];
+export const SHARE_KINDS = ['entity', 'entities', 'table', 'space', 'view', 'workspace'];
+export const SHARE_MODES = ['read', 'comment', 'edit', 'manage', 'submit'];
 export const SHARE_VISIBILITIES = ['public', 'private'];
 export const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RUNG = { read: 0, comment: 1, edit: 2, manage: 3 };
@@ -33,6 +34,11 @@ const gone = (what, ref) => new WeaveError(`${what} '${ref}' not found`, 'not-fo
 
 function resolveScope(weave, scope) {
   const kind = scope?.kind;
+  if (kind === 'entities') {
+    if (!Array.isArray(scope.ids) || !scope.ids.length || scope.ids.length > 1000) throw invalid('Select between 1 and 1000 entries');
+    const ids = [...new Set(scope.ids.map(id => resolveScope(weave, { kind: 'entity', id }).id))];
+    return { kind, ids };
+  }
   if (!SHARE_KINDS.includes(kind)) throw invalid(`A share's scope.kind is one of ${SHARE_KINDS.join(', ')}; got ${JSON.stringify(kind ?? null)}`);
   if (kind === 'workspace') return { kind, id: weave.state.meta.id };
   const ref = scope.id == null ? '' : String(scope.id);
@@ -59,6 +65,7 @@ function resolveScope(weave, scope) {
 
 function alive(weave, scope) {
   switch (scope?.kind) {
+    case 'entities': return scope.ids.some(id => !!liveEntity(weave, id));
     case 'entity': return !!liveEntity(weave, scope.id);
     case 'table': return !!liveTable(weave, scope.id);
     case 'space': return !!liveSpace(weave, scope.id);
@@ -73,6 +80,7 @@ const live = (weave, g) => !!g?.token && !g.revokedAt && !(g.expiresAt && Date.p
 export function scopeTitle(weave, scope) {
   try {
     switch (scope.kind) {
+      case 'entities': return `${scope.ids.length} selected entries`;
       case 'entity': {
         const e = weave.getEntity(scope.id);
         const db = weave.state.tables[e.dbId];
@@ -89,24 +97,44 @@ export function scopeTitle(weave, scope) {
   }
 }
 
-const publicGrant = (weave, g) => ({ ...g, createdBy: weave.actorName(g.createdBy ?? null), scope: { ...g.scope }, url: `/s/${g.token}`, title: scopeTitle(weave, g.scope) });
+const publicGrant = (weave, g) => ({ ...g, createdBy: weave.actorName(g.createdBy ?? null), scope: structuredClone(g.scope), url: `/s/${g.token}`, title: scopeTitle(weave, g.scope), status: g.revokedAt ? 'revoked' : live(weave, g) ? 'active' : 'expired' });
 
-export function mint(weave, { scope, mode = 'read', visibility = 'public', label = '', expiresAt = null } = {}) {
+function expiration(weave, opts = {}) {
+  const durations = { '1h': 3600000, '1d': 86400000, '7d': 604800000, '30d': SHARE_TTL_MS, '90d': 7776000000 };
+  if (opts.expiry === 'never') return null;
+  if (opts.expiry != null) {
+    if (!Object.hasOwn(durations, opts.expiry)) throw invalid('Choose a valid expiry');
+    return new Date(nowMs(weave) + durations[opts.expiry]).toISOString();
+  }
+  if (opts.expiresAt != null && opts.expiresAt !== '') {
+    const at = Date.parse(opts.expiresAt);
+    if (!Number.isFinite(at) || at <= nowMs(weave)) throw invalid('expiresAt must be a future date');
+    return new Date(at).toISOString();
+  }
+  return new Date(nowMs(weave) + SHARE_TTL_MS).toISOString();
+}
+
+export function mint(weave, opts = {}) {
+  const { scope, mode = 'read', visibility = 'public', label = '', formId, audience } = opts;
+  if (audience != null) throw invalid('Named audiences are not available in this beta');
   const target = resolveScope(weave, scope);
   if (!SHARE_MODES.includes(mode)) throw invalid(`A share's mode is one of ${SHARE_MODES.join(', ')}; got ${JSON.stringify(mode)}`);
   if (mode === 'comment') throw new WeaveError('Comment links wait for comments by share; mint read, edit or manage for now', 'forbidden');
   if (!SHARE_VISIBILITIES.includes(visibility)) throw invalid(`A share's visibility is public or private; got ${JSON.stringify(visibility)}`);
-  let expires = new Date(nowMs(weave) + SHARE_TTL_MS).toISOString();
-  if (expiresAt != null && expiresAt !== '') {
-    const at = Date.parse(expiresAt);
-    if (Number.isNaN(at) || at <= nowMs(weave)) throw invalid(`expiresAt is a date in the future; got ${JSON.stringify(expiresAt)}`);
-    expires = new Date(at).toISOString();
+  const expires = expiration(weave, opts);
+  let submissionFormId;
+  if (mode === 'submit') {
+    const form = getForm(weave, formId);
+    if (target.kind !== 'table' || form.kind !== 'Row' || form.tableId !== target.id || form.owner !== weave || !form.shareOnly) throw invalid('Submission links require a share-only row form on the shared table');
+    submissionFormId = form.id;
   }
   const grant = {
     id: uuid(),
     token: 'wvs_' + randomBytes(24).toString('base64url'),
     scope: target,
     mode,
+    ...(mode === 'submit' ? { formId: submissionFormId } : {}),
+    expiryVersion: 1,
     visibility,
     label: String(label ?? '').trim().slice(0, 120),
     createdBy: weave.actor ?? null,
@@ -118,9 +146,9 @@ export function mint(weave, { scope, mode = 'read', visibility = 'public', label
   return publicGrant(weave, grant);
 }
 
-export function list(weave, { kind = null, id = null } = {}) {
+export function list(weave, { kind = null, id = null, includeInactive = false } = {}) {
   return Object.values(weave.state.meta.shares ?? {})
-    .filter((g) => live(weave, g) && (!kind || g.scope.kind === kind) && (!id || g.scope.id === id))
+    .filter((g) => (includeInactive || live(weave, g)) && (!kind || g.scope.kind === kind) && (!id || g.scope.id === id))
     .map((g) => publicGrant(weave, g));
 }
 
@@ -146,10 +174,30 @@ export function renew(weave, id) {
   return publicGrant(weave, g);
 }
 
+export function update(weave, id, patch = {}) {
+  const g = own(weave.state.meta.shares, id);
+  if (!g || g.revokedAt) throw gone('Share', id);
+  if (Object.keys(patch).some(key => !['label', 'expiry', 'expiresAt'].includes(key))) throw invalid('Edit only the label or expiration; create a new link to change access');
+  const next = { ...g };
+  if ('expiry' in patch || 'expiresAt' in patch) next.expiresAt = expiration(weave, patch);
+  if ('label' in patch) next.label = String(patch.label ?? '').trim().slice(0, 120);
+  next.expiryVersion = 1;
+  Object.assign(g, next);
+  return publicGrant(weave, g);
+}
+
+export function regenerate(weave, id, patch = {}) {
+  const g = update(weave, id, patch);
+  const saved = weave.state.meta.shares[g.id];
+  saved.token = 'wvs_' + randomBytes(24).toString('base64url');
+  saved.regeneratedAt = new Date(nowMs(weave)).toISOString();
+  return publicGrant(weave, saved);
+}
+
 export function expireLegacy(state, now = Date.now()) {
   let changed = false;
   for (const g of Object.values(state.meta?.shares ?? {})) {
-    if (g.expiresAt != null) continue;
+    if (g.expiresAt != null || g.expiryVersion === 1) continue;
     g.expiresAt = new Date(now + SHARE_TTL_MS).toISOString();
     changed = true;
   }
@@ -214,6 +262,7 @@ export function withinScope(weave, grant, { spaceId = null, tableId = null, enti
     case 'workspace': return scope.id === weave.state.meta.id;
     case 'space': return !!sp && sp.id === scope.id;
     case 'table': return !!db && db.id === scope.id;
+    case 'entities': return !!e && scope.ids.includes(e.id);
     case 'entity': return !!e && e.id === scope.id;
     case 'view': {
       if (viewId != null) return viewId === scope.id && !db;
@@ -230,6 +279,7 @@ export function withinScope(weave, grant, { spaceId = null, tableId = null, enti
 
 function inScopeOf(weave, grant, db) {
   const { kind, id } = grant.scope;
+  if (kind === 'entities') return eid => grant.scope.ids.includes(eid) && !!liveEntity(weave, eid);
   if (kind === 'entity') return (eid) => eid === id && !!liveEntity(weave, eid);
   if (!withinScope(weave, grant, { tableId: db.id })) return () => false;
   const blocks = kind === 'view' ? (own(views(weave), id)?.blocks ?? []).filter((b) => b.dbId === db.id) : [];
@@ -239,11 +289,12 @@ function inScopeOf(weave, grant, db) {
 }
 
 const touches = (weave, grant, db) => withinScope(weave, grant, { tableId: db.id })
+  || (grant.scope.kind === 'entities' && grant.scope.ids.some(id => liveEntity(weave, id)?.dbId === db.id))
   || (grant.scope.kind === 'entity' && liveEntity(weave, grant.scope.id)?.dbId === db.id);
 
 export function shareDoor(path, authz) {
   const m = path.match(/^\/s\/(wv[sv]_[A-Za-z0-9_-]+)(\/.*)?$/);
-  if (m) return { token: m[1], rest: m[2] ?? '', page: true };
+  if (m) return { token: m[1], rest: m[2] ?? '', page: !(m[2] ?? '').startsWith('/api/') };
   if (authz && /^Bearer\s+wvs_/i.test(authz)) {
     return { token: authz.replace(/^Bearer\s+/i, '').trim(), rest: path, page: !path.startsWith('/api/') };
   }
@@ -256,6 +307,7 @@ const missing = () => refuse(404, 'Not found');
 const OUTSIDE = 'A share link reaches the rows, documents and files in its scope, nothing else';
 
 export function shareGate(weave, grant, { method, path, body = {}, searchParams = null, viewerZone = null }) {
+  if (grant.mode === 'submit') return refuse(403, 'A submission link only accepts its form');
   const rung = RUNG[grant.mode] ?? 0;
   const read = method === 'GET' || method === 'HEAD';
   const decode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
@@ -295,10 +347,14 @@ export function shareGate(weave, grant, { method, path, body = {}, searchParams 
         offset: Number(searchParams?.get('offset') ?? 0),
         viewerZone,
       };
-    const res = weave.query(db.id, opts);
+    const narrowed = ['entity', 'entities', 'view'].includes(grant.scope.kind);
+    if (narrowed && (opts.groupBy || opts.select)) return refuse(403, 'A selected-entry share does not expose grouped counts or projections');
+    const res = weave.query(db.id, narrowed ? { ...opts, relations: 'full', countAll: false, trashCount: false, limit: null, offset: 0 } : opts);
     const inScope = inScopeOf(weave, grant, db);
-    const items = (res.items ?? []).filter((x) => inScope(x.id));
-    return answer(200, { ...res, items, total: items.length === (res.items ?? []).length ? res.total : items.length });
+    const matched = (res.items ?? []).filter((x) => inScope(x.id));
+    const offset = narrowed ? Math.max(0, Number(opts.offset) || 0) : 0;
+    const items = narrowed ? matched.slice(offset, opts.limit == null ? undefined : offset + Math.max(0, Number(opts.limit) || 0)) : matched;
+    return answer(200, narrowed ? { items, total: matched.length } : { ...res, items });
   }
   if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && read) {
     const owner = Object.values(weave.state.entities).find((e) => (e.files ?? []).some((f) => f.id === m[1]));
@@ -329,8 +385,8 @@ const cellText = (v) => {
 };
 const md = (s) => String(s).replace(/\|/g, '¦').replace(/[[\]]/g, (c) => (c === '[' ? '(' : ')')).replace(/\r?\n/g, ' ');
 
-function rowsTable(weave, db, items, base) {
-  const cols = db.fieldOrder.map((id) => db.fields[id]).filter((f) => f && f.type !== 'document' && f.type !== 'view');
+function rowsTable(weave, db, items, base, fieldIds = db.fieldOrder) {
+  const cols = fieldIds.map((id) => db.fields[id]).filter((f) => f && f.type !== 'document' && f.type !== 'view');
   if (!items.length) return '_No rows._';
   const lines = [`| ${cols.map((f) => md(f.name)).join(' | ')} |`, `|${cols.map(() => '---').join('|')}|`];
   for (const item of items) {
@@ -365,10 +421,14 @@ const filterWhere = (weave, db, filters) => Object.entries(filters ?? {}).flatMa
   return [[f.name, 'in', states]];
 });
 
-export function sharePage(weave, grant, rest, { method, prefix = '' }) {
+export function sharePage(weave, grant, rest, { method, prefix = '', searchParams = new URLSearchParams() }) {
   if (method !== 'GET' && method !== 'HEAD') return { status: 405 };
   const base = `${prefix}/s/${grant.token}`;
   const { kind, id } = grant.scope;
+  if (kind === 'entities' && (rest === '' || rest === '/')) {
+    const tables = weave.listTables().filter(db => touches(weave, grant, db));
+    return { html: page('Shared entries', `${grant.scope.ids.length} selected entries`, tables.map(db => rowsTable(weave, db, rowsIn(weave, grant, db), base)).join('\n\n')) };
+  }
   if (rest === '' || rest === '/') {
     const to = { entity: `/e/${id}/entity.html`, table: `/table/${id}`, space: `/space/${id}`, view: `/view/${id}`, workspace: '/workspace' }[kind];
     return { redirect: base + to };
@@ -382,10 +442,14 @@ export function sharePage(weave, grant, rest, { method, prefix = '' }) {
   if ((m = rest.match(/^\/table\/([^/]+)$/))) {
     const db = liveTable(weave, m[1]);
     if (!db || !withinScope(weave, grant, { tableId: db.id })) return { status: 404 };
-    const v = defaultViewOf(db);
-    const items = rowsIn(weave, grant, db, filterWhere(weave, db, v?.filters), { sort: v?.sort, search: v?.search });
+    const v = (db.tableViews ?? []).find(view => view.id === searchParams.get('view')) ?? defaultViewOf(db);
+    const direction = searchParams.get('sort');
+    const sort = ['asc', 'desc'].includes(direction) ? [{ field: db.fields[db.nameFieldId].name, dir: direction }] : v?.sort;
+    const search = searchParams.has('search') ? searchParams.get('search').slice(0, 500) : v?.search;
+    const items = rowsIn(weave, grant, db, filterWhere(weave, db, v?.filters), { sort, search });
     const space = weave.state.spaces[db.spaceId]?.name;
-    return { html: page(db.name, `${space} • ${count(items.length, 'row')}`, rowsTable(weave, db, items, base)) };
+    const controls = `<section aria-label="Temporary view controls"><label>Saved view <select id="shared-view">${(db.tableViews ?? []).map(view => `<option value="${escapeHtml(view.id)}"${view.id === v?.id ? ' selected' : ''}>${escapeHtml(view.name)}</option>`).join('')}</select></label> <label>Search <input id="shared-search" type="search" maxlength="500" value="${escapeHtml(search ?? '')}"></label> <label>Sort <select id="shared-sort"><option value="">Saved sort</option><option value="asc"${direction === 'asc' ? ' selected' : ''}>Name A–Z</option><option value="desc"${direction === 'desc' ? ' selected' : ''}>Name Z–A</option></select></label> <button id="shared-apply" type="button">Apply</button> <button id="shared-reset" type="button">Reset</button><p>Search and sort are temporary. Changes are never saved.</p></section><script>const go=(reset,view)=>{const u=new URL(location.href);u.search='';if(view)u.searchParams.set('view',view);if(!reset){u.searchParams.set('search',document.getElementById('shared-search').value);u.searchParams.set('sort',document.getElementById('shared-sort').value)}location.assign(u.href)};document.getElementById('shared-view').onchange=e=>go(true,e.target.value);document.getElementById('shared-apply').onclick=()=>go(false,document.getElementById('shared-view').value);document.getElementById('shared-reset').onclick=()=>go(true,document.getElementById('shared-view').value);document.getElementById('shared-search').onkeydown=e=>{if(e.key==='Enter')document.getElementById('shared-apply').click()};</script>`;
+    return { html: page(db.name, `${space} • ${count(items.length, 'row')}`, rowsTable(weave, db, items, base, v?.fields ?? db.fieldOrder)).replace('<body>', `<body>${controls}`) };
   }
   if ((m = rest.match(/^\/space\/([^/]+)$/))) {
     const sp = liveSpace(weave, m[1]);

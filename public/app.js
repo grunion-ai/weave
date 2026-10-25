@@ -5108,6 +5108,7 @@ function paneBody(db, key) {
 const paneEl = () => $('#view-pane');
 const paneWanted = () => viewPane.open && !dockCoversScreen.matches && state.route?.page === 'db';
 function setPaneOpen(on, { focus = true } = {}) {
+  if (on) closeSharePanel?.();
   viewPane.open = on;
   writePref(PANE_KEY, on ? 'open' : '');
   const drawn = $('#main')?.wvDraw;
@@ -5200,6 +5201,24 @@ function renderViewPane(pane, db, { force = false } = {}) {
   else if (focusKey) pane.querySelector(`[data-vp-key="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
 }
 
+let closeSharePanel = null;
+function sharePanelButton(context) {
+  if (!state.canManageForms) return null;
+  const button = el('button', { class: 'btn btn-sm btn-icon table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('share'));
+  button.addEventListener('click', () => {
+    if (closeSharePanel) { closeSharePanel(); return; }
+    setPaneOpen(false, { focus: false });
+    button.setAttribute('aria-expanded', 'true');
+    const close = () => { dispose(); closeSharePanel = null; button.setAttribute('aria-expanded', 'false'); button.focus({ preventScroll: true }); };
+    const dispose = WeaveSharePanel.mount($('#share-pane'), context(), {
+      el, icon: lucideEl, api, copy: copyText, notify: toast, close,
+      confirm: async (title, detail) => window.confirm(`${title}\n\n${detail}`),
+    });
+    closeSharePanel = close;
+  });
+  return button;
+}
+
 const tableChromeSig = (db) => JSON.stringify([db.name, db.icon, db.description, db.space, db.spaceId, db.term?.singular, db.term?.plural]);
 function tableChromeOn(dbId) {
   const main = $('#main');
@@ -5257,6 +5276,7 @@ function tableChrome(db, trashCount) {
     actions: [
       search,
       viewBtn,
+      sharePanelButton(() => ({ kind: 'table', id: ref.db.id, name: ref.db.name, spaceId: ref.db.spaceId, entityIds: [...document.querySelectorAll('#main [data-eid]')].map(node => node.dataset.eid), selected: state.selected.get(ref.db.id), fields: ref.db.fields.filter(f => ['text', 'number', 'checkbox', 'toggle', 'date', 'select', 'multiselect', 'workflow', 'email', 'url', 'document'].includes(f.type)).map(f => f.id) })),
       densityBtn,
       (() => {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
@@ -8622,7 +8642,7 @@ async function showSpace(spaceId) {
         await loadSchema();
       },
       actions: space.system ? [systemSpaceNote()] : [
-        el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('space', spaceId, space.space) }, 'Share…'),
+        sharePanelButton(() => ({ kind: 'space', id: spaceId, name: space.space, tableIds: space.tables.map(table => table.id) })),
         ...(space.template ? [useTemplateButton(space)] : []),
         kindDots('space', space, () => ({}), { title: 'Space actions' }),
       ],
@@ -11154,6 +11174,7 @@ async function showHome() {
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
       lead: wsLogoButton(here, !!ws.logo),
       actions: [
+        sharePanelButton(() => ({ kind: 'workspace', id: ws.id, name: ws.title ?? ws.name })),
         here.invite ? el('button', { class: 'btn btn-sm wv-invite-btn', type: 'button', onclick: () => inviteDialog() }, 'Invite') : null,
         kindDots('workspace', here, wsCtx, { title: 'Workspace actions' }),
       ],
@@ -11748,6 +11769,7 @@ function rememberRoute() {
 }
 
 function dispatchRoute() {
+  closeSharePanel?.();
   teardownDocEditors();
   dockClose();
   for (const pop of document.querySelectorAll('.chip-pop, .picker-pop')) {

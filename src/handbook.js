@@ -989,11 +989,20 @@ On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by defa
 
 ## Share links
 
-A share link opens one row, table, space, saved view or the whole workspace to whoever holds it, and nothing beside it. **Share…** sits in a row's **⋮** menu and the table menu, and as a button on a space's page and a saved view's page. The dialog picks the access, whether the link needs a signed-in account, and a label, then copies the new link. Under the form it lists the links already made there, each with **Copy** and **Revoke**.
+The **Share** up-arrow in the toolbar opens a docked **Beta** panel beside your table. **Existing access** lists links with preview, copy, edit and delete icons. **Add link** creates a public read link, or a submission link on a table. Selected entries fix the read scope to those entries; with nothing selected, the whole current table, space or workspace is shared. Filters hide rows in a view but do not narrow table access. Every field in the shared scope is readable.
+
+**Expires** offers one hour, one day, seven days, thirty days, ninety days, a custom future date, or **Never**. Editing expiration keeps the address. **Regenerate link** preserves the grant and replaces its credential; the previous address stops working immediately. **Delete link** revokes it. Expired and deleted links remain visible for review. Dedicated HTTP links use the workspace UUID and an opaque token, with no username in the path; renaming a workspace or link does not change access.
+
+**Submit a new entry** makes a form from the table's supported writable fields. Anyone with its live link can submit without signing in. The link cannot read existing entries, change them or delete them. Preview shows the same form with submission disabled. Repeated delivery of the same submission is deduplicated; expiry, deletion and regeneration are checked again before a write, including retries. The form's ordinary id-based address cannot bypass the share link.
+
+Recipients can select a saved table view and temporarily change search and name sort. Reset restores the saved settings. These controls never save view changes; this beta renders saved views as tables.
+
+Email and domain restrictions, automatic observer membership, and comments by public link are deferred in this beta. Existing private links still require an existing signed-in workspace member. Legacy edit and manage grants remain available through the API, CLI and MCP.
 
 | Access | What the link can do |
 | --- | --- |
 | Read | open the pages under the link, and read the rows in scope through the API |
+| Submit | create through the configured form without reading existing rows |
 | Comment | reserved: shown but not offered until comments by share link are built |
 | Edit rows | read, and change the values and documents of rows in scope |
 | Add and delete rows | edit, add rows to a table in scope, and move rows in scope to the trash |
@@ -1007,9 +1016,11 @@ weave share revoke <share id>
 curl -H "Authorization: Bearer wvs_…" https://<host>/api/share
 \`\`\`
 
-\`GET /api/share\` answers what the token reaches. A row or table outside the scope answers 404, and a route no link reaches answers 403. **Signed-in members only** makes the link private: it opens only in a browser signed in to the workspace. An architect makes, lists, renews and revokes links; a link passes the wall, so minting one is a publishing decision, and editors and observers do none of it. A link lasts thirty days unless an architect renews it for thirty more on the same token (\`weave share renew <id>\`, \`weave_shares\` renew, \`POST /api/shares/<id>/renew\`), or names its own expiry when minting. Every mint, renew and revoke lands in the audit log with its actor (\`weave_shares\` over MCP, \`POST\`/\`GET\`/\`DELETE /api/shares\` over HTTP).
+\`GET /api/share\` answers what the token reaches. A row or table outside the scope answers 404, and a route no link reaches answers 403. **Signed-in members only** makes the link private: it opens only in a browser signed in to the workspace. An architect makes, lists, renews and revokes links; a link passes the wall, so minting one is a publishing decision, and editors and observers do none of it. An API or CLI link defaults to thirty days unless an architect chooses an expiration preset or renews it for thirty more on the same token (\`weave share renew <id>\`, \`weave_shares\` renew, \`POST /api/shares/<id>/renew\`), or names its own expiry when minting. Every mint, renew and revoke lands in the audit log with its actor (\`weave_shares\` over MCP, \`POST\`/\`GET\`/\`DELETE /api/shares\` over HTTP).
 
-The token is stored with the grant so the dialog can show the link again, and \`weave export\` leaves it out: an imported grant opens nothing until someone mints a new link. Revoking is how a link ends. A saved view shared before share links existed keeps its old address: \`/view/<token>\` redirects to \`/s/<token>\`.
+The CLI also accepts \`share update <id> --expiry 7d\` and \`share regenerate <id> --expiry never\`. MCP \`weave_shares\` exposes the same \`update\` and \`regenerate\` actions. REST uses \`PATCH /api/shares/<id>\` and \`POST /api/shares/<id>/regenerate\`; \`GET /api/shares?includeInactive=1\` includes expired and revoked grants. Labels and expiration can change; a grant's scope and purpose stay fixed.
+
+The token is stored with the grant so the panel can show the link again, and \`weave export\` leaves it out: an imported grant opens nothing until someone mints a new link. Revoking is how a link ends. A saved view shared before share links existed keeps its old address: \`/view/<token>\` redirects to \`/s/<token>\`.
 
 ## The home page and a space page
 
