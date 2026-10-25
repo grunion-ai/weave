@@ -134,6 +134,29 @@ test('soak: dev moving to a newer main commit mid-soak is superseded, not a fail
   assert.equal(outcome.state, 'superseded');
 });
 
+test('soak: a commit that held dev for the whole window with a passing watch succeeds when dev then moves', async () => {
+  const clock = fakeClock();
+  const t0 = clock.at();
+  const io = fakeIO({
+    head: NEWER,
+    healthAt: () => ({ status: 200, body: clock.at() - t0 >= DEFAULTS.soakMs ? health({ commit: NEWER }) : health({ ok: true }) }),
+  });
+  const outcome = await soak({ sha: SHA, io, clock });
+  assert.equal(outcome.state, 'success');
+  assert.ok(clock.at() - t0 >= DEFAULTS.soakMs);
+});
+
+test('soak: a passing watch cut short before the window has elapsed is still superseded', async () => {
+  const clock = fakeClock();
+  const t0 = clock.at();
+  const io = fakeIO({
+    head: NEWER,
+    healthAt: () => ({ status: 200, body: clock.at() - t0 >= 5 * MIN ? health({ commit: NEWER }) : health({ ok: true }) }),
+  });
+  const outcome = await soak({ sha: SHA, io, clock });
+  assert.equal(outcome.state, 'superseded');
+});
+
 test('soak: dev serving another commit while main still names ours is a failure', async () => {
   const io = fakeIO({ head: SHA, healthAt: () => ({ status: 200, body: health({ commit: NEWER }) }) });
   const outcome = await soak({ sha: SHA, io, clock: fakeClock() });
@@ -165,10 +188,14 @@ test('report: failure posts failure with the run link and alerts', async () => {
   assert.match(io.calls.alerts[0], /aaaaaaaaaa failed: worker restarted .*actions\/runs\/7/);
 });
 
-test('report: superseded posts nothing, so the newer commit owns the status', async () => {
+test('report: superseded posts its own pending status, told apart from a pass, and never alerts', async () => {
   const io = fakeIO({ healthAt: () => null });
-  assert.equal(await report({ sha: SHA, outcome: { state: 'superseded', reason: 'main moved' }, io }), null);
-  assert.equal(io.calls.statuses.length, 0);
+  const status = await report({ sha: SHA, outcome: { state: 'superseded', reason: 'main moved to bbbbbbbbbb; dev serves bbbbbbbbbb, not aaaaaaaaaa' }, io });
+  assert.equal(status.state, 'pending');
+  assert.equal(io.calls.statuses.length, 1);
+  assert.equal(io.calls.statuses[0].context, CONTEXT);
+  assert.equal(io.calls.statuses[0].target_url, io.runUrl);
+  assert.match(io.calls.statuses[0].description, /^superseded: main moved to bbbbbbbbbb/);
   assert.equal(io.calls.alerts.length, 0);
 });
 
