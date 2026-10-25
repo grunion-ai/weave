@@ -122,7 +122,7 @@ function touch(weave) {
   const rows = [];
   for (let i = 0; i < 8; i++) {
     rows.push(weave.createEntity(issues, {
-      name: `Issue ${i}: a phone row name long enough to wrap`,
+      name: i === 1 ? `Issue ${i}` : `Issue ${i}: a phone row name long enough to wrap`,
       values: { Status: 'Open', Severity: 'High', Symptom: ['Looks broken', 'Slow'], Notes: 'a note' },
     }));
   }
@@ -535,8 +535,8 @@ const TOUCH_STATES = [
 ].map((s) => ({ ...s, cells: PHONE, seeds: TOUCH }));
 
 const SHARED_STATES = [
-  { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { cutoff: [1123, 1124, 1125, 1126, 1127], touch: [1128] } },
-  { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127], touch: [1130, 1131, 1132, 1133, 1134] } },
+  { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { cutoff: [1123, 1124, 1125, 1126, 1127] } },
+  { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127] } },
 ];
 
 export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...A11Y_STATES, ...TOUCH_STATES, ...SHARED_STATES];
