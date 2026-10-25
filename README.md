@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/demo.gif" alt="An agent runs weave build to create a Launch workspace from a spec, the Task table fills with six rows, a row opens with its document beside the table, then an MCP weave_query call returns the two tasks in progress" width="900">
+</p>
+
+<p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Node &gt;= 22.16" src="https://img.shields.io/badge/node-%E2%89%A5%2022.16-3c873a.svg">
   <img alt="Runtime dependencies: 0" src="https://img.shields.io/badge/runtime%20dependencies-0-brightgreen.svg">
