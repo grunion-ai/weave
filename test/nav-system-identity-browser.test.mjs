@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch } from './lib/browser.mjs';
+import { launch, styleOf } from './lib/browser.mjs';
 
 let uno, ada, unoAda, wfId, usersId;
 const s = await launch('nav system space and identity panel', (root) => {
@@ -42,6 +42,7 @@ if (s) {
     test(`System lives in the workspace rail while expanded, hidden and peeking (${theme})`, async () => {
       const { ctx, page } = await open('/', { theme });
       assert.equal(await page.locator('#sidebar .nav-system').count(), 0);
+      assert.equal(await styleOf(page.locator('#ws-rail .nav-system'), 'border-top-style', 'solid'), 'solid', 'a divider separates System controls from workspaces');
       const routes = page.locator('#ws-rail .nav-system a');
       assert.deepEqual(await routes.evaluateAll((as) => as.map((a) => [a.getAttribute('aria-label'), a.getAttribute('href')])), [
         ['Workflows', `#/table/${wfId}`], ['Users', `#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash'],
@@ -89,6 +90,10 @@ if (s) {
   test('the identity panel shows the name and the role in this workspace, and the role follows a workspace switch', async () => {
     const { ctx, page } = await open();
     const panel = page.locator('#sidebar .nav-identity');
+    const foot = await page.locator('#sidebar .nav-pinned').innerText();
+    assert.doesNotMatch(foot, /\d/, `no counts, rows, uptime or version in the foot: ${JSON.stringify(foot)}`);
+    assert.equal(await page.locator('#sidebar .nav-stats, #sidebar .nav-stats-line').count(), 0);
+    assert.equal(await page.locator('#sidebar .nav-health:not([hidden])').count(), 0, 'no version chip on a healthy instance');
     await panel.locator('.nav-account[data-state="signed-in"]').waitFor({ state: 'attached' });
     assert.equal((await panel.locator('.nav-account-name').innerText()).trim(), 'Ada Lovelace');
     assert.equal((await panel.locator('.nav-account-av').innerText()).trim(), 'AL');
