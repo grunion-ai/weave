@@ -153,6 +153,13 @@ export const HTML_VIEW_POLICY = "sandbox allow-scripts allow-popups allow-popups
 export const HTML_PAGE_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; frame-src 'self'";
 export const sandboxedHtmlHeaders = (extra = {}, policy = HTML_VIEW_POLICY) => ({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': policy, ...extra });
 const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
+export const isHtmlFile = (meta) => HTML_FILE_TYPES.has(String(meta?.mime ?? '').split(';')[0].trim().toLowerCase());
+export const FRAME_HEIGHT_SCRIPT = "<script>(() => { if (parent === window) return; let sent = -1, gap = -1; const send = () => { const h = Math.ceil(Math.max(document.documentElement.getBoundingClientRect().height, document.body ? document.body.scrollHeight : 0)); if (h === sent) return; const over = h - innerHeight; if (over > 0 && sent === innerHeight && over === gap) return; gap = over; sent = h; parent.postMessage({ weave: 'frame-height', height: h }, '*'); }; new ResizeObserver(send).observe(document.documentElement); addEventListener('load', send); })();</script>";
+const LEADING_DOCTYPE = /^(?:\xEF\xBB\xBF)?\s*<!doctype[^>]*>/i;
+export function viewHtml(bytes, head = FRAME_HEIGHT_SCRIPT) {
+  const at = bytes.toString('latin1', 0, 4096).match(LEADING_DOCTYPE)?.[0].length ?? 0;
+  return Buffer.concat([bytes.subarray(0, at), Buffer.from(head), bytes.subarray(at)]);
+}
 export function fileHeaders(meta, bytes, { view = false } = {}) {
   const claimed = String(meta.mime ?? '').split(';')[0].trim().toLowerCase();
   const image = claimed.startsWith('image/') ? sniffImage(bytes) : null;
