@@ -217,6 +217,7 @@ Views & automations
   view create <name> --blocks '[{"table":"Task","where":[["Status","=","Open"]]}]'
   automation list [<table>] | describe [<table>] | delete <id>
   automation create <table> --name N --trigger '{json}' --actions '[json]'
+                                      trigger {"type":"schedule","cron":"0 9 * * 1-5","zone":"UTC","where":[...]} fires on the clock
   automation update <id> --patch '{json}'
 
 The workspace itself
