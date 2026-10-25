@@ -2,11 +2,7 @@
 
 The weave badge, posters and patterns for the website, email, social, decks, print and merch. Every file here is generated from the canonical mark in [`../assets`](../assets) and [`../../public/brand`](../../public/brand), so the mark is never redrawn by hand.
 
-**Agents: start with [`manifest.json`](manifest.json).** It lists every asset with its code, SVG and PNG paths, size, PNG `scale`, the ground it is drawn for and where it goes. Pick by `family` (`lockup`, `badge`, `poster`, `pattern`, `icon`) and `use`, then take the `svg` for web and print or the `png` for email and social uploads.
-
-**People: open [`index.html`](index.html).** The kit page shows every asset on the ground it is drawn for, with its code, size, PNG pixel size, uses and links to both files, plus the recipes, palette and rules below. `build-kit.mjs` writes it beside `manifest.json`, so it never drifts from the files.
-
-Every PNG is at least 2× its stated size: the icon renders at 4×, lockups at 3×, badges, posters and patterns at 2×. `manifest.json` states each asset's `scale`.
+**Agents: start with [`manifest.json`](manifest.json).** It lists every asset with its code, SVG and PNG paths, pixel size, the ground it is drawn for and where it goes. Pick by `family` (`lockup`, `badge`, `poster`, `pattern`, `icon`) and `use`, then take the `svg` for web and print or the `png` for email and social uploads.
 
 ## The badge
 
@@ -20,8 +16,7 @@ A sawtooth seal drawn after Peters Design Company, with the weave mark at the ce
 | Sign-in, splash or square cover | `lockup-stacked-light` or `-dark` (L3, L4) | Fits a square or a narrow column |
 | Website hero or section background | `pattern-contour-light` or `-dark` (M1) as a full-bleed SVG, `badge-blue` (B1) on top | Vector, scales to any width |
 | Link preview (`og:image`) | `png/poster-og-contour.png` (X6) or `png/poster-og.png` (X1) | Link unfurlers need a 1200 × 630 raster |
-| Repository social preview | `png/poster-github.png` (X8) | GitHub wants 1280 × 640 and shows it at 2× on retina |
-| Email header or signature | `png/badge-lockup-light.png` (B14) at 330 px wide, or `png/badge-small.png` (B12) at 48 px | Gmail strips SVG; every PNG is 2× or more for retina |
+| Email header or signature | `png/badge-lockup-light.png` (B14) at 330 px wide, or `png/badge-small.png` (B12) at 48 px | Gmail strips SVG; PNGs are 2× for retina |
 | Dark email or dark site section | `badge-cream` (B6) or `badge-lockup-dark` (B15) | Blue sinks on ink |
 | Square social post | `png/poster-contour-square.png` (X6d) or `png/poster-square.png` (X4) | 1080 × 1080 |
 | Profile banner | `png/poster-contour-banner.png` (X6e) or `png/poster-banner.png` (X5) | 1584 × 396 |
@@ -45,12 +40,12 @@ A sawtooth seal drawn after Peters Design Company, with the weave mark at the ce
 ## Changing the kit
 
 ```
-node brand/kit/build-kit.mjs          # SVGs, manifest.json and index.html
-node brand/kit/render-kit-png.mjs     # PNGs through Playwright Chromium, Outfit loaded, at each asset's scale
+node brand/kit/build-kit.mjs          # SVGs and manifest.json
+node brand/kit/render-kit-png.mjs     # PNGs through Playwright Chromium, Outfit loaded
 npm test -- --targeted test/brand-kit.test.mjs
 ```
 
-To change the badge words, edit `labels.json` and run both scripts. To add an asset, add it in `build-kit.mjs` and give it a `guide.json` entry; the test refuses an asset with no ground or use, refuses a PNG that is not at its manifest scale or is under 2×, and refuses committed files that drift from a fresh build. The page's section ledes live in `page.mjs`; its recipes and rules are read from this file.
+To change the badge words, edit `labels.json` and run both scripts. To add an asset, add it in `build-kit.mjs` and give it a `guide.json` entry; the test refuses an asset with no ground or use, and refuses committed files that drift from a fresh build.
 
 ## Assets
 
@@ -97,7 +92,6 @@ Lockup PNGs are 3×. The lockups come from `../build-logos.mjs` (`lockupLayout()
 | X4 | <img src="svg/poster-square.svg" width="120" alt="Square post, blue"> | [`poster-square`](svg/poster-square.svg) · [png](png/poster-square.png) | 1080 × 1080 | self-contained | Instagram and LinkedIn square posts |
 | X5 | <img src="svg/poster-banner.svg" width="120" alt="Profile banner, ink"> | [`poster-banner`](svg/poster-banner.svg) · [png](png/poster-banner.png) | 1584 × 396 | self-contained | LinkedIn and X profile headers |
 | X6 | <img src="svg/poster-og-contour.svg" width="120" alt="Link preview, contour field"> | [`poster-og-contour`](svg/poster-og-contour.svg) · [png](png/poster-og-contour.png) | 1200 × 630 | self-contained | primary link preview with the contour field; launch announcements |
-| X8 | <img src="svg/poster-github.svg" width="120" alt="GitHub social preview, contour field"> | [`poster-github`](svg/poster-github.svg) · [png](png/poster-github.png) | 1280 × 640 | self-contained | GitHub social preview for grunion-ai/weave; docs site og:image |
 | X6a | <img src="svg/poster-contour-light.svg" width="120" alt="X6, light"> | [`poster-contour-light`](svg/poster-contour-light.svg) · [png](png/poster-contour-light.png) | 1200 × 630 | self-contained | link preview, light; blog post header |
 | X6b | <img src="svg/poster-contour-blue.svg" width="120" alt="X6, brand blue"> | [`poster-contour-blue`](svg/poster-contour-blue.svg) · [png](png/poster-contour-blue.png) | 1200 × 630 | self-contained | link preview, brand blue; event pages |
 | X6c | <img src="svg/poster-contour-topo.svg" width="120" alt="X6, topography"> | [`poster-contour-topo`](svg/poster-contour-topo.svg) · [png](png/poster-contour-topo.png) | 1200 × 630 | self-contained | link preview, topographic field; changelog posts |

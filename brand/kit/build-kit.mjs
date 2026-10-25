@@ -1,7 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { kitPage } from './page.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const outArg = process.argv.indexOf('--out');
@@ -286,7 +285,7 @@ add('icon-product', 'Icon', 'Product and engineering', 48, 48, iconProduct(), { 
 
 const font = (size, color, extra = '') => `style="fill:${color};font-family:Outfit,'Helvetica Neue',Arial,sans-serif;font-weight:600;font-size:${size}px${extra}"`;
 const wordmark = (x, y, size, color, anchor = 'start') => `<text x="${x}" y="${y}" text-anchor="${anchor}" ${font(size, color, ';letter-spacing:-0.02em')}>weave</text>`;
-const tagline = (x, y, size, color, anchor = 'start', line = LABELS.posterLine) => `<text x="${x}" y="${y}" text-anchor="${anchor}" ${font(size, color, ';letter-spacing:0.16em')}>${line}</text>`;
+const tagline = (x, y, size, color, anchor = 'start') => `<text x="${x}" y="${y}" text-anchor="${anchor}" ${font(size, color, ';letter-spacing:0.16em')}>${LABELS.posterLine}</text>`;
 const sealAt = (cw, x, y, size) => `<g transform="translate(${f(x)} ${f(y)}) scale(${f(size / 240)})">${seal(cw)}</g>`;
 const nest = (w, h, inner, x = 0, y = 0, vw = W2, vh = H2, par = 'xMidYMid slice') => `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="0 0 ${vw} ${vh}" preserveAspectRatio="${par}">${inner}</svg>`;
 
@@ -469,21 +468,16 @@ for (const [code, id, name, w, note] of LOCKS) {
   const h = Math.round(w * vh / vw);
   add(id, 'Lockup', name, w, h, `<svg width="${w}" height="${h}" viewBox="0 0 ${vw} ${vh}">${embed(src)}</svg>`, { code, note });
 }
-add('poster-github', 'Posters', 'GitHub social preview, contour field', 1280, 640, nest(1280, 640, contourField('dark', { W: 1280, H: 640, cols: 3, rows: 2, s: 5 }), 0, 0, 1280, 640)
-  + `<rect x="64" y="101" width="1152" height="438" rx="219" ${fill(C.canvasD)}/>`
-  + sealAt('blue', 128, 140, 360) + wordmark(560, 335, 170, C.cream) + tagline(566, 401, 20, C.sky, 'start', LABELS.githubLine), { code: 'X8' });
 const GUIDE = JSON.parse(readFileSync(join(HERE, 'guide.json'), 'utf8'));
 const FAMILY = { 'Seals and badges': 'badge', Badge: 'badge', Icon: 'icon', Lockup: 'lockup', Posters: 'poster', 'Poster variants': 'poster', 'Mark patterns': 'pattern', 'Contour variants': 'pattern', 'Rope variants': 'pattern', 'Halftone variants': 'pattern' };
-const SCALE = { icon: 4, lockup: 3, badge: 2, poster: 2, pattern: 2 };
 const manifest = {
   badgeWords: { top: LABELS.sealTop, bottom: LABELS.sealBottom },
   regenerate: 'node brand/kit/build-kit.mjs && node brand/kit/render-kit-png.mjs',
   assets: assets.map((a) => ({
     code: a.code, id: a.id, name: a.pname || a.name, family: FAMILY[a.group], theme: a.theme ?? null,
-    svg: `svg/${a.id}.svg`, png: `png/${a.id}.png`, width: a.w, height: a.h, scale: SCALE[FAMILY[a.group]],
+    svg: `svg/${a.id}.svg`, png: `png/${a.id}.png`, width: a.w, height: a.h,
     ground: GUIDE[a.id]?.ground ?? null, use: GUIDE[a.id]?.use ?? [], note: a.note ?? null,
   })),
 };
 writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-writeFileSync(join(OUT, 'index.html'), kitPage({ manifest, labels: LABELS, colors: C, readme: readFileSync(join(HERE, 'README.md'), 'utf8') }));
 console.log(`${assets.length} assets -> ${SVG_DIR}`);
