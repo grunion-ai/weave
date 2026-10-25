@@ -66,8 +66,8 @@ test('every delete row is the one trash row: one click, "Moved to trash", Undo t
 });
 
 test('the multi-select trash speaks the record menu\'s words (Feature #296, D6)', () => {
-  const body = APP.slice(APP.indexOf('const trashChosen = async'), APP.indexOf('const runBulk = async'));
-  assert.match(body, /runOnSelection\(TRASHED, /, 'the toolbar trash toasts the same verb');
+  const body = APP.slice(APP.indexOf('const trashChosen = '), APP.indexOf('const runBulk = async'));
+  assert.match(body, /toast\(`\$\{TRASHED\} \$\{SEL\(\)\.countLabel\(/, 'the toolbar trash toasts the same verb');
   assert.match(body, /label: 'Undo'/, 'and offers the same Undo');
 });
 
