@@ -552,6 +552,82 @@ test('routes: no sign-in refusal page links into the automatic redirect', async 
   } finally { s.stop(); }
 });
 
+const quietErrors = () => {
+  const lines = [];
+  const was = console.error;
+  console.error = (line) => lines.push(String(line));
+  return { lines, restore: () => { console.error = was; } };
+};
+
+test('routes: a provider that refuses weave\'s own client gets a "broken on weave\'s side" page with nothing to retry (Issue #1179)', async () => {
+  const s = await serve();
+  const log = quietErrors();
+  try {
+    const pages = [];
+    for (const code of ['invalid_client', 'invalid_scope', 'unauthorized_client']) {
+      s.idp.tamper(code);
+      pages.push([`token endpoint ${code}`, code, (await s.signIn(KYLE)).res]);
+    }
+    s.idp.tamper('invalid_client');
+    const onboarding = await s.call('GET', '/api/auth/oidc/start?start=1');
+    const back = s.idp.approve(onboarding.headers.get('location'), KYLE);
+    pages.push(['token endpoint from /start', 'invalid_client', await s.call('GET', back.pathname + back.search, { cookie: cookieOf(onboarding) })]);
+    s.idp.tamper(null);
+    const start = await s.call('GET', '/api/auth/oidc/start');
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    pages.push(['authorization endpoint invalid_scope', 'invalid_scope', await s.call('GET', `/api/auth/oidc/callback?error=invalid_scope&state=${state}`, { cookie: cookieOf(start) })]);
+    for (const [why, code, res] of pages) {
+      assert.equal(res.status, 503, why);
+      assert.equal(res.headers.get('set-cookie'), null, why);
+      assert.equal(res.headers.get('cache-control'), 'no-store', why);
+      const html = await res.text();
+      assert.match(html, /<h1>Sign-in is broken on weave&#39;s side<\/h1>|<h1>Sign-in is broken on weave's side<\/h1>/, why);
+      assert.match(html, new RegExp(`Clerk refused weave(&#39;|')s own credentials \\(${code}\\)`), why);
+      assert.match(html, /will not help/, why);
+      assert.deepEqual(hrefs(html), [], `${why}: no link back into the loop`);
+    }
+    assert.equal(log.lines.filter((l) => /ALERT sign-in is broken/.test(l)).length, pages.length, log.lines.join('\n'));
+    assert.equal(Object.keys(s.w.state.meta.sessions ?? {}).length, 0);
+  } finally { log.restore(); s.stop(); }
+});
+
+test('routes: every other failed verification keeps Back to sign in and adds Use a different account, which asks the provider for a fresh login (Issue #1179)', async () => {
+  const s = await serve();
+  try {
+    s.idp.tamper('signature');
+    const unverified = (await s.signIn(KYLE, { next: '/#/Dev/Task' })).res;
+    assert.equal(unverified.status, 401);
+    const start = await s.call('GET', '/api/auth/oidc/start');
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    const denied = await s.call('GET', `/api/auth/oidc/callback?error=access_denied&state=${state}`, { cookie: cookieOf(start) });
+    assert.equal(denied.status, 400);
+    s.idp.tamper(null);
+    for (const [why, res] of [['unverified', unverified], ['denied', denied]]) {
+      const html = await res.text();
+      assert.match(html, />Back to sign in</, why);
+      assert.match(html, />Use a different account</, why);
+      const links = hrefs(html);
+      assert.ok(links.includes('/auth?signed-out=1'), `${why}: ${links}`);
+      const other = links.find((h) => h.startsWith('/api/auth/oidc/start?fresh=1'));
+      assert.ok(other, `${why}: ${links}`);
+      const again = await s.call('GET', other);
+      assert.equal(new URL(again.headers.get('location')).searchParams.get('prompt'), 'login', `${why}: the provider asks who you are instead of approving silently`);
+      if (why === 'unverified') {
+        const back = s.idp.approve(again.headers.get('location'), KYLE);
+        const done = await s.call('GET', back.pathname + back.search, { cookie: cookieOf(again) });
+        assert.deepEqual([done.status, done.headers.get('location')], [302, '/#/Dev/Task']);
+      }
+    }
+  } finally { s.stop(); }
+  const ended = await serve({ idpOptions: { endSession: true } });
+  try {
+    ended.idp.tamper('signature');
+    const out = hrefs(await (await ended.signIn(KYLE)).res.text()).find((h) => h.startsWith(ended.idp.issuer));
+    assert.ok(out, 'with an end-session endpoint, Use a different account ends the provider session first');
+    assert.equal(new URL(out).pathname, '/oauth/logout');
+  } finally { ended.stop(); }
+});
+
 test('routes: a rate-limited sign-in is a page with a way back, not bare JSON', async () => {
   const s = await serve({ limits: { options: 1, failed: 1 } });
   try {

@@ -10,6 +10,7 @@ import { handleMcpMessage, mayAdminister, toolTable } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage, renderMcpDoorPage, sameOriginPath } from './auth-page.js';
+import { CLIENT_FAULTS } from './oidc.js';
 import { PRIVACY, TERMS, SUPPORT, AGENT_DOCS } from './legal.js';
 import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
@@ -1078,9 +1079,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (!c || !cookies.wv_oidc || cookies.wv_oidc !== c.binder) { noteFailure(ip); return refusal(400, 'This sign-in expired or was already used', 'Start again from the sign-in page, in the browser you want to sign in.'); }
               mount = c.mount ?? '';
               const toStart = (code) => ({ status: 302, headers: { Location: `/start?error=${code}`, 'Cache-Control': 'no-store' }, body: '' });
-              if (rx.searchParams.get('error') || !rx.searchParams.get('code')) {
+              const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
+              const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
+              const broken = (code, where) => {
+                console.error(`weave: ALERT sign-in is broken: ${oidc.name} refused weave's own client at its ${where} (${code}); check WEAVE_OIDC_CLIENT_ID, WEAVE_OIDC_CLIENT_SECRET and the allowed scopes against the provider`);
+                return refusal(503, 'Sign-in is broken on weave\'s side', [`${oidc.name} refused weave's own credentials (${code}), so nobody can sign in until weave's configuration is fixed.`, 'Signing in again, or with a different account, will not help. The fault is logged for the people who run weave; try again later.'], []);
+              };
+              const refused = rx.searchParams.get('error');
+              if (CLIENT_FAULTS.has(refused)) { noteFailure(ip); return broken(refused, 'authorization endpoint'); }
+              if (refused || !rx.searchParams.get('code')) {
                 if (c.start) return toStart('signin_failed');
-                return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? rx.searchParams.get('error') ?? 'No authorization code came back.'));
+                return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? refused ?? 'No authorization code came back.'), [await differentAccount(), signInAgain()]);
               }
               let who;
               try {
@@ -1088,7 +1097,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               } catch (err) {
                 noteFailure(ip);
                 if (!(err instanceof WeaveError)) return c.start ? toStart('provider_down') : refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
-                return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
+                if (CLIENT_FAULTS.has(err.provider)) return broken(err.provider, 'token endpoint');
+                return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message, [await differentAccount(), signInAgain()]);
               }
               if (c.start) {
                 const back = /^\/start(?:[?#]|$)/.test(c.next) ? c.next : '/start';
@@ -1096,8 +1106,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               }
               const root = hub.get(hub.defaultName);
               let account = null;
-              const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
-              const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
               let engine = null;
               if (c.invite) {
                 try {
