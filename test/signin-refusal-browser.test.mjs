@@ -18,6 +18,7 @@ const s = await launch('a failed sign-in never loops back into the same failure'
 test.after(() => idp.stop());
 
 if (s) {
+  const base = s.base.replace('127.0.0.1', 'localhost');
   const card = (page) => page.evaluate(() => ({
     title: document.querySelector('h1')?.textContent ?? '',
     text: document.querySelector('.card')?.textContent ?? '',
@@ -32,7 +33,7 @@ if (s) {
     try {
       idp.signInBrowserAs({ sub: 'user_eve' });
       idp.tamper('invalid_client');
-      const res = await page.goto(`${s.base}/api/auth/oidc/start`);
+      const res = await page.goto(`${base}/api/auth/oidc/start`);
       assert.equal(res.status(), 503);
       const seen = await card(page);
       assert.equal(seen.title, 'Sign-in is broken on weave\'s side');
@@ -48,7 +49,7 @@ if (s) {
     try {
       idp.signInBrowserAs({ sub: 'user_eve' });
       idp.tamper('signature');
-      const res = await page.goto(`${s.base}/api/auth/oidc/start`);
+      const res = await page.goto(`${base}/api/auth/oidc/start`);
       assert.equal(res.status(), 401);
       const seen = await card(page);
       assert.match(seen.title, /sign-in could not be verified/);
