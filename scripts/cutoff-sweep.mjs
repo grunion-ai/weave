@@ -55,7 +55,7 @@ try {
     }
     const page = { ...profile, viewport };
     const t0 = performance.now();
-    const got = await sweepCell(browser, name, ctx, { page, journeys, overlays });
+    const got = await sweepCell(browser, name, ctx, { page, journeys, overlays, ...(a.journey || a.overlay ? { rests: [] } : {}) });
     findings.push(...got.findings);
     failed.push(...got.failed);
     timings.push(...got.timings);
