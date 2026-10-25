@@ -96,6 +96,25 @@ test('host routing: <slug>.<base> serves that workspace, the apex the default, /
   } finally { s.stop(); }
 });
 
+test('host routing: a bare /e/ link on a host that does not hold the row moves to the host that does', async () => {
+  const s = await serveHub();
+  try {
+    assert.equal((await s.at('weave.test')('POST', '/api/workspaces', { body: { name: 'Acme' } })).status, 201);
+    const acme = s.at('acme.weave.test');
+    assert.equal((await acme('POST', '/api/spaces', { body: { name: 'Ops' } })).status, 201);
+    assert.equal((await acme('POST', '/api/tables', { body: { space: 'Ops', name: 'Task' } })).status, 201);
+    const made = await acme('POST', '/api/tables/Task/entities', { body: { values: { Name: 'over there' } } });
+    assert.equal(made.status, 201, made.text);
+    const row = made.json();
+    assert.equal(row.url, `/e/${row.id}`, 'the host names the workspace, so the link carries none');
+
+    const moved = await s.at('net.weave.test')('GET', `/e/${row.id}`);
+    assert.equal(moved.status, 301);
+    assert.equal(moved.headers.location, `http://acme.weave.test/e/${row.id}`, 'the row\'s own host, same path');
+    assert.equal((await acme('GET', `/e/${row.id}`)).status, 200, 'its own host serves it');
+  } finally { s.stop(); }
+});
+
 test('host routing: with no base domain a slug host is refused as before', async () => {
   const s = await serveHub({ baseDomain: null });
   try {

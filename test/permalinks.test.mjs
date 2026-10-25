@@ -47,13 +47,12 @@ test('every level answers to its id and reports an id-based permalink', () => {
   assert.equal(w.getTable(db.id).name, 'Story');
   assert.equal(w.readEntity(row.id).name, 'ship it');
 
-  const ws = `/w/${w.state.meta.name}`;
-  assert.equal(w.readEntity(row.id).url, `${ws}/e/${row.id}`);
+  assert.equal(w.readEntity(row.id).url, `/e/${row.id}`, 'the host or the holder lookup names the workspace, so the link carries none');
   const schema = w.describeSchema();
   const sp = schema.find((x) => x.spaceId === space.id);
-  assert.equal(sp.url, `${ws}/s/${space.id}`);
+  assert.equal(sp.url, `/s/${space.id}`);
   const tb = sp.tables.find((x) => x.id === db.id);
-  assert.equal(tb.url, `${ws}/t/${db.id}`);
+  assert.equal(tb.url, `/t/${db.id}`);
 });
 
 test('GET /api/workspace exposes the id and its permalink', async () => {
@@ -186,7 +185,7 @@ test('an entity permalink answers 200 with the shell and the exact preview head'
     assert.equal(metaOf(html, 'og:description'), 'Acme Docs › Development › Issue #1\nStatus Fixed · Severity Medium · Symptom Wrong data');
     assert.equal(metaOf(html, 'description'), metaOf(html, 'og:description'));
     assert.equal(metaOf(html, 'og:site_name'), 'Acme Docs');
-    assert.equal(metaOf(html, 'og:url'), `${s.base}/w/acme-docs/e/${s.row.id}`);
+    assert.equal(metaOf(html, 'og:url'), `${s.base}/e/${s.row.id}`);
     assert.equal(metaOf(html, 'og:type'), 'article');
     assert.equal(metaOf(html, 'og:image'), `${s.base}/brand/weave-mark-512.png`, 'no logo: the bundled raster mark');
     assert.equal(metaOf(html, 'twitter:card'), 'summary');
@@ -208,7 +207,7 @@ test('a Table#n ref previews the same row under its canonical uuid address', asy
     const r = await s.get('/w/acme-docs/e/Issue%231');
     assert.equal(r.status, 200);
     assert.equal(metaOf(r.text, 'og:title'), 'Totals <drift> & "rounding"');
-    assert.equal(metaOf(r.text, 'og:url'), `${s.base}/w/acme-docs/e/${s.row.id}`);
+    assert.equal(metaOf(r.text, 'og:url'), `${s.base}/e/${s.row.id}`);
     assert.equal(routeOf(r.text), `/w/acme-docs/#/entity/${s.row.id}`);
   } finally { s.srv.close(); }
 });
@@ -242,7 +241,7 @@ test('a space and a table get a permalink of the same shape', async () => {
     assert.equal(sp.status, 200);
     assert.equal(metaOf(sp.text, 'og:title'), 'Development · space');
     assert.equal(metaOf(sp.text, 'og:description'), 'Acme Docs › Development\n1 table · 1 row');
-    assert.equal(metaOf(sp.text, 'og:url'), `${s.base}/w/acme-docs/s/${s.space.id}`);
+    assert.equal(metaOf(sp.text, 'og:url'), `${s.base}/s/${s.space.id}`);
     assert.equal(titleOf(sp.text), 'Development · space · Acme Docs');
     assert.equal(routeOf(sp.text), `/w/acme-docs/#/space/${s.space.id}`);
 
@@ -250,7 +249,7 @@ test('a space and a table get a permalink of the same shape', async () => {
     assert.equal(tb.status, 200);
     assert.equal(metaOf(tb.text, 'og:title'), 'Development / Issue · table');
     assert.equal(metaOf(tb.text, 'og:description'), 'Acme Docs › Development › Issue\n1 row');
-    assert.equal(metaOf(tb.text, 'og:url'), `${s.base}/w/acme-docs/t/${s.issue.id}`);
+    assert.equal(metaOf(tb.text, 'og:url'), `${s.base}/t/${s.issue.id}`);
     assert.equal(routeOf(tb.text), `/w/acme-docs/#/table/${s.issue.id}`);
     assert.match(tb.text, /id="app"/);
   } finally { s.srv.close(); }
@@ -395,7 +394,7 @@ test('Link preview before sign-in is an architect setting on the workspace recor
   } finally { s.srv.close(); }
 });
 
-test('the default workspace: og:url names its slug, the jump keeps the bare root', async () => {
+test('the default workspace: og:url carries no workspace segment, the jump keeps the prefix it came in on', async () => {
   const w = fresh();
   const row = w.createEntity(w.getTable('Task').id, { Name: 'ship' });
   const srv = createServer(w);
@@ -406,7 +405,7 @@ test('the default workspace: og:url names its slug, the jump keeps the bare root
       const r = await fetch(`http://127.0.0.1:${port}${path}`);
       const html = await r.text();
       assert.equal(r.status, 200, path);
-      assert.equal(metaOf(html, 'og:url'), `http://127.0.0.1:${port}/w/${slug}/e/${row.id}`, `${path}: one canonical address`);
+      assert.equal(metaOf(html, 'og:url'), `http://127.0.0.1:${port}/e/${row.id}`, `${path}: one canonical address`);
       assert.equal(routeOf(html), route, `${path}: the address bar stays under the prefix it came in on`);
     }
   } finally { srv.close(); }
@@ -479,6 +478,49 @@ test('an encoded permalink in the /api/entities/:id path names the row (Issue #1
       assert.equal(r.status, 200, `GET /api/entities/${encodeURIComponent(ref)}`);
       assert.equal((await r.json()).id, row.id);
     }
+  } finally {
+    server.close();
+  }
+});
+
+test('a bare /e/, /t/ or /s/ link opens in whichever workspace holds it, so no link needs /w/', async () => {
+  const main = new Weave({ name: 'main' });
+  main.createSpace({ name: 'Home' });
+  main.createTable({ space: 'Home', name: 'Note' });
+  const local = main.createEntity('Note', { Name: 'at home' });
+  const acme = new Weave({ name: 'acme' });
+  const space = acme.createSpace({ name: 'Ops' });
+  const table = acme.createTable({ space: 'Ops', name: 'Task' });
+  const row = acme.createEntity('Task', { Name: 'over there' });
+  const { server } = await startServer(main, { port: 0, workspaces: { acme } });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const go = (path, method = 'GET') => fetch(base + path, { method, redirect: 'manual' });
+  try {
+    assert.equal(acme.permalink('entity', row.id), `/e/${row.id}`);
+    for (const [path, to] of [
+      [`/e/${row.id}`, `/w/acme/e/${row.id}`],
+      [`/t/${table.id}`, `/w/acme/t/${table.id}`],
+      [`/s/${space.id}`, `/w/acme/s/${space.id}`],
+    ]) {
+      for (const method of ['GET', 'HEAD']) {
+        const r = await go(path, method);
+        assert.equal(r.status, 302, `${method} ${path}`);
+        assert.equal(r.headers.get('location'), to, `${method} ${path} goes to its holder`);
+        assert.equal(r.headers.get('cache-control'), 'no-store', 'a rename can move the holder\'s prefix, so nothing caches the hop');
+      }
+    }
+    const landed = await fetch(base + `/e/${row.id}`);
+    assert.equal(landed.status, 200, 'following the hop lands on the row');
+    assert.equal(metaOf(await landed.text(), 'og:url'), `${base}/e/${row.id}`, 'the canonical address is still the bare link');
+
+    const home = await go(`/e/${local.id}`);
+    assert.equal(home.status, 200, 'a row the default workspace holds opens in place');
+
+    const unknown = await go(`/e/${'0'.repeat(8)}-0000-0000-0000-${'0'.repeat(12)}`);
+    assert.equal(unknown.status, 404, 'a uuid nobody holds is the branded 404, not a hop');
+
+    const prefixed = await go(`/w/main/e/${row.id}`);
+    assert.notEqual(prefixed.status, 302, 'an explicit /w/ prefix is never rerouted');
   } finally {
     server.close();
   }

@@ -94,7 +94,10 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
     assert.equal((await fetch(`${base}/w/nope/api/health`)).status, 404);
 
     const scoped = await (await fetch(`${base}/w/weave/api/search?q=quickstart`)).json();
-    assert.ok(scoped.some((h) => h.url.startsWith('/w/weave/')));
+    const hit = scoped.find((h) => h.kind === 'entity');
+    assert.equal(hit?.url, `/e/${hit?.id}`, 'a scoped hit carries the bare row link');
+    const hop = await fetch(`${base}${hit.url}`, { redirect: 'manual' });
+    assert.equal(hop.headers.get('location'), `/w/weave/e/${hit.id}`, 'and that link finds its way back to weave');
 
     const all = await (await fetch(`${base}/api/search?q=uno+thing&all=1`)).json();
     assert.ok(all.some((h) => h.workspace === 'uno' && h.kind === 'entity'));

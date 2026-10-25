@@ -312,6 +312,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
       }
     }
+    if (!wsPrefix && ['GET', 'HEAD'].includes(rx.method) && /^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
+      const kind = path.slice(1, 2);
+      const id = path.slice(3);
+      const servesHere = holdsLink(weave, kind, id) || (weave.registryHost && holdsLink(weave.registryHost, kind, id));
+      const holder = servesHere ? null : linkHolder(hub, kind, id);
+      if (holder && hostOrigin) {
+        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+      }
+      if (holder) {
+        const key = hub.list().find((x) => x.id === holder.state.meta.id)?.name ?? holder.state.meta.name;
+        return { status: 302, headers: { Location: `/w/${encodeURIComponent(key)}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+      }
+    }
     const updateWorkspace = (patch) => {
       const slug = patch.name != null ? workspaceSlug(patch.name) : null;
       const state = slug != null && patch.name !== weave.state.meta.name ? hub.slugState(slug, weave) : 'available';
@@ -412,7 +425,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           trail = [site, weave.state.spaces[db.spaceId]?.name, ref];
           fields = weave.previewFields(e.id);
           detail = fields.map((f) => `${f.label} ${f.value}`).join(' · ');
-          url = `${home}/e/${e.id}`;
+          url = `/e/${e.id}`;
           route = `${wsPrefix}/#/entity/${e.id}`;
         } else if (m[1] === 's') {
           const sp = Object.hasOwn(weave.state.spaces, m[2]) ? weave.state.spaces[m[2]] : null;
@@ -421,7 +434,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           title = `${sp.name} · space`;
           trail = [site, sp.name];
           detail = `${count(tables.length, 'table')} · ${count(live(tables), 'row')}`;
-          url = `${home}/s/${sp.id}`;
+          url = `/s/${sp.id}`;
           route = `${wsPrefix}/#/space/${sp.id}`;
         } else {
           const db = weave.listTables().find((d) => d.id === m[2]);
@@ -430,7 +443,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           title = `${space} / ${db.name} · table`;
           trail = [site, space, db.name];
           detail = count(live([db]), 'row');
-          url = `${home}/t/${db.id}`;
+          url = `/t/${db.id}`;
           route = `${wsPrefix}/#/table/${db.id}`;
         }
       } catch (err) {

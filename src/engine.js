@@ -6171,7 +6171,7 @@ export class Weave {
     const ws = `/w/${this.state.meta.name}`;
     if (kind === 'workspace') return `${ws}/`;
     if (kind === 'view') return `${ws}/#/view/${id}`;
-    return `${ws}/${{ entity: 'e', table: 't', space: 's' }[kind]}/${id}`;
+    return `/${{ entity: 'e', table: 't', space: 's' }[kind]}/${id}`;
   }
 
   getEntity(id) {
