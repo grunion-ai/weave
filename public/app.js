@@ -3156,6 +3156,19 @@ function fileKind(file) {
 const isPictureFile = (file) => fileKind(file) === 'image';
 const fileIconName = (file) => ({ image: 'lucide:image', pdf: 'lucide:file-text', text: 'lucide:file-text', html: 'lucide:code' })[fileKind(file)] ?? 'lucide:file';
 const fileSizeText = (n) => n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+function fitAttachName(chip) {
+  const label = chip.querySelector(':scope > .k-label');
+  if (!label || !chip.clientWidth) return;
+  const name = chip.title;
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 && name.length - dot <= 8 ? name.slice(dot) : '';
+  const stem = name.slice(0, name.length - ext.length);
+  label.textContent = name;
+  for (let keep = stem.length; keep > 4 && label.scrollWidth - label.clientWidth > 1;) {
+    keep -= Math.max(1, Math.ceil((keep * (label.scrollWidth - label.clientWidth)) / label.scrollWidth));
+    label.textContent = `${stem.slice(0, keep - 3)}…${stem.slice(-3)}${ext}`;
+  }
+}
 function attachItemEl(file, { remove = null } = {}) {
   return el('span', { class: 'attach-item' + (file.missing ? ' is-missing' : '') },
     file.missing
@@ -3509,11 +3522,15 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       } catch (err) { toast(err.message, true); }
       if (landed) await saved().catch((err) => toast(err.message, true));
     };
-    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: 'attachments' },
+    const shown = ids.length ? String(val ?? `${ids.length}`) : '';
+    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: shown || 'attachments' },
       el('span', { class: 'ico' }, iconEl('lucide:file', 'wv-icon')),
-      ids.length ? String(val ?? `${ids.length}`) : '—');
+      shown ? el('span', { class: 'k-label' }, shown) : '—');
     chip.dropFiles = upload;
-    if (compact) return chip;
+    if (compact) {
+      if (shown) new ResizeObserver(() => fitAttachName(chip)).observe(chip);
+      return chip;
+    }
     const files = (item.files ?? []).filter((x) => ids.includes(x.id));
     const remove = (file) => el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
