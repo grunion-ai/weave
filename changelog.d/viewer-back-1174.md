@@ -1,0 +1,1 @@
+- The full-screen file viewer no longer shows a Back button beside its close ✕. It did nothing for an HTML file, whose sandboxed frame keeps its history out of reach, and only repeated the ✕ for every other kind. Refresh, previous and next, open in a tab and ✕ stay; Esc still closes (Issue #1174).
