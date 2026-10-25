@@ -1,1 +1,0 @@
-- The README opens on a fifteen-second clip under its lead paragraph: an agent builds a workspace from a spec with `weave build`, the table fills, a row opens with its document, then an MCP `weave_query` call returns rows. `scripts/record-demo.mjs` films it from a scratch workspace on a local serve and writes `docs/demo.gif` and `docs/demo-poster.png` (Feature #293).
