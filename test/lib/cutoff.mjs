@@ -1,14 +1,11 @@
-import { JOURNEYS, cellsOf, seed as journeySeed, walk } from './journeys.mjs';
-import { OVERLAYS, SURFACES, overlaysFor } from './overlays.mjs';
+import { JOURNEYS, cellsOf, walk } from './journeys.mjs';
+import { CELLS, SEEDS, bySurface, states } from './states.mjs';
+
+export { CELLS };
 
 export const KINDS = ['clipped', 'ellipsis', 'line-clamp', 'field-value', 'field-placeholder'];
 export const DESKTOP = 'desktop';
 export const NOTE = '_';
-
-export const CELLS = {
-  desktop: { engine: 'chromium', viewport: { width: 1440, height: 900 } },
-  phone: { engine: 'webkit', device: 'iPhone 15', viewport: { width: 390, height: 844 } },
-};
 
 export function probe(rootSelector = null) {
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'OPTION', 'OPTGROUP', 'SELECT', 'DATALIST', 'IFRAME', 'CANVAS', 'VIDEO', 'AUDIO', 'IMG', 'BR', 'HR']);
@@ -211,32 +208,8 @@ export function lower(file, counts, { cells, platform = PLATFORM }) {
   return out;
 }
 
-export function seed(weave) {
-  const handles = journeySeed(weave);
-  const { tasks, ids } = handles;
-  weave.addField(tasks, { name: 'Due', type: 'date' });
-  weave.addField(tasks, { name: 'Window', type: 'daterange', config: { format: 'long' } });
-  weave.addField(tasks, { name: 'Link', type: 'url' });
-  weave.addField(tasks, { name: 'Tags', type: 'multiselect', config: { options: ['Short', 'A tag whose label runs long enough to need a wrap'] } });
-  for (const [i, id] of ids.entries()) {
-    if (i % 3) continue;
-    weave.updateEntity(id, {
-      Due: `2026-${String((i % 12) + 1).padStart(2, '0')}-15`,
-      Window: { start: '2026-08-01', end: '2026-09-15' },
-      Link: i % 2 ? 'https://example.com/' : `https://docs.example.com/guides/a-path-that-keeps-going/${i}/and-going`,
-      Tags: i % 2 ? ['Short'] : ['Short', 'A tag whose label runs long enough to need a wrap'],
-    });
-  }
-  const notes = weave.createTable({ space: 'Work', name: 'Note' });
-  weave.addField(notes, { name: 'Link', type: 'url' });
-  for (const name of ['Spec', 'Release note', 'Customer summary']) weave.addField(notes, { name, type: 'document' });
-  const activity = weave.createEntity(notes, { name: 'Log', doc: 'First draft.' }).id;
-  weave.setDoc(activity, 'Spec text.', 'Spec');
-  weave.setDoc(activity, 'Release text.', 'Release note');
-  weave.setDoc(activity, 'Summary text.', 'Customer summary');
-  weave.updateEntity(activity, { Link: 'https://adriany.fibery.io/Task_Management/Task/a-path-that-keeps-going-past-the-panel-1234' });
-  return { ...handles, notes, activity };
-}
+export const seed = SEEDS.messy.build;
+export const OVERLAYS = states({ tag: 'cutoff' }).filter((st) => st.open);
 
 const phoneCell = (page) => (page.viewportSize()?.width ?? 1440) < 768;
 
@@ -292,18 +265,17 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
   const page = await browser.newPage(pageOptions);
   page.setDefaultTimeout(8000);
   try {
-    for (const surface of Object.keys(SURFACES)) {
-      const mine = overlaysFor(overlays, surface, cell);
-      if (!mine.length) continue;
-      const ready = SURFACES[surface].ready(cell);
+    for (const mine of bySurface(overlays.filter((st) => st.cell === cell)).values()) {
+      const { surface } = mine[0];
+      const ready = surface.ready(cell);
       const fresh = async () => {
         await page.goto('about:blank');
-        await page.goto(SURFACES[surface].url(ctx, cell), { waitUntil: 'networkidle' });
+        await page.goto(surface.url(ctx, cell), { waitUntil: 'networkidle' });
         await page.waitForSelector(ready);
         await settle(page);
       };
       let clean = false;
-      for (const o of mine) {
+      for (const { open: o } of mine) {
         try {
           if (!clean) await fresh();
           clean = false;

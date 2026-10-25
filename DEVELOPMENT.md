@@ -368,6 +368,32 @@ integration tests; ordinary jobs use the shared default, which is keyed on a has
 worktree with changed manager code gets its own manager, and the old one exits after
 five idle minutes. `--stop` cancels active work, so inspect `--status` first.
 
+## State catalog
+
+`test/lib/states.mjs` lists the states of the product as data, so every browser
+probe walks the same list. A surface in `SURFACES` is a route and layout with its
+`url(ctx, cell)`, `ready(cell)` selector, `root(cell)` selector, the seeds it is
+built for and an optional `setup`. An entry in `OPENS` is an open state: a
+dialog, popover, menu or sheet with its `root`, an `open(page, ctx, cell)` and an
+optional `close`. Each surface's `states` crosses an open state, or none for the
+surface at rest, with its cells, a seed from `test/lib/seeds.mjs` and the tags of
+the probes that walk it. `STATES` is that product, one entry per id
+`seed:surface+open@cell`.
+
+A probe asks for its slice: `states({ tag: 'cutoff' })`, `states({ tag: 'a11y' })`,
+`states({ tag: 'touch' })`, or `states()` for every state, and can narrow by
+`cell`, `seed`, `surface` or `open`. The cut-off sweep, the a11y gate and the
+touch-target gate read their states this way; the flicker journeys name their
+`surface` and reach it through the catalog's url and ready selector.
+
+A new surface, layout or open state is added to the catalog once, never to one
+probe. Adding it is one entry, plus a tag for each probe that should walk it.
+A probe that widens its slice may surface defects its baseline never held: fix
+them, or admit them through that probe's reason-bearing mechanism, in the same
+change. `test/states-core.test.mjs` guards the shape: unique ids and names, every
+reach field present, every open state used, every seed buildable and every
+probe's slice non-empty.
+
 ## Flicker loop
 
 A flicker is something the reader saw that should not have been there: a node
@@ -496,9 +522,9 @@ node scripts/cutoff-sweep.mjs --cell phone --overlay field-editor,new-field   # 
 node scripts/cutoff-sweep.mjs --lower               # after a fix: lower this platform's baseline
 ```
 
-The sweep walks the flicker journeys and opens every dialog and popover listed in
-`test/lib/overlays.mjs`, at desktop 1440x900 in Chromium and phone 390x844 in
-WebKit, on the messy seed. `test/cutoff-gate-browser.test.mjs` runs the same
+The sweep walks the flicker journeys and opens every dialog and popover the state
+catalog tags `cutoff` (`test/lib/states.mjs`), at desktop 1440x900 in Chromium and
+phone 390x844 in WebKit, on the messy seed. `test/cutoff-gate-browser.test.mjs` runs the same
 sweep in the gate against `test/cutoff-baseline.json`, which holds today's counts
 per platform, since system fonts differ between macOS and the Linux CI runner.
 The baseline is a ceiling. The gate fails on a fingerprint the baseline does not

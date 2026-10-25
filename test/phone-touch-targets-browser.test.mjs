@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { engineOf, launch, openBugReport, phoneProfile } from './lib/browser.mjs';
+import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
+import { SEEDS, states } from './lib/states.mjs';
 
 const MIN = 44;
 const STEP = 0.5;
@@ -67,38 +68,17 @@ const SWEEP = (roots) => {
   return out;
 };
 
-const s = await launch('phone touch targets', (weave) => {
-  weave.createSpace({ name: 'Development' });
-  const issues = weave.createTable({ space: 'Development', name: 'Issue', description: Array.from({ length: 9 }, (_, i) => `Line ${i + 1} of a table description long enough that the phone header clamps it and offers Show more.`).join('\n\n') });
-  weave.addField(issues, { name: 'Status', type: 'workflow', config: { states: [
-    { name: 'Open', category: 'not-started', default: true },
-    { name: 'In Progress', category: 'in-progress' },
-    { name: 'Fixed', category: 'done' }] } });
-  weave.addField(issues, { name: 'Severity', type: 'select', config: { options: ['Low', 'Medium', 'High'] } });
-  weave.addField(issues, { name: 'Symptom', type: 'multiselect', config: { options: ['Looks broken', 'Slow', 'Wrong data'] } });
-  weave.addField(issues, { name: 'Notes', type: 'text' });
-  weave.addField(issues, { name: 'Due', type: 'date' });
-  const rows = [];
-  for (let i = 0; i < 8; i++) {
-    rows.push(weave.createEntity(issues, {
-      name: `Issue ${i}: a phone row name long enough to wrap`,
-      values: { Status: 'Open', Severity: 'High', Symptom: ['Looks broken', 'Slow'], Notes: 'a note' },
-    }));
-  }
-  weave.setDoc(rows[0].id, 'Some body text.\n\nAnother paragraph.');
-  return { table: issues.id, row: rows[0].id };
-});
+const s = await launch('phone touch targets', SEEDS.touch.build);
 
 if (s) {
-  const { base, browser, table, row } = s;
-  const surfaces = [
-    { name: 'workspace home', hash: '#/', roots: ['#main'] },
-    { name: 'table list', hash: `#/table/${table}`, ready: '#main .wv-grid tbody tr.entity-row', roots: ['#main'] },
-    { name: 'row page', hash: `#/table/${table}?e=${row}`, ready: '#dock .entity-fields .fieldrow', roots: ['#dock'] },
-    { name: 'menu', hash: `#/table/${table}`, ready: '#main .nav-menu', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu') },
-    { name: 'picker sheet', hash: `#/table/${table}?e=${row}`, ready: '#dock .chip-trigger[title="Status"]', roots: ['.picker-pop'], act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
-    { name: 'bug panel', hash: `#/table/${table}`, ready: '#main .nav-menu', roots: ['#bug-panel'], act: (p) => openBugReport(p) },
-  ];
+  const { base, browser, table } = s;
+  const surfaces = states({ tag: 'touch' }).map(({ surface, open: o, root, title, cell }) => ({
+    name: title,
+    url: surface.url(s, cell),
+    ready: surface.ready(cell),
+    roots: root.split(', '),
+    act: o && ((p) => o.open(p, s, cell)),
+  }));
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }]];
   const webkit = await engineOf('webkit');
   if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
@@ -106,7 +86,7 @@ if (s) {
   const open = async (b, profile, theme, surface) => {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
-    await page.goto(`${base}/${surface.hash}`, { waitUntil: 'networkidle' });
+    await page.goto(surface.url ?? `${base}/${surface.hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(surface.ready ?? surface.roots[0], { state: 'attached' });
     if (surface.act) {
       await surface.act(page);

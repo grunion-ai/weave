@@ -1,34 +1,9 @@
 import { countClicks } from './clicks.mjs';
+import { ROWS } from './seeds.mjs';
+import { SEEDS, SURFACES } from './states.mjs';
 
-export const ROWS = 400;
-
-export function seed(weave) {
-  weave.createSpace({ name: 'Work' });
-  const projects = weave.createTable({ space: 'Work', name: 'Project' });
-  const tasks = weave.createTable({ space: 'Work', name: 'Task' });
-  weave.addField(tasks, { name: 'Status', type: 'workflow', config: { states: [
-    { name: 'Open', category: 'not-started', default: true },
-    { name: 'Doing', category: 'in-progress' },
-    { name: 'Done', category: 'done' }] } });
-  weave.addField(tasks, { name: 'Owner', type: 'text' });
-  weave.addField(tasks, { name: 'Points', type: 'number' });
-  weave.addRelation(tasks, { name: 'Project', targetDb: projects, cardinality: 'many-to-one', inverseName: 'Tasks' });
-  const ps = ['Launch', 'Billing rewrite with a name long enough to wrap in a chip', 'Ops'].map((name) => weave.createEntity(projects, { name }).id);
-  const ids = [];
-  for (let i = 0; i < ROWS; i++) {
-    const name = i % 37 === 0 ? `Task ${i}: a title that runs well past the column so the cell has to clip it somewhere sensible` : `Task ${i}`;
-    ids.push(weave.createEntity(tasks, { name, values: {
-      Status: ['Open', 'Doing', 'Done'][i % 3],
-      ...(i % 5 ? { Owner: ['ana', 'bo', 'cy'][i % 3] } : {}),
-      ...(i % 4 ? { Points: (i * 7) % 13 } : {}),
-      ...(i % 6 ? { Project: ps[i % 3] } : {}),
-    } }).id);
-  }
-  const doc = weave.createEntity(tasks, { name: 'Spec', doc: '# Spec\n\nFirst paragraph of the spec.\n\n- one\n- two\n' }).id;
-  weave.tableView(`${tasks.id}/All`, { from: 'blank' });
-  weave.tableView(`${tasks.id}/Compact`, { from: 'blank', fields: ['Name', 'Status'] });
-  return { tasks, projects, ids, doc };
-}
+export { ROWS };
+export const seed = SEEDS.journeys.build;
 
 export const CELLS = {
   desktop: { engine: 'chromium', viewport: { width: 1400, height: 900 }, hasTouch: false, isMobile: false },
@@ -41,9 +16,13 @@ const PHONE = ['phone'];
 const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
 const ROW = '.wv-grid tbody tr.entity-row';
 
+const visit = async (page, ctx, surface) => {
+  await page.goto(SURFACES[surface].url(ctx), { waitUntil: 'networkidle' });
+  await page.waitForSelector(SURFACES[surface].ready());
+};
+
 async function table(page, ctx) {
-  await page.goto(`${ctx.base}/#/table/${ctx.tasks.id}`, { waitUntil: 'networkidle' });
-  await page.waitForSelector(ROW);
+  await visit(page, ctx, 'table');
   await frames(page, 3);
 }
 
@@ -63,18 +42,14 @@ export const JOURNEYS = [
   {
     name: 'load-home',
     cells: BOTH,
-    async run(page, ctx) {
-      await page.goto(`${ctx.base}/#/`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main');
-    },
+    surface: 'home',
+    run: (page, ctx) => visit(page, ctx, 'home'),
   },
   {
     name: 'open-table',
     cells: BOTH,
-    async setup(page, ctx) {
-      await page.goto(`${ctx.base}/#/`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main');
-    },
+    surface: 'table',
+    setup: (page, ctx) => visit(page, ctx, 'home'),
     async run(page, ctx) {
       await page.evaluate((id) => { location.hash = `#/table/${id}`; }, ctx.tasks.id);
       await page.waitForSelector(ROW);
@@ -83,6 +58,7 @@ export const JOURNEYS = [
   {
     name: 'scroll-grid',
     cells: BOTH,
+    surface: 'table',
     setup: table,
     async run(page) {
       for (const f of [0.25, 0.5, 0.75, 1]) {
@@ -94,6 +70,7 @@ export const JOURNEYS = [
   },
   {
     name: 'edit-cell',
+    surface: 'table',
     setup: table,
     async run(page, ctx) {
       const id = ctx.ids[2];
@@ -106,6 +83,7 @@ export const JOURNEYS = [
   },
   {
     name: 'open-row',
+    surface: 'table',
     setup: table,
     async run(page, ctx) {
       await page.click(`tr[data-eid="${ctx.ids[1]}"] .open-link`);
@@ -118,6 +96,7 @@ export const JOURNEYS = [
   },
   {
     name: 'switch-view',
+    surface: 'table',
     setup: table,
     async run(page) {
       for (const name of ['Compact', 'All']) {
@@ -148,6 +127,7 @@ export const JOURNEYS = [
   },
   {
     name: 'trash-undo',
+    surface: 'table',
     setup: table,
     async run(page) {
       const n = await page.locator(ROW).count();
@@ -163,6 +143,7 @@ export const JOURNEYS = [
   },
   {
     name: 'theme',
+    surface: 'table',
     setup: table,
     async run(page) {
       for (let i = 0; i < 2; i++) {
@@ -174,6 +155,7 @@ export const JOURNEYS = [
   {
     name: 'phone-search',
     cells: PHONE,
+    surface: 'table',
     setup: table,
     async run(page) {
       await page.tap('.phone-bar .phone-search');
@@ -187,6 +169,7 @@ export const JOURNEYS = [
   {
     name: 'phone-menu',
     cells: PHONE,
+    surface: 'table',
     setup: table,
     async run(page) {
       await page.tap('#main .nav-menu');
@@ -199,6 +182,7 @@ export const JOURNEYS = [
   {
     name: 'phone-table-sheet',
     cells: PHONE,
+    surface: 'table',
     setup: table,
     async run(page) {
       const sheet = '#main .crumb-row.tools-open > .crumb-actions';
@@ -232,6 +216,7 @@ export const JOURNEYS = [
   {
     name: 'phone-open-row',
     cells: PHONE,
+    surface: 'table',
     setup: table,
     async run(page, ctx) {
       const name = await page.locator(`tr[data-eid="${ctx.ids[1]}"] .list-name`).boundingBox();

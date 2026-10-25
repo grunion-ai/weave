@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CELLS, KINDS, NOTE, PLATFORM, cellOf, fingerprint, grew, lower, ratchet, sectionOf, tally, verdict } from './lib/cutoff.mjs';
-import { OVERLAYS, SURFACES } from './lib/overlays.mjs';
+import { CELLS, KINDS, NOTE, OVERLAYS, PLATFORM, cellOf, fingerprint, grew, lower, ratchet, sectionOf, tally, verdict } from './lib/cutoff.mjs';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -140,18 +139,20 @@ test('the cells are desktop 1440x900 in Chromium and phone 390x844 in WebKit', (
   for (const j of JOURNEYS) for (const c of cellsOf(j)) assert.ok(Object.hasOwn(CELLS, c), `${j.name} walks a cell the sweep knows`);
 });
 
-test('every overlay names a surface, a cell, a root and an opener, once', () => {
-  const names = OVERLAYS.map((o) => o.name);
-  assert.equal(new Set(names).size, names.length);
+test('every overlay the sweep opens is a catalog state with a surface, a cell, a root and an opener, once', () => {
+  const ids = OVERLAYS.map((o) => o.id);
+  assert.equal(new Set(ids).size, ids.length);
   for (const o of OVERLAYS) {
-    assert.ok(Object.hasOwn(SURFACES, o.surface), `${o.name}: surface ${o.surface}`);
-    assert.ok(o.cells.length && o.cells.every((c) => Object.hasOwn(CELLS, c)), `${o.name}: cells`);
+    assert.ok(o.tags.includes('cutoff'), `${o.id}: tagged for the sweep`);
+    assert.equal(o.seed, 'messy', `${o.id}: walks the messy seed`);
+    assert.ok(Object.hasOwn(CELLS, o.cell), `${o.id}: cell`);
+    assert.equal(typeof o.surface.url, 'function');
     assert.equal(typeof o.root, 'string');
-    assert.equal(typeof o.open, 'function');
+    assert.equal(typeof o.open.open, 'function');
   }
 });
 
 test('the field editor tray is opened on both cells, so its Description placeholder is measured', () => {
-  const trays = OVERLAYS.filter((o) => o.root === '#tray-back' && /field/.test(o.name));
-  for (const cell of Object.keys(CELLS)) assert.ok(trays.some((o) => o.cells.includes(cell)), `a field tray opens on ${cell}`);
+  const trays = OVERLAYS.filter((o) => o.root === '#tray-back' && /field/.test(o.open.name));
+  for (const cell of Object.keys(CELLS)) assert.ok(trays.some((o) => o.cell === cell), `a field tray opens on ${cell}`);
 });
