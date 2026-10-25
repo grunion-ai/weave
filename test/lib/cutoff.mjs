@@ -14,6 +14,7 @@ export const CELLS = {
 export function probe(rootSelector = null) {
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'OPTION', 'OPTGROUP', 'SELECT', 'DATALIST', 'IFRAME', 'CANVAS', 'VIDEO', 'AUDIO', 'IMG', 'BR', 'HR']);
   const NOT_TEXT = new Set(['checkbox', 'radio', 'hidden', 'range', 'color', 'file', 'submit', 'button', 'reset', 'image', 'password', 'date', 'time', 'datetime-local', 'month', 'week']);
+  const BY_DESIGN = '.crumb-cur > .crumb-nm';
   const MIRRORED = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontStretch', 'fontVariant', 'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent', 'lineHeight', 'tabSize', 'wordBreak', 'overflowWrap',
     'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
   const styles = new Map();
@@ -112,7 +113,7 @@ export function probe(rootSelector = null) {
     for (const e of [root, ...root.querySelectorAll('*')]) {
       if (visited.has(e)) continue;
       visited.add(e);
-      if (SKIP.has(e.tagName) || e instanceof SVGElement) continue;
+      if (SKIP.has(e.tagName) || e instanceof SVGElement || e.matches(BY_DESIGN)) continue;
       const field = e.tagName === 'TEXTAREA' || (e.tagName === 'INPUT' && !NOT_TEXT.has(e.type));
       const cs = style(e);
       const ellipsis = cs.textOverflow === 'ellipsis' && cs.overflowX !== 'visible';

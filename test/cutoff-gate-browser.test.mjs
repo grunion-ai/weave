@@ -61,6 +61,35 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('Issue #1159: the current crumb is cut by design and skipped; any other crumb is a finding', async () => {
+    const page = await s.browser.newPage({ viewport: CELLS.desktop.viewport });
+    try {
+      await page.goto(`${s.base}/#/`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main');
+      await page.evaluate(() => {
+        const crumb = (cls) => {
+          const item = document.createElement('span');
+          item.className = `crumb-item ${cls}`;
+          item.style.cssText = 'display:inline-flex;width:60px;overflow:hidden;';
+          const nm = document.createElement('span');
+          nm.className = 'crumb-nm';
+          nm.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          nm.textContent = 'a crumb label far too long for sixty pixels';
+          item.append(nm);
+          return item;
+        };
+        const host = document.createElement('div');
+        host.id = 'cutoff-crumb-fixture';
+        host.style.cssText = 'position:fixed;left:0;top:0;z-index:9999;background:#fff;';
+        host.append(crumb('crumb-cur'), crumb('crumb-k-ws'));
+        document.body.append(host);
+      });
+      const found = (await page.evaluate(probe, '#cutoff-crumb-fixture')).map((f) => f.selector);
+      assert.equal(found.length, 1, `one finding: ${JSON.stringify(found)}`);
+      assert.match(found[0], /crumb-k-ws/, 'the workspace crumb is a finding and the current crumb is not');
+    } finally { await page.close(); }
+  });
+
   test('Issue #937: widening the row window parks more rows off screen and changes no finding', async () => {
     const page = await s.browser.newPage({ viewport: CELLS.desktop.viewport });
     try {

@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
-let steps, chain;
+const UNBROKEN = 'Antidisestablishmentarianism'.repeat(4);
+let steps, chain, long, wide;
 const s = await launch('crumb fold', (weave) => {
   weave.createSpace({ name: 'Ops', icon: 'lucide:folder-kanban' });
   steps = weave.createTable({ space: 'Ops', name: 'Steps', icon: 'lucide:rocket' });
+  long = weave.createEntity(steps, { name: UNBROKEN });
+  weave.createSpace({ name: 'Operations and logistics planning', icon: 'lucide:folder-kanban' });
+  wide = weave.createTable({ space: 'Operations and logistics planning', name: 'Quarterly vendor renewal checklist', icon: 'lucide:rocket' });
   weave.addRelation(steps, { name: 'Next', targetDb: steps.id, cardinality: 'many-to-one', inverseName: 'Previous' });
   chain = [];
   for (let i = 5; i >= 0; i--) {
@@ -94,6 +98,56 @@ if (s) {
 
 if (s) {
   const { base, browser } = s;
+  test('a long row name gives way first: the workspace, space and table crumbs stay whole and the title shows the full name (Issues #1127, #1158, #1159)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.goto(`${base}/#/entity/${long.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#main .crumb-path .crumb-cur');
+    const m = await page.evaluate(() => {
+      const whole = (n) => n && { text: n.textContent, shown: n.getClientRects().length > 0, cut: n.scrollWidth - n.clientWidth };
+      const path = document.querySelector('#main .crumb-path');
+      return {
+        trail: ['ws', 'space', 'table'].map((k) => whole(path.querySelector(`.crumb-slot:not(.crumb-slot-cur) > .crumb-k-${k} > .crumb-nm`))),
+        cur: whole(path.querySelector('.crumb-cur .crumb-nm')),
+        title: document.querySelector('#main .name-edit')?.value,
+        overflow: path.scrollWidth - path.clientWidth,
+      };
+    });
+    for (const [i, c] of m.trail.entries()) {
+      assert.ok(c?.shown, `the ${['workspace', 'space', 'table'][i]} crumb shows: ${JSON.stringify(c)}`);
+      assert.ok(c.cut <= 0, `${JSON.stringify(c.text)} is cut by ${c.cut}px`);
+    }
+    assert.ok(m.trail[0].text.length > 14, `the workspace name is long enough to have been capped at 14ch: ${m.trail[0].text}`);
+    assert.ok(m.cur.cut > 0, 'the current crumb is the one that gives way');
+    assert.equal(m.title, UNBROKEN, 'and the title row under it shows the full name');
+    assert.ok(m.overflow <= 1, `nothing runs past the path box: ${m.overflow}px`);
+    await page.close();
+  });
+
+  const slack = (page) => page.evaluate(() => {
+    const path = document.querySelector('#main .crumb-path');
+    const above = (slot) => Math.round(slot.getBoundingClientRect().width - parseFloat(getComputedStyle(slot).minWidth));
+    return { space: above(path.querySelector('.crumb-slot:has(> .crumb-k-space)')), cur: above(path.querySelector('.crumb-slot-cur')), path: path.clientWidth };
+  });
+  const phone = await phoneBrowser();
+  const engines = [['chromium', (width) => browser.newPage({ viewport: { width, height: 844 } })]];
+  if (phone) engines.push(['webkit iPhone 15', (width) => phonePage(phone, { viewport: { width, height: 844 } })]);
+  for (const [engine, open] of engines) {
+    test(`on a phone the space crumb gives way before the current one (${engine}, Issues #1127, #1158)`, async () => {
+      const at = async (width) => {
+        const page = await open(width);
+        await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'networkidle' });
+        await page.waitForSelector('#main .crumb-path .crumb-cur');
+        const m = await slack(page);
+        await page.close();
+        return m;
+      };
+      const roomy = await at(599);
+      const tight = await at(390);
+      assert.ok(roomy.cur - tight.cur > 10, `the narrow header squeezes the current crumb: ${JSON.stringify({ roomy, tight })}`);
+      assert.ok(tight.cur > tight.space, `the current crumb keeps more room above its floor than the space crumb, which gives way first: ${JSON.stringify({ roomy, tight })}`);
+    });
+  }
+
   test('the "…" menu stays inside the window when the dock sits at its right edge', async () => {
     const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
     await page.addInitScript(() => localStorage.setItem('wv-dock-width', '420'));
