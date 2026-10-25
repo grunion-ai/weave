@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let trip, todo, ids;
 const s = await launch('list layout', (weave) => {
@@ -177,21 +178,20 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the View menu switches Table and List without losing the grouping; the Group menu autosaves levels', async () => {
+  test('the View pane switches Table and List without losing the grouping; its Group section autosaves levels', async () => {
     seed();
     const page = await open();
     try {
-      await page.click('.table-view-btn');
-      await page.click('.view-layout .seg-opt:text-is("Table")');
+      await openPane(page, 'display');
+      await page.click('#view-pane .view-layout .seg-opt:text-is("Table")');
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
       assert.equal(view().layout, 'table', 'a Table choice is kept (Issue #740)');
       assert.deepEqual(view().group, [{ field: 'Trip', heading: 'chip' }, { field: 'Priority' }], 'Table keeps the list keys');
-      if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
-      await page.click('.view-layout .seg-opt:text-is("List")');
+      await openPane(page, 'display');
+      await page.click('#view-pane .view-layout .seg-opt:text-is("List")');
       await page.waitForSelector('.wv-list .list-row');
-      await page.keyboard.press('Escape');
-      await page.click('.table-group-btn');
-      await page.click('.table-group-popover .group-level[data-level="Priority"] .group-remove');
+      await openPane(page, 'group');
+      await page.click('#view-pane .group-level[data-level="Priority"] .group-remove');
       await eventually(() => view().group?.length, 1);
       assert.deepEqual(view().group, [{ field: 'Trip', heading: 'chip' }]);
       await page.waitForFunction(() => document.querySelector('.table-group-btn')?.textContent.includes('Group: Trip') && !document.querySelector('.table-group-btn').textContent.includes('Priority'));

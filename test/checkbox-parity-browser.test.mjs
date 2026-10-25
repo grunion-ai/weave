@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let jobs;
 const s = await launch('one checkbox', (weave) => {
@@ -59,10 +60,10 @@ if (s) {
           }
         }
         const grid = await readBox(page, surfaces.grid, true);
-        await page.click('.eye-btn');
-        await page.waitForSelector('.table-fields-popover .table-field-row');
+        await openPane(page, 'fields');
+        await page.waitForSelector('#view-pane .table-field-row');
         assert.equal(await page.locator('.field-visible-check').count(), 0, 'no hand-drawn box');
-        assert.equal(await page.locator('.table-fields-popover :is([role="switch"], .switch)').count(), 0, 'no switch in the Fields menu (Issue #915)');
+        assert.equal(await page.locator('#view-pane .vp-fields :is([role="switch"], .switch)').count(), 0, 'no switch in the Fields list (Issue #915)');
         for (const checked of [false, true]) {
           const got = await readBox(page, '.table-field-row[data-field="Owner"] input[type="checkbox"]', checked);
           assert.match(got.cls, /\bform-check-input\b/, 'Fields: the shared checkbox');
@@ -71,10 +72,9 @@ if (s) {
         }
         const fieldsOn = await readBox(page, '.table-field-row[data-field="Owner"] input[type="checkbox"]', true);
         for (const k of ['w', 'h', 'radius', 'bg']) assert.equal(fieldsOn[k], grid[k], `Fields matches the grid row selector: ${k}`);
-        const rowsBoxes = await page.$$eval('.table-fields-popover .eye-row', (rows) => rows.map((r) => !!r.querySelector('input.form-check-input[type="checkbox"]')));
-        assert.ok(rowsBoxes.length > 3 && rowsBoxes.every(Boolean), 'every show/hide row, Deleted rows and the Σ row included, holds the checkbox');
-        await page.keyboard.press('Escape');
-        await page.waitForFunction(() => !document.querySelector('.chip-pop'));
+        const rowsBoxes = await page.$$eval('#view-pane .vp-fields .eye-row', (rows) => rows.map((r) => !!r.querySelector('input.form-check-input[type="checkbox"]')));
+        assert.ok(rowsBoxes.length > 3 && rowsBoxes.every(Boolean), 'every show/hide row holds the checkbox');
+        await page.click('#view-pane .vp-close');
         await page.click('thead tr.wv-foot td.foot-cell[data-col="Hours"]');
         await page.waitForSelector('.chip-pop .foot-row');
         assert.equal(await page.locator('.chip-pop :is([role="switch"], .switch)').count(), 0, 'no switch in the Σ picker (Issue #915)');
@@ -87,10 +87,10 @@ if (s) {
         }
         await page.locator('.chip-pop .foot-row[data-agg="avg"] input').evaluate((b) => { b.checked = false; });
         await page.keyboard.press('Escape');
-        await page.click('.table-filter-btn');
-        await page.waitForSelector('.table-filter-popover .filter-chip');
+        await openPane(page, 'filters');
+        await page.waitForSelector('#view-pane .filter-chip');
         for (const checked of [false, true]) {
-          const got = await readBox(page, '.table-filter-popover .filter-chip input[type="checkbox"]', checked);
+          const got = await readBox(page, '#view-pane .filter-chip input[type="checkbox"]', checked);
           assert.match(got.cls, /\bform-check-input\b/, 'Filters: the shared checkbox');
           const w = checked ? want.on : want.off;
           for (const k of ['w', 'h', 'radius', 'border', 'borderWidth', 'appearance', 'bg']) assert.equal(got[k], w[k], `Filters ${checked ? 'checked' : 'unchecked'}: ${k}`);
@@ -103,8 +103,8 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
-      await page.click('.eye-btn');
-      const box = page.locator('.table-fields-popover').getByRole('checkbox', { name: 'Owner', exact: true });
+      await openPane(page, 'fields');
+      const box = page.locator('#view-pane').getByRole('checkbox', { name: 'Owner', exact: true });
       assert.equal(await box.isChecked(), true);
       await page.locator('.table-field-row[data-field="Owner"] .eye-label').click();
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Owner'));
@@ -140,13 +140,13 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
-      await page.click('.table-filter-btn');
-      const open = page.locator('.table-filter-popover').getByRole('checkbox', { name: 'Open', exact: true });
+      await openPane(page, 'filters');
+      const open = page.locator('#view-pane').getByRole('checkbox', { name: 'Open', exact: true });
       await open.check();
-      await page.waitForFunction(() => document.querySelector('.table-filter-btn .table-filter-count')?.textContent === '1');
-      assert.equal(await page.locator('.table-filter-popover .filter-chip:has(input:checked)').count(), 1);
+      await page.waitForFunction(() => document.querySelector('#main .table-view-btn .view-count')?.textContent === '1');
+      assert.equal(await page.locator('#view-pane .filter-chip:has(input:checked)').count(), 1);
       await open.uncheck();
-      await page.waitForFunction(() => !document.querySelector('.table-filter-btn .table-filter-count'));
+      await page.waitForFunction(() => !document.querySelector('#main .table-view-btn .view-count'));
     } finally { await page.close(); }
   });
 

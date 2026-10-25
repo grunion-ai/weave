@@ -190,7 +190,7 @@ test('a cold table open paints its chrome before the rows and the skeleton benea
   const skeleton = APP.slice(APP.indexOf('function paintSkeleton'), APP.indexOf('const skeleton = {'));
   assert.match(skeleton, /if \(under\?\.parentElement === main\) under\.after\(card\);\n\s*else main\.replaceChildren\(toolbar, card\);/,
     'a skeleton under a header keeps the header and drops the skeleton toolbar');
-  assert.match(APP, /const cached = cold && !showDeleted \? firstPages\.get\(pageKey\) : null;\n\s*if \(cached\) paint\(cached, null\);/,
+  assert.match(APP, /const cached = cold && !whole \? firstPages\.get\(pageKey\) : null;\n\s*if \(cached\) paint\(cached, null\);/,
     'a first page fetched earlier in the session paints at once');
   assert.match(APP, /if \(cached && JSON\.stringify\(cached\) === JSON\.stringify\(result\)\) return;/,
     'an unchanged fresh page does not redraw the grid');
