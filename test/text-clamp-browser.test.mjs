@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 const LONG = 'A plain name long enough to run past its column and onto a second line at the roomy density, one hundred';
 let table, row;
@@ -14,8 +15,6 @@ const s = await launch('plain text wraps at Spacious', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  const ROOMY = '.seg-opt[title="Two lines per row, for long values"]';
-  const COMFY = '.seg-opt[title="Roomy rows, for reading"]';
   const open = async (theme) => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
@@ -23,10 +22,10 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
   };
-  const density = async (page, pick) => {
-    await page.click('.table-density-btn');
-    await page.click(pick);
-    await page.keyboard.press('Escape');
+  const density = async (page, label) => {
+    await openPane(page, 'display');
+    await page.locator('#view-pane .vp-density .seg-opt', { hasText: label }).click();
+    await page.waitForSelector(`.wv-grid[data-density="${label.toLowerCase()}"]`);
   };
   const cell = (field) => `tr[data-eid="${row.id}"] td[data-field="${field}"] .wv-cb`;
   const lines = (page, field) => page.evaluate((q) => {
@@ -43,16 +42,14 @@ if (s) {
     test(`at Spacious a plain text value rests as two clamped lines, the Name included (${theme}, Issue #447)`, async () => {
       const page = await open(theme);
       try {
-        await density(page, ROOMY);
-        await page.waitForSelector('.wv-grid[data-density="spacious"]');
+        await density(page, 'Spacious');
         for (const field of ['Name', 'Note']) {
           const m = await lines(page, field);
           assert.equal(m.rest, LONG, `${field} rests as text, not an input: ${JSON.stringify(m)}`);
           assert.equal(m.clamp, '2', `${field} clamps to the density's lines`);
           assert.equal(m.lines, 2, `${field} reads two lines at Spacious`);
         }
-        await density(page, COMFY);
-        await page.waitForSelector('.wv-grid[data-density="comfortable"]');
+        await density(page, 'Comfortable');
         for (const field of ['Name', 'Note']) assert.equal((await lines(page, field)).lines, 1, `${field} is one line at Comfortable`);
       } finally { await page.close(); }
     });

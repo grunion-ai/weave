@@ -1,0 +1,1 @@
+- A plain text value in a grid cell, the Name included, rests as text instead of an input, so at Spacious it wraps to two clamped lines like a marked text value. A click or Return on the cell still edits it in place, and an empty cell keeps its input to type into (Issue #447).
