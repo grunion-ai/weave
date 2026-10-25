@@ -10,7 +10,7 @@ const SPAN = MIN - 1;
 const IPHONE = phoneProfile()?.page ?? null;
 
 const SWEEP = (roots) => {
-  const SEL = 'a[href], button, [role="button"], summary, input:not([type="hidden"]), select, textarea, tbody tr.entity-row';
+  const SEL = 'a[href], button, [role="button"], summary, input:not([type="hidden"]), select, textarea, :is(tbody tr.entity-row, .wv-list .list-row)';
   const tops = roots.flatMap((r) => [...document.querySelectorAll(r)]);
   const inRoot = (n) => tops.some((t) => t.contains(n));
   const shown = (n) => {
