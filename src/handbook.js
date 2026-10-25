@@ -2275,7 +2275,7 @@ The bug glyph in the bottom-right corner of every page opens a small panel besid
 
 ## Report issue: an Issue on this instance
 
-**Report issue**, or \`⌘Return\` from the note (the \`⌘↵\` on the button says so), files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current.
+**Report issue**, or \`⌘Return\` from the note (the \`⌘↵\` on the button says so), files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current. The row also asks **Which probe would have caught this?** Whoever fixes the bug answers it with the probe that should have caught it, or with none, and the weekly quality scorecard counts the answers that read none.
 
 That row lives where the instance lives. On the canonical instance it is read every night. On a self-hosted weave it is on your disk, and an instance without a docs workspace cannot file it at all.
 
