@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
-import { CELLS, JOURNEYS, cellsOf, seed, walk } from './lib/journeys.mjs';
+import { CELLS, seed, walk } from './lib/journeys.mjs';
+import { journeyOf, walked } from './lib/states.mjs';
 import { installProbe, readProbe, resetProbe, regressed, fingerprint, GATED } from './lib/flicker.mjs';
 
 const fixed = JSON.parse(readFileSync(new URL('./flicker-fixed.json', import.meta.url), 'utf8'));
@@ -27,15 +28,14 @@ if (s) {
     assert.ok(matrix.phone.options.hasTouch && matrix.phone.options.isMobile);
   });
 
-  for (const j of JOURNEYS) {
-    for (const cell of cellsOf(j)) {
-      test(`${j.name} (${cell}): the journey finishes and no fixed flicker is back`, async (t) => {
-        const { events } = await walk(matrix[cell].browser, j, ctx, { probe, ...matrix[cell].options });
-        const seen = events.map((e) => ({ ...e, cell }));
-        const gated = seen.filter((e) => GATED.includes(e.kind));
-        if (gated.length) t.diagnostic(`seen: ${[...new Set(gated.map((e) => fingerprint(j.name, e)))].join(' ; ')}`);
-        assert.deepEqual(regressed({ [j.name]: seen }, fixed), [], 'a fixed flicker came back');
-      });
-    }
+  for (const { state, cell } of walked('flicker')) {
+    const j = journeyOf(state, cell);
+    test(`${j.name} (${cell}): the journey finishes and no fixed flicker is back`, async (t) => {
+      const { events } = await walk(matrix[cell].browser, j, ctx, { probe, ...matrix[cell].options });
+      const seen = events.map((e) => ({ ...e, cell }));
+      const gated = seen.filter((e) => GATED.includes(e.kind));
+      if (gated.length) t.diagnostic(`seen: ${[...new Set(gated.map((e) => fingerprint(j.name, e)))].join(' ; ')}`);
+      assert.deepEqual(regressed({ [j.name]: seen }, fixed), [], 'a fixed flicker came back');
+    });
   }
 }

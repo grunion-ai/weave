@@ -273,7 +273,7 @@ The URL above serves one workspace. Another workspace on the same host is served
 
 ## Sign-in
 
-The first call opens a browser sign-in (OAuth 2.1 with PKCE and dynamic client registration), so there is no token to paste. The account needs the Architect role on the workspace, because the MCP server carries the schema tools.
+The first call opens a browser sign-in (OAuth 2.1 with PKCE and dynamic client registration), so there is no token to paste. Any role on the workspace connects, and \`tools/list\` names only the tools that role may call: an Observer reads and comments, an Editor also creates, edits and deletes rows, and an Architect also changes the schema and accounts. Where the host bills for seats, creating and editing take a paid seat or an active free trial; without one, an Editor or Architect reads and comments as an Observer does.
 
 ## Claude Code
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let feeds, active, live, paused;
 const s = await launch('toggle field', (weave) => {
@@ -113,7 +114,7 @@ if (s) {
   test('the filter strip offers the two labels and narrows the rows', async () => {
     const page = await grid();
     try {
-      await page.click('.table-filter-btn');
+      await openPane(page, 'filters');
       const chip = page.locator('.filter-strip .filter-chip', { hasText: 'Live' });
       await chip.waitFor();
       assert.equal(await page.locator('.filter-strip .filter-chip', { hasText: 'Paused' }).count(), 1);

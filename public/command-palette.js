@@ -2,7 +2,8 @@
 
 function navigateToResult(hit) {
   const hitPrefix = (hit.url.match(/^\/w\/[^/]+/) ?? [''])[0];
-  if (hitPrefix !== WS_PREFIX) {
+  const home = hitPrefix === WS_PREFIX || hitPrefix.toLowerCase() === `/w/${currentWsName()}`.toLowerCase();
+  if (!home) {
     location.href = hit.kind === 'entity' ? `${hitPrefix}/#/entity/${hit.id}` : hit.url;
     return;
   }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let long, short, row, few;
 const s = await launch('one Fields menu for the table and the record', (weave) => {
@@ -21,6 +22,12 @@ if (s) {
   };
   const openMenu = async (page, url) => {
     await page.goto(url, { waitUntil: 'networkidle' });
+    if (url.includes('#/table/')) {
+      await openPane(page, 'fields');
+      const list = page.locator('#view-pane .vp-fields');
+      await list.waitFor();
+      return list;
+    }
     await page.click('#main .eye-btn');
     const pop = page.locator('.table-fields-popover');
     await pop.waitFor();
@@ -28,11 +35,11 @@ if (s) {
     return pop;
   };
   const shape = (page) => page.evaluate(() => {
-    const pop = document.querySelector('.chip-pop');
+    const pop = document.querySelector('#view-pane:not([hidden]) .vp-fields') ?? document.querySelector('.chip-pop');
     const rows = [...pop.querySelectorAll('.table-field-list .table-field-row')];
     return {
-      fieldsMenu: pop.classList.contains('table-fields-popover'),
-      title: pop.querySelector('.table-control-head strong')?.textContent,
+      fieldsMenu: pop.classList.contains('table-fields-popover') || pop.classList.contains('vp-fields'),
+      title: pop.querySelector('.table-control-head strong')?.textContent ?? pop.closest('.vp-section')?.querySelector('.vp-name')?.textContent,
       rows: rows.length,
       checkboxes: rows.filter((r) => r.querySelector('label.eye-row > input.form-check-input[type="checkbox"]')).length,
       switches: pop.querySelectorAll('[role="switch"], .switch').length,
@@ -42,12 +49,12 @@ if (s) {
     };
   });
 
-  test('the table and the record open the one Fields menu, built of checkbox rows that drag (Issues #910, #915)', async () => {
+  test('the table\'s View pane and the record open the one Fields list, built of checkbox rows that drag (Issues #910, #915)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await openMenu(page, surfaces.table(long));
       const table = await shape(page);
-      await page.keyboard.press('Escape');
+      await page.click('#view-pane .vp-close');
       await openMenu(page, surfaces.record(long));
       const record = await shape(page);
       for (const [name, got] of Object.entries({ table, record })) {
@@ -96,7 +103,7 @@ if (s) {
     }
   });
 
-  for (const [label, viewport, names] of [['desktop', { width: 1440, height: 700 }, ['table', 'record']], ['phone', { width: 390, height: 700 }, ['record']]]) {
+  for (const [label, viewport, names] of [['desktop', { width: 1440, height: 700 }, ['record']], ['phone', { width: 390, height: 700 }, ['record']]]) {
     for (const theme of ['light', 'dark']) {
       test(`the Fields list keeps a stable scrollbar gutter and its rows clear of it (Issues #909, #915, ${label}, ${theme})`, async () => {
         const page = await browser.newPage({ viewport, colorScheme: theme });

@@ -368,15 +368,38 @@ integration tests; ordinary jobs use the shared default, which is keyed on a has
 worktree with changed manager code gets its own manager, and the old one exits after
 five idle minutes. `--stop` cancels active work, so inspect `--status` first.
 
+## State catalog
+
+`test/lib/states.mjs` is the one list of app states the runtime probes walk
+(Issue #1119). A state names a route, a layout (`table`, `list`, `board`), an
+open state (`journey`, `rest`, `overlay`, `hover`, `drag`), the seeds it
+renders on, its cells and its themes. `PROBES` says which seed, open states,
+cells and themes each probe measures, and `plan(probe)` is the list it walks:
+the cut-off sweep, the flicker gate, the budgets, the a11y gate and the touch
+gate all read it. `test/lib/journeys.mjs` and `test/lib/overlays.mjs` are
+filtered views of it. A state that names no seed renders on every seed, so a
+surface added that way falls under every probe at once; the board and list
+views entered first.
+
+A state that fails a probe it newly joins carries a `hold` naming the Issue
+rows that track the failure, keyed by probe (`touch`) or probe and cell
+(`cutoff|desktop`). A held state stays out of that gate and is still walked:
+the gate asserts it still shows what its rows track and prints the counts.
+**Fixing one:** fix the rows, watch the held test fail because the state is
+clean, and drop the hold in the same change so the gate walks it. A hold never
+stands in for a baseline: `test/cutoff-baseline.json` and the touch gate's
+zero tolerance are unchanged.
+
 ## Flicker loop
 
 A flicker is something the reader saw that should not have been there: a node
 painted for a beat and gone, a list painted empty and refilled, a class that
 flipped and flipped back, content that jumped with no input, a screencast
 frame that differs from both neighbours while they match. `test/lib/flicker.mjs`
-is the probe; `test/lib/journeys.mjs` is the nine journeys it walks (load,
-open a table, scroll, edit a cell, open a row, switch view, type in a
-document, trash and undo, flip the theme).
+is the probe; it walks the journeys and the rest states the state catalog plans
+for it (load, open a table, scroll, edit a cell, open a row, switch view, type
+in a document, trash and undo, flip the theme, the phone journeys, and loading
+the board and list views).
 
 ```bash
 node scripts/flicker-sweep.mjs                         # 3 runs, keeps what 2 saw
@@ -496,8 +519,8 @@ node scripts/cutoff-sweep.mjs --cell phone --overlay field-editor,new-field   # 
 node scripts/cutoff-sweep.mjs --lower               # after a fix: lower this platform's baseline
 ```
 
-The sweep walks the flicker journeys and opens every dialog and popover listed in
-`test/lib/overlays.mjs`, at desktop 1440x900 in Chromium and phone 390x844 in
+The sweep walks the journeys and rest states the state catalog plans for it and
+opens every dialog and popover listed in `test/lib/overlays.mjs`, at desktop 1440x900 in Chromium and phone 390x844 in
 WebKit, on the messy seed. `test/cutoff-gate-browser.test.mjs` runs the same
 sweep in the gate against `test/cutoff-baseline.json`, which holds today's counts
 per platform, since system fonts differ between macOS and the Linux CI runner.
