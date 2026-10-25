@@ -50,6 +50,9 @@ if (s) {
         assert.equal(await group.locator('.board-cards').isVisible(), false);
         assert.equal(weave.tableView(`${issueDb.id}/Standard`).collapsed, undefined);
         await group.locator('.list-fold').click();
+        await group.locator('.tile-field[data-field="Status"] .chip-trigger').click();
+        assert.equal(await page.locator('#dock').isVisible(), false, 'editing a related field keeps the parent entity open');
+        await page.keyboard.press('Escape');
         await page.locator(`.related-section .tile[data-eid="${fixed.id}"] .unlink-btn`).click();
         await page.waitForFunction(() => document.querySelectorAll('.related-section .tile').length === 1);
         assert.equal(await page.evaluate(() => location.hash), `#/entity/${release.id}`);

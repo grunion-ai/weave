@@ -5904,7 +5904,7 @@ function renderBoard(main, db, items, ctx) {
     card.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.shiftKey) return;
       const phone = dockCoversScreen.matches;
-      if (!phone && e.target.closest('.tile-field > dd')) { if (!nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
+      if (!phone && e.target.closest('.tile-field > dd')) { if (!ctx.embedded && !nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
       if (!e.target.closest(phone ? TILE_FORM : TILE_HANDS_OFF)) boardDrag(e, card);
     });
     card.addEventListener('click', (e) => {
@@ -10879,8 +10879,9 @@ async function relatedGrid(entity, f, onSaved) {
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
 
+  const view = pickTableView(target);
   const body = el('tbody', {},
-    ...rows.map((item) => el('tr', {
+    ...(view.layout === 'board' ? [] : rows).map((item) => el('tr', {
       class: 'entity-row',
       dataset: { eid: item.id, href: `#/entity/${item.id}` },
       onclick: (e) => {
@@ -10906,7 +10907,8 @@ async function relatedGrid(entity, f, onSaved) {
             try {
               const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: `New ${target.name}` } });
               await link([made.id]);
-              focusNewRow(made.id, { scope: '.related-block', select: true });
+              if (view.layout === 'board') { await dockEntity(target, made.id, { step: true }); $('#dock .name-edit')?.focus(); }
+              else focusNewRow(made.id, { scope: '.related-block', select: true });
             } catch (err) { toast(err.message, true); }
           },
         }, `+ New ${target.term.singular}`),
@@ -10938,7 +10940,6 @@ async function relatedGrid(entity, f, onSaved) {
           body))
       : el('div', { class: 'card' },
         el('table', { class: 'table table-sm wv-grid' }, body)));
-  const view = pickTableView(target);
   if (view.layout === 'board') {
     const boardDb = viewed(target, { ...view, fields: cols.map((c) => c.name) });
     const collapseKey = `weave-related-board:${entity.id}:${f.id}`;

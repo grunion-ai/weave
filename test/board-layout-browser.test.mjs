@@ -98,6 +98,12 @@ if (s) {
             assert.ok(pick.x >= text.x + text.width || pick.x + pick.width <= text.x || pick.y >= text.y + text.height || pick.y + pick.height <= text.y);
           }
           assert.equal(await page.locator('.board-wrap').evaluate((n) => getComputedStyle(n).borderTopWidth), '0px');
+          if (density === 'comfortable') {
+            await openPane(page, 'display');
+            await page.locator('#view-pane .vp-density .seg-opt', { hasText: 'Compact' }).click();
+            assert.equal(await page.locator('.board-wrap').getAttribute('data-density'), 'compact');
+            assert.ok((await card.boundingBox()).height < heights[1]);
+          }
         } finally { await page.close(); }
       }
       assert.ok(heights[0] < heights[1] && heights[1] < heights[2], `${theme}: density heights ${heights}`);
@@ -175,6 +181,19 @@ if (s) {
       assert.equal(await eventually(() => valueOf(ids.pants, 'State'), 'Research'), 'Research');
       await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Research"] .tile[data-eid="${id}"]`), ids.pants);
       assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+
+  test('a failed group move restores the saved card position', async () => {
+    seed({ picture: 'off' });
+    const page = await open();
+    try {
+      await page.route(`**/api/entities/${ids.pants}`, (route) => route.request().method() === 'PATCH'
+        ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Move refused' }) }) : route.continue());
+      await drag(page, tile(ids.pants), '.board-group[data-key="Bought"] .board-empty');
+      await page.locator('.wv-toast', { hasText: 'Move refused' }).waitFor();
+      assert.equal(await page.locator(`.board-group[data-key="Research"] ${tile(ids.pants).replace('.wv-board ', '')}`).count(), 1);
+      assert.equal(valueOf(ids.pants, 'State'), 'Research');
     } finally { await page.close(); }
   });
 
