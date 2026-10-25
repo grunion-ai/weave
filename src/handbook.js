@@ -1881,7 +1881,7 @@ claude mcp add --scope user --transport http weave https://weave.example.com/mcp
 
 The first call opens the provider's sign-in in the browser (in Claude Code, \`/mcp\` then Authenticate); Codex runs \`codex mcp login weave\`. The client stores and refreshes the token. Behind the line, weave is an OAuth 2.1 protected resource as the MCP authorization spec describes:
 
-1. A call with no credential answers \`401\` with \`WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"\` (\`.../oauth-protected-resource/w/<name>/mcp\` for a workspace).
+1. A call with no credential answers \`401\` with \`WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"\` (\`.../oauth-protected-resource/w/<name>/mcp\` for a workspace). The body is JSON, except for a browser: a \`GET\` whose \`Accept\` prefers \`text/html\` gets a page naming the workspace, its MCP address with a copy button and the steps for Claude Code, Claude.ai and ChatGPT, under the same header.
 2. That document (RFC 9728) names \`WEAVE_OIDC_ISSUER\` as the authorization server. The client registers itself there and signs the person in, so the provider must allow dynamic client registration (in Clerk: OAuth applications, dynamic client registration on).
 3. The client sends the provider's access token. weave asks the provider's \`userinfo_endpoint\` who it belongs to and opens the account that subject is linked to on this workspace or on the hub root, the same lookup a browser sign-in makes. weave reads the subject alone and asks for the \`openid\` scope only, as the browser door does. Answers are kept a minute under the token's sha256; the token itself is never stored or logged.
 
