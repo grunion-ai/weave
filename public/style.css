@@ -1380,7 +1380,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .share-mode:has(input:checked) { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); }
 .share-mode.is-off { color: var(--tblr-secondary); cursor: not-allowed; }
 .attach-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.attach-box.attach-box-wide { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; }
+.attach-box.attach-box-wide { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 6px; width: 100%; }
 .entity-body > .attach-block:has(.attach-box-wide) { align-items: start; }
 .entity-body > .attach-block:has(.attach-box-wide) > label { padding-top: 6px; }
 .attach-chips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
