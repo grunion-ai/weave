@@ -10943,7 +10943,7 @@ async function relatedGrid(entity, f, onSaved) {
   if (view.layout === 'board') {
     const boardDb = viewed(target, { ...view, fields: cols.map((c) => c.name) });
     const collapseKey = `weave-related-board:${entity.id}:${f.id}`;
-    try { boardDb.view.collapsed = JSON.parse(sessionStorage.getItem(collapseKey) ?? 'null') ?? view.collapsed; } catch {}
+    try { boardDb.view.collapsed = JSON.parse(sessionStorage.getItem(collapseKey) ?? 'null') ?? view.collapsed; } catch (err) { toast(err.message, true); }
     const content = section.lastElementChild;
     const actions = el('div', { class: 'board-actions' }, ...body.querySelectorAll('.add-entity-btn'));
     content.remove();
@@ -10952,7 +10952,7 @@ async function relatedGrid(entity, f, onSaved) {
     renderBoard(section, boardDb, rows, {
       setup, all: linked.length, everyone: rows, domains, filtered, sorted: true, embedded: true,
       reload: onSaved,
-      writeView: async ({ collapsed }) => { try { sessionStorage.setItem(collapseKey, JSON.stringify(collapsed)); } catch {} },
+      writeView: async ({ collapsed }) => { try { sessionStorage.setItem(collapseKey, JSON.stringify(collapsed)); } catch (err) { toast(err.message, true); } },
     });
     for (const card of section.querySelectorAll('.tile[data-eid]')) {
       card.append(unlinkButton({ id: card.dataset.eid }));

@@ -79,6 +79,7 @@ if (s) {
       await page.waitForSelector('.board-group.shut');
       await page.locator('.board-group[data-key="Research"] .list-fold').click();
       assert.equal(await group.locator('.tile').count(), 2);
+      await eventually(() => view().collapsed?.includes('Research'), false);
     } finally { await page.close(); }
   });
 
@@ -103,6 +104,7 @@ if (s) {
             await page.locator('#view-pane .vp-density .seg-opt', { hasText: 'Compact' }).click();
             assert.equal(await page.locator('.board-wrap').getAttribute('data-density'), 'compact');
             assert.ok((await card.boundingBox()).height < heights[1]);
+            await eventually(() => view().density, 'compact');
           }
         } finally { await page.close(); }
       }

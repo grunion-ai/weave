@@ -74,6 +74,7 @@ if (s) {
       await page.waitForSelector('.board-col-head.column-shut');
       await page.locator('.board-col-head[data-key="Research"] .list-fold').click();
       assert.equal(await page.locator(`${cell('Research', 'Office')} .board-cards`).isVisible(), true);
+      await eventually(() => view().collapsed?.includes('Research'), false);
     } finally { await page.close(); }
   });
 
@@ -96,7 +97,8 @@ if (s) {
         }
         const lane = page.locator('.board-lane[data-key="Office"] .board-lane-title');
         assert.equal(await lane.evaluate((n) => getComputedStyle(n).position), 'sticky');
-        await page.setViewportSize({ width: 860, height: 900 });
+        await page.setViewportSize({ width: 820, height: 900 });
+        assert.ok(await page.locator('.wv-board').evaluate((n) => n.scrollWidth > n.clientWidth), 'the narrow viewport overflows the columns');
         await page.locator('.wv-board').evaluate((n) => { n.scrollLeft = 400; });
         const board = await page.locator('.wv-board').boundingBox();
         await page.waitForFunction(() => document.querySelector('.wv-board').scrollLeft > 0);
