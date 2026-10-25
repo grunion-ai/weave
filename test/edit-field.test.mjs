@@ -119,7 +119,7 @@ test('an editable field that sizes to its content never collapses below 8ch, out
   const all = rules();
   const floor = all.find((r) => split(r.selector).includes('.wv-edit:placeholder-shown'));
   assert.equal(floor && decl(floor.body, 'min-width'), '8ch', 'an empty field showing its placeholder is at least 8ch');
-  const sized = all.filter((r) => split(r.selector).some((s) => FIELDS.test(s) && !s.startsWith('#main > .table-wrap')) && decl(r.body, 'field-sizing') === 'content');
+  const sized = all.filter((r) => split(r.selector).some((s) => FIELDS.test(s) && !s.startsWith('.list-phone .phone-chip')) && decl(r.body, 'field-sizing') === 'content');
   assert.ok(sized.length >= 3, `found ${sized.length} content-sized field rules`);
   const short = sized.filter((r) => decl(r.body, 'min-width') !== '8ch' && !(/\.view-title(?![-\w])|\.name-edit/.test(r.selector) && !decl(r.body, 'min-width')));
   assert.deepEqual(short.map((r) => r.selector), [], 'a field without a placeholder floors at 8ch itself; the titles lean on Untitled');

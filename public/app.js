@@ -4258,7 +4258,7 @@ function rememberFirstPage(key, result) {
   if (firstPages.size > FIRST_PAGES_KEPT) firstPages.delete(firstPages.keys().next().value);
 }
 function tableGroup(db) {
-  if (!hasView(db) || drawsList(db)) return null;
+  if (!hasView(db) || drawsList(db) || isBoardLayout(db)) return null;
   const group = (db.view.group ?? []).filter((l) => listCore.groupable(db.fields.find((f) => f.name === l.field)));
   return group.length ? group : null;
 }
@@ -4266,7 +4266,7 @@ function serverSums(result) {
   return { sums: new Map((result.groups ?? []).map((g) => [g.path.map((p) => p.value).join(listCore.SEP), g])), grand: result.groupTotal ?? null };
 }
 async function readAndDrawTable(db, dbId, search, cold = false) {
-  if (drawsList(db)) return readAndDrawList(db, dbId, search);
+  if (drawsList(db) || isBoardLayout(db)) return readAndDrawList(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const group = tableGroup(db);
@@ -5208,7 +5208,7 @@ function paintTableChrome(db) {
   main.wvTable = chrome;
   main.replaceChildren(chrome.header);
   syncPhoneBar();
-  scheduleSkeleton(drawsList(db) ? 'list' : 'db', db, chrome.header);
+  scheduleSkeleton(drawsList(db) || isBoardLayout(db) ? 'list' : 'db', db, chrome.header);
 }
 
 function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
@@ -5391,7 +5391,7 @@ function fitPhoneChipRow(box, cells) {
 const isListLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'list';
 const boardCore = globalThis.weaveBoardCore;
 const isBoardLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'board';
-const drawsList = (db) => isListLayout(db) || isBoardLayout(db) || (dockCoversScreen.matches && !db.system && !!db.view && !db.view.blank && db.view.layout !== 'table');
+const drawsList = (db) => isListLayout(db) || (dockCoversScreen.matches && !db.system && !!db.view && !db.view.blank && db.view.layout !== 'table');
 function listSetup(db) {
   const v = db.view ?? {};
   const fieldOf = (n) => (n ? db.fields.find((f) => f.name === n) : null) ?? null;
