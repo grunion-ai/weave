@@ -261,6 +261,11 @@ and opens a `promote/revert-<sha>` PR on main for the promoted range (armed when
 commit while prod serves its rollback, and the next promotion waits for a main
 commit that reverts it. A timeout files and alerts without a revert.
 
+A promotion that passes while `/api/health` reads `auth.ok: false` stays
+promoted and writes one alert line. A broken sign-in comes from provider
+configuration, such as a rotated client secret, so holding the promotion
+would only hold back a fix.
+
 Set the repository variable `PROMOTION_PAUSED=true` to stop promotion; delete it
 or set it to anything else to resume. Two rulesets guard the branch: nobody
 deletes it or pushes a non-fast-forward, and only the promotion deploy key

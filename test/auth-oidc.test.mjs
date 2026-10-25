@@ -4,6 +4,7 @@ import { Weave } from '../src/engine.js';
 import { createOidc, oidcFromEnv } from '../src/oidc.js';
 import { renderAuthPage } from '../src/auth-page.js';
 import { createBilling } from '../src/billing.js';
+import { startServer } from '../src/server.js';
 import { startIdp, serveOidc, cookieOf } from './lib/idp.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -255,6 +256,70 @@ test('oidc: what comes back is the issuer and the subject, and userinfo is never
       assert.deepEqual(who, { issuer: s.idp.issuer, subject: 'user_kyle', ...(claimsInIdToken ? { email: 'kyle@example.com' } : {}) }, 'the verified email from the id token only, never userinfo');
     } finally { s.stop(); }
   }
+});
+
+test('oidc: the client-credential probe tells a client the provider accepts (invalid_grant) from one it refuses (Issue #1178)', async () => {
+  const idp = await startIdp();
+  try {
+    const good = await createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret }).probe({ redirectUri: 'http://localhost/cb' });
+    assert.deepEqual([good.ok, good.status, good.code], [true, 400, 'invalid_grant']);
+    assert.ok(Date.parse(good.checkedAt) > 0);
+    const sent = idp.seen.token.at(-1);
+    assert.equal(sent.basic, true, 'the probe authenticates the way a sign-in does');
+    assert.equal(sent.form.redirect_uri, 'http://localhost/cb');
+    assert.match(sent.form.code, /^weave-probe-/);
+    const stale = await createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: 'rotated-away' }).probe();
+    assert.deepEqual([stale.ok, stale.status, stale.code], [false, 401, 'invalid_client']);
+  } finally { idp.stop(); }
+  const doc = { issuer: ISS, authorization_endpoint: `${ISS}/oauth/authorize`, token_endpoint: `${ISS}/oauth/token`, jwks_uri: `${ISS}/jwks` };
+  const answering = (status, body) => createOidc({ issuer: ISS, clientId: 'c', clientSecret: 's', fetch: async (url) => (String(url).endsWith('/openid-configuration') ? Response.json(doc) : new Response(body == null ? 'nope' : JSON.stringify(body), { status })) });
+  for (const [status, body, ok, code] of [
+    [400, { error: 'invalid_scope' }, false, 'invalid_scope'],
+    [400, { error: 'unauthorized_client' }, false, 'unauthorized_client'],
+    [401, null, false, 'invalid_client'],
+    [503, null, false, 'server_error'],
+    [400, { error: 'invalid_request' }, true, 'invalid_request'],
+  ]) {
+    const r = await answering(status, body).probe();
+    assert.deepEqual([r.ok, r.code], [ok, code], `${status} ${body?.error ?? ''}`);
+  }
+  const down = await createOidc({ issuer: ISS, clientId: 'c', fetch: async () => { throw new TypeError('fetch failed'); } }).probe();
+  assert.deepEqual([down.ok, down.code], [false, 'unreachable']);
+});
+
+test('routes: /api/health carries the sign-in probe; anonymous reads auth.ok, an architect reads the provider code, and the top-level ok stays true (Issue #1178)', async () => {
+  const idp = await startIdp();
+  const w = new Weave();
+  const architect = w.createAccount({ name: 'root', role: 'architect' }).token;
+  w.setRequireAuth(true);
+  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: 'rotated-away', name: 'Clerk' });
+  const errors = [];
+  const was = console.error;
+  console.error = (line) => errors.push(String(line));
+  const { server, port } = await startServer(w, { port: 0, oidc, authProbeEvery: 40 });
+  const health = async (token) => (await fetch(`http://127.0.0.1:${port}/api/health`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })).json();
+  try {
+    let body;
+    for (let i = 0; i < 200 && !(body = await health(architect)).auth; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(body.ok, true, 'an auth fault never fails the Railway check or the release swap');
+    assert.deepEqual([body.auth.ok, body.auth.status, body.auth.code], [false, 401, 'invalid_client']);
+    assert.deepEqual(await health(null), { ok: true, name: 'weave', auth: { ok: false } }, 'anonymous learns only whether sign-in works');
+    assert.ok(errors.some((l) => /sign-in is broken: Clerk answered 401 invalid_client/.test(l)), errors.join('\n'));
+    const seen = idp.seen.token.length;
+    for (let i = 0; i < 200 && idp.seen.token.length === seen; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.ok(idp.seen.token.length > seen, 'the probe runs again on its interval');
+  } finally { console.error = was; server.close(); idp.stop(); }
+  const quiet = new Weave();
+  const off = await startServer(quiet, { port: 0, oidc: null, authProbeEvery: 40 });
+  try {
+    assert.equal('auth' in (await (await fetch(`http://127.0.0.1:${off.port}/api/health`)).json()), false, 'no provider, no auth block');
+  } finally { off.server.close(); }
+});
+
+test('cli: weave serve probes sign-in at start and every fifteen minutes (Issue #1178)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const bin = readFileSync(BIN, 'utf8');
+  assert.match(bin, /await startServer\(w, \{[^}]*authProbeEvery: 15 \* 60_000/);
 });
 
 test('routes: signing in provisions nobody — a stranger, and the linked email under a new subject, are refused', async () => {
