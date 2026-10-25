@@ -1493,13 +1493,8 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
   document.querySelector('#fsv-back')?.remove();
   const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined }) : null;
   const close = () => back.remove();
-  const goBack = () => {
-    const h = frame?.contentWindow?.history;
-    if (h && h.length > 1) h.back(); else close();
-  };
   const back = el('div', { id: 'fsv-back' },
     el('div', { class: 'fsv-bar' },
-      url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: goBack }, iconEl('‹')) : null,
       url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')) : null,
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),

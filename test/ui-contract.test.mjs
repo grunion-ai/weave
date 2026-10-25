@@ -1053,7 +1053,8 @@ test('docs go fullscreen and diagrams become whiteboards (Features #47, #46)', (
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(app.includes('function fullscreenViewer('), 'the in-tree dialog exists');
-  assert.ok(app.includes('h.back()'), 'the frame has its own back');
+  const viewer = app.slice(app.indexOf('function fullscreenViewer('), app.indexOf('let cytoscapeLoading'));
+  assert.ok(!viewer.includes("title: 'Back'") && !viewer.includes('history'), 'no Back beside the X: a sandboxed frame is cross-origin, so its history is out of reach (Issue #1174)');
   assert.ok(app.includes('function openWhiteboard('), 'the whiteboard exists');
   assert.ok(html.includes('graph-parse.js'), 'the parser loads with the app');
   assert.ok(app.includes("src = '/vendor/cytoscape.min.js'"), 'cytoscape is lazy — 434KB only when a whiteboard opens');
