@@ -85,7 +85,6 @@
 html, body { overscroll-behavior-x: none; }
 :root { margin-left: 0; }
 body { font-size: var(--fs-body); background: var(--wv-canvas); }
-.text-muted { color: var(--tblr-secondary) !important; }
 html:has(> body > #app), body:has(> #app) { height: 100%; overflow: hidden; }
 #app { display: flex; height: 100vh; height: 100dvh; }
 
