@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, atRest } from './lib/browser.mjs';
 import { openPane } from './lib/view-pane.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
@@ -134,6 +134,23 @@ if (s) {
         assert.deepEqual(page.errors, []);
       } finally { await page.close(); }
     }
+  });
+
+  test('a long title wraps inside the card and nothing is cut off (Issue #1123)', async () => {
+    seed();
+    const long = weave.createEntity(list.id, { name: 'Standing desk: a title that runs well past the card so the tile has to wrap it somewhere sensible', values: { State: 'Research' } }).id;
+    const page = await open();
+    try {
+      const title = page.locator(`${tile(long)} .tile-title`);
+      await atRest(title);
+      const box = (n) => ({ height: n.getBoundingClientRect().height, over: n.scrollWidth - n.clientWidth, lines: n.getClientRects().length });
+      const got = await title.evaluate(box);
+      const short = await page.locator(`${tile(ids.pants)} .tile-title`).evaluate(box);
+      assert.ok(got.height > short.height, `the long title takes more lines than a short one: ${JSON.stringify({ got, short })}`);
+      assert.ok(got.over <= 1, `no title text runs past the card: ${got.over}px hidden`);
+      assert.equal(await title.evaluate((n) => getComputedStyle(n).textOverflow), 'clip', 'no ellipsis stands in for the title');
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
   });
 
   test('picture off draws no cover; stacked sizes cards from the picture size', async () => {

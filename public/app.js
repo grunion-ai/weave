@@ -5983,7 +5983,7 @@ function renderBoard(main, db, items, ctx) {
           el('label', { class: 'tile-pick', title: 'Pick to compare' },
             el('input', { type: 'checkbox', 'aria-label': `Pick ${label} to compare`, onchange: () => pickCard(it.id) })),
           el('span', { class: 'tile-id' }, `#${it.publicId}`),
-          el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1', title: label }, label)),
+          el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1' }, label)),
         fields.length ? el('dl', { class: 'tile-fields' }, ...fields.map((f) => el('div', { class: 'tile-field', dataset: { field: f.name } },
           el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, () => reload(), { compact: true }))))) : null));
     card.wvPath = path;

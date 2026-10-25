@@ -2406,7 +2406,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .tile-body { display: grid; gap: var(--board-gap, 6px); min-width: 0; padding: var(--board-pad-y, 8px) var(--board-pad-x, 10px); font-size: var(--fs-grid); }
 .tile-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 600; }
 .tile-id { flex: none; color: var(--tblr-secondary); font-size: var(--fs-meta); font-weight: 500; font-variant-numeric: tabular-nums; }
-.tile-title { min-width: 0; overflow: hidden; color: var(--tblr-body-color); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; -webkit-user-drag: none; }
+.tile-title { min-width: 0; color: var(--tblr-body-color); text-decoration: none; overflow-wrap: anywhere; -webkit-user-drag: none; }
 .tile-title:hover { color: var(--tblr-primary); }
 .wv-board .tile.done .tile-title { color: var(--tblr-secondary); text-decoration: line-through; }
 .tile-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 3px 10px; margin: 0; font-size: var(--fs-secondary); }
