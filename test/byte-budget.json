@@ -192,6 +192,10 @@
       "gzip": 1723,
       "br": 1533
     },
+    "/share-panel.js": {
+      "gzip": 3503,
+      "br": 3044
+    },
     "/slug-core.js": {
       "gzip": 1286,
       "br": 1107

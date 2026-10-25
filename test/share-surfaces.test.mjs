@@ -26,7 +26,7 @@ test('MCP keeps grant identity while changing expiry and rotating access', () =>
     call({ action: 'revoke', share: g.id });
     assert.equal(call({ action: 'list' }).shares.length, 0);
     assert.equal(call({ action: 'list', includeInactive: true }).shares[0].status, 'revoked');
-  } finally { w.close(); }
+  } finally { w.store.close(); }
 });
 
 test('CLI exposes Never, expiry updates, rotation and inactive links', () => {
