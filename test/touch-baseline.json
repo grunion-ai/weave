@@ -1,0 +1,498 @@
+{
+  "_": "Phone controls under the 44 px minimum that the touch gate tolerates today (Issue #1119), counted per platform as 'state|control|engine' over every phone state the catalog walks at rest or with an overlay open. issues names the Issue rows that track each 'state|control'. It only shrinks: a new small target or a higher count fails test/phone-touch-targets-browser.test.mjs; once a count falls and holds, lower it with node scripts/touch-sweep.mjs --lower.",
+  "issues": {
+    "board-view|button.list-fold": [
+      1217
+    ],
+    "date-picker|button.date-day.in": [
+      1184
+    ],
+    "date-picker|button.date-day.out": [
+      1184
+    ],
+    "date-picker|button.date-pop-arrow": [
+      1184
+    ],
+    "date-picker|button.date-pop-link": [
+      1184
+    ],
+    "date-picker|button.date-pop-title": [
+      1184
+    ],
+    "date-picker|input.form-control.form-control-sm": [
+      1184
+    ],
+    "density|button.btn.btn-sm": [
+      1182
+    ],
+    "entity-field-editor|button.btn": [
+      1187
+    ],
+    "entity-field-editor|button.btn.btn-primary": [
+      1187
+    ],
+    "entity-field-editor|button.form-select.picker-face": [
+      1187
+    ],
+    "entity-field-editor|button.opt-add": [
+      1187
+    ],
+    "entity-field-editor|button.opt-add covered": [
+      1187
+    ],
+    "entity-field-editor|button.opt-color.hue-blue": [
+      1187
+    ],
+    "entity-field-editor|button.opt-color.hue-green": [
+      1187
+    ],
+    "entity-field-editor|button.opt-color.hue-slate": [
+      1187
+    ],
+    "entity-field-editor|button.opt-del": [
+      1187
+    ],
+    "entity-field-editor|button.tray-close": [
+      1187
+    ],
+    "entity-field-editor|input.form-control": [
+      1187
+    ],
+    "entity-field-editor|input.opt-name": [
+      1187
+    ],
+    "filters|button.btn.btn-sm": [
+      1182
+    ],
+    "filters|input.form-check-input": [
+      1186
+    ],
+    "group|button.btn.btn-sm": [
+      1182
+    ],
+    "group|button.vp-add-level.group-add": [
+      1186
+    ],
+    "menu|a.nav-space": [
+      1163
+    ],
+    "nav|a.nav-space": [
+      1163
+    ],
+    "phone-row|button.btn.btn-sm": [
+      1182
+    ],
+    "phone-row|button.field-reorder-handle": [
+      1185
+    ],
+    "phone-row|button.seg-opt": [
+      1185
+    ],
+    "phone-row|button.seg-opt.on": [
+      1185
+    ],
+    "phone-row|input.form-check-input": [
+      1185
+    ],
+    "range-picker|button.date-day.in": [
+      1184
+    ],
+    "range-picker|button.date-day.out": [
+      1184
+    ],
+    "range-picker|button.date-pop-arrow": [
+      1184
+    ],
+    "range-picker|button.date-pop-link": [
+      1184
+    ],
+    "range-picker|button.date-pop-title": [
+      1184
+    ],
+    "range-picker|input.form-control.form-control-sm": [
+      1184
+    ],
+    "search|button.btn.btn-sm": [
+      1190
+    ],
+    "search|input.search-bare": [
+      1190
+    ],
+    "share-page|button.btn": [
+      1188
+    ],
+    "share-page|button.btn.btn-primary": [
+      1188
+    ],
+    "share-page|button.tray-close": [
+      1188
+    ],
+    "share-page|input.form-control": [
+      1188
+    ],
+    "share-row|button.btn": [
+      1188
+    ],
+    "share-row|button.btn.btn-primary": [
+      1188
+    ],
+    "share-row|input": [
+      1188
+    ],
+    "share-row|input.form-check-input": [
+      1188
+    ],
+    "share-row|input.form-control": [
+      1188
+    ],
+    "share-table|button.btn": [
+      1188
+    ],
+    "share-table|button.btn.btn-primary": [
+      1188
+    ],
+    "share-table|input": [
+      1188
+    ],
+    "share-table|input.form-check-input": [
+      1188
+    ],
+    "share-table|input.form-control": [
+      1188
+    ],
+    "sink-board|button.list-fold": [
+      1217
+    ],
+    "sink-list|input.form-control.form-control-sm": [
+      1169,
+      1170
+    ],
+    "sink-row|a.url-link": [
+      1168
+    ],
+    "sink-row|button.av-pick": [
+      1167
+    ],
+    "sink-row|button.url-edit": [
+      1168
+    ],
+    "sink-row|button.wv-rate-ico.on": [
+      1165
+    ],
+    "sink-row|input.form-check-input": [
+      1166
+    ],
+    "sort|button.btn.btn-sm": [
+      1182
+    ],
+    "sort|button.vp-add-level.sort-add": [
+      1186
+    ],
+    "table-icon|button.picker-cell": [
+      1189
+    ],
+    "table-icon|button.picker-cell.picker-none": [
+      1189
+    ],
+    "table-icon|input.search-bare.picker-search": [
+      1189
+    ],
+    "view|a.view-name": [
+      1183
+    ],
+    "view|button.btn.btn-sm": [
+      1182,
+      1183
+    ],
+    "view|button.chip-pop-row.view-reset": [
+      1183
+    ],
+    "view|button.view-act.view-del": [
+      1183
+    ],
+    "view|button.view-act.view-dup-btn": [
+      1183
+    ],
+    "view|button.view-act.view-rename-btn": [
+      1183
+    ],
+    "workspace home|button.btn.btn-sm": [
+      1222
+    ]
+  },
+  "darwin": {
+    "board-view|button.list-fold|chromium": 2,
+    "board-view|button.list-fold|webkit": 1,
+    "date-picker|button.date-day.in|chromium": 60,
+    "date-picker|button.date-day.in|webkit": 30,
+    "date-picker|button.date-day.out|chromium": 10,
+    "date-picker|button.date-day.out|webkit": 5,
+    "date-picker|button.date-pop-arrow|chromium": 4,
+    "date-picker|button.date-pop-arrow|webkit": 2,
+    "date-picker|button.date-pop-link|chromium": 4,
+    "date-picker|button.date-pop-link|webkit": 2,
+    "date-picker|button.date-pop-title|chromium": 4,
+    "date-picker|button.date-pop-title|webkit": 2,
+    "date-picker|input.form-control.form-control-sm|chromium": 2,
+    "date-picker|input.form-control.form-control-sm|webkit": 1,
+    "density|button.btn.btn-sm|chromium": 2,
+    "density|button.btn.btn-sm|webkit": 1,
+    "entity-field-editor|button.btn.btn-primary|chromium": 2,
+    "entity-field-editor|button.btn.btn-primary|webkit": 1,
+    "entity-field-editor|button.btn|chromium": 2,
+    "entity-field-editor|button.btn|webkit": 1,
+    "entity-field-editor|button.form-select.picker-face|chromium": 6,
+    "entity-field-editor|button.form-select.picker-face|webkit": 3,
+    "entity-field-editor|button.opt-add covered|webkit": 1,
+    "entity-field-editor|button.opt-add|chromium": 2,
+    "entity-field-editor|button.opt-color.hue-blue|chromium": 2,
+    "entity-field-editor|button.opt-color.hue-blue|webkit": 1,
+    "entity-field-editor|button.opt-color.hue-green|chromium": 2,
+    "entity-field-editor|button.opt-color.hue-green|webkit": 1,
+    "entity-field-editor|button.opt-color.hue-slate|chromium": 2,
+    "entity-field-editor|button.opt-color.hue-slate|webkit": 1,
+    "entity-field-editor|button.opt-del|webkit": 1,
+    "entity-field-editor|button.tray-close|chromium": 2,
+    "entity-field-editor|button.tray-close|webkit": 1,
+    "entity-field-editor|input.form-control|chromium": 2,
+    "entity-field-editor|input.form-control|webkit": 1,
+    "entity-field-editor|input.opt-name|chromium": 6,
+    "entity-field-editor|input.opt-name|webkit": 3,
+    "filters|button.btn.btn-sm|chromium": 2,
+    "filters|button.btn.btn-sm|webkit": 1,
+    "filters|input.form-check-input|chromium": 10,
+    "filters|input.form-check-input|webkit": 5,
+    "group|button.btn.btn-sm|chromium": 2,
+    "group|button.btn.btn-sm|webkit": 1,
+    "group|button.vp-add-level.group-add|chromium": 2,
+    "group|button.vp-add-level.group-add|webkit": 1,
+    "menu|a.nav-space|chromium": 2,
+    "menu|a.nav-space|webkit": 1,
+    "nav|a.nav-space|chromium": 2,
+    "nav|a.nav-space|webkit": 1,
+    "phone-row|button.btn.btn-sm|chromium": 2,
+    "phone-row|button.btn.btn-sm|webkit": 1,
+    "phone-row|button.field-reorder-handle|chromium": 14,
+    "phone-row|button.field-reorder-handle|webkit": 7,
+    "phone-row|button.seg-opt.on|chromium": 6,
+    "phone-row|button.seg-opt.on|webkit": 1,
+    "phone-row|button.seg-opt|chromium": 16,
+    "phone-row|button.seg-opt|webkit": 8,
+    "phone-row|input.form-check-input|chromium": 4,
+    "range-picker|button.date-day.in|chromium": 62,
+    "range-picker|button.date-day.in|webkit": 31,
+    "range-picker|button.date-day.out|chromium": 22,
+    "range-picker|button.date-day.out|webkit": 11,
+    "range-picker|button.date-pop-arrow|chromium": 4,
+    "range-picker|button.date-pop-arrow|webkit": 2,
+    "range-picker|button.date-pop-link|chromium": 4,
+    "range-picker|button.date-pop-link|webkit": 2,
+    "range-picker|button.date-pop-title|chromium": 4,
+    "range-picker|button.date-pop-title|webkit": 2,
+    "range-picker|input.form-control.form-control-sm|chromium": 4,
+    "range-picker|input.form-control.form-control-sm|webkit": 2,
+    "search|button.btn.btn-sm|chromium": 2,
+    "search|button.btn.btn-sm|webkit": 1,
+    "search|input.search-bare|chromium": 2,
+    "search|input.search-bare|webkit": 1,
+    "share-page|button.btn.btn-primary|chromium": 2,
+    "share-page|button.btn.btn-primary|webkit": 1,
+    "share-page|button.btn|chromium": 2,
+    "share-page|button.btn|webkit": 1,
+    "share-page|button.tray-close|chromium": 2,
+    "share-page|button.tray-close|webkit": 1,
+    "share-page|input.form-control|chromium": 2,
+    "share-page|input.form-control|webkit": 1,
+    "share-row|button.btn.btn-primary|chromium": 2,
+    "share-row|button.btn.btn-primary|webkit": 1,
+    "share-row|button.btn|chromium": 2,
+    "share-row|button.btn|webkit": 1,
+    "share-row|input.form-check-input|chromium": 2,
+    "share-row|input.form-check-input|webkit": 1,
+    "share-row|input.form-control|chromium": 2,
+    "share-row|input.form-control|webkit": 1,
+    "share-row|input|chromium": 6,
+    "share-row|input|webkit": 3,
+    "share-table|button.btn.btn-primary|chromium": 2,
+    "share-table|button.btn.btn-primary|webkit": 1,
+    "share-table|button.btn|chromium": 2,
+    "share-table|button.btn|webkit": 1,
+    "share-table|input.form-check-input|chromium": 2,
+    "share-table|input.form-check-input|webkit": 1,
+    "share-table|input.form-control|chromium": 2,
+    "share-table|input.form-control|webkit": 1,
+    "share-table|input|chromium": 6,
+    "share-table|input|webkit": 3,
+    "sink-board|button.list-fold|chromium": 2,
+    "sink-board|button.list-fold|webkit": 1,
+    "sink-list|input.form-control.form-control-sm|chromium": 8,
+    "sink-list|input.form-control.form-control-sm|webkit": 2,
+    "sink-row|a.url-link|chromium": 2,
+    "sink-row|button.av-pick|chromium": 2,
+    "sink-row|button.av-pick|webkit": 1,
+    "sink-row|button.url-edit|chromium": 2,
+    "sink-row|button.wv-rate-ico.on|chromium": 20,
+    "sink-row|button.wv-rate-ico.on|webkit": 10,
+    "sink-row|input.form-check-input|chromium": 2,
+    "sort|button.btn.btn-sm|chromium": 2,
+    "sort|button.btn.btn-sm|webkit": 1,
+    "sort|button.vp-add-level.sort-add|chromium": 2,
+    "sort|button.vp-add-level.sort-add|webkit": 1,
+    "table-icon|button.picker-cell.picker-none|chromium": 2,
+    "table-icon|button.picker-cell.picker-none|webkit": 1,
+    "table-icon|button.picker-cell|chromium": 184,
+    "table-icon|button.picker-cell|webkit": 68,
+    "table-icon|input.search-bare.picker-search|chromium": 2,
+    "table-icon|input.search-bare.picker-search|webkit": 1,
+    "view|a.view-name|chromium": 10,
+    "view|a.view-name|webkit": 5,
+    "view|button.btn.btn-sm|chromium": 4,
+    "view|button.btn.btn-sm|webkit": 2,
+    "view|button.view-act.view-del|chromium": 10,
+    "view|button.view-act.view-del|webkit": 5,
+    "view|button.view-act.view-dup-btn|chromium": 10,
+    "view|button.view-act.view-dup-btn|webkit": 5,
+    "view|button.view-act.view-rename-btn|chromium": 10,
+    "view|button.view-act.view-rename-btn|webkit": 5,
+    "workspace home|button.btn.btn-sm|chromium": 2,
+    "workspace home|button.btn.btn-sm|webkit": 1
+  },
+  "linux": {
+    "board-view|button.list-fold|chromium": 2,
+    "board-view|button.list-fold|webkit": 1,
+    "date-picker|button.date-day.in|chromium": 60,
+    "date-picker|button.date-day.in|webkit": 30,
+    "date-picker|button.date-day.out|chromium": 10,
+    "date-picker|button.date-day.out|webkit": 5,
+    "date-picker|button.date-pop-arrow|chromium": 4,
+    "date-picker|button.date-pop-arrow|webkit": 2,
+    "date-picker|button.date-pop-link|chromium": 4,
+    "date-picker|button.date-pop-link|webkit": 2,
+    "date-picker|button.date-pop-title|chromium": 4,
+    "date-picker|button.date-pop-title|webkit": 2,
+    "date-picker|input.form-control.form-control-sm|chromium": 2,
+    "date-picker|input.form-control.form-control-sm|webkit": 1,
+    "density|button.btn.btn-sm|chromium": 2,
+    "density|button.btn.btn-sm|webkit": 1,
+    "entity-field-editor|button.btn.btn-primary|chromium": 2,
+    "entity-field-editor|button.btn.btn-primary|webkit": 1,
+    "entity-field-editor|button.btn|chromium": 2,
+    "entity-field-editor|button.btn|webkit": 1,
+    "entity-field-editor|button.form-select.picker-face|chromium": 6,
+    "entity-field-editor|button.form-select.picker-face|webkit": 3,
+    "entity-field-editor|button.opt-add covered|webkit": 1,
+    "entity-field-editor|button.opt-add|chromium": 2,
+    "entity-field-editor|button.opt-color.hue-blue|chromium": 2,
+    "entity-field-editor|button.opt-color.hue-blue|webkit": 1,
+    "entity-field-editor|button.opt-color.hue-green|chromium": 2,
+    "entity-field-editor|button.opt-color.hue-green|webkit": 1,
+    "entity-field-editor|button.opt-color.hue-slate|chromium": 2,
+    "entity-field-editor|button.opt-color.hue-slate|webkit": 1,
+    "entity-field-editor|button.opt-del|webkit": 1,
+    "entity-field-editor|button.tray-close|chromium": 2,
+    "entity-field-editor|button.tray-close|webkit": 1,
+    "entity-field-editor|input.form-control|chromium": 2,
+    "entity-field-editor|input.form-control|webkit": 1,
+    "entity-field-editor|input.opt-name|chromium": 6,
+    "entity-field-editor|input.opt-name|webkit": 3,
+    "filters|button.btn.btn-sm|chromium": 2,
+    "filters|button.btn.btn-sm|webkit": 1,
+    "filters|input.form-check-input|chromium": 10,
+    "filters|input.form-check-input|webkit": 5,
+    "group|button.btn.btn-sm|chromium": 2,
+    "group|button.btn.btn-sm|webkit": 1,
+    "group|button.vp-add-level.group-add|chromium": 2,
+    "group|button.vp-add-level.group-add|webkit": 1,
+    "menu|a.nav-space|chromium": 2,
+    "menu|a.nav-space|webkit": 1,
+    "nav|a.nav-space|chromium": 2,
+    "nav|a.nav-space|webkit": 1,
+    "phone-row|button.btn.btn-sm|chromium": 2,
+    "phone-row|button.btn.btn-sm|webkit": 1,
+    "phone-row|button.field-reorder-handle|chromium": 14,
+    "phone-row|button.field-reorder-handle|webkit": 7,
+    "phone-row|button.seg-opt.on|chromium": 6,
+    "phone-row|button.seg-opt.on|webkit": 1,
+    "phone-row|button.seg-opt|chromium": 16,
+    "phone-row|button.seg-opt|webkit": 8,
+    "phone-row|input.form-check-input|chromium": 4,
+    "range-picker|button.date-day.in|chromium": 62,
+    "range-picker|button.date-day.in|webkit": 31,
+    "range-picker|button.date-day.out|chromium": 22,
+    "range-picker|button.date-day.out|webkit": 11,
+    "range-picker|button.date-pop-arrow|chromium": 4,
+    "range-picker|button.date-pop-arrow|webkit": 2,
+    "range-picker|button.date-pop-link|chromium": 4,
+    "range-picker|button.date-pop-link|webkit": 2,
+    "range-picker|button.date-pop-title|chromium": 4,
+    "range-picker|button.date-pop-title|webkit": 2,
+    "range-picker|input.form-control.form-control-sm|chromium": 4,
+    "range-picker|input.form-control.form-control-sm|webkit": 2,
+    "search|button.btn.btn-sm|chromium": 2,
+    "search|button.btn.btn-sm|webkit": 1,
+    "search|input.search-bare|chromium": 2,
+    "search|input.search-bare|webkit": 1,
+    "share-page|button.btn.btn-primary|chromium": 2,
+    "share-page|button.btn.btn-primary|webkit": 1,
+    "share-page|button.btn|chromium": 2,
+    "share-page|button.btn|webkit": 1,
+    "share-page|button.tray-close|chromium": 2,
+    "share-page|button.tray-close|webkit": 1,
+    "share-page|input.form-control|chromium": 2,
+    "share-page|input.form-control|webkit": 1,
+    "share-row|button.btn.btn-primary|chromium": 2,
+    "share-row|button.btn.btn-primary|webkit": 1,
+    "share-row|button.btn|chromium": 2,
+    "share-row|button.btn|webkit": 1,
+    "share-row|input.form-check-input|chromium": 2,
+    "share-row|input.form-check-input|webkit": 1,
+    "share-row|input.form-control|chromium": 2,
+    "share-row|input.form-control|webkit": 1,
+    "share-row|input|chromium": 6,
+    "share-row|input|webkit": 3,
+    "share-table|button.btn.btn-primary|chromium": 2,
+    "share-table|button.btn.btn-primary|webkit": 1,
+    "share-table|button.btn|chromium": 2,
+    "share-table|button.btn|webkit": 1,
+    "share-table|input.form-check-input|chromium": 2,
+    "share-table|input.form-check-input|webkit": 1,
+    "share-table|input.form-control|chromium": 2,
+    "share-table|input.form-control|webkit": 1,
+    "share-table|input|chromium": 6,
+    "share-table|input|webkit": 3,
+    "sink-board|button.list-fold|chromium": 2,
+    "sink-board|button.list-fold|webkit": 1,
+    "sink-list|input.form-control.form-control-sm|chromium": 8,
+    "sink-list|input.form-control.form-control-sm|webkit": 2,
+    "sink-row|a.url-link|chromium": 2,
+    "sink-row|button.av-pick|chromium": 2,
+    "sink-row|button.av-pick|webkit": 1,
+    "sink-row|button.url-edit|chromium": 2,
+    "sink-row|button.wv-rate-ico.on|chromium": 20,
+    "sink-row|button.wv-rate-ico.on|webkit": 10,
+    "sink-row|input.form-check-input|chromium": 2,
+    "sort|button.btn.btn-sm|chromium": 2,
+    "sort|button.btn.btn-sm|webkit": 1,
+    "sort|button.vp-add-level.sort-add|chromium": 2,
+    "sort|button.vp-add-level.sort-add|webkit": 1,
+    "table-icon|button.picker-cell.picker-none|chromium": 2,
+    "table-icon|button.picker-cell.picker-none|webkit": 1,
+    "table-icon|button.picker-cell|chromium": 184,
+    "table-icon|button.picker-cell|webkit": 68,
+    "table-icon|input.search-bare.picker-search|chromium": 2,
+    "table-icon|input.search-bare.picker-search|webkit": 1,
+    "view|a.view-name|chromium": 10,
+    "view|a.view-name|webkit": 5,
+    "view|button.btn.btn-sm|chromium": 4,
+    "view|button.btn.btn-sm|webkit": 2,
+    "view|button.chip-pop-row.view-reset|webkit": 1,
+    "view|button.view-act.view-del|chromium": 10,
+    "view|button.view-act.view-del|webkit": 5,
+    "view|button.view-act.view-dup-btn|chromium": 10,
+    "view|button.view-act.view-dup-btn|webkit": 5,
+    "view|button.view-act.view-rename-btn|chromium": 10,
+    "view|button.view-act.view-rename-btn|webkit": 5,
+    "workspace home|button.btn.btn-sm|chromium": 2,
+    "workspace home|button.btn.btn-sm|webkit": 1
+  }
+}

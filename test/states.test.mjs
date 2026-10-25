@@ -60,7 +60,7 @@ test('a hold names the Issue rows that track it, and only holds a probe that wou
       assert.deepEqual(rest, [], `${s.name}: hold ${key}`);
       assert.ok(Object.hasOwn(PROBES, probe), `${s.name}: hold names probe ${probe}`);
       assert.ok(cell === undefined || cellsOf(s).includes(cell), `${s.name}: hold names cell ${cell}`);
-      assert.ok(PROBES[probe].opens.includes(s.open) && seedsOf(s).includes(PROBES[probe].seed), `${s.name}: ${probe} would walk it, so the hold means something`);
+      assert.ok(PROBES[probe].opens.includes(s.open) && PROBES[probe].seeds.some((x) => seedsOf(s).includes(x)), `${s.name}: ${probe} would walk it, so the hold means something`);
       assert.ok(Array.isArray(rows) && rows.length && rows.every((n) => Number.isInteger(n) && n > 0), `${s.name}: hold ${key} names its Issue rows, got ${JSON.stringify(rows)}`);
     }
   }
@@ -108,7 +108,7 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'list-view', 'map', 'published form', 'settings', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'start', 'trash']);
   assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share dialog', 'sort popover']);
   assert.deepEqual(rests('touch'), ['board-view', 'list-view', 'row page', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'table list', 'workspace home']);
-  assert.deepEqual(overlays('touch'), ['bug panel', 'menu', 'picker sheet']);
+  assert.deepEqual(overlays('touch'), ['bug panel', 'bug-report', 'date-picker', 'density', 'doc-downloads', 'entity-field-editor', 'entity-status', 'filters', 'group', 'menu', 'nav', 'phone-row', 'picker sheet', 'range-picker', 'row-actions', 'search', 'share-page', 'share-row', 'share-table', 'sort', 'table-icon', 'table-tools', 'view', 'workspace-menu']);
 });
 
 const sinkOf = (weave, handles) => {
@@ -173,4 +173,11 @@ test('every seed builds the handles the shared states read, so their routes reso
       }
     }
   }
+});
+
+test('the touch probe walks every phone state at rest or with an overlay open, on whichever seed renders it (Issue #1119)', () => {
+  const want = STATES.filter((st) => ['rest', 'overlay'].includes(st.open) && cellsOf(st).includes('phone')).map((st) => st.name).sort();
+  assert.deepEqual(unique(plan('touch').map((p) => p.state.name)).sort(), want);
+  for (const p of plan('touch')) assert.ok(seedsOf(p.state).includes(p.seed), `${p.state.name} walks on a seed that renders it`);
+  assert.deepEqual(held('touch'), [], 'touch keeps no holds: test/touch-baseline.json carries what is still small, each entry tied to its Issue rows');
 });
