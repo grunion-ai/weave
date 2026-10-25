@@ -64,6 +64,46 @@ if (s) {
     await page.mouse.up();
   };
 
+  test('groups collapse to a narrow rail and restore after reload', async () => {
+    seed({ picture: 'off' });
+    const page = await open();
+    try {
+      const group = page.locator('.board-group[data-key="Research"]');
+      const fold = group.locator('.list-fold');
+      await fold.click();
+      assert.equal(await fold.getAttribute('aria-expanded'), 'false');
+      assert.ok((await group.boundingBox()).width < 80);
+      assert.equal(await group.locator('.board-cards').isVisible(), false);
+      await eventually(() => view().collapsed?.includes('Research'), true);
+      await page.reload();
+      await page.waitForSelector('.board-group.shut');
+      await page.locator('.board-group[data-key="Research"] .list-fold').click();
+      assert.equal(await group.locator('.tile').count(), 2);
+    } finally { await page.close(); }
+  });
+
+  test('card density changes spacing and selection never covers the ID or title in either theme', async () => {
+    for (const theme of ['light', 'dark']) {
+      const heights = [];
+      for (const density of ['compact', 'comfortable', 'spacious']) {
+        seed({ picture: 'off', density });
+        const page = await open({ theme });
+        try {
+          const card = page.locator(tile(ids.desk));
+          await card.hover();
+          heights.push((await card.boundingBox()).height);
+          const pick = await card.locator('.tile-pick').boundingBox();
+          for (const selector of ['.tile-id', '.tile-title']) {
+            const text = await card.locator(selector).boundingBox();
+            assert.ok(pick.x >= text.x + text.width || pick.x + pick.width <= text.x || pick.y >= text.y + text.height || pick.y + pick.height <= text.y);
+          }
+          assert.equal(await page.locator('.board-wrap').evaluate((n) => getComputedStyle(n).borderTopWidth), '0px');
+        } finally { await page.close(); }
+      }
+      assert.ok(heights[0] < heights[1] && heights[1] < heights[2], `${theme}: density heights ${heights}`);
+    }
+  });
+
   test('side by side draws one card per row, a column per State option, and the cover picture', async () => {
     seed();
     for (const theme of ['light', 'dark']) {
@@ -100,6 +140,25 @@ if (s) {
       assert.equal(await page.locator('.wv-board').getAttribute('data-groups'), 'stacked');
       const w = await page.locator('.wv-board .tile').first().evaluate((n) => n.getBoundingClientRect().width);
       assert.ok(w >= 132 && w < 188, `a small card is at least 132 px and under the medium size: ${w}`);
+    } finally { await page.close(); }
+  });
+
+  test('a drop keeps its board connected until the lifted card settles', async () => {
+    seed({ picture: 'off' });
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        window.boardSettlingCuts = [];
+        new MutationObserver((changes) => {
+          for (const change of changes) for (const node of change.removedNodes) {
+            if (node.nodeType === 1 && node.matches('.board-wrap') && node.querySelector('.wv-reorder-lift')) window.boardSettlingCuts.push(true);
+          }
+        }).observe(document.querySelector('#main'), { childList: true });
+      });
+      await drag(page, tile(ids.pants), '.board-group[data-key="Bought"] .board-empty');
+      await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Bought"] .tile[data-eid="${id}"]:not(.wv-reorder-slot)`), ids.pants);
+      assert.deepEqual(await page.evaluate(() => window.boardSettlingCuts), []);
+      assert.equal(await eventually(() => valueOf(ids.pants, 'State'), 'Bought'), 'Bought');
     } finally { await page.close(); }
   });
 

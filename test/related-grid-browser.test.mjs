@@ -36,6 +36,29 @@ if (s) {
   const leaks = (page) => page.evaluate(() => (document.body.innerText.match(/\[object Object\]/g) ?? []).length
     + [...document.querySelectorAll('input, textarea')].filter((i) => /\[object Object\]/.test(i.value)).length);
 
+  test('a related Board preserves its entity context, density, links and local collapse', async () => {
+    weave.tableView(`${issueDb.id}/Standard`, { layout: 'board', picture: 'off', group: ['Status'], density: 'compact' });
+    for (const colorScheme of ['light', 'dark']) {
+      const page = await open(`entity/${release.id}`, { colorScheme });
+      try {
+        await page.waitForSelector('.related-section .wv-board .tile');
+        assert.equal(await page.locator('.related-section .board-wrap').getAttribute('data-density'), 'compact');
+        assert.equal(await page.locator('.related-section .tile').count(), 2);
+        assert.equal(await page.locator('.related-section .board-actions .add-entity-btn').count(), 2);
+        const group = page.locator('.related-section .board-group[data-key="Fixed"]');
+        await group.locator('.list-fold').click();
+        assert.equal(await group.locator('.board-cards').isVisible(), false);
+        assert.equal(weave.tableView(`${issueDb.id}/Standard`).collapsed, undefined);
+        await group.locator('.list-fold').click();
+        await page.locator(`.related-section .tile[data-eid="${fixed.id}"] .unlink-btn`).click();
+        await page.waitForFunction(() => document.querySelectorAll('.related-section .tile').length === 1);
+        assert.equal(await page.evaluate(() => location.hash), `#/entity/${release.id}`);
+        weave.link(release.id, 'Fixes', [fixed.id]);
+      } finally { await page.close(); }
+    }
+    weave.tableView(`${issueDb.id}/Standard`, { layout: 'table', group: null, density: null });
+  });
+
   test('the embedded grid hides what the target table hides — Chip, Card and Notes stay out; Name, Status, Severity show', async () => {
     const page = await open(`entity/${release.id}`);
     await grid(page);
