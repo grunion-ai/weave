@@ -2406,10 +2406,13 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 }
 @media (max-width: 600px) {
   .wv-list .list-row:has(> .list-phone) { align-items: flex-start; min-height: 44px; cursor: pointer; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  .list-phone { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; padding: 12px 0 6px calc(8px + var(--wv-pid-w, 44px)); }
+  .list-phone { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; padding: 12px 0 12px calc(8px + var(--wv-pid-w, 44px)); }
+  .list-phone:has(> .phone-chips) { padding-bottom: 6px; }
+  .wv-list .list-row:has(> .list-phone) .list-grip { margin-block: 0; }
+  .list-add .form-control { min-height: 44px; }
   .list-phone * { pointer-events: none; }
   .list-phone-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; margin-left: calc(-8px - var(--wv-pid-w, 44px)); }
-  .list-wrap:not([data-density="compact"], [data-phone-wrap]) .list-phone-head { min-height: 40px; }
+  .list-wrap:not([data-density="compact"], [data-phone-wrap]) .list-phone:has(> .phone-chips) > .list-phone-head { min-height: 40px; }
   .list-phone-head > .list-pid { flex: 0 0 var(--wv-pid-w, 44px); overflow: hidden; white-space: nowrap; font-size: var(--fs-grid); font-variant-numeric: tabular-nums; line-height: 20px; color: var(--tblr-secondary); text-decoration: none; }
   .list-phone-head > .list-pid.pid-probe { position: absolute; flex: none; overflow: visible; visibility: hidden; }
   .list-phone-head > .phone-lead { display: inline-flex; flex: none; max-width: 45%; overflow: hidden; }

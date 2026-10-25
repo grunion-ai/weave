@@ -104,9 +104,9 @@ if (s) {
       const page = await phonePage(await phoneBrowser(), { colorScheme });
       await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
       await page.evaluate((h) => { location.hash = h; }, `#/table/${tasks.id}/view/${compact.id}`);
-      await page.waitForSelector(`tr[data-eid="${task.id}"] .list-name`);
+      await page.waitForSelector(`.list-row[data-eid="${task.id}"] .list-title`);
       const hold = await holdEntityReads(page);
-      const box = await page.locator(`tr[data-eid="${task.id}"] .list-name`).boundingBox();
+      const box = await page.locator(`.list-row[data-eid="${task.id}"] .list-title`).boundingBox();
       await page.touchscreen.tap(box.x + 20, box.y + box.height / 2);
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit', { timeout: 3000 });
       assert.equal(hold.count(), 1, 'the entity request is still held');

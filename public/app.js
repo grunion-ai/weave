@@ -5430,11 +5430,10 @@ function phoneList(list, db, items) {
       probe.remove();
     }
     if (list.closest('[data-phone-wrap]')) return;
-    for (const line of list.querySelectorAll('.phone-chips')) fitPhoneChipRow(line, [...line.children]);
+    fitPhoneChipRows([...list.querySelectorAll('.phone-chips')]);
   };
   let width = 0;
   new ResizeObserver(() => { if (list.clientWidth !== width) { width = list.clientWidth; fit(); } }).observe(list);
-  requestAnimationFrame(fit);
   document.fonts?.ready?.then(fit);
   let press = null;
   list.addEventListener('pointerdown', (e) => {
@@ -5463,28 +5462,36 @@ function phoneList(list, db, items) {
     openEntity(row.dataset.eid);
   }, true);
 }
-function fitPhoneChipRow(box, cells) {
-  for (const c of cells) { c.classList.remove('list-hide', 'phone-count-only'); delete c.dataset.more; }
-  const drawn = cells.filter((c) => c.getClientRects().length);
-  if (!drawn.length) return;
-  const cut = drawn.filter((c) => overflowsX(c.firstElementChild ?? c) || [...c.querySelectorAll('.k-label')].some(overflowsX));
-  for (const c of cut) c.classList.add('list-hide');
-  const shown = drawn.filter((c) => !cut.includes(c));
-  if (!shown.length) {
-    cut[0].classList.replace('list-hide', 'phone-count-only');
-    cut[0].dataset.more = `+${cut.length}`;
-    return;
+function fitPhoneChipRows(lines) {
+  const rows = lines.map((box) => ({ box, cells: [...box.children] }));
+  for (const { cells } of rows) for (const c of cells) { c.classList.remove('list-hide', 'phone-count-only'); delete c.dataset.more; }
+  const plans = rows.map(({ box, cells }) => {
+    const drawn = cells.filter((c) => c.getClientRects().length);
+    if (!drawn.length) return null;
+    const cut = drawn.filter((c) => overflowsX(c.firstElementChild ?? c) || [...c.querySelectorAll('.k-label')].some(overflowsX));
+    const shown = drawn.filter((c) => !cut.includes(c));
+    if (!shown.length) return { cut, shown, n: 0 };
+    const b = box.getBoundingClientRect();
+    const gap = parseFloat(getComputedStyle(box).columnGap) || 0;
+    let right = b.left - gap;
+    const rights = shown.map((c) => (right += gap + c.getBoundingClientRect().width));
+    let n = shown.length;
+    const fits = (k) => rights[k - 1] <= b.right + 0.5 && ((k === shown.length && !cut.length) || rights[k - 1] + PHONE_MORE_W <= b.right);
+    while (n > 1 && !fits(n)) n--;
+    return { cut, shown, n };
+  });
+  for (const p of plans) {
+    if (!p) continue;
+    for (const c of p.cut) c.classList.add('list-hide');
+    if (!p.n) {
+      p.cut[0].classList.replace('list-hide', 'phone-count-only');
+      p.cut[0].dataset.more = `+${p.cut.length}`;
+      continue;
+    }
+    for (const c of p.shown.slice(p.n)) c.classList.add('list-hide');
+    const hidden = p.cut.length + p.shown.length - p.n;
+    if (hidden) p.shown[p.n - 1].dataset.more = `+${hidden}`;
   }
-  const edge = box.getBoundingClientRect().right;
-  const top = shown[0].getBoundingClientRect().top;
-  let n = shown.length;
-  const fits = () => {
-    const r = shown[n - 1].getBoundingClientRect();
-    return r.top - top < 1 && r.right <= edge + 0.5 && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
-  };
-  while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
-  const hidden = cut.length + shown.length - n;
-  if (hidden) shown[n - 1].dataset.more = `+${hidden}`;
 }
 const isListLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'list';
 const boardCore = globalThis.weaveBoardCore;
@@ -5614,7 +5621,7 @@ function renderList(main, db, items, ctx) {
     id: it.id, keys: s.levels.map((l) => listKeys(l, it)), parent: parentOf(it),
     done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, deleted: !!it.deleted, item: it, ...extra,
   });
-  const rows = items.map((it) => rowOf(it));
+  const rows = items.map((it) => rowOf(holdRow(it)));
   const known = new Map((everyone ?? items).map((it) => [it.id, it]));
   if (s.nest && everyone) {
     const have = new Set(rows.map((r) => r.id));
@@ -5690,10 +5697,11 @@ function renderList(main, db, items, ctx) {
       return f && el('span', { class: 'phone-chip', dataset: { field: f.name, ftype: f.type, phoneChip: String(i + 1) } },
         el('div', { class: 'wv-cb' }, labeledEditorFor(f, it, db, () => reload(it.id), { compact: true, fit: true })));
     });
+    const drawn = chips.filter(Boolean);
     return el('span', { class: 'list-chip list-phone' },
       el('span', { class: 'list-phone-head' }, lead ? phoneLeadEl(lead, it) : null,
         el('a', { class: 'open-link list-pid', href: `#/entity/${it.id}`, tabindex: '-1' }, `#${it.publicId} ↗`), title),
-      el('span', { class: 'phone-chips' }, ...chips.filter(Boolean)));
+      drawn.length ? el('span', { class: 'phone-chips' }, ...drawn) : null);
   };
   const addEl = (path) => {
     const where = path.map((p) => p.label).join(listCore.SEP);

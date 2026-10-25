@@ -126,7 +126,7 @@ if (s) {
   const viewSwitcher = {
     name: 'views popover',
     hash: `#/table/${table}`,
-    ready: '#main .wv-grid tbody tr.entity-row',
+    ready: '#main :is(tbody tr.entity-row, .wv-list .list-row)',
     roots: ['.table-view-popover .view-row'],
     act: async (page) => {
       const tools = page.locator('#main .table-tools-btn');
@@ -186,7 +186,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${table}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+      await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
       await openViews(page);
       const box = await page.locator('#view-pane .view-strip .view-grip').first().boundingBox();
       assert.ok(box.width < MIN && box.height < MIN, `the desktop grip stays ${Math.round(box.width)}x${Math.round(box.height)}`);
@@ -196,7 +196,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${table}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+      await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
       const h = await page.evaluate(() => {
         const box = (q) => { const n = document.querySelector(q); return n ? Math.round(n.getBoundingClientRect().height) : null; };
         return { title: box('#main .view-title'), crumb: box('#main .crumb-item') };
