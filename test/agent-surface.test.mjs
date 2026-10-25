@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { TOOLS, listTools } from '../src/mcp.js';
+import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
+import { startServer } from '../src/server.js';
+import { seedWeaver } from '../src/weaver-seed.js';
+import { unwrapData } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = readFileSync(join(ROOT, 'bin/weave.js'), 'utf8');
@@ -138,6 +143,7 @@ const INTERNAL = {
   acceptInvite: 'auth path (Feature #290) — accepts one of those invites by its id through the same path as the link; POST /api/start/invites/:slug/:ref is the door',
   renameAccount: 'Users row door (Feature #318) — editing a Users row\'s Name renames the account; weave_update_entity is the tool',
   viewQuery: 'read helper (Issue #839): the where, sort and search one saved view applies; weave_query {view}, CLI query --view and POST /tables/:id/query {view} run it',
+  permalink: 'link formatter (Feature #203): the one /w/<ws>/e/<uuid> path every door emits as `url`; the permalink gate below holds every emitter to it',
   takeOneTime: 'write plumbing (Feature #318) — the invite link or token a Users row create hands back once; every create door ships it beside the row',
 };
 
@@ -305,4 +311,79 @@ test('every query option reaches every door', () => {
   }
   assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
   assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, viewerZone, workspace: member\.state\.meta\.id \}\)/, 'POST /api/tables/:ref/query passes its body through, scoped to the asking workspace (Issue #875)');
+});
+
+test('every door emits the one permalink a row has, and no door builds its own (Feature #203)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-permalink-'));
+  const data = join(dir, 'uno.db');
+  const w = new Weave({ path: data, name: 'uno' });
+  w.createSpace({ name: 'Ops' });
+  const table = w.createTable({ space: 'Ops', name: 'Task' });
+  const row = w.createEntity('Task', { Name: 'ship the zebrafinch' });
+  const link = w.permalink('entity', row.id);
+  assert.equal(link, `/w/uno/e/${row.id}`);
+  assert.equal(w.permalink('table', table.id), `/w/uno/t/${table.id}`);
+  const space = w.getSpace('Ops');
+  assert.equal(w.permalink('space', space.id), `/w/uno/s/${space.id}`);
+
+  const rpc = (name, args) => {
+    const res = handleMcpMessage(w, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+    const text = unwrapData(res.result.content[0].text);
+    assert.ok(!res.result.isError, `${name}: ${text}`);
+    return JSON.parse(text);
+  };
+  const docs = new Weave({ name: 'weave' });
+  seedWeaver(docs);
+  const { server } = await startServer(new Weave({ name: 'main' }), { port: 0, workspaces: { uno: w, weave: docs } });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const http = async (method, path, body) => (await fetch(base + path, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) })).json();
+  try {
+    const schema = w.describeSchema().find((x) => x.spaceId === space.id);
+    const emitted = {
+      'engine readEntity': w.readEntity(row.id).url,
+      'engine query row': w.query('Task', {}).items[0].url,
+      'engine query picked row': w.query('Task', { fields: ['Name'] }).items[0].url,
+      'chip': w.renderView(row.id, 'chip').url,
+      'card': w.renderView(row.id, 'card').url,
+      'engine search': w.search('zebrafinch')[0].url,
+      'universal search': w.universalSearch('zebrafinch').find((h) => h.kind === 'entity').url,
+      'scoped search': w.universalSearch('', { tables: ['Task'] })[0].url,
+      'GET /api/entities/:id': (await http('GET', `/w/uno/api/entities/${row.id}`)).url,
+      'GET /api/search': (await http('GET', '/w/uno/api/search?q=zebrafinch')).find((h) => h.kind === 'entity').url,
+      'GET /api/search?all': (await http('GET', '/api/search?all=1&q=zebrafinch')).find((h) => h.kind === 'entity').url,
+      'MCP weave_get_entity': rpc('weave_get_entity', { entity: row.id }).url,
+      'MCP weave_update_entity': rpc('weave_update_entity', { entity: row.id, values: { Name: 'ship the zebrafinch' }, verbose: true }).url,
+      'MCP weave_search': rpc('weave_search', { query: 'zebrafinch' }).find((h) => h.kind === 'entity').url,
+    };
+    for (const [door, url] of Object.entries(emitted)) assert.equal(url, link, `${door} emits the row permalink`);
+
+    const posted = await http('POST', '/w/uno/api/tables/Task/entities', { name: 'posted' });
+    assert.equal(posted.url, w.permalink('entity', posted.id), 'POST /api/tables/:t/entities');
+    const made = rpc('weave_create_entity', { db: 'Task', name: 'made', verbose: true });
+    assert.equal(made.url, w.permalink('entity', made.id), 'MCP weave_create_entity');
+    const filed = await http('POST', '/api/bug-report', { categories: ['slow'], note: 'permalink door', events: [], client: { url: '/', route: '/', viewport: '1x1', ua: 'test' } });
+    assert.equal(filed.url, docs.permalink('entity', filed.id), 'bug reporter');
+
+    assert.equal(w.universalSearch('Task').find((h) => h.kind === 'table').url, w.permalink('table', table.id));
+    assert.equal(w.universalSearch('Ops').find((h) => h.kind === 'space').url, w.permalink('space', space.id));
+    assert.equal(schema.url, w.permalink('space', space.id), 'describeSchema space');
+    assert.equal(schema.tables.find((t) => t.id === table.id).url, w.permalink('table', table.id), 'describeSchema table');
+  } finally {
+    server.close();
+  }
+  try {
+    const cli = (...args) => JSON.parse(execFileSync(process.execPath, ['--no-warnings', join(ROOT, 'bin/weave.js'), ...args, '--data', data], { encoding: 'utf8' }));
+    assert.equal(cli('get', row.id).url, link, 'CLI get');
+    assert.equal(cli('get', link).url, link, 'CLI get takes the permalink it printed');
+    assert.equal(cli('update', row.id, '--values', '{"Name":"ship the zebrafinch"}').url, link, 'CLI update');
+    assert.equal(cli('search', 'zebrafinch')[0].url, link, 'CLI search');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  const emitterSources = ['src/engine.js', 'src/forms.js', 'src/mcp.js', 'bin/weave.js'];
+  for (const file of emitterSources) {
+    const src = readFileSync(join(ROOT, file), 'utf8');
+    assert.doesNotMatch(src, /url:\s*`[^`]*\/(?:e|t|s|#\/entity|#\/table|#\/space|#\/view)\/\$\{/, `${file} builds a row, table, space or view url by hand; emit permalink(kind, id)`);
+  }
 });
