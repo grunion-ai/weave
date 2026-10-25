@@ -1414,6 +1414,9 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .file-viewer-size { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); }
 .file-viewer-frame { flex: 1; width: 100%; border: 0; background: #fff; }
 .file-viewer > img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+.file-viewer.fit-content { height: auto; min-height: 0; resize: none; }
+.file-viewer-frame.fits-content { flex: none; height: 75vh; }
+.entity-files-page { padding-top: 0; }
 #side:has(> .wv-file-panel) { flex-basis: 560px; }
 .wv-file-panel { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: var(--fs-body); }
 .wv-file-head { gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--tblr-border-color); }

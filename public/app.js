@@ -3232,14 +3232,21 @@ function fileBodyEl(file, frameClass) {
   const url = fileUrl(file);
   return kind === 'image' ? el('img', { src: url, alt: file.name })
     : kind === 'pdf' || kind === 'text' ? el('iframe', { class: frameClass, src: url, title: file.name })
-      : kind === 'html' ? el('iframe', { class: frameClass, src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX })
+      : kind === 'html' ? el('iframe', { class: frameClass, src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX, dataset: { fileId: file.id } })
         : null;
 }
+const fileFrameOf = (source) => (source ? [...document.querySelectorAll('iframe[data-file-id]')].find((f) => f.contentWindow === source) ?? null : null);
+addEventListener('message', (e) => {
+  if (e.data?.weave !== 'frame-height') return;
+  const frame = fileFrameOf(e.source);
+  const h = Math.round(Number(e.data.height));
+  if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) frame.style.height = `${Math.min(h, 200000)}px`;
+});
 function fileViewerEl(file, { size = 'medium' } = {}) {
   const kind = fileKind(file);
-  const body = fileBodyEl(file, 'file-viewer-frame');
+  const body = fileBodyEl(file, 'file-viewer-frame' + (kind === 'html' ? ' fits-content' : ''));
   if (!body) return null;
-  return el('div', { class: `file-viewer size-${size} kind-${kind}` },
+  return el('div', { class: `file-viewer size-${size} kind-${kind}` + (kind === 'html' ? ' fit-content' : '') },
     el('div', { class: 'file-viewer-bar' },
       iconEl(fileIconName(file), 'wv-icon'),
       el('span', { class: 'file-viewer-name' }, file.name),
@@ -3618,11 +3625,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
     const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
     const present = files.filter((x) => !x.missing);
-    const sheet = mode === 'inline' && f.multiple !== false ? present
+    const pages = mode === 'inline' || mode === 'auto' ? present.filter((x) => fileKind(x) === 'html') : [];
+    const sheet = mode === 'inline' && f.multiple !== false ? present.filter((x) => !pages.includes(x))
       : mode === 'auto' ? present.filter(isPictureFile) : [];
     const box = el('span', { class: 'attach-box' + (mode === 'link' || mode === 'cover' ? '' : ' attach-box-wide') });
-    const viewer = mode === 'inline' && f.multiple === false && present[0] ? fileViewerEl(present[0], look) : null;
-    if (viewer) box.append(viewer);
+    const single = mode === 'inline' && f.multiple === false && present[0] && !pages.includes(present[0]) ? present[0] : null;
+    for (const file of single ? [single] : pages) { const viewer = fileViewerEl(file, look); if (viewer) box.append(viewer); }
     if (sheet.length) box.append(attachSheetEl(sheet, look, { remove }));
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
@@ -10518,7 +10526,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       el('div', { class: 'card-header' },
         el('h3', { class: 'card-title' }, `Files · ${loose.length}`)),
       el('div', { class: 'card-body attach-chips' },
-        ...loose.map((file) => attachItemEl(file, { group: loose }))));
+        ...loose.map((file) => attachItemEl(file, { group: loose }))),
+      ...loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'card-body entity-files-page' }, fileViewerEl(file))));
     left.append(filesCard);
   };
   drawFiles();
