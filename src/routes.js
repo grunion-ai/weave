@@ -1968,20 +1968,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const limit = boundedLimit(rx.searchParams.get('limit'), 25);
           const tables = rx.searchParams.get('tables');
           if (tables != null) {
-            return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));
+            return out(200, weave.universalSearch(q, { limit, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));
           }
           if (rx.searchParams.get('all')) {
             const results = [];
             for (const [name, w] of hub.entries()) {
               if (!canOpen(w)) continue;
-              const prefix = name === hub.defaultName ? '' : `/w/${name}`;
-              for (const hit of w.universalSearch(q, { limit, prefix })) {
+              for (const hit of w.universalSearch(q, { limit })) {
                 results.push({ workspace: name, ...hit });
               }
             }
             return out(200, Weave.capRows(results, limit));
           }
-          return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix }));
+          return out(200, weave.universalSearch(q, { limit }));
         }
         if (route === 'GET /api/export') return out(200, weave.exportJSON());
         if (route === 'POST /api/import') {

@@ -56,7 +56,7 @@ if (s) {
     await ctx.close();
   });
 
-  for (const [scheme, muted, card] of [['light', 'rgb(102, 112, 133)', 'rgb(255, 255, 255)'], ['dark', 'rgb(138, 151, 171)', 'rgb(24, 27, 33)']]) {
+  for (const [scheme, muted, card] of [['light', 'rgb(95, 100, 116)', 'rgb(255, 255, 255)'], ['dark', 'rgb(138, 151, 171)', 'rgb(24, 27, 33)']]) {
     test(`the seat address reads against its card in ${scheme} (Issue #921)`, async () => {
       const { ctx, page } = await open(ada, scheme);
       const mail = page.locator('#seats li .seat-mail').first();

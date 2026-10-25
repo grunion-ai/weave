@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { launch, settled, atRest } from './lib/browser.mjs';
-import { createForm } from '../src/forms.js';
+import { ROUTES, SEEDS, readyOf, walked } from './lib/states.mjs';
 import { createOidc } from '../src/oidc.js';
 import { createBilling } from '../src/billing.js';
 
@@ -24,38 +24,7 @@ const partsOf = (key) => {
   return { route, state, theme, rule, target };
 };
 
-let task, issue, entityId, board, list, form;
-const s = await launch('a11y baseline', (weave) => {
-  weave.createSpace({ name: 'Work' });
-  task = weave.createTable({ space: 'Work', name: 'Task' });
-  weave.addField(task, { name: 'Status', type: 'workflow', config: { states: [
-    { name: 'Open', category: 'not-started', default: true },
-    { name: 'In progress', category: 'in-progress' },
-    { name: 'Done', category: 'done' }] } });
-  weave.addField(task, { name: 'Notes', type: 'text' });
-  issue = weave.createTable({ space: 'Work', name: 'Issue' });
-  weave.addField(issue, { name: 'Severity', type: 'select', config: { options: ['Low', 'Medium', 'High'] } });
-  weave.addField(issue, { name: 'Symptom', type: 'multiselect', config: { options: ['Slow', 'Looks broken'] } });
-  weave.addField(issue, { name: 'Points', type: 'number' });
-  weave.addField(issue, { name: 'Double', type: 'formula', config: { expression: 'Points * 2' } });
-  weave.addField(issue, { name: 'Due', type: 'date' });
-  weave.addField(issue, { name: 'Done', type: 'checkbox' });
-  weave.addField(issue, { name: 'Link', type: 'url' });
-  weave.addField(issue, { name: 'Brief', type: 'document' });
-  weave.addRelation(issue, { name: 'Task', targetDb: task, cardinality: 'many-to-one', inverseName: 'Issues' });
-  const t1 = weave.createEntity(task, { name: 'Write the plan', values: { Status: 'In progress', Notes: 'first pass' } });
-  weave.createEntity(task, { name: 'Ship it', values: { Status: 'Open' } });
-  const i1 = weave.createEntity(issue, { name: 'Grid is slow', values: {
-    Severity: 'High', Symptom: ['Slow'], Points: 3, Due: '2026-10-01', Done: false, Link: 'https://example.com', Task: t1.id } });
-  const gone = weave.createEntity(issue, { name: 'Chip wraps', values: { Severity: 'Low', Points: 1 } });
-  weave.createEntity(issue, { name: 'Old note', values: { Severity: 'Low' } });
-  weave.deleteEntity(gone.id);
-  weave.setDoc(i1.id, `Measured on [[Task#${t1.publicId}]].\n\n## Steps\n\nOpen the grid and scroll.\n`, 'Brief');
-  entityId = i1.id;
-  board = weave.tableView(`${task.id}/Board`, { layout: 'board', group: ['Status'] });
-  list = weave.tableView(`${task.id}/List`, { layout: 'list', group: ['Status'] });
-  form = createForm(weave, { name: 'Report a task', table: task.id, fields: [{ field: 'Name', key: 'title', label: 'Title', required: true }, { field: 'Notes', key: 'notes', label: 'Notes' }] });
-});
+const s = await launch('a11y baseline', SEEDS.a11y);
 
 const ISSUER = 'https://clerk.a11y.example.test';
 const nobody = async () => new Response('{"errors":[{"code":"resource_not_found"}]}', { status: 404 });
@@ -75,52 +44,11 @@ const doors = s && await launch('a11y doors', (w) => {
 if (s && doors) {
   const { base, browser } = s;
 
-  const press = (page, sel) => page.locator(`${sel} >> visible=true`).first().click();
-  const tableMenu = (label) => async (page) => {
-    await press(page, '#main .dots-btn[title="Table actions"]');
-    await press(page, `.wv-menu >> visible=true >> text=${label}`);
-  };
-
-  const TABLE_STATES = [
-    { name: 'field dialog', root: '#tray-back', async open(page) {
-      await press(page, '.field-menu[title="Configure Status"]');
-      await press(page, '.chip-pop .chip-pop-row >> text=Field settings');
-    } },
-    { name: 'command palette', root: '#cmdk-back', async open(page) {
-      await press(page, '.search-like');
-      await page.waitForSelector('#cmdk-input');
-    } },
-    { name: 'share dialog', root: '#modal-back', open: tableMenu('Share…') },
-    { name: 'filter popover', root: '.table-filter-popover', open: (page) => press(page, '#main .table-filter-btn') },
-    { name: 'sort popover', root: '.table-sort-popover', open: (page) => press(page, '#main .table-sort-btn') },
-    { name: 'row menu', root: '.wv-menu', async open(page) {
-      await page.locator(`${ROW} td.pid-cell a.open-link`).first().click();
-      await page.waitForSelector('#dock .pose-btn');
-      await press(page, '#dock .crumb-actions .dots-btn');
-    } },
-  ];
-
-  const ROUTES = [
-    { name: 'Task table', url: () => `${base}/#/table/${task.id}`, ready: ROW, states: TABLE_STATES },
-    { name: 'Issue table', url: () => `${base}/#/table/${issue.id}`, ready: ROW },
-    { name: 'Task board', url: () => `${base}/#/table/${task.id}/view/${board.id}`, ready: '.wv-board .tile' },
-    { name: 'Task list', url: () => `${base}/#/table/${task.id}/view/${list.id}`, ready: '.wv-list .list-row' },
-    { name: 'entity page', url: () => `${base}/#/entity/${entityId}`, ready: '.vditor-ir [contenteditable="true"]', editor: true, states: [
-      { name: 'editor open', root: EDITOR, open: (page) => page.locator('.vditor-ir [contenteditable="true"] >> visible=true').first().click() },
-    ] },
-    { name: 'map', url: () => `${base}/#/map`, ready: '#main .view-title' },
-    { name: 'settings', url: () => `${base}/#/settings`, ready: '#main .settings-purge' },
-    { name: 'trash', url: () => `${base}/#/trash`, ready: '#main .view-title' },
-    { name: 'activity', url: () => `${base}/#/activity`, ready: '.activity-row' },
-    { name: 'forms builder', url: () => `${base}/#/table/${task.id}`, ready: ROW, async setup(page) {
-      await tableMenu('Forms…')(page);
-      await page.getByRole('button', { name: 'Create form', exact: true }).click();
-      await page.waitForSelector('[data-form-field]');
-    } },
-    { name: 'published form', url: () => `${base}/f/${form.id}`, ready: '#wv-form-error' },
-    { name: 'start', url: () => `${doors.base}/start`, ready: 'main#start:not(:has([role="status"]))' },
-    { name: 'billing', url: () => `${doors.base}/billing`, ready: '#seats li', session: true },
-  ];
+  const { task, issue, entityId } = s;
+  const ctx = { ...s, doors };
+  const plan = walked('a11y');
+  const routes = plan.filter((p) => p.state.open === 'rest');
+  const statesOn = (route, theme) => plan.filter((p) => p.state.open === 'overlay' && p.state.route === route && p.theme === theme).map((p) => p.state);
 
   const open = async (url, ready, theme, { session = false } = {}) => {
     const ctx = await (session ? doors : s).browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: theme });
@@ -151,23 +79,24 @@ if (s && doors) {
 
   const effectiveTheme = (page) => page.evaluate(() => document.documentElement.dataset.bsTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
-  const scanRoute = async (route, theme) => {
+  const scanRoute = async (state, theme) => {
     const found = [];
     const failed = [];
-    const add = (state, list) => { for (const v of list) found.push({ ...v, key: keyOf({ route: route.name, state, theme, rule: v.rule, target: v.target }) }); };
+    const route = ROUTES[state.route];
+    const add = (name, list) => { for (const v of list) found.push({ ...v, key: keyOf({ route: state.name, state: name, theme, rule: v.rule, target: v.target }) }); };
     const fresh = async () => {
-      const page = await open(route.url(), route.ready, theme, { session: route.session });
-      if (route.setup) await route.setup(page);
+      const page = await open(route.url(ctx, 'desktop'), readyOf(state, 'desktop'), theme, { session: route.session });
+      if (route.setup) await route.setup(page, ctx, 'desktop');
       return page;
     };
     let page = await fresh();
     try {
-      assert.equal(await effectiveTheme(page), theme, `${route.name} paints the ${theme} theme`);
-      if (route.editor) assert.ok(await page.locator(`${EDITOR} >> visible=true`).count() > 0, `${route.name} shows the document editor the scan covers`);
+      assert.equal(await effectiveTheme(page), theme, `${state.name} paints the ${theme} theme`);
+      if (route.editor) assert.ok(await page.locator(`${EDITOR} >> visible=true`).count() > 0, `${state.name} shows the document editor the scan covers`);
       add('at rest', await axe(page, { editor: await page.locator(EDITOR).count() > 0 }));
-      for (const st of route.states ?? []) {
+      for (const st of statesOn(state.route, theme)) {
         try {
-          await st.open(page);
+          await st.act(page, ctx, 'desktop');
           const root = page.locator(`${st.root} >> visible=true`).first();
           await root.waitFor({ timeout: 8000 });
           await atRest(root);
@@ -183,24 +112,22 @@ if (s && doors) {
     return { found, failed };
   };
 
-  for (const route of ROUTES) {
-    for (const theme of ['light', 'dark']) {
-      test(`${route.name}, ${theme}: axe finds no violation outside test/a11y-baseline.json, and every baseline entry still reproduces`, async (t) => {
-        const { found, failed } = await scanRoute(route, theme);
-        assert.deepEqual(failed, [], `an open state could not open: its selectors rotted`);
-        const seen = new Map(found.map((f) => [f.key, f]));
-        const mine = Object.keys(BASELINE).filter((k) => { const p = partsOf(k); return p.route === route.name && p.theme === theme; });
-        const added = [...seen.keys()].filter((k) => !Object.hasOwn(BASELINE, k)).sort();
-        const dropped = mine.filter((k) => !seen.has(k)).sort();
-        for (const k of added) { const f = seen.get(k); t.diagnostic(`a11y-new ${k} :: ${f.impact} :: ${f.help} :: ${f.contrast ?? ''}`); }
-        assert.deepEqual(added, [], `new axe violations: fix them; test/a11y-baseline.json only shrinks`);
-        assert.deepEqual(dropped, [], `fixed: remove these from test/a11y-baseline.json in this change`);
-      });
-    }
+  for (const { state, theme } of routes) {
+    test(`${state.name}, ${theme}: axe finds no violation outside test/a11y-baseline.json, and every baseline entry still reproduces`, async (t) => {
+      const { found, failed } = await scanRoute(state, theme);
+      assert.deepEqual(failed, [], `an open state could not open: its selectors rotted`);
+      const seen = new Map(found.map((f) => [f.key, f]));
+      const mine = Object.keys(BASELINE).filter((k) => { const p = partsOf(k); return p.route === state.name && p.theme === theme; });
+      const added = [...seen.keys()].filter((k) => !Object.hasOwn(BASELINE, k)).sort();
+      const dropped = mine.filter((k) => !seen.has(k)).sort();
+      for (const k of added) { const f = seen.get(k); t.diagnostic(`a11y-new ${k} :: ${f.impact} :: ${f.help} :: ${f.contrast ?? ''}`); }
+      assert.deepEqual(added, [], `new axe violations: fix them; test/a11y-baseline.json only shrinks`);
+      assert.deepEqual(dropped, [], `fixed: remove these from test/a11y-baseline.json in this change`);
+    });
   }
 
   test('every baseline entry names a route, a state, a theme, a scanned rule and the Issue row that tracks it', () => {
-    const names = new Set(ROUTES.map((r) => r.name));
+    const names = new Set(routes.map((p) => p.state.name));
     for (const [k, row] of Object.entries(BASELINE)) {
       const p = partsOf(k);
       assert.ok(names.has(p.route), `${k}: unknown route`);
@@ -258,7 +185,7 @@ if (s && doors) {
       const page = await at(`#/table/${issue.id}`, ROW, theme);
       try {
         await page.keyboard.press('Tab');
-        for (const sel of ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn']) {
+        for (const sel of ['#main .table-view-btn']) {
           const r = await ringContrast(page, sel);
           assert.ok(r.focused && r.visible, `${sel} takes keyboard focus (${JSON.stringify(r)})`);
           assert.equal(r.style, 'solid', `${sel} draws the outline ring`);

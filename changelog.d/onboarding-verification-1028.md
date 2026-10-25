@@ -1,1 +1,0 @@
-- Run signup, invitation and second-workspace browser journeys on every pull request; refuse a missing required journey suite before auto-merge (Issue #1028).

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 let table, row, cited;
 const s = await launch('activity in two places', (weave) => {
@@ -44,7 +45,7 @@ if (s) {
     };
   }, mountSel);
 
-  test('the table field menu and the show/hide popover offer no Activity entry (Feature #315)', async () => {
+  test('the table field menu and the View pane Fields list offer no Activity entry (Feature #315)', async () => {
     const p = await page(`#/table/${table.id}`);
     try {
       await p.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -56,9 +57,9 @@ if (s) {
       await p.waitForSelector('.chip-pop .wv-menu-row');
       assert.doesNotMatch(await popoverText(p), ACTIVITY, 'the field menu has no Activity or History item');
       await closePop(p);
-      await p.click('#main .eye-btn');
-      await p.waitForSelector('.chip-pop .eye-row');
-      const rows = await p.locator('.chip-pop .eye-label').allInnerTexts();
+      await openPane(p, 'fields');
+      await p.waitForSelector('#view-pane .eye-row');
+      const rows = await p.locator('#view-pane .table-field-row .eye-label').allInnerTexts();
       assert.ok(rows.includes('Created At'), `the system section still lists the stamps (${rows.join(', ')})`);
       assert.equal(rows.some((r) => ACTIVITY.test(r)), false, `the show/hide popover has no Activity row (${rows.join(', ')})`);
     } finally { await p.close(); }

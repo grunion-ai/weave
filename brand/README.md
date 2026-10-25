@@ -17,7 +17,7 @@ width 3.5 on a 48-unit grid. The under-strand is cut with SVG masks
 | --- | --- | --- |
 | 1 | App icon tile | **A** — blue `#2563eb` squircle, cream `#e0dcd4` + ice `#bcd3ff` strands |
 | 2 | Favicon | **B** — mono blue, strands thickened to 4.5 (optical correction) |
-| 3 | Lockup | **A** — inline, mark ≈ x-height beside the wordmark |
+| 3 | Lockup | **A** inline: mark at 1.6x (18.4 units tall, about 1.75 times the word height) beside the wordmark, the word centred on the mark's centre line, 0.6 word heights apart. **C** stacked: mark 75% of the word's width, half a word height above it, both centred. Kyle, 2026-10-22; replaces the 2026-08-16 inline lockup with the mark at x-height |
 | 4 | Wordmark | **B** — "weave" lowercase, Outfit 600, −0.02em tracking |
 | 5 | Light-mode strand pair | **B** — blue `#2563eb` + ink `#0c1b33` |
 | 6 | Canonical one-color mark | **A** — brand blue mono |
@@ -82,11 +82,12 @@ straight into `public/brand/`; the rest go to `assets/`. No file lives in both.
 | `weave-mark-white.svg` | On blue-filled contexts (buttons, banners) |
 | `weave-app-icon.svg` | 512 squircle app icon |
 | `weave-loader-dark.svg` / `-light.svg` | Animated loader (decision 7), same strand pairs as the marks |
-| `weave-lockup-dark.svg` / `-light.svg` | Inline mark + wordmark |
-| `weave-lockup-email-light.svg` / `-dark.svg` | The invite emails' lockup (Feature #216): ink second strand on light, `#3b82f6` lead on dark, as approved 2026-10-03. `render-png.mjs` draws them, with Outfit loaded, to `public/brand/email-lockup-{light,dark}.png` at 208x48, which weave serves to mail clients (Gmail strips SVG) |
+| `weave-lockup-dark.svg` / `-light.svg` | Inline lockup (decision 3A): blue + sky with a cream word on dark, blue + ink with an ink word on light |
+| `weave-lockup-stacked-dark.svg` / `-light.svg` | Stacked lockup (decision 3C), same pairs |
+| `weave-lockup-email-light.svg` / `-dark.svg` | The invite emails' lockup (Feature #216): ink second strand on light, `#3b82f6` lead on dark, as approved 2026-10-03. `render-png.mjs` draws them to `public/brand/email-lockup-{light,dark}.png` at 393x72, three times the 131x24 the email shows (`LOCKUP_SIZES`), which weave serves to mail clients (Gmail strips SVG) |
 
 `assets/png/`: rasters rendered via headless Chromium: favicon 16/48, app icon
-512/180, mark 256, lockup 512, plus
+512/180, mark 256, inline and stacked lockup 512 wide, plus
 `weave-loader-{dark,light}.gif` (see below).
 
 ## The loader (decision 7)
@@ -149,8 +150,11 @@ when the stage is too narrow to hold the mark at 55% of its width.
 - **Never** recolor strands outside the pairs above, outline the mark, or
   rotate the horizontal mark (vertical/diagonal ropes were explored and
   rejected for the primary — see `docs/`).
-- The lockup wordmark is Outfit 600; the SVG falls back to the system stack if
-  Outfit isn't loaded.
+- The lockup wordmark is Outfit 600 with -0.02em tracking, outlined to a path
+  (`WORDMARK` in `build-logos.mjs`), so every lockup draws the same with or
+  without Outfit installed and needs no outlining before print.
+- `lockupLayout()` holds the lockup proportions; `build-logos.test.mjs` checks
+  the mark scale, the centring and the gaps against them.
 
 ## Rebuilding
 

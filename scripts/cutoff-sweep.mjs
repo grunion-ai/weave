@@ -7,7 +7,7 @@ import { loadavg } from 'node:os';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { OVERLAYS } from '../test/lib/overlays.mjs';
-import { CELLS, PLATFORM, SWEEP_JOURNEYS, fingerprint, lower, ratchet, sectionOf, seed, sweepCell, tally } from '../test/lib/cutoff.mjs';
+import { CELLS, PLATFORM, SWEEP_JOURNEYS, fingerprint, lower, sectionOf, seed, sweepCell, tally, verdict } from '../test/lib/cutoff.mjs';
 
 const BASELINE = new URL('../test/cutoff-baseline.json', import.meta.url);
 const { values: a } = parseArgs({ options: {
@@ -55,7 +55,7 @@ try {
     }
     const page = { ...profile, viewport };
     const t0 = performance.now();
-    const got = await sweepCell(browser, name, ctx, { page, journeys, overlays });
+    const got = await sweepCell(browser, name, ctx, { page, journeys, overlays, ...(a.journey || a.overlay ? { rests: [] } : {}) });
     findings.push(...got.findings);
     failed.push(...got.failed);
     timings.push(...got.timings);
@@ -73,7 +73,7 @@ for (const f of findings) {
   if (!examples[fp] || f.px > examples[fp].px) examples[fp] = { text: f.text, px: f.px, selector: f.selector, where: f.where };
 }
 const baseline = JSON.parse(readFileSync(BASELINE, 'utf8'));
-const { added, dropped } = ratchet(counts, sectionOf(baseline), { cells: wanted });
+const { added, stale } = verdict(counts, sectionOf(baseline), { cells: wanted });
 const sorted = [...timings].sort((x, y) => x - y);
 let sha = '';
 try { sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim(); } catch {}
@@ -83,7 +83,7 @@ const report = {
   probe: { count: sorted.length, medianMs: Math.round(sorted[sorted.length >> 1] ?? 0), maxMs: Math.round(sorted.at(-1) ?? 0) },
   cells, journeys: journeys.map((j) => j.name), overlays: overlays.map((o) => o.name),
   failed, instances: findings.length, fingerprints: Object.keys(counts).length,
-  counts, examples, added, dropped,
+  counts, examples, added, stale,
 };
 writeFileSync(join(out, 'findings.json'), `${JSON.stringify(report, null, 2)}\n`);
 
@@ -100,6 +100,6 @@ for (const [fp, n] of Object.entries(counts)) console.log(`${String(n).padStart(
 for (const c of cells) if (c.fallback) console.log(`FALLBACK  ${c.name}: ${c.fallback}`);
 for (const f of failed) console.log(`FAILED  ${f.where} [${f.cell}]: ${f.error}`);
 for (const x of added) console.log(`NEW  ${x.fp}  seen ${x.seen}, baseline ${x.baseline}`);
-for (const x of dropped) console.log(`FIXED  ${x.fp}  seen ${x.seen}, baseline ${x.baseline}: lower the ${PLATFORM} baseline (--lower)`);
+for (const x of stale) console.log(`STALE  ${x.fp}  seen ${x.seen}, baseline ${x.baseline}: lower the ${PLATFORM} baseline once that count holds across runs (--lower)`);
 console.log(`${PLATFORM}: ${findings.length} cut-offs, ${report.fingerprints} fingerprints, ${failed.length} failures, probe median ${report.probe.medianMs} ms max ${report.probe.maxMs} ms, ${(report.ms / 1000).toFixed(1)} s -> ${join(out, 'findings.json')}`);
 process.exit(failed.length ? 1 : 0);

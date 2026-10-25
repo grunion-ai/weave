@@ -1,1 +1,0 @@
-- Empty and general setups appear before the template catalog. (Issue #1012).

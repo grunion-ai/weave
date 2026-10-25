@@ -3867,7 +3867,7 @@ function systemDefault(db, view = null) {
     fields: [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n])],
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
-    frozen: 0, density: 'comfortable', deleted: false, rollups: false,
+    frozen: 0, density: 'comfortable', deleted: false, rollups: false, subtotals: null,
     layout: null, groups: null, picture: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
   };
 }
@@ -3881,7 +3881,7 @@ function viewStrip(db) {
   const views = db.views ?? [];
   const strip = el('div', { class: 'view-strip', role: 'list', 'aria-label': 'Views' });
   const at = (id) => `/tables/${db.id}/views/${encodeURIComponent(id)}`;
-  const redraw = () => strip.closest('.table-view-popover')?.refresh?.(db, { force: true });
+  const redraw = () => strip.closest('.table-view-popover, #view-pane')?.refresh?.(db, { force: true });
   const write = async (fn, { focus, part = '.view-name' } = {}) => {
     try { await fn(); } catch (err) { toast(err.message, true); }
     await loadSchema();
@@ -3918,7 +3918,7 @@ function viewStrip(db) {
       if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
       if (ev.key === 'Escape') {
         ev.preventDefault();
-        finish(false).then(() => document.querySelector('.table-view-popover .view-add')?.focus({ preventScroll: true }));
+        finish(false).then(() => document.querySelector(':is(.table-view-popover, #view-pane) .view-add')?.focus({ preventScroll: true }));
       }
     });
     input.addEventListener('blur', () => finish(true));
@@ -4099,8 +4099,8 @@ const filterCounts = new Map();
 function setFilterTotal(db, x, n) {
   if (x != null && n != null) filterCounts.set(db.id, { x, n });
   const c = filterCounts.get(db.id);
-  const out = document.querySelector('.table-filter-popover .filter-total');
-  if (!out || !c || out.closest('.chip-pop')?.tableId !== db.id) return;
+  const out = document.querySelector(':is(.table-filter-popover, #view-pane) .filter-total');
+  if (!out || !c || out.closest('.chip-pop, #view-pane')?.tableId !== db.id) return;
   const text = `${c.x} of ${c.n} ${db.term?.plural ?? 'rows'}`;
   if (out.textContent !== text) out.textContent = text;
   out.classList.remove('stale');
@@ -4119,9 +4119,9 @@ function filterTriples(db, active) {
 }
 const FILTER_DEBOUNCE = 250;
 let filterWrites = Promise.resolve();
-function filterStrip(db, onChange, { filters = tableFilters(db), save = null } = {}) {
+function filterStrip(db, onChange, { filters = tableFilters(db), save = null, extra = [] } = {}) {
   const wfFields = db.fields.filter(isFilterField);
-  if (!wfFields.length) return null;
+  if (!wfFields.length && !extra.length) return null;
   const active = Object.fromEntries(Object.entries(filters).map(([k, v]) => [k, [...v]]));
   const strip = el('div', { class: 'filter-strip' });
   const chips = [];
@@ -4140,7 +4140,10 @@ function filterStrip(db, onChange, { filters = tableFilters(db), save = null } =
     }
     const count = Object.values(active).filter((v) => v.length).length;
     clear.disabled = !count;
-    if (!save) setFilterCount(document.querySelector('#main .table-filter-btn'), count);
+    if (save) return;
+    setFilterCount(document.querySelector('#main .table-filter-btn'), count);
+    const btn = document.querySelector('#main .table-view-btn');
+    if (btn?.label && db.view) { btn.wvActive = active; btn.label(); }
   };
   const flush = () => {
     clearTimeout(timer);
@@ -4167,6 +4170,8 @@ function filterStrip(db, onChange, { filters = tableFilters(db), save = null } =
     return filterWrites;
   };
   strip.flushPending = flush;
+  strip.busy = () => dirty || inflight > 0;
+  strip.current = () => active;
   const scroll = el('div', { class: 'filter-scroll' });
   for (const f of wfFields) {
     const row = el('div', { class: 'filter-group', role: 'group', 'aria-label': f.name },
@@ -4189,7 +4194,7 @@ function filterStrip(db, onChange, { filters = tableFilters(db), save = null } =
     }
     row.append(values); scroll.append(row);
   }
-  strip.append(scroll, el('div', { class: 'filter-footer' }, note, clear)); paint();
+  strip.append(scroll, ...extra, el('div', { class: 'filter-footer' }, note, clear)); paint();
   if (!save) queueMicrotask(() => setFilterTotal(db));
   return strip;
 }
@@ -4290,39 +4295,54 @@ function rememberFirstPage(key, result) {
   firstPages.set(key, result);
   if (firstPages.size > FIRST_PAGES_KEPT) firstPages.delete(firstPages.keys().next().value);
 }
+function tableGroup(db) {
+  if (!hasView(db) || isListLayout(db) || isBoardLayout(db)) return null;
+  const group = (db.view.group ?? []).filter((l) => listCore.groupable(db.fields.find((f) => f.name === l.field)));
+  return group.length ? group : null;
+}
+function serverSums(result) {
+  return { sums: new Map((result.groups ?? []).map((g) => [g.path.map((p) => p.value).join(listCore.SEP), g])), grand: result.groupTotal ?? null };
+}
 async function readAndDrawTable(db, dbId, search, cold = false) {
   if (isListLayout(db) || isBoardLayout(db)) return readAndDrawList(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
+  const group = tableGroup(db);
+  const whole = showDeleted || !!group;
   const query = {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
     ...(search ? { search } : {}),
-    ...(showDeleted ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
+    ...(whole ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
+    ...(group ? { groupBy: db.view.id } : {}),
+    includeDeleted: showDeleted,
     fields: gridFields(db),
     relations: 'chip',
   };
-  const paint = (result, trash) => {
+  const paint = (result, domains) => {
     tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
-    setFilterTotal(db, result.total, result.all);
-    const items = showDeleted && !search
-      ? [...result.items, ...(trash?.items ?? []).map((e) => ({ ...e, deleted: true }))]
-      : result.items;
-    drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
+    const items = showDeleted ? result.items.map((e) => (e.deletedAt ? { ...e, deleted: true } : e)) : result.items;
+    setFilterTotal(db, showDeleted ? items.filter((e) => !e.deleted).length : result.total, result.all);
+    const drawn = group ? {
+      ...db,
+      grouping: {
+        levels: VP.levelsFor(group, db.fields, { domains: domains ?? [], items }),
+        collapsed: db.view.collapsed ?? [], rollups: showsRollups(db), subtotals: db.view.subtotals ?? 'all', ...serverSums(result),
+      },
+    } : db;
+    drawDatabase(drawn, items, result.trashCount ?? 0, whole ? null : gridPager(db, query, result));
   };
   const pageKey = `${db.id}|${JSON.stringify(query)}`;
-  const cached = cold && !showDeleted ? firstPages.get(pageKey) : null;
+  const cached = cold && !whole ? firstPages.get(pageKey) : null;
   if (cached) paint(cached, null);
-  const [result, trash] = await Promise.all([
+  const [result, domains] = await Promise.all([
     api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true, countAll: true }).then((res) => graftChips(db, res)),
-    showDeleted
-      ? api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] }))
-      : null,
+    group ? Promise.all(group.map((l) => { const f = db.fields.find((x) => x.name === l.field); return f?.type === 'relation' && f.targetDbId ? listTargetRows(f).catch(() => []) : null; })) : null,
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
-  if (!showDeleted) rememberFirstPage(pageKey, result);
+  if (!whole) rememberFirstPage(pageKey, result);
   if (cached && JSON.stringify(cached) === JSON.stringify(result)) return;
-  paint(result, trash);
+  paint(result, domains);
 }
 
 function gridMoves(db, field) {
@@ -4336,6 +4356,7 @@ function gridFields(db) {
   const phone = phoneRowOf(db);
   for (const n of [phone.lead, ...phone.chips]) if (n) names.add(n);
   for (const s of gridSort(db) ?? []) if (db.fields.some((f) => f.name === s.field)) names.add(s.field);
+  for (const l of db.view?.group ?? []) if (db.fields.some((f) => f.name === l.field)) names.add(l.field);
   for (const n of db.systemFields ?? []) names.add(n);
   return [...names];
 }
@@ -4468,14 +4489,27 @@ function tableControlHeader(title, close) {
 }
 function tableViewButton(ref) {
   const btn = tableControlButton('table-view-btn', '', 'table', true);
+  btn.lastElementChild.classList.add('view-btn-chev');
+  btn.setAttribute('aria-controls', 'view-pane');
   btn.label = () => {
     const name = ref.db.view?.name || 'Standard';
+    const pending = btn.wvActive;
+    btn.wvActive = null;
+    const n = VP.activeFilters(pending ? { ...ref.db.view, filters: pending } : ref.db.view);
     btn.querySelector('.table-control-label').textContent = name;
-    btn.setAttribute('aria-label', `View: ${name}`);
+    let badge = btn.querySelector('.view-count');
+    if (!n) badge?.remove();
+    else {
+      if (!badge) btn.append(badge = el('span', { class: 'view-count', 'aria-hidden': 'true' }));
+      badge.textContent = String(n);
+    }
+    btn.setAttribute('aria-label', `View: ${name}` + (n ? `, ${n} filter${n === 1 ? '' : 's'} on` : ''));
     btn.title = btn.getAttribute('aria-label');
+    if (!dockCoversScreen.matches) btn.setAttribute('aria-expanded', String(viewPane.open));
   };
   btn.label();
   btn.addEventListener('click', () => {
+    if (!dockCoversScreen.matches) { setPaneOpen(!viewPane.open); return; }
     const db = ref.db;
     let pop;
     viewEdit = null;
@@ -4502,11 +4536,7 @@ function tableViewButton(ref) {
     };
     const build = (current) => [
       tableControlHeader('Views', () => pop?.remove()), viewStrip(current),
-      el('div', { class: 'view-layout' }, el('span', { class: 'view-layout-label' }, 'Layout'),
-        segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' },
-          { id: 'board', label: 'Board', title: 'Things to move or pick between: kanban columns or a picture gallery' }],
-          ['list', 'board'].includes(current.view?.layout) ? current.view.layout : 'table', (layout) => setView(current, { layout }))),
-      ...(isBoardLayout(current) ? boardControls(current, (patch) => setView(current, patch)) : []),
+      ...displayBlock(current, (patch) => setView(current, patch)).filter((n) => !n.classList.contains('vp-density')),
       el('hr'),
       el('button', { class: 'chip-pop-row view-reset', type: 'button', onclick: () => reset(true, current) }, lucideEl('undo'), 'Reset view'),
       el('button', { class: 'chip-pop-row view-clear', type: 'button', onclick: () => reset(false, current) }, lucideEl('list-filter'), 'Clear filters, search, and sorting'),
@@ -4581,37 +4611,21 @@ function tableSortButton(ref) {
   const btn = tableControlButton('table-sort-btn', 'Sort', 'arrow-down', true);
   const value = el('span', { class: 'table-sort-value' });
   btn.querySelector('.table-control-label').after(value);
-  const fieldOf = (name) => ref.db.fields.find((f) => f.name === name) ?? fieldDialogCore.SYSTEM_SORT[name] ?? { name, type: 'text' };
-  const words = (name, dir) => sortLabelsFor(ref.db, fieldOf(name))[dir === 'desc' ? 'desc' : 'asc'];
   btn.label = () => {
-    const s = ref.db.sort?.[0];
-    value.textContent = s ? `${s.field}, ${words(s.field, s.dir)}` : 'None';
-    btn.setAttribute('aria-label', s ? `Sort: ${s.field}, ${words(s.field, s.dir)}` : 'Sort: none');
+    const all = gridSort(ref.db) ?? [];
+    const s = all[0];
+    const more = all.length > 1 ? `, then ${all.length - 1} more` : '';
+    const text = s ? `${s.field}, ${sortWords(ref.db, s.field)[s.dir === 'desc' ? 1 : 0]}${more}` : 'None';
+    value.textContent = text;
+    btn.setAttribute('aria-label', s ? `Sort: ${text}` : 'Sort: none');
     btn.title = btn.getAttribute('aria-label');
   };
   btn.label();
   btn.addEventListener('click', () => {
-    const db = ref.db;
     let pop;
-    const write = async (sort) => {
-      pop?.remove();
-      const release = gridHold();
-      try {
-        if (await gridConfigWrite(db, { sort })) await keepScroll(() => showDatabase(db.id, db.view?.id));
-      } catch (err) { toast(err.message, true); } finally { release(); }
-    };
-    const now = db.sort?.[0] ?? null;
-    const fields = [...db.fields.filter((f) => f.type !== 'view' && f.type !== 'document'), ...Object.values(fieldDialogCore.SYSTEM_SORT)];
-    const rows = fields.map((f) => el('button', {
-      class: 'chip-pop-row table-sort-field', type: 'button', 'aria-pressed': String(now?.field === f.name),
-      onclick: () => write([{ field: f.name, dir: now?.field === f.name ? now.dir : 'asc' }]),
-    }, el('span', { class: 'table-sort-name' }, f.name), now?.field === f.name ? lucideEl('check', 'wv-icon chip-pop-check') : null));
-    const dir = now ? segCtl([
-      { id: 'asc', label: words(now.field, 'asc') },
-      { id: 'desc', label: words(now.field, 'desc') },
-    ], now.dir === 'desc' ? 'desc' : 'asc', (d) => write([{ field: now.field, dir: d }])) : null;
-    const clear = now ? el('button', { class: 'chip-pop-row table-sort-clear', type: 'button', onclick: () => write([]) }, lucideEl('x'), 'Clear sort') : null;
-    pop = tableControlPopover(btn, db, 'table-sort-popover', [tableControlHeader('Sort', () => pop?.remove()), dir, el('div', { class: 'table-sort-list' }, ...rows), clear]);
+    const rows = (db) => [tableControlHeader('Sort', () => pop?.remove()), ...levelsBlock(db, 'sort', (patch) => paneWrite(db, patch))];
+    pop = tableControlPopover(btn, ref.db, 'table-sort-popover', rows(ref.db));
+    if (pop) pop.refresh = (db) => { pop.replaceChildren(...rows(db)); pop.reposition?.(); };
   });
   return btn;
 }
@@ -4707,6 +4721,404 @@ function phoneRowPopover(anchor, db) {
   return pop;
 }
 
+const VP = globalThis.weaveViewPane;
+const PANE_KEY = 'weave-view-pane';
+const PANE_SECTION_KEY = 'weave-view-pane-section';
+const readPref = (k, d) => localStorage.getItem(k) ?? d;
+const writePref = (k, v) => localStorage.setItem(k, v);
+const viewPane = { open: readPref(PANE_KEY, '') === 'open', section: readPref(PANE_SECTION_KEY, 'filters'), note: null, views: false, db: null, strip: null, fields: null };
+const PANE_SECTIONS = {
+  filters: { label: 'Filters', icon: 'list-filter' },
+  sort: { label: 'Sort', icon: 'list-ordered' },
+  group: { label: 'Group', icon: 'group' },
+  fields: { label: 'Fields', icon: 'eye' },
+  display: { label: 'Display', icon: 'sliders-horizontal' },
+};
+const NO_SORT_TYPES = ['view', 'document', 'attachments', 'avatar', 'key', 'field'];
+function sortFieldOptions(db) {
+  return [...db.fields.filter((f) => !NO_SORT_TYPES.includes(f.type)).map((f) => ({ id: f.name, label: f.name, hint: f.type })),
+    ...Object.values(fieldDialogCore.SYSTEM_SORT).map((f) => ({ id: f.name, label: f.name, hint: 'system' }))];
+}
+function sortWords(db, name) {
+  const f = db.fields.find((x) => x.name === name) ?? fieldDialogCore.SYSTEM_SORT[name] ?? { name, type: 'text' };
+  const w = sortLabelsFor(db, f);
+  return [w.asc, w.desc];
+}
+function paneSwitch({ label, hint = null, on, data = {}, onChange }) {
+  const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': label, ...(on ? { checked: '' } : {}) });
+  const wrap = el('label', { class: 'wv-toggle vp-switch' + (on ? ' on' : ''), dataset: data },
+    el('span', { class: 'vp-switch-text' }, label, hint ? el('small', {}, hint) : null),
+    input, el('span', { class: 'wv-toggle-track', 'aria-hidden': 'true' }, el('span', { class: 'wv-toggle-knob' })));
+  input.addEventListener('change', () => { wrap.classList.toggle('on', input.checked); onChange(input.checked); });
+  return wrap;
+}
+async function paneWrite(db, patch) {
+  if (!hasView(db)) { toast(BLANK_READ_ONLY, true); return; }
+  const release = gridHold();
+  try {
+    await filterWrites;
+    await eyeWrites;
+    const res = await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, patch);
+    viewPane.note = res?.notes?.length ? res.notes.join(' ') : null;
+    await loadSchema();
+    await keepScroll(() => showDatabase(db.id, db.view.id));
+  } catch (err) { toast(err.message, true); } finally { release(); }
+}
+function levelsBlock(db, kind, save) {
+  const isSort = kind === 'sort';
+  const v = db.view ?? {};
+  const levels = isSort ? (gridSort(db) ?? []).map((s) => ({ ...s })) : (v.group ?? []).map((l) => ({ ...l }));
+  const cap = isSort ? VP.SORT_CAP : VP.GROUP_CAP;
+  const fieldOf = (n) => db.fields.find((f) => f.name === n) ?? (isSort ? fieldDialogCore.SYSTEM_SORT[n] ?? null : null);
+  const pool = isSort ? sortFieldOptions(db) : groupFieldOptions(db);
+  const grouped = new Set((v.group ?? []).map((l) => l.field));
+  const used = new Set(levels.map((l) => l.field));
+  const free = (o) => !used.has(o.id) && !(isSort && grouped.has(o.id));
+  const write = (next) => save(isSort ? { sort: next } : { group: next });
+  const copy = () => levels.map((x) => ({ ...x }));
+  const box = el('div', { class: `vp-levels ${kind}-levels` });
+  levels.forEach((l, i) => {
+    const f = fieldOf(l.field);
+    const words = isSort ? sortWords(db, l.field) : VP.directionWords(f?.type, { order: l.order });
+    const dir = l.dir === 'desc' ? 'desc' : 'asc';
+    const put = (patch) => { const next = copy(); next[i] = { ...next[i], ...patch }; if (!isSort && next[i].dir !== 'desc') delete next[i].dir; write(next); };
+    const move = (d) => { const next = copy(); [next[i], next[i + d]] = [next[i + d], next[i]]; write(next); };
+    const pick = pickerSelect({ name: `${kind}-${i}`, title: isSort ? VP.SORT_LEVELS[i] : `Level ${i + 1}`, value: l.field,
+      options: pool.filter((o) => o.id === l.field || free(o)) });
+    pick.classList.add(`${kind}-field`, 'vp-field');
+    pick.input.addEventListener('change', () => { const next = copy(); next[i] = isSort ? { field: pick.input.value, dir: 'asc' } : { field: pick.input.value }; write(next); });
+    const seg = segCtl([{ id: 'asc', label: words[0] }, { id: 'desc', label: words[1] }], dir, (d) => put({ dir: d }));
+    seg.classList.add(`${kind}-dir`, 'vp-dir');
+    for (const b of seg.querySelectorAll('.seg-opt')) b.dataset.vpKey = `${kind}:${i}:dir:${b.textContent}`;
+    let grain = null, heading = null;
+    if (!isSort && f?.type === 'date') {
+      grain = pickerSelect({ name: `grain-${i}`, title: 'Grain', value: l.grain ?? 'month', options: listCore.GRAINS.map((g) => ({ id: g, label: `By ${g}` })) });
+      grain.classList.add('group-grain');
+      grain.input.addEventListener('change', () => put({ grain: grain.input.value }));
+    }
+    if (!isSort && f?.type === 'relation') {
+      heading = segCtl([{ id: 'label', label: 'Label' }, { id: 'chip', label: 'Chip', title: "The linked row's Chip heads the group" }], l.heading ?? 'label', (h) => put({ heading: h }));
+      heading.classList.add('group-heading');
+    }
+    const act = (cls, icon, label, run, off = false) => el('button', {
+      class: `btn btn-sm btn-icon btn-ghost-secondary vp-act ${cls}`, type: 'button', 'aria-label': label, title: label,
+      dataset: { vpKey: `${kind}:${i}:${cls}` }, ...(off ? { disabled: '' } : {}), onclick: run,
+    }, lucideEl(icon));
+    const grip = el('button', { class: `view-grip vp-grip ${kind}-grip`, type: 'button', 'aria-label': `Reorder ${l.field}`, title: 'Drag to reorder levels' }, lucideEl('grip-vertical'));
+    const card = el('div', { class: `vp-level ${kind}-level`, dataset: { level: l.field }, style: isSort ? null : `--depth:${i}` },
+      el('div', { class: 'vp-level-top' }, grip,
+        el('span', { class: 'vp-level-n' }, String(i + 1)),
+        el('span', { class: 'vp-level-name' }, isSort ? VP.SORT_LEVELS[i] : `Level ${i + 1}`),
+        el('span', { class: 'vp-level-acts' },
+          act(`${kind}-up`, 'arrow-up', `Move ${l.field} up`, () => move(-1), i === 0),
+          act(`${kind}-down`, 'arrow-down', `Move ${l.field} down`, () => move(1), i === levels.length - 1),
+          act(`${kind}-remove`, 'x', `Remove ${l.field}`, () => write(levels.filter((_, k) => k !== i))))),
+      el('div', { class: 'vp-level-bot' }, pick, seg, grain, heading));
+    RO().guard(grip);
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      startRowDrag(box, card, e, (target, after) => {
+        const rest = levels.filter((x) => x.field !== l.field);
+        const at = rest.findIndex((x) => x.field === target);
+        if (target === l.field || at < 0) return;
+        rest.splice(at + (after ? 1 : 0), 0, l);
+        write(rest);
+      }, { rows: `.${kind}-level`, key: (r) => r.dataset.level });
+    });
+    box.append(card);
+  });
+  const left = pool.filter(free);
+  const word = isSort ? 'sort' : 'group';
+  const out = [];
+  if (viewPane.note) out.push(el('div', { class: 'vp-note', role: 'status' }, lucideEl('info'), el('span', {}, viewPane.note)));
+  out.push(box);
+  if (levels.length < cap) {
+    const add = el('button', { class: `vp-add-level ${kind}-add`, type: 'button', dataset: { vpKey: `${kind}:add` }, ...(left.length ? {} : { disabled: '' }) },
+      lucideEl('plus'), el('span', {}, `Add ${word} level`), el('span', { class: 'vp-add-count' }, `${levels.length} of ${cap}`));
+    add.addEventListener('click', (e) => {
+      e.stopPropagation();
+      searchPicker({ anchor: add, title: isSort ? 'Sort by' : 'Group by', options: left, onPick: (o) => write([...levels, isSort ? { field: o.id, dir: 'asc' } : { field: o.id }]) });
+    });
+    out.push(add);
+  } else out.push(el('div', { class: 'vp-limit' }, `${cap} of ${cap} ${word} levels in use.`));
+  const last = v.group?.length ? v.group[v.group.length - 1].field : null;
+  if (isSort) out.push(el('p', { class: 'vp-hint' }, last ? `Groups order the rows first. These levels order rows inside each ${last} group. Ties fall back to #.` : 'Ties after the last level fall back to #.'));
+  else if (levels.length) {
+    out.push(el('div', { class: 'vp-links' },
+      el('button', { class: 'btn btn-sm btn-ghost-primary vp-collapse-all', type: 'button', onclick: () => save({ collapsed: drawnGroupKeys(db) }) }, 'Collapse all'),
+      el('button', { class: 'btn btn-sm btn-ghost-primary vp-expand-all', type: 'button', onclick: () => save({ collapsed: [] }) }, 'Expand all')));
+    const multi = levels.map((l) => fieldOf(l.field)).find((f) => f?.type === 'multiselect');
+    if (multi) out.push(el('p', { class: 'vp-hint' }, `A ${db.term.singular} with several ${multi.name} values appears under each one. Totals above that level count it once.`));
+  }
+  if (!isSort && (isListLayout(db) || isBoardLayout(db))) out.push(...listRowPrefs(db, save));
+  return out;
+}
+function listRowPrefs(db, save) {
+  const v = db.view ?? {};
+  const pick = (name, label, value, fields) => {
+    const sel = pickerSelect({ name, title: label, value: value ?? '', placeholder: 'None',
+      options: [{ id: '', label: 'None' }, ...fields.map((f) => ({ id: f.name, label: f.name }))] });
+    sel.classList.add(`group-${name}`);
+    return sel;
+  };
+  const doneSel = pick('completed', 'Completed by', v.completedBy, db.fields.filter((f) => f.type === 'checkbox' || f.type === 'toggle'));
+  doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
+  const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
+  nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
+  return [el('div', { class: 'eye-head' }, 'Rows'),
+    el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel),
+    el('label', { class: 'group-pref' }, el('span', {}, 'Nest by'), nestSel)];
+}
+function drawnGroupKeys(db) {
+  const drawn = $('#main')?.wvDraw;
+  if (!drawn || drawn.db.id !== db.id) return [];
+  const levels = VP.levelsFor(db.view?.group, db.fields, { items: drawn.items });
+  return VP.model(VP.rowsFor(drawn.items, levels), { levels }).nodes.map((n) => n.key);
+}
+function rollupCells(rollups, col) {
+  return (rollups ?? []).filter((r) => r.field === col && FOOT_LABELS[r.aggregate]).map((r) => ({ agg: r.aggregate, text: r.display ?? '—' }));
+}
+function keyedSeg(seg, name) {
+  for (const b of seg.querySelectorAll('.seg-opt')) b.dataset.vpKey = `${name}:${b.textContent}`;
+  return seg;
+}
+function displayBlock(db, save) {
+  const v = db.view ?? {};
+  const rollups = showsRollups(db);
+  const layout = ['list', 'board'].includes(v.layout) ? v.layout : 'table';
+  const out = [
+    el('div', { class: 'view-layout vp-line' }, el('span', { class: 'view-layout-label' }, 'Layout'),
+      keyedSeg(segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' },
+        { id: 'board', label: 'Board', title: 'Things to move or pick between: kanban columns or a picture gallery' }],
+      layout, (next) => save({ layout: next })), 'layout')),
+    el('div', { class: 'vp-line vp-density' }, el('span', { class: 'view-layout-label' }, 'Density'),
+      keyedSeg(segCtl([{ id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }, { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
+        { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' }], gridDensity(db), (mode) => {
+        const wrap = document.querySelector('#main .wv-grid')?.closest('.table-wrap') ?? document.querySelector('#main .list-wrap');
+        if (wrap?.wvSetDensity) wrap.wvSetDensity(mode); else saveGridDensity(db, mode);
+        document.querySelector('#main .table-density-btn')?.label?.(mode);
+        paneSync(db);
+      }), 'density')),
+    ...(isBoardLayout(db) ? boardControls(db, save) : []),
+  ];
+  if (db.system) return out;
+  out.push(el('hr'), paneSwitch({ label: 'Σ Rollups', hint: 'Totals for every group and the whole table', on: rollups, data: { rollups: '' }, onChange: (on) => save({ rollups: on }) }));
+  if (!rollups) return out;
+  out.push(el('div', { class: 'vp-line vp-subtotals' }, el('span', { class: 'view-layout-label' }, 'Subtotals'),
+    keyedSeg(segCtl(VP.SUBTOTALS.map((id) => ({ id, label: VP.SUBTOTAL_LABELS[id] })), v.subtotals ?? 'all', (next) => save({ subtotals: next })), 'subtotals')));
+  const cols = visibleCols(db).filter((c) => footAggregatesFor(db, colField(db, c)).length);
+  if (cols.length) {
+    const box = el('div', { class: 'vp-aggs' });
+    out.push(el('div', { class: 'eye-head' }, 'Per column'), box);
+    footStatLists(db, cols).then((lists) => box.replaceChildren(...lists)).catch((err) => toast(err.message, true));
+  }
+  return out;
+}
+async function footStatLists(db, cols) {
+  const spacesT = registryTable('spaces');
+  if (!spacesT) return [];
+  let rollups = (await api('GET', `/tables/${db.id}/stats`)).rollups ?? [];
+  const nameCol = db.fields.find((x) => x.role === 'name')?.name ?? 'Name';
+  return cols.map((col) => {
+    const box = el('div', { class: 'vp-agg', dataset: { col } });
+    const have = (agg) => rollups.find((r) => (r.targetField ?? nameCol) === col && r.aggregate === agg && !r.where);
+    const paint = () => box.replaceChildren(el('div', { class: 'vp-agg-name' }, col),
+      el('div', { class: 'vp-agg-rows' }, ...footAggregatesFor(db, colField(db, col)).map((agg) => el('label', { class: 'chip-pop-row eye-row foot-row', dataset: { agg } },
+        el('input', { type: 'checkbox', class: 'form-check-input', ...(have(agg) ? { checked: '' } : {}), onchange: (e) => flip(agg, e.currentTarget.checked) }),
+        el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg)))));
+    const flip = (agg, on) => {
+      const turn = eyeWrites.then(async () => {
+        try {
+          await footRollupWrite(db, col, agg, on, have(agg), spacesT);
+          rollups = (await api('GET', `/tables/${db.id}/stats`)).rollups ?? [];
+        } catch (err) { toast(err.message, true); }
+      });
+      eyeWrites = turn;
+      turn.then(() => { paint(); showDatabase(db.id, db.view?.id); });
+    };
+    paint();
+    return box;
+  });
+}
+async function footRollupWrite(db, col, agg, on, cur, spacesT) {
+  if (on && !cur) {
+    const made = await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
+    const reg = registryTable('spaces');
+    if (reg) {
+      reg.fields.push(spaceRollupEntry(db, col, agg, made));
+      for (const v of reg.views ?? []) if (!v.fields.includes(made.name)) v.fields.push(made.name);
+    }
+    return made;
+  }
+  if (!on && cur) {
+    await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
+    const reg = registryTable('spaces');
+    if (reg) {
+      reg.fields = reg.fields.filter((x) => x.id !== cur.fieldId);
+      for (const v of reg.views ?? []) {
+        v.fields = v.fields.filter((n) => n !== cur.name);
+        if (v.widths && cur.name in v.widths) {
+          delete v.widths[cur.name];
+          if (!Object.keys(v.widths).length) delete v.widths;
+        }
+      }
+    }
+  }
+  return null;
+}
+function paneValue(db, key) {
+  const v = db.view ?? {};
+  if (key === 'filters') {
+    const parts = Object.entries(v.filters ?? {}).filter(([, x]) => x?.length).map(([k, x]) => `${k}: ${x.join(', ')}`);
+    if (v.deleted) parts.push('deleted');
+    return parts.join(' · ') || 'None';
+  }
+  if (key === 'sort') return (gridSort(db) ?? []).map((s) => `${s.field} ${s.dir === 'desc' ? '↓' : '↑'}`).join(', ') || 'None';
+  if (key === 'group') return (v.group ?? []).map((l) => l.field).join(listCore.SEP) || 'None';
+  if (key === 'fields') return `${visibleCols(db).length} of ${systemDefault(db).fields.length}`;
+  const layout = { list: 'List', board: 'Board' }[v.layout] ?? 'Table';
+  return `${layout}, ${DENSITY_LABELS[gridDensity(db)]}${showsRollups(db) ? `, Σ ${({ all: 'every level', top: 'top level', none: 'grand total' })[v.subtotals ?? 'all']}` : ''}`;
+}
+function paneChanged(db, key) {
+  const v = db.view ?? {};
+  if (key === 'filters') return VP.activeFilters(v) > 0;
+  if (key === 'sort') return !!gridSort(db);
+  if (key === 'group') return !!v.group?.length;
+  if (key === 'fields') return JSON.stringify(visibleCols(db)) !== JSON.stringify(systemDefault(db).fields);
+  return ['list', 'board'].includes(v.layout) || gridDensity(db) !== 'comfortable' || showsRollups(db);
+}
+function paneFilters(db) {
+  const same = viewPane.strip && viewPane.strip.wvKey === `${db.id}|${db.view?.id}`;
+  const live = (f) => JSON.stringify(Object.entries(f ?? {}).filter(([, v]) => v?.length).map(([k, v]) => [k, [...v].sort()]).sort());
+  const fresh = same && (viewPane.strip.busy() || live(viewPane.strip.current?.() ?? viewPane.strip.wvFilters) === live(tableFilters(db)));
+  if (fresh) { viewPane.strip.syncDeleted?.(db); return viewPane.strip; }
+  const deleted = paneSwitch({
+    label: `Include deleted ${db.term.plural}`, hint: `${($('#main')?.wvDraw?.trashCount ?? 0).toLocaleString('en-US')} in the trash; struck through, never totalled`, on: showsDeleted(db), data: { deleted: '' },
+    onChange: (on) => paneWrite(db, { deleted: on }),
+  });
+  const strip = filterStrip(db, () => keepScroll(() => showDatabase(db.id, db.view?.id)), { extra: db.system ? [] : [deleted] })
+    ?? el('div', { class: 'table-control-note' }, 'Workflow, toggle and select fields provide filters. This table has none.');
+  strip.wvKey = `${db.id}|${db.view?.id}`;
+  strip.wvFilters = structuredClone(tableFilters(db));
+  strip.busy ??= () => false;
+  strip.syncDeleted = (next) => {
+    const box = strip.querySelector('[data-deleted] input');
+    if (box) { box.checked = showsDeleted(next); box.closest('.wv-toggle').classList.toggle('on', box.checked); }
+  };
+  viewPane.strip = strip;
+  return strip;
+}
+function paneFields(db) {
+  const same = viewPane.fields && viewPane.fields.wvKey === `${db.id}|${db.view?.id}`;
+  if (same) { if (!eyeTails.has(db.id)) viewPane.fields.relearnEye(); return viewPane.fields; }
+  const box = fieldVisibilityPopover(paneEl(), db, 0, { rowsSection: false, mount: true });
+  box.wvKey = `${db.id}|${db.view?.id}`;
+  viewPane.fields = box;
+  return box;
+}
+function paneBody(db, key) {
+  const save = (patch) => paneWrite(db, patch);
+  if (key === 'filters') return [paneFilters(db)];
+  if (key === 'sort') return levelsBlock(db, 'sort', save);
+  if (key === 'group') return levelsBlock(db, 'group', save);
+  if (key === 'fields') return [paneFields(db)];
+  return displayBlock(db, save);
+}
+const paneEl = () => $('#view-pane');
+const paneWanted = () => viewPane.open && !dockCoversScreen.matches && state.route?.page === 'db';
+function setPaneOpen(on, { focus = true } = {}) {
+  viewPane.open = on;
+  writePref(PANE_KEY, on ? 'open' : '');
+  const drawn = $('#main')?.wvDraw;
+  paneSync(drawn?.db ?? null);
+  const btn = document.querySelector('#main .table-view-btn');
+  btn?.label?.();
+  if (!focus) return;
+  if (on) paneEl()?.querySelector('.vp-acc[aria-expanded="true"], .vp-acc')?.focus({ preventScroll: true });
+  else btn?.focus({ preventScroll: true });
+}
+function paneSync(db) {
+  const pane = paneEl();
+  if (!pane) return;
+  if (!db || !paneWanted() || db.id !== state.route?.dbId) {
+    if (!pane.hidden) { pane.hidden = true; pane.replaceChildren(); }
+    viewPane.db = null;
+    return;
+  }
+  pane.hidden = false;
+  renderViewPane(pane, db);
+}
+function renderViewPane(pane, db, { force = false } = {}) {
+  if (!force && pane.querySelector('.view-name-input')) return;
+  const same = viewPane.db?.id === db.id && viewPane.db?.view?.id === db.view?.id;
+  if (!same) { viewPane.strip = null; viewPane.fields = null; if (viewPane.db) viewPane.note = null; if (viewPane.db?.id !== db.id) viewPane.views = false; }
+  const active = pane.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = active?.dataset?.vpKey ?? null;
+  const scrollTop = pane.querySelector('.vp-scroll')?.scrollTop ?? 0;
+  viewPane.db = db;
+  pane.tableId = db.id;
+  if (!pane.wvKeys) {
+    pane.wvKeys = true;
+    pane.addEventListener('click', (e) => {
+      const hit = e.target.closest('label');
+      if (hit?.control && pane.contains(hit.control) && (document.activeElement === document.body || pane.contains(document.activeElement))) hit.control.focus({ preventScroll: true });
+    });
+    pane.addEventListener('keydown', (e) => {
+      if (!['ArrowUp', 'ArrowDown'].includes(e.key) || e.defaultPrevented) return;
+      const body = e.target.closest?.('.vp-body');
+      const walk = '.eye-row > input, .filter-chip > input';
+      if (!body || !e.target.matches(walk)) return;
+      const opts = [...body.querySelectorAll(walk)].filter((n) => !n.disabled);
+      e.preventDefault();
+      opts[(opts.indexOf(e.target) + (e.key === 'ArrowUp' ? -1 : 1) + opts.length) % opts.length]?.focus({ preventScroll: false });
+    });
+  }
+  pane.refresh = (next) => renderViewPane(pane, next ?? db, { force: true });
+  const first = (db.views ?? [])[0]?.id === db.view?.id;
+  const pick = el('button', { class: 'vp-view-pick', type: 'button', 'aria-expanded': String(viewPane.views), dataset: { vpKey: 'views' },
+    onclick: () => { viewPane.views = !viewPane.views; renderViewPane(pane, db); } },
+  lucideEl('bookmark'), el('span', { class: 'vp-view-name' }, db.view?.name ?? 'Standard'),
+  first ? el('span', { class: 'view-first' }, 'Opens first') : null, lucideEl(viewPane.views ? 'chevron-up' : 'chevron-down'));
+  const views = viewPane.views ? el('div', { class: 'vp-views' }, viewStrip(db)) : null;
+  const sections = Object.entries(PANE_SECTIONS).map(([key, s]) => {
+    const open = viewPane.section === key;
+    const value = paneValue(db, key);
+    const head = el('button', {
+      class: 'vp-acc' + (paneChanged(db, key) ? ' changed' : ''), type: 'button', 'aria-expanded': String(open),
+      'aria-controls': `vp-body-${key}`, dataset: { section: key, vpKey: `acc:${key}` },
+      onclick: () => {
+        viewPane.section = open ? '' : key;
+        writePref(PANE_SECTION_KEY, viewPane.section);
+        renderViewPane(pane, db);
+        pane.querySelector(`.vp-acc[data-section="${key}"]`)?.focus({ preventScroll: true });
+      },
+    }, el('span', { class: 'vp-icon' }, lucideEl(s.icon)), el('span', { class: 'vp-name' }, s.label),
+    el('span', { class: 'vp-value', title: value }, value), lucideEl('chevron-down', 'wv-icon vp-chev'));
+    return el('section', { class: 'vp-section', dataset: { section: key } }, head,
+      open ? el('div', { class: 'vp-body', id: `vp-body-${key}`, role: 'region', 'aria-label': s.label }, ...paneBody(db, key)) : null);
+  });
+  const resetView = async (raw) => {
+    if (!hasView(db)) return toast(BLANK_READ_ONLY, true);
+    stopTableSearchTimer();
+    tableSearch = { ...tableSearch, text: '', focus: false, only: null };
+    await paneWrite(db, raw ? systemDefault(db, db.view) : { filters: {}, sort: [], search: '', deleted: false, group: null, collapsed: null });
+  };
+  const foot = el('div', { class: 'vp-foot' },
+    el('button', { class: 'btn btn-sm view-reset', type: 'button', dataset: { vpKey: 'reset' },
+      title: 'Every field in schema order as a Table with no grouping; no filters, sorting, search, deleted rows or Σ rollups; Comfortable density',
+      onclick: () => resetView(true) }, lucideEl('undo'), 'Reset view'),
+    el('button', { class: 'btn btn-sm view-clear', type: 'button', dataset: { vpKey: 'clear' },
+      title: 'Clear filters, deleted rows, search, sorting and grouping', onclick: () => resetView(false) }, lucideEl('x'), 'Clear all'));
+  const scroll = el('div', { class: 'vp-scroll' }, el('div', { class: 'vp-picker' }, pick, views), ...sections);
+  pane.replaceChildren(
+    el('div', { class: 'vp-head' }, el('strong', {}, 'View'),
+      el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary vp-close', type: 'button', 'aria-label': 'Close view pane', title: 'Close', onclick: () => setPaneOpen(false) }, lucideEl('x'))),
+    scroll, foot);
+  scroll.scrollTop = scrollTop;
+  if (active?.isConnected) active.focus({ preventScroll: true });
+  else if (focusKey) pane.querySelector(`[data-vp-key="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
+}
+
 const tableChromeSig = (db) => JSON.stringify([db.name, db.icon, db.description, db.space, db.spaceId, db.term?.singular, db.term?.plural]);
 function tableChromeOn(dbId) {
   const main = $('#main');
@@ -4721,6 +5133,7 @@ function tableChrome(db, trashCount) {
   const filterBtn = tableFilterButton(ref);
   const groupBtn = tableGroupButton(ref);
   const sortBtn = tableSortButton(ref);
+  for (const b of [densityBtn, filterBtn, groupBtn, sortBtn]) b.classList.add('vp-phone-only');
   const search = tableSearchBox(db);
   chrome.set = (next, count) => {
     ref.db = next; ref.trashCount = count;
@@ -4766,6 +5179,7 @@ function tableChrome(db, trashCount) {
       densityBtn,
       (() => {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
+        eye.classList.add('vp-phone-only');
         eye.setAttribute('aria-label', 'Show or hide fields');
         eye.title = 'Show or hide fields';
         eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db) && !isBoardLayout(ref.db)
@@ -4886,6 +5300,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     main.wvDraw = { db, items, trashCount, pager: null };
     syncPhoneBar();
     paintGridWait();
+    paneSync(db);
     return;
   }
 
@@ -4894,21 +5309,15 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
       && await main.querySelector('.table-wrap')?.wvPatchRows?.(written)) return;
     rememberGridFocus();
     if (db.system) await loadSchema();
-    let fresh = items;
-    if (pager) await pager.refresh();
-    else {
-      const w2 = filterWhere(db);
-      fresh = (await api('POST', `/tables/${db.id}/query`, { ...(w2 ? { where: w2 } : {}), ...(searching ? { search: searching } : {}) })).items;
-    }
-    await keepScroll(() => drawDatabase(db, fresh, trashCount, pager));
+    if (pager) {
+      await pager.refresh();
+      await keepScroll(() => drawDatabase(db, items, trashCount, pager));
+    } else await keepScroll(() => showDatabase(db.id, db.view?.id));
     restoreGridFocus({ now: true });
   };
 
   const redraw = async () => {
-    if (!pager) {
-      const fresh = await api('POST', `/tables/${db.id}/query`, {});
-      return drawDatabase(db, fresh.items, trashCount);
-    }
+    if (!pager) return showDatabase(db.id, db.view?.id);
     await pager.refresh();
     await keepScroll(() => drawDatabase(db, items, trashCount, pager));
   };
@@ -4939,6 +5348,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   main.wvDraw = { db, items, trashCount, pager };
   syncPhoneBar();
   paintGridWait();
+  paneSync(db);
   main.querySelector('.table-wrap')?.addEventListener('keydown', (e) => {
     if (e.isComposing || e.altKey) return;
     const td = e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
@@ -4970,32 +5380,8 @@ function listSetup(db) {
     dateField: dates.find((f) => shown.has(f.name)) ?? dates[0] ?? null,
   };
 }
-const listBoolKey = (f, on) => ({
-  key: String(on),
-  label: f.type === 'toggle' ? (on ? f.on : f.off) : (on ? f.name : `Not ${f.name.toLowerCase()}`),
-  value: on,
-});
-function listKeys(level, item) {
-  const f = level.f;
-  if (f.type === 'relation') {
-    const v = item.fields?.[f.name];
-    return (Array.isArray(v) ? v : v ? [v] : []).filter((x) => x?.id).map((x) => ({ key: x.id, label: x.name || `#${x.publicId}`, value: x.id, summary: x }));
-  }
-  if (f.type === 'date') { const b = listCore.dateBucket(item.raw?.[f.name], level.grain); return b ? [b] : []; }
-  if (f.type === 'checkbox' || f.type === 'toggle') return [listBoolKey(f, !!item.raw?.[f.name])];
-  const v = item.fields?.[f.name];
-  return (Array.isArray(v) ? v : v != null && v !== '' ? [v] : []).map((n) => ({ key: String(n), label: String(n), value: String(n) }));
-}
-function listDomain(level, targets, items) {
-  const f = level.f;
-  if (f.type === 'relation') return (targets ?? []).map((t) => ({ key: t.id, label: t.name || `#${t.publicId}`, value: t.id, summary: t }));
-  if (f.type === 'select' || f.type === 'multiselect') return (f.options ?? []).map((n) => ({ key: n, label: n, value: n }));
-  if (f.type === 'workflow') return (f.states ?? []).map((st) => ({ key: st.name, label: st.name, value: st.name }));
-  if (f.type === 'checkbox' || f.type === 'toggle') return [listBoolKey(f, false), listBoolKey(f, true)];
-  const seen = new Map();
-  for (const it of items) for (const k of listKeys(level, it)) seen.set(k.key, k);
-  return [...seen.values()].sort((a, b) => a.key.localeCompare(b.key));
-}
+const listKeys = (level, item) => VP.groupKeys(level, item);
+const listDomain = (level, targets, items) => VP.groupDomain(level, targets, items);
 async function listTargetRows(f) {
   const target = allTables().find((t) => t.id === f.targetDbId);
   if (!target) return [];
@@ -5018,15 +5404,25 @@ async function readAndDrawList(db, dbId, search) {
     ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
   const base = { fields: [...new Set(names)], relations: 'chip' };
   const filtered = !!(where || search);
-  const [result, everyone, domains] = await Promise.all([
-    api('POST', `/tables/${db.id}/query`, { ...base, ...(where ? { where } : {}), ...(sort ? { sort } : {}), ...(search ? { search } : {}), trashCount: true, countAll: true }).then((r) => graftChips(db, r)),
+  const showDeleted = !board && showsDeleted(db);
+  const sums = !board && showsRollups(db);
+  const [result, everyone, domains, total] = await Promise.all([
+    api('POST', `/tables/${db.id}/query`, {
+      ...base, ...(where ? { where } : {}), ...(sort ? { sort } : {}), ...(search ? { search } : {}), trashCount: true, countAll: true,
+      includeDeleted: showDeleted, ...(s.levels.length && hasView(db) ? { groupBy: db.view.id } : {}),
+    }).then((r) => graftChips(db, r)),
     filtered && (s.nest || !sort) ? api('POST', `/tables/${db.id}/query`, base).then((r) => graftChips(db, r).items) : null,
     Promise.all(s.levels.map((l) => (l.f.type === 'relation' && l.f.targetDbId ? listTargetRows(l.f).catch(() => []) : null))),
+    sums && !s.levels.length ? api('GET', `/tables/${db.id}/stats`).then((r) => ({ rollups: (r.rollups ?? []).filter((x) => !x.where).map((x) => ({ field: x.targetField ?? nameFieldOf(db)?.name ?? 'Name', aggregate: x.aggregate, value: x.value, display: x.display })) })).catch(() => null) : null,
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
-  tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
-  setFilterTotal(db, result.total, result.all);
-  drawDatabase(db, result.items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort, board });
+  const items = showDeleted ? result.items.map((e) => (e.deletedAt ? { ...e, deleted: true } : e)) : result.items;
+  const live = items.filter((e) => !e.deleted);
+  tableSearch.only = search && live.length === 1 ? live[0].id : null;
+  setFilterTotal(db, live.length, result.all);
+  const server = serverSums(result);
+  drawDatabase(db, items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort, board,
+    sums: sums ? { ...server, grand: server.grand ?? total, subtotals: db.view?.subtotals ?? 'all' } : null });
 }
 let listWrites = Promise.resolve();
 function listViewWrite(db, patch) {
@@ -5076,7 +5472,7 @@ function listHeadingEl(s, depth, node) {
   return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
 }
 function renderList(main, db, items, ctx) {
-  const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
+  const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
   const v = db.view;
   const parentOf = (it) => {
     if (!s.nest) return null;
@@ -5085,7 +5481,7 @@ function renderList(main, db, items, ctx) {
   };
   const rowOf = (it, extra = {}) => ({
     id: it.id, keys: s.levels.map((l) => listKeys(l, it)), parent: parentOf(it),
-    done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, item: it, ...extra,
+    done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, deleted: !!it.deleted, item: it, ...extra,
   });
   const rows = items.map((it) => rowOf(it));
   const known = new Map((everyone ?? items).map((it) => [it.id, it]));
@@ -5102,7 +5498,7 @@ function renderList(main, db, items, ctx) {
   }
   const byPid = new Map([...known.values(), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
-  const levels = s.levels.map((l, i) => ({ order: l.order, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
+  const levels = s.levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: VP.NO_VALUE }));
   const arranged = listCore.arrange(rows, { levels, completedBy: !!s.completedBy, nest: !!s.nest, manual, showEmpty: !filtered });
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
@@ -5145,7 +5541,7 @@ function renderList(main, db, items, ctx) {
       title: sorted ? 'Sorted: drag into another group, or sideways to nest' : 'Drag to reorder; sideways to nest',
     }, lucideEl('grip-vertical'));
     const line = el('div', {
-      class: 'list-row' + (r.ghost ? ' ghost' : '') + (r.done ? ' done' : ''), role: 'listitem',
+      class: 'list-row' + (r.ghost ? ' ghost' : '') + (r.done ? ' done' : '') + (r.deleted ? ' row-deleted' : ''), role: 'listitem',
       tabindex: r.ghost ? '-1' : '0', dataset: { eid: it.id, depth: String(item.depth) }, style: `--depth:${item.depth}`,
       ...(r.ghost ? { title: 'Shown for its matching sub-rows; the filter leaves it out' } : {}),
     }, grip, box,
@@ -5198,11 +5594,16 @@ function renderList(main, db, items, ctx) {
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
         headingEl(depth, node),
         el('span', { class: 'list-count' }, String(node.count))),
-      el('div', { class: 'list-group-body' }, ...body));
+      el('div', { class: 'list-group-body' }, ...body),
+      sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? sumEl(node.label, node.rows, depth, sums.sums.get(node.key)) : null);
     sec.wvPath = node.path;
     sec.wvItems = node.items ?? null;
     return sec;
   };
+  const sumCols = visibleCols(db);
+  const sumEl = (label, members, depth, from, grand = false) => el('div', { class: 'list-sum' + (grand ? ' grand' : ''), dataset: { sum: grand ? 'all' : label }, style: `--level:${depth}` },
+    el('b', {}, `Σ ${label} · ${VP.countText(members, db.term)}`),
+    ...sumCols.flatMap((c) => rollupCells(from?.rollups, c).map((x) => el('span', { class: 'list-sum-stat' }, `${c} ${FOOT_LABELS[x.agg]} ${x.text}`))));
   const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
   if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
   else { list.append(...arranged.items.flatMap((i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
@@ -5219,6 +5620,7 @@ function renderList(main, db, items, ctx) {
     sec.wvItems = c.items;
     list.append(sec);
   }
+  if (sums) list.append(sumEl('All', rows, 0, sums.grand, true));
   const footer = el('div', { class: 'list-footer', role: 'status', 'aria-live': 'polite' },
     listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term }));
   const wrap = el('div', { class: 'card list-wrap', dataset: { density: gridDensity(db), layout: 'list' } }, list, footer);
@@ -5637,87 +6039,6 @@ function groupFieldOptions(db) {
   return db.fields.filter((f) => listCore.groupable(f))
     .map((f) => ({ id: f.name, label: f.name, hint: f.type === 'relation' ? 'link' : f.type }));
 }
-const LEVEL_ORDERS = { option: 'Option order', table: 'Table order', az: 'A to Z' };
-function groupPopoverRows(db, close, save) {
-  const v = db.view ?? {};
-  const levels = (v.group ?? []).map((l) => ({ ...l }));
-  const fieldOf = (n) => db.fields.find((f) => f.name === n);
-  const options = groupFieldOptions(db);
-  const writeLevels = (next) => save({ group: next });
-  const box = el('div', { class: 'group-levels' });
-  levels.forEach((l, i) => {
-    const f = fieldOf(l.field);
-    const d = { ...listCore.levelDefaults(f?.type), ...l };
-    const put = (patch) => { const next = levels.map((x) => ({ ...x })); next[i] = { ...next[i], ...patch }; writeLevels(next); };
-    const fieldSel = pickerSelect({ name: `group-${i}`, title: `Level ${i + 1}`, value: l.field,
-      options: options.filter((o) => o.id === l.field || !levels.some((x) => x.field === o.id)) });
-    fieldSel.classList.add('group-field');
-    fieldSel.input.addEventListener('change', () => { const next = levels.map((x) => ({ ...x })); next[i] = { field: fieldSel.input.value }; writeLevels(next); });
-    const heading = f?.type === 'relation'
-      ? segCtl([{ id: 'label', label: 'Label' }, { id: 'chip', label: 'Chip', title: "The linked row's Chip heads the group" }], d.heading, (h) => put({ heading: h }))
-      : null;
-    heading?.classList.add('group-heading');
-    let orderSel = null;
-    if (f && f.type !== 'date') {
-      orderSel = pickerSelect({ name: `order-${i}`, title: 'Group order', value: d.order,
-        options: (f.type === 'relation' ? ['table', 'az'] : ['option', 'az']).map((id) => ({ id, label: LEVEL_ORDERS[id] })) });
-      orderSel.classList.add('group-order');
-      orderSel.input.addEventListener('change', () => put({ order: orderSel.input.value }));
-    }
-    let grainSel = null;
-    if (f?.type === 'date') {
-      grainSel = pickerSelect({ name: `grain-${i}`, title: 'Grain', value: d.grain, options: listCore.GRAINS.map((g) => ({ id: g, label: `By ${g}` })) });
-      grainSel.classList.add('group-grain');
-      grainSel.input.addEventListener('change', () => put({ grain: grainSel.input.value }));
-    }
-    const grip = el('button', { class: 'view-grip group-grip', type: 'button', 'aria-label': `Reorder ${l.field}`, title: 'Drag to reorder levels' }, lucideEl('grip-vertical'));
-    const row = el('div', { class: 'group-level', dataset: { level: l.field } },
-      grip, el('span', { class: 'group-level-n' }, String(i + 1)), fieldSel, heading, orderSel, grainSel,
-      el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary group-remove', type: 'button', 'aria-label': `Remove ${l.field}`, title: 'Remove level',
-        onclick: () => writeLevels(levels.filter((_, k) => k !== i)) }, lucideEl('x')));
-    RO().guard(grip);
-    grip.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      startRowDrag(box, row, e, (target, after) => {
-        const rest = levels.filter((x) => x.field !== l.field);
-        const at = rest.findIndex((x) => x.field === target);
-        if (target === l.field || at < 0) return;
-        rest.splice(at + (after ? 1 : 0), 0, l);
-        writeLevels(rest);
-      }, { rows: '.group-level', key: (r) => r.dataset.level });
-    });
-    box.append(row);
-  });
-  const left = options.filter((o) => !levels.some((x) => x.field === o.id));
-  const add = el('button', { class: 'chip-pop-row group-add', type: 'button', ...(levels.length >= listCore.GROUP_CAP || !left.length ? { disabled: '' } : {}) },
-    lucideEl('plus'), levels.length ? 'Add level' : 'Group by…');
-  add.addEventListener('click', (e) => {
-    e.stopPropagation();
-    searchPicker({ anchor: add, title: 'Group by', options: left, onPick: (o) => writeLevels([...levels, { field: o.id }]) });
-  });
-  const pick = (name, label, value, fields) => {
-    const sel = pickerSelect({ name, title: label, value: value ?? '', placeholder: 'None',
-      options: [{ id: '', label: 'None' }, ...fields.map((f) => ({ id: f.name, label: f.name }))] });
-    sel.classList.add(`group-${name}`);
-    return sel;
-  };
-  const doneSel = pick('completed', 'Completed by', v.completedBy, db.fields.filter((f) => f.type === 'checkbox' || f.type === 'toggle'));
-  doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
-  const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
-  nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
-  const list = v.layout === 'list' || v.layout === 'board';
-  return [
-    tableControlHeader('Group', close),
-    box, add,
-    el('hr'),
-    el('div', { class: 'eye-head' }, 'Rows'),
-    el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel),
-    el('label', { class: 'group-pref' }, el('span', {}, 'Nest by'), nestSel),
-    list ? el('p', { class: 'table-control-note' }, 'Saved in this view. A sort orders rows inside each group; with no sort, drag sets the order.')
-      : el('p', { class: 'table-control-note group-table-note' }, 'Table layout keeps these and ignores them for now. ',
-        el('button', { class: 'btn btn-sm btn-ghost-primary tiny group-show-list', type: 'button', onclick: () => save({ layout: 'list' }) }, 'Show as list')),
-  ];
-}
 function tableGroupButton(ref) {
   const btn = tableControlButton('table-group-btn', 'Group', 'group');
   btn.label = () => {
@@ -5725,19 +6046,11 @@ function tableGroupButton(ref) {
     const text = names.length ? `Group: ${names.join(listCore.SEP)}` : 'Group';
     if (btn.querySelector('.table-control-label').textContent !== text) btn.querySelector('.table-control-label').textContent = text;
     btn.setAttribute('aria-label', text);
-    btn.hidden = !isListLayout(ref.db) && !isBoardLayout(ref.db);
   };
   btn.label();
   btn.addEventListener('click', () => {
     let pop;
-    const save = async (patch) => {
-      const db = ref.db;
-      const release = gridHold();
-      try {
-        if (await gridConfigWrite(db, null, patch)) await showDatabase(db.id, db.view?.id);
-      } catch (err) { toast(err.message, true); } finally { release(); }
-    };
-    const rows = (db) => groupPopoverRows(db, () => pop?.remove(), save);
+    const rows = (db) => [tableControlHeader('Group', () => pop?.remove()), ...levelsBlock(db, 'group', (patch) => paneWrite(db, patch))];
     pop = tableControlPopover(btn, ref.db, 'table-group-popover', rows(ref.db));
     if (pop) pop.refresh = (db) => { pop.replaceChildren(...rows(db)); pop.reposition?.(); };
   });
@@ -5761,9 +6074,9 @@ function eyeGesture(hold) {
   let done = false;
   return () => { if (done) return; done = true; eyeGestures--; hold(); };
 }
-function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
+function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true, mount = false } = {}) {
   let pop;
-  const home = anchor.closest('#main, #dock');
+  const home = mount ? $('#main') : anchor.closest('#main, #dock');
   const raw = () => allTables().find((d) => d.id === db.id) ?? db;
   const liveTable = () => { const t = raw(); return db.view ? viewed(t, db.view.blank ? blankView(t) : (t.views ?? []).find((v) => v.id === db.view.id) ?? db.view) : t; };
   const systemColumns = Object.keys(SYSTEM_COLS);
@@ -5792,6 +6105,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       }
       const open = document.querySelector('.chip-pop');
       if (open?.eyeOf === db.id) open.relearnEye();
+      if (viewPane.fields?.eyeOf === db.id && viewPane.fields !== open && viewPane.fields.isConnected) viewPane.fields.relearnEye();
     } catch (err) { toast(err.message, true); }
   };
   const write = (make, { hides = null } = {}) => {
@@ -5844,9 +6158,18 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       return { fields: order.filter((n) => (t.columns ?? []).includes(n)) };
     });
   };
+  const tagOf = (name) => {
+    if (!mount) return null;
+    const t = liveTable();
+    const g = (t.view?.group ?? []).findIndex((l) => l.field === name);
+    if (g >= 0) return `Group ${g + 1}`;
+    const k = (gridSort(t) ?? []).findIndex((x) => x.field === name);
+    return k >= 0 ? `Sort ${k + 1}` : null;
+  };
+  const tagEl = (name) => { const t = tagOf(name); return t ? el('span', { class: 'vp-tag' }, t) : null; };
   const checkRow = (on, label, run, dataset = {}) => el('label', { class: 'chip-pop-row eye-row', dataset },
     el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: run }),
-    el('span', { class: 'eye-label' }, label));
+    el('span', { class: 'eye-label' }, label), tagEl(label));
   const gap = () => el('span', { class: 'field-reorder-gap', 'aria-hidden': 'true' });
   const makeRow = (name, on) => {
     const toggle = checkRow(on, name, () => flip(name));
@@ -5880,7 +6203,13 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       if (before) { order.splice(order.indexOf(before), 0, name); list.querySelector(`[data-field="${CSS.escape(before)}"]`).before(row); }
       else { order.push(name); list.append(row); }
     }
-    for (const r of list.querySelectorAll('.table-field-row')) r.querySelector('input').checked = shown.has(r.dataset.field);
+    for (const r of list.querySelectorAll('.table-field-row')) {
+      r.querySelector('input').checked = shown.has(r.dataset.field);
+      if (!mount) continue;
+      r.querySelector('.vp-tag')?.remove();
+      const tag = tagEl(r.dataset.field);
+      if (tag) r.querySelector('.eye-row').append(tag);
+    }
     const deleted = pop.querySelector('[data-deleted] input');
     if (deleted) deleted.checked = showsDeleted(t);
     const rollups = pop.querySelector('[data-rollups] input');
@@ -5893,12 +6222,18 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => showAll(false) }, 'Hide all')),
     el('div', { class: 'table-field-legend' }, 'Show / hide', el('span', {}, 'Drag to reorder')),
     el('div', { class: 'table-field-list' }, ...order.map((n) => makeRow(n, shown.has(n)))),
-    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
+    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { if (!mount) pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
     ...(rowsSection ? [el('div', { class: 'table-field-foot' },
       el('div', { class: 'eye-head' }, 'Rows'),
       el('div', { class: 'table-field-line' }, gap(), checkRow(showsDeleted(db), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => write((t) => ({ deleted: !showsDeleted(t) })), { deleted: '' })),
       ...(db.system ? [] : [el('div', { class: 'table-field-line' }, gap(), checkRow(showsRollups(db), 'Σ rollup row', () => write((t) => ({ rollups: !showsRollups(t) })), { rollups: '' }))]))] : []),
   ];
+  if (mount) {
+    pop = el('div', { class: 'vp-fields' }, ...rows.slice(1));
+    pop.eyeOf = db.id;
+    pop.relearnEye = refresh;
+    return pop;
+  }
   pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
   if (pop) { pop.eyeOf = db.id; pop.relearnEye = refresh; }
   return pop;
@@ -5939,8 +6274,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const sysValue = (n, item) => el('span', { class: 'wv-cb-text' }, SYSTEM_COLS[n]?.(item) ?? '');
   const sysCell = (n, item) => el('td', { class: 'cell-computed sys-cell', dataset: { sys: n } }, cellBox(sysValue(n, item)));
   const colCount = cols.length + 3;
-  const sortKey = db.sort?.[0]?.field ?? null, sortDir = db.sort?.[0]?.dir === 'desc' ? -1 : 1;
-  const wrap = el('div', { class: 'card table-wrap' });
+  const grouping = db.grouping ?? null;
+  let slots = null;
+  const wrap = el('div', { class: 'card table-wrap' + (grouping ? ' wv-grouped' : '') });
   let fitFrame = 0;
   const refit = () => {
     fitFrame = 0;
@@ -5962,8 +6298,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const drawnIds = () => [...wrap.querySelectorAll('tbody tr.entity-row')].map((r) => r.dataset.eid);
   let sortedItems = items;
   const ordered = () => (pager ? pager.rows : sortedItems);
-  const total = () => ordered().length;
-  const itemAt = (i) => ordered()[i] ?? null;
+  const total = () => (slots ? slots.length : ordered().length);
+  const itemAt = (i) => (slots ? slots[i] ?? null : ordered()[i] ?? null);
   const itemOf = (id) => ordered().find((x) => x && x.id === id) ?? null;
   const loadedIds = () => ordered().filter(Boolean).map((x) => x.id);
 
@@ -6235,6 +6571,70 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop, .phone-only)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     return row;
+  };
+
+  const clientSortValue = (item, name) => {
+    const f = db.fields.find((x) => x.name === name);
+    const system = f ? null : fieldDialogCore.SYSTEM_SORT[name];
+    if (system) return item[system.key] ?? null;
+    if (!f) return null;
+    const raw = item.raw?.[name];
+    if (f.type === 'daterange') return weaveDateGrain.rangeKey(raw);
+    const order = f.type === 'select' ? (f.optionsFull ?? []).map((o) => o.id) : f.type === 'workflow' ? (f.states ?? []).map((st) => st.id) : null;
+    if (order) return raw == null || raw === '' ? null : (order.indexOf(raw) + 1 || order.length + 1);
+    if (Array.isArray(raw) && raw.some((v) => typeof v === 'number')) return raw.filter((v) => typeof v === 'number').at(-1);
+    if (typeof raw === 'number' || f.type === 'date') return raw ?? null;
+    const shown = item.fields?.[name];
+    return VP.isEmpty(shown) ? null : String(fieldValueCell(shown));
+  };
+  const groupSlots = () => VP.model(VP.rowsFor(sortedItems, grouping.levels), {
+    levels: grouping.levels, collapsed: grouping.collapsed, rollups: grouping.rollups, subtotals: grouping.subtotals,
+  }).slots;
+  const rowSlotNear = (to, dir) => {
+    for (const d of [dir, -dir]) for (let k = to.r; k >= 0 && k < slots.length; k += d) if (slots[k].kind === 'row') return { ...to, r: k };
+    return null;
+  };
+  const foldGroup = (key) => {
+    const now = new Set(grouping.collapsed ?? []);
+    if (now.has(key)) now.delete(key); else now.add(key);
+    grouping.collapsed = [...now];
+    if (db.view) db.view.collapsed = grouping.collapsed;
+    built.delete(`h:${key}`);
+    slots = groupSlots();
+    for (const tr of live.values()) tr.remove();
+    live.clear();
+    rewindow();
+    wrap.querySelector(`tr.group-head[data-key="${CSS.escape(key)}"] .group-fold`)?.focus({ preventScroll: true });
+    listViewWrite(db, { collapsed: grouping.collapsed });
+  };
+  const buildGroupHead = (s) => {
+    const n = s.node;
+    const level = grouping.levels[n.level];
+    const shut = (grouping.collapsed ?? []).includes(n.key);
+    return el('tr', { class: `group-head lv-${n.level}` + (shut ? ' shut' : ''), dataset: { key: n.key, level: String(n.level), field: level.f.name } },
+      el('td', { colspan: String(colCount + sysTail.length + phone.chips.filter((x) => !cols.includes(x)).length) },
+        el('div', { class: 'group-head-in', style: `--level:${n.level}` },
+          el('button', { class: 'group-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `${shut ? 'Expand' : 'Collapse'} ${n.key}`, onclick: () => foldGroup(n.key) }, lucideEl('chevron-right')),
+          el('span', { class: 'group-head-field' }, level.f.name),
+          listHeadingEl({ levels: grouping.levels }, n.level, n),
+          el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)))));
+  };
+  const buildSumRow = (s) => {
+    const grand = s.kind === 'grand';
+    const label = grand ? 'All' : s.node.label;
+    const from = grand ? grouping.grand : grouping.sums?.get(s.node.key);
+    const stat = (x) => el('span', { class: 'foot-stat' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[x.agg] ?? x.agg), el('span', { class: 'foot-val' }, x.text));
+    return el('tr', { class: 'group-sum' + (grand ? ' grand' : ` lv-${s.node.level}`), dataset: grand ? { sum: 'all' } : { sum: s.node.key, level: String(s.node.level) } },
+      el('td', { class: 'sel-cell' }), el('td', { class: 'pid-cell foot-mark' }, 'Σ'),
+      ...cols.map((c, i) => el('td', { class: 'group-sum-cell', dataset: { col: c } },
+        i === 0 ? el('span', { class: 'group-sum-label', style: `--level:${grand ? 0 : s.node.level}` }, `${label} · ${VP.countText(s.rows, db.term)}`) : null,
+        ...rollupCells(from?.rollups, c).map(stat))),
+      ...sysTail.map(() => el('td')), el('td'));
+  };
+  const buildSlot = (s) => {
+    if (s.kind === 'head') return buildGroupHead(s);
+    if (s.kind === 'row') { const tr = buildRow(s.row.item); tr.dataset.group = s.node?.key ?? ''; return tr; }
+    return buildSumRow(s);
   };
 
   const GW = () => globalThis.WeaveGridWindow;
@@ -6710,8 +7110,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const rowFor = (i) => {
     const item = itemAt(i);
     if (!item) return el('tr', { class: 'entity-row-pending', 'aria-hidden': 'true', dataset: { i: String(i) }, style: `height:${rowH()}px` }, el('td', { colspan: String(colCount) }));
-    let tr = built.get(item.id);
-    if (!tr) { tr = buildRow(item); built.set(item.id, tr); }
+    const key = slots ? item.key : item.id;
+    let tr = built.get(key);
+    if (!tr) { tr = slots ? buildSlot(item) : buildRow(item); built.set(key, tr); }
     tr.dataset.i = String(i);
     return tr;
   };
@@ -6800,6 +7201,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
   const patchRows = async (fresh) => {
+    if (slots) return false;
     const arr = ordered();
     const at = (eid) => arr.findIndex((r) => r && r.id === eid);
     if (at(fresh.id) < 0) return false;
@@ -6857,28 +7259,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
   const draw = () => {
     sortedItems = [...items];
-    if (sortKey && !pager) {
-      const sortField = db.fields.find((f) => f.name === sortKey);
-      const sortType = sortField?.type;
-      const system = sortField ? null : fieldDialogCore.SYSTEM_SORT[sortKey];
-      const order = sortType === 'select' ? (sortField.optionsFull ?? []).map((o) => o.id)
-        : sortType === 'workflow' ? (sortField.states ?? []).map((st) => st.id) : null;
-      const val = (item) => {
-        if (system) return item[system.key] ?? null;
-        const raw = item.raw?.[sortKey];
-        if (sortType === 'daterange') return weaveDateGrain.rangeKey(raw);
-        if (order) return raw == null ? null : (order.indexOf(raw) + 1 || order.length + 1);
-        if (Array.isArray(raw) && raw.some((v) => typeof v === 'number')) return raw.filter((v) => typeof v === 'number').at(-1);
-        return typeof raw === 'number' || sortType === 'date' ? raw : item.fields[sortKey];
-      };
-      sortedItems.sort((a, b) => {
-        const av = val(a), bv = val(b);
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        return (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(fieldValueCell(av)).localeCompare(String(fieldValueCell(bv)))) * sortDir;
-      });
-    }
+    const levels = (db.sort ?? []).filter((x) => x?.field);
+    if (levels.length && !pager) sortedItems.sort(VP.comparator(levels, clientSortValue, (a, b) => (a.publicId ?? 0) - (b.publicId ?? 0)));
+    slots = grouping ? groupSlots() : null;
     live.clear(); built.clear();
     win.start = 0; win.end = 0;
     tbody = el('tbody');
@@ -6900,7 +7283,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           loadedNote)));
     }
 
-    const sortMark = (key) => (sortKey === key ? iconEl(sortDir > 0 ? '↑' : '↓', 'wv-icon wv-icon-xs') : null);
+    const sortAt = (key) => (db.sort ?? []).findIndex((x) => x.field === key);
+    const sortMark = (key) => {
+      const i = sortAt(key);
+      if (i < 0) return null;
+      const mark = iconEl(db.sort[i].dir === 'desc' ? '↓' : '↑', 'wv-icon wv-icon-xs');
+      return (db.sort ?? []).length > 1 ? el('span', { class: 'sort-mark' }, mark, el('sup', {}, String(i + 1))) : mark;
+    };
     const sysHead = (n, movable) => el('th', {
       class: movable ? 'col-head sys-head' : 'sys-head', title: `${n} — system field, read-only`, dataset: { col: n },
       ...(movable ? {
@@ -6948,7 +7337,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           columnResizeGrip(db, colField(db, c), grid)))),
         ...sysTail.map((n) => sysHead(n, false)),
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db))),
-      showsRollups(db) ? renderFooter(db, cols) : null),
+      showsRollups(db) && !slots ? renderFooter(db, cols) : null),
       tbody);
     for (const th of table.querySelectorAll('thead th.col-head:not(.sys-head)')) kindContext(th, 'field', () => colField(db, th.dataset.col), () => ({ db }));
     const kept = wrap.scrollTop;
@@ -6982,9 +7371,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const row = td.parentElement;
     const r = Number(row.dataset.i), c = stops(row).indexOf(td), cols = stops(row).length;
     const last = total() - 1;
-    const to = verb.to === 'end' ? (r === last ? null : { r: last, c })
+    let to = verb.to === 'end' ? (r === last ? null : { r: last, c })
       : verb.to === 'home' ? (r === 0 ? null : { r: 0, c })
         : KM().step({ r, c, rows: total(), cols }, verb);
+    if (to && slots) to = rowSlotNear(to, verb.to === 'home' ? 1 : verb.to === 'end' ? -1 : Math.sign(to.r - r) || 1);
     if (!to) return td.focus();
     const tr = await ensureRow(to.r);
     (tr ? stops(tr)[to.c] : td)?.focus();
@@ -8061,29 +8451,9 @@ async function footerPicker(anchor, db, col) {
   const tailKey = `Σ ${db.id} ${col}`;
   const write = async (agg, on) => {
     const cur = have(agg);
-    if (on && !cur) {
-      const made = await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
-      rollups = [...rollups, { fieldId: made.id, name: made.name, targetField: agg === 'count' ? null : col, aggregate: agg, where: null, value: null, display: null }];
-      const reg = registryTable('spaces');
-      if (reg) {
-        reg.fields.push(spaceRollupEntry(db, col, agg, made));
-        for (const v of reg.views ?? []) if (!v.fields.includes(made.name)) v.fields.push(made.name);
-      }
-    } else if (!on && cur) {
-      await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
-      rollups = rollups.filter((r) => r !== cur);
-      const reg = registryTable('spaces');
-      if (reg) {
-        reg.fields = reg.fields.filter((x) => x.id !== cur.fieldId);
-        for (const v of reg.views ?? []) {
-          v.fields = v.fields.filter((n) => n !== cur.name);
-          if (v.widths && cur.name in v.widths) {
-            delete v.widths[cur.name];
-            if (!Object.keys(v.widths).length) delete v.widths;
-          }
-        }
-      }
-    }
+    const made = await footRollupWrite(db, col, agg, on, cur, spacesT);
+    if (made) rollups = [...rollups, { fieldId: made.id, name: made.name, targetField: agg === 'count' ? null : col, aggregate: agg, where: null, value: null, display: null }];
+    else if (!on && cur) rollups = rollups.filter((r) => r !== cur);
   };
   const flip = (box) => {
     const agg = box.closest('.foot-row').dataset.agg;
@@ -11228,6 +11598,7 @@ function dispatchRoute() {
   rememberRoute();
   const hash = location.hash || '#/';
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
+  if (!dbM) paneSync(null);
   if (!(dbM && tableChromeOn(dbM[1]))) {
     resetGridWait();
     scheduleSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
@@ -11331,10 +11702,11 @@ function sheetGrip(sheet, close) {
     if (from === null || e.pointerId !== from.id) return;
     const { height, y, t } = from;
     const span = Math.max(1, last - t);
-    const speed = Math.max(0, e.clientY - y) / span;
+    const reach = e.type === 'pointerup' ? Math.max(at, e.clientY - y) : at;
+    const speed = reach / span;
     from = null;
     grip.releasePointerCapture?.(e.pointerId);
-    if (at > height * 0.3 || (at > 24 && speed > 0.5)) {
+    if (reach > height * 0.3 || (reach > 24 && speed > 0.5)) {
       settle();
       close();
       return;

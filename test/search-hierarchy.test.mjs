@@ -29,12 +29,12 @@ test('rows filling the limit never crowd out the workspace, space, table or view
 test('saved views are searched, with a #/view/ permalink', () => {
   const { w } = crowded('Ticket', 0);
   const [view] = w.listViews();
-  const hits = w.universalSearch('triage', { prefix: '/w/demo' });
+  const hits = w.universalSearch('triage');
   assert.equal(hits.length, 1);
   assert.equal(hits[0].kind, 'view');
   assert.equal(hits[0].id, view.id);
   assert.equal(hits[0].name, 'Issue triage');
-  assert.equal(hits[0].url, `/w/demo/#/view/${view.id}`);
+  assert.equal(hits[0].url, `/w/${w.state.meta.name}/#/view/${view.id}`);
   w.deleteView(view.id);
   assert.equal(w.universalSearch('triage').length, 0, 'a deleted view is no longer found');
 });
@@ -50,6 +50,7 @@ test('GET /api/search keeps hierarchy past the limit, scoped and across workspac
   const { w: uno } = crowded();
   uno.state.meta.name = 'uno';
   const { w: other } = crowded('Issue');
+  other.state.meta.name = 'issues';
   const { server } = await startServer(uno, { port: 0, workspaces: { issues: other } });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
