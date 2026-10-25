@@ -1,0 +1,13 @@
+{
+  "_": "Controls under the 44px phone hit area the touch gate tolerates today, keyed 'surface | element.classes' (or 'surface+open | element.classes' for an open state) with the most any engine measured. A count over its ceiling fails test/phone-touch-targets-browser.test.mjs. It only shrinks: a raise, or a new key, needs a new reason under raised, checked against the base a pull request merges into by test/touch-ceiling.test.mjs.",
+  "misses": {
+    "list | button.k.k-select": 8,
+    "list | button.k.k-state": 8,
+    "list | button.mention-f": 8
+  },
+  "raised": {
+    "list | button.k.k-select": "Feature #TBD put the list view in the touch probe: each of the touch seed's 8 rows draws this chip segment 24px tall, and the row segments read 'click to change' yet answer no click or tap, so they get a row-height target when they are wired to their pickers; the ceiling is one per seeded row because how many rows fit above the fold varies with title wrapping",
+    "list | button.k.k-state": "Feature #TBD put the list view in the touch probe: each of the touch seed's 8 rows draws this chip segment 24px tall, and the row segments read 'click to change' yet answer no click or tap, so they get a row-height target when they are wired to their pickers; the ceiling is one per seeded row because how many rows fit above the fold varies with title wrapping",
+    "list | button.mention-f": "Feature #TBD put the list view in the touch probe: each of the touch seed's 8 rows draws this chip segment 24px tall, and the row segments read 'click to change' yet answer no click or tap, so they get a row-height target when they are wired to their pickers; the ceiling is one per seeded row because how many rows fit above the fold varies with title wrapping"
+  }
+}

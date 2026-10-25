@@ -1987,7 +1987,13 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .field-reorder-handle svg { display: block; width: 15px; height: 15px; }
 .table-fields-popover > .eye-row[aria-checked="true"]::after { content: '✓'; margin-left: auto; color: var(--tblr-primary); }
 @media (max-width: 700px) { .crumb-actions .table-search { flex: 1; } .crumb-actions .table-search-input { width: 100%; min-width: 80px; } .table-control-label { max-width: 110px; } }
-@media (pointer: coarse) { .table-control-popover :is(.chip-pop-row,.filter-chip,.seg-opt,.view-tab,.field-reorder-handle) { min-height: 44px; } }
+@media (pointer: coarse) {
+  .table-control-popover :is(.chip-pop-row,.filter-chip,.seg-opt,.view-tab,.field-reorder-handle) { min-height: 44px; }
+  .table-control-popover :is(.table-control-head .btn, .group-grip, .group-remove) { min-width: 44px; min-height: 44px; }
+  .table-group-popover .picker-face { min-height: 44px; }
+  .wv-list .list-group-head .list-fold { width: 44px; height: 44px; }
+  .wv-list .list-title { padding-block: 12px; margin-block: -12px; }
+}
 .table-fields-popover > :not(.table-field-list) { flex-shrink: 0; }
 .table-field-list { min-height: 0; overflow-y: auto; flex: 0 1 auto; position: relative; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 8px; }
 .table-field-foot { overflow: hidden; scrollbar-gutter: stable; padding-right: 8px; }
@@ -2283,7 +2289,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .list-fold svg { width: 14px; height: 14px; transition: transform .15s; transform: rotate(90deg); }
 .list-group.shut > .list-group-head .list-fold svg { transform: none; }
 .list-group.shut > .list-group-body { display: none; }
-.list-group-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-group-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
 .list-group-label.is-none { color: var(--tblr-secondary); font-weight: 500; }
 .list-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot, transparent); flex: none; }
 .list-group-label.hue-slate .list-dot { background: var(--tblr-border-color-dark, var(--tblr-border-color)); }
@@ -2362,7 +2368,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .tile-body { display: grid; gap: 6px; min-width: 0; padding: 8px 10px 10px; font-size: var(--fs-grid); }
 .tile-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-weight: 600; }
 .tile-id { flex: none; color: var(--tblr-secondary); font-size: var(--fs-meta); font-weight: 500; font-variant-numeric: tabular-nums; }
-.tile-title { min-width: 0; overflow: hidden; color: var(--tblr-body-color); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; -webkit-user-drag: none; }
+.tile-title { min-width: 0; color: var(--tblr-body-color); text-decoration: none; overflow-wrap: anywhere; -webkit-user-drag: none; }
 .tile-title:hover { color: var(--tblr-primary); }
 .wv-board .tile.done .tile-title { color: var(--tblr-secondary); text-decoration: line-through; }
 .tile-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 3px 10px; margin: 0; font-size: var(--fs-secondary); }
@@ -2370,6 +2376,11 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .tile-field dt { color: var(--tblr-secondary); font-weight: 400; }
 .tile-field dd { min-width: 0; margin: 0; overflow: hidden; }
 .tile-field .inline-edit { --wv-edit-fs: var(--fs-secondary); }
+.tile-field dd .ms-box { flex-wrap: wrap; min-width: 0; max-width: 100%; white-space: normal; }
+.tile-field dd .k { max-width: 100%; white-space: normal; }
+.tile-field dd :is(.k > .k-label, .k-rel > a > .k-label) { white-space: normal; overflow-wrap: anywhere; }
+:is(.tile-field dd, .wv-compare td) > .range-cell { display: flex; flex-wrap: wrap; }
+:is(.tile-field dd, .wv-compare td) > .range-cell > .date-text { flex: 0 1 auto; width: min(100%, var(--date-fit, 120px)); }
 .board-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
 .board-hint { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .board-preset-row { display: inline-flex; gap: 4px; }
@@ -2403,6 +2414,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .tile-field > dd > * { pointer-events: none; }
   .table-view-popover :is(.view-layout .seg-opt, .board-preset) { min-height: 44px; }
   .tile-pick { width: 32px; height: 32px; }
+  .tile-pick::after { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
   .board-picks .btn, .compare-close { min-height: 44px; min-width: 44px; }
   .compare-scroll { scroll-snap-type: x mandatory; scroll-padding-left: 6.5rem; }
   .wv-compare { width: max-content; }

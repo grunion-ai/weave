@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CELLS, KINDS, NOTE, OVERLAYS, PLATFORM, cellOf, fingerprint, grew, lower, ratchet, sectionOf, tally, verdict } from './lib/cutoff.mjs';
+import { CELLS, KINDS, NOTE, OVERLAYS, PLATFORM, RAISED, cellOf, fingerprint, grew, lower, ratchet, sectionOf, tally, verdict } from './lib/cutoff.mjs';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -85,6 +85,17 @@ test('grew names every fingerprint that is new or counts higher, per platform, a
   assert.deepEqual(grew(null, { linux: { 'ellipsis|span.a': 5 } }), [], 'the commit that seeds the baseline has nothing to grow from');
 });
 
+test('a growth carrying a new reason under raised passes; an old or blank reason does not (Feature #TBD)', () => {
+  const before = { [NOTE]: 'a', linux: { 'ellipsis|span.a': 4 }, darwin: { 'ellipsis|span.a': 4 } };
+  const after = { ...before, linux: { 'ellipsis|span.a': 6 }, darwin: { 'ellipsis|span.a': 6 } };
+  assert.equal(grew(before, after).length, 2, 'no reason, so both platforms grew');
+  assert.deepEqual(grew(before, { ...after, [RAISED]: { 'ellipsis|span.a': 'Feature #1: the sweep walks two more pages that show it' } }), []);
+  assert.equal(grew(before, { ...after, [RAISED]: { 'ellipsis|span.a': '  ' } }).length, 2, 'a blank reason is no reason');
+  const kept = { ...after, [RAISED]: { 'ellipsis|span.a': 'Feature #1: why' } };
+  assert.equal(grew(kept, { ...kept, linux: { 'ellipsis|span.a': 7 } }).length, 1, 'an old reason does not cover a second raise');
+  assert.deepEqual(grew(before, { ...after, [RAISED]: { 'ellipsis|span.b': 'Feature #1: another' } }).map((g) => g.fp), ['ellipsis|span.a', 'ellipsis|span.a'], 'a reason covers only its own fingerprint');
+});
+
 test('sectionOf reads one platform and treats a missing platform as an empty baseline', () => {
   const file = { [NOTE]: 'doc', linux: { 'ellipsis|span.a': 1 } };
   assert.deepEqual(sectionOf(file, 'linux'), { 'ellipsis|span.a': 1 });
@@ -104,7 +115,11 @@ test('lower only ever shrinks a platform section, and seeds one that is missing'
 
 test('the baseline holds a section per platform of fingerprints with positive counts, and a note on how to lower it', () => {
   assert.match(baseline[NOTE], /--lower/);
-  const platforms = Object.keys(baseline).filter((k) => k !== NOTE);
+  const platforms = Object.keys(baseline).filter((k) => k !== NOTE && k !== RAISED);
+  for (const [fp, why] of Object.entries(baseline[RAISED] ?? {})) {
+    assert.ok(String(why).trim(), `raised["${fp}"] says why`);
+    assert.ok(platforms.some((p) => Object.hasOwn(baseline[p], fp)), `raised["${fp}"] names a fingerprint the baseline holds`);
+  }
   assert.ok(platforms.includes('linux'), 'the baseline is seeded for linux, the platform the CI gate runs on');
   for (const platform of platforms) {
     const keys = Object.keys(baseline[platform]);
@@ -124,11 +139,11 @@ const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8'
 const baselineAt = (rev) => { try { return JSON.parse(git('show', `${rev}:${FILE}`)); } catch { return null; } };
 
 test('the baseline never grows past its committed version', () => {
-  assert.deepEqual(grew(baselineAt('HEAD'), baseline), [], `${FILE} only ever shrinks: fix the cut-off instead of adding it`);
+  assert.deepEqual(grew(baselineAt('HEAD'), baseline), [], `${FILE} only ever shrinks: fix the cut-off, or write the reason a wider sweep raised it under raised["<fingerprint>"]`);
 });
 
 test('the committed baseline never grows past its first parent, the base a pull request merges into', () => {
-  assert.deepEqual(grew(baselineAt('HEAD^1'), baselineAt('HEAD')), [], `HEAD grew ${FILE} past HEAD^1: fix the cut-off instead of adding it`);
+  assert.deepEqual(grew(baselineAt('HEAD^1'), baselineAt('HEAD')), [], `HEAD grew ${FILE} past HEAD^1: fix the cut-off, or write the reason a wider sweep raised it under raised["<fingerprint>"]`);
 });
 
 test('the cells are desktop 1440x900 in Chromium and phone 390x844 in WebKit', () => {

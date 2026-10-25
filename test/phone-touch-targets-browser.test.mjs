@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
 import { SEEDS, states } from './lib/states.mjs';
+import { readFileSync } from 'node:fs';
+import { CEILING_FILE, overCeiling, tallyMisses, touchKey } from './lib/touch.mjs';
+
+const CEILING = JSON.parse(readFileSync(new URL(`../${CEILING_FILE}`, import.meta.url), 'utf8')).misses;
 
 const MIN = 44;
 const STEP = 0.5;
@@ -25,7 +29,7 @@ const SWEEP = (roots) => {
     const name = (n.getAttribute('aria-label') || n.title || n.dataset.field || (n.textContent || '').trim().slice(0, 32) || '').replace(/\s+/g, ' ');
     return `${n.tagName.toLowerCase()}${cls ? `.${cls}` : ''} "${name}"`;
   };
-  const owns = (n, hit) => !!hit && (hit === n || n.contains(hit));
+  const owns = (n, hit) => !!hit && (hit === n || n.contains(hit) || [...(n.labels ?? [])].some((l) => l === hit || l.contains(hit)));
   const overlay = (n, hit) => {
     for (let p = hit; p && p !== document.documentElement; p = p.parentElement) {
       if (/fixed|sticky/.test(getComputedStyle(p).position)) return !p.contains(n);
@@ -72,8 +76,11 @@ const s = await launch('phone touch targets', SEEDS.touch.build);
 
 if (s) {
   const { base, browser, table } = s;
-  const surfaces = states({ tag: 'touch' }).map(({ surface, open: o, root, title, cell }) => ({
-    name: title,
+  const walked = states({ tag: 'touch' });
+  const shared = (title) => walked.filter((st) => st.title === title).length > 1;
+  const surfaces = walked.map(({ surface, open: o, root, title, cell }) => ({
+    name: o && shared(title) ? `${title} on the ${surface.title}` : title,
+    key: o ? `${surface.name}+${o.name}` : surface.name,
     url: surface.url(s, cell),
     ready: surface.ready(cell),
     roots: root.split(', '),
@@ -105,11 +112,13 @@ if (s) {
           try {
             const seen = await page.evaluate(SWEEP, surface.roots);
             assert.ok(seen.length >= 1, `the ${surface.name} offers controls to sweep`);
-            const small = seen.filter((c) => c.left + c.right < SPAN || c.up + c.down < SPAN);
+            const missed = seen.filter((c) => c.left + c.right < SPAN || c.up + c.down < SPAN);
+            const over = new Set(overCeiling(tallyMisses(surface.key, missed), CEILING).map((x) => x.key));
+            const small = missed.filter((c) => over.has(touchKey(surface.key, c.label)));
             const offenders = small.map((c) => (c.over
               ? `${c.label} is covered by ${c.over}`
               : `${c.label} taps ${c.left + c.right}x${c.up + c.down} of the ${MIN}px minimum`));
-            assert.deepEqual(offenders, [], `${small.length} of ${seen.length} controls on the ${surface.name} miss a ${MIN}px hit area:\n${offenders.join('\n')}`);
+            assert.deepEqual(offenders, [], `${small.length} of ${seen.length} controls on the ${surface.name} miss a ${MIN}px hit area past ${CEILING_FILE}:\n${offenders.join('\n')}`);
           } finally { await page.close(); }
         });
       }

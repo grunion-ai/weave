@@ -9,6 +9,7 @@ export const CELLS = {
 export const TAGS = ['cutoff', 'a11y', 'touch'];
 
 const ROW = '.wv-grid tbody tr.entity-row';
+const TILE = '.wv-board .board-group:first-of-type .tile';
 const BOTH = ['desktop', 'phone'];
 const DESKTOP = ['desktop'];
 const PHONE = ['phone'];
@@ -155,10 +156,27 @@ export const OPENS = [
   },
   { name: 'date-picker', root: '.date-pop', open: (page, ctx, cell) => press(page, `${scope(cell)} .fieldrow[data-field="Due"] .date-pick-btn`, cell) },
   { name: 'range-picker', root: '.date-pop', open: (page, ctx, cell) => press(page, `${scope(cell)} .fieldrow[data-field="Window"] .date-pick-btn`, cell) },
+  { name: 'group', title: 'group popover', root: '.table-group-popover', open: toolsThen('#main .table-group-btn') },
+  { name: 'tile-status', title: 'tile status picker', root: '.picker-pop', open: (page, ctx, cell) => press(page, `${TILE} .tile-field[data-field="Status"] .chip-trigger`, cell) },
+  { name: 'tile-range', title: 'tile range picker', root: '.date-pop', open: (page, ctx, cell) => press(page, `${TILE} .tile-field[data-field="Window"] .date-pick-btn`, cell) },
+  {
+    name: 'compare', root: '#dock .dock-compare',
+    async open(page, ctx, cell) {
+      if (await page.locator('#main .crumb-row.tools-open > .crumb-actions').count()) await press(page, '#main .table-tools-btn', cell);
+      for (const n of [1, 2]) await press(page, `${TILE}:nth-child(${n}) .tile-pick`, cell);
+      const go = page.locator('.board-footer .board-compare');
+      await go.evaluate((n) => n.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      if (cell !== 'phone') return go.click();
+      const box = await go.boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    },
+    close: (page, ctx, cell) => press(page, '#dock .compare-close', cell),
+  },
   { name: 'editor', title: 'editor open', root: EDITOR, open: (page) => page.locator('.vditor-ir [contenteditable="true"] >> visible=true').first().click() },
 ].map((o) => ({ title: o.name.replace(/-/g, ' '), ...o }));
 
 const cut = (open, cells) => ({ open, cells, seed: 'messy', tags: ['cutoff'] });
+const rest = () => cut(null, BOTH);
 const tap = (open = null) => ({ open, cells: PHONE, seed: 'touch', tags: ['touch'] });
 const ax = (open = null, seed = 'a11y') => ({ open, cells: DESKTOP, seed, tags: ['a11y'] });
 
@@ -196,6 +214,19 @@ export const SURFACES = {
       cut('activity', DESKTOP), cut('entity-fields', DESKTOP), cut('entity-field-editor', PHONE), cut('row-actions', BOTH),
       cut('share-row', BOTH), cut('doc-downloads', BOTH), cut('entity-status', BOTH), cut('date-picker', BOTH), cut('range-picker', BOTH),
     ],
+  },
+  board: {
+    title: 'board', route: 'table', layout: 'board', seeds: ['messy', 'touch'],
+    url: (ctx) => `${ctx.base}/#/table/${ctx.table}/view/${ctx.board.id}`, ready: () => '.wv-board .tile', root: page,
+    states: [
+      tap(), tap('group'),
+      rest(), cut('view', BOTH), cut('group', BOTH), cut('tile-status', DESKTOP), cut('tile-range', DESKTOP), cut('compare', BOTH),
+    ],
+  },
+  list: {
+    title: 'list', route: 'table', layout: 'list', seeds: ['messy', 'touch'],
+    url: (ctx) => `${ctx.base}/#/table/${ctx.table}/view/${ctx.list.id}`, ready: () => '.wv-list .list-row', root: page,
+    states: [tap(), tap('group'), rest(), cut('view', BOTH), cut('group', BOTH)],
   },
   'task-table': {
     title: 'Task table', route: 'table', layout: 'grid', seeds: ['a11y'],

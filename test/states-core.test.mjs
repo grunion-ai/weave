@@ -93,3 +93,16 @@ test('a journey that names a surface names one the catalog holds', () => {
   for (const j of JOURNEYS) assert.ok(!j.surface || Object.hasOwn(SURFACES, j.surface), `${j.name}: ${j.surface}`);
   assert.ok(JOURNEYS.some((j) => j.surface), 'the flicker journeys reach their surfaces through the catalog');
 });
+
+test('the board and list views are walked at rest and open by the cut-off sweep on both cells, and at rest by the touch probe (Feature #TBD)', () => {
+  for (const surface of ['board', 'list']) {
+    for (const cell of Object.keys(CELLS)) {
+      const cut = states({ tag: 'cutoff', surface, cell });
+      assert.ok(cut.some((st) => !st.open), `${surface} at rest on ${cell}`);
+      assert.ok(cut.some((st) => st.open), `${surface} opens something on ${cell}`);
+    }
+    assert.ok(states({ tag: 'touch', surface, open: null }).length, `${surface} at rest on the phone`);
+  }
+  const seeded = { ...SEEDS.messy.build(new Weave()), base: 'http://x' };
+  for (const name of ['board', 'list']) assert.ok(seeded[name]?.id, `the messy seed returns its ${name} view`);
+});

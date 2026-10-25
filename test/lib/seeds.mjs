@@ -56,7 +56,9 @@ function messy(weave) {
   weave.setDoc(activity, 'Release text.', 'Release note');
   weave.setDoc(activity, 'Summary text.', 'Customer summary');
   weave.updateEntity(activity, { Link: 'https://adriany.fibery.io/Task_Management/Task/a-path-that-keeps-going-past-the-panel-1234' });
-  return { ...handles, notes, activity };
+  const board = weave.tableView(`${tasks.id}/Board`, { layout: 'board', group: ['Tags'], search: 'title' });
+  const list = weave.tableView(`${tasks.id}/List`, { layout: 'list', group: [{ field: 'Project', heading: 'chip' }] });
+  return { ...handles, notes, activity, board, list };
 }
 
 function a11y(weave) {
@@ -128,13 +130,15 @@ function touch(weave) {
     }));
   }
   weave.setDoc(rows[0].id, 'Some body text.\n\nAnother paragraph.');
-  return { table: issues.id, row: rows[0].id };
+  const board = weave.tableView(`${issues.id}/Board`, { layout: 'board', group: ['Status'] });
+  const list = weave.tableView(`${issues.id}/List`, { layout: 'list', group: ['Status'] });
+  return { table: issues.id, row: rows[0].id, board, list };
 }
 
 export const SEEDS = {
   journeys: { build: journeys, about: 'a 400-row Task table with a Project relation, long names every 37th row, a document row and two saved views' },
-  messy: { build: messy, extends: 'journeys', about: 'the journeys seed plus date, date range, url and multiselect fields with long values, and a Note table whose row carries three documents and an activity history' },
+  messy: { build: messy, extends: 'journeys', about: 'the journeys seed plus date, date range, url and multiselect fields with long values, a Note table whose row carries three documents and an activity history, a board of the long-named rows grouped by the long-labelled Tags and a list grouped under Project chips' },
   a11y: { build: a11y, about: 'a Task and an Issue table covering every common field type, a board and a list view, a trashed row and a published form' },
   doors: { build: doors, server: doorsServer, about: 'a signed-in workspace behind OIDC and billing, for the start and billing pages' },
-  touch: { build: touch, about: 'an Issue table with a clamped description, wrapping row names and chips, for phone hit areas' },
+  touch: { build: touch, about: 'an Issue table with a clamped description, wrapping row names and chips, and a board and a list grouped by Status, for phone hit areas' },
 };

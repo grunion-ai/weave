@@ -6,6 +6,7 @@ export { CELLS };
 export const KINDS = ['clipped', 'ellipsis', 'line-clamp', 'field-value', 'field-placeholder'];
 export const DESKTOP = 'desktop';
 export const NOTE = '_';
+export const RAISED = 'raised';
 
 export function probe(rootSelector = null) {
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'OPTION', 'OPTGROUP', 'SELECT', 'DATALIST', 'IFRAME', 'CANVAS', 'VIDEO', 'AUDIO', 'IMG', 'BR', 'HR']);
@@ -153,7 +154,7 @@ export function tally(findings) {
 }
 
 const countsOf = (map) => Object.entries(map ?? {}).filter(([k]) => k !== NOTE);
-const platformsOf = (file) => Object.keys(file ?? {}).filter((k) => k !== NOTE);
+const platformsOf = (file) => Object.keys(file ?? {}).filter((k) => k !== NOTE && k !== RAISED);
 
 export const PLATFORM = process.platform;
 export const sectionOf = (file, platform = PLATFORM) => file?.[platform] ?? {};
@@ -182,12 +183,14 @@ export function verdict(seen, baseline, { cells = null } = {}) {
 
 export function grew(before, after) {
   if (!before) return [];
+  const why = after?.[RAISED] ?? {};
+  const explained = (fp) => !!String(why[fp] ?? '').trim() && why[fp] !== before[RAISED]?.[fp];
   const out = [];
   for (const platform of platformsOf(after)) {
     if (!Object.hasOwn(before, platform)) continue;
     for (const [fp, n] of countsOf(after[platform])) {
       const was = before[platform][fp] ?? 0;
-      if (n > was) out.push({ platform, fp, before: was, after: n });
+      if (n > was && !explained(fp)) out.push({ platform, fp, before: was, after: n });
     }
   }
   return out;
@@ -209,7 +212,8 @@ export function lower(file, counts, { cells, platform = PLATFORM }) {
 }
 
 export const seed = SEEDS.messy.build;
-export const OVERLAYS = states({ tag: 'cutoff' }).filter((st) => st.open);
+export const SWEPT = states({ tag: 'cutoff' });
+export const OVERLAYS = SWEPT.filter((st) => st.open);
 
 const phoneCell = (page) => (page.viewportSize()?.width ?? 1440) < 768;
 
@@ -243,7 +247,7 @@ export async function settle(page) {
   await frames(page, 2);
 }
 
-export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS } = {}) {
+export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = SWEPT } = {}) {
   const findings = [];
   const failed = [];
   const timings = [];
@@ -275,17 +279,22 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
         await settle(page);
       };
       let clean = false;
-      for (const { open: o } of mine) {
+      for (const { open: o, root } of mine) {
         try {
           if (!clean) await fresh();
           clean = false;
+          if (!o) {
+            await read(page, `surface:${surface.name}`, root);
+            clean = true;
+            continue;
+          }
           await o.open(page, ctx, cell);
           await page.locator(`${o.root} >> visible=true`).first().waitFor({ timeout: 8000 });
           await read(page, `overlay:${o.name}`, o.root);
           await (o.close ?? ((p) => p.keyboard.press('Escape')))(page, ctx, cell);
           clean = await page.waitForFunction(([sel, home]) => ![...document.querySelectorAll(sel)].some((n) => n.getClientRects().length) && !!document.querySelector(home)?.getClientRects().length, [o.root, ready], { timeout: 2000 }).then(() => true, () => false);
         } catch (err) {
-          failed.push({ where: `overlay:${o.name}`, cell, error: String(err.message).split('\n')[0] });
+          failed.push({ where: o ? `overlay:${o.name}` : `surface:${surface.name}`, cell, error: String(err.message).split('\n')[0] });
           clean = false;
         }
       }

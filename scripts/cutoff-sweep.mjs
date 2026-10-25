@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { loadavg } from 'node:os';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-import { CELLS, OVERLAYS, PLATFORM, SWEEP_JOURNEYS, fingerprint, lower, sectionOf, seed, sweepCell, tally, verdict } from '../test/lib/cutoff.mjs';
+import { CELLS, PLATFORM, SWEPT, SWEEP_JOURNEYS, fingerprint, lower, sectionOf, seed, sweepCell, tally, verdict } from '../test/lib/cutoff.mjs';
 
 const BASELINE = new URL('../test/cutoff-baseline.json', import.meta.url);
 const { values: a } = parseArgs({ options: {
@@ -19,10 +19,10 @@ const { values: a } = parseArgs({ options: {
 const pw = await import('playwright').catch(() => null);
 if (!pw) { console.error('playwright not installed: ln -s ~/.gerrit/weave/pw/node_modules node_modules'); process.exit(2); }
 
-const nameOf = (x) => x.open?.name ?? x.name;
+const nameOf = (x) => x.open?.name ?? x.surface?.name ?? x.name;
 const pick = (list, csv) => (csv ? list.filter((x) => csv.split(',').includes(nameOf(x))) : list);
 const journeys = pick(SWEEP_JOURNEYS, a.journey ?? (a.overlay ? '-' : null));
-const overlays = pick(OVERLAYS, a.overlay ?? (a.journey ? '-' : null));
+const overlays = pick(SWEPT, a.overlay ?? (a.journey ? '-' : null));
 const wanted = a.cell ? a.cell.split(',') : Object.keys(CELLS);
 const out = resolve(a.out);
 mkdirSync(out, { recursive: true });

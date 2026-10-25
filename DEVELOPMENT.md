@@ -388,11 +388,26 @@ touch-target gate read their states this way; the flicker journeys name their
 
 A new surface, layout or open state is added to the catalog once, never to one
 probe. Adding it is one entry, plus a tag for each probe that should walk it.
-A probe that widens its slice may surface defects its baseline never held: fix
-them, or admit them through that probe's reason-bearing mechanism, in the same
-change. `test/states-core.test.mjs` guards the shape: unique ids and names, every
+A cut-off state with no open state is the surface at rest: the sweep reads it
+straight after its ready selector, so a page no journey visits (the `board` and
+`list` views) is measured as it first paints. A probe that widens its slice may
+surface defects its baseline never held: fix them, or admit them through that
+probe's reason-bearing mechanism, in the same change. For the cut-off gate that
+is `raised["<fingerprint>"]` in `test/cutoff-baseline.json`; for the touch gate
+it is `test/touch-ceiling.json` (below). `test/states-core.test.mjs` guards the shape: unique ids and names, every
 reach field present, every open state used, every seed buildable and every
 probe's slice non-empty.
+
+### Touch ceiling
+
+`test/phone-touch-targets-browser.test.mjs` walks every state tagged `touch` at
+390px and fails a control whose hit area is under 44px in either axis. It is
+zero tolerance outside `test/touch-ceiling.json`, which holds the misses known
+today as `"<surface>[+<open>] | <element.classes>": <count>`, the most any engine
+measured. Each key carries its reason under `raised`, and
+`test/touch-ceiling.test.mjs` refuses a new or raised key without a new reason,
+against the committed file and the base a pull request merges into. A fix
+lowers or removes its key in the same change.
 
 ## Flicker loop
 
@@ -533,7 +548,11 @@ baseline: the gate prints it as `stale:` and passes, since the same commit
 measured one breadcrumb fingerprint 5, 7 and 8 times on loaded runners (Issue
 #1103). `test/cutoff-core.test.mjs` refuses a baseline that grows past its
 committed version or past the base a pull request merges into, so the ceiling
-only ever comes down. **Fixing one:** fix the cut-off, run the sweep until the
+only ever comes down, with one exception: a change that widens the sweep may
+raise a fingerprint it newly measures when it writes a new reason under
+`raised["<fingerprint>"]`, naming the Issue or Feature, the same rule the click,
+render, feedback, vitals and byte budgets follow. A reason covers one raise; the
+next one needs its own. **Fixing one:** fix the cut-off, run the sweep until the
 lower count holds, run it once with `--lower`, and commit the lowered counts in
 the same change. A red gate prints the Linux counts it measured; copy them into
 the `linux` section.

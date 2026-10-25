@@ -5478,7 +5478,7 @@ function renderBoard(main, db, items, ctx) {
       if (e.button !== 0 || e.shiftKey) return;
       const phone = dockCoversScreen.matches;
       if (!phone && e.target.closest('.tile-field > dd')) { if (!nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
-      if (!e.target.closest(phone ? TILE_FORM : TILE_HANDS_OFF)) boardDrag(e, card);
+      if (!e.target.closest(phone ? `${TILE_FORM}, .tile-pick` : TILE_HANDS_OFF)) boardDrag(e, card);
     });
     card.addEventListener('click', (e) => {
       if (nativeClick(e) || e.target.closest('a.tile-title, .tile-pick') || (!dockCoversScreen.matches && e.target.closest('.tile-field > dd'))) return;
@@ -7760,7 +7760,12 @@ function rangeControl({ value = null, title = '', costume, compact = true, place
     value: show(current), placeholder,
     onclick: (e) => e.stopPropagation(),
   });
-  const set = (r) => { current = r; text.value = show(current); onChange(current); };
+  const fit = () => {
+    const w = textWidth(text.value || text.placeholder, text);
+    if (w) text.style.setProperty('--date-fit', `${Math.ceil(w) + 22}px`);
+  };
+  requestAnimationFrame(fit);
+  const set = (r) => { current = r; text.value = show(current); fit(); onChange(current); };
   text.addEventListener('change', () => {
     const typed = text.value.trim();
     if (!typed) return set(null);
@@ -7790,7 +7795,7 @@ function rangeControl({ value = null, title = '', costume, compact = true, place
     },
   }, calendarGlyph());
   const wrap = el('span', { class: 'date-cell range-cell', onclick: (e) => e.stopPropagation(), onfocusin: warmDatePicker, onpointerdown: warmDatePicker }, text, btn);
-  wrap.setValue = (r) => { current = r?.start && r?.end ? { start: r.start, end: r.end } : null; text.value = show(current); };
+  wrap.setValue = (r) => { current = r?.start && r?.end ? { start: r.start, end: r.end } : null; text.value = show(current); fit(); };
   return wrap;
 }
 
