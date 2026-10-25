@@ -22,7 +22,7 @@ test('every manifest asset has its SVG and PNG, and every SVG is listed', () => 
 
 test('every asset names its code, ground and where it goes', () => {
   for (const a of manifest.assets) {
-    assert.match(a.code, /^[BIXM]\d+[a-z]?$/, `${a.id} code`);
+    assert.match(a.code, /^[BILXM]\d+[a-z]?$/, `${a.id} code`);
     assert.ok(a.ground, `${a.id} has no ground in guide.json`);
     assert.ok(a.use.length > 0, `${a.id} has no use in guide.json`);
   }
@@ -43,6 +43,20 @@ test('every badge with ring type carries the chosen words', () => {
 test('assets place the canonical mark files instead of redrawing the mark', () => {
   const placed = manifest.assets.filter((a) => a.family !== 'icon' && a.id !== 'badge-release');
   for (const a of placed) assert.match(svgOf(a), /<mask id="m\d+A"/, `${a.id} does not embed a canonical mark file`);
+});
+
+test('the kit carries the inline and stacked lockups, each placing the canonical lockup file', () => {
+  const lockups = manifest.assets.filter((a) => a.family === 'lockup');
+  assert.deepEqual(lockups.map((a) => a.id).sort(), ['lockup-dark', 'lockup-light', 'lockup-stacked-dark', 'lockup-stacked-light']);
+  for (const a of lockups) {
+    const file = a.id.replace('lockup-', 'weave-lockup-') + '.svg';
+    const canonical = readFileSync(join(KIT, '..', 'assets', file), 'utf8');
+    const word = canonical.match(/<path d="(M28\.1 0[^"]+)"/)[1];
+    assert.ok(svgOf(a).includes(word), `${a.id} draws the outlined wordmark from ${file}`);
+    assert.ok(!svgOf(a).includes('<text'), `${a.id} has no live text`);
+    const [, , vw, vh] = canonical.match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
+    assert.equal(a.height, Math.round(a.width * vh / vw), `${a.id} keeps the lockup's shape`);
+  }
 });
 
 test('the kit README lists every asset', () => {

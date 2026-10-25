@@ -7,5 +7,10 @@
   },
   "homepage": "https://weave.grunion.ai/docs",
   "repository": "https://github.com/grunion-ai/weave",
-  "license": "MIT"
+  "license": "MIT",
+  "icon": "./icon.png",
+  "documentationUrl": "https://weave.grunion.ai/docs",
+  "supportUrl": "https://weave.grunion.ai/support",
+  "privacyPolicyUrl": "https://weave.grunion.ai/privacy",
+  "termsOfServiceUrl": "https://weave.grunion.ai/terms"
 }

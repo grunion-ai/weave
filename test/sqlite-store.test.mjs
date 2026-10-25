@@ -258,3 +258,24 @@ test('simultaneous boots on one workspace both survive', async () => {
   const w = new Weave({ path: dbPath });
   assert.equal(w.query('Task', {}).total >= 4, true, 'all three writes landed');
 });
+
+test('Issue #1085: an automation created enabled stays enabled and fires after a reopen', () => {
+  const dir = tmp();
+  const dbPath = join(dir, 'autos.db');
+  const w = new Weave({ path: dbPath });
+  w.createSpace({ name: 'Lab' });
+  w.createTable({ space: 'Lab', name: 'Item' });
+  w.createAutomation('Lab/Item', {
+    name: 'Greet',
+    trigger: { type: 'entity-created' },
+    actions: [{ type: 'add-comment', text: 'hi' }],
+  });
+  assert.deepEqual(w.listAutomations('Lab/Item').map((a) => a.enabled), [true], 'enabled live');
+  w.store.close?.();
+
+  const w2 = new Weave({ path: dbPath });
+  assert.deepEqual(w2.listAutomations('Lab/Item').map((a) => a.enabled), [true], 'enabled after reopen');
+  const row = w2.createEntity('Lab/Item', { name: 'x' });
+  assert.deepEqual(w2.getEntity(row.id).comments.map((c) => c.text), ['hi'], 'the reopened rule fires');
+});
+

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane, openViews } from './lib/view-pane.mjs';
 
 let table;
 const s = await launch('table patch', (weave) => {
@@ -123,32 +124,32 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a filter chip swaps the rows; the popover and toolbar stay put', async () => {
+  test('a filter chip swaps the rows; the View pane and toolbar stay put', async () => {
     const page = await open();
     try {
-      await page.click('.table-filter-btn');
-      await page.locator('.table-filter-popover').evaluate((pop) => { pop.dataset.probe = 'same'; });
+      await openPane(page, 'filters');
+      await page.locator('#view-pane .filter-strip').evaluate((pop) => { pop.dataset.probe = 'same'; });
       const m = await measure(page, 'filter', async () => {
-        await page.locator('.table-filter-popover .filter-chip-label:text-is("Done")').click();
+        await page.locator('#view-pane .filter-chip-label:text-is("Done")').click();
         await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 20);
       });
       clean(m, 'filter');
-      assert.equal(await page.locator('.table-filter-popover').getAttribute('data-probe'), 'same', 'the open popover is the same node');
-      assert.equal(await page.textContent('.table-filter-btn .table-filter-count'), '1');
+      assert.equal(await page.locator('#view-pane .filter-strip').getAttribute('data-probe'), 'same', 'the open Filters section is the same node');
+      assert.equal(await page.textContent('#main .table-view-btn .view-count'), '1');
     } finally { await page.close(); }
   });
 
   test('switching views swaps the grid without painting the route skeleton', async () => {
     const page = await open();
     try {
-      await page.click('.table-view-btn');
+      await openViews(page);
       const m = await measure(page, 'view switch', async () => {
-        await page.locator('.table-view-popover .view-name:text-is("Narrow")').click();
+        await page.locator('#view-pane .view-name:text-is("Narrow")').click();
         await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].map((h) => h.textContent.trim()).join(',') === 'Name,Status');
       });
       clean(m, 'view switch');
       assert.equal(await page.getAttribute('.table-view-btn', 'aria-label'), 'View: Narrow', 'the view button names the view on screen');
-      assert.equal(await page.locator('.table-view-popover .view-tab.active .view-name').textContent(), 'Narrow');
+      assert.equal(await page.locator('#view-pane .view-tab.active .view-name').textContent(), 'Narrow');
     } finally { await page.close(); }
   });
 
@@ -159,7 +160,7 @@ if (s) {
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('.view-desc .view-desc-body');
       await page.evaluate(installProbe);
-      await page.click('.table-view-btn');
+      await openPane(page);
       const m = await measure(page, 'reset view', async () => {
         await page.click('.view-reset');
         await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Owner'));
@@ -171,20 +172,20 @@ if (s) {
   test('density changes the row height token and nothing else', async () => {
     const page = await open();
     try {
+      await openPane(page, 'display');
       const m = await measure(page, 'density', async () => {
-        await page.click('.table-density-btn');
-        await page.click('.table-density-popover .seg-opt:has-text("Compact")');
+        await page.click('#view-pane .vp-density .seg-opt:has-text("Compact")');
         await page.waitForFunction(() => document.querySelector('.table-density-btn')?.getAttribute('aria-label') === 'Row density: Compact');
       });
       clean(m, 'density');
     } finally { await page.close(); }
   });
 
-  test('hiding and reordering a field patch the columns under a still toolbar and popover', async () => {
+  test('hiding and reordering a field patch the columns under a still toolbar and View pane', async () => {
     const page = await open();
     try {
-      await page.click('.eye-btn');
-      await page.locator('.table-fields-popover').evaluate((pop) => { pop.dataset.probe = 'same'; });
+      await openPane(page, 'fields');
+      await page.locator('#view-pane .vp-fields').evaluate((pop) => { pop.dataset.probe = 'same'; });
       const hide = await measure(page, 'field hide', async () => {
         await page.locator('.table-field-row[data-field="Owner"] .eye-row').click();
         await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Owner'));
@@ -197,7 +198,7 @@ if (s) {
         await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].map((h) => h.textContent.trim()).join(',') === 'Name,Status,Description');
       });
       clean(order, 'field reorder');
-      assert.equal(await page.locator('.table-fields-popover').getAttribute('data-probe'), 'same', 'the open popover is the same node');
+      assert.equal(await page.locator('#view-pane .vp-fields').getAttribute('data-probe'), 'same', 'the open Fields list is the same node');
     } finally { await page.close(); }
   });
 
@@ -223,9 +224,9 @@ if (s) {
         if (hold) await new Promise((r) => setTimeout(r, hold));
         await route.continue();
       });
+      await openPane(page, 'filters');
       hold = 1200;
-      await page.click('.table-filter-btn');
-      await page.locator('.table-filter-popover .filter-chip-label:text-is("Done")').click();
+      await page.locator('#view-pane .filter-chip-label:text-is("Done")').click();
       await page.waitForTimeout(120);
       const early = await page.evaluate(() => ({
         busy: document.querySelector('#main .table-wrap')?.closest('[aria-busy="true"]') ? true : false,
@@ -238,7 +239,7 @@ if (s) {
       assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main .table-wrap')).opacity !== '1'), true, 'the stale rows are dimmed');
       await page.waitForTimeout(500);
       assert.equal(await page.locator('#main .grid-loader:not([hidden])').count(), 1, 'past 500 ms the rope covers the grid');
-      await page.locator('.table-filter-popover .filter-chip-label:text-is("Doing")').click();
+      await page.locator('#view-pane .filter-chip-label:text-is("Doing")').click();
       assert.equal(await page.locator('#main .grid-loader svg').count() > 0, true, 'the rope is the weave loader');
       assert.equal(await page.evaluate(() => document.querySelector('#page-loader').hidden), true, 'the page-wide rope stays down');
       hold = 0;
@@ -248,7 +249,7 @@ if (s) {
       const status = new Map(weave.query(table.id).items.map((e) => [e.id, e.fields.Status]));
       assert.deepEqual([...new Set(drawn.map((id) => status.get(id)))].sort(), ['Doing', 'Done'], 'the grid shows the answer to both chips');
       assert.deepEqual(weave.tableView(table).views.find((v) => v.name === 'Standard').filters, { Status: ['Done', 'Doing'] }, 'the second click was kept');
-      assert.deepEqual((await page.$$eval('.table-filter-popover .filter-chip.on', (bs) => bs.map((b) => b.textContent.trim()))).sort(), ['Doing', 'Done']);
+      assert.deepEqual((await page.$$eval('#view-pane .filter-chip.on', (bs) => bs.map((b) => b.textContent.trim()))).sort(), ['Doing', 'Done']);
       await page.waitForFunction(() => document.querySelector('#main .grid-loader')?.hidden !== false, null, { timeout: 5000 });
     } finally { await page.close(); }
   });

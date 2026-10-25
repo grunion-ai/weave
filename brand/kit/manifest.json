@@ -689,6 +689,79 @@
         "dark web footer"
       ],
       "note": "Same lockup on dark surfaces."
+    },
+    {
+      "code": "L1",
+      "id": "lockup-light",
+      "name": "Lockup, inline, light",
+      "family": "lockup",
+      "theme": null,
+      "svg": "svg/lockup-light.svg",
+      "png": "png/lockup-light.png",
+      "width": 480,
+      "height": 88,
+      "ground": "white or light surface",
+      "use": [
+        "site and app header",
+        "document header",
+        "slide footer",
+        "email header (png)"
+      ],
+      "note": "Mark at 1.6x beside the outlined wordmark; the word sits on the mark's centre line."
+    },
+    {
+      "code": "L2",
+      "id": "lockup-dark",
+      "name": "Lockup, inline, dark",
+      "family": "lockup",
+      "theme": null,
+      "svg": "svg/lockup-dark.svg",
+      "png": "png/lockup-dark.png",
+      "width": 480,
+      "height": 88,
+      "ground": "ink or night surface",
+      "use": [
+        "dark site and app header",
+        "dark slide footer",
+        "dark email header (png)"
+      ],
+      "note": "Same lockup on dark surfaces: sky second strand, cream word."
+    },
+    {
+      "code": "L3",
+      "id": "lockup-stacked-light",
+      "name": "Lockup, stacked, light",
+      "family": "lockup",
+      "theme": null,
+      "svg": "svg/lockup-stacked-light.svg",
+      "png": "png/lockup-stacked-light.png",
+      "width": 240,
+      "height": 143,
+      "ground": "white or light surface",
+      "use": [
+        "sign-in and splash screens",
+        "square covers and avatars",
+        "event signage"
+      ],
+      "note": "Mark 75% of the word's width, half a word height above it, both centred."
+    },
+    {
+      "code": "L4",
+      "id": "lockup-stacked-dark",
+      "name": "Lockup, stacked, dark",
+      "family": "lockup",
+      "theme": null,
+      "svg": "svg/lockup-stacked-dark.svg",
+      "png": "png/lockup-stacked-dark.png",
+      "width": 240,
+      "height": 143,
+      "ground": "ink or night surface",
+      "use": [
+        "dark sign-in and splash screens",
+        "video end cards",
+        "dark covers"
+      ],
+      "note": "Same stacked lockup on dark surfaces."
     }
   ]
 }

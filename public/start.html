@@ -179,9 +179,6 @@
   .ws-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); text-decoration: none; }
   a.ws-row:hover { background: var(--sunk); }
   a.ws-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  a.ws-row:active, a.ws-row[data-opening="true"] { background: var(--sunk); border-color: var(--muted); }
-  a.ws-row[data-opening="true"] { cursor: progress; }
-  a.ws-row[data-opening="true"] .ws-go { color: var(--ink); }
   .ws-tile { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 10px; overflow: hidden; background: var(--sunk); }
   .ws-tile img { width: 100%; height: 100%; object-fit: cover; }
   .ws-letter { --hue: var(--muted); color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, var(--panel)); font-weight: 700; font-size: 17px; }

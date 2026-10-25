@@ -29,6 +29,27 @@ test('the weave plugin points Claude Code at the hosted MCP server over HTTP, wh
   });
 });
 
+test('the weave plugin carries the directory listing fields, so a directory submission reads its links and icon from the manifest', () => {
+  const manifest = read('plugins/weave/.claude-plugin/plugin.json');
+  assert.equal(manifest.documentationUrl, 'https://weave.grunion.ai/docs');
+  assert.equal(manifest.supportUrl, 'https://weave.grunion.ai/support');
+  assert.equal(manifest.privacyPolicyUrl, 'https://weave.grunion.ai/privacy');
+  assert.equal(manifest.termsOfServiceUrl, 'https://weave.grunion.ai/terms');
+  assert.equal(manifest.icon, './icon.png');
+  assert.deepEqual(
+    readFileSync(join(ROOT, 'plugins/weave/icon.png')),
+    readFileSync(join(ROOT, 'brand/kit/png/badge-blue.png')),
+    'the plugin icon is the brand kit badge-blue PNG, byte for byte',
+  );
+});
+
+test('the marketplace entry leaves the directory listing fields to plugin.json, where the validator accepts them', () => {
+  const [plugin] = read('.claude-plugin/marketplace.json').plugins;
+  for (const key of ['icon', 'documentationUrl', 'supportUrl', 'privacyPolicyUrl', 'termsOfServiceUrl']) {
+    assert.equal(Object.hasOwn(plugin, key), false, `marketplace entry sets ${key}`);
+  }
+});
+
 test('no .mcp.json sits at the repo root, so a session developing weave is never wired to production', () => {
   assert.equal(existsSync(join(ROOT, '.mcp.json')), false);
 });

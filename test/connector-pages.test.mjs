@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
+import { readFileSync } from 'node:fs';
 import { TOOLS } from '../src/mcp.js';
 import { startIdp, serveOidc } from './lib/idp.mjs';
 
@@ -10,7 +11,7 @@ async function walled(options = {}) {
   const w = new Weave();
   w.createAccount({ name: 'root', role: 'architect' });
   w.setRequireAuth(true);
-  return serveOidc(w, await startIdp(), { baseDomain: 'weave.test', origin: 'http://weave.test', ...options });
+  return Object.assign(await serveOidc(w, await startIdp(), { baseDomain: 'weave.test', origin: 'http://weave.test', ...options }), { w });
 }
 
 function withChallenge(value, fn) {
@@ -62,6 +63,38 @@ test('an anonymous visitor reads /docs: the MCP address and every tool with its 
       assert.equal(/Destructive/.test(row), t.annotations.destructiveHint, `${t.name} row marks destructive`);
     }
   } finally { s.stop(); }
+});
+
+test('/docs states the MCP role rule the router enforces: every role connects and lists only its own tools (Issue #1121)', async () => {
+  const s = await walled();
+  try {
+    const rpc = async (token, method) => (await s.call('POST', '/api/mcp', { token, body: { jsonrpc: '2.0', id: 1, method, params: {} } }));
+    const listed = {};
+    for (const role of ['observer', 'editor', 'architect']) {
+      const { token } = s.w.createAccount({ name: `as-${role}`, role });
+      assert.equal((await rpc(token, 'initialize')).status, 200, `${role} initializes`);
+      const res = await rpc(token, 'tools/list');
+      assert.equal(res.status, 200, `${role} lists tools`);
+      listed[role] = new Set((await res.json()).result.tools.map((t) => t.name));
+    }
+    assert.ok(!listed.observer.has('weave_create_entity') && listed.editor.has('weave_create_entity'), 'an editor adds row writes');
+    assert.ok([...listed.observer].every((n) => listed.editor.has(n)) && [...listed.editor].every((n) => listed.architect.has(n)), 'each role holds the tools of the one below');
+    assert.ok([...listed.architect].some((n) => !listed.editor.has(n)), 'an architect adds the schema tools');
+    const html = await (await s.call('GET', '/docs')).text();
+    assert.doesNotMatch(html, /\b(?:needs?|requires?|must have)\b[^.]*\b(?:architect|editor|observer)\b/i, 'docs claim a role requirement the router does not enforce');
+    const signIn = html.split(/Sign-in<\/h2>/)[1].split('<h2')[0];
+    for (const role of ['Observer', 'Editor', 'Architect']) assert.ok(signIn.includes(role), `sign-in names the ${role} role`);
+    assert.match(signIn, /tools\/list/);
+    assert.match(signIn, /paid seat/);
+    assert.match(signIn, /trial/);
+  } finally { s.stop(); }
+});
+
+test('README, AGENTS.md and the handbook say any role connects over MCP, as /docs does (Issue #1121)', () => {
+  for (const file of ['README.md', 'AGENTS.md', 'src/handbook.js']) {
+    const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').replace(/\s+/g, ' ');
+    assert.doesNotMatch(text, /needs the Architect role/, `${file} says MCP needs the Architect role`);
+  }
 });
 
 test('the challenge path answers the configured token as plain text', () => withChallenge('tok_abc123', async () => {

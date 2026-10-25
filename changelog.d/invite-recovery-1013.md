@@ -1,1 +1,0 @@
-- Used invite pages offer ordinary sign-in and existing-member recovery without redeeming the invite again. (Issue #1013).
