@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
+import { openPane } from './lib/view-pane.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
 
@@ -230,26 +231,26 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the View menu offers Board with the Columns and Gallery presets', async () => {
+  test('the View pane\'s Display offers Board with the Columns and Gallery presets', async () => {
     seed({ layout: 'table' });
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${list.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      await page.click('.table-view-btn');
-      await page.click('.view-layout .seg-opt:text-is("Board")');
+      await openPane(page, 'display');
+      await page.click('#view-pane .view-layout .seg-opt:text-is("Board")');
       await page.waitForSelector('.wv-board .tile');
       assert.equal(view().layout, 'board');
-      if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
+      await openPane(page, 'display');
       await page.click('.board-preset:text-is("Gallery")');
       await eventually(() => view().groups, 'stacked');
       assert.equal(view().picture, 'medium', 'Gallery shows the cover at its own size');
-      if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
+      await openPane(page, 'display');
       await page.click('.board-preset:text-is("Columns")');
       await eventually(() => view().groups, 'side');
       assert.equal(view().picture, 'off');
       assert.equal(view().sort, undefined, 'Columns is Manual');
-      if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
+      await openPane(page, 'display');
       await page.click('.board-picture .seg-opt:text-is("Large")');
       await eventually(() => view().picture, 'large');
       await page.waitForFunction(() => document.querySelector('.wv-board')?.dataset.picture === 'large');

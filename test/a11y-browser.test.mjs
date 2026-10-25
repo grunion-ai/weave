@@ -3,81 +3,145 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { launch } from './lib/browser.mjs';
+import { launch, settled, atRest } from './lib/browser.mjs';
+import { ROUTES, SEEDS, readyOf, walked } from './lib/states.mjs';
+import { createOidc } from '../src/oidc.js';
+import { createBilling } from '../src/billing.js';
 
-const AXE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'vendor/axe-4.10.2.min.js'), 'utf8');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const AXE = readFileSync(join(HERE, 'vendor/axe-4.10.2.min.js'), 'utf8');
+const BASELINE = JSON.parse(readFileSync(join(HERE, 'a11y-baseline.json'), 'utf8')).violations;
 const RULES = ['label', 'region', 'color-contrast', 'aria-prohibited-attr', 'label-title-only'];
+const EDITOR = '.vditor';
+const EDITOR_OFF = {};
+const EDITOR_RULES = RULES.filter((r) => !EDITOR_OFF[r]);
+const ROW = '.wv-grid tbody tr.entity-row';
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
-let task, issue, entityId;
-const s = await launch('a11y baseline', (weave) => {
-  weave.createSpace({ name: 'Work' });
-  task = weave.createTable({ space: 'Work', name: 'Task' });
-  weave.addField(task, { name: 'Status', type: 'workflow', config: { states: [
-    { name: 'Open', category: 'not-started', default: true },
-    { name: 'In progress', category: 'in-progress' },
-    { name: 'Done', category: 'done' }] } });
-  weave.addField(task, { name: 'Notes', type: 'text' });
-  issue = weave.createTable({ space: 'Work', name: 'Issue' });
-  weave.addField(issue, { name: 'Severity', type: 'select', config: { options: ['Low', 'Medium', 'High'] } });
-  weave.addField(issue, { name: 'Symptom', type: 'multiselect', config: { options: ['Slow', 'Looks broken'] } });
-  weave.addField(issue, { name: 'Points', type: 'number' });
-  weave.addField(issue, { name: 'Double', type: 'formula', config: { expression: 'Points * 2' } });
-  weave.addField(issue, { name: 'Due', type: 'date' });
-  weave.addField(issue, { name: 'Done', type: 'checkbox' });
-  weave.addField(issue, { name: 'Link', type: 'url' });
-  weave.addField(issue, { name: 'Brief', type: 'document' });
-  weave.addRelation(issue, { name: 'Task', targetDb: task, cardinality: 'many-to-one', inverseName: 'Issues' });
-  const t1 = weave.createEntity(task, { name: 'Write the plan', values: { Status: 'In progress', Notes: 'first pass' } });
-  weave.createEntity(task, { name: 'Ship it', values: { Status: 'Open' } });
-  const i1 = weave.createEntity(issue, { name: 'Grid is slow', values: {
-    Severity: 'High', Symptom: ['Slow'], Points: 3, Due: '2026-10-01', Done: false, Link: 'https://example.com', Task: t1.id } });
-  weave.createEntity(issue, { name: 'Chip wraps', values: { Severity: 'Low', Points: 1 } });
-  weave.setDoc(i1.id, `Measured on [[Task#${t1.publicId}]].\n\n## Steps\n\nOpen the grid and scroll.\n`, 'Brief');
-  entityId = i1.id;
-});
+const keyOf = ({ route, state, theme, rule, target }) => [route, state, theme, rule, target.replace(UUID, '#')].join(' | ');
+const partsOf = (key) => {
+  const [route, state, theme, rule, target] = key.split(' | ');
+  return { route, state, theme, rule, target };
+};
 
-if (s) {
+const s = await launch('a11y baseline', SEEDS.a11y);
+
+const ISSUER = 'https://clerk.a11y.example.test';
+const nobody = async () => new Response('{"errors":[{"code":"resource_not_found"}]}', { status: 404 });
+let architect;
+const doors = s && await launch('a11y doors', (w) => {
+  w.updateWorkspace({ name: 'ada-sales' });
+  w.createSpace({ name: 'Sales' });
+  architect = w.createAccount({ name: 'ada-sales', role: 'architect' }).account;
+  w.redeemIdentityInvite(w.linkIdentity('ada-sales', { issuer: ISSUER }).code, { issuer: ISSUER, subject: 'user_ada' });
+  w.accountForIdentity({ issuer: ISSUER, subject: 'user_ada', email: 'ada-sales@example.com' });
+  w.setRequireAuth(true);
+}, { server: () => ({
+  oidc: createOidc({ issuer: 'https://idp.a11y.example.test', clientId: 'test', clientSecret: 'test', name: 'Test' }),
+  billing: createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', issuer: ISSUER, publishableKey: null, fetch: nobody }),
+}) });
+
+if (s && doors) {
   const { base, browser } = s;
 
-  const VIEWS = [
-    ['Task table', () => `#/table/${task.id}`, '.wv-grid tbody tr.entity-row'],
-    ['Issue table', () => `#/table/${issue.id}`, '.wv-grid tbody tr.entity-row'],
-    ['entity page', () => `#/entity/${entityId}`, '.vditor-ir [contenteditable="true"]'],
-    ['map', () => '#/map', '#main .view-title'],
-  ];
+  const { task, issue, entityId } = s;
+  const ctx = { ...s, doors };
+  const plan = walked('a11y');
+  const routes = plan.filter((p) => p.state.open === 'rest');
+  const statesOn = (route, theme) => plan.filter((p) => p.state.open === 'overlay' && p.state.route === route && p.theme === theme).map((p) => p.state);
 
-  const open = async (hash, ready, theme) => {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const open = async (url, ready, theme, { session = false } = {}) => {
+    const ctx = await (session ? doors : s).browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: theme });
+    if (session) await ctx.addCookies([{ name: `wv_session_${doors.weave.state.meta.id}`, value: doors.weave.createSession(architect.id).token, url: doors.base }]);
+    const page = await ctx.newPage();
+    page.close = () => ctx.close();
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
-    await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(ready);
-    await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.waitForSelector(ready, { state: 'attached' });
+    await settled(page.locator('body'));
     return page;
   };
 
-  const axe = async (page) => {
-    await page.addScriptTag({ content: AXE });
-    return page.evaluate((rules) => window.axe.run(
-      { include: [document], exclude: [['.vditor']] },
-      { runOnly: { type: 'rule', values: rules }, resultTypes: ['violations'] },
-    ).then((r) => r.violations.map((v) => ({
-      id: v.id,
-      nodes: v.nodes.map((n) => `${n.target.join(' ')}${n.any[0]?.data?.contrastRatio ? ` ${n.any[0].data.fgColor} on ${n.any[0].data.bgColor} = ${n.any[0].data.contrastRatio}:1` : ''}`),
-    }))), RULES);
+  const axe = async (page, { root = null, editor = false } = {}) => {
+    if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ content: AXE });
+    const run = (context, rules) => page.evaluate(([c, r]) => window.axe.run(
+      c.include ? { include: [[c.include]], exclude: c.exclude ? [[c.exclude]] : [] } : { exclude: c.exclude ? [[c.exclude]] : [] },
+      { runOnly: { type: 'rule', values: r }, resultTypes: ['violations'] },
+    ).then((res) => res.violations.flatMap((v) => v.nodes.map((n) => ({
+      rule: v.id, impact: v.impact, help: v.help, helpUrl: v.helpUrl, target: n.target.join(' '),
+      contrast: n.any[0]?.data?.contrastRatio ? `${n.any[0].data.fgColor} on ${n.any[0].data.bgColor} = ${n.any[0].data.contrastRatio}:1` : null,
+    })))), [context, rules]);
+    if (root === EDITOR) return run({ include: EDITOR }, EDITOR_RULES);
+    if (root) return run({ include: root }, RULES);
+    const outside = await run({ exclude: EDITOR }, RULES);
+    return editor ? [...outside, ...await run({ include: EDITOR }, EDITOR_RULES)] : outside;
   };
 
-  for (const theme of ['light', 'dark']) {
-    for (const [name, hash, ready] of VIEWS) {
-      test(`${name}, ${theme}: no label, region or contrast violations outside Vditor`, async () => {
-        const page = await open(hash(), ready, theme);
+  const effectiveTheme = (page) => page.evaluate(() => document.documentElement.dataset.bsTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+  const scanRoute = async (state, theme) => {
+    const found = [];
+    const failed = [];
+    const route = ROUTES[state.route];
+    const add = (name, list) => { for (const v of list) found.push({ ...v, key: keyOf({ route: state.name, state: name, theme, rule: v.rule, target: v.target }) }); };
+    const fresh = async () => {
+      const page = await open(route.url(ctx, 'desktop'), readyOf(state, 'desktop'), theme, { session: route.session });
+      if (route.setup) await route.setup(page, ctx, 'desktop');
+      return page;
+    };
+    let page = await fresh();
+    try {
+      assert.equal(await effectiveTheme(page), theme, `${state.name} paints the ${theme} theme`);
+      if (route.editor) assert.ok(await page.locator(`${EDITOR} >> visible=true`).count() > 0, `${state.name} shows the document editor the scan covers`);
+      add('at rest', await axe(page, { editor: await page.locator(EDITOR).count() > 0 }));
+      for (const st of statesOn(state.route, theme)) {
         try {
-          assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
-          const v = await axe(page);
-          assert.deepEqual(v, [], `axe violations:\n${v.map((x) => `${x.id}\n  ${x.nodes.join('\n  ')}`).join('\n')}`);
-        } finally { await page.close(); }
-      });
-    }
+          await st.act(page, ctx, 'desktop');
+          const root = page.locator(`${st.root} >> visible=true`).first();
+          await root.waitFor({ timeout: 8000 });
+          await atRest(root);
+          add(st.name, await axe(page, { root: st.root }));
+        } catch (err) {
+          failed.push(`${st.name}: ${String(err.message).split('\n')[0]}`);
+        }
+        await page.keyboard.press('Escape');
+        const shut = await page.waitForFunction((sel) => ![...document.querySelectorAll(sel)].some((n) => n.getClientRects().length), st.root, { timeout: 2000 }).then(() => true, () => false);
+        if (!shut || st.root === EDITOR) { await page.close(); page = await fresh(); }
+      }
+    } finally { await page.close(); }
+    return { found, failed };
+  };
+
+  for (const { state, theme } of routes) {
+    test(`${state.name}, ${theme}: axe finds no violation outside test/a11y-baseline.json, and every baseline entry still reproduces`, async (t) => {
+      const { found, failed } = await scanRoute(state, theme);
+      assert.deepEqual(failed, [], `an open state could not open: its selectors rotted`);
+      const seen = new Map(found.map((f) => [f.key, f]));
+      const mine = Object.keys(BASELINE).filter((k) => { const p = partsOf(k); return p.route === state.name && p.theme === theme; });
+      const added = [...seen.keys()].filter((k) => !Object.hasOwn(BASELINE, k)).sort();
+      const dropped = mine.filter((k) => !seen.has(k)).sort();
+      for (const k of added) { const f = seen.get(k); t.diagnostic(`a11y-new ${k} :: ${f.impact} :: ${f.help} :: ${f.contrast ?? ''}`); }
+      assert.deepEqual(added, [], `new axe violations: fix them; test/a11y-baseline.json only shrinks`);
+      assert.deepEqual(dropped, [], `fixed: remove these from test/a11y-baseline.json in this change`);
+    });
   }
+
+  test('every baseline entry names a route, a state, a theme, a scanned rule and the Issue row that tracks it', () => {
+    const names = new Set(routes.map((p) => p.state.name));
+    for (const [k, row] of Object.entries(BASELINE)) {
+      const p = partsOf(k);
+      assert.ok(names.has(p.route), `${k}: unknown route`);
+      assert.ok(['light', 'dark'].includes(p.theme), `${k}: unknown theme`);
+      assert.ok(RULES.includes(p.rule), `${k}: rule outside the scanned set`);
+      assert.ok(p.target, `${k}: no target`);
+      assert.ok(Number.isInteger(row) && row > 0, `${k}: needs its Issue row number, got ${row}`);
+    }
+  });
+
+  test('the editor is scanned, with only the rules Vditor\'s own markup trips switched off inside it', () => {
+    assert.deepEqual(Object.keys(EDITOR_OFF).filter((r) => !RULES.includes(r)), [], 'a disabled rule must be one the suite runs');
+    assert.ok(EDITOR_RULES.includes('color-contrast') && EDITOR_RULES.includes('label'), 'contrast and labels still run inside the editor');
+  });
 
   const ringContrast = (page, sel) => page.evaluate((selector) => {
     const target = document.querySelector(selector);
@@ -114,12 +178,14 @@ if (s) {
     };
   }, sel);
 
+  const at = (hash, ready, theme) => open(`${base}/${hash}`, ready, theme);
+
   for (const theme of ['light', 'dark']) {
     test(`${theme}: toolbar, dock, sidebar and name field carry one ring at 3:1 or better`, async () => {
-      const page = await open(`#/table/${issue.id}`, '.wv-grid tbody tr.entity-row', theme);
+      const page = await at(`#/table/${issue.id}`, ROW, theme);
       try {
         await page.keyboard.press('Tab');
-        for (const sel of ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn']) {
+        for (const sel of ['#main .table-view-btn']) {
           const r = await ringContrast(page, sel);
           assert.ok(r.focused && r.visible, `${sel} takes keyboard focus (${JSON.stringify(r)})`);
           assert.equal(r.style, 'solid', `${sel} draws the outline ring`);
@@ -137,7 +203,7 @@ if (s) {
           assert.ok(r.ratio >= 3, `${sel} ring contrast ${r.ratio}:1 in ${theme}`);
         }
       } finally { await page.close(); }
-      const ent = await open(`#/entity/${entityId}`, '.entity-head', theme);
+      const ent = await at(`#/entity/${entityId}`, '.entity-head', theme);
       try {
         await ent.keyboard.press('Tab');
         const name = await ringContrast(ent, '.entity-head textarea.name-edit');
@@ -154,7 +220,7 @@ if (s) {
   }
 
   test('the first Tab stop is a skip link that lands on #main', async () => {
-    const page = await open(`#/table/${task.id}`, '.wv-grid tbody tr.entity-row', 'light');
+    const page = await at(`#/table/${task.id}`, ROW, 'light');
     try {
       await page.keyboard.press('Tab');
       const first = await page.evaluate(() => {
@@ -172,7 +238,7 @@ if (s) {
   });
 
   test('grid inputs are named by column and row', async () => {
-    const page = await open(`#/table/${issue.id}`, '.wv-grid tbody tr.entity-row', 'light');
+    const page = await at(`#/table/${issue.id}`, ROW, 'light');
     try {
       const names = await page.$$eval('.wv-grid tbody tr.entity-row td .inline-edit', (xs) => xs.map((x) => x.getAttribute('aria-label')));
       assert.ok(names.length > 0, 'the grid has inline editors');
@@ -197,7 +263,7 @@ if (s) {
   }), [sels, square]);
 
   test('small controls offer a 24px hit area', async () => {
-    const page = await open(`#/table/${issue.id}`, '.wv-grid tbody tr.entity-row', 'light');
+    const page = await at(`#/table/${issue.id}`, ROW, 'light');
     try {
       await page.hover('#nav .nav-db');
       for (const h of await hitArea(page, ['#nav-collapse', 'button.add-field-btn', '.nav-db-menu .dots-btn', 'td.pid-cell a.open-link', 'button.mention-caret'])) {
@@ -207,7 +273,7 @@ if (s) {
       assert.equal(await page.$eval('button.mention-caret', (c) => c.closest('a') ? 'inside the link' : 'beside the link'), 'beside the link',
         'the caret is its own target, so the 24px box can claim the pixels around it');
     } finally { await page.close(); }
-    const ent = await open(`#/entity/${entityId}`, '.entity-head', 'light');
+    const ent = await at(`#/entity/${entityId}`, '.entity-head', 'light');
     try {
       for (const h of await hitArea(ent, ['button.doc-caret'])) {
         assert.ok(!h.missing, `${h.sel} is on the page`);

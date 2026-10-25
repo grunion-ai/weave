@@ -1,1 +1,0 @@
-- **Document loading survives stylesheet failures and dismissal** (Issue #955): concurrent document opens wait for both editor assets, a failed stylesheet can retry after the script loads, and dismissed documents ignore pending editor loads and errors.

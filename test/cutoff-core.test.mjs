@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CELLS, KINDS, NOTE, PLATFORM, cellOf, fingerprint, grew, lower, ratchet, sectionOf, tally } from './lib/cutoff.mjs';
-import { OVERLAYS, SURFACES } from './lib/overlays.mjs';
+import { CELLS, KINDS, NOTE, PLATFORM, cellOf, fingerprint, grew, lower, ratchet, sectionOf, tally, verdict } from './lib/cutoff.mjs';
+import { OVERLAYS } from './lib/overlays.mjs';
+import { ROUTES } from './lib/states.mjs';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -42,7 +43,7 @@ test('ratchet rejects more instances of a known fingerprint than the baseline ho
   assert.deepEqual(ratchet({ 'ellipsis|span.a': 5 }, { 'ellipsis|span.a': 4 }).added, [{ fp: 'ellipsis|span.a', seen: 5, baseline: 4 }]);
 });
 
-test('ratchet fails a fix that did not lower the baseline: gone, or fewer', () => {
+test('ratchet names a fingerprint that measured fewer than the baseline: gone, or fewer', () => {
   const { added, dropped } = ratchet({ 'ellipsis|span.a': 2 }, { 'ellipsis|span.a': 4, 'clipped|td.b': 3 });
   assert.deepEqual(added, []);
   assert.deepEqual(dropped, [{ fp: 'ellipsis|span.a', seen: 2, baseline: 4 }, { fp: 'clipped|td.b', seen: 0, baseline: 3 }]);
@@ -50,6 +51,22 @@ test('ratchet fails a fix that did not lower the baseline: gone, or fewer', () =
 
 test('ratchet passes when the page matches the baseline exactly and ignores the note', () => {
   assert.deepEqual(ratchet({ 'ellipsis|span.a': 4 }, { [NOTE]: 'doc', 'ellipsis|span.a': 4 }), { added: [], dropped: [] });
+});
+
+test('verdict blocks growth and reads a lower count as a stale baseline, never a failure (Issue #1103)', () => {
+  const base = { [NOTE]: 'doc', 'ellipsis|span.crumb-nm': 8, 'clipped|td.b': 3 };
+  assert.deepEqual(verdict({ 'ellipsis|span.crumb-nm': 5, 'clipped|td.b': 3 }, base), {
+    added: [],
+    stale: [{ fp: 'ellipsis|span.crumb-nm', seen: 5, baseline: 8 }],
+  }, 'one commit measured this breadcrumb 5, 7 and 8 times: the low run is not a fix');
+  assert.deepEqual(verdict({ 'ellipsis|span.crumb-nm': 9, 'clipped|td.b': 3 }, base).added, [{ fp: 'ellipsis|span.crumb-nm', seen: 9, baseline: 8 }], 'a count over the baseline still blocks');
+  assert.deepEqual(verdict({}, base), { added: [], stale: [{ fp: 'ellipsis|span.crumb-nm', seen: 0, baseline: 8 }, { fp: 'clipped|td.b', seen: 0, baseline: 3 }] });
+});
+
+test('verdict judges only the cells it is told were walked', () => {
+  const base = { 'ellipsis|span.a': 1, 'ellipsis|span.a|phone': 2 };
+  assert.deepEqual(verdict({ 'ellipsis|span.a': 2 }, base, { cells: ['desktop'] }), { added: [{ fp: 'ellipsis|span.a', seen: 2, baseline: 1 }], stale: [] });
+  assert.deepEqual(verdict({ 'ellipsis|span.a': 1 }, base, { cells: ['desktop'] }), { added: [], stale: [] }, 'the phone baseline is not judged by a desktop run');
 });
 
 test('ratchet judges only the cells it is told were walked', () => {
@@ -124,14 +141,14 @@ test('the cells are desktop 1440x900 in Chromium and phone 390x844 in WebKit', (
   for (const j of JOURNEYS) for (const c of cellsOf(j)) assert.ok(Object.hasOwn(CELLS, c), `${j.name} walks a cell the sweep knows`);
 });
 
-test('every overlay names a surface, a cell, a root and an opener, once', () => {
+test('every overlay names a route, a cell, a root and an opener, once', () => {
   const names = OVERLAYS.map((o) => o.name);
   assert.equal(new Set(names).size, names.length);
   for (const o of OVERLAYS) {
-    assert.ok(Object.hasOwn(SURFACES, o.surface), `${o.name}: surface ${o.surface}`);
+    assert.ok(Object.hasOwn(ROUTES, o.route), `${o.name}: route ${o.route}`);
     assert.ok(o.cells.length && o.cells.every((c) => Object.hasOwn(CELLS, c)), `${o.name}: cells`);
     assert.equal(typeof o.root, 'string');
-    assert.equal(typeof o.open, 'function');
+    assert.equal(typeof o.act, 'function');
   }
 });
 

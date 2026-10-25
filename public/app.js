@@ -73,6 +73,15 @@ function warmGet(path, ready = null) {
   warmGets.set(path, { at: Date.now(), p });
   return p;
 }
+const rowRevisions = new Map();
+function noteRevisions(method, path, data) {
+  const own = path.match(/^\/entities\/([^/?]+)/)?.[1];
+  if (method !== 'GET' && own && !(data?.id === own && data.revision)) rowRevisions.delete(own);
+  for (const id of Array.isArray(data?.affected) ? data.affected : []) if (id !== data.id) rowRevisions.delete(id);
+  for (const row of [data, data?.entity, ...(Array.isArray(data?.items) ? data.items : [])]) {
+    if (row?.id && typeof row.revision === 'string') rowRevisions.set(row.id, row.revision);
+  }
+}
 async function api(method, path, body, { signal, quiet = false } = {}) {
   if (method === 'GET' && warmGets.has(path)) {
     const hit = warmGets.get(path);
@@ -80,21 +89,29 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
     if (Date.now() - hit.at < WARM_MS) return hit.p;
   }
   const payload = body === undefined ? undefined : JSON.stringify(body);
-  const res = await fetch(WS_PREFIX + '/api' + path, {
-    method,
-    signal,
-    headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE },
-    body: payload,
-    keepalive: (leaving || document.visibilityState === 'hidden')
-      && new TextEncoder().encode(payload ?? '').length < 60_000,
-  });
+  const seen = method === 'PATCH' && rowRevisions.get(path.match(/^\/entities\/([^/?]+)$/)?.[1]);
+  let res;
+  try {
+    res = await fetch(WS_PREFIX + '/api' + path, {
+      method,
+      signal,
+      headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE, ...(seen ? { 'If-Match': `"${seen}"` } : {}) },
+      body: payload,
+      keepalive: (leaving || document.visibilityState === 'hidden')
+        && new TextEncoder().encode(payload ?? '').length < 60_000,
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    throw Object.assign(new Error(method === 'GET' ? 'Could not reach the server' : 'Could not reach the server; nothing was saved'), { code: 'offline', cause: err });
+  }
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
+  if (res.ok || res.status === 412) noteRevisions(method, path, data);
   if (!res.ok && data.code === 'seat-required') {
     seatToast(data);
     throw Object.assign(new Error(data.error), { status: res.status, code: data.code, shown: true });
   }
-  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code });
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code, entity: data.entity });
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
@@ -2725,7 +2742,7 @@ const MENU_ROWS = {
         toast('Share page saved — find it on the workspace page');
       }, 'Save'),
     },
-    forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => formsDialog(db) } : null,
+    forms: state.canManageForms && !db.system ? { label: 'Forms…', run: () => openForms(db) } : null,
     icon: dockCoversScreen.matches && !db.icon && !db.system ? { label: 'Add icon…', run: () => searchPicker({
       anchor, title: 'Icon', options: iconCatalogue(), grid: true, currentId: '',
       onPick: async (o) => {
@@ -3294,7 +3311,18 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     try {
       const fresh = await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
       await onSaved(fresh, f.name);
-    } catch (err) { paint?.(val); toast(err.message, true); }
+    } catch (err) {
+      if (err.code !== 'stale' || !err.entity) {
+        paint?.(val);
+        return toast(err.code === 'offline' ? `${f.name} was not saved: could not reach the server` : err.message, true);
+      }
+      const theirs = err.entity;
+      paint?.(theirs.raw?.[f.name] ?? null);
+      await onSaved({ ...theirs, affected: [theirs.id] }, f.name);
+      const mine = fieldValueCell(value) || 'empty';
+      toast(`${theirs.modifiedBy ?? 'Someone'} changed ${f.name} to ${fieldValueCell(theirs.fields?.[f.name]) || 'empty'} first, so your ${mine} was not saved`,
+        true, { label: 'Use mine', run: () => patch(value, paint) }, { key: `stale:${id}:${f.name}` });
+    }
   };
 
   if (f.type === 'view') return viewCell(item.raw?.[f.name], f, { compact });
@@ -3831,7 +3859,7 @@ function systemDefault(db, view = null) {
     fields: [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n])],
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
-    frozen: 0, density: 'comfortable', deleted: false, rollups: false,
+    frozen: 0, density: 'comfortable', deleted: false, rollups: false, subtotals: null,
     layout: null, groups: null, picture: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
   };
 }
@@ -3845,7 +3873,7 @@ function viewStrip(db) {
   const views = db.views ?? [];
   const strip = el('div', { class: 'view-strip', role: 'list', 'aria-label': 'Views' });
   const at = (id) => `/tables/${db.id}/views/${encodeURIComponent(id)}`;
-  const redraw = () => strip.closest('.table-view-popover')?.refresh?.(db, { force: true });
+  const redraw = () => strip.closest('.table-view-popover, #view-pane')?.refresh?.(db, { force: true });
   const write = async (fn, { focus, part = '.view-name' } = {}) => {
     try { await fn(); } catch (err) { toast(err.message, true); }
     await loadSchema();
@@ -3882,7 +3910,7 @@ function viewStrip(db) {
       if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
       if (ev.key === 'Escape') {
         ev.preventDefault();
-        finish(false).then(() => document.querySelector('.table-view-popover .view-add')?.focus({ preventScroll: true }));
+        finish(false).then(() => document.querySelector(':is(.table-view-popover, #view-pane) .view-add')?.focus({ preventScroll: true }));
       }
     });
     input.addEventListener('blur', () => finish(true));
@@ -4063,8 +4091,8 @@ const filterCounts = new Map();
 function setFilterTotal(db, x, n) {
   if (x != null && n != null) filterCounts.set(db.id, { x, n });
   const c = filterCounts.get(db.id);
-  const out = document.querySelector('.table-filter-popover .filter-total');
-  if (!out || !c || out.closest('.chip-pop')?.tableId !== db.id) return;
+  const out = document.querySelector(':is(.table-filter-popover, #view-pane) .filter-total');
+  if (!out || !c || out.closest('.chip-pop, #view-pane')?.tableId !== db.id) return;
   const text = `${c.x} of ${c.n} ${db.term?.plural ?? 'rows'}`;
   if (out.textContent !== text) out.textContent = text;
   out.classList.remove('stale');
@@ -4083,9 +4111,9 @@ function filterTriples(db, active) {
 }
 const FILTER_DEBOUNCE = 250;
 let filterWrites = Promise.resolve();
-function filterStrip(db, onChange, { filters = tableFilters(db), save = null } = {}) {
+function filterStrip(db, onChange, { filters = tableFilters(db), save = null, extra = [] } = {}) {
   const wfFields = db.fields.filter(isFilterField);
-  if (!wfFields.length) return null;
+  if (!wfFields.length && !extra.length) return null;
   const active = Object.fromEntries(Object.entries(filters).map(([k, v]) => [k, [...v]]));
   const strip = el('div', { class: 'filter-strip' });
   const chips = [];
@@ -4104,7 +4132,10 @@ function filterStrip(db, onChange, { filters = tableFilters(db), save = null } =
     }
     const count = Object.values(active).filter((v) => v.length).length;
     clear.disabled = !count;
-    if (!save) setFilterCount(document.querySelector('#main .table-filter-btn'), count);
+    if (save) return;
+    setFilterCount(document.querySelector('#main .table-filter-btn'), count);
+    const btn = document.querySelector('#main .table-view-btn');
+    if (btn?.label && db.view) { btn.wvActive = active; btn.label(); }
   };
   const flush = () => {
     clearTimeout(timer);
@@ -4131,6 +4162,8 @@ function filterStrip(db, onChange, { filters = tableFilters(db), save = null } =
     return filterWrites;
   };
   strip.flushPending = flush;
+  strip.busy = () => dirty || inflight > 0;
+  strip.current = () => active;
   const scroll = el('div', { class: 'filter-scroll' });
   for (const f of wfFields) {
     const row = el('div', { class: 'filter-group', role: 'group', 'aria-label': f.name },
@@ -4153,7 +4186,7 @@ function filterStrip(db, onChange, { filters = tableFilters(db), save = null } =
     }
     row.append(values); scroll.append(row);
   }
-  strip.append(scroll, el('div', { class: 'filter-footer' }, note, clear)); paint();
+  strip.append(scroll, ...extra, el('div', { class: 'filter-footer' }, note, clear)); paint();
   if (!save) queueMicrotask(() => setFilterTotal(db));
   return strip;
 }
@@ -4243,35 +4276,65 @@ async function showDatabase(dbId, view) {
   const search = tableSearch.text.trim();
   const again = tableChromeOn(dbId);
   state.route = { page: 'db', dbId, view: db.view.id };
-  if (!again) renderNav();
+  if (!again) { renderNav(); paintTableChrome(db); }
   const release = again ? gridHold() : () => {};
-  try { await readAndDrawTable(db, dbId, search); } finally { release(); }
+  try { await readAndDrawTable(db, dbId, search, !again); } finally { release(); }
 }
-async function readAndDrawTable(db, dbId, search) {
+const FIRST_PAGES_KEPT = 24;
+const firstPages = new Map();
+function rememberFirstPage(key, result) {
+  firstPages.delete(key);
+  firstPages.set(key, result);
+  if (firstPages.size > FIRST_PAGES_KEPT) firstPages.delete(firstPages.keys().next().value);
+}
+function tableGroup(db) {
+  if (!hasView(db) || isListLayout(db) || isBoardLayout(db)) return null;
+  const group = (db.view.group ?? []).filter((l) => listCore.groupable(db.fields.find((f) => f.name === l.field)));
+  return group.length ? group : null;
+}
+function serverSums(result) {
+  return { sums: new Map((result.groups ?? []).map((g) => [g.path.map((p) => p.value).join(listCore.SEP), g])), grand: result.groupTotal ?? null };
+}
+async function readAndDrawTable(db, dbId, search, cold = false) {
   if (isListLayout(db) || isBoardLayout(db)) return readAndDrawList(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
+  const group = tableGroup(db);
+  const whole = showDeleted || !!group;
   const query = {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
     ...(search ? { search } : {}),
-    ...(showDeleted ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
+    ...(whole ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
+    ...(group ? { groupBy: db.view.id } : {}),
+    includeDeleted: showDeleted,
     fields: gridFields(db),
     relations: 'chip',
   };
-  const [result, trash] = await Promise.all([
+  const paint = (result, domains) => {
+    tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
+    const items = showDeleted ? result.items.map((e) => (e.deletedAt ? { ...e, deleted: true } : e)) : result.items;
+    setFilterTotal(db, showDeleted ? items.filter((e) => !e.deleted).length : result.total, result.all);
+    const drawn = group ? {
+      ...db,
+      grouping: {
+        levels: VP.levelsFor(group, db.fields, { domains: domains ?? [], items }),
+        collapsed: db.view.collapsed ?? [], rollups: showsRollups(db), subtotals: db.view.subtotals ?? 'all', ...serverSums(result),
+      },
+    } : db;
+    drawDatabase(drawn, items, result.trashCount ?? 0, whole ? null : gridPager(db, query, result));
+  };
+  const pageKey = `${db.id}|${JSON.stringify(query)}`;
+  const cached = cold && !whole ? firstPages.get(pageKey) : null;
+  if (cached) paint(cached, null);
+  const [result, domains] = await Promise.all([
     api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true, countAll: true }).then((res) => graftChips(db, res)),
-    showDeleted
-      ? api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] }))
-      : null,
+    group ? Promise.all(group.map((l) => { const f = db.fields.find((x) => x.name === l.field); return f?.type === 'relation' && f.targetDbId ? listTargetRows(f).catch(() => []) : null; })) : null,
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
-  tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
-  setFilterTotal(db, result.total, result.all);
-  const items = showDeleted && !search
-    ? [...result.items, ...(trash.items ?? []).map((e) => ({ ...e, deleted: true }))]
-    : result.items;
-  drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
+  if (!whole) rememberFirstPage(pageKey, result);
+  if (cached && JSON.stringify(cached) === JSON.stringify(result)) return;
+  paint(result, domains);
 }
 
 function gridMoves(db, field) {
@@ -4285,6 +4348,7 @@ function gridFields(db) {
   const phone = phoneRowOf(db);
   for (const n of [phone.lead, ...phone.chips]) if (n) names.add(n);
   for (const s of gridSort(db) ?? []) if (db.fields.some((f) => f.name === s.field)) names.add(s.field);
+  for (const l of db.view?.group ?? []) if (db.fields.some((f) => f.name === l.field)) names.add(l.field);
   for (const n of db.systemFields ?? []) names.add(n);
   return [...names];
 }
@@ -4417,14 +4481,27 @@ function tableControlHeader(title, close) {
 }
 function tableViewButton(ref) {
   const btn = tableControlButton('table-view-btn', '', 'table', true);
+  btn.lastElementChild.classList.add('view-btn-chev');
+  btn.setAttribute('aria-controls', 'view-pane');
   btn.label = () => {
     const name = ref.db.view?.name || 'Standard';
+    const pending = btn.wvActive;
+    btn.wvActive = null;
+    const n = VP.activeFilters(pending ? { ...ref.db.view, filters: pending } : ref.db.view);
     btn.querySelector('.table-control-label').textContent = name;
-    btn.setAttribute('aria-label', `View: ${name}`);
+    let badge = btn.querySelector('.view-count');
+    if (!n) badge?.remove();
+    else {
+      if (!badge) btn.append(badge = el('span', { class: 'view-count', 'aria-hidden': 'true' }));
+      badge.textContent = String(n);
+    }
+    btn.setAttribute('aria-label', `View: ${name}` + (n ? `, ${n} filter${n === 1 ? '' : 's'} on` : ''));
     btn.title = btn.getAttribute('aria-label');
+    if (!dockCoversScreen.matches) btn.setAttribute('aria-expanded', String(viewPane.open));
   };
   btn.label();
   btn.addEventListener('click', () => {
+    if (!dockCoversScreen.matches) { setPaneOpen(!viewPane.open); return; }
     const db = ref.db;
     let pop;
     viewEdit = null;
@@ -4451,11 +4528,7 @@ function tableViewButton(ref) {
     };
     const build = (current) => [
       tableControlHeader('Views', () => pop?.remove()), viewStrip(current),
-      el('div', { class: 'view-layout' }, el('span', { class: 'view-layout-label' }, 'Layout'),
-        segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' },
-          { id: 'board', label: 'Board', title: 'Things to move or pick between: kanban columns or a picture gallery' }],
-          ['list', 'board'].includes(current.view?.layout) ? current.view.layout : 'table', (layout) => setView(current, { layout }))),
-      ...(isBoardLayout(current) ? boardControls(current, (patch) => setView(current, patch)) : []),
+      ...displayBlock(current, (patch) => setView(current, patch)).filter((n) => !n.classList.contains('vp-density')),
       el('hr'),
       el('button', { class: 'chip-pop-row view-reset', type: 'button', onclick: () => reset(true, current) }, lucideEl('undo'), 'Reset view'),
       el('button', { class: 'chip-pop-row view-clear', type: 'button', onclick: () => reset(false, current) }, lucideEl('list-filter'), 'Clear filters, search, and sorting'),
@@ -4530,37 +4603,21 @@ function tableSortButton(ref) {
   const btn = tableControlButton('table-sort-btn', 'Sort', 'arrow-down', true);
   const value = el('span', { class: 'table-sort-value' });
   btn.querySelector('.table-control-label').after(value);
-  const fieldOf = (name) => ref.db.fields.find((f) => f.name === name) ?? fieldDialogCore.SYSTEM_SORT[name] ?? { name, type: 'text' };
-  const words = (name, dir) => sortLabelsFor(ref.db, fieldOf(name))[dir === 'desc' ? 'desc' : 'asc'];
   btn.label = () => {
-    const s = ref.db.sort?.[0];
-    value.textContent = s ? `${s.field}, ${words(s.field, s.dir)}` : 'None';
-    btn.setAttribute('aria-label', s ? `Sort: ${s.field}, ${words(s.field, s.dir)}` : 'Sort: none');
+    const all = gridSort(ref.db) ?? [];
+    const s = all[0];
+    const more = all.length > 1 ? `, then ${all.length - 1} more` : '';
+    const text = s ? `${s.field}, ${sortWords(ref.db, s.field)[s.dir === 'desc' ? 1 : 0]}${more}` : 'None';
+    value.textContent = text;
+    btn.setAttribute('aria-label', s ? `Sort: ${text}` : 'Sort: none');
     btn.title = btn.getAttribute('aria-label');
   };
   btn.label();
   btn.addEventListener('click', () => {
-    const db = ref.db;
     let pop;
-    const write = async (sort) => {
-      pop?.remove();
-      const release = gridHold();
-      try {
-        if (await gridConfigWrite(db, { sort })) await keepScroll(() => showDatabase(db.id, db.view?.id));
-      } catch (err) { toast(err.message, true); } finally { release(); }
-    };
-    const now = db.sort?.[0] ?? null;
-    const fields = [...db.fields.filter((f) => f.type !== 'view' && f.type !== 'document'), ...Object.values(fieldDialogCore.SYSTEM_SORT)];
-    const rows = fields.map((f) => el('button', {
-      class: 'chip-pop-row table-sort-field', type: 'button', 'aria-pressed': String(now?.field === f.name),
-      onclick: () => write([{ field: f.name, dir: now?.field === f.name ? now.dir : 'asc' }]),
-    }, el('span', { class: 'table-sort-name' }, f.name), now?.field === f.name ? lucideEl('check', 'wv-icon chip-pop-check') : null));
-    const dir = now ? segCtl([
-      { id: 'asc', label: words(now.field, 'asc') },
-      { id: 'desc', label: words(now.field, 'desc') },
-    ], now.dir === 'desc' ? 'desc' : 'asc', (d) => write([{ field: now.field, dir: d }])) : null;
-    const clear = now ? el('button', { class: 'chip-pop-row table-sort-clear', type: 'button', onclick: () => write([]) }, lucideEl('x'), 'Clear sort') : null;
-    pop = tableControlPopover(btn, db, 'table-sort-popover', [tableControlHeader('Sort', () => pop?.remove()), dir, el('div', { class: 'table-sort-list' }, ...rows), clear]);
+    const rows = (db) => [tableControlHeader('Sort', () => pop?.remove()), ...levelsBlock(db, 'sort', (patch) => paneWrite(db, patch))];
+    pop = tableControlPopover(btn, ref.db, 'table-sort-popover', rows(ref.db));
+    if (pop) pop.refresh = (db) => { pop.replaceChildren(...rows(db)); pop.reposition?.(); };
   });
   return btn;
 }
@@ -4656,135 +4713,410 @@ function phoneRowPopover(anchor, db) {
   return pop;
 }
 
+const VP = globalThis.weaveViewPane;
+const PANE_KEY = 'weave-view-pane';
+const PANE_SECTION_KEY = 'weave-view-pane-section';
+const readPref = (k, d) => localStorage.getItem(k) ?? d;
+const writePref = (k, v) => localStorage.setItem(k, v);
+const viewPane = { open: readPref(PANE_KEY, '') === 'open', section: readPref(PANE_SECTION_KEY, 'filters'), note: null, views: false, db: null, strip: null, fields: null };
+const PANE_SECTIONS = {
+  filters: { label: 'Filters', icon: 'list-filter' },
+  sort: { label: 'Sort', icon: 'list-ordered' },
+  group: { label: 'Group', icon: 'group' },
+  fields: { label: 'Fields', icon: 'eye' },
+  display: { label: 'Display', icon: 'sliders-horizontal' },
+};
+const NO_SORT_TYPES = ['view', 'document', 'attachments', 'avatar', 'key', 'field'];
+function sortFieldOptions(db) {
+  return [...db.fields.filter((f) => !NO_SORT_TYPES.includes(f.type)).map((f) => ({ id: f.name, label: f.name, hint: f.type })),
+    ...Object.values(fieldDialogCore.SYSTEM_SORT).map((f) => ({ id: f.name, label: f.name, hint: 'system' }))];
+}
+function sortWords(db, name) {
+  const f = db.fields.find((x) => x.name === name) ?? fieldDialogCore.SYSTEM_SORT[name] ?? { name, type: 'text' };
+  const w = sortLabelsFor(db, f);
+  return [w.asc, w.desc];
+}
+function paneSwitch({ label, hint = null, on, data = {}, onChange }) {
+  const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': label, ...(on ? { checked: '' } : {}) });
+  const wrap = el('label', { class: 'wv-toggle vp-switch' + (on ? ' on' : ''), dataset: data },
+    el('span', { class: 'vp-switch-text' }, label, hint ? el('small', {}, hint) : null),
+    input, el('span', { class: 'wv-toggle-track', 'aria-hidden': 'true' }, el('span', { class: 'wv-toggle-knob' })));
+  input.addEventListener('change', () => { wrap.classList.toggle('on', input.checked); onChange(input.checked); });
+  return wrap;
+}
+async function paneWrite(db, patch) {
+  if (!hasView(db)) { toast(BLANK_READ_ONLY, true); return; }
+  const release = gridHold();
+  try {
+    await filterWrites;
+    await eyeWrites;
+    const res = await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, patch);
+    viewPane.note = res?.notes?.length ? res.notes.join(' ') : null;
+    await loadSchema();
+    await keepScroll(() => showDatabase(db.id, db.view.id));
+  } catch (err) { toast(err.message, true); } finally { release(); }
+}
+function levelsBlock(db, kind, save) {
+  const isSort = kind === 'sort';
+  const v = db.view ?? {};
+  const levels = isSort ? (gridSort(db) ?? []).map((s) => ({ ...s })) : (v.group ?? []).map((l) => ({ ...l }));
+  const cap = isSort ? VP.SORT_CAP : VP.GROUP_CAP;
+  const fieldOf = (n) => db.fields.find((f) => f.name === n) ?? (isSort ? fieldDialogCore.SYSTEM_SORT[n] ?? null : null);
+  const pool = isSort ? sortFieldOptions(db) : groupFieldOptions(db);
+  const grouped = new Set((v.group ?? []).map((l) => l.field));
+  const used = new Set(levels.map((l) => l.field));
+  const free = (o) => !used.has(o.id) && !(isSort && grouped.has(o.id));
+  const write = (next) => save(isSort ? { sort: next } : { group: next });
+  const copy = () => levels.map((x) => ({ ...x }));
+  const box = el('div', { class: `vp-levels ${kind}-levels` });
+  levels.forEach((l, i) => {
+    const f = fieldOf(l.field);
+    const words = isSort ? sortWords(db, l.field) : VP.directionWords(f?.type, { order: l.order });
+    const dir = l.dir === 'desc' ? 'desc' : 'asc';
+    const put = (patch) => { const next = copy(); next[i] = { ...next[i], ...patch }; if (!isSort && next[i].dir !== 'desc') delete next[i].dir; write(next); };
+    const move = (d) => { const next = copy(); [next[i], next[i + d]] = [next[i + d], next[i]]; write(next); };
+    const pick = pickerSelect({ name: `${kind}-${i}`, title: isSort ? VP.SORT_LEVELS[i] : `Level ${i + 1}`, value: l.field,
+      options: pool.filter((o) => o.id === l.field || free(o)) });
+    pick.classList.add(`${kind}-field`, 'vp-field');
+    pick.input.addEventListener('change', () => { const next = copy(); next[i] = isSort ? { field: pick.input.value, dir: 'asc' } : { field: pick.input.value }; write(next); });
+    const seg = segCtl([{ id: 'asc', label: words[0] }, { id: 'desc', label: words[1] }], dir, (d) => put({ dir: d }));
+    seg.classList.add(`${kind}-dir`, 'vp-dir');
+    for (const b of seg.querySelectorAll('.seg-opt')) b.dataset.vpKey = `${kind}:${i}:dir:${b.textContent}`;
+    let grain = null, heading = null;
+    if (!isSort && f?.type === 'date') {
+      grain = pickerSelect({ name: `grain-${i}`, title: 'Grain', value: l.grain ?? 'month', options: listCore.GRAINS.map((g) => ({ id: g, label: `By ${g}` })) });
+      grain.classList.add('group-grain');
+      grain.input.addEventListener('change', () => put({ grain: grain.input.value }));
+    }
+    if (!isSort && f?.type === 'relation') {
+      heading = segCtl([{ id: 'label', label: 'Label' }, { id: 'chip', label: 'Chip', title: "The linked row's Chip heads the group" }], l.heading ?? 'label', (h) => put({ heading: h }));
+      heading.classList.add('group-heading');
+    }
+    const act = (cls, icon, label, run, off = false) => el('button', {
+      class: `btn btn-sm btn-icon btn-ghost-secondary vp-act ${cls}`, type: 'button', 'aria-label': label, title: label,
+      dataset: { vpKey: `${kind}:${i}:${cls}` }, ...(off ? { disabled: '' } : {}), onclick: run,
+    }, lucideEl(icon));
+    const grip = el('button', { class: `view-grip vp-grip ${kind}-grip`, type: 'button', 'aria-label': `Reorder ${l.field}`, title: 'Drag to reorder levels' }, lucideEl('grip-vertical'));
+    const card = el('div', { class: `vp-level ${kind}-level`, dataset: { level: l.field }, style: isSort ? null : `--depth:${i}` },
+      el('div', { class: 'vp-level-top' }, grip,
+        el('span', { class: 'vp-level-n' }, String(i + 1)),
+        el('span', { class: 'vp-level-name' }, isSort ? VP.SORT_LEVELS[i] : `Level ${i + 1}`),
+        el('span', { class: 'vp-level-acts' },
+          act(`${kind}-up`, 'arrow-up', `Move ${l.field} up`, () => move(-1), i === 0),
+          act(`${kind}-down`, 'arrow-down', `Move ${l.field} down`, () => move(1), i === levels.length - 1),
+          act(`${kind}-remove`, 'x', `Remove ${l.field}`, () => write(levels.filter((_, k) => k !== i))))),
+      el('div', { class: 'vp-level-bot' }, pick, seg, grain, heading));
+    RO().guard(grip);
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      startRowDrag(box, card, e, (target, after) => {
+        const rest = levels.filter((x) => x.field !== l.field);
+        const at = rest.findIndex((x) => x.field === target);
+        if (target === l.field || at < 0) return;
+        rest.splice(at + (after ? 1 : 0), 0, l);
+        write(rest);
+      }, { rows: `.${kind}-level`, key: (r) => r.dataset.level });
+    });
+    box.append(card);
+  });
+  const left = pool.filter(free);
+  const word = isSort ? 'sort' : 'group';
+  const out = [];
+  if (viewPane.note) out.push(el('div', { class: 'vp-note', role: 'status' }, lucideEl('info'), el('span', {}, viewPane.note)));
+  out.push(box);
+  if (levels.length < cap) {
+    const add = el('button', { class: `vp-add-level ${kind}-add`, type: 'button', dataset: { vpKey: `${kind}:add` }, ...(left.length ? {} : { disabled: '' }) },
+      lucideEl('plus'), el('span', {}, `Add ${word} level`), el('span', { class: 'vp-add-count' }, `${levels.length} of ${cap}`));
+    add.addEventListener('click', (e) => {
+      e.stopPropagation();
+      searchPicker({ anchor: add, title: isSort ? 'Sort by' : 'Group by', options: left, onPick: (o) => write([...levels, isSort ? { field: o.id, dir: 'asc' } : { field: o.id }]) });
+    });
+    out.push(add);
+  } else out.push(el('div', { class: 'vp-limit' }, `${cap} of ${cap} ${word} levels in use.`));
+  const last = v.group?.length ? v.group[v.group.length - 1].field : null;
+  if (isSort) out.push(el('p', { class: 'vp-hint' }, last ? `Groups order the rows first. These levels order rows inside each ${last} group. Ties fall back to #.` : 'Ties after the last level fall back to #.'));
+  else if (levels.length) {
+    out.push(el('div', { class: 'vp-links' },
+      el('button', { class: 'btn btn-sm btn-ghost-primary vp-collapse-all', type: 'button', onclick: () => save({ collapsed: drawnGroupKeys(db) }) }, 'Collapse all'),
+      el('button', { class: 'btn btn-sm btn-ghost-primary vp-expand-all', type: 'button', onclick: () => save({ collapsed: [] }) }, 'Expand all')));
+    const multi = levels.map((l) => fieldOf(l.field)).find((f) => f?.type === 'multiselect');
+    if (multi) out.push(el('p', { class: 'vp-hint' }, `A ${db.term.singular} with several ${multi.name} values appears under each one. Totals above that level count it once.`));
+  }
+  if (!isSort && (isListLayout(db) || isBoardLayout(db))) out.push(...listRowPrefs(db, save));
+  return out;
+}
+function listRowPrefs(db, save) {
+  const v = db.view ?? {};
+  const pick = (name, label, value, fields) => {
+    const sel = pickerSelect({ name, title: label, value: value ?? '', placeholder: 'None',
+      options: [{ id: '', label: 'None' }, ...fields.map((f) => ({ id: f.name, label: f.name }))] });
+    sel.classList.add(`group-${name}`);
+    return sel;
+  };
+  const doneSel = pick('completed', 'Completed by', v.completedBy, db.fields.filter((f) => f.type === 'checkbox' || f.type === 'toggle'));
+  doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
+  const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
+  nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
+  return [el('div', { class: 'eye-head' }, 'Rows'),
+    el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel),
+    el('label', { class: 'group-pref' }, el('span', {}, 'Nest by'), nestSel)];
+}
+function drawnGroupKeys(db) {
+  const drawn = $('#main')?.wvDraw;
+  if (!drawn || drawn.db.id !== db.id) return [];
+  const levels = VP.levelsFor(db.view?.group, db.fields, { items: drawn.items });
+  return VP.model(VP.rowsFor(drawn.items, levels), { levels }).nodes.map((n) => n.key);
+}
+function rollupCells(rollups, col) {
+  return (rollups ?? []).filter((r) => r.field === col && FOOT_LABELS[r.aggregate]).map((r) => ({ agg: r.aggregate, text: r.display ?? '—' }));
+}
+function keyedSeg(seg, name) {
+  for (const b of seg.querySelectorAll('.seg-opt')) b.dataset.vpKey = `${name}:${b.textContent}`;
+  return seg;
+}
+function displayBlock(db, save) {
+  const v = db.view ?? {};
+  const rollups = showsRollups(db);
+  const layout = ['list', 'board'].includes(v.layout) ? v.layout : 'table';
+  const out = [
+    el('div', { class: 'view-layout vp-line' }, el('span', { class: 'view-layout-label' }, 'Layout'),
+      keyedSeg(segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' },
+        { id: 'board', label: 'Board', title: 'Things to move or pick between: kanban columns or a picture gallery' }],
+      layout, (next) => save({ layout: next })), 'layout')),
+    el('div', { class: 'vp-line vp-density' }, el('span', { class: 'view-layout-label' }, 'Density'),
+      keyedSeg(segCtl([{ id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }, { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
+        { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' }], gridDensity(db), (mode) => {
+        const wrap = document.querySelector('#main .wv-grid')?.closest('.table-wrap') ?? document.querySelector('#main .list-wrap');
+        if (wrap?.wvSetDensity) wrap.wvSetDensity(mode); else saveGridDensity(db, mode);
+        document.querySelector('#main .table-density-btn')?.label?.(mode);
+        paneSync(db);
+      }), 'density')),
+    ...(isBoardLayout(db) ? boardControls(db, save) : []),
+  ];
+  if (db.system) return out;
+  out.push(el('hr'), paneSwitch({ label: 'Σ Rollups', hint: 'Totals for every group and the whole table', on: rollups, data: { rollups: '' }, onChange: (on) => save({ rollups: on }) }));
+  if (!rollups) return out;
+  out.push(el('div', { class: 'vp-line vp-subtotals' }, el('span', { class: 'view-layout-label' }, 'Subtotals'),
+    keyedSeg(segCtl(VP.SUBTOTALS.map((id) => ({ id, label: VP.SUBTOTAL_LABELS[id] })), v.subtotals ?? 'all', (next) => save({ subtotals: next })), 'subtotals')));
+  const cols = visibleCols(db).filter((c) => footAggregatesFor(db, colField(db, c)).length);
+  if (cols.length) {
+    const box = el('div', { class: 'vp-aggs' });
+    out.push(el('div', { class: 'eye-head' }, 'Per column'), box);
+    footStatLists(db, cols).then((lists) => box.replaceChildren(...lists)).catch((err) => toast(err.message, true));
+  }
+  return out;
+}
+async function footStatLists(db, cols) {
+  const spacesT = registryTable('spaces');
+  if (!spacesT) return [];
+  let rollups = (await api('GET', `/tables/${db.id}/stats`)).rollups ?? [];
+  const nameCol = db.fields.find((x) => x.role === 'name')?.name ?? 'Name';
+  return cols.map((col) => {
+    const box = el('div', { class: 'vp-agg', dataset: { col } });
+    const have = (agg) => rollups.find((r) => (r.targetField ?? nameCol) === col && r.aggregate === agg && !r.where);
+    const paint = () => box.replaceChildren(el('div', { class: 'vp-agg-name' }, col),
+      el('div', { class: 'vp-agg-rows' }, ...footAggregatesFor(db, colField(db, col)).map((agg) => el('label', { class: 'chip-pop-row eye-row foot-row', dataset: { agg } },
+        el('input', { type: 'checkbox', class: 'form-check-input', ...(have(agg) ? { checked: '' } : {}), onchange: (e) => flip(agg, e.currentTarget.checked) }),
+        el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg)))));
+    const flip = (agg, on) => {
+      const turn = eyeWrites.then(async () => {
+        try {
+          await footRollupWrite(db, col, agg, on, have(agg), spacesT);
+          rollups = (await api('GET', `/tables/${db.id}/stats`)).rollups ?? [];
+        } catch (err) { toast(err.message, true); }
+      });
+      eyeWrites = turn;
+      turn.then(() => { paint(); showDatabase(db.id, db.view?.id); });
+    };
+    paint();
+    return box;
+  });
+}
+async function footRollupWrite(db, col, agg, on, cur, spacesT) {
+  if (on && !cur) {
+    const made = await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
+    const reg = registryTable('spaces');
+    if (reg) {
+      reg.fields.push(spaceRollupEntry(db, col, agg, made));
+      for (const v of reg.views ?? []) if (!v.fields.includes(made.name)) v.fields.push(made.name);
+    }
+    return made;
+  }
+  if (!on && cur) {
+    await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
+    const reg = registryTable('spaces');
+    if (reg) {
+      reg.fields = reg.fields.filter((x) => x.id !== cur.fieldId);
+      for (const v of reg.views ?? []) {
+        v.fields = v.fields.filter((n) => n !== cur.name);
+        if (v.widths && cur.name in v.widths) {
+          delete v.widths[cur.name];
+          if (!Object.keys(v.widths).length) delete v.widths;
+        }
+      }
+    }
+  }
+  return null;
+}
+function paneValue(db, key) {
+  const v = db.view ?? {};
+  if (key === 'filters') {
+    const parts = Object.entries(v.filters ?? {}).filter(([, x]) => x?.length).map(([k, x]) => `${k}: ${x.join(', ')}`);
+    if (v.deleted) parts.push('deleted');
+    return parts.join(' · ') || 'None';
+  }
+  if (key === 'sort') return (gridSort(db) ?? []).map((s) => `${s.field} ${s.dir === 'desc' ? '↓' : '↑'}`).join(', ') || 'None';
+  if (key === 'group') return (v.group ?? []).map((l) => l.field).join(listCore.SEP) || 'None';
+  if (key === 'fields') return `${visibleCols(db).length} of ${systemDefault(db).fields.length}`;
+  const layout = { list: 'List', board: 'Board' }[v.layout] ?? 'Table';
+  return `${layout}, ${DENSITY_LABELS[gridDensity(db)]}${showsRollups(db) ? `, Σ ${({ all: 'every level', top: 'top level', none: 'grand total' })[v.subtotals ?? 'all']}` : ''}`;
+}
+function paneChanged(db, key) {
+  const v = db.view ?? {};
+  if (key === 'filters') return VP.activeFilters(v) > 0;
+  if (key === 'sort') return !!gridSort(db);
+  if (key === 'group') return !!v.group?.length;
+  if (key === 'fields') return JSON.stringify(visibleCols(db)) !== JSON.stringify(systemDefault(db).fields);
+  return ['list', 'board'].includes(v.layout) || gridDensity(db) !== 'comfortable' || showsRollups(db);
+}
+function paneFilters(db) {
+  const same = viewPane.strip && viewPane.strip.wvKey === `${db.id}|${db.view?.id}`;
+  const live = (f) => JSON.stringify(Object.entries(f ?? {}).filter(([, v]) => v?.length).map(([k, v]) => [k, [...v].sort()]).sort());
+  const fresh = same && (viewPane.strip.busy() || live(viewPane.strip.current?.() ?? viewPane.strip.wvFilters) === live(tableFilters(db)));
+  if (fresh) { viewPane.strip.syncDeleted?.(db); return viewPane.strip; }
+  const deleted = paneSwitch({
+    label: `Include deleted ${db.term.plural}`, hint: `${($('#main')?.wvDraw?.trashCount ?? 0).toLocaleString('en-US')} in the trash; struck through, never totalled`, on: showsDeleted(db), data: { deleted: '' },
+    onChange: (on) => paneWrite(db, { deleted: on }),
+  });
+  const strip = filterStrip(db, () => keepScroll(() => showDatabase(db.id, db.view?.id)), { extra: db.system ? [] : [deleted] })
+    ?? el('div', { class: 'table-control-note' }, 'Workflow, toggle and select fields provide filters. This table has none.');
+  strip.wvKey = `${db.id}|${db.view?.id}`;
+  strip.wvFilters = structuredClone(tableFilters(db));
+  strip.busy ??= () => false;
+  strip.syncDeleted = (next) => {
+    const box = strip.querySelector('[data-deleted] input');
+    if (box) { box.checked = showsDeleted(next); box.closest('.wv-toggle').classList.toggle('on', box.checked); }
+  };
+  viewPane.strip = strip;
+  return strip;
+}
+function paneFields(db) {
+  const same = viewPane.fields && viewPane.fields.wvKey === `${db.id}|${db.view?.id}`;
+  if (same) { if (!eyeTails.has(db.id)) viewPane.fields.relearnEye(); return viewPane.fields; }
+  const box = fieldVisibilityPopover(paneEl(), db, 0, { rowsSection: false, mount: true });
+  box.wvKey = `${db.id}|${db.view?.id}`;
+  viewPane.fields = box;
+  return box;
+}
+function paneBody(db, key) {
+  const save = (patch) => paneWrite(db, patch);
+  if (key === 'filters') return [paneFilters(db)];
+  if (key === 'sort') return levelsBlock(db, 'sort', save);
+  if (key === 'group') return levelsBlock(db, 'group', save);
+  if (key === 'fields') return [paneFields(db)];
+  return displayBlock(db, save);
+}
+const paneEl = () => $('#view-pane');
+const paneWanted = () => viewPane.open && !dockCoversScreen.matches && state.route?.page === 'db';
+function setPaneOpen(on, { focus = true } = {}) {
+  viewPane.open = on;
+  writePref(PANE_KEY, on ? 'open' : '');
+  const drawn = $('#main')?.wvDraw;
+  paneSync(drawn?.db ?? null);
+  const btn = document.querySelector('#main .table-view-btn');
+  btn?.label?.();
+  if (!focus) return;
+  if (on) paneEl()?.querySelector('.vp-acc[aria-expanded="true"], .vp-acc')?.focus({ preventScroll: true });
+  else btn?.focus({ preventScroll: true });
+}
+function paneSync(db) {
+  const pane = paneEl();
+  if (!pane) return;
+  if (!db || !paneWanted() || db.id !== state.route?.dbId) {
+    if (!pane.hidden) { pane.hidden = true; pane.replaceChildren(); }
+    viewPane.db = null;
+    return;
+  }
+  pane.hidden = false;
+  renderViewPane(pane, db);
+}
+function renderViewPane(pane, db, { force = false } = {}) {
+  if (!force && pane.querySelector('.view-name-input')) return;
+  const same = viewPane.db?.id === db.id && viewPane.db?.view?.id === db.view?.id;
+  if (!same) { viewPane.strip = null; viewPane.fields = null; if (viewPane.db) viewPane.note = null; if (viewPane.db?.id !== db.id) viewPane.views = false; }
+  const active = pane.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = active?.dataset?.vpKey ?? null;
+  const scrollTop = pane.querySelector('.vp-scroll')?.scrollTop ?? 0;
+  viewPane.db = db;
+  pane.tableId = db.id;
+  if (!pane.wvKeys) {
+    pane.wvKeys = true;
+    pane.addEventListener('click', (e) => {
+      const hit = e.target.closest('label');
+      if (hit?.control && pane.contains(hit.control) && (document.activeElement === document.body || pane.contains(document.activeElement))) hit.control.focus({ preventScroll: true });
+    });
+    pane.addEventListener('keydown', (e) => {
+      if (!['ArrowUp', 'ArrowDown'].includes(e.key) || e.defaultPrevented) return;
+      const body = e.target.closest?.('.vp-body');
+      const walk = '.eye-row > input, .filter-chip > input';
+      if (!body || !e.target.matches(walk)) return;
+      const opts = [...body.querySelectorAll(walk)].filter((n) => !n.disabled);
+      e.preventDefault();
+      opts[(opts.indexOf(e.target) + (e.key === 'ArrowUp' ? -1 : 1) + opts.length) % opts.length]?.focus({ preventScroll: false });
+    });
+  }
+  pane.refresh = (next) => renderViewPane(pane, next ?? db, { force: true });
+  const first = (db.views ?? [])[0]?.id === db.view?.id;
+  const pick = el('button', { class: 'vp-view-pick', type: 'button', 'aria-expanded': String(viewPane.views), dataset: { vpKey: 'views' },
+    onclick: () => { viewPane.views = !viewPane.views; renderViewPane(pane, db); } },
+  lucideEl('bookmark'), el('span', { class: 'vp-view-name' }, db.view?.name ?? 'Standard'),
+  first ? el('span', { class: 'view-first' }, 'Opens first') : null, lucideEl(viewPane.views ? 'chevron-up' : 'chevron-down'));
+  const views = viewPane.views ? el('div', { class: 'vp-views' }, viewStrip(db)) : null;
+  const sections = Object.entries(PANE_SECTIONS).map(([key, s]) => {
+    const open = viewPane.section === key;
+    const value = paneValue(db, key);
+    const head = el('button', {
+      class: 'vp-acc' + (paneChanged(db, key) ? ' changed' : ''), type: 'button', 'aria-expanded': String(open),
+      'aria-controls': `vp-body-${key}`, dataset: { section: key, vpKey: `acc:${key}` },
+      onclick: () => {
+        viewPane.section = open ? '' : key;
+        writePref(PANE_SECTION_KEY, viewPane.section);
+        renderViewPane(pane, db);
+        pane.querySelector(`.vp-acc[data-section="${key}"]`)?.focus({ preventScroll: true });
+      },
+    }, el('span', { class: 'vp-icon' }, lucideEl(s.icon)), el('span', { class: 'vp-name' }, s.label),
+    el('span', { class: 'vp-value', title: value }, value), lucideEl('chevron-down', 'wv-icon vp-chev'));
+    return el('section', { class: 'vp-section', dataset: { section: key } }, head,
+      open ? el('div', { class: 'vp-body', id: `vp-body-${key}`, role: 'region', 'aria-label': s.label }, ...paneBody(db, key)) : null);
+  });
+  const resetView = async (raw) => {
+    if (!hasView(db)) return toast(BLANK_READ_ONLY, true);
+    stopTableSearchTimer();
+    tableSearch = { ...tableSearch, text: '', focus: false, only: null };
+    await paneWrite(db, raw ? systemDefault(db, db.view) : { filters: {}, sort: [], search: '', deleted: false, group: null, collapsed: null });
+  };
+  const foot = el('div', { class: 'vp-foot' },
+    el('button', { class: 'btn btn-sm view-reset', type: 'button', dataset: { vpKey: 'reset' },
+      title: 'Every field in schema order as a Table with no grouping; no filters, sorting, search, deleted rows or Σ rollups; Comfortable density',
+      onclick: () => resetView(true) }, lucideEl('undo'), 'Reset view'),
+    el('button', { class: 'btn btn-sm view-clear', type: 'button', dataset: { vpKey: 'clear' },
+      title: 'Clear filters, deleted rows, search, sorting and grouping', onclick: () => resetView(false) }, lucideEl('x'), 'Clear all'));
+  const scroll = el('div', { class: 'vp-scroll' }, el('div', { class: 'vp-picker' }, pick, views), ...sections);
+  pane.replaceChildren(
+    el('div', { class: 'vp-head' }, el('strong', {}, 'View'),
+      el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary vp-close', type: 'button', 'aria-label': 'Close view pane', title: 'Close', onclick: () => setPaneOpen(false) }, lucideEl('x'))),
+    scroll, foot);
+  scroll.scrollTop = scrollTop;
+  if (active?.isConnected) active.focus({ preventScroll: true });
+  else if (focusKey) pane.querySelector(`[data-vp-key="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
+}
+
 const tableChromeSig = (db) => JSON.stringify([db.name, db.icon, db.description, db.space, db.spaceId, db.term?.singular, db.term?.plural]);
 function tableChromeOn(dbId) {
   const main = $('#main');
   const chrome = main?.wvTable;
   return !!chrome && chrome.dbId === dbId && chrome.header.parentElement === main ? chrome : null;
 }
-async function formsDialog(db) {
-  try {
-    const data = await api('GET', `/forms/manage?table=${encodeURIComponent(db.id)}`);
-    const list = el('div', { class: 'form-manager-list' });
-    const link = form => `${location.origin}${WS_PREFIX}/f/${form.id}`;
-    for (const form of data.forms) {
-      const builtIn = form.kind !== 'Row';
-      const toggle = el('button', { type: 'button', class: 'btn btn-sm', onclick: async () => {
-        toggle.disabled = true;
-        try { await api('PATCH', `/forms/${form.id}`, { enabled: !form.enabled }); await formsDialog(db); }
-        catch (err) { toggle.disabled = false; toast(err.message, true); }
-      } }, form.enabled ? 'Pause' : 'Enable');
-      list.append(el('div', { class: 'form-manager-row', dataset: { formId: form.id } },
-        el('div', {}, el('strong', {}, form.name), el('div', { class: 'text-muted' }, `${builtIn ? 'Built in · ' : ''}${form.enabled ? 'Enabled' : 'Paused'} · ${!data.requireAuth ? 'Open workspace' : form.floor === 'Anonymous' && data.anonymousAllowed ? 'Anyone with link' : 'Sign-in required'}`)),
-        el('div', { class: 'form-manager-actions' },
-          el('button', { type: 'button', class: 'btn btn-sm', onclick: () => copyText(link(form), 'Form link copied') }, 'Copy link'),
-          el('a', { class: 'btn btn-sm', href: link(form), target: '_blank', rel: 'noopener' }, 'Open'),
-          builtIn ? null : el('button', { type: 'button', class: 'btn btn-sm', onclick: () => formEditor(db, data, form) }, 'Edit'),
-          builtIn ? null : toggle)));
-    }
-    modal('Forms', [el('p', { class: 'text-muted' }, `Collect submissions into ${db.name}. Each form keeps its link when you edit it.`),
-      data.forms.length ? list : el('p', { class: 'form-manager-empty' }, 'No forms yet. Choose fields to collect your first submission.'),
-      el('button', { type: 'button', class: 'btn btn-primary', onclick: () => formEditor(db, data) }, 'Create form')], null, 'Done');
-    $('#modal').classList.add('wv-forms');
-  } catch (err) { toast(err.message, true); }
-}
-
-function formEditor(db, data, current = null) {
-  const label = (text, input) => el('label', { class: 'form-builder-label' }, el('span', {}, text), input);
-  const name = el('input', { class: 'form-control', required: '', value: current?.name ?? `${db.name} form` });
-  const description = el('textarea', { class: 'form-control', rows: '2' }, current?.description ?? '');
-  const floor = pickerSelect({ title: 'Audience', value: current?.floor ?? 'Observer', options: [{ id: 'Observer', label: 'Signed-in members' }, ...(data.anonymousAllowed || current?.floor === 'Anonymous' ? [{ id: 'Anonymous', label: 'Anyone with link' }] : [])] });
-  const enabled = el('input', { type: 'checkbox', class: 'form-check-input' });
-  enabled.checked = current?.enabled ?? true;
-  const supported = new Set(['text', 'document', 'email', 'url', 'number', 'rating', 'date', 'select', 'multiselect', 'workflow', 'checkbox', 'toggle']);
-  const hidden = new Set(Object.keys(current?.hiddenValues ?? {}));
-  const fields = el('div', { class: 'form-builder-fields' });
-  const selected = current?.fields ?? db.fields.filter(f => f.role === 'name').map(f => ({ id: f.id, key: f.id, label: f.name, required: true }));
-  const order = [...selected.map(f => db.fields.find(d => d.id === f.id)).filter(Boolean), ...db.fields.filter(f => !selected.some(s => s.id === f.id))];
-  const rows = new Map();
-  for (const field of order) {
-    const previous = selected.find(f => f.id === field.id);
-    if ((!supported.has(field.type) || field.computed || field.readOnly || hidden.has(field.id) || ['created-at', 'updated-at', 'created-by', 'updated-by'].includes(field.role)) && !previous) continue;
-    const editable = supported.has(field.type) && !field.computed && !field.readOnly;
-    const included = el('input', { type: 'checkbox', class: 'form-check-input', 'aria-label': `Include ${field.name}`, disabled: editable ? null : '' });
-    included.checked = !!previous;
-    const text = el('input', { class: 'form-control', value: previous?.label ?? field.name });
-    const key = el('input', { class: 'form-control', value: previous?.key ?? field.id });
-    const required = el('input', { type: 'checkbox', class: 'form-check-input' });
-    required.checked = previous?.required === true;
-    const hasDefault = el('input', { type: 'checkbox', class: 'form-check-input' });
-    hasDefault.checked = Object.hasOwn(previous ?? {}, 'default');
-    const choices = previous?.options ?? (field.options ?? field.states ?? []).map(o => typeof o === 'string' ? o : o.name);
-    const type = { number: 'number', rating: 'number', date: 'date', email: 'email', url: 'url' }[field.type] ?? 'text';
-    const picks = ['select', 'workflow', 'multiselect'].includes(field.type) ? choices.map(option => ({ id: option, label: option }))
-      : ['checkbox', 'toggle'].includes(field.type) ? [{ id: 'true', label: 'Yes' }, { id: 'false', label: 'No' }] : null;
-    const multi = field.type === 'multiselect';
-    const value = picks ? pickerSelect({ title: field.name, options: picks, multi, value: multi ? previous?.default ?? [] : previous?.default != null ? String(previous.default) : null })
-      : ['text', 'document'].includes(field.type) ? el('textarea', { class: 'form-control', rows: '3' })
-        : el('input', { class: 'form-control', type: field.type === 'date' && previous?.default && !/^\d{4}-\d{2}-\d{2}$/.test(previous.default) ? 'text' : type, step: type === 'number' ? 'any' : null });
-    const control = value.input ?? value;
-    if (!picks) value.value = previous?.default ?? '';
-    let defaultEdited = false;
-    for (const kind of ['input', 'change']) control.addEventListener(kind, () => defaultEdited = true);
-    hasDefault.addEventListener('change', () => defaultEdited = true);
-    const row = el('details', { class: 'form-builder-field', dataset: { formField: field.id } });
-    const move = direction => {
-      const other = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
-      if (other) fields.insertBefore(direction < 0 ? row : other, direction < 0 ? other : row);
-    };
-    row.append(el('summary', { tabindex: '0' }, el('span', {}, field.name), el('span', { class: 'text-muted' }, previous ? 'Included' : 'Available')),
-      el('div', { class: 'form-builder-settings' },
-        label(`Include ${field.name}`, included),
-        editable ? el('div', { class: 'form-builder-pair' }, label('Label', text), label('Key', key)) : el('p', { class: 'text-muted' }, 'Existing field settings are preserved. This field type is configured through the API.'),
-        editable ? label('Required', required) : null,
-        editable ? label('Use a default', hasDefault) : null,
-        editable ? label(field.type === 'multiselect' ? 'Default choices' : 'Default value', value) : null,
-        el('div', { class: 'form-manager-actions' }, el('button', { class: 'btn btn-sm', type: 'button', onclick: () => move(-1), 'aria-label': `Move ${field.name} up` }, 'Move up'), el('button', { class: 'btn btn-sm', type: 'button', onclick: () => move(1), 'aria-label': `Move ${field.name} down` }, 'Move down'))));
-    const sync = () => {
-      row.querySelector('summary .text-muted').textContent = included.checked ? 'Included' : 'Available';
-      for (const input of [text, key, required, hasDefault]) input.disabled = !included.checked || !editable;
-      (value.face ?? value).disabled = !included.checked || !hasDefault.checked || !editable;
-      text.required = key.required = included.checked && editable;
-    };
-    included.addEventListener('change', sync);
-    hasDefault.addEventListener('change', sync);
-    sync();
-    fields.append(row);
-    rows.set(field.id, () => {
-      if (!included.checked) return null;
-      if (!editable) return previous;
-      const out = { ...previous, id: field.id, key: key.value.trim(), label: text.value.trim(), required: required.checked };
-      delete out.default;
-      if (hasDefault.checked) {
-        if (!defaultEdited && Object.hasOwn(previous ?? {}, 'default')) out.default = previous.default;
-        else if (['number', 'rating'].includes(field.type)) {
-          if (!control.value.trim() || !Number.isFinite(Number(control.value))) throw new Error(`${field.name} needs a numeric default`);
-          out.default = Number(control.value);
-        } else if (['checkbox', 'toggle'].includes(field.type)) out.default = control.value === 'true';
-        else if (multi) out.default = [...control.values];
-        else out.default = control.value;
-      }
-      return out;
-    });
-  }
-  const message = el('div', { class: 'text-danger', role: 'alert' });
-  modal(current ? 'Edit form' : 'Create form', [label('Form name', name), label('Description', description), data.requireAuth ? label('Audience', floor) : el('div', { class: 'form-builder-label' }, el('span', {}, 'Audience'), el('strong', {}, 'Anyone in this open workspace'), el('p', { class: 'text-muted' }, 'Sign-in is off for this workspace. Anyone who can reach it can submit this form.')),
-    data.requireAuth && !data.anonymousAllowed ? el('p', { class: 'text-muted' }, 'Anyone with link requires public forms to be enabled by your server operator.') : null,
-    label('Enabled', enabled), el('h3', {}, 'Fields'), fields,
-    current?.hidden?.length ? el('p', { class: 'text-muted' }, `Server fields preserved: ${current.hidden.join(', ')}`) : null, message], async () => {
-    const submit = $('#modal button[type="submit"]');
-    submit.disabled = true;
-    message.textContent = '';
-    try {
-      const entries = [...fields.children].map(row => rows.get(row.dataset.formField)()).filter(Boolean);
-      if (!entries.length) throw new Error('Include at least one field');
-      await api(current ? 'PATCH' : 'POST', current ? `/forms/${current.id}` : '/forms', { name: name.value.trim(), description: description.value, ...(current ? {} : { table: db.id }), fields: entries, enabled: enabled.checked, floor: floor.input.value });
-      await formsDialog(db);
-    } catch (err) { submit.disabled = false; message.textContent = err.message; err.shown = true; throw err; }
-  }, 'Save form');
-  $('#modal').classList.add('wv-forms');
-}
-
 function tableChrome(db, trashCount) {
   const ref = { db, trashCount };
   const chrome = { dbId: db.id, sig: tableChromeSig(db), ref };
@@ -4793,6 +5125,7 @@ function tableChrome(db, trashCount) {
   const filterBtn = tableFilterButton(ref);
   const groupBtn = tableGroupButton(ref);
   const sortBtn = tableSortButton(ref);
+  for (const b of [densityBtn, filterBtn, groupBtn, sortBtn]) b.classList.add('vp-phone-only');
   const search = tableSearchBox(db);
   chrome.set = (next, count) => {
     ref.db = next; ref.trashCount = count;
@@ -4838,6 +5171,7 @@ function tableChrome(db, trashCount) {
       densityBtn,
       (() => {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
+        eye.classList.add('vp-phone-only');
         eye.setAttribute('aria-label', 'Show or hide fields');
         eye.title = 'Show or hide fields';
         eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db) && !isBoardLayout(ref.db)
@@ -4899,6 +5233,16 @@ function tableToolsButton(header, ref) {
   return btn;
 }
 
+function paintTableChrome(db) {
+  const main = $('#main');
+  if (!main) return;
+  const chrome = tableChrome(db, 0);
+  main.wvTable = chrome;
+  main.replaceChildren(chrome.header);
+  syncPhoneBar();
+  scheduleSkeleton(isListLayout(db) || isBoardLayout(db) ? 'list' : 'db', db, chrome.header);
+}
+
 function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   const main = $('#main');
   let chrome = tableChromeOn(db.id);
@@ -4948,6 +5292,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     main.wvDraw = { db, items, trashCount, pager: null };
     syncPhoneBar();
     paintGridWait();
+    paneSync(db);
     return;
   }
 
@@ -4956,21 +5301,15 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
       && await main.querySelector('.table-wrap')?.wvPatchRows?.(written)) return;
     rememberGridFocus();
     if (db.system) await loadSchema();
-    let fresh = items;
-    if (pager) await pager.refresh();
-    else {
-      const w2 = filterWhere(db);
-      fresh = (await api('POST', `/tables/${db.id}/query`, { ...(w2 ? { where: w2 } : {}), ...(searching ? { search: searching } : {}) })).items;
-    }
-    await keepScroll(() => drawDatabase(db, fresh, trashCount, pager));
+    if (pager) {
+      await pager.refresh();
+      await keepScroll(() => drawDatabase(db, items, trashCount, pager));
+    } else await keepScroll(() => showDatabase(db.id, db.view?.id));
     restoreGridFocus({ now: true });
   };
 
   const redraw = async () => {
-    if (!pager) {
-      const fresh = await api('POST', `/tables/${db.id}/query`, {});
-      return drawDatabase(db, fresh.items, trashCount);
-    }
+    if (!pager) return showDatabase(db.id, db.view?.id);
     await pager.refresh();
     await keepScroll(() => drawDatabase(db, items, trashCount, pager));
   };
@@ -5001,6 +5340,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   main.wvDraw = { db, items, trashCount, pager };
   syncPhoneBar();
   paintGridWait();
+  paneSync(db);
   main.querySelector('.table-wrap')?.addEventListener('keydown', (e) => {
     if (e.isComposing || e.altKey) return;
     const td = e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
@@ -5032,32 +5372,8 @@ function listSetup(db) {
     dateField: dates.find((f) => shown.has(f.name)) ?? dates[0] ?? null,
   };
 }
-const listBoolKey = (f, on) => ({
-  key: String(on),
-  label: f.type === 'toggle' ? (on ? f.on : f.off) : (on ? f.name : `Not ${f.name.toLowerCase()}`),
-  value: on,
-});
-function listKeys(level, item) {
-  const f = level.f;
-  if (f.type === 'relation') {
-    const v = item.fields?.[f.name];
-    return (Array.isArray(v) ? v : v ? [v] : []).filter((x) => x?.id).map((x) => ({ key: x.id, label: x.name || `#${x.publicId}`, value: x.id, summary: x }));
-  }
-  if (f.type === 'date') { const b = listCore.dateBucket(item.raw?.[f.name], level.grain); return b ? [b] : []; }
-  if (f.type === 'checkbox' || f.type === 'toggle') return [listBoolKey(f, !!item.raw?.[f.name])];
-  const v = item.fields?.[f.name];
-  return (Array.isArray(v) ? v : v != null && v !== '' ? [v] : []).map((n) => ({ key: String(n), label: String(n), value: String(n) }));
-}
-function listDomain(level, targets, items) {
-  const f = level.f;
-  if (f.type === 'relation') return (targets ?? []).map((t) => ({ key: t.id, label: t.name || `#${t.publicId}`, value: t.id, summary: t }));
-  if (f.type === 'select' || f.type === 'multiselect') return (f.options ?? []).map((n) => ({ key: n, label: n, value: n }));
-  if (f.type === 'workflow') return (f.states ?? []).map((st) => ({ key: st.name, label: st.name, value: st.name }));
-  if (f.type === 'checkbox' || f.type === 'toggle') return [listBoolKey(f, false), listBoolKey(f, true)];
-  const seen = new Map();
-  for (const it of items) for (const k of listKeys(level, it)) seen.set(k.key, k);
-  return [...seen.values()].sort((a, b) => a.key.localeCompare(b.key));
-}
+const listKeys = (level, item) => VP.groupKeys(level, item);
+const listDomain = (level, targets, items) => VP.groupDomain(level, targets, items);
 async function listTargetRows(f) {
   const target = allTables().find((t) => t.id === f.targetDbId);
   if (!target) return [];
@@ -5080,15 +5396,25 @@ async function readAndDrawList(db, dbId, search) {
     ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
   const base = { fields: [...new Set(names)], relations: 'chip' };
   const filtered = !!(where || search);
-  const [result, everyone, domains] = await Promise.all([
-    api('POST', `/tables/${db.id}/query`, { ...base, ...(where ? { where } : {}), ...(sort ? { sort } : {}), ...(search ? { search } : {}), trashCount: true, countAll: true }).then((r) => graftChips(db, r)),
+  const showDeleted = !board && showsDeleted(db);
+  const sums = !board && showsRollups(db);
+  const [result, everyone, domains, total] = await Promise.all([
+    api('POST', `/tables/${db.id}/query`, {
+      ...base, ...(where ? { where } : {}), ...(sort ? { sort } : {}), ...(search ? { search } : {}), trashCount: true, countAll: true,
+      includeDeleted: showDeleted, ...(s.levels.length && hasView(db) ? { groupBy: db.view.id } : {}),
+    }).then((r) => graftChips(db, r)),
     filtered && (s.nest || !sort) ? api('POST', `/tables/${db.id}/query`, base).then((r) => graftChips(db, r).items) : null,
     Promise.all(s.levels.map((l) => (l.f.type === 'relation' && l.f.targetDbId ? listTargetRows(l.f).catch(() => []) : null))),
+    sums && !s.levels.length ? api('GET', `/tables/${db.id}/stats`).then((r) => ({ rollups: (r.rollups ?? []).filter((x) => !x.where).map((x) => ({ field: x.targetField ?? nameFieldOf(db)?.name ?? 'Name', aggregate: x.aggregate, value: x.value, display: x.display })) })).catch(() => null) : null,
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
-  tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
-  setFilterTotal(db, result.total, result.all);
-  drawDatabase(db, result.items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort, board });
+  const items = showDeleted ? result.items.map((e) => (e.deletedAt ? { ...e, deleted: true } : e)) : result.items;
+  const live = items.filter((e) => !e.deleted);
+  tableSearch.only = search && live.length === 1 ? live[0].id : null;
+  setFilterTotal(db, live.length, result.all);
+  const server = serverSums(result);
+  drawDatabase(db, items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort, board,
+    sums: sums ? { ...server, grand: server.grand ?? total, subtotals: db.view?.subtotals ?? 'all' } : null });
 }
 let listWrites = Promise.resolve();
 function listViewWrite(db, patch) {
@@ -5138,7 +5464,7 @@ function listHeadingEl(s, depth, node) {
   return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
 }
 function renderList(main, db, items, ctx) {
-  const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
+  const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
   const v = db.view;
   const parentOf = (it) => {
     if (!s.nest) return null;
@@ -5147,7 +5473,7 @@ function renderList(main, db, items, ctx) {
   };
   const rowOf = (it, extra = {}) => ({
     id: it.id, keys: s.levels.map((l) => listKeys(l, it)), parent: parentOf(it),
-    done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, item: it, ...extra,
+    done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, deleted: !!it.deleted, item: it, ...extra,
   });
   const rows = items.map((it) => rowOf(it));
   const known = new Map((everyone ?? items).map((it) => [it.id, it]));
@@ -5164,7 +5490,7 @@ function renderList(main, db, items, ctx) {
   }
   const byPid = new Map([...known.values(), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
-  const levels = s.levels.map((l, i) => ({ order: l.order, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
+  const levels = s.levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: VP.NO_VALUE }));
   const arranged = listCore.arrange(rows, { levels, completedBy: !!s.completedBy, nest: !!s.nest, manual, showEmpty: !filtered });
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
@@ -5207,7 +5533,7 @@ function renderList(main, db, items, ctx) {
       title: sorted ? 'Sorted: drag into another group, or sideways to nest' : 'Drag to reorder; sideways to nest',
     }, lucideEl('grip-vertical'));
     const line = el('div', {
-      class: 'list-row' + (r.ghost ? ' ghost' : '') + (r.done ? ' done' : ''), role: 'listitem',
+      class: 'list-row' + (r.ghost ? ' ghost' : '') + (r.done ? ' done' : '') + (r.deleted ? ' row-deleted' : ''), role: 'listitem',
       tabindex: r.ghost ? '-1' : '0', dataset: { eid: it.id, depth: String(item.depth) }, style: `--depth:${item.depth}`,
       ...(r.ghost ? { title: 'Shown for its matching sub-rows; the filter leaves it out' } : {}),
     }, grip, box,
@@ -5260,11 +5586,16 @@ function renderList(main, db, items, ctx) {
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
         headingEl(depth, node),
         el('span', { class: 'list-count' }, String(node.count))),
-      el('div', { class: 'list-group-body' }, ...body));
+      el('div', { class: 'list-group-body' }, ...body),
+      sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? sumEl(node.label, node.rows, depth, sums.sums.get(node.key)) : null);
     sec.wvPath = node.path;
     sec.wvItems = node.items ?? null;
     return sec;
   };
+  const sumCols = visibleCols(db);
+  const sumEl = (label, members, depth, from, grand = false) => el('div', { class: 'list-sum' + (grand ? ' grand' : ''), dataset: { sum: grand ? 'all' : label }, style: `--level:${depth}` },
+    el('b', {}, `Σ ${label} · ${VP.countText(members, db.term)}`),
+    ...sumCols.flatMap((c) => rollupCells(from?.rollups, c).map((x) => el('span', { class: 'list-sum-stat' }, `${c} ${FOOT_LABELS[x.agg]} ${x.text}`))));
   const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
   if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
   else { list.append(...arranged.items.flatMap((i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
@@ -5281,6 +5612,7 @@ function renderList(main, db, items, ctx) {
     sec.wvItems = c.items;
     list.append(sec);
   }
+  if (sums) list.append(sumEl('All', rows, 0, sums.grand, true));
   const footer = el('div', { class: 'list-footer', role: 'status', 'aria-live': 'polite' },
     listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term }));
   const wrap = el('div', { class: 'card list-wrap', dataset: { density: gridDensity(db), layout: 'list' } }, list, footer);
@@ -5699,87 +6031,6 @@ function groupFieldOptions(db) {
   return db.fields.filter((f) => listCore.groupable(f))
     .map((f) => ({ id: f.name, label: f.name, hint: f.type === 'relation' ? 'link' : f.type }));
 }
-const LEVEL_ORDERS = { option: 'Option order', table: 'Table order', az: 'A to Z' };
-function groupPopoverRows(db, close, save) {
-  const v = db.view ?? {};
-  const levels = (v.group ?? []).map((l) => ({ ...l }));
-  const fieldOf = (n) => db.fields.find((f) => f.name === n);
-  const options = groupFieldOptions(db);
-  const writeLevels = (next) => save({ group: next });
-  const box = el('div', { class: 'group-levels' });
-  levels.forEach((l, i) => {
-    const f = fieldOf(l.field);
-    const d = { ...listCore.levelDefaults(f?.type), ...l };
-    const put = (patch) => { const next = levels.map((x) => ({ ...x })); next[i] = { ...next[i], ...patch }; writeLevels(next); };
-    const fieldSel = pickerSelect({ name: `group-${i}`, title: `Level ${i + 1}`, value: l.field,
-      options: options.filter((o) => o.id === l.field || !levels.some((x) => x.field === o.id)) });
-    fieldSel.classList.add('group-field');
-    fieldSel.input.addEventListener('change', () => { const next = levels.map((x) => ({ ...x })); next[i] = { field: fieldSel.input.value }; writeLevels(next); });
-    const heading = f?.type === 'relation'
-      ? segCtl([{ id: 'label', label: 'Label' }, { id: 'chip', label: 'Chip', title: "The linked row's Chip heads the group" }], d.heading, (h) => put({ heading: h }))
-      : null;
-    heading?.classList.add('group-heading');
-    let orderSel = null;
-    if (f && f.type !== 'date') {
-      orderSel = pickerSelect({ name: `order-${i}`, title: 'Group order', value: d.order,
-        options: (f.type === 'relation' ? ['table', 'az'] : ['option', 'az']).map((id) => ({ id, label: LEVEL_ORDERS[id] })) });
-      orderSel.classList.add('group-order');
-      orderSel.input.addEventListener('change', () => put({ order: orderSel.input.value }));
-    }
-    let grainSel = null;
-    if (f?.type === 'date') {
-      grainSel = pickerSelect({ name: `grain-${i}`, title: 'Grain', value: d.grain, options: listCore.GRAINS.map((g) => ({ id: g, label: `By ${g}` })) });
-      grainSel.classList.add('group-grain');
-      grainSel.input.addEventListener('change', () => put({ grain: grainSel.input.value }));
-    }
-    const grip = el('button', { class: 'view-grip group-grip', type: 'button', 'aria-label': `Reorder ${l.field}`, title: 'Drag to reorder levels' }, lucideEl('grip-vertical'));
-    const row = el('div', { class: 'group-level', dataset: { level: l.field } },
-      grip, el('span', { class: 'group-level-n' }, String(i + 1)), fieldSel, heading, orderSel, grainSel,
-      el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary group-remove', type: 'button', 'aria-label': `Remove ${l.field}`, title: 'Remove level',
-        onclick: () => writeLevels(levels.filter((_, k) => k !== i)) }, lucideEl('x')));
-    RO().guard(grip);
-    grip.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      startRowDrag(box, row, e, (target, after) => {
-        const rest = levels.filter((x) => x.field !== l.field);
-        const at = rest.findIndex((x) => x.field === target);
-        if (target === l.field || at < 0) return;
-        rest.splice(at + (after ? 1 : 0), 0, l);
-        writeLevels(rest);
-      }, { rows: '.group-level', key: (r) => r.dataset.level });
-    });
-    box.append(row);
-  });
-  const left = options.filter((o) => !levels.some((x) => x.field === o.id));
-  const add = el('button', { class: 'chip-pop-row group-add', type: 'button', ...(levels.length >= listCore.GROUP_CAP || !left.length ? { disabled: '' } : {}) },
-    lucideEl('plus'), levels.length ? 'Add level' : 'Group by…');
-  add.addEventListener('click', (e) => {
-    e.stopPropagation();
-    searchPicker({ anchor: add, title: 'Group by', options: left, onPick: (o) => writeLevels([...levels, { field: o.id }]) });
-  });
-  const pick = (name, label, value, fields) => {
-    const sel = pickerSelect({ name, title: label, value: value ?? '', placeholder: 'None',
-      options: [{ id: '', label: 'None' }, ...fields.map((f) => ({ id: f.name, label: f.name }))] });
-    sel.classList.add(`group-${name}`);
-    return sel;
-  };
-  const doneSel = pick('completed', 'Completed by', v.completedBy, db.fields.filter((f) => f.type === 'checkbox' || f.type === 'toggle'));
-  doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
-  const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
-  nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
-  const list = v.layout === 'list' || v.layout === 'board';
-  return [
-    tableControlHeader('Group', close),
-    box, add,
-    el('hr'),
-    el('div', { class: 'eye-head' }, 'Rows'),
-    el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel),
-    el('label', { class: 'group-pref' }, el('span', {}, 'Nest by'), nestSel),
-    list ? el('p', { class: 'table-control-note' }, 'Saved in this view. A sort orders rows inside each group; with no sort, drag sets the order.')
-      : el('p', { class: 'table-control-note group-table-note' }, 'Table layout keeps these and ignores them for now. ',
-        el('button', { class: 'btn btn-sm btn-ghost-primary tiny group-show-list', type: 'button', onclick: () => save({ layout: 'list' }) }, 'Show as list')),
-  ];
-}
 function tableGroupButton(ref) {
   const btn = tableControlButton('table-group-btn', 'Group', 'group');
   btn.label = () => {
@@ -5787,19 +6038,11 @@ function tableGroupButton(ref) {
     const text = names.length ? `Group: ${names.join(listCore.SEP)}` : 'Group';
     if (btn.querySelector('.table-control-label').textContent !== text) btn.querySelector('.table-control-label').textContent = text;
     btn.setAttribute('aria-label', text);
-    btn.hidden = !isListLayout(ref.db) && !isBoardLayout(ref.db);
   };
   btn.label();
   btn.addEventListener('click', () => {
     let pop;
-    const save = async (patch) => {
-      const db = ref.db;
-      const release = gridHold();
-      try {
-        if (await gridConfigWrite(db, null, patch)) await showDatabase(db.id, db.view?.id);
-      } catch (err) { toast(err.message, true); } finally { release(); }
-    };
-    const rows = (db) => groupPopoverRows(db, () => pop?.remove(), save);
+    const rows = (db) => [tableControlHeader('Group', () => pop?.remove()), ...levelsBlock(db, 'group', (patch) => paneWrite(db, patch))];
     pop = tableControlPopover(btn, ref.db, 'table-group-popover', rows(ref.db));
     if (pop) pop.refresh = (db) => { pop.replaceChildren(...rows(db)); pop.reposition?.(); };
   });
@@ -5823,9 +6066,9 @@ function eyeGesture(hold) {
   let done = false;
   return () => { if (done) return; done = true; eyeGestures--; hold(); };
 }
-function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
+function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true, mount = false } = {}) {
   let pop;
-  const home = anchor.closest('#main, #dock');
+  const home = mount ? $('#main') : anchor.closest('#main, #dock');
   const raw = () => allTables().find((d) => d.id === db.id) ?? db;
   const liveTable = () => { const t = raw(); return db.view ? viewed(t, db.view.blank ? blankView(t) : (t.views ?? []).find((v) => v.id === db.view.id) ?? db.view) : t; };
   const systemColumns = Object.keys(SYSTEM_COLS);
@@ -5854,6 +6097,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       }
       const open = document.querySelector('.chip-pop');
       if (open?.eyeOf === db.id) open.relearnEye();
+      if (viewPane.fields?.eyeOf === db.id && viewPane.fields !== open && viewPane.fields.isConnected) viewPane.fields.relearnEye();
     } catch (err) { toast(err.message, true); }
   };
   const write = (make, { hides = null } = {}) => {
@@ -5906,9 +6150,18 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       return { fields: order.filter((n) => (t.columns ?? []).includes(n)) };
     });
   };
+  const tagOf = (name) => {
+    if (!mount) return null;
+    const t = liveTable();
+    const g = (t.view?.group ?? []).findIndex((l) => l.field === name);
+    if (g >= 0) return `Group ${g + 1}`;
+    const k = (gridSort(t) ?? []).findIndex((x) => x.field === name);
+    return k >= 0 ? `Sort ${k + 1}` : null;
+  };
+  const tagEl = (name) => { const t = tagOf(name); return t ? el('span', { class: 'vp-tag' }, t) : null; };
   const checkRow = (on, label, run, dataset = {}) => el('label', { class: 'chip-pop-row eye-row', dataset },
     el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: run }),
-    el('span', { class: 'eye-label' }, label));
+    el('span', { class: 'eye-label' }, label), tagEl(label));
   const gap = () => el('span', { class: 'field-reorder-gap', 'aria-hidden': 'true' });
   const makeRow = (name, on) => {
     const toggle = checkRow(on, name, () => flip(name));
@@ -5942,7 +6195,13 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       if (before) { order.splice(order.indexOf(before), 0, name); list.querySelector(`[data-field="${CSS.escape(before)}"]`).before(row); }
       else { order.push(name); list.append(row); }
     }
-    for (const r of list.querySelectorAll('.table-field-row')) r.querySelector('input').checked = shown.has(r.dataset.field);
+    for (const r of list.querySelectorAll('.table-field-row')) {
+      r.querySelector('input').checked = shown.has(r.dataset.field);
+      if (!mount) continue;
+      r.querySelector('.vp-tag')?.remove();
+      const tag = tagEl(r.dataset.field);
+      if (tag) r.querySelector('.eye-row').append(tag);
+    }
     const deleted = pop.querySelector('[data-deleted] input');
     if (deleted) deleted.checked = showsDeleted(t);
     const rollups = pop.querySelector('[data-rollups] input');
@@ -5955,12 +6214,18 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => showAll(false) }, 'Hide all')),
     el('div', { class: 'table-field-legend' }, 'Show / hide', el('span', {}, 'Drag to reorder')),
     el('div', { class: 'table-field-list' }, ...order.map((n) => makeRow(n, shown.has(n)))),
-    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
+    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { if (!mount) pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
     ...(rowsSection ? [el('div', { class: 'table-field-foot' },
       el('div', { class: 'eye-head' }, 'Rows'),
       el('div', { class: 'table-field-line' }, gap(), checkRow(showsDeleted(db), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => write((t) => ({ deleted: !showsDeleted(t) })), { deleted: '' })),
       ...(db.system ? [] : [el('div', { class: 'table-field-line' }, gap(), checkRow(showsRollups(db), 'Σ rollup row', () => write((t) => ({ rollups: !showsRollups(t) })), { rollups: '' }))]))] : []),
   ];
+  if (mount) {
+    pop = el('div', { class: 'vp-fields' }, ...rows.slice(1));
+    pop.eyeOf = db.id;
+    pop.relearnEye = refresh;
+    return pop;
+  }
   pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
   if (pop) { pop.eyeOf = db.id; pop.relearnEye = refresh; }
   return pop;
@@ -6001,8 +6266,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const sysValue = (n, item) => el('span', { class: 'wv-cb-text' }, SYSTEM_COLS[n]?.(item) ?? '');
   const sysCell = (n, item) => el('td', { class: 'cell-computed sys-cell', dataset: { sys: n } }, cellBox(sysValue(n, item)));
   const colCount = cols.length + 3;
-  const sortKey = db.sort?.[0]?.field ?? null, sortDir = db.sort?.[0]?.dir === 'desc' ? -1 : 1;
-  const wrap = el('div', { class: 'card table-wrap' });
+  const grouping = db.grouping ?? null;
+  let slots = null;
+  const wrap = el('div', { class: 'card table-wrap' + (grouping ? ' wv-grouped' : '') });
   let fitFrame = 0;
   const refit = () => {
     fitFrame = 0;
@@ -6024,8 +6290,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const drawnIds = () => [...wrap.querySelectorAll('tbody tr.entity-row')].map((r) => r.dataset.eid);
   let sortedItems = items;
   const ordered = () => (pager ? pager.rows : sortedItems);
-  const total = () => ordered().length;
-  const itemAt = (i) => ordered()[i] ?? null;
+  const total = () => (slots ? slots.length : ordered().length);
+  const itemAt = (i) => (slots ? slots[i] ?? null : ordered()[i] ?? null);
   const itemOf = (id) => ordered().find((x) => x && x.id === id) ?? null;
   const loadedIds = () => ordered().filter(Boolean).map((x) => x.id);
 
@@ -6268,6 +6534,70 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop, .phone-only)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     return row;
+  };
+
+  const clientSortValue = (item, name) => {
+    const f = db.fields.find((x) => x.name === name);
+    const system = f ? null : fieldDialogCore.SYSTEM_SORT[name];
+    if (system) return item[system.key] ?? null;
+    if (!f) return null;
+    const raw = item.raw?.[name];
+    if (f.type === 'daterange') return weaveDateGrain.rangeKey(raw);
+    const order = f.type === 'select' ? (f.optionsFull ?? []).map((o) => o.id) : f.type === 'workflow' ? (f.states ?? []).map((st) => st.id) : null;
+    if (order) return raw == null || raw === '' ? null : (order.indexOf(raw) + 1 || order.length + 1);
+    if (Array.isArray(raw) && raw.some((v) => typeof v === 'number')) return raw.filter((v) => typeof v === 'number').at(-1);
+    if (typeof raw === 'number' || f.type === 'date') return raw ?? null;
+    const shown = item.fields?.[name];
+    return VP.isEmpty(shown) ? null : String(fieldValueCell(shown));
+  };
+  const groupSlots = () => VP.model(VP.rowsFor(sortedItems, grouping.levels), {
+    levels: grouping.levels, collapsed: grouping.collapsed, rollups: grouping.rollups, subtotals: grouping.subtotals,
+  }).slots;
+  const rowSlotNear = (to, dir) => {
+    for (const d of [dir, -dir]) for (let k = to.r; k >= 0 && k < slots.length; k += d) if (slots[k].kind === 'row') return { ...to, r: k };
+    return null;
+  };
+  const foldGroup = (key) => {
+    const now = new Set(grouping.collapsed ?? []);
+    if (now.has(key)) now.delete(key); else now.add(key);
+    grouping.collapsed = [...now];
+    if (db.view) db.view.collapsed = grouping.collapsed;
+    built.delete(`h:${key}`);
+    slots = groupSlots();
+    for (const tr of live.values()) tr.remove();
+    live.clear();
+    rewindow();
+    wrap.querySelector(`tr.group-head[data-key="${CSS.escape(key)}"] .group-fold`)?.focus({ preventScroll: true });
+    listViewWrite(db, { collapsed: grouping.collapsed });
+  };
+  const buildGroupHead = (s) => {
+    const n = s.node;
+    const level = grouping.levels[n.level];
+    const shut = (grouping.collapsed ?? []).includes(n.key);
+    return el('tr', { class: `group-head lv-${n.level}` + (shut ? ' shut' : ''), dataset: { key: n.key, level: String(n.level), field: level.f.name } },
+      el('td', { colspan: String(colCount + sysTail.length + phone.chips.filter((x) => !cols.includes(x)).length) },
+        el('div', { class: 'group-head-in', style: `--level:${n.level}` },
+          el('button', { class: 'group-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `${shut ? 'Expand' : 'Collapse'} ${n.key}`, onclick: () => foldGroup(n.key) }, lucideEl('chevron-right')),
+          el('span', { class: 'group-head-field' }, level.f.name),
+          listHeadingEl({ levels: grouping.levels }, n.level, n),
+          el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)))));
+  };
+  const buildSumRow = (s) => {
+    const grand = s.kind === 'grand';
+    const label = grand ? 'All' : s.node.label;
+    const from = grand ? grouping.grand : grouping.sums?.get(s.node.key);
+    const stat = (x) => el('span', { class: 'foot-stat' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[x.agg] ?? x.agg), el('span', { class: 'foot-val' }, x.text));
+    return el('tr', { class: 'group-sum' + (grand ? ' grand' : ` lv-${s.node.level}`), dataset: grand ? { sum: 'all' } : { sum: s.node.key, level: String(s.node.level) } },
+      el('td', { class: 'sel-cell' }), el('td', { class: 'pid-cell foot-mark' }, 'Σ'),
+      ...cols.map((c, i) => el('td', { class: 'group-sum-cell', dataset: { col: c } },
+        i === 0 ? el('span', { class: 'group-sum-label', style: `--level:${grand ? 0 : s.node.level}` }, `${label} · ${VP.countText(s.rows, db.term)}`) : null,
+        ...rollupCells(from?.rollups, c).map(stat))),
+      ...sysTail.map(() => el('td')), el('td'));
+  };
+  const buildSlot = (s) => {
+    if (s.kind === 'head') return buildGroupHead(s);
+    if (s.kind === 'row') { const tr = buildRow(s.row.item); tr.dataset.group = s.node?.key ?? ''; return tr; }
+    return buildSumRow(s);
   };
 
   const GW = () => globalThis.WeaveGridWindow;
@@ -6743,8 +7073,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const rowFor = (i) => {
     const item = itemAt(i);
     if (!item) return el('tr', { class: 'entity-row-pending', 'aria-hidden': 'true', dataset: { i: String(i) }, style: `height:${rowH()}px` }, el('td', { colspan: String(colCount) }));
-    let tr = built.get(item.id);
-    if (!tr) { tr = buildRow(item); built.set(item.id, tr); }
+    const key = slots ? item.key : item.id;
+    let tr = built.get(key);
+    if (!tr) { tr = slots ? buildSlot(item) : buildRow(item); built.set(key, tr); }
     tr.dataset.i = String(i);
     return tr;
   };
@@ -6833,6 +7164,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
   const patchRows = async (fresh) => {
+    if (slots) return false;
     const arr = ordered();
     const at = (eid) => arr.findIndex((r) => r && r.id === eid);
     if (at(fresh.id) < 0) return false;
@@ -6890,28 +7222,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
   const draw = () => {
     sortedItems = [...items];
-    if (sortKey && !pager) {
-      const sortField = db.fields.find((f) => f.name === sortKey);
-      const sortType = sortField?.type;
-      const system = sortField ? null : fieldDialogCore.SYSTEM_SORT[sortKey];
-      const order = sortType === 'select' ? (sortField.optionsFull ?? []).map((o) => o.id)
-        : sortType === 'workflow' ? (sortField.states ?? []).map((st) => st.id) : null;
-      const val = (item) => {
-        if (system) return item[system.key] ?? null;
-        const raw = item.raw?.[sortKey];
-        if (sortType === 'daterange') return weaveDateGrain.rangeKey(raw);
-        if (order) return raw == null ? null : (order.indexOf(raw) + 1 || order.length + 1);
-        if (Array.isArray(raw) && raw.some((v) => typeof v === 'number')) return raw.filter((v) => typeof v === 'number').at(-1);
-        return typeof raw === 'number' || sortType === 'date' ? raw : item.fields[sortKey];
-      };
-      sortedItems.sort((a, b) => {
-        const av = val(a), bv = val(b);
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        return (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(fieldValueCell(av)).localeCompare(String(fieldValueCell(bv)))) * sortDir;
-      });
-    }
+    const levels = (db.sort ?? []).filter((x) => x?.field);
+    if (levels.length && !pager) sortedItems.sort(VP.comparator(levels, clientSortValue, (a, b) => (a.publicId ?? 0) - (b.publicId ?? 0)));
+    slots = grouping ? groupSlots() : null;
     live.clear(); built.clear();
     win.start = 0; win.end = 0;
     tbody = el('tbody');
@@ -6933,7 +7246,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           loadedNote)));
     }
 
-    const sortMark = (key) => (sortKey === key ? iconEl(sortDir > 0 ? '↑' : '↓', 'wv-icon wv-icon-xs') : null);
+    const sortAt = (key) => (db.sort ?? []).findIndex((x) => x.field === key);
+    const sortMark = (key) => {
+      const i = sortAt(key);
+      if (i < 0) return null;
+      const mark = iconEl(db.sort[i].dir === 'desc' ? '↓' : '↑', 'wv-icon wv-icon-xs');
+      return (db.sort ?? []).length > 1 ? el('span', { class: 'sort-mark' }, mark, el('sup', {}, String(i + 1))) : mark;
+    };
     const sysHead = (n, movable) => el('th', {
       class: movable ? 'col-head sys-head' : 'sys-head', title: `${n} — system field, read-only`, dataset: { col: n },
       ...(movable ? {
@@ -6981,7 +7300,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           columnResizeGrip(db, colField(db, c), grid)))),
         ...sysTail.map((n) => sysHead(n, false)),
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db))),
-      showsRollups(db) ? renderFooter(db, cols) : null),
+      showsRollups(db) && !slots ? renderFooter(db, cols) : null),
       tbody);
     for (const th of table.querySelectorAll('thead th.col-head:not(.sys-head)')) kindContext(th, 'field', () => colField(db, th.dataset.col), () => ({ db }));
     const kept = wrap.scrollTop;
@@ -7015,9 +7334,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const row = td.parentElement;
     const r = Number(row.dataset.i), c = stops(row).indexOf(td), cols = stops(row).length;
     const last = total() - 1;
-    const to = verb.to === 'end' ? (r === last ? null : { r: last, c })
+    let to = verb.to === 'end' ? (r === last ? null : { r: last, c })
       : verb.to === 'home' ? (r === 0 ? null : { r: 0, c })
         : KM().step({ r, c, rows: total(), cols }, verb);
+    if (to && slots) to = rowSlotNear(to, verb.to === 'home' ? 1 : verb.to === 'end' ? -1 : Math.sign(to.r - r) || 1);
     if (!to) return td.focus();
     const tr = await ensureRow(to.r);
     (tr ? stops(tr)[to.c] : td)?.focus();
@@ -7410,7 +7730,7 @@ async function editPhoneField(anchor, db, eid, name) {
       case 'date': {
         const c = { ...f };
         const { store, local } = dateStoreFns(c);
-        return datePopover({ anchor, title: f.name, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) });
+        return withDatePicker(() => datePopover({ anchor, title: f.name, value: local(raw ?? ''), costume: c, onPick: (iso) => run(write(iso == null ? null : store(iso), iso == null ? '—' : weaveDateCore.formatDate(store(iso), { ...c, viewerZone: LOCAL_ZONE }))) }));
       }
       case 'value': {
         const percent = f.type === 'number' && f.format === 'percent';
@@ -7781,24 +8101,26 @@ function dateControl({ value = '', title = '', time = false, format = 'iso', cos
   text.addEventListener('change', () => {
     const typed = text.value.trim();
     if (!typed) return set('');
-    try {
-      set(store(readTypedDate(typed, c, local())));
-    } catch {
-      toast(`Could not read '${typed}' as a ${timeOnly ? 'time' : 'date'}`, true);
-      text.value = show(current);
-    }
+    withDatePicker(() => {
+      try {
+        set(store(readTypedDate(typed, c, local())));
+      } catch {
+        toast(`Could not read '${typed}' as a ${timeOnly ? 'time' : 'date'}`, true);
+        text.value = show(current);
+      }
+    }, () => { text.value = show(current); });
   });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
   const btn = el('button', {
     type: 'button', class: 'date-pick-btn', title: timeOnly ? 'Pick a time' : 'Pick from the calendar', 'aria-label': timeOnly ? 'Pick a time' : 'Open calendar',
     onclick: (e) => {
       e.stopPropagation();
-      datePopover({ anchor: btn, title, value: local(), costume: c, onPick: (localIso) => {
+      withDatePicker(() => datePopover({ anchor: btn, title, value: local(), costume: c, onPick: (localIso) => {
         try { set(localIso == null ? null : store(localIso)); } catch (err) { toast(err.message, true); }
-      } });
+      } }));
     },
   }, calendarGlyph());
-  const wrap = el('span', { class: 'date-cell' }, text, btn);
+  const wrap = el('span', { class: 'date-cell', onfocusin: warmDatePicker, onpointerdown: warmDatePicker }, text, btn);
   wrap.setValue = (iso) => { current = iso ?? ''; text.value = show(current); fit(); };
   return wrap;
 }
@@ -7833,68 +8155,33 @@ function rangeControl({ value = null, title = '', costume, compact = true, place
     const typed = text.value.trim();
     if (!typed) return set(null);
     const ends = typed.split(/\s*[–—]\s*|\s+-\s+|\s+to\s+/i).filter(Boolean);
-    try {
-      if (ends.length !== 2) throw new Error('two ends');
-      set(orderRange({ start: store(readTypedDate(ends[0], c, local(current?.start))), end: store(readTypedDate(ends[1], c, local(current?.end))) }));
-    } catch {
-      toast(`Could not read '${typed}' as a range — type start – end`, true);
-      text.value = show(current);
-    }
+    withDatePicker(() => {
+      try {
+        if (ends.length !== 2) throw new Error('two ends');
+        set(orderRange({ start: store(readTypedDate(ends[0], c, local(current?.start))), end: store(readTypedDate(ends[1], c, local(current?.end))) }));
+      } catch {
+        toast(`Could not read '${typed}' as a range — type start – end`, true);
+        text.value = show(current);
+      }
+    }, () => { text.value = show(current); });
   });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
   const btn = el('button', {
     type: 'button', class: 'date-pick-btn', title: 'Pick the range from the calendar', 'aria-label': 'Open the range calendar',
     onclick: (e) => {
       e.stopPropagation();
-      datePopover({
+      withDatePicker(() => datePopover({
         anchor: btn, title, costume: c, range: true,
         value: current ? { start: local(current.start), end: local(current.end) } : null,
         onPick: (r) => {
           try { set(r ? orderRange({ start: store(r.start), end: store(r.end) }) : null); } catch (err) { toast(err.message, true); }
         },
-      });
+      }));
     },
   }, calendarGlyph());
-  const wrap = el('span', { class: 'date-cell range-cell', onclick: (e) => e.stopPropagation() }, text, btn);
+  const wrap = el('span', { class: 'date-cell range-cell', onclick: (e) => e.stopPropagation(), onfocusin: warmDatePicker, onpointerdown: warmDatePicker }, text, btn);
   wrap.setValue = (r) => { current = r?.start && r?.end ? { start: r.start, end: r.end } : null; text.value = show(current); };
   return wrap;
-}
-function orderRange(r) {
-  return String(r.start) > String(r.end) ? { start: r.end, end: r.start } : r;
-}
-
-function readTypedDate(typed, c, current) {
-  const dc = weaveDateCore;
-  const grain = dc.grainOf(c);
-  const format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
-  const pad = (n) => String(n).padStart(2, '0');
-  const clock = c.time ? dc.parseClock(typed) : null;
-  if (!grain.length) {
-    if (!clock) throw new Error('no time of day');
-    return clock;
-  }
-  const today = dc.todayIso();
-  const [ty, tm] = today.split('-').map(Number);
-  const hasD = grain.includes('day'), hasM = grain.includes('month'), hasY = grain.includes('year');
-  const bare = typed.replace(/\b(\d{1,2}:\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))\b/i, '').trim();
-  let day = null;
-  let m;
-  if (!hasM && hasD && (m = bare.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?$/i))) day = `${ty}-${pad(tm)}-${pad(m[1])}`;
-  else if (!hasD && hasM && (m = bare.match(/^(\d{1,2})[/.\-](\d{4})$/))) day = `${m[2]}-${pad(m[1])}-01`;
-  else if (!hasD && hasM && (m = bare.match(/^(\d{4})[/.\-](\d{1,2})$/))) day = `${m[1]}-${pad(m[2])}-01`;
-  else if (!hasD && !hasM && hasY && (m = bare.match(/^(\d{4})$/))) day = `${m[1]}-01-01`;
-  else if (!hasD && hasM && !hasY && (m = bare.match(/^(\d{1,2})$/))) day = `${ty}-${pad(m[1])}-01`;
-  else if (bare) {
-    day = parseNaturalDate(bare, new Date(), { dayFirst: format === 'eu' })
-      ?? (!hasD ? parseNaturalDate('1 ' + bare, new Date(), { dayFirst: format === 'eu' }) : null);
-  } else if (clock && current) {
-    day = String(current).split('T')[0];
-  }
-  if (!day) throw new Error('unreadable');
-  if (!c.time) return day;
-  const keep = dc.partsOf(current)?.t;
-  const t = clock ?? keep;
-  return t ? `${day}T${t}` : day;
 }
 
 function calendarGlyph() {
@@ -7902,215 +8189,6 @@ function calendarGlyph() {
   svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('width', '14'); svg.setAttribute('height', '14');
   svg.innerHTML = '<rect x="1.5" y="2.5" width="13" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 6h13" stroke="currentColor" stroke-width="1.3"/><path d="M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
   return svg;
-}
-
-function datePopover({ anchor, title = '', value, time, format, costume = null, range = false, onPick }) {
-  const dc = weaveDateCore;
-  const c = costume ?? { time, format };
-  time = !!c.time;
-  format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
-  const grain = dc.grainOf(c);
-  const hasY = grain.includes('year'), hasM = grain.includes('month'), hasD = grain.includes('day');
-  const pad = (n) => String(n).padStart(2, '0');
-  document.querySelector('.date-pop')?.remove();
-  const todayIso = dc.todayIso();
-  const [ty, tm, td] = todayIso.split('-').map(Number);
-  const startVal = range ? (value?.start ?? '') : (value || '');
-  const p = dc.partsOf(startVal) ?? {};
-  let y = p.y ?? ty, m = p.m ?? tm;
-  const dayOf = (iso) => { const q = dc.partsOf(iso || ''); return q?.d != null ? `${q.y}-${pad(q.m)}-${pad(q.d)}` : ''; };
-  const clockOf = (iso) => dc.partsOf(iso || '')?.t ?? '';
-  const ends = range
-    ? { start: dayOf(value?.start), end: dayOf(value?.end) }
-    : { start: dayOf(value), end: '' };
-  const clocks = range
-    ? { start: clockOf(value?.start), end: clockOf(value?.end) }
-    : { start: clockOf(value), end: '' };
-  let picking = range && ends.start && !ends.end ? 'end' : 'start';
-  let view = !hasY && !hasM && !hasD ? 'clock' : hasD && !hasM ? 'daylist' : hasM && !hasD ? 'months' : hasY && !hasM ? 'years' : 'days';
-  let decadeBase = y;
-  const pop = el('div', { class: 'date-pop' + (range ? ' range' : ''), role: 'dialog', onclick: (e) => e.stopPropagation() });
-  const withClock = (day, which = 'start') => (time ? `${day}T${clocks[which] || '00:00'}` : day);
-  const stamp = (which) => (view === 'clock' ? clocks[which] : (ends[which] ? withClock(ends[which], which) : ''));
-  const commit = (close) => {
-    if (range) {
-      const both = view === 'clock' ? clocks.start && clocks.end : ends.start && ends.end;
-      if (both) onPick({ start: stamp('start'), end: stamp('end') });
-    } else {
-      onPick(view === 'clock' ? (clocks.start || null) : (ends.start ? stamp('start') : null));
-    }
-    if (close) pop.remove();
-    else draw();
-  };
-  const clear = () => { ends.start = ''; ends.end = ''; clocks.start = ''; clocks.end = ''; picking = 'start'; onPick(null); pop.remove(); };
-  const pick = (dayIso) => {
-    if (!range) { ends.start = dayIso; return commit(!time); }
-    if (picking === 'start') { ends.start = dayIso; ends.end = ''; picking = 'end'; return draw(); }
-    ends.end = dayIso;
-    if (ends.end < ends.start) [ends.start, ends.end] = [ends.end, ends.start];
-    picking = 'start';
-    commit(!time);
-  };
-  const dayClass = (iso) => (
-    (iso === todayIso ? ' today' : '')
-    + (iso === ends.start || iso === ends.end ? ' sel' : '')
-    + (range && ends.start && ends.end && iso > ends.start && iso < ends.end ? ' in-range' : ''));
-  const smartFor = (which) => {
-    const cur = range ? (value?.[which] ?? '') : (value || '');
-    const smart = el('input', {
-      class: 'form-control form-control-sm date-smart',
-      'aria-label': range ? (which === 'start' ? 'Start' : 'End') : 'Date',
-      placeholder: view === 'clock' ? '9:15, 5:40 pm…' : hasD ? 'today, 15 sep, 9/15/26…' : hasM ? 'aug 2026, 08/2026…' : '2026…',
-      value: dc.formatDate(cur, { ...c, viewerZone: LOCAL_ZONE }),
-    });
-    const preview = el('div', { class: 'date-smart-preview' });
-    const readSmart = () => {
-      try { return readTypedDate(smart.value, c, cur); } catch { return null; }
-    };
-    smart.addEventListener('input', () => {
-      const local = readSmart();
-      let shown = '…';
-      if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; } }
-      preview.textContent = smart.value.trim() ? shown : '';
-    });
-    smart.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const local = readSmart();
-      if (!local) return toast(`Could not read '${smart.value}' as a ${view === 'clock' ? 'time' : 'date'}`, true);
-      if (view === 'clock') { clocks[which] = local; return commit(!range || !!(clocks.start && clocks.end)); }
-      const day = local.split('T')[0];
-      const t = local.split('T')[1];
-      if (t) clocks[which] = t;
-      if (!range) { ends.start = day; return commit(true); }
-      [y, m] = day.split('-').map(Number);
-      if (which === 'start') {
-        ends.start = day; ends.end = ''; picking = 'end';
-        draw();
-        pop.querySelector('.date-pop-smart-end .date-smart')?.focus();
-        return;
-      }
-      ends.end = day;
-      if (!ends.start) { picking = 'start'; return draw(); }
-      if (ends.end < ends.start) [ends.start, ends.end] = [ends.end, ends.start];
-      picking = 'start';
-      commit(true);
-    });
-    return el('div', { class: 'date-pop-smart' + (range ? ' date-pop-smart-' + which : '') },
-      range ? el('span', { class: 'date-smart-label' }, which === 'start' ? 'Start' : 'End') : null, smart, preview);
-  };
-  const body = el('div', { class: 'date-pop-body' });
-  const timeInput = (which) => {
-    const t = el('input', { type: 'time', class: 'form-control form-control-sm date-time', 'aria-label': range ? `${which} time` : 'Time', value: clocks[which] });
-    t.addEventListener('change', () => {
-      clocks[which] = t.value;
-      if (view === 'clock') { commit(false); return; }
-      if (ends.start && (!range || ends.end)) commit(false);
-    });
-    return t;
-  };
-  const timeRow = () => el('div', { class: 'date-pop-time' },
-    el('span', {}, 'Time'), timeInput('start'),
-    ...(range ? [el('span', { class: 'range-sep' }, '–'), timeInput('end')] : []));
-  const foot = (todayPick) => el('div', { class: 'date-pop-foot' },
-    el('button', { type: 'button', class: 'date-pop-link', onclick: clear }, 'Clear'),
-    el('button', { type: 'button', class: 'date-pop-link', onclick: todayPick }, 'Today'));
-  function draw() {
-    body.replaceChildren();
-    if (view === 'days') {
-      body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, dc.MONTHS_LONG[m - 1], lucideEl('chevron-down', 'wv-icon wv-icon-xs')),
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, String(y), lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span'),
-        el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '‹'),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '›')));
-      const grid = el('div', { class: 'date-grid' }, ...dc.WEEKDAYS.map((d) => el('span', { class: 'date-wd' }, d)));
-      for (const week of dc.calendarMonth(y, m)) {
-        for (const cell of week) {
-          grid.append(el('button', {
-            type: 'button',
-            class: 'date-day' + (cell.inMonth ? ' in' : ' out') + dayClass(cell.iso),
-            onclick: () => { [y, m] = cell.iso.split('-').map(Number); pick(cell.iso); },
-          }, String(cell.day)));
-        }
-      }
-      body.append(grid);
-      if (time) body.append(timeRow());
-      body.append(foot(() => { [y, m] = [ty, tm]; pick(todayIso); }));
-    } else if (view === 'daylist') {
-      const grid = el('div', { class: 'date-grid' });
-      for (let d = 1; d <= 31; d++) {
-        const iso = `${ty}-${pad(tm)}-${pad(d)}`;
-        grid.append(el('button', {
-          type: 'button', class: 'date-day in' + dayClass(iso),
-          onclick: () => pick(iso),
-        }, String(d)));
-      }
-      body.append(grid);
-      if (time) body.append(timeRow());
-      body.append(foot(() => pick(todayIso)));
-    } else if (view === 'clock') {
-      body.append(timeRow(), el('div', { class: 'date-pop-foot' },
-        el('button', { type: 'button', class: 'date-pop-link', onclick: clear }, 'Clear'),
-        el('button', { type: 'button', class: 'date-pop-link', onclick: () => {
-          const d = new Date();
-          const now = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-          if (!range) { clocks.start = now; return commit(true); }
-          if (picking === 'start') { clocks.start = now; clocks.end = ''; picking = 'end'; return draw(); }
-          clocks.end = now; picking = 'start'; commit(true);
-        } }, 'Now')));
-    } else if (view === 'months') {
-      body.append(el('div', { class: 'date-pop-head' },
-        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, String(y), hasD ? null : lucideEl('chevron-down', 'wv-icon wv-icon-xs')) : el('span', { class: 'date-pop-title' }, 'Month'),
-        el('span', { class: 'date-pop-spacer' }),
-        ...(hasY ? [
-          el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous year', onclick: () => { y--; draw(); } }, '‹'),
-          el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next year', onclick: () => { y++; draw(); } }, '›')] : [])));
-      body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => {
-        const iso = `${y}-${pad(i + 1)}-01`;
-        return el('button', {
-          type: 'button', class: 'date-pick-cell' + (hasD ? (i + 1 === m ? ' sel' : '') : dayClass(iso).replace(' today', '')),
-          onclick: () => {
-            m = i + 1;
-            if (hasD) { view = 'days'; draw(); return; }
-            pick(iso);
-          },
-        }, name);
-      })));
-      if (!hasD && time) body.append(timeRow());
-      if (!hasD) body.append(foot(() => { y = ty; m = tm; pick(`${ty}-${pad(tm)}-01`); }));
-    } else {
-      const years = dc.decade(decadeBase);
-      body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasM) { view = hasD ? 'days' : 'months'; draw(); } } }, `${years[0]}–${years[years.length - 1]}`),
-        el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous decade', onclick: () => { decadeBase -= 10; draw(); } }, '‹'),
-        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next decade', onclick: () => { decadeBase += 10; draw(); } }, '›')));
-      body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => {
-        const iso = `${yr}-01-01`;
-        return el('button', {
-          type: 'button', class: 'date-pick-cell' + (hasM ? (yr === y ? ' sel' : '') : dayClass(iso).replace(' today', '')),
-          onclick: () => {
-            y = yr;
-            if (hasM) { view = 'months'; draw(); return; }
-            pick(iso);
-          },
-        }, String(yr));
-      })));
-      if (!hasM) body.append(foot(() => { y = ty; pick(`${ty}-01-01`); }));
-    }
-  }
-  draw();
-  const smarts = range ? [smartFor('start'), smartFor('end')] : [smartFor('start')];
-  pop.append(...(title ? [el('div', { class: 'picker-title' }, title)] : []), ...smarts, body);
-  document.body.append(pop);
-  const r = anchor.getBoundingClientRect();
-  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
-  pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
-  dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => anchor.contains(t), close: () => pop.remove() });
-  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
-  smarts[0].querySelector('.date-smart').focus();
-  return pop;
 }
 
 function segCtl(options, value, onPick) {
@@ -8139,6 +8217,13 @@ function lazyScript(src) {
   return lazyScripts.get(src);
 }
 
+const warmDatePicker = () => { lazyScript('/date-picker.js').catch(() => {}); };
+function withDatePicker(run, undo = () => {}) {
+  lazyScript('/date-picker.js').then(run, () => { undo(); toast('The calendar did not load. Check the connection and try again.', true); });
+}
+function openForms(db) {
+  lazyScript('/forms-dialog.js').then(() => formsDialog(db), () => toast('Forms did not load. Check the connection and try again.', true));
+}
 function openFieldDialog(...args) {
   lazyScript('/field-dialog.js').then(() => fieldDialog(...args), () => toast('Field settings did not load. Check the connection and try again.', true));
 }
@@ -8329,29 +8414,9 @@ async function footerPicker(anchor, db, col) {
   const tailKey = `Σ ${db.id} ${col}`;
   const write = async (agg, on) => {
     const cur = have(agg);
-    if (on && !cur) {
-      const made = await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
-      rollups = [...rollups, { fieldId: made.id, name: made.name, targetField: agg === 'count' ? null : col, aggregate: agg, where: null, value: null, display: null }];
-      const reg = registryTable('spaces');
-      if (reg) {
-        reg.fields.push(spaceRollupEntry(db, col, agg, made));
-        for (const v of reg.views ?? []) if (!v.fields.includes(made.name)) v.fields.push(made.name);
-      }
-    } else if (!on && cur) {
-      await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
-      rollups = rollups.filter((r) => r !== cur);
-      const reg = registryTable('spaces');
-      if (reg) {
-        reg.fields = reg.fields.filter((x) => x.id !== cur.fieldId);
-        for (const v of reg.views ?? []) {
-          v.fields = v.fields.filter((n) => n !== cur.name);
-          if (v.widths && cur.name in v.widths) {
-            delete v.widths[cur.name];
-            if (!Object.keys(v.widths).length) delete v.widths;
-          }
-        }
-      }
-    }
+    const made = await footRollupWrite(db, col, agg, on, cur, spacesT);
+    if (made) rollups = [...rollups, { fieldId: made.id, name: made.name, targetField: agg === 'count' ? null : col, aggregate: agg, where: null, value: null, display: null }];
+    else if (!on && cur) rollups = rollups.filter((r) => r !== cur);
   };
   const flip = (box) => {
     const agg = box.closest('.foot-row').dataset.agg;
@@ -10358,297 +10423,20 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 }
 
 const activityPanel = (() => {
-  const H = () => window.weaveHistoryCore;
-  let st = null;
-  let panel = null;
-  let sheetBack = null;
-  let fitObserver = null;
-
-  const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
-  const val = (v, cls = '') => el('span', { class: `wv-act-val ${cls}`.trim() }, H().valueText(v));
-  const arrow = () => el('span', { class: 'wv-act-arr' }, iconEl('lucide:arrow-right', 'wv-icon'));
-  const byId = (id) => st?.items.find((it) => it.id === id);
-  const revsOf = (field) => st.items.filter((it) => it.kind === 'rev' && it.field === field);
-  const prevOf = (r) => { const l = revsOf(r.field); return l[l.indexOf(r) + 1] ?? null; };
-  const sections = () => [...(st?.mount ?? document).querySelectorAll('.doc-section[data-doc-field]')];
-  const sectionFor = (field) => sections().find((s) => s.dataset.docField === field);
-
-  async function load() {
-    const [ent, act] = await Promise.all([api('GET', `/entities/${st.id}`), api('GET', `/activity?entity=${st.id}&limit=${ACTIVITY_PAGE}`)]);
-    const db = allTables().find((d) => d.id === ent.dbId);
-    const docFields = (db?.fields ?? []).filter((f) => f.type === 'document').map((f) => f.name);
-    const documents = await Promise.all(docFields.map(async (field) => ({
-      field, revisions: (await api('GET', `/entities/${st.id}/doc/revisions?field=${encodeURIComponent(field)}&limit=200`)).revisions,
-    })));
-    const optionName = (field, v) => {
-      const f = (db?.fields ?? []).find((x) => x.name === field);
-      return (f?.optionsFull ?? []).find((o) => o?.id === v)?.name ?? v;
-    };
-    st.docFields = docFields;
-    st.name = ent.name ?? '';
-    st.items = H().feed({ documents, activity: act.items, optionName });
-    if (st.sel && !byId(st.sel)) st.sel = null;
-  }
-  const text = async (r) => {
-    if (!st.texts.has(r.seq)) st.texts.set(r.seq, (await api('GET', `/entities/${st.id}/doc/revisions/${r.seq}?field=${encodeURIComponent(r.field)}`)).text);
-    return st.texts.get(r.seq);
+  let core = null;
+  const load = () => lazyScript('/activity-panel.js').then(() => (core = activityPanelCore), (err) => {
+    toast('Activity did not load. Check the connection and try again.', true);
+    throw err;
+  });
+  return {
+    toggle: (id, mount) => (core ? core.toggle(id, mount) : load().then((c) => c.toggle(id, mount), () => {})),
+    close: (opts) => core?.close(opts),
+    mounted: (id, mount) => {
+      if (core) return core.mounted(id, mount);
+      if (sideWanted() === 'activity') load().then((c) => { if (mount.isConnected) c.mounted(id, mount); }, () => {});
+    },
+    get openFor() { return core?.openFor ?? null; },
   };
-
-  const undoTop = async () => (await api('GET', '/undo?limit=1'))[0] ?? null;
-  async function afterWrite(msg, top) {
-    st.done = { id: st.sel, top };
-    await refreshView();
-    await load();
-    render();
-    toast(msg, false, { label: 'Undo', run: undo });
-  }
-  async function restore(r) {
-    try {
-      await flushDocSave(st.id, r.field);
-      const out = await api('POST', `/entities/${st.id}/doc/revisions/${r.seq}/restore`, { field: r.field });
-      if (out.changed === false) return toast(`${r.field} already reads as the version from ${stamp(r.at)}`);
-      const mine = await undoTop();
-      await load();
-      const top = revsOf(r.field)[0];
-      st.sel = top.id; st.from = null;
-      await afterWrite(`${r.field} restored from ${stamp(r.at)}`, mine);
-    } catch (err) { toast(err.message, true); }
-  }
-  async function revert(a) {
-    try {
-      await api('PATCH', `/entities/${st.id}`, { values: { [a.field]: a.from } });
-      const mine = await undoTop();
-      st.sel = a.id;
-      await afterWrite(`${a.field} reverted`, mine);
-    } catch (err) { toast(err.message, true); }
-  }
-  async function undo() {
-    const done = st?.done; if (!done) return;
-    try {
-      const top = await undoTop();
-      const same = top && done.top && top.ts === done.top.ts && top.kind === done.top.kind && top.entityId === done.top.entityId;
-      if (!same) return toast('Changed since, so nothing was undone', true);
-      await api('POST', '/undo', { steps: 1 });
-      st.done = null;
-      await refreshView();
-      await load();
-      const it = byId(st.sel);
-      if (it?.kind === 'rev') st.sel = revsOf(it.field)[0]?.id ?? null;
-      render();
-      toast('Undone');
-    } catch (err) { toast(err.message, true); }
-  }
-
-  function cmpSelect(r) {
-    const prev = prevOf(r), others = revsOf(r.field).filter((x) => x !== r);
-    if (!others.length) return null;
-    const p = pickerSelect({
-      name: 'compare', title: 'Compare with', value: st.from ?? prev?.id ?? others[0].id,
-      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${weaveActor.actorText(x.actor)}` })),
-    });
-    p.classList.add('wv-act-cmp');
-    p.input.addEventListener('change', () => { st.from = prev && p.input.value === prev.id ? null : p.input.value; render(); });
-    return p;
-  }
-  function tray(it) {
-    const btn = (label, icon, run, primary = false) => el('button', { class: `btn btn-sm${primary ? ' btn-primary' : ''}`, type: 'button', onclick: run }, iconEl(icon, 'wv-icon'), label);
-    if (st.done?.id === it.id) return el('div', { class: 'wv-act-tray' }, btn('Undo', 'lucide:undo', undo), it.kind === 'rev' ? cmpSelect(it) : null);
-    if (it.kind === 'rev') {
-      return it.current ? (cmpSelect(it) ? el('div', { class: 'wv-act-tray' }, cmpSelect(it)) : null)
-        : el('div', { class: 'wv-act-tray' }, btn('Restore', 'lucide:undo', () => restore(it), true), cmpSelect(it));
-    }
-    if (it.kind === 'undo' || it.undone) return null;
-    return el('div', { class: 'wv-act-tray' }, btn(H().revertLabel(it.from), 'lucide:undo', () => revert(it), true));
-  }
-  function row(it) {
-    const on = st.sel === it.id;
-    let icon, what, who = clock(it.at), act = null;
-    if (it.kind === 'rev') {
-      icon = it.restoredFrom != null || it.undo ? 'lucide:undo' : 'lucide:file-text';
-      what = [el('span', { class: 'name' }, it.field),
-        it.restoredFrom != null ? el('span', {
-          class: 'wv-act-src',
-          title: it.source ? `Restored the version from ${weaveDateCore.relativeOrShort(it.source.at).title}${it.source.actor ? ` by ${weaveActor.actorText(it.source.actor)}` : ''}` : 'Restored a version no longer kept',
-        }, it.source ? `restored from ${stamp(it.source.at)}` : 'restored from an earlier version') : null,
-        it.delta ? el('span', { class: `wv-act-delta ${it.delta > 0 ? 'pos' : 'neg'}` }, it.delta > 0 ? `+${it.delta}` : `−${-it.delta}`) : null];
-      if (it.current) who += ' · current'; else if (it.undo) who += ' · undo';
-      if (!it.current && !on) act = { title: 'Restore this version', icon: 'lucide:undo', run: () => restore(it) };
-    } else {
-      icon = it.kind === 'undo' ? 'lucide:undo' : it.kind === 'state' ? 'lucide:workflow' : 'lucide:pencil';
-      what = [el('span', { class: 'name' }, it.field), val(it.from), arrow(), val(it.to, 'new')];
-      if (it.undone) who += ' · undone';
-      if (!on && !it.undone && it.kind !== 'undo') act = { title: H().revertLabel(it.from), icon: 'lucide:undo', run: () => revert(it) };
-    }
-    const node = el('div', { class: `wv-act-row${on ? ' sel' : ''}${it.undone ? ' undone' : ''}`, tabindex: '0', 'data-id': it.id },
-      el('span', { class: 'wv-act-kind' }, iconEl(icon, 'wv-icon')),
-      el('span', { class: 'wv-act-what' }, ...what),
-      act ? el('button', { class: 'wv-act-icon', type: 'button', title: act.title, 'aria-label': act.title, onclick: (e) => { e.stopPropagation(); act.run(); } }, iconEl(act.icon, 'wv-icon')) : el('span'),
-      el('span', { class: 'wv-act-who' }, ...(() => { const chip = actorChipEl(it.actor, { link: false }); return chip ? [chip, ` · ${who}`] : [who]; })()),
-      on ? tray(it) : null);
-    node.addEventListener('click', (e) => {
-      if (e.target.closest('.wv-act-tray, .wv-act-view')) return;
-      st.sel = it.id; st.from = null; st.done = null; st.scroll = true; render();
-    });
-    node.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === node) node.click(); });
-    return node;
-  }
-  function fitFilters(strip) {
-    if (!strip.isConnected) return;
-    const chipEls = [...strip.querySelectorAll(':scope > button[data-filter]')];
-    const more = strip.querySelector(':scope > .wv-act-more');
-    const fits = () => {
-      const last = [...strip.children].filter((c) => !c.hidden).at(-1);
-      const edge = strip.getBoundingClientRect().right - parseFloat(getComputedStyle(strip).paddingRight);
-      return !last || last.getBoundingClientRect().right <= edge + 0.5;
-    };
-    for (const c of chipEls) c.hidden = false;
-    more.hidden = true;
-    if (fits()) return;
-    more.hidden = false;
-    const spare = chipEls.filter((c) => c.dataset.filter.startsWith('doc:') && c.getAttribute('aria-pressed') !== 'true').reverse();
-    for (const c of spare) {
-      c.hidden = true;
-      if (fits()) return;
-    }
-  }
-  function subjectCrumb() {
-    if (!st.name) return [];
-    const subject = dockCoversScreen.matches
-      ? el('button', { type: 'button', class: 'wv-act-subject', title: `Back to ${st.name}`, onclick: () => close() }, st.name)
-      : el('span', { class: 'wv-act-subject' }, st.name);
-    return [subject, el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›')];
-  }
-  function renderPanel() {
-    const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields']];
-    const pickFilter = (k) => { st.filter = k; render(); };
-    const chipEls = chips.map(([k, label]) => el('button', { type: 'button', 'data-filter': k, 'aria-pressed': String(st.filter === k), onclick: () => pickFilter(k) }, label));
-    const more = el('button', {
-      type: 'button', class: 'wv-act-more', hidden: true, 'aria-haspopup': 'menu', title: 'More filters',
-      onclick: () => menu(chipEls.filter((c) => c.hidden).map((c) => ({ label: c.textContent, section: 'organize', run: () => pickFilter(c.dataset.filter) })), { anchor: more, label: 'More filters' }),
-    }, 'More', iconEl('lucide:chevron-down', 'wv-icon'));
-    const filters = el('div', { class: 'wv-act-filters', role: 'toolbar', 'aria-label': 'Show' }, ...chipEls, more);
-    const list = el('div', { class: 'wv-act-list' });
-    let day = '';
-    for (const it of H().filterFeed(st.items, st.filter)) {
-      const d = H().dayLabel(it.at);
-      if (d !== day) { list.append(el('div', { class: 'wv-act-day' }, d)); day = d; }
-      list.append(row(it));
-    }
-    if (!list.children.length) list.append(el('div', { class: 'wv-empty' }, 'No changes yet.'));
-    const keep = panel?.querySelector('.wv-act-list')?.scrollTop ?? 0;
-    const next = el('aside', { class: 'wv-activity', 'aria-label': 'Activity' },
-      el('div', { class: 'wv-act-head' }, el('h3', {}, ...subjectCrumb(), el('span', { class: 'wv-act-section' }, 'Activity')),
-        el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
-      filters, list);
-    const side = $('#side');
-    if (panel?.parentElement === side) panel.replaceWith(next); else side.replaceChildren(next);
-    panel = next;
-    side.hidden = false;
-    wirePaneGutter(side, SIDE_PANE);
-    applyPaneWidth(side, SIDE_PANE);
-    fitObserver?.disconnect();
-    fitFilters(filters);
-    fitObserver = new ResizeObserver(() => fitFilters(filters));
-    fitObserver.observe(filters);
-    list.scrollTop = keep;
-    const s = list.querySelector('.wv-act-row.sel');
-    if (s) {
-      const lb = list.getBoundingClientRect(), sb = s.getBoundingClientRect();
-      if (sb.bottom > lb.bottom) list.scrollTop += sb.bottom - lb.bottom + 8;
-      else if (sb.top < lb.top + 28) list.scrollTop -= lb.top + 28 - sb.top;
-    }
-  }
-
-  const reveal = (node, padding = 12) => { if (st.scroll) { st.scroll = false; scrollTargetIntoView(node, { padding }); } };
-  function clearViews() {
-    for (const v of document.querySelectorAll('.wv-act-view')) {
-      const body = v.closest('.doc-section')?.querySelector(':scope > .doc-section-body');
-      if (body) body.hidden = false;
-      v.remove();
-    }
-  }
-  async function renderView() {
-    clearViews();
-    const it = byId(st?.sel);
-    if (!it) return;
-    const inSheet = dockCoversScreen.matches ? panel?.querySelector('.wv-act-row.sel') : null;
-    if (it.kind === 'rev') {
-      const sec = inSheet ? null : sectionFor(it.field); if (!inSheet && !sec) return;
-      const from = st.from ? byId(st.from) : prevOf(it);
-      const view = el('div', { class: 'wv-act-view' });
-      if (inSheet) inSheet.append(view);
-      else { const body = sec.querySelector(':scope > .doc-section-body'); body.hidden = true; body.after(view); }
-      const [ft, tt] = await Promise.all([from ? text(from) : '', text(it)]);
-      if (!view.isConnected) return;
-      const diff = el('div', { class: 'wv-act-diff' }); diff.innerHTML = H().renderDiff(ft, tt);
-      view.append(el('div', { class: 'wv-act-bar' }, from ? val(stamp(from.at), 'from') : null, from ? arrow() : null, val(stamp(it.at), 'to')), diff);
-      if (inSheet) reveal(inSheet, 36); else reveal(sec);
-      return;
-    }
-    const host = inSheet ?? st.mount?.querySelector('.entity-body'); if (!host) return;
-    const view = el('div', { class: 'wv-act-view top' }, el('div', { class: 'wv-act-card' },
-      el('b', {}, it.field), val(it.from), arrow(), val(it.to, 'new')));
-    if (inSheet) { inSheet.append(view); reveal(inSheet, 36); return; }
-    host.prepend(view);
-    reveal(view);
-  }
-  function render() {
-    if (!st) return;
-    renderPanel();
-    renderView();
-    for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
-    sideSyncUrl();
-  }
-
-  async function open(id, mount) {
-    if (st?.id !== id) st = { id, texts: new Map() };
-    Object.assign(st, { mount: mount ?? st.mount ?? $('#main'), filter: 'all', from: null, done: null, scroll: true });
-    try { await flushDocSaves(); await load(); } catch (err) { st = null; return toast(err.message, true); }
-    const first = H().filterFeed(st.items, st.filter)[0];
-    st.sel = first?.id ?? null;
-    if (dockCoversScreen.matches && !sheetBack) {
-      sheetBack = () => close({ back: true });
-      history.pushState({ ...(history.state ?? {}), wvSheet: 'activity' }, '', location.href);
-      addEventListener('popstate', sheetBack);
-    }
-    render();
-  }
-  function close({ back = false } = {}) {
-    if (sheetBack) {
-      removeEventListener('popstate', sheetBack);
-      sheetBack = null;
-      if (!back && history.state?.wvSheet === 'activity') history.back();
-    }
-    fitObserver?.disconnect(); fitObserver = null;
-    panel?.remove(); panel = null;
-    $('#side').hidden = true;
-    $('#side-gutter').hidden = true;
-    clearViews();
-    for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
-    st = null;
-    sideSyncUrl();
-  }
-  function toggle(id, mount) {
-    if (st?.id === id && panel?.isConnected) return close();
-    return open(id, mount);
-  }
-  function mounted(id, mount) {
-    if (!st || !panel) { if (sideWanted() === 'activity') open(id, mount); return; }
-    if (st.id !== id) { if (!st.mount?.isConnected || !panel.isConnected) close(); return; }
-    st.mount = mount;
-    for (const b of mount.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
-    renderPanel();
-    renderView();
-    sideSyncUrl();
-  }
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel?.isConnected || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
-    e.stopPropagation();
-    close();
-  }, true);
-  window.addEventListener('hashchange', () => setTimeout(() => { if (st && !st.mount?.isConnected) close(); }, 0));
-  return { toggle, open, close, mounted, get openFor() { return panel?.isConnected ? st?.id : null; } };
 })();
 
 function quickCreate(db) {
@@ -11696,41 +11484,44 @@ function resetGridWait() {
   hideGridLoader();
 }
 
-function paintSkeleton(kind, db) {
+function paintSkeleton(kind, db, under = null) {
   const main = $('#main');
   if (!main) return;
   const line = (w, h = 12) => el('div', { class: 'sk sk-line', style: `width:${w};height:${h}px` });
-  if (kind === 'db') {
-    const n = Math.max(2, Math.min(db ? visibleCols(db).length : 4, 8));
-    const widths = Array.from({ length: n }, (_, i) => (i === 0 ? '22%' : `${Math.max(12 - i, 7)}%`));
-    const bar = () => el('div', { class: 'sk-row' }, line('28px'), ...widths.map((w, i) => line(w, i === 0 ? 14 : 12)));
-    main.replaceChildren(
-      el('div', { class: 'sk-toolbar' }, line('180px', 22), line('120px', 22)),
-      el('div', { class: 'card panel sk-card' },
-        el('div', { class: 'sk-row sk-head' }, line('30px'), ...widths.map((w) => line(w, 13))),
-        ...Array.from({ length: 8 }, bar)));
-  } else if (kind === 'entity') {
+  if (kind === 'entity') {
     main.replaceChildren(el('div', { class: 'sk-entity' },
       el('div', { class: 'sk-main' }, line('40%', 22), el('div', { class: 'sk sk-block' }), el('div', { class: 'sk sk-block short' })),
       el('div', { class: 'sk-side' }, line('30%', 13),
         ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row' }, line('30%'), line('50%'))))));
-  } else {
-    main.replaceChildren(
-      el('div', { class: 'sk-toolbar' }, line('220px', 22)),
-      el('div', { class: 'card list-rows sk-card' },
-        ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row sk-listrow' }, line('30%'), line('10%')))));
+    return;
   }
+  let toolbar, card;
+  if (kind === 'db') {
+    const n = Math.max(2, Math.min(db ? visibleCols(db).length : 4, 8));
+    const widths = Array.from({ length: n }, (_, i) => (i === 0 ? '22%' : `${Math.max(12 - i, 7)}%`));
+    const bar = () => el('div', { class: 'sk-row' }, line('28px'), ...widths.map((w, i) => line(w, i === 0 ? 14 : 12)));
+    toolbar = el('div', { class: 'sk-toolbar' }, line('180px', 22), line('120px', 22));
+    card = el('div', { class: 'card panel sk-card' },
+      el('div', { class: 'sk-row sk-head' }, line('30px'), ...widths.map((w) => line(w, 13))),
+      ...Array.from({ length: 8 }, bar));
+  } else {
+    toolbar = el('div', { class: 'sk-toolbar' }, line('220px', 22));
+    card = el('div', { class: 'card list-rows sk-card' },
+      ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row sk-listrow' }, line('30%'), line('10%'))));
+  }
+  if (under?.parentElement === main) under.after(card);
+  else main.replaceChildren(toolbar, card);
 }
 
 const skeleton = { timer: 0, watch: null };
-function scheduleSkeleton(kind, db) {
+function scheduleSkeleton(kind, db, under = null) {
   cancelSkeleton();
   const main = $('#main');
   if (main) {
     skeleton.watch = new MutationObserver(cancelSkeleton);
     skeleton.watch.observe(main, { childList: true });
   }
-  skeleton.timer = setTimeout(() => { cancelSkeleton(); paintSkeleton(kind, db); }, SKELETON_SHOW_AFTER_MS);
+  skeleton.timer = setTimeout(() => { cancelSkeleton(); paintSkeleton(kind, db, under); }, SKELETON_SHOW_AFTER_MS);
 }
 function cancelSkeleton() {
   clearTimeout(skeleton.timer);
@@ -11767,6 +11558,7 @@ function dispatchRoute() {
   rememberRoute();
   const hash = location.hash || '#/';
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
+  if (!dbM) paneSync(null);
   if (!(dbM && tableChromeOn(dbM[1]))) {
     resetGridWait();
     scheduleSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
@@ -11870,10 +11662,11 @@ function sheetGrip(sheet, close) {
     if (from === null || e.pointerId !== from.id) return;
     const { height, y, t } = from;
     const span = Math.max(1, last - t);
-    const speed = Math.max(0, e.clientY - y) / span;
+    const reach = e.type === 'pointerup' ? Math.max(at, e.clientY - y) : at;
+    const speed = reach / span;
     from = null;
     grip.releasePointerCapture?.(e.pointerId);
-    if (at > height * 0.3 || (at > 24 && speed > 0.5)) {
+    if (reach > height * 0.3 || (reach > 24 && speed > 0.5)) {
       settle();
       close();
       return;
