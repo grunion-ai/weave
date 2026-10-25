@@ -118,6 +118,7 @@ export function mint(weave, opts = {}) {
   const { scope, mode = 'read', visibility = 'public', label = '', formId, audience } = opts;
   if (audience != null) throw invalid('Named audiences are not available in this beta');
   const target = resolveScope(weave, scope);
+  if (target.kind === 'entities' && mode !== 'read') throw invalid('Selected-entry shares are read-only in this beta');
   if (!SHARE_MODES.includes(mode)) throw invalid(`A share's mode is one of ${SHARE_MODES.join(', ')}; got ${JSON.stringify(mode)}`);
   if (mode === 'comment') throw new WeaveError('Comment links wait for comments by share; mint read, edit or manage for now', 'forbidden');
   if (!SHARE_VISIBILITIES.includes(visibility)) throw invalid(`A share's visibility is public or private; got ${JSON.stringify(visibility)}`);
@@ -341,7 +342,7 @@ function selectedQueryAllowed(weave, db, opts) {
 
 export function shareGate(weave, grant, { method, path, body = {}, searchParams = null, viewerZone = null }) {
   if (grant.mode === 'submit') return refuse(403, 'A submission link only accepts its form');
-  const rung = RUNG[grant.mode] ?? 0;
+  const rung = grant.scope.kind === 'entities' ? RUNG.read : RUNG[grant.mode] ?? 0;
   const read = method === 'GET' || method === 'HEAD';
   const decode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
   const entityIn = (ref) => {

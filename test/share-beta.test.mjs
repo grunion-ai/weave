@@ -159,3 +159,14 @@ test('share rotation while a query body is pending invalidates that request', as
     assert.equal(status, 401);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+
+
+test('selected-entry grants are read-only even when imported with an elevated mode', () => {
+  const { w, a } = seed();
+  for (const mode of ['edit', 'manage', 'submit', 'comment']) {
+    assert.throws(() => w.mintShare({ scope: { kind: 'entities', ids: [a.id] }, mode }), { code: 'invalid' });
+  }
+  const grant = w.mintShare({ scope: { kind: 'entities', ids: [a.id] } });
+  assert.equal(shareGate(w, { ...grant, mode: 'manage' }, { method: 'PATCH', path: `/api/entities/${a.id}`, body: { Name: 'Changed' } }).status, 403);
+  assert.equal(shareGate(w, { ...grant, mode: 'manage' }, { method: 'DELETE', path: `/api/entities/${a.id}` }).status, 403);
+});
