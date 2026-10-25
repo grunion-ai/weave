@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const KEPT = 'alpha\n\nbeta';
@@ -101,7 +102,7 @@ test('MCP: weave_set_doc needs its markdown', () => {
 });
 
 test('CLI: doc set with neither --content nor --file is refused', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-doc-keys-'));
+  const dir = tempDir('weave-doc-keys-');
   const data = join(dir, 'ws.json');
   const cli = (...args) => execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' });
   try {

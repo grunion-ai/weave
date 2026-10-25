@@ -105,6 +105,13 @@ running animation, its transform is identity and its box has stayed put for a
 frame (Issue #901).
 `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
 Retries remain visible in test output; repeated flakiness gets a tracker issue.
+A test that needs a scratch directory calls `tempDir(prefix)` from
+`test/lib/temp.mjs`, which removes every directory it opened when the process
+exits. `test/temp-dirs.test.mjs` refuses a bare
+`mkdtempSync(join(tmpdir(), ...))` anywhere under `test/`, because a suite run
+outside the manager, such as a bare `node --test` or a browser suite that only
+takes a browser lease, keeps the caller's own `TMPDIR` and leaves those
+directories on the disk (Issue #1083).
 
 ### Sheriff
 

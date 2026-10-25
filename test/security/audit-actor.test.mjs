@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
 const { createRequestHandler } = await import('../../src/routes.js');
@@ -104,7 +105,7 @@ test('import CSV, export JSON and import JSON each write one audit entry naming 
 });
 
 test('workspace create, trash, restore and delete each write one audit entry on the hub root', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-audit-hub-'));
+  const dir = tempDir('weave-audit-hub-');
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const root = seed('root', { path: join(dir, 'root.db') });
   const call = caller(createWorkspaceHub(root));

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readLock, diffLock, sha256 } from '../../scripts/vendor-lock.mjs';
 import { queryable, buildQueries, toRows } from '../../scripts/vendor-advisories.mjs';
+import { tempDir } from '../lib/temp.mjs';
 
 test('every vendored file matches security/vendor.lock.json, and none is unlisted or missing', () => {
   const { missing, changed, unlisted } = diffLock(readLock());
@@ -26,7 +27,7 @@ test('the confirmed versions are pinned, and DOMPurify is its own entry inside m
 });
 
 test('diffLock names a changed, an unlisted and a missing file', () => {
-  const root = mkdtempSync(join(tmpdir(), 'vlock-'));
+  const root = tempDir('vlock-');
   try {
     mkdirSync(join(root, 'public/vendor'), { recursive: true });
     writeFileSync(join(root, 'public/vendor/a.js'), 'one');

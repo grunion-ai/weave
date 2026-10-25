@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
+import { tempDir } from './lib/temp.mjs';
 
 function fresh(config) {
   const w = new Weave();
@@ -136,7 +137,7 @@ test('pre-fractional percent values divide by 100 exactly once at load', async (
   const { mkdtempSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-pct-'));
+  const dir = tempDir('weave-pct-');
   try {
     const path = join(dir, 'pct.db');
     const w = new Weave({ path });

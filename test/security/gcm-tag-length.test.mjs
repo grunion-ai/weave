@@ -4,8 +4,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { read } from '../lib/source.mjs';
+import { tempDir } from '../lib/temp.mjs';
 
-const dir = mkdtempSync(join(tmpdir(), 'weave-gcm-'));
+const dir = tempDir('weave-gcm-');
 process.env.WEAVE_KEYSTORE = join(dir, 'unused-keystore.json');
 const { Weave } = await import('../../src/engine.js');
 

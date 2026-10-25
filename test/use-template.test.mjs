@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave, templateDoc } from '../src/engine.js';
 import { dispatchTool } from '../src/mcp.js';
 import { normalise } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/weave.js', import.meta.url));
 const spacesRow = (w, name) => {
@@ -60,7 +61,7 @@ test('a workspace opened without the Template column gets it, and its rows say w
   spaces.fieldOrder = spaces.fieldOrder.filter((x) => x !== id);
   for (const v of spaces.tableViews ?? []) v.fields = v.fields.filter((x) => x !== id);
   for (const e of Object.values(dump.entities)) delete e.values?.[id];
-  const dir = mkdtempSync(join(tmpdir(), 'weave-template-'));
+  const dir = tempDir('weave-template-');
   try {
     const path = join(dir, 'old.db');
     const old = new Weave({ path });
@@ -116,7 +117,7 @@ test('weave_update_space and the CLI take template', () => {
   dispatchTool(w, 'weave_update_space', { space: 'CRM', template: false });
   assert.equal('template' in w.getSpace('CRM'), false);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-template-cli-'));
+  const dir = tempDir('weave-template-cli-');
   try {
     const data = join(dir, 'w.db');
     const cli = (...args) => execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' });
@@ -267,7 +268,7 @@ test('useTemplate refuses a name the target already holds and leaves the target\
 });
 
 test('weave template list and weave template use --into copy the schema into another file', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-template-cli-'));
+  const dir = tempDir('weave-template-cli-');
   try {
     const src = join(dir, 'src.db');
     const other = join(dir, 'other.db');

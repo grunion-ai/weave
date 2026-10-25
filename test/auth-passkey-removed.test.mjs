@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { renderAuthPage } from '../src/auth-page.js';
 import { startIdp, serveOidc } from './lib/idp.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -144,7 +145,7 @@ test('routes: a signed-in visit to /auth, and the visit right after sign-out, ge
 });
 
 test('cli: account invite and account remove-credential are unknown subcommands, and help does not list them', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-nopasskey-'));
+  const dir = tempDir('weave-nopasskey-');
   try {
     const data = join(dir, 'w.db');
     const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });

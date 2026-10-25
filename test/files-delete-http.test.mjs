@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 async function serve() {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-files-delete-'));
+  const dir = tempDir('weave-files-delete-');
   const w = new Weave({ path: join(dir, 'ws.db') });
   w.createSpace({ name: 'Ops' });
   w.createTable({ space: 'Ops', name: 'Task' });

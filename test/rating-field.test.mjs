@@ -9,6 +9,7 @@ import { Weave, FIELD_TYPES, DEFINABLE_TYPES, TYPE_MIGRATIONS, RATING_MAX } from
 import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 import { VOCABULARY } from '../src/vocabulary.js';
+import { tempDir } from './lib/temp.mjs';
 
 function ws(config = {}) {
   const w = new Weave();
@@ -65,7 +66,7 @@ test('a rating made with no max is out of five on every surface: engine, route, 
   dispatchTool(w, 'weave_add_field', { db: 'Vendor', name: 'Mcp', type: 'rating' });
   assert.equal(w.getField(t, 'Mcp').config.max, 5, 'weave_add_field');
   assert.match(TOOLS.find((x) => x.name === 'weave_add_field').description, /max 1-100, default 5/, 'the MCP tool names the range');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-rating-'));
+  const dir = tempDir('weave-rating-');
   try {
     const data = join(dir, 'ws.db');
     const fw = new Weave({ path: data });

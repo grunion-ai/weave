@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -57,7 +58,7 @@ test('MCP hands a delete back as a text item, never an item with no text', () =>
 });
 
 test('the CLI prints a delete as JSON, not the word undefined', () => {
-  const data = join(mkdtempSync(join(tmpdir(), 'weave-cli-')), 'weave.json');
+  const data = join(tempDir('weave-cli-'), 'weave.json');
   const cli = (...args) => execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' });
   try {
     cli('space', 'create', 'P');

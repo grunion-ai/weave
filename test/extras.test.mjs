@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, parseCSV } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 
 test('parseCSV handles quotes, commas, newlines', () => {
@@ -52,7 +53,7 @@ test('CSV export → import roundtrip', () => {
 });
 
 test('file attach with disk persistence and read-back', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-files-'));
+  const dir = tempDir('weave-files-');
   try {
     const w = new Weave({ path: join(dir, 'ws.json') });
     w.createSpace({ name: 'S' });

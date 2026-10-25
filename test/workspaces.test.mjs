@@ -4,12 +4,13 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { renderMarkdown } from '../src/markdown.js';
+import { tempDir } from './lib/temp.mjs';
 
 test('engine refuses to adopt non-workspace JSON files', async () => {
   const { mkdtempSync, writeFileSync, readFileSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-guard-'));
+  const dir = tempDir('weave-guard-');
   try {
     const pkg = join(dir, 'package.json');
     const original = '{\n "name": "something",\n "version": "1.0.0"\n}';
@@ -124,7 +125,7 @@ test('workspace delete: trash move, guards, and the fresh-workspace description'
   const { join } = await import('node:path');
   const { Weave } = await import('../src/engine.js');
   const { startServer } = await import('../src/server.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-wsdel-'));
+  const dir = tempDir('weave-wsdel-');
   try {
     const main = new Weave({ path: join(dir, 'main.db') });
     main.state.meta.name = 'main';

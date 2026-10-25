@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave, ACTIVITY_CAP } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const OVER = 7;
 
@@ -62,7 +63,7 @@ test('route, MCP and CLI carry the count (parity)', async () => {
   assert.equal(dispatchTool(w, 'weave_get_entity', { entity: e.id }).activityDropped, OVER);
   assert.equal(dispatchTool(w, 'weave_activity', { entity: e.id }).dropped, OVER);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-actcap-'));
+  const dir = tempDir('weave-actcap-');
   try {
     const data = join(dir, 'ws.db');
     const fw = new Weave({ path: data });

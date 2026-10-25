@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
 const { client } = await import('../lib/fixtures.mjs');
@@ -13,7 +14,7 @@ const { seedWeaver } = await import('../../src/weaver-seed.js');
 const REPORT = { categories: ['slow'], note: 'the grid stalls', events: [], client: { version: 'test' } };
 
 function build({ accounts = true } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-hub-'));
+  const dir = tempDir('weave-hub-');
   const at = (name) => { const w = new Weave({ path: join(dir, `${name}.db`) }); w.updateWorkspace({ name }); return w; };
   const root = at('root');
   const open = at('open');

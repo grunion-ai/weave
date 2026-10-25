@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 function fresh(w = new Weave()) {
   w.createSpace({ name: 'Dev' });
@@ -174,7 +175,7 @@ test('weave_update_field repoints a lookup and names the formulas it breaks', ()
 });
 
 test('weave field update repoints a rollup from the terminal', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-repoint-'));
+  const dir = tempDir('weave-repoint-');
   try {
     const data = join(dir, 'ws.db');
     fresh(new Weave({ path: data })).w.save();

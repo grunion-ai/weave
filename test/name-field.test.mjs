@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
+import { tempDir } from './lib/temp.mjs';
 
 function deals() {
   const w = new Weave();
@@ -98,7 +99,7 @@ test('the Name field can become a formula: the name is computed, the term surviv
 });
 
 test('a computed name is what search finds, and turning it back into text freezes it', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-name-'));
+  const dir = tempDir('weave-name-');
   try {
     const w = new Weave({ path: join(dir, 'w.db') });
     w.createSpace({ name: 'Sales' });

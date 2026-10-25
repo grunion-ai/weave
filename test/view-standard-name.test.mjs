@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { TOOLS } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 test('a new table opens on a view named Standard', () => {
   const w = new Weave();
@@ -16,7 +17,7 @@ test('a new table opens on a view named Standard', () => {
 });
 
 test('a workspace saved with "Default" views opens with them named Standard, registry row and all, once', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-standard-'));
+  const dir = tempDir('weave-standard-');
   const path = join(dir, 'w.db');
   try {
     let w = new Weave({ path });
@@ -44,7 +45,7 @@ test('a workspace saved with "Default" views opens with them named Standard, reg
 });
 
 test('a table whose views already include one named Standard keeps both names apart', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-standard-'));
+  const dir = tempDir('weave-standard-');
   const path = join(dir, 'w.db');
   try {
     let w = new Weave({ path });

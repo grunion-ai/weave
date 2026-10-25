@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 await import('../public/field-dialog-core.js');
 const FDC = globalThis.weaveFieldDialogCore ?? globalThis.fieldDialogCore;
@@ -62,7 +63,7 @@ test('a select with nothing in it can still become a workflow — it gets the de
 });
 
 test('the CLI adds a state column with no --config', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-wf-'));
+  const dir = tempDir('weave-wf-');
   try {
     const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
     const cli = (...args) => execFileSync('node', [BIN, ...args, '--data', join(dir, 'ws.json')], { encoding: 'utf8' });

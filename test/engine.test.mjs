@@ -350,7 +350,7 @@ test('CSV export and schema description', () => {
 });
 
 test('persistence roundtrip', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-'));
+  const dir = tempDir('weave-');
   const path = join(dir, 'weave.json');
   try {
     const w1 = new Weave({ path });
@@ -395,7 +395,7 @@ test('a table reorders its fields', () => {
 });
 
 test('a reordered table survives a reload', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-order-'));
+  const dir = tempDir('weave-order-');
   try {
     const path = join(dir, 'ws.db');
     const w1 = new Weave({ path });
@@ -438,7 +438,7 @@ test('a field carries a column width', () => {
 });
 
 test('a resized column survives a reload', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-width-'));
+  const dir = tempDir('weave-width-');
   try {
     const path = join(dir, 'ws.db');
     const w1 = new Weave({ path });
@@ -631,6 +631,7 @@ test('client schema exposes optionsFull with ids/colors and state ids', () => {
 });
 
 import { TYPE_MIGRATIONS } from '../src/engine.js';
+import { tempDir } from './lib/temp.mjs';
 
 test('TYPE_MIGRATIONS names the compatible moves Kyle asked for', () => {
   assert.ok(TYPE_MIGRATIONS.text.includes('number'));

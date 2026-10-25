@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 async function withHub(fn) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-wtrash-'));
+  const dir = tempDir('weave-wtrash-');
   const main = new Weave({ path: join(dir, 'main.db') });
   main.state.meta.name = 'main';
   main.save();
@@ -66,7 +67,7 @@ test('the default workspace cannot be deleted', async () => {
 });
 
 test('the tombstone survives a restart: a fresh hub still hides the workspace', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-wtrash2-'));
+  const dir = tempDir('weave-wtrash2-');
   try {
     {
       const main = new Weave({ path: join(dir, 'main.db') });

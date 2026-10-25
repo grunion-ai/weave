@@ -6,9 +6,10 @@ import { join } from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 function fresh() {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-keys-'));
+  const dir = tempDir('weave-keys-');
   const w = new Weave({ keystorePath: join(dir, 'keystore.json') });
   w.createSpace({ name: 'Dev' });
   w.createTable({ space: 'Dev', name: 'Service' });

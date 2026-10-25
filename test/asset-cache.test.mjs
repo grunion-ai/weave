@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createAssetVersions } from '../src/server.js';
 import { withServer } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const INDEX = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
@@ -59,7 +60,7 @@ test("the shell's validator follows the bytes it serves, not index.html's mtime"
 });
 
 test('versions are cached per mtime and follow a content change', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-assets-'));
+  const dir = tempDir('weave-assets-');
   writeFileSync(join(dir, 'a.js'), 'one');
   const assets = createAssetVersions(dir);
   const v1 = assets.version('/a.js');

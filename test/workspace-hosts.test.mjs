@@ -9,6 +9,7 @@ import { startServer, hostAllowed, hostCheckFor, baseDomainFromEnv } from '../sr
 import { workspaceSlug, hostSlugRefusal } from '../src/workspace-name.js';
 import { createOidc } from '../src/oidc.js';
 import { startIdp } from './lib/idp.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const BASE = 'weave.test';
 
@@ -28,7 +29,7 @@ const hit = (port, host, method, path, { cookie, body } = {}) => new Promise((re
 });
 
 async function serveHub({ baseDomain = BASE, oidc = null, origin = null, before = () => {} } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-hosts-'));
+  const dir = tempDir('weave-hosts-');
   before(dir);
   const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   main.state.meta.name = 'Net';
@@ -148,7 +149,7 @@ test('slugs over HTTP: create and rename refuse reserved names; a rename leaves 
 });
 
 test('engine: a rename keeps the old slug as an alias across a reopen', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-hosts-'));
+  const dir = tempDir('weave-hosts-');
   try {
     const path = join(dir, 'acme.db');
     const w = new Weave({ path, name: 'acme' });

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const build = () => {
   const w = new Weave();
@@ -340,7 +341,7 @@ test('MCP lists weave_move_table and weave_duplicate_table, and dispatches them 
 
 test('CLI: `table move` and `table duplicate` reach the engine, and the usage line names them', () => {
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-kebab-'));
+  const dir = tempDir('weave-kebab-');
   const data = join(dir, 'ws.json');
   const cli = (...args) => execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' });
   try {

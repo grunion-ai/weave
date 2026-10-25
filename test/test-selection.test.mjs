@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { selectTests, affectedTests } from '../scripts/test-selection.mjs';
 import { lanes } from '../scripts/test.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const files = ['test/core.test.mjs', 'test/editor-browser.test.mjs', 'test/other.test.mjs'];
 test('test-only changes select sorted unique existing tests', () => {
@@ -26,7 +27,7 @@ test('empty discovered test list fails closed', () => {
   assert.throws(() => selectTests({ files: [], changed: [] }), /No test files/);
 });
 test('git discovery includes staged, unstaged and untracked files, recursively', t => {
-  const root = mkdtempSync(join(tmpdir(), 'weave-select-'));
+  const root = tempDir('weave-select-');
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
   mkdirSync(join(root, 'test/nested'), { recursive: true });

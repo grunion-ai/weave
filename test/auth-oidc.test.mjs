@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -89,7 +90,7 @@ test('engine: invites never leave through the JSON export, and an import keeps t
 });
 
 test('migration: a pinned identity drops its email, an unpinned one is dropped, and the identity audit is scrubbed', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-oidc-mig-'));
+  const dir = tempDir('weave-oidc-mig-');
   try {
     const path = join(dir, 'w.db');
     const w = new Weave({ path });
@@ -132,7 +133,7 @@ test('migration: a dump carrying the old shape is scrubbed on import too', () =>
 });
 
 test('cli: account link mints an invite (issuer from WEAVE_OIDC_ISSUER or --issuer); unlink takes the subject', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-oidc-'));
+  const dir = tempDir('weave-oidc-');
   try {
     const data = join(dir, 'w.db');
     const run = (args, env = {}) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: '', WEAVE_OIDC_CLIENT_ID: '', WEAVE_ORIGIN: '', WEAVE_UPDATE_CHECK: 'off', ...env } });

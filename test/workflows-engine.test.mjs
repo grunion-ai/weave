@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'node:http';
 import { Weave } from '../src/engine.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 
 const wf = (w) => w.getTable('System/Workflows');
@@ -209,7 +210,7 @@ test('migration adopts a hand-made row with the same Name on the same table inst
 });
 
 test('migration on a .db: the automations table empties on disk and a reopen does nothing more', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-wfmig-'));
+  const dir = tempDir('weave-wfmig-');
   try {
     const path = join(dir, 'ws.db');
     const { w, t } = demo();
