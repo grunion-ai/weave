@@ -1,1 +1,0 @@
-- The list layout prints each shown field's label at full strength, so it reads 5.9:1 against the row in light instead of 3.4:1 (Issue #1096).

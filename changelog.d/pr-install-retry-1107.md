@@ -1,1 +1,0 @@
-- Each `playwright install --with-deps` attempt in a PR browser job is bounded at five minutes and retried once, and apt gets a twenty-second acquire timeout with three retries, so a trickling mirror costs a retry instead of the `PR gate` (Issue #1107).

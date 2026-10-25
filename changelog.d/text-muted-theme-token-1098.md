@@ -1,1 +1,0 @@
-- The form builder's intro and field hints read 8.7:1 on the dark panel, up from 3.56:1: `.text-muted` now takes weave's own secondary token instead of the vendored fixed grey (Issue #1098).
