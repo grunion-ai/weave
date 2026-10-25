@@ -2386,7 +2386,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 }
 @media (max-width: 600px) {
   .wv-list .list-row:has(> .list-phone) { align-items: flex-start; min-height: 44px; cursor: pointer; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  .list-phone { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; padding: 6px 0 6px calc(8px + var(--wv-pid-w, 44px)); }
+  .list-phone { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; padding: 12px 0 6px calc(8px + var(--wv-pid-w, 44px)); }
   .list-phone * { pointer-events: none; }
   .list-phone-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; margin-left: calc(-8px - var(--wv-pid-w, 44px)); }
   .list-wrap:not([data-density="compact"], [data-phone-wrap]) .list-phone-head { min-height: 40px; }
