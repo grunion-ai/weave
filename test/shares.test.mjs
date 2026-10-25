@@ -500,3 +500,23 @@ test("a shared table page follows the view's sort order (Issue #838)", async () 
     assert.ok(html.indexOf('Two') < html.indexOf('One'), 'Name desc puts Two first');
   } finally { stop(); }
 });
+
+test('a shared table page prints related names joined by commas, a single relation by name, and a list as its strings (Issue #1084)', async () => {
+  const { w, call, mint, stop } = await serve();
+  try {
+    const person = w.createTable({ space: 'Dev', name: 'Person' });
+    const card = w.createTable({ space: 'Dev', name: 'Card' });
+    w.addField(card.id, { name: 'Tags', type: 'multiselect', config: { options: ['red', 'blue'] } });
+    w.addRelation(card.id, { name: 'Team', targetDb: person.id, cardinality: 'many-to-many', inverseName: 'TeamCards' });
+    w.addRelation(card.id, { name: 'Lead', targetDb: person.id, cardinality: 'many-to-one', inverseName: 'LeadCards' });
+    w.createEntity(person.id, { name: 'Ann' });
+    w.createEntity(person.id, { name: 'Bo' });
+    w.createEntity(card.id, { name: 'Plan', values: { Tags: ['red', 'blue'], Team: ['Ann', 'Bo'], Lead: 'Bo' } });
+    const g = mint({ kind: 'table', id: card.id });
+    const html = await (await call('GET', `/s/${g.token}/table/${card.id}`)).text();
+    assert.ok(html.includes('Ann, Bo'), 'a many-relation cell joins the related names');
+    assert.ok(html.includes('red, blue'), 'a plain list cell joins its strings');
+    assert.match(html, />Bo</, 'a single-relation cell prints the related name');
+    assert.ok(!html.includes('[object Object]'), 'no cell prints a raw object');
+  } finally { stop(); }
+});

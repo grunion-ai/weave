@@ -97,6 +97,41 @@ if (s) {
       });
 
 
+      test(`the new-row sheet dismisses when the last movement arrives with the release, not as a move (${engine}, ${theme}, Issue #1064)`, async () => {
+        const page = await open(make, issues, theme);
+        try {
+          const before = (await rows(page, issues)).length;
+          await page.click('.phone-bar .phone-new');
+          await page.waitForSelector('.new-row-sheet .sheet-grip');
+          await atRest(page.locator('.new-row-sheet'));
+          const h = (await page.locator('.new-row-sheet').boundingBox()).height;
+          const box = await page.locator('.new-row-sheet .sheet-grip').boundingBox();
+          const x = box.x + box.width / 2;
+          const y = box.y + box.height / 2;
+          await page.evaluate(() => {
+            globalThis.wvGripPointer = null;
+            document.querySelector('.new-row-sheet .sheet-grip')
+              .addEventListener('pointerdown', (e) => { globalThis.wvGripPointer = e.pointerId; }, { capture: true });
+          });
+          await page.mouse.move(x, y);
+          await page.mouse.down();
+          for (let i = 1; i <= 6; i += 1) {
+            await page.waitForTimeout(150);
+            await page.mouse.move(x, y + (h * 0.12 * i) / 6);
+          }
+          await page.waitForSelector('.new-row-sheet.sheet-dragging');
+          await page.evaluate(({ at, to }) => {
+            document.querySelector('.new-row-sheet .sheet-grip').dispatchEvent(new PointerEvent('pointerup', {
+              bubbles: true, cancelable: true, composed: true, pointerType: 'touch', isPrimary: true,
+              pointerId: globalThis.wvGripPointer, button: 0, buttons: 0, clientX: at, clientY: to,
+            }));
+          }, { at: x, to: y + h * 0.5 });
+          await page.mouse.up();
+          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
+          assert.equal((await rows(page, issues)).length, before, 'dragging it away writes nothing');
+        } finally { await page.close(); }
+      });
+
       test(`on a phone + opens a New bug sheet that writes nothing until Create, then Create writes the name and choices (${engine}, ${theme}, Issue #739)`, async () => {
         const page = await open(make, issues, theme);
         try {

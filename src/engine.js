@@ -6,6 +6,7 @@ import '../public/icon-registry.js';
 import '../public/mark-icons.js';
 import '../public/editor-lib.js';
 import '../public/list-core.js';
+import '../public/view-pane-core.js';
 import '../public/board-core.js';
 import '../public/phone-row.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
@@ -36,6 +37,7 @@ function iconValue(v) {
 
 const Term = globalThis.WeaveTerm;
 const ListCore = globalThis.weaveListCore;
+const ViewPane = globalThis.weaveViewPane;
 const BoardCore = globalThis.weaveBoardCore;
 const LAYOUTS = ['table', 'list', 'board'];
 const PhoneRow = globalThis.weavePhoneRow;
@@ -91,6 +93,8 @@ const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
+const PASTED_ENTITY = /^\s*(?:(?:[a-z][a-z0-9+.-]*:\/\/[^/\s]+)?(?:\/w\/[^/\s]+)?\/e\/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]\S*)?\s*$/i;
+export const pastedEntityId = (ref) => PASTED_ENTITY.exec(String(ref ?? '').replace(/%2f/gi, '/'))?.[1].toLowerCase() ?? null;
 const byPosition = (list) => list.map((x, i) => [x, i])
   .sort(([a, i], [b, j]) => (Number.isInteger(a.position) ? a.position : Infinity) - (Number.isInteger(b.position) ? b.position : Infinity) || i - j)
   .map(([x]) => x);
@@ -175,6 +179,7 @@ const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
 
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
+const DERIVED_CACHE_CAP = 32;
 export const SYSTEM_SORT_KEYS = {
   'Created At': 'createdAt', 'Modified At': 'updatedAt',
   'Created By': 'createdBy', 'Modified By': 'modifiedBy',
@@ -1295,7 +1300,7 @@ export class Weave {
     const cfg = config
       ? this.#normalizeViewConfig(db, field ?? { config: { ...VIEW_DEFAULTS[shape] } }, config)
       : (field?.config ?? VIEW_DEFAULTS[shape]);
-    const out = { shape, id: e.id, publicId: e.publicId, url: `/e/${e.id}`, name: this.entityName(e), link: cfg.link, state: null, description: null, fields: [] };
+    const out = { shape, id: e.id, publicId: e.publicId, url: this.permalink('entity', e.id), name: this.entityName(e), link: cfg.link, state: null, description: null, fields: [] };
     const face = this.#faceOf(e);
     if (face) out.avatar = face;
     const wf = Object.values(db.fields).find((f) => f.type === 'workflow');
@@ -1399,6 +1404,7 @@ export class Weave {
     }
     this.#schemaVersion = null;
     this.#scales.clear();
+    this.#forgetDerived();
   }
 
   #touching = null;
@@ -1435,6 +1441,7 @@ export class Weave {
     }
     const id = typeof entityOrId === 'string' ? entityOrId : entityOrId.id;
     this.#dirty.add(id);
+    this.#forgetDerived();
     this.#touching?.add(id);
     if (db?.system === 'workflows' && !this.#stamping) { this.#wfQueue.add(id); this.#wfEpoch++; }
   }
@@ -1458,6 +1465,7 @@ export class Weave {
     }
     this.#schemaVersion = null;
     this.#scales.clear();
+    this.#forgetDerived();
     return true;
   }
 
@@ -2106,6 +2114,7 @@ export class Weave {
     if (LAYOUTS.includes(v.layout)) out.layout = v.layout;
     if (v.groups) out.groups = v.groups;
     if (v.picture) out.picture = v.picture;
+    if (ViewPane.SUBTOTALS.includes(v.subtotals)) out.subtotals = v.subtotals;
     const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ field: db.fields[l.field].name, ...ListCore.compactLevel(db.fields[l.field].type, l) }));
     if (group.length) out.group = group;
     if (db.fields[v.completedBy]) out.completedBy = db.fields[v.completedBy].name;
@@ -2192,9 +2201,16 @@ export class Weave {
       else if (BoardCore.PICTURES.includes(patch.picture)) next.picture = patch.picture;
       else throw new WeaveError(`picture is off, small, medium or large — got ${JSON.stringify(patch.picture)}`, 'invalid');
     }
+    if (patch.subtotals !== undefined) {
+      if (patch.subtotals == null || patch.subtotals === 'all') delete next.subtotals;
+      else if (ViewPane.SUBTOTALS.includes(patch.subtotals)) next.subtotals = patch.subtotals;
+      else throw new WeaveError(`subtotals is all, top or none: which group levels carry a Σ row — got ${JSON.stringify(patch.subtotals)}`, 'invalid');
+    }
     if (patch.group !== undefined) {
+      const before = (next.group ?? []).map((l) => l.field).join('|');
       const g = patch.group == null ? [] : this.#checkGroup(db, patch.group);
       if (g.length) next.group = g; else delete next.group;
+      if (patch.collapsed === undefined && g.map((l) => l.field).join('|') !== before) delete next.collapsed;
     }
     if (patch.completedBy !== undefined) {
       if (patch.completedBy == null || patch.completedBy === '') delete next.completedBy;
@@ -2242,7 +2258,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'layout', 'groups', 'picture', 'group', 'completedBy', 'nest', 'collapsed', 'order', 'phoneRow'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'subtotals', 'layout', 'groups', 'picture', 'group', 'completedBy', 'nest', 'collapsed', 'order', 'phoneRow'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -2355,6 +2371,7 @@ export class Weave {
     if (next.parked && !Object.keys(next.parked).length) delete next.parked;
     if (patch.filters != null) { const f = this.#checkFilters(db, patch.filters); if (f) next.filters = f; else delete next.filters; }
     if (patch.sort != null) { const s = this.#checkSort(db, patch.sort); if (s) next.sort = s; else delete next.sort; }
+    const notes = this.#sortOutOfGroup(db, next);
     if (patch.search !== undefined) {
       if (patch.search !== null && typeof patch.search !== 'string') throw new WeaveError(`search is the text the table search box holds for this view ('' or null clears it). Got ${JSON.stringify(patch.search)}`, 'invalid');
       const text = (patch.search ?? '').trim();
@@ -2371,7 +2388,14 @@ export class Weave {
     this.save();
     this.#syncTableRow(db);
     this.#audit(created ? 'table-view-created' : 'table-view-updated', { table: this.qualifiedName(db), name: next.name });
-    return { ...this.#viewOut(db, next), ...(created ? { created: true } : {}) };
+    return { ...this.#viewOut(db, next), ...(created ? { created: true } : {}), ...(notes.length ? { notes } : {}) };
+  }
+
+  #sortOutOfGroup(db, next) {
+    if (!next.sort?.length || !next.group?.length) return [];
+    const n = ViewPane.normalize({ sort: next.sort, group: next.group.map((l) => ({ field: db.fields[l.field]?.name })) });
+    if (n.sort.length) next.sort = n.sort; else delete next.sort;
+    return n.notes;
   }
 
   #writeDefaultView(db, { filters, sort, hiddenFields }) {
@@ -2415,7 +2439,8 @@ export class Weave {
   }
 
   viewQuery(dbRef, ref) {
-    return this.#viewQueryIn(this.getTable(dbRef), ref);
+    const { view, ...out } = this.#viewQueryIn(this.getTable(dbRef), ref);
+    return out;
   }
 
   #viewQueryIn(db, ref) {
@@ -2428,7 +2453,7 @@ export class Weave {
       if (!f || !['workflow', 'toggle', 'select', 'multiselect'].includes(f.type) || !states?.length) continue;
       where.push([f.name, 'in', f.type === 'toggle' ? states.map((s) => s === f.config.on) : [...states]]);
     }
-    return { where, sort: structuredClone(v.sort ?? []), search: v.search ?? '' };
+    return { where, sort: structuredClone(v.sort ?? []), search: v.search ?? '', view: v };
   }
 
   #checkSort(db, sort) {
@@ -2443,6 +2468,9 @@ export class Weave {
       if (!['asc', 'desc'].includes(dir)) throw new WeaveError(`Sort direction is asc or desc, got '${s.dir}'`, 'invalid');
       return { field: name, dir };
     });
+    const twice = out.find((s, i) => out.findIndex((x) => x.field === s.field) !== i);
+    if (twice) throw new WeaveError(`sort names each field once: '${twice.field}' is there twice`, 'invalid');
+    if (out.length > ViewPane.SORT_CAP) throw new WeaveError(`A view sorts at most ${ViewPane.SORT_CAP} levels deep (primary, secondary, tertiary), got ${out.length}`, 'invalid');
     return out.length ? out : null;
   }
 
@@ -2460,6 +2488,7 @@ export class Weave {
 
   applySchema(doc, { dryRun = false, allowDestructive = false, partial = false } = {}) {
     if (!Array.isArray(doc)) throw new WeaveError('A schema document is the array describeSchema() returns', 'invalid');
+    if (!dryRun) this.applySchema(doc, { dryRun: true, allowDestructive, partial });
     const plan = [];
     const act = (action, subject, fn) => {
       plan.push({ action, subject });
@@ -3120,7 +3149,7 @@ export class Weave {
       if (vDoc.density) out.density = vDoc.density;
       if (vDoc.deleted) out.deleted = true;
       if (typeof vDoc.rollups === 'boolean') out.rollups = vDoc.rollups;
-      for (const k of ['layout', 'groups', 'picture']) if (vDoc[k]) out[k] = vDoc[k];
+      for (const k of ['layout', 'groups', 'picture', 'subtotals']) if (vDoc[k]) out[k] = vDoc[k];
       if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
       for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
       const pr = vDoc.phoneRow;
@@ -3152,7 +3181,7 @@ export class Weave {
       if ((vDoc.density ?? 'comfortable') !== (have?.density ?? 'comfortable')) patch.density = vDoc.density ?? 'comfortable';
       if (!!vDoc.deleted !== !!have?.deleted) patch.deleted = !!vDoc.deleted;
       if ((vDoc.rollups ?? null) !== (have?.rollups ?? null)) patch.rollups = vDoc.rollups ?? null;
-      for (const k of ['layout', 'groups', 'picture']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
+      for (const k of ['layout', 'groups', 'picture', 'subtotals']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
       for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.phoneRow ?? null) !== JSON.stringify(have?.phoneRow ?? null)) {
@@ -6039,10 +6068,37 @@ export class Weave {
   #rowIndex() {
     const entities = this.state.entities;
     if (this.#rows?.entities !== entities) {
-      this.#rows = { entities, byTable: new Map(), byPublicId: new Map() };
+      this.#rows = { entities, byTable: new Map(), byPublicId: new Map(), sortKeys: new Map(), sortOrders: new Map(), whereHits: new Map(), liveCounts: null };
       for (const e of Object.values(entities)) this.#indexRow(e);
     }
     return this.#rows;
+  }
+
+  #forgetDerived() {
+    const index = this.#rows;
+    if (!index) return;
+    index.sortKeys.clear();
+    index.sortOrders.clear();
+    index.whereHits.clear();
+    index.liveCounts = null;
+  }
+
+  #derivedKey(db, ...parts) {
+    const d = this.now();
+    const day = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    return [db.id, ...parts, this.viewerZone ?? '', day].join('\n');
+  }
+
+  #remember(map, key, value) {
+    if (map.size >= DERIVED_CACHE_CAP) map.delete(map.keys().next().value);
+    map.set(key, value);
+    return value;
+  }
+
+  #sortKeys(db, path) {
+    const index = this.#rowIndex();
+    const key = this.#derivedKey(db, String(path));
+    return index.sortKeys.get(key) ?? this.#remember(index.sortKeys, key, new Map());
   }
 
   #indexRow(e) {
@@ -6082,11 +6138,15 @@ export class Weave {
   }
 
   #liveRowCounts() {
+    const index = this.#rowIndex();
+    if (index.liveCounts) return index.liveCounts;
     const counts = new Map();
-    for (const e of Object.values(this.state.entities)) {
-      if (e.deletedAt) continue;
-      counts.set(e.dbId, (counts.get(e.dbId) ?? 0) + 1);
+    for (const [dbId, table] of index.byTable) {
+      let live = 0;
+      for (const e of table.values()) if (!e.deletedAt) live++;
+      if (live) counts.set(dbId, live);
     }
+    index.liveCounts = counts;
     return counts;
   }
 
@@ -6107,8 +6167,15 @@ export class Weave {
     return e;
   }
 
+  permalink(kind, id) {
+    const ws = `/w/${this.state.meta.name}`;
+    if (kind === 'workspace') return `${ws}/`;
+    if (kind === 'view') return `${ws}/#/view/${id}`;
+    return `${ws}/${{ entity: 'e', table: 't', space: 's' }[kind]}/${id}`;
+  }
+
   getEntity(id) {
-    const e = own(this.state.entities, id);
+    const e = own(this.state.entities, id) ?? own(this.state.entities, pastedEntityId(id));
     if (e) return e;
     const m = /^(.+)#(\d+)$/.exec(String(id));
     if (m && this.findTable(m[1])) {
@@ -6123,7 +6190,8 @@ export class Weave {
 
   findEntity(dbRef, ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
-    if (own(this.state.entities, ref)) return this.state.entities[ref];
+    const byId = own(this.state.entities, ref) ?? own(this.state.entities, pastedEntityId(ref));
+    if (byId) return byId;
     const db = this.getTable(dbRef);
     const q = /^(.+)#(\d+)$/.exec(String(ref));
     if (q) {
@@ -6229,7 +6297,8 @@ export class Weave {
     return e;
   }
 
-  updateEntity(id, valuesByName, { depth = 0 } = {}) {
+  updateEntity(id, valuesByName, { depth = 0, expectedRevision = null } = {}) {
+    if (expectedRevision != null) return this.#updateAtRevision(id, valuesByName, expectedRevision);
     const e = this.getEntity(id);
     const db = this.state.tables[e.dbId];
     const meta = this.#interceptUpdate(e, db, valuesByName);
@@ -6266,6 +6335,7 @@ export class Weave {
         e.docs[field.id] = md;
         e.updatedAt = nowISO();
         e.modifiedBy = this.actor;
+        this.#mark(e);
         if (!isCreate) this.#logActivity(e, 'doc-updated', docChange(field.name, before, md));
         this.#recordDocRevision(e, field, before, md, { prior });
         continue;
@@ -6287,6 +6357,7 @@ export class Weave {
       e.values[field.id] = val;
       e.updatedAt = nowISO();
       e.modifiedBy = this.actor;
+      this.#mark(e);
       if (!isCreate) this.#logActivity(e, 'field-updated', { field: field.name, from: old ?? null, to: val });
       this.#runAutomations(db, e, { type: 'field-updated', fieldId: field.id }, depth);
     }
@@ -7061,7 +7132,7 @@ export class Weave {
       });
       out.by = byF.name;
       out.groups = [...buckets].map(([value, members]) => {
-        const g = { value, rows: members.length, columns: {}, display: {} };
+        const g = { value, rows: members.length, columns: {}, display: {}, rollups: this.#rollupsOver(db, members) };
         for (const f of numeric) {
           const vals = members.map((e) => this.#resolve(e, db, f, 0));
           const d = describeNumbers(vals);
@@ -7104,12 +7175,28 @@ export class Weave {
     }
   }
 
+  #updateAtRevision(id, valuesByName, expectedRevision) {
+    let attempted = false;
+    try {
+      return this.store.batch(() => {
+        this.maybeRefresh();
+        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('This row changed since you read it; nothing was written', 'stale');
+        attempted = true;
+        return this.updateEntity(id, valuesByName);
+      });
+    } catch (err) {
+      if (attempted) this.#adoptRolledBack();
+      throw err;
+    }
+  }
+
   #adoptRolledBack() {
     const loaded = this.store.reload();
     if (!loaded) return;
     this.state = loaded;
     this.#schemaVersion = null;
     this.#scales.clear();
+    this.#forgetDerived();
   }
 
   readEntity(id, { viewerZone = null } = {}) {
@@ -7158,6 +7245,7 @@ export class Weave {
       const files = held.size ? e.files.filter((f) => held.has(f.id)).map((f) => (this.#hasBlob(f.id) ? f : { ...f, missing: true })) : null;
       return {
         id: e.id,
+        revision: this.entityRevision(e.id),
         publicId: e.publicId,
         db: this.qualifiedName(db),
         dbId: db.id,
@@ -7172,7 +7260,7 @@ export class Weave {
         createdBy: this.actorName(e.createdBy ?? null),
         modifiedBy: this.actorName(e.modifiedBy ?? null),
         deletedAt: e.deletedAt ?? null,
-        url: `/e/${e.id}`,
+        url: this.permalink('entity', e.id),
         ...(face ? { avatar: face } : {}),
         ...(Object.keys(scales).length ? { scales } : {}),
         ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
@@ -7200,7 +7288,7 @@ export class Weave {
       createdBy: this.actorName(e.createdBy ?? null),
       modifiedBy: this.actorName(e.modifiedBy ?? null),
       deletedAt: e.deletedAt ?? null,
-      url: `/e/${e.id}`,
+      url: this.permalink('entity', e.id),
       ...(Object.keys(scales).length ? { scales } : {}),
       ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
     };
@@ -7280,14 +7368,21 @@ export class Weave {
     try { return this.#queryIn(dbRef, opts, workspace); } finally { this.#query = null; }
   }
 
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '', view = null } = {}, workspace = null) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null } = {}, workspace = null) {
     const db = this.getTable(dbRef);
+    let grouped = null;
     if (view != null && view !== '') {
       const saved = this.#viewQueryIn(db, view);
       if (saved.where.length) where = { and: [...saved.where, Array.isArray(where ?? []) ? { and: where ?? [] } : where] };
       if (!sort?.length) sort = saved.sort;
       if (!String(search ?? '').trim()) search = saved.search;
+      if (saved.view.group?.length) grouped = saved.view;
     }
+    if (groupBy != null && groupBy !== '') {
+      const v = this.#viewQueryIn(db, groupBy).view;
+      grouped = v.group?.length ? v : null;
+    }
+    includeDeleted = includeDeleted ?? (grouped ? !!grouped.deleted : false);
     const inWs = this.#inWorkspace(db, workspace);
     const scoped = (list) => (inWs ? list.filter(inWs) : list);
     if (fields != null && !Array.isArray(fields)) throw new WeaveError('fields must be a list of field names', 'invalid');
@@ -7310,23 +7405,49 @@ export class Weave {
       rows = rows.filter((e) => hit.has(e.id));
     }
     const trashed = trashCount ? table.length - live : null;
-    if (where && (Array.isArray(where) ? where.length : true)) {
-      rows = rows.filter((e) => this.#matchNode(e, db, Array.isArray(where) ? { and: where } : where));
+    const filtered = where && (Array.isArray(where) ? where.length : true);
+    if (filtered) {
+      const index = this.#rowIndex();
+      const whereKey = this.#derivedKey(db, JSON.stringify(where));
+      const hits = index.whereHits.get(whereKey);
+      if (hits) rows = rows.filter((e) => hits.has(e.id));
+      else {
+        const node = Array.isArray(where) ? { and: where } : where;
+        const matched = new Set();
+        for (const e of table) if (this.#matchNode(e, db, node)) matched.add(e.id);
+        this.#remember(index.whereHits, whereKey, matched);
+        rows = rows.filter((e) => matched.has(e.id));
+      }
     }
-    for (const s of [...sort].reverse()) {
-      const { field, dir = 'asc' } = typeof s === 'string' ? { field: s } : s;
-      if (rows.length < 2) continue;
-      const mul = dir === 'desc' ? -1 : 1;
-      const keyed = rows.map((e) => ({ e, v: this.#pathValue(e, db, field, { undressed: true }) }));
-      rows = keyed.sort(({ v: av }, { v: bv }) => {
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
-        return String(av).localeCompare(String(bv)) * mul;
-      }).map(({ e }) => e);
+    const orderKey = sort.length && !inWs && !filtered && !String(search ?? '').trim() ? this.#derivedKey(db, JSON.stringify(sort), String(!!includeDeleted)) : null;
+    const ordered = orderKey ? this.#rowIndex().sortOrders.get(orderKey) : undefined;
+    if (ordered) rows = ordered;
+    else {
+      if (sort.length) rows = [...rows].sort((a, b) => a.publicId - b.publicId);
+      for (const s of [...sort].reverse()) {
+        const { field, dir = 'asc' } = typeof s === 'string' ? { field: s } : s;
+        if (rows.length < 2) continue;
+        const mul = dir === 'desc' ? -1 : 1;
+        const keys = this.#sortKeys(db, field);
+        const keyed = rows.map((e) => {
+          if (keys.has(e.id)) return { e, v: keys.get(e.id) };
+          const got = this.#pathValue(e, db, field, { undressed: true });
+          const v = got === '' || (Array.isArray(got) && !got.length) ? null : got;
+          keys.set(e.id, v);
+          return { e, v };
+        });
+        rows = keyed.sort(({ v: av }, { v: bv }) => {
+          if (av == null && bv == null) return 0;
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
+          return String(av).localeCompare(String(bv)) * mul;
+        }).map(({ e }) => e);
+      }
+      if (orderKey) this.#remember(this.#rowIndex().sortOrders, orderKey, rows);
     }
     const total = rows.length;
+    const groups = grouped ? this.#viewGroups(db, grouped, rows, { showEmpty: grouped.layout === 'list' && !filtered && !String(search ?? '').trim() }) : null;
     rows = rows.slice(offset, limit != null ? offset + limit : undefined);
     const items = rows.map((e) => {
       if (!select) return this.#readEntityIn(e.id, { pick, chips });
@@ -7334,7 +7455,78 @@ export class Weave {
       for (const path of select) out[path] = this.#pathValue(e, db, path);
       return out;
     });
-    return { total, items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}) };
+    return { total, items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}), ...(groups ?? {}) };
+  }
+
+  #groupFieldShape(f) {
+    return {
+      name: f.name, type: f.type,
+      ...(f.type === 'select' || f.type === 'multiselect' ? { options: f.config.options.map((o) => o.name) } : {}),
+      ...(f.type === 'workflow' ? { states: f.config.states.map((st) => ({ name: st.name })) } : {}),
+      ...(f.type === 'toggle' ? { on: f.config.on, off: f.config.off } : {}),
+    };
+  }
+
+  #groupTargets(f) {
+    const target = f.type === 'relation' && !f.config.targetDbs ? this.state.tables[f.config.targetDb] : null;
+    if (!target) return null;
+    const first = target.tableViews?.[0];
+    const sort = first?.sort?.length ? first.sort : [];
+    let rows = this.#queryIn(target.id, { sort, select: ['id'] }).items;
+    const order = sort.length ? [] : (first?.order ?? []);
+    if (order.length) {
+      const at = new Map(order.map((id, i) => [id, i]));
+      rows = rows.map((r, i) => ({ r, i })).sort((a, b) => (at.get(a.r.id) ?? Infinity) - (at.get(b.r.id) ?? Infinity) || a.i - b.i).map((x) => x.r);
+    }
+    return rows.map((r) => ({ id: r.id, publicId: r.publicId, name: r.name }));
+  }
+
+  #viewGroups(db, v, rows, { showEmpty = false } = {}) {
+    const ids = (v.group ?? []).map((l) => l.field).filter((id) => db.fields[id]);
+    const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ ...l, field: db.fields[l.field].name }));
+    const shapes = ids.map((id) => this.#groupFieldShape(db.fields[id]));
+    const pick = { ids: new Set(ids) };
+    const byId = new Map(rows.map((e) => [e.id, e]));
+    const items = rows.map((e) => ({ ...this.#readEntityIn(e.id, { pick, chips: Object.create(null) }), deleted: !!e.deletedAt }));
+    const levels = ViewPane.levelsFor(group, shapes, { domains: ids.map((id) => this.#groupTargets(db.fields[id])), items });
+    const m = ViewPane.model(ViewPane.rowsFor(items, levels), { levels, showEmpty });
+    const live = (list) => ViewPane.liveRows(list).map((r) => byId.get(r.id)).filter(Boolean);
+    return {
+      groups: m.nodes.map((n) => ({
+        path: n.path.map((p, i) => ({ field: levels[i].f.name, value: p.label })),
+        count: n.count,
+        rollups: this.#rollupsOver(db, live(n.rows)),
+      })),
+      groupTotal: { count: ViewPane.liveRows(items).length, rollups: this.#rollupsOver(db, rows.filter((e) => !e.deletedAt)) },
+    };
+  }
+
+  #rollupsOver(db, entities) {
+    const spacesT = this.#sysTable('spaces');
+    const row = spacesT && this.#sysRow('spaces', db.spaceId);
+    if (!row) return [];
+    const reg = this.#reg;
+    const nameField = db.fields[db.nameFieldId]?.name ?? 'Name';
+    const out = [];
+    for (const fid of spacesT.fieldOrder) {
+      const f = spacesT.fields[fid];
+      if (f?.type !== 'rollup' || f.config.via !== db.id || f.config.where) continue;
+      const agg = f.config.aggregate;
+      const target = f.config.targetField ? db.fields[f.config.targetField] ?? null : null;
+      let value = null;
+      if (agg === 'count') value = entities.length;
+      else if (target) {
+        const ticks = isBoolType(target.type) && NUMERIC_AGGREGATES.includes(agg);
+        const vals = entities.map((e) => this.#resolve(e, db, target, 1)).map((x) => (ticks && !isCycle(x) ? (x ? 1 : 0) : x));
+        if (!vals.some(isCycle)) {
+          const display = ['distinct', 'join'].includes(agg) ? entities.map((e, i) => this.#displayValue(db, target, vals[i], e)) : null;
+          value = aggregateValues(agg, vals, { display, separator: f.config.separator ?? ', ' });
+        }
+      }
+      const shown = value == null ? null : reg.#displayValue(spacesT, f, value, row);
+      out.push({ field: target?.name ?? nameField, aggregate: agg, value, display: shown == null ? null : String(shown) });
+    }
+    return out;
   }
 
   #matchNode(e, db, node) {
@@ -8255,7 +8447,7 @@ export class Weave {
   search(text, { limit = 25, table = null } = {}) {
     const scope = table == null ? null : this.getTable(table).id;
     return this.#searchHits(text, scope)
-      .map(({ e, score, snippet }) => ({ ...this.#summary(e.id), score, snippet }))
+      .map(({ e, score, snippet }) => ({ ...this.#summary(e.id), url: this.permalink('entity', e.id), score, snippet }))
       .sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
@@ -8265,6 +8457,7 @@ export class Weave {
     const idm = /^(.*?)#\s*(\d+)$/.exec(needle) ?? /^()(\d+)$/.exec(needle);
     const idNum = idm ? Number(idm[2]) : null;
     const idTable = idm ? idm[1].trim() : '';
+    const exact = pastedEntityId(needle);
     const results = [];
     for (const e of dbId ? this.listEntities(dbId) : Object.values(this.state.entities)) {
       if (e.deletedAt) continue;
@@ -8276,7 +8469,7 @@ export class Weave {
       const textValues = Object.values(home.fields)
         .filter((f) => SEARCHED_VALUE_TYPES.has(f.type) && f.id !== home.nameFieldId && typeof e.values?.[f.id] === 'string')
         .map((f) => e.values[f.id]).join('\n');
-      let score = 0;
+      let score = e.id === exact ? 20 : 0;
       let snippet = '';
       if (idNum !== null && e.publicId === idNum) {
         if (!idTable
@@ -8295,17 +8488,17 @@ export class Weave {
     return results;
   }
 
-  universalSearch(text, { limit = 25, prefix = '', tables = null } = {}) {
-    if (tables != null) return this.#scopedSearch(text, { limit, prefix, tables });
+  universalSearch(text, { limit = 25, tables = null } = {}) {
+    if (tables != null) return this.#scopedSearch(text, { limit, tables });
     const needle = String(text).toLowerCase().trim();
     if (!needle) return [];
     const results = [];
     if (this.state.meta.name.toLowerCase().includes(needle)) {
-      results.push({ kind: 'workspace', id: 'workspace', name: this.state.meta.name, url: prefix + '/', score: 8 });
+      results.push({ kind: 'workspace', id: 'workspace', name: this.state.meta.name, url: this.permalink('workspace'), score: 8 });
     }
     for (const sp of this.listSpaces()) {
       if (sp.name.toLowerCase().includes(needle)) {
-        results.push({ kind: 'space', id: sp.id, name: sp.name, url: `${prefix}/#/space/${sp.id}`, score: 9 });
+        results.push({ kind: 'space', id: sp.id, name: sp.name, url: this.permalink('space', sp.id), score: 9 });
       }
     }
     let tableCounts = null;
@@ -8314,27 +8507,27 @@ export class Weave {
         tableCounts ??= this.#liveRowCounts();
         results.push({
           kind: 'table', id: db.id, name: this.qualifiedName(db),
-          url: `${prefix}/#/table/${db.id}`, entityCount: tableCounts.get(db.id) ?? 0, score: 9,
+          url: this.permalink('table', db.id), entityCount: tableCounts.get(db.id) ?? 0, score: 9,
         });
       }
     }
     for (const v of this.listViews()) {
       if (v.name.toLowerCase().includes(needle)) {
-        results.push({ kind: 'view', id: v.id, name: v.name, url: `${prefix}/#/view/${v.id}`, score: 8 });
+        results.push({ kind: 'view', id: v.id, name: v.name, url: this.permalink('view', v.id), score: 8 });
       }
     }
     const rows = this.#searchHits(text)
       .filter(({ e }) => !REGISTRY_HITS.has(this.state.tables[e.dbId]?.system))
       .sort((a, b) => b.score - a.score).slice(0, limit);
     for (const { e, score, snippet } of rows) {
-      results.push({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
+      results.push({ kind: 'entity', url: this.permalink('entity', e.id), ...this.#summary(e.id), score, snippet });
     }
     return Weave.capRows(results, limit);
   }
 
-  #scopedSearch(text, { limit, prefix, tables }) {
+  #scopedSearch(text, { limit, tables }) {
     const ids = [...new Set((Array.isArray(tables) ? tables : [tables]).map((t) => this.getTable(t).id))];
-    const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
+    const hit = (e, score = 0, snippet = '') => ({ kind: 'entity', url: this.permalink('entity', e.id), ...this.#summary(e.id), score, snippet });
     if (!String(text ?? '').trim()) {
       return ids.flatMap((id) => this.listEntities(id))
         .filter((e) => this.#liveEntity(e.id))
@@ -8741,7 +8934,7 @@ export class Weave {
     return this.listSpaces().map((sp) => ({
       space: sp.name,
       spaceId: sp.id,
-      url: `#/space/${sp.id}`,
+      url: this.permalink('space', sp.id),
       description: sp.description ?? '',
       ...(sp.system ? { system: sp.system } : {}),
       ...(sp.icon ? { icon: sp.icon } : {}),
@@ -8749,7 +8942,7 @@ export class Weave {
       tables: this.listTables(sp.id).map((db) => ({
         id: db.id,
         name: db.name,
-        url: `#/table/${db.id}`,
+        url: this.permalink('table', db.id),
         description: db.description ?? '',
         ...(db.system ? { system: db.system } : {}),
         ...(db.icon ? { icon: db.icon } : {}),

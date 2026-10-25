@@ -23,11 +23,15 @@ export const decodePath = (pathname) => {
   catch { throw new WeaveError('Malformed percent-escape in the path', 'invalid'); }
 };
 
+export const ifMatchRevision = (header) => {
+  const tag = String(header ?? '').split(',')[0].trim().replace(/^W\//, '').replace(/^"|"$/g, '');
+  return tag && tag !== '*' ? tag : null;
+};
 export const ownsEntity = (ws, id) => Object.hasOwn(ws.state.entities, id);
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
-  return { 'not-found': 404, conflict: 409, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415, 'too-large': 413, 'rate-limited': 429 }[err.code] ?? 400;
+  return { 'not-found': 404, conflict: 409, stale: 412, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415, 'too-large': 413, 'rate-limited': 429 }[err.code] ?? 400;
 }
 
 const STARTED_AT = new Date().toISOString();
@@ -1836,8 +1840,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/entities\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.readEntity(m[1], { viewerZone }));
           if (rx.method === 'PATCH') {
-            const { touched } = weave.touching(() => weave.updateEntity(m[1], body.values ?? body));
-            return out(200, { ...weave.readEntity(m[1], { viewerZone }), affected: weave.affectedBy(m[1], touched) });
+            const expectedRevision = ifMatchRevision(rx.header('if-match'));
+            try {
+              const { touched } = weave.touching(() => weave.updateEntity(m[1], body.values ?? body, { expectedRevision }));
+              return out(200, { ...weave.readEntity(m[1], { viewerZone }), affected: weave.affectedBy(m[1], touched) });
+            } catch (err) {
+              if (err?.code !== 'stale') throw err;
+              return out(412, { ...errorBody(err), entity: weave.readEntity(m[1], { viewerZone }) });
+            }
           }
           if (rx.method === 'DELETE') {
             const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
@@ -1958,20 +1968,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const limit = boundedLimit(rx.searchParams.get('limit'), 25);
           const tables = rx.searchParams.get('tables');
           if (tables != null) {
-            return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));
+            return out(200, weave.universalSearch(q, { limit, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));
           }
           if (rx.searchParams.get('all')) {
             const results = [];
             for (const [name, w] of hub.entries()) {
               if (!canOpen(w)) continue;
-              const prefix = name === hub.defaultName ? '' : `/w/${name}`;
-              for (const hit of w.universalSearch(q, { limit, prefix })) {
+              for (const hit of w.universalSearch(q, { limit })) {
                 results.push({ workspace: name, ...hit });
               }
             }
             return out(200, Weave.capRows(results, limit));
           }
-          return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix }));
+          return out(200, weave.universalSearch(q, { limit }));
         }
         if (route === 'GET /api/export') return out(200, weave.exportJSON());
         if (route === 'POST /api/import') {

@@ -2,7 +2,7 @@
 
 The weave badge, posters and patterns for the website, email, social, decks, print and merch. Every file here is generated from the canonical mark in [`../assets`](../assets) and [`../../public/brand`](../../public/brand), so the mark is never redrawn by hand.
 
-**Agents: start with [`manifest.json`](manifest.json).** It lists every asset with its code, SVG and PNG paths, pixel size, the ground it is drawn for and where it goes. Pick by `family` (`badge`, `poster`, `pattern`, `icon`) and `use`, then take the `svg` for web and print or the `png` for email and social uploads.
+**Agents: start with [`manifest.json`](manifest.json).** It lists every asset with its code, SVG and PNG paths, pixel size, the ground it is drawn for and where it goes. Pick by `family` (`lockup`, `badge`, `poster`, `pattern`, `icon`) and `use`, then take the `svg` for web and print or the `png` for email and social uploads.
 
 ## The badge
 
@@ -12,6 +12,8 @@ A sawtooth seal drawn after Peters Design Company, with the weave mark at the ce
 
 | Need | Use | Why |
 | --- | --- | --- |
+| Site, app or document header | `lockup-light` or `lockup-dark` (L1, L2) | Mark and word in one file, word outlined |
+| Sign-in, splash or square cover | `lockup-stacked-light` or `-dark` (L3, L4) | Fits a square or a narrow column |
 | Website hero or section background | `pattern-contour-light` or `-dark` (M1) as a full-bleed SVG, `badge-blue` (B1) on top | Vector, scales to any width |
 | Link preview (`og:image`) | `png/poster-og-contour.png` (X6) or `png/poster-og.png` (X1) | Link unfurlers need a 1200 × 630 raster |
 | Email header or signature | `png/badge-lockup-light.png` (B14) at 330 px wide, or `png/badge-small.png` (B12) at 48 px | Gmail strips SVG; PNGs are 2× for retina |
@@ -32,7 +34,7 @@ A sawtooth seal drawn after Peters Design Company, with the weave mark at the ce
 - Never redraw, recolor, outline or rotate the mark. Every asset embeds the canonical mark file.
 - Strand pairs stay as in [`../README.md`](../README.md): blue with ink on light, blue with sky on dark, cream with ice on brand blue.
 - Use each badge treatment on the ground named in `manifest.json`. A badge on the wrong ground loses its ring.
-- Ring type and wordmarks are live Outfit 600 text. The PNGs are rendered with Outfit loaded. Before print, outline the text in the SVG.
+- The L lockups outline their wordmark, so they print as they are. Ring type and the other wordmarks are live Outfit 600 text. The PNGs are rendered with Outfit loaded. Before print, outline the text in the SVG.
 - Backgrounds come from the Surfaces table in [`../README.md`](../README.md).
 
 ## Changing the kit
@@ -46,6 +48,17 @@ npm test -- --targeted test/brand-kit.test.mjs
 To change the badge words, edit `labels.json` and run both scripts. To add an asset, add it in `build-kit.mjs` and give it a `guide.json` entry; the test refuses an asset with no ground or use, and refuses committed files that drift from a fresh build.
 
 ## Assets
+
+### Lockup
+
+| Code | Preview | File | Size | Ground | Use |
+| --- | --- | --- | --- | --- | --- |
+| L1 | <img src="svg/lockup-light.svg" width="120" alt="Lockup, inline, light"> | [`lockup-light`](svg/lockup-light.svg) · [png](png/lockup-light.png) | 480 × 88 | white or light surface | site and app header; document header; slide footer; email header (png) |
+| L2 | <img src="svg/lockup-dark.svg" width="120" alt="Lockup, inline, dark"> | [`lockup-dark`](svg/lockup-dark.svg) · [png](png/lockup-dark.png) | 480 × 88 | ink or night surface | dark site and app header; dark slide footer; dark email header (png) |
+| L3 | <img src="svg/lockup-stacked-light.svg" width="80" alt="Lockup, stacked, light"> | [`lockup-stacked-light`](svg/lockup-stacked-light.svg) · [png](png/lockup-stacked-light.png) | 240 × 143 | white or light surface | sign-in and splash screens; square covers and avatars; event signage |
+| L4 | <img src="svg/lockup-stacked-dark.svg" width="80" alt="Lockup, stacked, dark"> | [`lockup-stacked-dark`](svg/lockup-stacked-dark.svg) · [png](png/lockup-stacked-dark.png) | 240 × 143 | ink or night surface | dark sign-in and splash screens; video end cards; dark covers |
+
+Lockup PNGs are 3×. The lockups come from `../build-logos.mjs` (`lockupLayout()`); the kit places those files as they are.
 
 ### Badge
 

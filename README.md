@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/demo.gif" alt="An agent runs weave build to create a Launch workspace from a spec, the Task table fills with six rows, a row opens with its document beside the table, then an MCP weave_query call returns the two tasks in progress" width="900">
+</p>
+
+<p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Node &gt;= 22.16" src="https://img.shields.io/badge/node-%E2%89%A5%2022.16-3c873a.svg">
   <img alt="Runtime dependencies: 0" src="https://img.shields.io/badge/runtime%20dependencies-0-brightgreen.svg">
@@ -147,8 +151,8 @@ plugin marketplace. In Claude Code:
 
 `/w/<name>/mcp` serves another workspace. Your account has to be linked to
 your provider sign-in first (open the invite `weave account link <name>`
-prints, once, in a browser), and it needs the Architect role, since MCP
-carries the schema tools.
+prints, once, in a browser). Any role connects, and `tools/list` names only
+the tools that role may call.
 
 Seventeen tools by default, the ones a workspace build uses, `weave_build` among
 them, plus `weave_call`,

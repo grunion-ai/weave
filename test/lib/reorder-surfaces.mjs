@@ -1,3 +1,4 @@
+import { openPane, openViews } from './view-pane.mjs';
 import assert from 'node:assert/strict';
 import { eventually } from './browser.mjs';
 
@@ -76,6 +77,12 @@ async function fieldTray(page, base, entityId, field) {
   await quiet(page);
 }
 
+async function viewTool(page, button, section) {
+  if (await page.locator('.table-tools-btn').isVisible()) return tool(page, button);
+  if (section === 'views') return openViews(page);
+  return openPane(page, section);
+}
+
 async function tool(page, button) {
   if (await page.locator('.table-tools-btn').isVisible()) {
     await page.click('.table-tools-btn');
@@ -113,8 +120,8 @@ export function surfaces({ weave, base, ids }) {
       reset: () => weave.tableView(viewRef(weave, eye), { fields: ['Name', 'Owner', 'Stage', 'Amount'] }),
       open: async (page) => {
         await page.goto(`${base}/#/table/${eye.id}`, { waitUntil: 'networkidle' });
-        await tool(page, '.eye-btn');
-        await page.waitForSelector('.table-fields-popover .table-field-row');
+        await openPane(page, 'fields');
+        await page.waitForSelector('#view-pane .table-field-row');
         await quiet(page);
       },
       handle: (page, key) => page.locator(`.table-field-row[data-field="${key}"] .field-reorder-handle`),
@@ -158,7 +165,7 @@ export function surfaces({ weave, base, ids }) {
       },
       open: async (page) => {
         await page.goto(`${base}/#/table/${tabs.id}`, { waitUntil: 'networkidle' });
-        await tool(page, '.table-view-btn');
+        await viewTool(page, '.table-view-btn', 'views');
         await page.waitForSelector('.view-strip .view-row');
         await quiet(page);
       },
@@ -179,8 +186,8 @@ export function surfaces({ weave, base, ids }) {
       reset: () => weave.tableView(viewRef(weave, pick), { layout: 'list', group: [{ field: 'Size' }, { field: 'Tier' }] }),
       open: async (page) => {
         await page.goto(`${base}/#/table/${pick.id}`, { waitUntil: 'networkidle' });
-        await tool(page, '.table-group-btn');
-        await page.waitForSelector('.table-group-popover .group-level');
+        await viewTool(page, '.table-group-btn', 'group');
+        await page.waitForSelector('.group-level');
         await quiet(page);
       },
       handle: (page, key) => page.locator(`.group-level[data-level="${key}"] .group-grip`),

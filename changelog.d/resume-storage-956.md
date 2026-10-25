@@ -1,1 +1,0 @@
-- Workspace pages keep opening when the browser blocks access to local storage (Issue #956).
