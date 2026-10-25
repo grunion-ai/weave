@@ -558,7 +558,7 @@ Notes that save round trips:
   subject is linked to (here or on the hub root), the link a browser makes
   by opening its invite once. Unlinked: 403. Rejected
   or expired: 401. Answers are cached a minute by the token's sha256. Writes
-  record `<account> via MCP`, never the client id. The account needs the Architect role, as for `/api/mcp`.
+  record `<account> via MCP`, never the client id. Any role connects, as on `/api/mcp`, and `tools/list` names only the tools that role may call.
   `wv_` tokens work on `/mcp` unchanged; `/api/mcp` takes only them.
   `WEAVE_MCP_ORIGINS` lists other origins the door answers on.
 - **Secrets never come back to an agent.** A `key` (credential) field holds the

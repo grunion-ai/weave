@@ -151,8 +151,8 @@ plugin marketplace. In Claude Code:
 
 `/w/<name>/mcp` serves another workspace. Your account has to be linked to
 your provider sign-in first (open the invite `weave account link <name>`
-prints, once, in a browser), and it needs the Architect role, since MCP
-carries the schema tools.
+prints, once, in a browser). Any role connects, and `tools/list` names only
+the tools that role may call.
 
 Seventeen tools by default, the ones a workspace build uses, `weave_build` among
 them, plus `weave_call`,
