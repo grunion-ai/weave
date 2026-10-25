@@ -39,7 +39,7 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
   const getJson = async (url, init) => {
     const res = await fetch(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) });
     const body = await res.json().catch(() => null);
-    if (!res.ok || !body) throw refuse(`The identity provider answered ${res.status} at ${new URL(url).pathname}${body?.error ? `: ${body.error}` : ''}`);
+    if (!res.ok || !body) throw Object.assign(refuse(`The identity provider answered ${res.status} at ${new URL(url).pathname}${body?.error ? `: ${body.error}` : ''}`), typeof body?.error === 'string' ? { provider: body.error } : {});
     return body;
   };
   const discover = async () => {
