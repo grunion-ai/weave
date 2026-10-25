@@ -16,7 +16,7 @@ width 3.5 on a 48-unit grid. The under-strand is cut with SVG masks
 | # | Decision | Choice |
 | --- | --- | --- |
 | 1 | App icon tile | **A** — blue `#2563eb` squircle, cream `#e0dcd4` + ice `#bcd3ff` strands |
-| 2 | Favicon | **B** — mono blue, strands thickened to 4.5 (optical correction) |
+| 2 | Favicon | **B** — mono blue, strands thickened to 4.5 (optical correction); framed at `8 8 32 32` so the mark fills the tab icon instead of 60% of it |
 | 3 | Lockup | **A** inline: mark at 1.6x (18.4 units tall, about 1.75 times the word height) beside the wordmark, the word centred on the mark's centre line, 0.6 word heights apart. **C** stacked: mark 75% of the word's width, half a word height above it, both centred. Kyle, 2026-10-22; replaces the 2026-08-16 inline lockup with the mark at x-height |
 | 4 | Wordmark | **B** — "weave" lowercase, Outfit 600, −0.02em tracking |
 | 5 | Light-mode strand pair | **B** — blue `#2563eb` + ink `#0c1b33` |
@@ -68,7 +68,7 @@ straight into `public/brand/`; the rest go to `assets/`. No file lives in both.
 | --- | --- |
 | `weave-mark-dark.svg` | Default mark on dark surfaces (blue + sky); the 404 page |
 | `weave-mark-light.svg` | Mark on light surfaces (blue + ink); the 404 page |
-| `weave-favicon.svg` | Favicon (mono, 4.5 strands) |
+| `weave-favicon.svg` | Favicon (mono, 4.5 strands, tight `FAVICON_VIEWBOX` frame) |
 | `weave-loader-rope.html` | The app's loader (Issue #390): both themes' rope at rest inside compositor windows, with its CSS |
 | `favicon-32.png`, `favicon.ico` | Raster favicons from `render-png.mjs` |
 | `email-lockup-{light,dark}.png` | The invite emails' lockup, from `render-png.mjs` |

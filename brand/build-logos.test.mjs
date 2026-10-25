@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rope, weaveSvg, VARIANTS, build, LOADERS, loaderSvg, LOADER_CYCLE_MS,
+import { rope, weaveSvg, FAVICON_VIEWBOX, VARIANTS, build, LOADERS, loaderSvg, LOADER_CYCLE_MS,
   loaderBootHtml, loaderStill, shellWithBootMark, PALETTE, lockupLayout, lockupSvg, LOCKUP_SIZES } from "./build-logos.mjs";
 
 test("rope(3,8) produces the selected h3 geometry", () => {
@@ -351,4 +351,20 @@ test("the email lockup size matches the inline lockup's shape", () => {
   const { width, height } = LOCKUP_SIZES.email;
   assert.equal(height, 24);
   assert.ok(Math.abs(width / height - vw / vh) < 0.03, `${width}x${height} vs ${vw}x${vh}`);
+});
+
+test("the favicon frames the mark tightly so it reads at tab size", () => {
+  const fav = VARIANTS.find(v => v.file === "weave-favicon.svg").svg;
+  assert.ok(fav.includes(`viewBox="${FAVICON_VIEWBOX}"`), "the favicon uses the tight frame");
+  const [x, y, w, h] = FAVICON_VIEWBOX.split(" ").map(Number);
+  assert.equal(w, h, "a favicon is square");
+  const sw = 4.5, cap = sw / 2;
+  const ink = { x0: 12 - cap, x1: 36 + cap, y0: 20 - cap, y1: 28 + cap };
+  assert.ok(ink.x0 > x && ink.x1 < x + w && ink.y0 > y && ink.y1 < y + h, "every stroke sits inside the frame");
+  assert.ok((ink.x1 - ink.x0) / w >= 0.85, "the mark fills at least 85% of the width");
+  assert.ok(Math.abs((ink.x0 + ink.x1) / 2 - (x + w / 2)) < 0.01 && Math.abs((ink.y0 + ink.y1) / 2 - (y + h / 2)) < 0.01,
+    "the mark is centred in the frame");
+  for (const v of VARIANTS.filter(v => v.file.startsWith("weave-mark-"))) {
+    assert.ok(v.svg.includes('viewBox="0 0 48 48"'), `${v.file} keeps the standard 48-unit frame`);
+  }
 });

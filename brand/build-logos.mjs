@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 export { PALETTE, rope, H3, px, stroke, markParts, markPair } from "../src/mark.js";
 import { PALETTE, rope, H3, px, stroke, markParts, markPair } from "../src/mark.js";
 
+export const FAVICON_VIEWBOX = "8 8 32 32";
+
 export function weaveSvg({ c1, c2, sw = 3.5, viewBox = "0 0 48 48" }) {
   const { defs, body } = markParts({ c1, c2, sw });
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}"><defs>${defs}</defs>${body}</svg>`;
@@ -361,7 +363,7 @@ export const VARIANTS = [
   { file: "weave-mark-mono-blue.svg",  svg: weaveSvg({ c1: PALETTE.blue, c2: PALETTE.blue }) },
   { file: "weave-mark-mono-cream.svg", svg: weaveSvg({ c1: PALETTE.cream, c2: PALETTE.cream }) },
   { file: "weave-mark-white.svg",      svg: weaveSvg({ c1: PALETTE.white, c2: PALETTE.white }) },
-  { file: "weave-favicon.svg",         svg: weaveSvg({ c1: PALETTE.blue, c2: PALETTE.blue, sw: 4.5 }), served: true },
+  { file: "weave-favicon.svg",         svg: weaveSvg({ c1: PALETTE.blue, c2: PALETTE.blue, sw: 4.5, viewBox: FAVICON_VIEWBOX }), served: true },
   { file: "weave-app-icon.svg",        svg: appIconSvg() },
   { file: "weave-loader-dark.svg",     svg: loaderSvg("draw", { c1: PALETTE.blue, c2: PALETTE.sky, id: "ld" }) },
   { file: "weave-loader-light.svg",    svg: loaderSvg("draw", { c1: PALETTE.blue, c2: PALETTE.ink, id: "ll" }) },
