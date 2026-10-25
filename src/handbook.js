@@ -1291,6 +1291,14 @@ A \`schedule\` trigger fires on a timer instead of a row change:
 \`\`\`
 \`cron\` is the five-field expression (minute, hour, day, month, weekday; \`*\`, lists, ranges and \`*/n\` steps), read on the wall clock of \`zone\` (UTC when absent). At each due minute the rule runs its actions on every live row of its table, or on the rows its \`where\` clause admits, written in the query filter syntax; \`{{Today}}\` reads the clock the run happens at and \`event.type\` is \`schedule\`. The server checks every minute. A due minute fires once: a box that slept through several runs one catch-up pass when it wakes, going back seven days at most; a new rule starts at the first tick that sees it, and a rule switched On after its minute waits for the next one. Health and Last Run are stamped per run as for every rule.
 
+Actions run in order and each one yields an output the later ones can read. \`set-field\` yields \`{field, value}\`, \`append-doc\` \`{field, text}\`, \`add-comment\` \`{id, text}\`, \`upsert-row\` \`{id, publicId, name, created}\` and \`webhook\` \`{url, sent}\`. A later action reads them as \`{{steps.1.publicId}}\` in its text, in a \`set-field\` string value, or as \`steps.1.name\` in an \`upsert-row\` source path, so a chain like "open the account, then write its number back on the request" is three actions:
+\`\`\`json
+[{ "type": "upsert-row", "table": "Billing/Account", "key": "Stripe Id", "fields": { "Stripe Id": "row.Customer", "Name": "row.Name" } },
+ { "type": "set-field", "field": "Account Ref", "value": "Account#{{steps.1.publicId}}" },
+ { "type": "add-comment", "text": "Opened {{steps.1.name}}; ref {{steps.2.value}}" }]
+\`\`\`
+A step that has not run yet, or a path it has not got, reads empty. The \`automation-ran\` activity entry on each row carries the outputs under \`steps\`, in action order.
+
 ## Decks
 
 A deck is a read over slide rows, composed on request — the rows stay editable data and the deck is generated from them. See the **Decks: composing slides** guide.
