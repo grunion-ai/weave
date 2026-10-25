@@ -1,8 +1,10 @@
 (function (root) {
-  const GROUP_CAP = 3;
+  const GROUP_CAP = 5;
   const GROUP_TYPES = ['select', 'multiselect', 'workflow', 'toggle', 'checkbox', 'relation', 'date'];
   const HEADINGS = ['label', 'chip'];
   const ORDERS = ['option', 'table', 'az'];
+  const DIRS = ['asc', 'desc'];
+  const NO_VALUE = 'No value';
   const GRAINS = ['day', 'week', 'month', 'year'];
   const COMPLETED = 'Completed';
   const SEP = ' › ';
@@ -30,6 +32,10 @@
       if (raw.order === 'option' && f.type === 'relation') throw new Error(`A link field orders its groups by table or az, not option`);
       out.order = raw.order;
     }
+    if (raw.dir != null) {
+      if (!DIRS.includes(raw.dir)) throw new Error(`dir is asc or desc, got ${JSON.stringify(raw.dir)}`);
+      if (raw.dir === 'desc') out.dir = 'desc';
+    }
     if (raw.grain != null) {
       if (f.type !== 'date') throw new Error(`grain groups a date field; '${f.name}' is a ${f.type}`);
       if (!GRAINS.includes(raw.grain)) throw new Error(`grain is day, week, month or year, got ${JSON.stringify(raw.grain)}`);
@@ -41,7 +47,7 @@
   function compactLevel(type, level) {
     const d = levelDefaults(type);
     const out = {};
-    for (const k of ['heading', 'order', 'grain']) if (level[k] != null && level[k] !== d[k]) out[k] = level[k];
+    for (const k of ['heading', 'order', 'dir', 'grain']) if (level[k] != null && level[k] !== d[k]) out[k] = level[k];
     return out;
   }
 
@@ -52,7 +58,7 @@
       : Array.isArray(input) ? input : [input];
     const out = list.map((x) => (typeof x === 'string' ? { field: x } : x && typeof x === 'object' ? { ...x } : null));
     if (out.some((x) => !x || x.field == null || String(x.field).trim() === '')) {
-      throw new Error('group is a list of levels: a field name, or {field, heading, order, grain}');
+      throw new Error('group is a list of levels: a field name, or {field, heading, order, dir, grain}');
     }
     if (out.length > GROUP_CAP) throw new Error(`A list groups at most ${GROUP_CAP} levels deep, got ${out.length}`);
     return out;
@@ -102,18 +108,19 @@
     return out;
   }
 
-  const countRows = (rows) => new Set(rows.filter((r) => !r.ghost).map((r) => r.id)).size;
+  const countRows = (rows) => new Set(rows.filter((r) => !r.ghost && !r.deleted).map((r) => r.id)).size;
 
   function sortBuckets(list, level) {
     const domain = new Map((level.domain ?? []).map((d, i) => [d.key, i]));
+    const turn = level.dir === 'desc' ? -1 : 1;
     return list.sort((a, b) => {
       if ((a.key === '') !== (b.key === '')) return a.key === '' ? 1 : -1;
       if (level.order !== 'az') {
         const ia = domain.has(a.key) ? domain.get(a.key) : Infinity;
         const ib = domain.has(b.key) ? domain.get(b.key) : Infinity;
-        if (ia !== ib) return ia - ib;
+        if (ia !== ib) return (ia === Infinity ? 1 : ib === Infinity ? -1 : (ia - ib) * turn);
       }
-      return String(a.label).localeCompare(String(b.label), undefined, { numeric: true });
+      return String(a.label).localeCompare(String(b.label), undefined, { numeric: true }) * turn;
     });
   }
 
@@ -129,12 +136,12 @@
       if (showEmpty) for (const d of level.domain ?? []) add(d);
       for (const r of subset) {
         const ks = r.keys?.[depth] ?? [];
-        if (!ks.length) add({ key: '', label: level.nullLabel ?? 'None' }).rows.push(r);
+        if (!ks.length) add({ key: '', label: level.nullLabel ?? NO_VALUE }).rows.push(r);
         for (const k of ks) add(k).rows.push(r);
       }
       return sortBuckets([...buckets.values()], level).map(({ rows: members, ...b }) => {
         const here = [...path, b];
-        const node = { key: here.map((p) => p.label).join(SEP), label: b.label, value: b.key, level: depth, path: here, count: countRows(members) };
+        const node = { key: here.map((p) => p.label).join(SEP), label: b.label, value: b.key, level: depth, path: here, count: countRows(members), rows: members };
         if (depth === levels.length - 1) node.items = nestItems(members, nest);
         else node.groups = build(depth + 1, members, here);
         return node;
@@ -190,7 +197,7 @@
   }
 
   root.weaveListCore = {
-    GROUP_CAP, GROUP_TYPES, HEADINGS, ORDERS, GRAINS, COMPLETED, SEP,
+    GROUP_CAP, GROUP_TYPES, HEADINGS, ORDERS, DIRS, GRAINS, COMPLETED, SEP, NO_VALUE, countRows,
     groupable, levelDefaults, normalizeLevel, compactLevel, parseGroup, dateBucket,
     applyManual, nestItems, arrange, isCollapsed, toggleCollapsed, moveInOrder, locate, changedLevels, footerText, groupLabel,
   };

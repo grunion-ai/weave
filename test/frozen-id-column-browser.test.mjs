@@ -155,21 +155,27 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      const seam = () => page.evaluate(() => getComputedStyle(
-        document.querySelector('.wv-grid tbody td.pid-cell')).borderRightColor);
+      const seam = () => page.evaluate(() => {
+        const cell = document.querySelector('.wv-grid tbody td.pid-cell');
+        const edge = getComputedStyle(cell, '::before');
+        return { border: getComputedStyle(cell).borderRightColor, opacity: edge.opacity, colour: edge.backgroundColor };
+      });
+      const shown = (want) => page.waitForFunction((o) => getComputedStyle(document.querySelector('.wv-grid tbody td.pid-cell'), '::before').opacity === o, want, { timeout: 10000 }).catch(() => {});
       const rest = await seam();
-      assert.match(rest, /rgba\(0, 0, 0, 0\)|transparent/, `no rule down the grid at rest, got ${rest}`);
+      assert.match(rest.border, /rgba\(0, 0, 0, 0\)|transparent/, `no rule down the grid at rest, got ${rest.border}`);
+      assert.equal(rest.opacity, '0', 'and no edge drawn over it');
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 400; });
-      await page.waitForFunction((was) => getComputedStyle(document.querySelector('.wv-grid tbody td.pid-cell')).borderRightColor !== was, rest, { timeout: 10000 }).catch(() => {});
+      await shown('1');
       const scrolled = await seam();
-      assert.notEqual(scrolled, rest, 'the seam takes its colour once the body scrolls under it');
-      assert.doesNotMatch(scrolled, /rgba\(0, 0, 0, 0\)/, `and it is a visible hairline, got ${scrolled}`);
+      assert.equal(scrolled.opacity, '1', 'the seam shows once the body scrolls under it');
+      assert.doesNotMatch(scrolled.colour, /rgba\(0, 0, 0, 0\)/, `and it is a visible hairline, got ${scrolled.colour}`);
+      assert.equal(scrolled.border, rest.border, 'drawn over the border, never by recolouring it');
       const widths = await page.evaluate(() => getComputedStyle(
         document.querySelector('.wv-grid tbody td.pid-cell')).borderRightWidth);
       assert.equal(widths, '1px', 'the hairline is reserved, not grown');
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 0; });
-      await page.waitForFunction((want) => getComputedStyle(document.querySelector('.wv-grid tbody td.pid-cell')).borderRightColor === want, rest, { timeout: 3000 }).catch(() => {});
-      assert.equal(await seam(), rest, 'and it goes again when the grid comes back to its left edge');
+      await shown('0');
+      assert.deepEqual(await seam(), rest, 'and it goes again when the grid comes back to its left edge');
     } finally { await page.close(); }
   });
 

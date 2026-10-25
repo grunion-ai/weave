@@ -6,11 +6,14 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
+const asAccount = (w, name) => { const a = w.listAccounts().find((x) => x.name === name); w.actor = a ? `account:${a.id}` : name; };
+
 function fresh(actor = 'kyle', { solo = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-reveal-'));
   const w = new Weave({ keystorePath: join(dir, 'keystore.json'), actor });
   if (!solo) w.createAccount({ name: 'kyle', role: 'admin' });
-  return { w, dir, path: join(dir, 'keystore.json') };
+  asAccount(w, actor);
+  return { w, dir, path: join(dir, 'keystore.json'), as: (name) => asAccount(w, name) };
 }
 
 
@@ -49,16 +52,17 @@ test('someone else on the same workspace cannot read it back', () => {
 });
 
 test('sharing is granted per credential, and revoking takes it back', () => {
-  const { w } = fresh('kyle');
+  const { w, as } = fresh('kyle');
+  w.createAccount({ name: 'sajit', role: 'editor' });
   w.setKey('stripe', 'sk_live_hush');
   w.grantKey('stripe', 'sajit');
 
-  w.actor = 'sajit';
+  as('sajit');
   assert.equal(w.revealKey('stripe'), 'sk_live_hush', 'a grant is what opens it');
 
-  w.actor = 'kyle';
+  as('kyle');
   w.revokeKey('stripe', 'sajit');
-  w.actor = 'sajit';
+  as('sajit');
   assert.throws(() => w.revealKey('stripe'), (e) => e.code === 'forbidden');
 });
 
@@ -71,6 +75,7 @@ test('one operator with no accounts is not kept out of their own keystore', () =
 
 test('a grant is itself audited, so an admin opening a credential leaves a trail', () => {
   const { w } = fresh('kyle');
+  w.createAccount({ name: 'sajit', role: 'editor' });
   w.setKey('stripe', 'sk_live_hush');
   w.grantKey('stripe', 'sajit');
   const entry = w.listAudit({ limit: 20 }).find((a) => a.action === 'key-granted');
@@ -85,13 +90,15 @@ test('a credential carried over from #64 has no owner, so nobody reveals it', ()
 
   const w = new Weave({ keystorePath: path, actor: 'kyle' });
   w.createAccount({ name: 'kyle', role: 'admin' });
-  w.actor = 'sajit';
+  w.createAccount({ name: 'sajit', role: 'editor' });
+  asAccount(w, 'sajit');
   assert.throws(() => w.revealKey('ancient'), (e) => e.code === 'forbidden',
     'a credential nobody claimed is shared with nobody');
-  w.actor = 'kyle';
+  assert.throws(() => w.grantKey('ancient', 'sajit'), (e) => e.code === 'forbidden', 'an editor cannot claim an ownerless credential');
+  asAccount(w, 'kyle');
   assert.equal(w.resolveKey('ancient'), 'old-secret');
   w.grantKey('ancient', 'sajit');
-  w.actor = 'sajit';
+  asAccount(w, 'sajit');
   assert.equal(w.revealKey('ancient'), 'old-secret');
 });
 
@@ -165,20 +172,20 @@ test('a reveal the engine refuses answers 403 over HTTP, not 400', async () => {
 });
 
 test('renaming an account keeps the credentials it owns and the ones shared with it (Issue #884)', () => {
-  const { w } = fresh('kyle');
+  const { w , as } = fresh('kyle');
   w.createAccount({ name: 'sajit', role: 'editor' });
   w.setKey('stripe', 'sk_live_hush');
   w.grantKey('stripe', 'sajit');
   w.renameAccount('kyle', 'kyle.adriany');
-  w.actor = 'kyle.adriany';
+  as('kyle.adriany');
   assert.equal(w.revealKey('stripe'), 'sk_live_hush', 'the owner still reads its own credential after a rename');
   assert.equal(w.listKeys().find((k) => k.name === 'stripe').owner, 'kyle.adriany');
   w.createAccount({ name: 'ann', role: 'editor' });
   w.grantKey('stripe', 'ann');
   w.renameAccount('sajit', 'sajit.p');
-  w.actor = 'sajit.p';
+  as('sajit.p');
   assert.equal(w.revealKey('stripe'), 'sk_live_hush', 'a grant follows the account across its own rename');
-  w.actor = 'kyle';
+  as('kyle');
   assert.throws(() => w.revealKey('stripe'), (e) => e.code === 'forbidden', 'the old name holds nothing');
 });
 

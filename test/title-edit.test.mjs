@@ -21,7 +21,7 @@ const rules = () => {
   return out;
 };
 
-const SHARED = ['font-weight', 'font-family', 'color', 'background', 'border-radius', 'outline', 'min-width', 'flex'];
+const SHARED = ['font-weight', 'font-family', 'color', 'min-width', 'flex'];
 const declares = (body, prop) => new RegExp(`(^|;)\\s*${prop}\\s*:`).test(body);
 
 test('one builder makes both the page heading editor and the record name editor (Issue #784)', () => {
@@ -35,7 +35,7 @@ test('one builder makes both the page heading editor and the record name editor 
 test('the builder gives both editors the shared .title-edit class (Issue #784)', () => {
   const at = APP.search(/^(?:function titleEdit\(|const titleEdit = )/m);
   const body = APP.slice(at, APP.indexOf('\n}', at) + 2);
-  assert.match(body, /class: `title-edit \$\{/, body);
+  assert.match(body, /class: `title-edit wv-edit \$\{/, body);
 });
 
 test('the shared title declarations live once on .title-edit, never on a context modifier (Issue #784)', () => {

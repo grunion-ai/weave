@@ -49,6 +49,19 @@ if (s) {
       assert.equal(seen.dashed, 0, 'the mark is drawn whole and revealed, never dashed');
       await page.close();
     });
+
+    test(`both strands of the rope sit on the 96px mark (${theme})`, async () => {
+      const page = await openWithRope(browser, base, theme);
+      const boxes = await page.evaluate(() => {
+        const mark = document.querySelector('#page-loader .loader-mark');
+        const shown = [...mark.children].find((m) => getComputedStyle(m).display !== 'none');
+        const rect = (n) => { const r = n.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); };
+        return { mark: rect(mark), a: rect(shown.querySelector(':scope > .rope-a')), b: rect(shown.querySelector(':scope > .rope-b')) };
+      });
+      assert.deepEqual(boxes.a, boxes.mark, 'the blue strand is laid out on the mark');
+      assert.deepEqual(boxes.b, boxes.mark, 'the flipped strand pivots on the mark, not on a line box');
+      await page.close();
+    });
   }
 
   test('the rope keeps moving through a 250 ms long task',

@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const out = join(here, "png");
 mkdirSync(out, { recursive: true });
 const { assets } = JSON.parse(readFileSync(join(here, "manifest.json"), "utf8"));
-const scale = (a) => (a.family === "icon" ? 4 : a.family === "badge" ? 2 : 1);
+const scale = (a) => (a.family === "icon" ? 4 : a.family === "lockup" ? 3 : a.family === "badge" ? 2 : 1);
 
 const browser = await chromium.launch();
 const page = await browser.newPage();

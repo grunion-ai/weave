@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane, paneOnLoad } from './lib/view-pane.mjs';
 
 const N = 600;
 const ROW = { compact: 32, comfortable: 44, spacious: 72 };
@@ -78,12 +79,14 @@ const s = await launch('the density flip', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  const COMPACT = '.seg-opt[title="Short rows, for scanning"]';
-  const ROOMY = '.seg-opt[title="Roomy rows, for reading"]';
+  const COMPACT = '#view-pane .vp-density .seg-opt[title="Short rows, for scanning"]';
+  const ROOMY = '#view-pane .vp-density .seg-opt[title="Roomy rows, for reading"]';
 
   const open = async (db) => {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const page = await browser.newPage({ viewport: { width: 1640, height: 800 } });
+    await paneOnLoad(page, 'display');
     await page.goto(`${base}/#/table/${db.id}`, { waitUntil: 'load' });
+    await page.waitForSelector(COMPACT);
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.waitForTimeout(300);
     return page;
@@ -122,7 +125,6 @@ if (s) {
       assert.equal(before.scroller, 'wrap', 'a grid wider than its card scrolls in its own box');
       assert.ok(before.top > 100, `the reader is deep in the table: ${JSON.stringify(before)}`);
 
-      await page.click('.table-density-btn');
       await page.click(COMPACT);
       await settle(page);
       const compact = await view(page);
@@ -131,7 +133,6 @@ if (s) {
       assert.ok(compact.scrollTop > 0, `the reader is not back at the top: ${JSON.stringify(compact)}`);
       assert.equal(compact.top, before.top, `the same row heads the view: ${JSON.stringify({ before, compact })}`);
 
-      await page.click('.table-density-btn');
       await page.click(ROOMY);
       await settle(page);
       const roomy = await view(page);
@@ -148,7 +149,7 @@ if (s) {
       assert.equal(before.scroller, 'page', 'a grid that fits its card scrolls the page');
       assert.ok(before.top > 100, `the reader is deep in the table: ${JSON.stringify(before)}`);
 
-      await page.evaluate((sel) => { document.querySelector('.table-density-btn').click(); document.querySelector(sel).click(); }, COMPACT);
+      await page.evaluate((sel) => { document.querySelector(sel).click(); }, COMPACT);
       await settle(page);
       const compact = await view(page);
       assert.equal(compact.density, 'compact');
@@ -162,12 +163,13 @@ if (s) {
     test(`a density flip keeps the row heading a page-scrolled grid of uneven rows, both ways (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 2187, height: 1359 } });
       try {
+        await paneOnLoad(page, 'display');
         await page.goto(`${base}/#/table/${tall.id}`, { waitUntil: 'load' });
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         await page.waitForSelector('.wv-grid tbody tr.entity-row');
         await page.waitForTimeout(300);
         await scrollTo(page, 10800);
-        const pick = (sel) => page.evaluate((q) => { document.querySelector('.table-density-btn').click(); document.querySelector(q).click(); }, sel);
+        const pick = (sel) => page.evaluate((q) => { document.querySelector(q).click(); }, sel);
         const roomy = await view(page);
         assert.equal(roomy.scroller, 'page', 'a grid that fits its card scrolls the page');
         assert.ok(roomy.top > 100, `the reader stands part way down: ${JSON.stringify(roomy)}`);
@@ -186,27 +188,27 @@ if (s) {
     });
   }
 
-  test('picking a density returns focus to its dropdown button', async () => {
+  test('picking a density keeps focus on the picked option and the Display header names it', async () => {
     const page = await open(wide);
     try {
-      await page.click('.table-density-btn');
       await page.click(COMPACT);
       await settle(page);
       const focused = await page.evaluate(() => ({
         tag: document.activeElement?.tagName ?? null,
-        density: document.activeElement?.classList.contains('table-density-btn') ?? false,
+        density: !!document.activeElement?.closest('#view-pane .vp-density'),
         text: document.activeElement?.textContent?.trim() ?? null,
       }));
       assert.equal(focused.tag, 'BUTTON');
-      assert.equal(focused.density, true, 'the closed dropdown returns focus to its trigger');
-      assert.match(focused.text, /Compact/, 'the trigger names the selected density');
+      assert.equal(focused.density, true, 'focus stays on the Density control');
+      assert.equal(focused.text, 'Compact', 'on the option just picked');
+      assert.match(await page.textContent('#view-pane .vp-acc[data-section="display"] .vp-value'), /Compact/, 'the Display header names the density');
     } finally { await page.close(); }
   });
 
   const pickDensity = async (page, d) => {
+    await openPane(page, 'display');
     await page.evaluate((label) => {
-      document.querySelector('.table-density-btn').click();
-      const opt = [...document.querySelectorAll('.table-density-popover .seg-opt')].find((b) => b.textContent.trim() === label);
+      const opt = [...document.querySelectorAll('#view-pane .vp-density .seg-opt')].find((b) => b.textContent.trim() === label);
       if (!opt) throw new Error(`no ${label} option`);
       opt.click();
     }, LABEL[d]);
@@ -343,7 +345,7 @@ if (s) {
       await page.goto(`${base}/${viewUrl(every, one)}`);
       await page.waitForFunction((id) => location.hash.endsWith(id) && document.querySelector('.wv-grid')?.dataset.density === 'compact', one.id, { timeout: 5000 });
       assert.equal((await readView(two)).density, 'spacious', 'and the second keeps its own');
-      assert.match(await page.textContent('.table-density-btn'), /Compact/, 'the toolbar names the view\'s density');
+      assert.match(await page.textContent('#view-pane .vp-acc[data-section="display"] .vp-value'), /Compact/, 'the Display header names the view\'s density');
     } finally {
       await page.evaluate(async ([t, a, b]) => {
         for (const id of [a, b]) await fetch(`/api/tables/${t}/views/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"density":"comfortable"}' });

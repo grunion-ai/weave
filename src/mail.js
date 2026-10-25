@@ -70,7 +70,7 @@ function shell(theme, { origin, preheader, body, footer }) {
   const S = STYLE(c);
   const at = (cls, extra = '') => ` class="${cls}" style="${[...cls.split(' ').map((k) => S[k]), extra].filter(Boolean).join(';')}"`;
   const mark = (t) => `${esc(origin)}/brand/email-lockup-${t}.png`;
-  const img = (t, hidden) => `<img${at(`mark-${t}`, `display:${hidden ? 'none' : 'block'};border:0;outline:none`)} src="${mark(t)}" width="104" height="24" alt="weave">`;
+  const img = (t, hidden) => `<img${at(`mark-${t}`, `display:${hidden ? 'none' : 'block'};border:0;outline:none`)} src="${mark(t)}" width="131" height="24" alt="weave">`;
   const lockup = theme ? img(theme, false) : `${img('light', false)}<!--[if !mso]><!-->${img('dark', true)}<!--<![endif]-->`;
   const dark = theme ? '' : `\n@media (prefers-color-scheme: dark){\n${darkRules()}\n}`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">

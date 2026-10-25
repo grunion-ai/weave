@@ -26,7 +26,7 @@ test('a level takes defaults by field type and refuses what the type cannot do',
   assert.deepEqual(core.compactLevel('relation', { heading: 'chip', order: 'table' }), { heading: 'chip' }, 'defaults drop out of a read');
   assert.deepEqual(core.parseGroup('Trip › Priority'), [{ field: 'Trip' }, { field: 'Priority' }]);
   assert.deepEqual(core.parseGroup(['Trip', { field: 'Due', grain: 'week' }]), [{ field: 'Trip' }, { field: 'Due', grain: 'week' }]);
-  assert.throws(() => core.parseGroup(['A', 'B', 'C', 'D']), /at most 3/);
+  assert.throws(() => core.parseGroup(['A', 'B', 'C', 'D', 'E', 'F']), /at most 5/);
 });
 
 test('dates group by grain: the key sorts, the label reads, the value is the first day', () => {

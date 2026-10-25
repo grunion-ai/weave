@@ -294,7 +294,7 @@ function renderList(items, resolveMention) {
   return html;
 }
 
-export function renderMarkdown(markdown, { resolveMention = null } = {}) {
+export function renderMarkdown(markdown, { resolveMention = null, rawHtml = true } = {}) {
   const blocks = parseBlocks(markdown);
   let html = '';
   for (const b of blocks) {
@@ -312,10 +312,10 @@ export function renderMarkdown(markdown, { resolveMention = null } = {}) {
         html += `<pre class="mermaid">${escapeHtml(b.text)}</pre>\n`;
         break;
       case 'html':
-        html += b.text + '\n';
+        html += rawHtml ? b.text + '\n' : `<p>${escapeHtml(b.text)}</p>\n`;
         break;
       case 'quote':
-        html += `<blockquote>${renderMarkdown(b.text, { resolveMention })}</blockquote>\n`;
+        html += `<blockquote>${renderMarkdown(b.text, { resolveMention, rawHtml })}</blockquote>\n`;
         break;
       case 'hr':
         html += '<hr>\n';

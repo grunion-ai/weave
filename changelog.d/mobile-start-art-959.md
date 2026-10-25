@@ -1,1 +1,0 @@
-- Phone setup skips the hidden desktop artwork download and loads it only when the window expands to desktop size (Issue #959).
