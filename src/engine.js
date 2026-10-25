@@ -2053,6 +2053,26 @@ export class Weave {
     return g;
   }
 
+  updateShare(id, patch = {}) {
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      const g = Shares.update(this, id, patch);
+      this.save();
+      this.#audit('share-updated', Shares.auditDetail(g));
+      return g;
+    });
+  }
+
+  regenerateShare(id, patch = {}) {
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      const g = Shares.regenerate(this, id, patch);
+      this.save();
+      this.#audit('share-regenerated', Shares.auditDetail(g));
+      return g;
+    });
+  }
+
   shareByToken(token) {
     return Shares.byToken(this, token);
   }

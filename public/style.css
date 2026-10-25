@@ -2722,6 +2722,27 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 }
 .group-head-in > :not(.group-count) { flex: none; }
 
+#share-pane { flex: 0 0 340px; width: 340px; min-width: 0; min-height: 0; margin: 8px 8px 8px 0; display: flex; flex-direction: column; overflow: hidden; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); font-size: var(--fs-grid); }
+#share-pane[hidden] { display: none; }
+.share-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
+.share-head strong { font-size: var(--fs-body); }
+.share-head > button { margin-left: auto; }
+.share-beta { color: var(--tblr-primary); background: var(--tblr-primary-lt); border-radius: 4px; padding: 2px 6px; font-size: var(--fs-meta); }
+.share-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px 16px; }
+.share-scroll h3 { font-size: var(--fs-grid); margin: 12px 0; }
+.share-note { color: var(--tblr-secondary); font-size: var(--fs-secondary); overflow-wrap: anywhere; }
+.share-link { padding: 12px 0; border-top: 1px solid var(--tblr-border-color); }
+.share-link-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.share-link small { display: block; margin: 6px 0; }
+.share-link-actions, .share-form-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.share-link-actions button { width: 36px; height: 36px; }
+.share-add { width: 100%; margin: 12px 0; }
+.share-editor label { display: block; margin: 12px 0; }
+.share-editor label :is(input, select) { margin-top: 6px; }
+.share-editor input, .share-editor select { min-width: 0; width: 100%; }
+.share-form-actions { margin: 16px 0; }
+.share-regenerate { margin: 8px 0; }
+@media (max-width: 600px) { #share-pane { position: fixed; inset: 8px; width: auto; margin: 0; z-index: var(--z-modal, 1055); } .share-link-actions button { width: 44px; height: 44px; } }
 .related-section .board-wrap { min-width: 0; }
 .related-section .wv-board { padding: 4px 0 12px; }
 .related-section .board-footer { padding-inline: 0; }

@@ -57,8 +57,8 @@ test('a grant has the ruled shape, a wvs_ token kept in plaintext, and a /s/ lin
 
 test('the enums are the ruled ones, and a bad grant is refused before it is stored', () => {
   const { w, one, task } = seed();
-  assert.deepEqual(SHARE_KINDS, ['entity', 'table', 'space', 'view', 'workspace']);
-  assert.deepEqual(SHARE_MODES, ['read', 'comment', 'edit', 'manage']);
+  assert.deepEqual(SHARE_KINDS, ['entity', 'entities', 'table', 'space', 'view', 'workspace']);
+  assert.deepEqual(SHARE_MODES, ['read', 'comment', 'edit', 'manage', 'submit']);
   assert.deepEqual(SHARE_VISIBILITIES, ['public', 'private']);
   const scope = { kind: 'entity', id: one.id };
   assert.throws(() => w.mintShare({ scope: { kind: 'document', id: one.id } }), { code: 'invalid' });
@@ -402,7 +402,7 @@ test('REST mint, list and revoke follow the roles: architects only, editors and 
     assert.equal(made.status, 201);
     const g = await made.json();
     assert.match(g.token, /^wvs_/);
-    assert.equal(g.url, `/s/${g.token}`);
+    assert.equal(g.url, `/w/${w.state.meta.id}/s/${g.token}`);
     assert.equal(g.createdBy, 'root');
     assert.equal((await call('POST', '/api/shares', { token: architect, body: { scope, mode: 'comment' } })).status, 403);
     const listed = await (await call('GET', `/api/shares?kind=entity&id=${one.id}`, { token: architect })).json();

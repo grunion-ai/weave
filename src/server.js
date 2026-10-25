@@ -611,7 +611,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         path,
         searchParams: url.searchParams,
         header: (name) => req.headers[name.toLowerCase()],
-        readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined, form: req.method === 'POST' && /^(?:\/w\/[^/]+)?\/api\/forms\/[^/]+\/submit$/.test(path) }),
+        readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined, form: req.method === 'POST' && /^(?:\/w\/[^/]+)?(?:\/s\/wv[sv]_[A-Za-z0-9_-]+)?\/api\/forms\/[^/]+\/submit$/.test(path) }),
         readBytes: (max) => readBytes(req, max),
         remote: req.socket?.remoteAddress ?? null,
       });
