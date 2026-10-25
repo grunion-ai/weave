@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
 const realHome = process.env.HOME, realKeystore = process.env.WEAVE_KEYSTORE;
-const scratch = () => mkdtempSync(join(tmpdir(), 'weave-inject-test-'));
+const scratch = () => tempDir('weave-inject-test-');
 process.on('exit', () => { process.env.HOME = realHome; if (realKeystore === undefined) delete process.env.WEAVE_KEYSTORE; else process.env.WEAVE_KEYSTORE = realKeystore; });
 process.env.WEAVE_KEYSTORE = join(scratch(), 'keystore.json');
 

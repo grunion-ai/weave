@@ -7,6 +7,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { workspace } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const val = (w, id, name) => w.getEntity(id).values[w.getField(w.getEntity(id).dbId, name).id];
 const newest = (w, t, kind = 'field-config-updated') => w.activityFeed({ entityId: t.id, kinds: [kind] }).items[0];
@@ -117,7 +118,7 @@ test('the undo of a type change keeps its own snapshot, so rolling it back redoe
 });
 
 test('snapshots survive a reopen', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'wv-467-'));
+  const dir = tempDir('wv-467-');
   try {
     const data = join(dir, 'w.db');
     const { w, t } = workspace({ path: data });

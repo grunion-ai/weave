@@ -5,7 +5,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+import { tempDir } from './lib/temp.mjs';
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../src/engine.js');
 const { dispatchTool } = await import('../src/mcp.js');
 const { startIdp, serveOidc, cookieOf } = await import('./lib/idp.mjs');
@@ -88,7 +89,7 @@ test('mcp: weave_accounts invite, invites and revoke-invite', () => {
 });
 
 test('cli: invite, invite list and invite revoke', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-invite-cli-'));
+  const dir = tempDir('weave-invite-cli-');
   try {
     const data = join(dir, 'w.db');
     const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: ISS, WEAVE_ORIGIN: 'https://weave.example.com', WEAVE_UPDATE_CHECK: 'off' } });

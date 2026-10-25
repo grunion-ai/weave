@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { VOCABULARY, ICONS, nearestIcons, searchIcons } from '../src/vocabulary.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const category = (name) => globalThis.fieldDialogCore.categoryOf(`lucide:${name}`);
@@ -121,7 +122,7 @@ test('REST: GET /api/vocabulary takes section and query', async () => {
 });
 
 test('CLI: weave vocabulary icons <query>', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-icon-search-'));
+  const dir = tempDir('weave-icon-search-');
   const cli = (...args) => execFileSync('node', [BIN, '--data', join(dir, 'ws.db'), ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   try {
     assert.deepEqual(JSON.parse(cli('vocabulary', 'icons', 'build')), JSON.parse(JSON.stringify(searchIcons('build'))));

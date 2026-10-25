@@ -12,11 +12,12 @@ import { renderBugReport } from '../src/bugreport.js';
 import { startServer } from '../src/server.js';
 import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
 const EXPORT = join(ROOT, 'scripts', 'export-development.mjs');
 const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'docs', 'development.json'), 'utf8'));
-const dir = mkdtempSync(join(tmpdir(), 'weave-tracker-canonical-'));
+const dir = tempDir('weave-tracker-canonical-');
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 
 const FORWARD_ENV = ['WEAVE_TRACKER_CANONICAL', 'WEAVE_BUG_FORWARD_URL', 'WEAVE_BUG_FORWARD_TOKEN', 'WEAVE_ORIGIN'];

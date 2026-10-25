@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import * as Forms from '../src/forms.js';
+import { tempDir } from './lib/temp.mjs';
 
 function fixture(path) {
   const w = new Weave({ path });
@@ -55,7 +56,7 @@ test('ambiguous, duplicate, hidden, prototype, invalid type and missing required
 });
 
 test('durable retry receipts canonicalize aliases, conflict on changed input and isolate callers', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-form-inputs-'));
+  const dir = tempDir('weave-form-inputs-');
   try {
     const path = join(dir, 'test.db');
     const { w, form, table } = fixture(path);
@@ -93,7 +94,7 @@ test('expired receipts do not replay and new submissions prune receipt history',
 });
 
 test('a storage failure rolls back both row and receipt and permits a clean retry', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-form-rollback-'));
+  const dir = tempDir('weave-form-rollback-');
   try {
     const path = join(dir, 'test.db');
     const { w, form, table } = fixture(path);
@@ -133,7 +134,7 @@ test('hidden fields keep their server value after rename', () => {
 });
 
 test('another engine refreshes its receipts under the storage transaction', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-form-refresh-'));
+  const dir = tempDir('weave-form-refresh-');
   try {
     const path = join(dir, 'test.db');
     const { w, form } = fixture(path);
@@ -189,7 +190,7 @@ test('required boolean means provided and number controls accept fractions', () 
 });
 
 test('entity validation failure leaves no receipt and next valid write persists', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-form-validation-'));
+  const dir = tempDir('weave-form-validation-');
   try {
     const path = join(dir, 'test.db');
     const { w, table, form } = fixture(path);

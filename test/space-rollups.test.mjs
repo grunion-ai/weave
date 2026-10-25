@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 function build() {
   const w = new Weave();
@@ -249,7 +250,7 @@ test('REST, MCP and CLI carry the stats field narrowing (Issue #235)', async () 
     server.close();
   }
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-stats-field-'));
+  const dir = tempDir('weave-stats-field-');
   try {
     const data = join(dir, 'ws.db');
     const d = new Weave({ path: data });

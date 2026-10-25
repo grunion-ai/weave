@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fingerprint, newFindings, summarize, onPath, steps, gitleaksArgs, ROOT } from '../../scripts/security-scan.mjs';
+import { tempDir } from '../lib/temp.mjs';
 
 const result = (rule, path, start, end = start) => ({ check_id: `security.semgrep.${rule}`, path, start: { line: start }, end: { line: end } });
 
@@ -36,7 +37,7 @@ test('the summary has one line per tool and the exit code follows the fails', ()
 });
 
 test('a tool is found by its PATH entry, not assumed', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'scanpath-'));
+  const dir = tempDir('scanpath-');
   try {
     writeFileSync(join(dir, 'faketool'), '#!/bin/sh\n');
     chmodSync(join(dir, 'faketool'), 0o755);
@@ -65,7 +66,7 @@ test('gitleaks reads the checked-out history only, never every fetched branch (I
 });
 
 test('a leak on another branch does not fail the scan of a clean checkout (Issue #913)', { skip: !onPath('gitleaks') && 'gitleaks not installed' }, () => {
-  const dir = mkdtempSync(join(tmpdir(), 'scanref-'));
+  const dir = tempDir('scanref-');
   const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' });
   const scan = () => spawnSync('gitleaks', gitleaksArgs(join(ROOT, 'security/gitleaks.toml')), { cwd: dir, encoding: 'utf8' });
   try {

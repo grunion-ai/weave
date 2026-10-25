@@ -9,6 +9,7 @@ import { startServer } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
 import { PRIVACY } from '../src/legal.js';
 import { startIdp } from './lib/idp.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const hit = (port, host, method, path, { cookie, body, token } = {}) => new Promise((resolve, reject) => {
   const payload = body === undefined ? null : JSON.stringify(body);
@@ -30,7 +31,7 @@ const mail = /[\w.+-]+@[\w-]+\.[\w.]+/;
 async function serve() {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = mkdtempSync(join(tmpdir(), 'weave-email-'));
+  const dir = tempDir('weave-email-');
   const acme = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
   acme.state.meta.name = 'acme';
   const architect = acme.createAccount({ name: 'boss', role: 'architect' }).token;

@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { fresh } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 test('deleted and rollups are view settings: absent by default, stored when set, copied with the view', () => {
   const w = fresh();
@@ -80,7 +81,7 @@ test('weave_table_view, the CLI and REST take them', async () => {
   assert.equal(view.deleted, true);
   assert.equal(view.rollups, true);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-rows-'));
+  const dir = tempDir('weave-rows-');
   try {
     const db = join(dir, 'w.db');
     const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');

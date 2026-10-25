@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launch } from './lib/browser.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 await import('../public/editor-lib.js');
 const stored = (md) => globalThis.WeaveEditorLib.normalizeTaskBoxes(md);
@@ -12,7 +13,7 @@ const slash = test.suite ?? test;
 
 let dir, tableRef;
 const s = await launch('slash commands', (weave) => {
-  dir = mkdtempSync(join(tmpdir(), 'weave-slash-'));
+  dir = tempDir('weave-slash-');
   weave.createSpace({ name: 'Scratch' });
   tableRef = weave.createTable({ space: 'Scratch', name: 'Note' });
   weave.createEntity(tableRef, { name: 'Zebrafish target' });

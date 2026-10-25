@@ -8,11 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
 async function signedIn(t) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-actor-keys-'));
+  const dir = tempDir('weave-actor-keys-');
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const w = new Weave({ keystorePath: join(dir, 'keystore.json') });
   w.createSpace({ name: 'Ops' });
@@ -114,7 +115,7 @@ test('a removed account renders as removed, never as its id (Issue #699)', async
 });
 
 test('weave get and weave activity print the current name (Issue #699)', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-actor-'));
+  const dir = tempDir('weave-actor-');
   try {
     const data = join(dir, 'ws.db');
     const w = new Weave({ path: data, keystorePath: join(dir, 'keystore.json') });

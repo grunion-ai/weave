@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, VIEW_SHAPES, DESCRIPTION_SIZES } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 function build() {
   const w = new Weave();
@@ -29,7 +30,7 @@ function build() {
 }
 
 function onDisk() {
-  const path = join(mkdtempSync(join(tmpdir(), 'weave-view-')), 'uno.json');
+  const path = join(tempDir('weave-view-'), 'uno.json');
   const w = new Weave({ path });
   w.createSpace({ name: 'Dev' });
   const tasks = w.createTable({ space: 'Dev', name: 'Task' });

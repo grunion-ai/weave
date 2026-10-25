@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
 const { dispatchTool } = await import('../../src/mcp.js');
@@ -98,7 +99,7 @@ test('an explicit expiry still wins, and an architect renews a link for another 
 });
 
 test('a link minted before expiry existed is given thirty days from the upgrade', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-share-legacy-'));
+  const dir = tempDir('weave-share-legacy-');
   const path = join(dir, 'ws.db');
   const { w, row } = build({ path });
   w.actor = 'ar';

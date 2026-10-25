@@ -6,9 +6,10 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 function tmp() {
-  return mkdtempSync(join(tmpdir(), 'weave-sqlite-'));
+  return tempDir('weave-sqlite-');
 }
 
 function seed(w) {

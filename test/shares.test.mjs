@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { withinScope, SHARE_KINDS, SHARE_MODES, SHARE_VISIBILITIES } from '../src/shares.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -167,7 +168,7 @@ test('a view share is a grant; an old shareToken lifts into one on open and keep
   assert.equal(w.listViews()[0].shared, false);
   assert.equal(w.viewByShareToken(token), null);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-shares-'));
+  const dir = tempDir('weave-shares-');
   try {
     const path = join(dir, 'ws.db');
     const a = new Weave({ path });
@@ -447,7 +448,7 @@ test('the MCP tool and the CLI verb mint, list and revoke', () => {
   assert.ok(dispatchTool(w, 'weave_shares', { action: 'revoke', share: g.id }).revokedAt);
   assert.throws(() => dispatchTool(w, 'weave_shares', { action: 'nope' }), /list, mint, renew, revoke/);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-share-cli-'));
+  const dir = tempDir('weave-share-cli-');
   try {
     const data = join(dir, 'ws.db');
     const cli = (...args) => execFileSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

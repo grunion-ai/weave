@@ -16,6 +16,7 @@ import { packTar } from '../src/backup.js';
 import { Weave, deferMigrations, runDeferredMigrations } from '../src/engine.js';
 import { startSupervisor, autoUpdateFromEnv, trackFromEnv, unpackRelease, pruneReleases, shaFromRefs, rateLimitReset, REPO_API, REPO_GIT, REPO_CODELOAD } from '../src/supervisor.js';
 import { RELEASES_URL } from '../src/update-check.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
 const IMAGE_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
@@ -24,7 +25,7 @@ const SHA = 'a'.repeat(40);
 const ENV = { ...process.env, WEAVE_UPDATE_CHECK: 'off' };
 delete ENV.WEAVE_AUTO_UPDATE;
 delete ENV.WEAVE_DEFER_MIGRATIONS;
-const scratch = mkdtempSync(join(tmpdir(), 'weave-supervise-'));
+const scratch = tempDir('weave-supervise-');
 test.after(() => rmSync(scratch, { recursive: true, force: true }));
 
 const walk = (dir) => readdirSync(dir).flatMap((n) => {

@@ -10,6 +10,7 @@ import { createOidc } from '../src/oidc.js';
 import { PRIVACY } from '../src/legal.js';
 import { startIdp, serveOidc } from './lib/idp.mjs';
 import '../public/consent.js';
+import { tempDir } from './lib/temp.mjs';
 
 const { consentCookie, OPTIONS, BANNER } = globalThis.WeaveConsent;
 
@@ -52,7 +53,7 @@ async function upstream() {
 async function serve({ posthog = null } = {}) {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = mkdtempSync(join(tmpdir(), 'weave-posthog-'));
+  const dir = tempDir('weave-posthog-');
   const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   main.state.meta.name = 'Net';
   main.createAccount({ name: 'operator', role: 'architect' });
@@ -204,7 +205,7 @@ test('the privacy policy names PostHog, links its cookies section and carries no
 
 async function appServer(posthog) {
   const idp = await startIdp();
-  const dir = mkdtempSync(join(tmpdir(), 'weave-posthog-app-'));
+  const dir = tempDir('weave-posthog-app-');
   const w = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   w.createAccount({ name: 'operator', role: 'architect' });
   w.createAccount({ name: 'ada', role: 'editor' });

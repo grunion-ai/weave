@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 function buildWorkspace() {
   const w = new Weave();
@@ -176,7 +177,7 @@ test('the stack is bounded', () => {
 });
 
 test('undo history survives a reopen (sqlite)', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-undo-'));
+  const dir = tempDir('weave-undo-');
   const path = join(dir, 'w.db');
   try {
     const w1 = new Weave({ path });

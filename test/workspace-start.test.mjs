@@ -9,6 +9,7 @@ import { startServer } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
 import { createBilling, CLERK_API } from '../src/billing.js';
 import { startIdp } from './lib/idp.mjs';
+import { tempDir } from './lib/temp.mjs';
 await import('../public/slug-core.js');
 const { WeaveSlugs } = globalThis;
 
@@ -31,7 +32,7 @@ const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c
 async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, rootArchitect = true, billing = null } = {}) {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = mkdtempSync(join(tmpdir(), 'weave-start-'));
+  const dir = tempDir('weave-start-');
   const pin = (w, name, role, subject) => {
     w.createAccount({ name, role });
     w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject });

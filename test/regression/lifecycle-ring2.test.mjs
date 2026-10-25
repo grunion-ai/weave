@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../../src/engine.js';
 import { startServer } from '../../src/server.js';
+import { tempDir } from '../lib/temp.mjs';
 
-const scratch = () => mkdtempSync(join(tmpdir(), 'weave-ring2-'));
+const scratch = () => tempDir('weave-ring2-');
 
 const reopen = (w) => {
   const path = w.store.path;

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROWS = [
   ['Alpha launch', 'Open', ['Web'], true, 3],
@@ -70,7 +71,7 @@ test('weave_query takes a view and says so', async () => {
 });
 
 test('the CLI query takes --view', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-query-view-'));
+  const dir = tempDir('weave-query-view-');
   try {
     const path = join(dir, 'w.db');
     const w = new Weave({ path });

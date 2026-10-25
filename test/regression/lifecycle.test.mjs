@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../../src/engine.js';
 import { startServer } from '../../src/server.js';
+import { tempDir } from '../lib/temp.mjs';
 
 const ew = new Weave();
 ew.createSpace({ name: 'Reg' });
@@ -90,7 +91,7 @@ test('lifecycle: space restore rejoins the whole subtree', () => {
   assert.equal(sw.query('Bay/Crate', {}).total, 1);
 });
 
-const wsDir = mkdtempSync(join(tmpdir(), 'weave-lifecycle-'));
+const wsDir = tempDir('weave-lifecycle-');
 const wsMain = new Weave({ path: join(wsDir, 'main.db') });
 wsMain.state.meta.name = 'main';
 wsMain.save();

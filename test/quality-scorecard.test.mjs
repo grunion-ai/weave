@@ -10,6 +10,7 @@ import {
   parseLog, probeAnswers, scorecard, seededTypes, tokenShares, widthsIn,
 } from '../scripts/quality-scorecard.mjs';
 import { PROBE_QUESTION, renderBugReport } from '../src/bugreport.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TOKENS_CSS = `/* margin: var(--commented-out); z-index: var(--nope); */
@@ -130,7 +131,7 @@ test('the row is named by its ISO week', () => {
 });
 
 test('only commits inside the window are read from git', (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'scorecard-git-'));
+  const dir = tempDir('scorecard-git-');
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const git = (args, date) => execFileSync('git', ['-C', dir, ...args], { env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
   git(['init', '-q', '-b', 'main'], '2026-10-01T00:00:00Z');

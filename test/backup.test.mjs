@@ -15,10 +15,11 @@ import {
   packTar, readTar, streamTar, tarWriter, classify, heldOpen, encryptFile, decryptFile, isEncrypted, resolvePassphrase,
   backup, restore, signV4, s3, scheduleNightly, nextFireAt, ARCHIVE_PREFIX, RETAIN,
 } from '../src/backup.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
-const tmp = (label) => mkdtempSync(join(tmpdir(), `weave-backup-${label}-`));
+const tmp = (label) => tempDir(`weave-backup-${label}-`);
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 const PASS = 'correct horse battery staple';
 

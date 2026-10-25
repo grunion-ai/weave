@@ -5,6 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ROOT } from '../lib/source.mjs';
+import { tempDir } from '../lib/temp.mjs';
 
 const CHILD = `
   import { Weave } from ${JSON.stringify(join(ROOT, 'src/engine.js'))};
@@ -19,7 +20,7 @@ const CHILD = `
 `;
 
 async function child() {
-  const env = { ...process.env, WEAVE_KEYSTORE: join(mkdtempSync(join(tmpdir(), 'weave-sec-')), 'keystore.json') };
+  const env = { ...process.env, WEAVE_KEYSTORE: join(tempDir('weave-sec-'), 'keystore.json') };
   const proc = spawn(process.execPath, ['--input-type=module', '-e', CHILD], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let exited = null;
   proc.on('exit', (code) => { exited = code ?? 'signal'; });

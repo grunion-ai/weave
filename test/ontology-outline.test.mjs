@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { handleMcpMessage, listTools } from '../src/mcp.js';
 import { unwrapData } from './lib/fixtures.mjs';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -136,7 +137,7 @@ test('renames, config edits, relations and deletes bump the spaces they touch', 
 });
 
 test('versions survive a reopen: they live in the audit log', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-ontology-'));
+  const dir = tempDir('weave-ontology-');
   try {
     const path = join(dir, 'w.db');
     const w = tracker(new Weave({ path }));
@@ -214,7 +215,7 @@ test('weave_ontology is listed by default and answers plain text', () => {
 });
 
 test('GET /api/ontology mirrors the tool, and the CLI prints it', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-ontology-door-'));
+  const dir = tempDir('weave-ontology-door-');
   const path = join(dir, 'w.db');
   const w = tracker(new Weave({ path }));
   const { server } = await startServer(w, { port: 0 });
