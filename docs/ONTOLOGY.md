@@ -252,7 +252,8 @@ view.
 
 ### Automation
 A rule bound to one table: a trigger — entity-created, field-updated,
-state-changed — and the actions it fires: set-field, append-doc, add-comment,
+state-changed, or schedule (a cron expression, a zone and an optional where
+clause, fired by the server's minute tick) — and the actions it fires: set-field, append-doc, add-comment,
 webhook. Since Feature #249 every rule is a row of `System/Workflows`: the
 row's Script document holds it as JSON, `{table, trigger, actions}` with
 names, and `createAutomation`, `listAutomations`, `updateAutomation` and

@@ -1,0 +1,43 @@
+@@ a1 2026-10-24T10:00:00Z grid: a long title clips inside its cell (Issue #1)
+public/app.js
+test/grid-title-browser.test.mjs
+
+@@ a2 2026-10-23T10:00:00Z phone: a chip is never cut off in the list (Issue #2)
+public/style.css
+test/cutoff-baseline.json
+
+@@ a3 2026-10-23T09:00:00Z phone: the board tile title keeps a 44px hit area (Issue #3)
+public/app.js
+test/lib/states.mjs
+
+@@ a4 2026-10-22T10:00:00Z style: filter chips align on one baseline (Issue #4)
+public/style.css
+test/type-scale.test.mjs
+
+@@ a5 2026-10-22T09:00:00Z Phone list chips get a 44 px hit area (Issue #5)
+public/app.js
+test/byte-budget.json
+
+@@ a0 2026-10-21T11:00:00Z Date picker loads on first use, out of app.js (Issue #1041)
+public/app.js
+test/lib/source.mjs
+
+@@ a6 2026-10-21T10:00:00Z grid: rows keep their order on reload (Issue #1044)
+public/app.js
+
+@@ a7 2026-10-21T09:00:00Z View pane groups by five levels (Feature #9)
+public/app.js
+
+@@ a8 2026-10-20T10:00:00Z server: a slow query answers 504 (Issue #6)
+src/engine.js
+
+@@ a9 2026-10-20T09:00:00Z vendor: mermaid 11.17.2 (Issue #7)
+public/vendor/mermaid.min.js
+
+@@ b1 2026-10-19T10:00:00Z sheriff: revert 3a83e3f545 (PR #439) after main went red
+public/app.js
+
+@@ b2 2026-10-19T09:00:00Z Revert "share: Share is a header button (Issue #765)" (#11)
+public/app.js
+
+@@ b3 2026-10-19T08:00:00Z Merge "grid: no chip is cut by a resize (Issue #614)" into main

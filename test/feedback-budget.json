@@ -11,7 +11,7 @@
     "switch-view|desktop": 120,
     "type-doc|desktop": 120,
     "type-doc|phone": 120,
-    "trash-undo|desktop": 1200,
+    "trash-undo|desktop": 120,
     "theme|desktop": 120,
     "phone-search|phone": 300,
     "phone-menu|phone": 450,
@@ -24,7 +24,6 @@
   },
   "raised": {
     "open-table|phone": "Issue #1042: fixed for Issue #1056 (PR #399), measured 9 to 10 ms locally; PR gate run 39875308002 read 52, 156 and 457 ms on a loaded runner and 42, 42, 42 on the retry, so it sits on the 120 ms fast-journey floor rather than its measured value",
-    "trash-undo|desktop": "Issue #1058: Move to trash waits for the delete before the rows leave; measured 905 to 908 ms",
     "phone-search|phone": "Issue #1042: main CI runs every browser suite at once, and medians there drift past the PR gate baseline: main run 39377260173 read 298,145,214 ms against 210 (Issue #1060 tracks the slow sheet)",
     "phone-menu|phone": "Issue #1042: main CI runs every browser suite at once, and medians there drift past the PR gate baseline: main read 217,259,373 ms (Issue #1061 tracks the slow menu)",
     "open-table|desktop": "Issue #1042: main run 39378994075 read phone-table-sheet at 88, 48 and 86 ms (20 ms on retry); fast journeys on main swing between about 20 and 90 ms, so the floor moves from 80 to 120 ms",

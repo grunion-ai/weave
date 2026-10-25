@@ -145,7 +145,7 @@ test('renderView chip: name, state first, then the first non-empty fields in ord
   assert.equal(v.shape, 'chip');
   assert.equal(v.id, t.id);
   assert.equal(v.publicId, 1);
-  assert.equal(v.url, `/w/${w.state.meta.name}/e/${t.id}`);
+  assert.equal(v.url, `/e/${t.id}`);
   assert.equal(v.name, 'Ship the editor');
   assert.equal(v.link, false);
   assert.deepEqual(v.state, { name: 'Doing', category: 'in-progress' });

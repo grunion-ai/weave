@@ -1,10 +1,9 @@
 'use strict';
 
 function navigateToResult(hit) {
-  const hitPrefix = (hit.url.match(/^\/w\/[^/]+/) ?? [''])[0];
-  const home = hitPrefix === WS_PREFIX || hitPrefix.toLowerCase() === `/w/${currentWsName()}`.toLowerCase();
+  const home = !hit.workspace || hit.workspace.toLowerCase() === currentWsName().toLowerCase();
   if (!home) {
-    location.href = hit.kind === 'entity' ? `${hitPrefix}/#/entity/${hit.id}` : hit.url;
+    location.href = hit.url;
     return;
   }
   if (hit.kind === 'entity') openEntity(hit.id);

@@ -28,6 +28,8 @@ export const BUG_CATEGORIES = [
 export const categoryById = (id) => BUG_CATEGORIES.find((c) => c.id === id) ?? null;
 
 export const SYMPTOM_FIELD = 'Symptom';
+export const PROBE_QUESTION = 'Which probe would have caught this?';
+export const PROBE_UNANSWERED = '_Unanswered. Whoever fixes this names the probe that should have caught it (cut-off, flicker, accessibility, touch, a budget or a source scan), or writes none and extends one._';
 export const SYMPTOM_OPTIONS = BUG_CATEGORIES.map((c) => c.label);
 
 const RANK = { Low: 0, Medium: 1, High: 2 };
@@ -157,6 +159,10 @@ export function renderBugReport({ categories = [], note = '', events = [], clien
     text ? quote(text) : '_The reporter added no note._',
     '',
     ...(server.forwardFailure ? [`Forward to ${server.forwardFailure.url} failed: ${redact(String(server.forwardFailure.reason))}. Filed on this instance instead.`, ''] : []),
+    `## ${PROBE_QUESTION}`,
+    '',
+    PROBE_UNANSWERED,
+    '',
     '## Where',
     '',
     '| | |',
