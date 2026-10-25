@@ -4,8 +4,6 @@
     "Task table | field dialog | light | color-contrast | .cat-done": 1100,
     "Task table | filter popover | light | color-contrast | .cat-done > .filter-chip-label": 1100,
     "Task table | row menu | dark | color-contrast | .wv-menu-danger > .wv-menu-label": 1099,
-    "billing | at rest | light | color-contrast | #back": 1097,
-    "billing | at rest | light | color-contrast | #summary": 1097,
     "forms builder | at rest | dark | color-contrast | details:nth-child(1) > summary > .text-muted": 1098,
     "forms builder | at rest | dark | color-contrast | details:nth-child(2) > summary > .text-muted": 1098,
     "forms builder | at rest | dark | color-contrast | details:nth-child(3) > summary > .text-muted": 1098,
