@@ -1,6 +1,6 @@
 import { Weave, WeaveError, fileHeaders, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
-import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
+import { shareDoor, shareGate, sharePage, scopedMention, sharedRead } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
@@ -642,7 +642,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       mcpDoor = true;
     }
     const door = shareDoor(path, authz);
-    const share = door ? weave.shareByToken(door.token) : null;
+    let share = door ? weave.shareByToken(door.token) : null;
     if (door) {
       if (!share) return door.page ? notFound({ error: 'This share link is not (or no longer) valid', code: 'not-found' }) : deny(401, 'Invalid token');
       if (share.visibility === 'private' && !sessionOn(weave)) return door.page ? wallPage() : deny(401, 'This share link is private: sign in to open it');
@@ -811,7 +811,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     try {
       let m;
       if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|mmd|html|pdf)$/))) {
-        const entity = weave.readEntity(m[1]);
+        const entity = sharedRead(weave, share, m[1]);
         const fieldRef = m[2] ?? null;
         const markdown = weave.getDoc(m[1], fieldRef);
         const docLabel = fieldRef ? ` • ${fieldRef}` : '';
@@ -831,7 +831,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(200, pdf, fileHeaders({ name: `${entity.name || 'document'}.pdf`, mime: 'application/pdf' }, pdf));
       }
       if ((m = path.match(/^\/e\/([^/]+)\/entity\.(md|mmd|html|pdf)$/))) {
-        const entity = weave.readEntity(m[1]);
+        const entity = sharedRead(weave, share, m[1]);
         const lines = [`# ${entity.name || '#' + entity.publicId}`, '', `${entity.db} #${entity.publicId} • updated ${entity.updatedAt.slice(0, 10)}`, '', '## Fields', '', '| Field | Value |', '|---|---|'];
         for (const [k, v] of Object.entries(entity.fields)) {
           if (k in entity.docs) continue;
@@ -841,6 +841,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         for (const [docName, docText] of Object.entries(entity.docs)) {
           lines.push('', '<div class="pagebreak"></div>', '', `## ${docName}`, '', docText || '_empty_');
         }
+        if (entity.notice) lines.push('', entity.notice);
         const md = lines.join('\n');
         const subtitle = `${entity.db} #${entity.publicId} • full entity export`;
         if (m[2] === 'md') return out(200, md, { 'Content-Type': 'text/markdown; charset=utf-8' });
@@ -1021,6 +1022,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         weave.actor = actorForRequest;
         const route = `${rx.method} ${path}`;
         if (share) {
+          weave.maybeRefresh();
+          share = weave.shareByToken(door.token);
+          if (!share) return deny(401, 'This share link is no longer valid');
+          if (share.visibility === 'private' && !sessionOn(weave)) return deny(401, 'Sign in to open this share link');
           const gated = shareGate(weave, share, { method: rx.method, path, body, searchParams: rx.searchParams, viewerZone });
           if (gated) return out(gated.status, gated.data);
         }

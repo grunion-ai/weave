@@ -77,7 +77,7 @@
       expiry.addEventListener('change', () => { date.hidden = expiry.value !== 'custom'; });
       const label = el('input', { class: 'form-control', 'aria-label': 'Link name', value: link?.label ?? '', placeholder: 'Optional link name', maxlength: '120' });
       const note = el('p', { class: 'share-note share-scope' });
-      const setNote = () => { note.textContent = link ? `Scope fixed: ${link.scope.kind}` : mode.value === 'submit' ? `Creates entries in ${context.name}. Does not reveal existing entries.` : `${scopeName}. Includes every field; view filters do not restrict access.`; };
+      const setNote = () => { note.textContent = link ? `Scope fixed: ${link.scope.kind}` : mode.value === 'submit' ? `Creates entries in ${context.name}. Does not reveal existing entries.` : snapshot.kind === 'entities' ? `${scopeName}. Related and computed fields are omitted in this beta.` : `${scopeName}. Includes every field; view filters do not restrict access.`; };
       setNote(); mode.addEventListener('change', setNote);
       const exp = () => expiry.value === 'keep' ? {} : expiration(expiry.value, date.value);
       const save = el('button', { type: 'submit', class: 'btn btn-primary btn-sm' }, link ? 'Save changes' : 'Create link');

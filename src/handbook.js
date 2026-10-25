@@ -989,7 +989,7 @@ On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by defa
 
 ## Share links
 
-The **Share** up-arrow in the toolbar opens a docked **Beta** panel beside your table. **Existing access** lists links with preview, copy, edit and delete icons. **Add link** creates a public read link, or a submission link on a table. Selected entries fix the read scope to those entries; with nothing selected, the whole current table, space or workspace is shared. Filters hide rows in a view but do not narrow table access. Every field in the shared scope is readable.
+The **Share** up-arrow in the toolbar opens a docked **Beta** panel beside your table. **Existing access** lists links with preview, copy, edit and delete icons. **Add link** creates a public read link, or a submission link on a table. Selected entries fix the read scope to those entries; with nothing selected, the whole current table, space or workspace is shared. Filters hide rows in a view but do not narrow table access. Container links include every field. Selected-entry links omit related and computed fields to keep neighboring records private.
 
 **Expires** offers one hour, one day, seven days, thirty days, ninety days, a custom future date, or **Never**. Editing expiration keeps the address. **Regenerate link** preserves the grant and replaces its credential; the previous address stops working immediately. **Delete link** revokes it. Expired and deleted links remain visible for review. Dedicated HTTP links use the workspace UUID and an opaque token, with no username in the path; renaming a workspace or link does not change access.
 

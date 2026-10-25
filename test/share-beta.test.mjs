@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { withinScope, sharePage, expireLegacy, shareGate } from '../src/shares.js';
+import { withinScope, sharePage, expireLegacy, shareGate, scopedMention } from '../src/shares.js';
 
 function seed() {
   const w = new Weave();
@@ -95,4 +95,67 @@ test('selected-entry query omits unscoped aggregate and chip metadata', () => {
   assert.equal(response.data.total, 1);
   assert.equal(shareGate(w, grant, { method: 'POST', path: `/api/tables/${table.id}/query`, body: { groupBy: 'Standard' } }).status, 403);
   assert.equal(shareGate(w, grant, { method: 'POST', path: `/api/tables/${table.id}/query`, body: { select: ['Name'] } }).status, 403);
+});
+
+test('selected-entry shares omit related records and computed fields from API and every export', async () => {
+  const { startServer } = await import('../src/server.js');
+  const { w, table, a } = seed();
+  const privateTable = w.createTable({ space: 'Dev', name: 'Private' });
+  const secret = w.createEntity(privateTable.id, { name: 'UNSHARED-SECRET-NAME' });
+  w.addRelation(table.id, { name: 'Private link', targetDb: privateTable.id, cardinality: 'many-to-one', inverseName: 'Tasks' });
+  w.updateEntity(a.id, { 'Private link': secret.id });
+  w.addField(table.id, { name: 'Private name', type: 'lookup', config: { relationField: 'Private link', targetField: 'Name' } });
+  w.addField(table.id, { name: 'Computed', type: 'formula', config: { expression: '42' } });
+  const link = w.mintShare({ scope: { kind: 'entities', ids: [a.id] } });
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    for (const path of [`/s/${link.token}`, `/s/${link.token}/api/entities/${a.id}`, ...['md', 'mmd', 'html', 'pdf'].map(ext => `/s/${link.token}/e/${a.id}/entity.${ext}`)]) {
+      const response = await fetch(base + path);
+      assert.equal(response.status, 200, path);
+      const body = await response.text();
+      assert.ok(!body.includes('UNSHARED-SECRET-NAME'), path);
+      assert.ok(!body.includes(secret.id), path);
+      assert.ok(!body.includes('Private name'), path);
+      assert.ok(!body.includes('Computed'), path);
+    }
+    const row = shareGate(w, link, { method: 'GET', path: `/api/entities/${a.id}` }).data;
+    assert.equal(row.fields['Private link'], undefined);
+    assert.equal(row.raw['Private name'], undefined);
+    assert.equal(row.activity, undefined);
+    for (const body of [{ where: [['Private link.Name', '=', 'UNSHARED-SECRET-NAME']] }, { sort: [{ field: 'Private link.Name', dir: 'asc' }] }, { search: 'UNSHARED-SECRET-NAME' }, { fields: ['Private name'] }, { view: 'Standard' }]) {
+      assert.equal(shareGate(w, link, { method: 'POST', path: `/api/tables/${table.id}/query`, body }).status, 403);
+    }
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+
+test('selected-entry mentions never carry rich chip fields or derived views', () => {
+  const { w, a } = seed();
+  const grant = w.mintShare({ scope: { kind: 'entities', ids: [a.id] } });
+  const resolve = scopedMention(w, grant, () => ({ label: 'unsafe', name: 'unsafe', fields: { Related: 'PRIVATE' }, view: 'PRIVATE', home: 'PRIVATE' }), `/s/${grant.token}`);
+  assert.deepEqual(resolve('entity', a.id), { label: 'A', name: 'A', href: `/s/${grant.token}/e/${a.id}/doc.html` });
+});
+
+test('share rotation while a query body is pending invalidates that request', async () => {
+  const { request } = await import('node:http');
+  const { startServer } = await import('../src/server.js');
+  const { w, table } = seed();
+  const link = w.mintShare({ scope: { kind: 'table', id: table.id } });
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const status = await new Promise((resolve, reject) => {
+      const client = request({ host: '127.0.0.1', port: server.address().port, path: `/s/${link.token}/api/tables/${table.id}/query`, method: 'POST', headers: { 'Content-Type': 'application/json' } }, response => {
+        response.resume();
+        response.on('end', () => resolve(response.statusCode));
+      });
+      client.on('error', reject);
+      server.once('request', () => {
+        w.regenerateShare(link.id);
+        client.end('{}');
+      });
+      client.flushHeaders();
+    });
+    assert.equal(status, 401);
+  } finally { await new Promise(resolve => server.close(resolve)); }
 });

@@ -306,6 +306,39 @@ const refuse = (status, error) => answer(status, { error, code: status === 404 ?
 const missing = () => refuse(404, 'Not found');
 const OUTSIDE = 'A share link reaches the rows, documents and files in its scope, nothing else';
 
+const OMIT_SELECTED = new Set(['relation', 'lookup', 'rollup', 'formula', 'view', 'field']);
+
+export function sharedRead(weave, grant, entity) {
+  const row = typeof entity === 'string' ? weave.readEntity(entity) : entity;
+  if (grant?.scope.kind !== 'entities') return row;
+  const db = weave.getTable(row.dbId);
+  const allowed = new Set(Object.values(db.fields).filter(field => !OMIT_SELECTED.has(field.type)).map(field => field.name));
+  const fields = Object.fromEntries(Object.entries(row.fields ?? {}).filter(([name]) => allowed.has(name)));
+  const raw = Object.fromEntries(Object.entries(row.raw ?? {}).filter(([name]) => allowed.has(name)));
+  const docs = Object.fromEntries(Object.entries(row.docs ?? {}).filter(([name]) => allowed.has(name)));
+  return {
+    id: row.id, publicId: row.publicId, db: row.db, dbId: row.dbId,
+    name: allowed.has(db.fields[db.nameFieldId]?.name) ? row.name : `#${row.publicId}`,
+    fields, raw, docs, doc: allowed.has(row.docField) ? row.doc ?? '' : '', docField: allowed.has(row.docField) ? row.docField : null,
+    createdAt: row.createdAt, updatedAt: row.updatedAt,
+    notice: 'Related and computed fields are omitted from selected-entry shares.',
+  };
+}
+
+function selectedQueryAllowed(weave, db, opts) {
+  const direct = name => typeof name === 'string' && !name.includes('.') && Object.values(db.fields).some(field => field.name === name && !OMIT_SELECTED.has(field.type));
+  const where = node => {
+    if (node == null) return true;
+    if (Array.isArray(node)) return node.length === 0 || (typeof node[0] === 'string' ? direct(node[0]) : node.every(where));
+    if (typeof node !== 'object') return false;
+    return Object.entries(node).every(([key, value]) => ['and', 'or'].includes(key) && Array.isArray(value) && value.every(where));
+  };
+  return !opts.view && !opts.groupBy && !opts.select && !opts.search
+    && (!opts.fields || (Array.isArray(opts.fields) && opts.fields.every(direct)))
+    && where(opts.where)
+    && (!opts.sort || (Array.isArray(opts.sort) && opts.sort.every(part => direct(typeof part === 'string' ? part : part?.field))));
+}
+
 export function shareGate(weave, grant, { method, path, body = {}, searchParams = null, viewerZone = null }) {
   if (grant.mode === 'submit') return refuse(403, 'A submission link only accepts its form');
   const rung = RUNG[grant.mode] ?? 0;
@@ -330,7 +363,12 @@ export function shareGate(weave, grant, { method, path, body = {}, searchParams 
   }
   if ((m = path.match(/^\/api\/tables\/([^/]+)$/)) && read) {
     const db = tableOf(m[1]);
-    return db && touches(weave, grant, db) ? null : missing();
+    if (!db || !touches(weave, grant, db)) return missing();
+    if (grant.scope.kind === 'entities') {
+      const fields = Object.fromEntries(Object.entries(db.fields).filter(([, field]) => !OMIT_SELECTED.has(field.type)));
+      return answer(200, { id: db.id, name: db.name, spaceId: db.spaceId, fields, fieldOrder: db.fieldOrder.filter(id => fields[id]), nameFieldId: fields[db.nameFieldId] ? db.nameFieldId : null });
+    }
+    return null;
   }
   if ((m = path.match(/^\/api\/tables\/([^/]+)\/(entities|query)$/))) {
     const db = tableOf(m[1]);
@@ -348,10 +386,11 @@ export function shareGate(weave, grant, { method, path, body = {}, searchParams 
         viewerZone,
       };
     const narrowed = ['entity', 'entities', 'view'].includes(grant.scope.kind);
+    if (grant.scope.kind === 'entities' && !selectedQueryAllowed(weave, db, opts)) return refuse(403, 'Selected-entry queries use only direct fields, without related search, saved views or projections');
     if (narrowed && (opts.groupBy || opts.select)) return refuse(403, 'A selected-entry share does not expose grouped counts or projections');
     const res = weave.query(db.id, narrowed ? { ...opts, relations: 'full', countAll: false, trashCount: false, limit: null, offset: 0 } : opts);
     const inScope = inScopeOf(weave, grant, db);
-    const matched = (res.items ?? []).filter((x) => inScope(x.id));
+    const matched = (res.items ?? []).filter((x) => inScope(x.id)).map(row => sharedRead(weave, grant, row));
     const offset = narrowed ? Math.max(0, Number(opts.offset) || 0) : 0;
     const items = narrowed ? matched.slice(offset, opts.limit == null ? undefined : offset + Math.max(0, Number(opts.limit) || 0)) : matched;
     return answer(200, narrowed ? { items, total: matched.length } : { ...res, items });
@@ -364,6 +403,7 @@ export function shareGate(weave, grant, { method, path, body = {}, searchParams 
     const tail = m[2] ?? '';
     if (tail.startsWith('comments')) return refuse(403, 'Comments by share link are not built yet');
     if (!entityIn(m[1])) return missing();
+    if (read && tail === '' && grant.scope.kind === 'entities') return answer(200, sharedRead(weave, grant, entityIn(m[1]).id));
     if (read && (tail === '' || tail === 'doc')) return null;
     if (method === 'DELETE' && tail === '') {
       if (rung < RUNG.manage) return refuse(403, `A ${grant.mode} link cannot delete rows; that takes manage`);
@@ -385,12 +425,12 @@ const cellText = (v) => {
 };
 const md = (s) => String(s).replace(/\|/g, '¦').replace(/[[\]]/g, (c) => (c === '[' ? '(' : ')')).replace(/\r?\n/g, ' ');
 
-function rowsTable(weave, db, items, base, fieldIds = db.fieldOrder) {
-  const cols = fieldIds.map((id) => db.fields[id]).filter((f) => f && f.type !== 'document' && f.type !== 'view');
+function rowsTable(weave, db, items, base, fieldIds = db.fieldOrder, grant = null) {
+  const cols = fieldIds.map((id) => db.fields[id]).filter((f) => f && f.type !== 'document' && f.type !== 'view' && !(grant?.scope.kind === 'entities' && OMIT_SELECTED.has(f.type)));
   if (!items.length) return '_No rows._';
   const lines = [`| ${cols.map((f) => md(f.name)).join(' | ')} |`, `|${cols.map(() => '---').join('|')}|`];
   for (const item of items) {
-    const e = weave.readEntity(item.id);
+    const e = sharedRead(weave, grant, item.id);
     lines.push(`| ${cols.map((f) => {
       const text = md(cellText(e.fields[f.name]));
       return f.id === db.nameFieldId ? `[${text || `#${e.publicId}`}](${base}/e/${e.id}/entity.html)` : text;
@@ -427,7 +467,7 @@ export function sharePage(weave, grant, rest, { method, prefix = '', searchParam
   const { kind, id } = grant.scope;
   if (kind === 'entities' && (rest === '' || rest === '/')) {
     const tables = weave.listTables().filter(db => touches(weave, grant, db));
-    return { html: page('Shared entries', `${grant.scope.ids.length} selected entries`, tables.map(db => rowsTable(weave, db, rowsIn(weave, grant, db), base)).join('\n\n')) };
+    return { html: page('Shared entries', `${grant.scope.ids.length} selected entries`, tables.map(db => rowsTable(weave, db, rowsIn(weave, grant, db), base, db.fieldOrder, grant)).join('\n\n') + '\n\n_Related and computed fields are omitted from selected-entry shares._') };
   }
   if (rest === '' || rest === '/') {
     const to = { entity: `/e/${id}/entity.html`, table: `/table/${id}`, space: `/space/${id}`, view: `/view/${id}`, workspace: '/workspace' }[kind];
@@ -492,7 +532,12 @@ export function scopedMention(weave, grant, plain, base) {
       const e = weave.getEntity(ref);
       if (!withinScope(weave, grant, { entityId: e.id })) return null;
       const hit = plain(kind, ref);
-      return hit ? { ...hit, href: `${base}/e/${e.id}/doc.html` } : null;
+      if (!hit) return null;
+      if (grant.scope.kind === 'entities') {
+        const name = sharedRead(weave, grant, e.id).name;
+        return { label: name, name, href: `${base}/e/${e.id}/doc.html` };
+      }
+      return { ...hit, href: `${base}/e/${e.id}/doc.html` };
     } catch {
       return null;
     }
