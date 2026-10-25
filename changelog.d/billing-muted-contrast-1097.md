@@ -1,1 +1,0 @@
-- The billing page draws its muted summary and back link at 5.11:1 on the canvas, up from 4.31:1, by reading the app's own light canvas-muted shade (Issue #1097).

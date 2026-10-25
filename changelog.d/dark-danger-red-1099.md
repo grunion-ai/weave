@@ -1,1 +1,0 @@
-- Danger labels read 7.45:1 on the dark panel, up from 3.69:1: the dark theme now carries its own `--tblr-danger` instead of inheriting the light red (Issue #1099).

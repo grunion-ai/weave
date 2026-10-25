@@ -2,6 +2,20 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.109 (2026-10-25)
+
+- A field or document write inside one create or update marks its row dirty, so a value applied after a nested save in the same call reaches disk. An automation created enabled now reads as enabled after the workspace is reopened, and still fires (Issue #1085).
+- The billing page draws its muted summary and back link at 5.11:1 on the canvas, up from 4.31:1, by reading the app's own light canvas-muted shade (Issue #1097).
+- Danger labels read 7.45:1 on the dark panel, up from 3.69:1: the dark theme now carries its own `--tblr-danger` instead of inheriting the light red (Issue #1099).
+- The `tests` and `dev-soak` workflows bound each `playwright install --with-deps` attempt at five minutes and retry it once, the way `pr.yml` already does, after a trickling mirror held that step for thirty minutes and cancelled two jobs of the `CI gate` on main (Issue #1107).
+- The list layout prints each shown field's label at full strength, so it reads 5.9:1 against the row in light instead of 3.4:1 (Issue #1096).
+- The Claude Code plugin manifest carries the Anthropic directory listing fields: the weave icon and the docs, support, privacy and terms links, so a directory submission reads them from `plugins/weave` (Feature #332).
+- The PR browser tier now selects by the DOM classes and route literals the changed blocks name, not by file name alone, so a change to a shared module such as `public/app.js` or `src/routes.js` runs the journeys that exercise it before it merges (Issue #1075).
+- Each `playwright install --with-deps` attempt in a PR browser job is bounded at five minutes and retried once, and apt gets a twenty-second acquire timeout with three retries, so a trickling mirror costs a retry instead of the `PR gate` (Issue #1107).
+- The form builder's intro and field hints read 8.7:1 on the dark panel, up from 3.56:1: `.text-muted` now takes weave's own secondary token instead of the vendored fixed grey (Issue #1098).
+- Every door emits one permalink per row: `url` is `/w/<workspace>/e/<uuid>` on API reads and creates, MCP row reads and verbose writes, CLI output, chips and cards, every search hit and the bug reporter's receipt. Tables and spaces answer their `/w/<workspace>/t/<id>` and `/s/<id>` permalinks, views `/w/<workspace>/#/view/<id>`. Every row parameter takes a pasted permalink, its path, `/e/<uuid>` or a bare uuid, and search ranks the row a pasted link or uuid names first (Feature #203).
+- **View opens a pane beside the table** (Feature #340): the view picker, then Filters, Sort, Group, Fields and Display as an accordion, with Reset view and Clear all at its foot. The toolbar keeps Search, View and the table menu; the View badge counts active filters. Sort takes three levels, Group five nested levels in Table and List layouts, with subtotal rows per group (Every level, Top level, None) that stay on collapsed groups. A field sits in Sort or Group, never both; empty values sort last and group under No value; a multi-select row appears under each value and counts once above; deleted rows show struck through and never count. The server computes every subtotal: `weave_query` with a grouped view returns `groups` and `groupTotal`, `weave_stats` with `by` carries the same rollups, and the grid draws from that one answer. The phone table menu gains the same sort and group levels. Gates: `test/view-pane-combinations.test.mjs` (1,920 setups, 14 checks each, rule tests) and `test/view-pane-browser.test.mjs`.
+
 ## v0.4.108 (2026-10-23)
 
 - The accessibility gate scans 13 routes in both themes (tables, board and list views, the entity page with its editor, the map, settings, trash, activity, the forms builder, a published form, start and billing) plus six open states on a table (field dialog, command palette, filter and sort popovers, share dialog, row menu), and holds today's 17 known violations in a ratcheting `test/a11y-baseline.json`, each tied to its Issue row (#1096 to #1101) (Issue #1081)

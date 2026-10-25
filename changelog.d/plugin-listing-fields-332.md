@@ -1,1 +1,0 @@
-- The Claude Code plugin manifest carries the Anthropic directory listing fields: the weave icon and the docs, support, privacy and terms links, so a directory submission reads them from `plugins/weave` (Feature #332).
