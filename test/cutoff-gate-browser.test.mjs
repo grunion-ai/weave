@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
 import { CELLS, PLATFORM, fingerprint, probe, sectionOf, seed, sweepCell, tally, verdict } from './lib/cutoff.mjs';
+import { held } from './lib/states.mjs';
 
 const baseline = sectionOf(JSON.parse(readFileSync(new URL('./cutoff-baseline.json', import.meta.url), 'utf8')));
 
@@ -102,6 +103,22 @@ if (s) {
       for (const x of stale) t.diagnostic(`stale: ${x.fp} measured ${x.seen} against ${x.baseline}; once that count holds across runs, lower it with node scripts/cutoff-sweep.mjs --lower`);
       if (added.length || stale.length) t.diagnostic(`${PLATFORM} ${cell} measured: ${JSON.stringify(seen)}`);
       assert.deepEqual(added, [], `new cut-off text on ${PLATFORM}: fix it; test/cutoff-baseline.json never gains a row or a count`);
+    });
+  }
+
+  for (const cell of Object.keys(CELLS)) {
+    const mine = held('cutoff').filter((p) => p.cell === cell);
+    if (!mine.length) continue;
+    test(`${cell}: every state held out of the gate still shows the cut-off text its Issue rows track (Issue #1119)`, async (t) => {
+      const m = matrix[cell];
+      if (!m) return t.skip(`${CELLS[cell].engine} cannot launch here`);
+      const { findings, failed } = await sweepCell(m.browser, cell, s, { page: m.page, journeys: [], overlays: [], rests: mine.map((p) => p.state) });
+      assert.deepEqual(failed, [], 'a held state could not open: its selectors rotted');
+      for (const p of mine) {
+        const here = findings.filter((f) => f.where === `${p.state.open}:${p.state.name}`);
+        t.diagnostic(`held: ${p.state.name} ${cell} for Issue #${p.hold.join(', #')} measured ${here.length}: ${JSON.stringify(tally(here))}`);
+        assert.ok(here.length, `${p.state.name} shows no cut-off text on ${cell}: once Issue #${p.hold.join(', #')} is fixed, drop its hold in test/lib/states.mjs so the gate walks it`);
+      }
     });
   }
 }

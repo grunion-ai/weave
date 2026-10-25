@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CELLS, KINDS, NOTE, PLATFORM, cellOf, fingerprint, grew, lower, ratchet, sectionOf, tally, verdict } from './lib/cutoff.mjs';
-import { OVERLAYS, SURFACES } from './lib/overlays.mjs';
+import { OVERLAYS } from './lib/overlays.mjs';
+import { ROUTES } from './lib/states.mjs';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -140,14 +141,14 @@ test('the cells are desktop 1440x900 in Chromium and phone 390x844 in WebKit', (
   for (const j of JOURNEYS) for (const c of cellsOf(j)) assert.ok(Object.hasOwn(CELLS, c), `${j.name} walks a cell the sweep knows`);
 });
 
-test('every overlay names a surface, a cell, a root and an opener, once', () => {
+test('every overlay names a route, a cell, a root and an opener, once', () => {
   const names = OVERLAYS.map((o) => o.name);
   assert.equal(new Set(names).size, names.length);
   for (const o of OVERLAYS) {
-    assert.ok(Object.hasOwn(SURFACES, o.surface), `${o.name}: surface ${o.surface}`);
+    assert.ok(Object.hasOwn(ROUTES, o.route), `${o.name}: route ${o.route}`);
     assert.ok(o.cells.length && o.cells.every((c) => Object.hasOwn(CELLS, c)), `${o.name}: cells`);
     assert.equal(typeof o.root, 'string');
-    assert.equal(typeof o.open, 'function');
+    assert.equal(typeof o.act, 'function');
   }
 });
 
