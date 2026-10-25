@@ -381,6 +381,14 @@ filtered views of it. A state that names no seed renders on every seed, so a
 surface added that way falls under every probe at once; the board and list
 views entered first.
 
+Every seed also carries the kitchen sink: a Lab/Sample table with all 22
+field types and adversarial values (a 112-character unbroken word as name,
+text, key, URL, email and file name, an eleven-digit currency, a 55-character
+option, a 48-character workflow state, a century-long date range, and a
+one-letter name beside them). The shared states `sink-table`, `sink-list`,
+`sink-board` and `sink-row` walk it on the table, list and board layouts and
+the record page, so every probe sees every field type.
+
 A state that fails a probe it newly joins carries a `hold` naming the Issue
 rows that track the failure, keyed by probe (`touch`) or probe and cell
 (`cutoff|desktop`). A held state stays out of that gate and is still walked:
