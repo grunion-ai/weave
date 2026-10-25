@@ -55,3 +55,13 @@ test('app muted text reads 4.5:1 on the panel and the sunk surface in both theme
     }
   }
 });
+
+const VENDOR = tokensOf(read('public/vendor/tabler.min.css'));
+
+test('danger labels read 4.5:1 on the panel in both themes (Issue #1099)', () => {
+  for (const [theme, tokens] of Object.entries(APP_THEMES())) {
+    const danger = tokens['--tblr-danger'] ?? VENDOR['--tblr-danger'];
+    const r = ratio(danger, tokens['--tblr-bg-surface']);
+    assert.ok(r >= 4.5, `${theme}: danger ${danger} on the panel ${tokens['--tblr-bg-surface']} reads ${r}:1`);
+  }
+});

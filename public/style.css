@@ -40,6 +40,8 @@
 }
 [data-bs-theme="dark"] {
   --wv-canvas: #0f1115;
+  --tblr-danger: #ff8787;
+  --tblr-danger-rgb: 255, 135, 135;
   --wv-canvas-muted: #9aa0ae;
   --wv-pill-hover: rgba(230, 232, 236, .07);
   --wv-computed-bg: rgba(255, 255, 255, .045);
