@@ -12046,14 +12046,18 @@ function wireNavCollapse() {
   app.append(strip);
   const panel = [sidebar, rail, strip];
   let settle = null;
-  strip.addEventListener('mouseenter', () => {
-    if (!app.classList.contains('nav-collapsed')) return;
+  let pointer = null;
+  addEventListener('pointermove', (e) => {
+    const moved = pointer && (pointer.x !== e.clientX || pointer.y !== e.clientY);
+    pointer = { x: e.clientX, y: e.clientY };
+    if (!moved || e.target !== strip) return;
+    if (!app.classList.contains('nav-collapsed') || app.classList.contains('nav-peek')) return;
     app.classList.add('nav-peek');
     clearTimeout(settle);
     settle = setTimeout(() => {
       if (!panel.some((n) => n.matches(':hover'))) app.classList.remove('nav-peek');
     }, 400);
-  });
+  }, true);
   strip.addEventListener('click', () => apply(false));
   sidebar.addEventListener('click', (e) => {
     if (!app.classList.contains('nav-peek') || narrowShell.matches) return;

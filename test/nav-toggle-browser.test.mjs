@@ -152,6 +152,28 @@ if (s) {
     await page.close();
   });
 
+  test('a pointer parked on the left edge does not peek the nav when the page moves under it (Issue #927)', async () => {
+    const page = await open();
+    await page.mouse.move(700, 400);
+    await page.mouse.move(4, 400);
+    await page.evaluate(() => setNavCollapsed(true));
+    await page.waitForSelector('#app.nav-collapsed');
+    const peeked = await page.evaluate(() => {
+      const strip = document.querySelector('#nav-hot-strip');
+      const at = { clientX: 4, clientY: 400, bubbles: true };
+      strip.dispatchEvent(new PointerEvent('pointerover', at));
+      strip.dispatchEvent(new PointerEvent('pointerenter', { ...at, bubbles: false }));
+      strip.dispatchEvent(new MouseEvent('mouseover', at));
+      strip.dispatchEvent(new MouseEvent('mouseenter', { ...at, bubbles: false }));
+      strip.dispatchEvent(new PointerEvent('pointermove', at));
+      strip.dispatchEvent(new MouseEvent('mousemove', at));
+      return document.querySelector('#app').classList.contains('nav-peek');
+    });
+    assert.equal(peeked, false, 'the hover a layout change or a scroll reports, with no movement, leaves the nav hidden');
+    assert.equal(await seen(page, '#sidebar'), false, 'the nav stays hidden');
+    await page.close();
+  });
+
   test('resizing the nav carries the hide button with its edge and leaves the show button put (Issues #905, #927)', async () => {
     const page = await open();
     const before = await box(page, '#nav-collapse');
