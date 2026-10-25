@@ -152,6 +152,33 @@ if (s) {
     await page.close();
   });
 
+  test('edge peek waits 150ms, cancels a brief pass, and gives departure 400ms grace (Issue #908)', async () => {
+    const page = await open();
+    await hide(page);
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 1000));
+    await page.mouse.move(700, 400);
+    await page.mouse.move(4, 400);
+    await page.clock.runFor(149);
+    assert.equal(await page.locator('#app.nav-peek').count(), 0, 'passing the edge does not flash the navigation');
+    await page.mouse.move(700, 400);
+    await page.clock.runFor(400);
+    assert.equal(await page.locator('#app.nav-peek').count(), 0, 'leaving cancels the pending peek');
+    await page.mouse.move(4, 400);
+    await page.clock.runFor(150);
+    assert.equal(await page.locator('#app.nav-peek').count(), 1, 'resting at the edge opens the peek');
+    await page.mouse.move(700, 400);
+    await page.clock.runFor(399);
+    assert.equal(await page.locator('#app.nav-peek').count(), 1, 'a brief departure keeps the peek');
+    await page.clock.runFor(1);
+    assert.equal(await page.locator('#app.nav-peek').count(), 0, 'leaving for 400ms closes it');
+    await page.mouse.move(4, 400);
+    await page.keyboard.press('Escape');
+    await page.clock.runFor(150);
+    assert.equal(await page.locator('#app.nav-peek').count(), 0, 'Escape cancels a pending peek');
+    await page.close();
+  });
+
   test('a pointer parked on the left edge does not peek the nav when the page moves under it (Issue #927)', async () => {
     const page = await open();
     await page.mouse.move(700, 400);
