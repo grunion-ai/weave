@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
 import { CELLS, PLATFORM, fingerprint, probe, sectionOf, seed, sweepCell, tally, verdict } from './lib/cutoff.mjs';
-import { held } from './lib/states.mjs';
+import { held, ROUTES } from './lib/states.mjs';
 
 const baseline = sectionOf(JSON.parse(readFileSync(new URL('./cutoff-baseline.json', import.meta.url), 'utf8')));
 
@@ -116,6 +116,16 @@ if (s) {
       assert.deepEqual(failed, [], 'a held state could not open: its selectors rotted');
       for (const p of mine) {
         const here = findings.filter((f) => f.where === `${p.state.open}:${p.state.name}`);
+        if (p.state.name === 'sink-board' && cell === 'phone') {
+          const page = await m.browser.newPage(m.page);
+          try {
+            await page.goto(ROUTES['sink-board'].url(s), { waitUntil: 'networkidle' });
+            const header = page.locator('.board-group-head').filter({ hasText: 'Waiting on the vendor' });
+            await header.scrollIntoViewIfNeeded();
+            assert.equal(await header.locator('.list-fold').getAttribute('aria-expanded'), 'true');
+            here.push(...await page.evaluate(probe, '.board-group-head'));
+          } finally { await page.close(); }
+        }
         t.diagnostic(`held: ${p.state.name} ${cell} for Issue #${p.hold.join(', #')} measured ${here.length}: ${JSON.stringify(tally(here))}`);
         assert.ok(here.length, `${p.state.name} shows no cut-off text on ${cell}: once Issue #${p.hold.join(', #')} is fixed, drop its hold in test/lib/states.mjs so the gate walks it`);
       }
