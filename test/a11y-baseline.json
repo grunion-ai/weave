@@ -3,8 +3,6 @@
   "violations": {
     "Task table | field dialog | light | color-contrast | .cat-done": 1100,
     "Task table | filter popover | light | color-contrast | .cat-done > .filter-chip-label": 1100,
-    "Task table | row menu | dark | color-contrast | .wv-menu-danger > .wv-menu-label": 1099,
-    "settings | at rest | dark | color-contrast | .btn-outline-danger": 1099,
     "start | at rest | dark | region | .brand": 1101,
     "start | at rest | dark | region | footer": 1101,
     "start | at rest | light | region | .brand": 1101,
