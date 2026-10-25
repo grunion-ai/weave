@@ -595,6 +595,7 @@ function dockClose() {
   dock = null;
   syncDocTitle();
   markDockedRow();
+  filePanel.mounted();
 }
 
 function anchorTable(db) {
@@ -3184,21 +3185,34 @@ function fileKind(file) {
 const isPictureFile = (file) => fileKind(file) === 'image';
 const fileIconName = (file) => ({ image: 'lucide:image', pdf: 'lucide:file-text', text: 'lucide:file-text', html: 'lucide:code' })[fileKind(file)] ?? 'lucide:file';
 const fileSizeText = (n) => n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-function attachItemEl(file, { remove = null } = {}) {
+const isViewableFile = (file) => !file.missing && fileKind(file) !== 'other';
+const fileViewUrl = (file) => fileUrl(file) + (fileKind(file) === 'html' ? '?view' : '');
+const plainClick = (e) => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+function attachItemEl(file, { remove = null, group = null } = {}) {
+  const viewable = isViewableFile(file);
+  const siblings = viewable ? (group ?? [file]).filter(isViewableFile) : [];
   return el('span', { class: 'attach-item' + (file.missing ? ' is-missing' : '') },
     file.missing
       ? el('span', { title: 'The stored file is gone — only its name is left' },
         file.name, el('span', { class: 'attach-gone' }, '(missing)'))
-      : el('a', { href: fileUrl(file), target: '_blank' }, file.name),
+      : el('a', {
+        href: viewable ? fileViewUrl(file) : fileUrl(file), target: '_blank', dataset: { fileId: file.id },
+        ...(viewable ? { onclick: (e) => { if (!plainClick(e)) return; e.preventDefault(); filePanel.open(siblings, siblings.indexOf(file)); } } : {}),
+      }, file.name),
     ...(remove ? [remove(file)] : []));
 }
 function attachSheetEl(files, { size = 'medium', fit = 'trim' } = {}, { remove = null } = {}) {
   const sheet = el('div', { class: `attach-sheet size-${size} fit-${fit}` });
+  const viewable = files.filter(isViewableFile);
   files.forEach((file, i) => {
     const kind = fileKind(file);
     const cell = el('a', {
-      class: 'attach-cell' + (kind === 'image' ? '' : ' is-glyph'), href: fileUrl(file), title: file.name,
-      onclick: (e) => { e.preventDefault(); fileLightbox(files, i); },
+      class: 'attach-cell' + (kind === 'image' ? '' : ' is-glyph'), href: fileUrl(file), title: file.name, dataset: { fileId: file.id },
+      onclick: (e) => {
+        if (!plainClick(e)) return;
+        e.preventDefault();
+        if (viewable.includes(file)) filePanel.open(viewable, viewable.indexOf(file)); else fileLightbox(files, i);
+      },
     });
     if (kind === 'image') {
       const img = el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: file.name });
@@ -3213,20 +3227,24 @@ function attachSheetEl(files, { size = 'medium', fit = 'trim' } = {}, { remove =
   if (fit === 'trim') sheet.append(el('span', { class: 'attach-sheet-filler' }));
   return sheet;
 }
-function fileViewerEl(file, { size = 'medium' } = {}) {
+function fileBodyEl(file, frameClass) {
   const kind = fileKind(file);
   const url = fileUrl(file);
-  const body = kind === 'image' ? el('img', { src: url, alt: file.name })
-    : kind === 'pdf' || kind === 'text' ? el('iframe', { class: 'file-viewer-frame', src: url, title: file.name })
-      : kind === 'html' ? el('iframe', { class: 'file-viewer-frame', src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX })
+  return kind === 'image' ? el('img', { src: url, alt: file.name })
+    : kind === 'pdf' || kind === 'text' ? el('iframe', { class: frameClass, src: url, title: file.name })
+      : kind === 'html' ? el('iframe', { class: frameClass, src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX })
         : null;
+}
+function fileViewerEl(file, { size = 'medium' } = {}) {
+  const kind = fileKind(file);
+  const body = fileBodyEl(file, 'file-viewer-frame');
   if (!body) return null;
   return el('div', { class: `file-viewer size-${size} kind-${kind}` },
     el('div', { class: 'file-viewer-bar' },
       iconEl(fileIconName(file), 'wv-icon'),
       el('span', { class: 'file-viewer-name' }, file.name),
       el('span', { class: 'file-viewer-size' }, fileSizeText(file.size)),
-      el('a', { class: 'btn btn-sm btn-ghost-secondary tiny', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon wv-icon-xs'))),
+      el('a', { class: 'btn btn-sm btn-ghost-secondary tiny', href: fileViewUrl(file), target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon wv-icon-xs'))),
     body);
 }
 function entityCoverEl(file, { size = 'medium', fit = 'trim' } = {}) {
@@ -3248,6 +3266,55 @@ function fileLightbox(files, index) {
     next: index < files.length - 1 ? () => fileLightbox(files, index + 1) : null,
   });
 }
+
+const filePanel = (() => {
+  let panel = null;
+  const isOpen = () => !!panel?.isConnected;
+  function close() {
+    if (!panel) return;
+    const was = panel;
+    panel = null;
+    if (!was.isConnected) return;
+    was.remove();
+    $('#side').hidden = true;
+    $('#side-gutter').hidden = true;
+  }
+  function open(files, index) {
+    const file = files[index];
+    if (!file) return;
+    activityPanel.close();
+    const kind = fileKind(file);
+    const step = (d) => open(files, index + d);
+    const icon = (title, glyph, attrs) => el('button', { class: 'wv-act-icon', type: 'button', title, 'aria-label': title, ...attrs }, iconEl(glyph, 'wv-icon'));
+    const next = el('aside', { class: 'wv-file-panel', 'aria-label': file.name, dataset: { fileId: file.id } },
+      el('div', { class: 'wv-act-head wv-file-head' },
+        iconEl(fileIconName(file), 'wv-icon wv-file-kind'),
+        el('h3', { class: 'wv-file-name', title: file.name }, file.name),
+        files.length > 1 ? icon('Previous', 'lucide:chevron-left', { disabled: index > 0 ? undefined : '', onclick: () => step(-1) }) : null,
+        files.length > 1 ? icon('Next', 'lucide:chevron-right', { disabled: index < files.length - 1 ? undefined : '', onclick: () => step(1) }) : null,
+        icon('Full screen', 'lucide:maximize-2', { onclick: () => fileLightbox(files, index) }),
+        el('a', { class: 'wv-act-icon', href: fileViewUrl(file), target: '_blank', rel: 'noopener', title: 'Open in a browser tab', 'aria-label': 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')),
+        icon('Close (Esc)', 'lucide:x', { class: 'wv-act-icon wv-act-close', onclick: close })),
+      el('div', { class: `wv-file-body kind-${kind}` }, fileBodyEl(file, 'wv-file-frame')));
+    const side = $('#side');
+    if (panel?.parentElement === side) panel.replaceWith(next); else side.replaceChildren(next);
+    panel = next;
+    side.hidden = false;
+    wirePaneGutter(side, SIDE_PANE);
+    applyPaneWidth(side, SIDE_PANE);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !isOpen() || e.defaultPrevented) return;
+    if (document.querySelector('#fsv-back, #modal-back, #tray-back, #cmdk-back, .picker-pop, .chip-pop')) return;
+    e.stopPropagation();
+    close();
+  }, true);
+  const mounted = () => {
+    if (isOpen() && !document.querySelector(`:is(#main, #dock:not([hidden])) [data-file-id="${panel.dataset.fileId}"]`)) close();
+  };
+  window.addEventListener('hashchange', () => setTimeout(mounted, 0));
+  return { open, close, mounted, get isOpen() { return isOpen(); } };
+})();
 
 function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label } = {}) {
   const node = editorFor(f, item, db, onSaved, { compact, fit });
@@ -3547,7 +3614,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
-    const chipFor = (file) => attachItemEl(file, { remove });
+    const chipFor = (file) => attachItemEl(file, { remove, group: files });
     const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
     const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
     const present = files.filter((x) => !x.missing);
@@ -10451,7 +10518,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       el('div', { class: 'card-header' },
         el('h3', { class: 'card-title' }, `Files · ${loose.length}`)),
       el('div', { class: 'card-body attach-chips' },
-        ...loose.map((file) => attachItemEl(file))));
+        ...loose.map((file) => attachItemEl(file, { group: loose }))));
     left.append(filesCard);
   };
   drawFiles();
@@ -10542,12 +10609,13 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       [refsOut, refsIn] = fullRefs;
       for (const fill of fills) fill();
       drawRefs();
+      filePanel.mounted();
     }, (err) => {
       if (!mount.isConnected) return;
       onClose?.();
       toast(err.message, true);
     });
-  }
+  } else filePanel.mounted();
 }
 
 const activityPanel = (() => {
