@@ -463,3 +463,23 @@ test('search treats a pasted permalink or uuid as the exact row, ahead of every 
     server.close();
   }
 });
+
+test('an encoded permalink in the /api/entities/:id path names the row (Issue #1140)', async () => {
+  const w = new Weave({ name: 'uno' });
+  w.createSpace({ name: 'Ops' });
+  w.createTable({ space: 'Ops', name: 'Task' });
+  const row = w.createEntity('Task', { Name: 'target' });
+  const link = `https://weave.grunion.ai/w/uno/e/${row.id}`;
+  assert.equal(w.getEntity(encodeURIComponent(link).replace('%3A', ':')).id, row.id, 'the engine reads %2F as a slash');
+  const { server } = await startServer(new Weave({ name: 'main' }), { port: 0, workspaces: { uno: w } });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}/w/uno/api/entities/`;
+    for (const ref of [link, `/w/uno/e/${row.id}`, `/e/${row.id}`]) {
+      const r = await fetch(base + encodeURIComponent(ref));
+      assert.equal(r.status, 200, `GET /api/entities/${encodeURIComponent(ref)}`);
+      assert.equal((await r.json()).id, row.id);
+    }
+  } finally {
+    server.close();
+  }
+});
