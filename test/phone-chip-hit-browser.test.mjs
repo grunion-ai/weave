@@ -25,20 +25,21 @@ const s = await launch('phone chip hit', (weave) => {
 const PHONE = { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true };
 
 const geometry = (page, n) => page.evaluate((n) => {
-  const tr = document.querySelectorAll('#main tbody tr.entity-row')[n];
+  const tr = document.querySelectorAll('#main .wv-list .list-row')[n];
   tr.scrollIntoView({ block: 'center' });
   const rect = (x) => { const r = x.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
   const nodes = {
     lead: tr.querySelector('.phone-lead'),
-    severity: tr.querySelector(':scope > td[data-field="Severity"]'),
-    milestone: tr.querySelector(':scope > td[data-field="Milestone"]'),
-    link: tr.querySelector(':scope > td.pid-cell .open-link:not(.pid-probe)'),
-    name: tr.querySelector(':scope > td.pid-cell .list-name'),
+    severity: tr.querySelector('.phone-chip[data-field="Severity"]'),
+    milestone: tr.querySelector('.phone-chip[data-field="Milestone"]'),
+    link: tr.querySelector('.list-pid:not(.pid-probe)'),
+    name: tr.querySelector('.list-phone .list-title'),
   };
   const keys = Object.keys(nodes);
-  const hit = globalThis.weavePhoneRow.hitBoxes?.(rect(tr), keys.map((k) => rect(nodes[k]))) ?? keys.map((k) => rect(nodes[k]));
+  const face = { ...rect(tr), left: tr.querySelector('.list-phone').getBoundingClientRect().left };
+  const hit = globalThis.weavePhoneRow.hitBoxes?.(face, keys.map((k) => rect(nodes[k]))) ?? keys.map((k) => rect(nodes[k]));
   return {
-    row: rect(tr),
+    row: face,
     pill: { lead: rect(nodes.lead.firstElementChild), severity: rect(nodes.severity.querySelector('.chip-trigger')), milestone: rect(nodes.milestone.querySelector('.chip-trigger')) },
     drawn: Object.fromEntries(keys.map((k) => [k, rect(nodes[k])])),
     hit: Object.fromEntries(keys.map((k, i) => [k, hit[i]])),
@@ -56,8 +57,8 @@ if (s) {
   const open = async (b) => {
     const page = await b.newPage(PHONE);
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main tbody tr.entity-row td[data-field="Milestone"] .chip-trigger');
-    await settled(page.locator('#main .table-wrap'));
+    await page.waitForSelector('#main .wv-list .list-row .phone-chip[data-field="Milestone"] .chip-trigger');
+    await settled(page.locator('#main .list-wrap'));
     return page;
   };
   const tapOpens = async (page, x, y) => {

@@ -17,7 +17,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width, height } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/#/table/${issues.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('.wv-grid tbody tr.entity-row');
+    await page.waitForSelector(':is(tbody tr.entity-row, .wv-list .list-row)');
     await page.waitForSelector('#main .nav-menu');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
     return page;
@@ -101,7 +101,7 @@ if (s) {
         side.tabIndex = -1;
         side.focus();
       });
-      const rowsBefore = await page.$$eval('.wv-grid tbody tr.entity-row', (t) => t.length);
+      const rowsBefore = await page.$$eval(':is(tbody tr.entity-row, .wv-list .list-row)', (t) => t.length);
       await page.keyboard.press('Shift+Enter');
       await page.keyboard.press('Control+z');
       await page.keyboard.press('Meta+z');
@@ -109,7 +109,7 @@ if (s) {
       const seen = await page.evaluate(() => ({ keys: window.__keys, writes: window.__writes, sheet: !!document.querySelector('#modal-back') }));
       assert.deepEqual(seen, { keys: ['Enter:false', 'z:false', 'z:false', '?:false'], writes: [], sheet: false },
         'no handler behind the menu took a key, nothing was written and the key sheet did not open');
-      assert.equal(await page.$$eval('.wv-grid tbody tr.entity-row', (t) => t.length), rowsBefore, 'the grid behind has the rows it had');
+      assert.equal(await page.$$eval(':is(tbody tr.entity-row, .wv-list .list-row)', (t) => t.length), rowsBefore, 'the grid behind has the rows it had');
       assert.equal((await state(page)).open, true, 'and the menu is still open');
     } finally { await page.close(); }
   });

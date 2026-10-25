@@ -29,7 +29,7 @@ if (s) {
   const write = (page, phoneRow) => page.evaluate(async ([id, phoneRow]) => (await fetch(`/api/tables/${id}/views/Standard`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phoneRow }),
   })).status, [id, phoneRow]);
-  const chips = (page) => page.evaluate(() => [...document.querySelectorAll('#main .wv-grid tbody tr.entity-row:first-child > td[data-field]')]
+  const chips = (page) => page.evaluate(() => [...document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row):first-child :is(td, .phone-chip)[data-field]')]
     .filter((td) => td.getClientRects().length)
     .map((td) => ({
       field: td.dataset.field,
@@ -42,7 +42,7 @@ if (s) {
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });
     assert.equal(await write(page, phoneRow), 200);
     await page.reload({ waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .wv-grid tbody tr.entity-row');
+    await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
     return page;
   };
 
@@ -69,7 +69,7 @@ if (s) {
     test(`on a phone an empty date is no chip, so its placeholder never shows cut off (${engine}, Issue #873)`, async () => {
       const page = await showing(b, profile, { lead: 'Status', chips: ['Due', 'Severity'] });
       try {
-        const seen = await page.evaluate(() => [...document.querySelectorAll('#main .wv-grid tbody tr.entity-row:first-child > td[data-field]')]
+        const seen = await page.evaluate(() => [...document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row):first-child :is(td, .phone-chip)[data-field]')]
           .filter((td) => td.getClientRects().length).map((td) => [td.dataset.field, td.dataset.more ?? null]));
         assert.deepEqual(seen, [['Severity', null]]);
       } finally { await write(page, null); await page.close(); }

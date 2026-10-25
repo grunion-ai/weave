@@ -8,7 +8,8 @@ export const CELLS = ['desktop', 'phone'];
 export const THEMES = ['light', 'dark'];
 
 export const ROWS = 400;
-const ROW = '.wv-grid tbody tr.entity-row';
+const ROW = ':is(.wv-grid tbody tr.entity-row, .wv-list .list-row)';
+const rowOf = (id) => `:is(tr, .list-row)[data-eid="${id}"]`;
 const BOTH = ['desktop', 'phone'];
 const DESKTOP = ['desktop'];
 const PHONE = ['phone'];
@@ -243,7 +244,8 @@ async function table(page, ctx) {
 async function scrollTo(page, f) {
   await page.evaluate((k) => {
     const wrap = document.querySelector('.table-wrap');
-    const box = wrap.classList.contains('wv-grid-scroll') ? wrap : wrap.closest('#main') ?? document.scrollingElement;
+    const main = document.querySelector('#main');
+    const box = wrap?.classList.contains('wv-grid-scroll') ? wrap : main && main.scrollHeight > main.clientHeight ? main : document.scrollingElement;
     box.scrollTo({ top: (box.scrollHeight - box.clientHeight) * k, behavior: 'instant' });
   }, f);
   await frames(page, 3);
@@ -421,7 +423,7 @@ const JOURNEY_STATES = [
     name: 'phone-open-row', layout: 'table', cells: PHONE,
     setup: table,
     async run(page, ctx) {
-      const name = await page.locator(`tr[data-eid="${ctx.ids[1]}"] .list-name`).boundingBox();
+      const name = await page.locator(`${rowOf(ctx.ids[1])} :is(.list-title, td[data-field="Name"])`).first().boundingBox();
       await page.touchscreen.tap(name.x + 20, name.y + name.height / 2);
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await beat(page);

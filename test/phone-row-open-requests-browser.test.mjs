@@ -37,13 +37,13 @@ if (s) {
         try {
           await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
           await page.goto(`${base}/${table}`, { waitUntil: 'networkidle' });
-          await page.waitForSelector('#main tbody tr.entity-row .list-name');
-          const id = await page.locator('#main tbody tr.entity-row').nth(1).getAttribute('data-eid');
+          await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row) .list-title');
+          const id = await page.locator('#main :is(tbody tr.entity-row, .wv-list .list-row)').nth(1).getAttribute('data-eid');
           const calls = [];
           const t0 = Date.now();
           page.on('request', (r) => { if (r.url().includes('/api/')) calls.push({ url: new URL(r.url()).pathname, start: Date.now() - t0, end: Infinity, req: r }); });
           page.on('requestfinished', (r) => { const c = calls.find((x) => x.req === r); if (c) c.end = Date.now() - t0; });
-          const box = await page.locator('#main tbody tr.entity-row').nth(1).locator('.list-name').boundingBox();
+          const box = await page.locator('#main :is(tbody tr.entity-row, .wv-list .list-row)').nth(1).locator('.list-title').boundingBox();
           await page.mouse.click(box.x + 20, box.y + 8);
           await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
           const painted = Date.now() - t0;

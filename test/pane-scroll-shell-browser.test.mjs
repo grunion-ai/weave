@@ -28,7 +28,7 @@ if (s) {
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     if (dockWidth) await page.addInitScript((w) => localStorage.setItem('wv-dock-width', w), String(dockWidth));
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(ready);
+    await page.waitForSelector(phone && ready === '#main .wv-grid tbody tr[data-i]' ? '#main .wv-list .list-row' : ready);
     await page.waitForTimeout(300);
     return page;
   };

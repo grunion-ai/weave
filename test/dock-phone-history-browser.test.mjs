@@ -20,7 +20,7 @@ if (s) {
   const depth = (page) => page.evaluate(() => history.length);
 
   async function tapName(page) {
-    const box = await page.locator(`tr[data-eid="${a.id}"] .list-name`).boundingBox();
+    const box = await page.locator(`:is(tr, .list-row)[data-eid="${a.id}"] .list-title`).boundingBox();
     await page.mouse.click(box.x + 20, box.y + 8);
   }
 
@@ -28,7 +28,7 @@ if (s) {
     const page = await phonePage(await phoneBrowser(), { colorScheme });
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.evaluate((id) => { location.hash = `#/table/${id}`; }, deals.id);
-    await page.waitForSelector(`tr[data-eid="${a.id}"] .open-link`);
+    await page.waitForSelector(`:is(tr, .list-row)[data-eid="${a.id}"] .open-link`);
     return page;
   }
 
@@ -43,7 +43,7 @@ if (s) {
       await page.goBack();
       await undocked(page);
       assert.equal(await hash(page), `#/table/${deals.id}`, 'Back lands on the table, not the page before it');
-      await page.waitForSelector(`tr[data-eid="${a.id}"]`);
+      await page.waitForSelector(`:is(tr, .list-row)[data-eid="${a.id}"]`);
       await page.goForward();
       await docked(page);
       assert.equal(await page.inputValue('#dock .name-edit'), 'Acme Working Capital', 'Forward brings the row back');
@@ -81,9 +81,9 @@ if (s) {
   test('on a desktop, the docked row still pushes no history', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`tr[data-eid="${a.id}"] .open-link`);
+    await page.waitForSelector(`:is(tr, .list-row)[data-eid="${a.id}"] .open-link`);
     const before = await depth(page);
-    await page.click(`tr[data-eid="${a.id}"]`);
+    await page.click(`:is(tr, .list-row)[data-eid="${a.id}"]`);
     await docked(page);
     assert.equal(await depth(page), before, 'the dock beside the table is presentation (Issues #198, #226, #276)');
     await page.close();

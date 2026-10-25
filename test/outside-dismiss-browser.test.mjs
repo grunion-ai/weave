@@ -20,7 +20,7 @@ const s = await launch('outside taps dismiss overlays', (weave) => {
 });
 
 const touchAway = (page) => page.evaluate(() => {
-  const busy = 'a, button, input, textarea, select, label, [contenteditable], [role="button"], .vditor, tr.entity-row, .chip-pop, .picker-pop, #bug-panel, .crumb-actions, .phone-bar, .bug-fab';
+  const busy = 'a, button, input, textarea, select, label, [contenteditable], [role="button"], .vditor, tr.entity-row, .list-row, .chip-pop, .picker-pop, #bug-panel, .crumb-actions, .phone-bar, .bug-fab';
   window.awayClicks = 0;
   addEventListener('click', () => { window.awayClicks++; }, true);
   for (let y = 8; y < innerHeight - 20; y += 8) {

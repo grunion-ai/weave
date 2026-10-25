@@ -30,21 +30,21 @@ if (s) {
     const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(await phoneBrowser());
     await page.addInitScript(([t, id, d]) => { localStorage.setItem('weave-theme', t); if (d) localStorage.setItem(`weave-grid-density:${id}`, d); }, [theme, compactId, density]);
     await page.goto(`${base}/${density ? compact : table}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main tbody tr.entity-row');
+    await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row)');
     return page;
   };
   const list = (page) => page.evaluate(() => {
+    const host = document.querySelector('#main .wv-list') ?? document.querySelector('#main .wv-grid tbody');
     const table = document.querySelector('#main .wv-grid');
-    const tbody = table.tBodies[0];
-    const top0 = tbody.getBoundingClientRect().top;
-    const rows = [...tbody.querySelectorAll('tr.entity-row')].map((tr) => {
+    const top0 = host.getBoundingClientRect().top;
+    const rows = [...host.querySelectorAll(':is(tr.entity-row, .list-row)')].map((tr, i) => {
       const r = tr.getBoundingClientRect();
-      const name = tr.querySelector('.list-name');
+      const name = tr.querySelector('.list-phone .list-title');
       const nr = name?.getBoundingClientRect();
       const pid = tr.querySelector('.open-link');
-      const chips = [...tr.querySelectorAll('td[data-field] .k')].filter((k) => k.getClientRects().length).map((k) => ({ text: k.textContent.trim(), top: k.getBoundingClientRect().top }));
+      const chips = [...tr.querySelectorAll('.phone-chip .k')].filter((k) => k.getClientRects().length).map((k) => ({ text: k.textContent.trim(), top: k.getBoundingClientRect().top }));
       return {
-        i: Number(tr.dataset.i), offset: Math.round(r.top - top0), height: Math.round(r.height), bottom: r.bottom,
+        i, offset: Math.round(r.top - top0), height: Math.round(r.height), bottom: r.bottom,
         lead: tr.querySelector('.phone-lead')?.textContent.trim() ?? null,
         name: name?.textContent ?? null, nameShown: !!name && name.getClientRects().length > 0, nameTop: nr?.top, nameH: nr?.height,
         lineH: name ? parseFloat(getComputedStyle(name).lineHeight) : 0,
@@ -53,27 +53,28 @@ if (s) {
     });
     return {
       theme: document.documentElement.dataset.bsTheme,
-      token: getComputedStyle(table).getPropertyValue('--wv-row-h').trim(),
-      head: table.tHead ? getComputedStyle(table.tHead).display : 'none',
+      list: !!document.querySelector('#main .wv-list'),
+      token: table ? getComputedStyle(table).getPropertyValue('--wv-row-h').trim() : null,
+      head: table?.tHead ? getComputedStyle(table.tHead).display : 'none',
       secondary: getComputedStyle(document.body).getPropertyValue('--tblr-secondary').trim(),
       rows, scrollWidth: document.documentElement.scrollWidth, vw: innerWidth,
     };
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`on a phone the table is a list of 88px rows: muted #id, a two-line name, then value chips (${theme}, Feature #272)`, async () => {
+    test(`on a phone the table is the List component: muted #id, the whole name, then value chips (${theme}, Feature #272, Issue #740)`, async () => {
       const page = await open({ theme });
       try {
         const seen = await list(page);
         assert.equal(seen.theme, theme);
-        assert.equal(seen.head, 'none', 'the column header is gone');
-        assert.equal(seen.token, '88px', 'the phone row height is declared on the grid token');
+        assert.equal(seen.list, true, 'the List component draws the rows');
+        assert.equal(seen.head, 'none', 'no column header');
         assert.ok(seen.scrollWidth <= seen.vw, `no sideways scroll (${seen.scrollWidth})`);
         assert.ok(seen.rows.length >= 6);
         for (const r of seen.rows) {
-          assert.equal(r.height, 88, `row ${r.i} is ${r.height}px`);
+          assert.ok(r.height >= 44, `row ${r.i} is a touch row (${r.height}px)`);
           assert.ok(r.nameShown, `row ${r.i} shows its name`);
-          assert.ok(r.nameH <= 2 * r.lineH + 1, `row ${r.i}'s name takes at most two lines (${r.nameH}px)`);
+          assert.ok(r.nameH <= r.height, `row ${r.i}'s whole name sits inside the row (${r.nameH}px)`);
           assert.equal(r.lead, 'Open', `row ${r.i} leads with its Status (Feature #299)`);
           assert.ok(r.chips.every((c) => c.top > r.nameTop), `row ${r.i}'s chips sit under its name`);
         }
@@ -82,27 +83,21 @@ if (s) {
     });
   }
 
-  test('on a phone list rows follow the windowing token as you scroll (Feature #272)', async () => {
+  test('on a phone the list draws every row of the table (Feature #272, Issue #740)', async () => {
     const page = await open();
     try {
-      await page.evaluate(() => { const m = document.querySelector('#main'); m.scrollTop = 88 * 60; });
-      await page.waitForFunction(() => document.querySelector('#main tbody tr.entity-row[data-i="62"]'));
-      await page.waitForTimeout(100);
       const seen = await list(page);
-      const first = seen.rows[0];
-      assert.ok(first.i > 0, `the window moved (${first.i})`);
-      for (const r of seen.rows) assert.equal(r.offset, r.i * 88, `row ${r.i} sits at ${r.offset}px, not ${r.i * 88}px`);
+      assert.equal(seen.rows.length, 120, 'every row is on the list');
+      for (const [n, r] of seen.rows.entries()) if (n) assert.ok(r.offset >= seen.rows[n - 1].offset + seen.rows[n - 1].height - 1, `row ${n} sits below the one before it`);
     } finally { await page.close(); }
   });
 
-  test('on a phone compact density gives one-line names in 68px rows (Feature #272)', async () => {
+  test('on a phone compact density gives one-line names (Feature #272, Issue #740)', async () => {
     const page = await open({ density: 'compact' });
     try {
-      await page.waitForSelector('#main .wv-grid[data-density="compact"]');
+      await page.waitForSelector('#main .list-wrap[data-density="compact"]');
       const seen = await list(page);
-      assert.equal(seen.token, '68px');
       for (const r of seen.rows) {
-        assert.equal(r.height, 68, `row ${r.i} is ${r.height}px`);
         assert.ok(r.nameH <= r.lineH + 1, `row ${r.i}'s name is one line`);
         assert.ok(r.chips.some((c) => c.text === 'High'), `row ${r.i} still shows its chips`);
       }
@@ -112,19 +107,19 @@ if (s) {
   test('on a phone a tap on a row\'s name opens the row and never edits a cell, and a tap on a chip opens its picker instead (Feature #272, Feature #300)', async () => {
     const page = await open();
     try {
-      const tr = page.locator('#main tbody tr.entity-row').nth(1);
+      const tr = page.locator('#main :is(tbody tr.entity-row, .wv-list .list-row)').nth(1);
       const id = await tr.getAttribute('data-eid');
-      const box = await tr.locator('.list-name').boundingBox();
+      const box = await tr.locator('.list-title').boundingBox();
       await page.mouse.click(box.x + 20, box.y + 8);
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       assert.ok(page.url().includes(`?e=${id}`), 'the tapped row opens');
-      const active = await page.evaluate(() => document.activeElement?.closest?.('.wv-grid') ? document.activeElement.tagName : null);
-      assert.equal(active, null, 'nothing in the grid took focus for editing');
+      const active = await page.evaluate(() => document.activeElement?.closest?.('.wv-list') && document.activeElement.matches('input, textarea, select') ? document.activeElement.tagName : null);
+      assert.equal(active, null, 'nothing in the list took focus for editing');
       await page.click('#dock button[aria-label="Close"]');
       await page.waitForSelector('#dock', { state: 'hidden' });
-      const chip = page.locator('#main tbody tr.entity-row').nth(2).locator('td[data-field="Severity"] .k');
+      const chip = page.locator('#main :is(tbody tr.entity-row, .wv-list .list-row)').nth(2).locator(':is(td, .phone-chip)[data-field="Severity"] .k');
       await chip.waitFor();
-      await settled(page.locator('#main .table-wrap'));
+      await settled(page.locator('#main .list-wrap'));
       const cb = await chip.boundingBox();
       await page.mouse.click(cb.x + 4, cb.y + 4);
       await page.waitForSelector('.picker-pop');
@@ -135,11 +130,11 @@ if (s) {
   test('on a phone an empty relation takes no room in the chip line (Issue #721)', async () => {
     const page = await open();
     try {
-      const seen = await page.evaluate(() => [...document.querySelectorAll('#main tbody tr.entity-row')].slice(0, 6).map((tr) => {
-        const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
+      const seen = await page.evaluate(() => [...document.querySelectorAll('#main .wv-list .list-row')].slice(0, 6).map((tr) => {
+        const cells = [...tr.querySelectorAll('.phone-chip[data-field]')];
         const boxes = cells.filter((td) => td.getClientRects().length).map((td) => td.getBoundingClientRect());
         return {
-          i: Number(tr.dataset.i),
+          i: tr.dataset.eid,
           cells: cells.map((td) => ({
             field: td.dataset.field,
             ftype: td.dataset.ftype,
@@ -175,7 +170,7 @@ if (s) {
         assert.equal(r.height, 44);
         assert.equal(r.nameShown, false, 'the phone name line stays hidden');
       }
-      await page.click('#main tbody tr.entity-row >> nth=0 >> td.name-cell');
+      await page.click('#main :is(tbody tr.entity-row, .wv-list .list-row) >> nth=0 >> td.name-cell');
       assert.equal(await page.evaluate(() => document.activeElement?.closest?.('td.name-cell') ? document.activeElement.tagName : null), 'INPUT', 'a click on a name cell edits it');
     } finally { await page.close(); }
   });

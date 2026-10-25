@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
-const HEIGHT = { compact: 68, comfortable: 88, spacious: 88 };
+const HEIGHT = { compact: 1, comfortable: 2, spacious: 2 };
 
 const s = await launch('phone list chip line', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -29,15 +29,14 @@ const s = await launch('phone list chip line', (weave) => {
 });
 
 const rows = (page) => page.evaluate(() => {
-  const grid = document.querySelector('#main .wv-grid');
+  const wrap = document.querySelector('#main .list-wrap');
   return {
     theme: document.documentElement.dataset.bsTheme,
-    density: grid.dataset.density,
-    token: getComputedStyle(grid).getPropertyValue('--wv-row-h').trim(),
-    rows: [...grid.querySelectorAll('tbody tr.entity-row')].map((tr) => {
+    density: wrap.dataset.density,
+    rows: [...wrap.querySelectorAll('.wv-list .list-row')].map((tr) => {
       const r = tr.getBoundingClientRect();
-      const name = tr.querySelector('.list-name').getBoundingClientRect();
-      const chips = [...tr.querySelectorAll(':scope > td[data-field]')].filter((td) => td.getClientRects().length).map((td) => {
+      const name = tr.querySelector('.list-title').getBoundingClientRect();
+      const chips = [...tr.querySelectorAll('.phone-chip[data-field]')].filter((td) => td.getClientRects().length).map((td) => {
         const b = td.getBoundingClientRect();
         return { top: Math.round(b.top - r.top), bottom: b.bottom - r.top, right: b.right, more: getComputedStyle(td, '::after').content };
       });
@@ -56,7 +55,7 @@ if (s) {
     const page = await b.newPage(profile);
     await page.addInitScript(([t, id, d]) => { localStorage.setItem('weave-theme', t); localStorage.setItem(`weave-grid-density:${id}`, d); }, [theme, id, density]);
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`#main .wv-grid[data-density="${density}"] tbody tr.entity-row`);
+    await page.waitForSelector(profile.viewport.width > 600 ? '#main .wv-grid tbody tr.entity-row' : `#main .list-wrap[data-density="${density}"] .list-row`);
     await page.waitForTimeout(200);
     return page;
   };
@@ -64,21 +63,21 @@ if (s) {
   for (const [engine, b, profile] of engines) {
     for (const theme of ['light', 'dark']) {
       for (const density of ['compact', 'comfortable', 'spacious']) {
-        test(`on a phone at ${density} every row keeps one chip line under its name, inside the row, with +N for the rest (${engine}, ${theme}, Issue #730)`, async () => {
+        test(`on a phone at ${density} every list row keeps one chip line under its name, inside the row, with +N for the rest (${engine}, ${theme}, Issue #730, Issue #740)`, async () => {
           const page = await open(b, profile, theme, density);
           try {
             const seen = await rows(page);
             assert.equal(seen.theme, theme);
-            assert.equal(seen.token, `${HEIGHT[density]}px`, 'density sets the row height token');
+            assert.equal(seen.density, density);
             let counted = 0;
             for (const [i, r] of seen.rows.entries()) {
-              assert.equal(r.h, HEIGHT[density], `row ${i} is ${r.h}px`);
+              assert.ok(r.h >= 44, `row ${i} is a touch row (${r.h}px)`);
               assert.ok(r.chips.length >= 1, `row ${i} shows chips`);
               const tops = new Set(r.chips.map((c) => c.top));
               assert.equal(tops.size, 1, `row ${i}'s chips share one top: ${[...tops]}`);
               for (const c of r.chips) {
                 assert.ok(c.top >= r.nameBottom, `row ${i}'s chips sit under its name`);
-                assert.ok(c.bottom <= r.h + 0.5 && c.right <= r.right + 0.5, `row ${i}'s chips sit inside the row`);
+                assert.ok(c.bottom <= r.h + 0.5 && c.right <= r.right + 0.5, `row ${i}'s chips sit inside the row: ${JSON.stringify({ c, h: r.h, right: r.right })}`);
               }
               if (r.chips.some((c) => /^"\+\d+"$/.test(c.more))) counted++;
             }
@@ -92,7 +91,7 @@ if (s) {
   test('on a desktop the grid keeps one chip per cell and shows no phone counter (Issue #730)', async () => {
     const page = await open(browser, { viewport: { width: 1280, height: 844 } }, 'light', 'comfortable');
     try {
-      const n = await page.evaluate(() => document.querySelectorAll('#main td[data-more], #main td.list-hide').length);
+      const n = await page.evaluate(() => document.querySelectorAll('#main :is(td, .phone-chip)[data-more], #main :is(td, .phone-chip).list-hide').length);
       assert.equal(n, 0);
     } finally { await page.close(); }
   });

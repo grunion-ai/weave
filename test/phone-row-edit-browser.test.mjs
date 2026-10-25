@@ -20,8 +20,8 @@ const s = await launch('phone row edit', (weave) => {
 });
 
 const drag = (page, n, field, dy) => page.evaluate(([n, field, dy]) => {
-  const row = document.querySelectorAll('#main tbody tr.entity-row')[n];
-  const r = row.querySelector(`td[data-field="${field}"]`).getBoundingClientRect();
+  const row = document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[n];
+  const r = row.querySelector(`:is(td, .phone-chip)[data-field="${field}"]`).getBoundingClientRect();
   const x = r.left + r.width / 2, y0 = r.top + r.height / 2;
   const opts = (type, y) => ({ bubbles: true, cancelable: true, composed: true, pointerType: 'touch', isPrimary: true, pointerId: 41, button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y });
   row.dispatchEvent(new PointerEvent('pointerdown', opts('pointerdown', y0)));
@@ -40,11 +40,11 @@ if (s) {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main tbody tr.entity-row td[data-field="Severity"]');
-    await settled(page.locator('#main .table-wrap'));
+    await page.waitForSelector('#main :is(tbody tr.entity-row, .wv-list .list-row) :is(td, .phone-chip)[data-field="Severity"]');
+    await settled(page.locator('#main :is(.table-wrap, .list-wrap)'));
     return page;
   };
-  const row = (page, n) => page.locator('#main tbody tr.entity-row').nth(n);
+  const row = (page, n) => page.locator('#main :is(tbody tr.entity-row, .wv-list .list-row)').nth(n);
   const value = (n, field) => weave.readEntity(weave.listEntities(id)[n].id).fields[field];
   const tapOn = async (page, locator, { dx = 0, dy = 0 } = {}) => {
     await locator.evaluate((n) => n.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
@@ -59,11 +59,11 @@ if (s) {
         reset();
         const page = await open(b, profile, theme);
         try {
-          await tapOn(page, row(page, 1).locator('td[data-field="Severity"]'));
+          await tapOn(page, row(page, 1).locator(':is(td, .phone-chip)[data-field="Severity"]'));
           await page.waitForSelector('.picker-pop');
           assert.equal(page.url().includes('?e='), false, 'the row did not open');
           await page.locator('.picker-pop button', { hasText: 'Low' }).first().click();
-          await page.waitForFunction(() => document.querySelectorAll('#main tbody tr.entity-row')[1]?.querySelector('td[data-field="Severity"]')?.textContent.includes('Low'), null, { timeout: 10000 });
+          await page.waitForFunction(() => document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[1]?.querySelector(':is(td, .phone-chip)[data-field="Severity"]')?.textContent.includes('Low'), null, { timeout: 10000 });
           assert.equal(value(1, 'Severity'), 'Low');
           assert.equal(page.url().includes('?e='), false, 'still on the list');
           const t = await page.evaluate(() => {
@@ -74,7 +74,7 @@ if (s) {
           assert.match(t.text, /Severity/);
           assert.ok(t.top < 120, `the toast sits at the top (${t.top})`);
           await page.locator('#wv-toasts .wv-toast-action', { hasText: 'Undo' }).last().click();
-          await page.waitForFunction(() => document.querySelectorAll('#main tbody tr.entity-row')[1]?.querySelector('td[data-field="Severity"]')?.textContent.includes('High'), null, { timeout: 10000 });
+          await page.waitForFunction(() => document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[1]?.querySelector(':is(td, .phone-chip)[data-field="Severity"]')?.textContent.includes('High'), null, { timeout: 10000 });
           assert.equal(value(1, 'Severity'), 'High', 'Undo puts the old value back');
         } finally { await page.close(); }
       });
@@ -87,25 +87,25 @@ if (s) {
         await tapOn(page, row(page, 2).locator('.phone-lead'));
         await page.waitForSelector('.picker-pop');
         await page.locator('.picker-pop button', { hasText: 'Fixed' }).first().click();
-        await page.waitForFunction(() => document.querySelectorAll('#main tbody tr.entity-row')[2]?.querySelector('.phone-lead')?.textContent.includes('Fixed'), null, { timeout: 10000 });
+        await page.waitForFunction(() => document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[2]?.querySelector('.phone-lead')?.textContent.includes('Fixed'), null, { timeout: 10000 });
         assert.equal(value(2, 'Status'), 'Fixed');
 
-        await tapOn(page, row(page, 3).locator('td[data-field="Done"]'));
-        await page.waitForFunction(() => document.querySelectorAll('#main tbody tr.entity-row')[3]?.querySelector('td[data-field="Done"] input')?.checked, null, { timeout: 10000 });
+        await tapOn(page, row(page, 3).locator(':is(td, .phone-chip)[data-field="Done"]'));
+        await page.waitForFunction(() => document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[3]?.querySelector(':is(td, .phone-chip)[data-field="Done"] input')?.checked, null, { timeout: 10000 });
         assert.equal(value(3, 'Done'), true);
         assert.equal(await page.locator('.picker-pop, .value-pop').count(), 0, 'a checkbox needs no sheet');
 
-        await tapOn(page, row(page, 4).locator('td[data-field="Points"]'));
+        await tapOn(page, row(page, 4).locator(':is(td, .phone-chip)[data-field="Points"]'));
         const input = page.locator('.value-pop input');
         await input.waitFor();
         assert.equal(await input.getAttribute('enterkeyhint'), 'done');
         assert.equal(await input.inputValue(), '3', 'the sheet starts from the current value');
         await input.fill('8');
         await input.press('Enter');
-        await page.waitForFunction(() => document.querySelectorAll('#main tbody tr.entity-row')[4]?.querySelector('td[data-field="Points"]')?.textContent.includes('8') || document.querySelectorAll('#main tbody tr.entity-row')[4]?.querySelector('td[data-field="Points"] input')?.value === '8', null, { timeout: 10000 });
+        await page.waitForFunction(() => document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[4]?.querySelector(':is(td, .phone-chip)[data-field="Points"]')?.textContent.includes('8') || document.querySelectorAll('#main :is(tbody tr.entity-row, .wv-list .list-row)')[4]?.querySelector(':is(td, .phone-chip)[data-field="Points"] input')?.value === '8', null, { timeout: 10000 });
         assert.equal(value(4, 'Points'), 8);
 
-        await tapOn(page, row(page, 0).locator('td[data-field="Due"]'));
+        await tapOn(page, row(page, 0).locator(':is(td, .phone-chip)[data-field="Due"]'));
         await page.waitForSelector('.date-pop');
         assert.equal(page.url().includes('?e='), false);
       } finally { await page.close(); }
@@ -119,7 +119,7 @@ if (s) {
         await page.waitForTimeout(300);
         assert.equal(await page.locator('.picker-pop').count(), 0, 'a drag opens no picker');
         assert.equal(page.url().includes('?e='), false, 'and no row');
-        await tapOn(page, row(page, 1).locator('.list-name'), { dx: -20 });
+        await tapOn(page, row(page, 1).locator('.list-title'), { dx: -20 });
         await page.waitForURL(/\?e=/);
         assert.equal(await page.locator('.picker-pop').count(), 0);
         await page.click('#dock button[aria-label="Close"]');
@@ -136,7 +136,7 @@ if (s) {
     const page = await open(browser, { viewport: { width: 1280, height: 844 } });
     try {
       assert.equal(await page.locator('#main .phone-lead:visible').count(), 0);
-      await row(page, 1).locator('td[data-field="Severity"] .chip-trigger').click();
+      await row(page, 1).locator(':is(td, .phone-chip)[data-field="Severity"] .chip-trigger').click();
       await page.waitForSelector('.picker-pop');
       assert.equal(page.url().includes('?e='), false);
     } finally { await page.close(); }

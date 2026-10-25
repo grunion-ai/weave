@@ -4,7 +4,7 @@ export const RUNS = 7;
 
 export const METRICS = ['lcp', 'cls', 'inp'];
 
-const ROW = '.wv-grid tbody tr.entity-row';
+const ROW = ':is(.wv-grid tbody tr.entity-row, .wv-list .list-row)';
 
 export const VITALS = [
   {
@@ -27,7 +27,7 @@ export const VITALS = [
     ready: ROW,
     async interact(page, cell, ctx) {
       if (cell === 'phone') {
-        const name = await page.locator(`tr[data-eid="${ctx.ids[1]}"] .list-name`).boundingBox();
+        const name = await page.locator(`.list-row[data-eid="${ctx.ids[1]}"] .list-title`).boundingBox();
         await page.touchscreen.tap(name.x + 20, name.y + name.height / 2);
         await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       } else {
