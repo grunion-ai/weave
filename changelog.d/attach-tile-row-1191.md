@@ -1,0 +1,1 @@
+- An attachment field's tiles now stay inside their row on the record page. The tile sheet sat in a column flex box whose height Chrome measured before the tiles took their aspect-ratio height, so a tile ran past the row and covered the + file button and the chips under it. The field box is now a one-column grid, which sizes each row to the tiles it holds (Issue #1191).
