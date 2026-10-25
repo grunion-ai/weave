@@ -10,6 +10,7 @@ import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { unwrapData } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = readFileSync(join(ROOT, 'bin/weave.js'), 'utf8');
@@ -315,7 +316,7 @@ test('every query option reaches every door', () => {
 });
 
 test('every door emits the one permalink a row has, and no door builds its own (Feature #203)', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-permalink-'));
+  const dir = tempDir('weave-permalink-');
   const data = join(dir, 'uno.db');
   const w = new Weave({ path: data, name: 'uno' });
   w.createSpace({ name: 'Ops' });

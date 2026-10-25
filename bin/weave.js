@@ -359,7 +359,7 @@ async function main() {
     if (origin) console.log(`Public origin: ${origin}${process.env.WEAVE_TRUST_PROXY ? ' (trusting X-Forwarded-For)' : ''}`);
     let nightly = null;
     const dest = process.env.WEAVE_BACKUP_DEST || null;
-    const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null });
+    const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null, authProbeEvery: 15 * 60_000 });
     {
       const { createReleaseCheck, updateCheckFromEnv } = await import('../src/update-check.js');
       const { armReleaseCheck, VERSION } = await import('../src/server.js');

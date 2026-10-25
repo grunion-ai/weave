@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
+import { tempDir } from './lib/temp.mjs';
 
 await import('../public/starter-core.js');
 const S = globalThis.WeaveStarters;
@@ -42,11 +43,11 @@ test('the engine keeps the mark: on the account row, or on the workspace with no
   assert.throws(() => w.markOnboarded('nope'), /not found/);
 });
 
-const DOCS = join(mkdtempSync(join(tmpdir(), 'weave-onboard-docs-')), 'weave.db');
+const DOCS = join(tempDir('weave-onboard-docs-'), 'weave.db');
 seedWeaver(new Weave({ path: DOCS })).store.close?.();
 test.after(() => rmSync(join(DOCS, '..'), { recursive: true, force: true }));
 async function fresh({ seed = () => {} } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-onboard-'));
+  const dir = tempDir('weave-onboard-');
   const root = new Weave({ path: join(dir, 'workspace.db') });
   root.state.meta.name = 'workspace';
   root.save();

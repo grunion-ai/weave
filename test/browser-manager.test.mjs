@@ -7,10 +7,11 @@ import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { request } from '../scripts/test-manager.mjs';
 import { chromium } from './lib/browser.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 test('manager (browser): warm browser reused across jobs with fresh contexts', { skip: chromium ? false : 'playwright not installed' }, async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'weave-browser-manager-'));
+  const directory = tempDir('weave-browser-manager-');
   const helper = pathToFileURL(join(ROOT, 'test/lib/browser.mjs')).href;
   const env = { ...process.env, NODE_TEST_CONTEXT: '', WEAVE_TEST_JOB: '', WEAVE_TEST_BROWSER_ENDPOINT: '', WEAVE_TEST_MANAGER_DIR: directory,
     WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };

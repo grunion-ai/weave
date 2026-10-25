@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 async function withHub(seed, fn) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-settings-delete-'));
+  const dir = tempDir('weave-settings-delete-');
   const main = new Weave({ path: join(dir, 'main.db') });
   main.state.meta.name = 'main';
   main.save();

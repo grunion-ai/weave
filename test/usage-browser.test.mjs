@@ -8,6 +8,7 @@ import { Weave } from '../src/engine.js';
 import { createOidc } from '../src/oidc.js';
 import { startIdp } from './lib/idp.mjs';
 import { launch } from './lib/browser.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const FAKE = `window.__ph = window.__ph || [];
 window.posthog = {
@@ -45,7 +46,7 @@ const bare = open && await launch('in-app usage events, without a key', seed, { 
 
 async function signedHub() {
   const idp = await startIdp();
-  const dir = mkdtempSync(join(tmpdir(), 'weave-usage-'));
+  const dir = tempDir('weave-usage-');
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const acme = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
   acme.createAccount({ name: 'owner', role: 'architect' });

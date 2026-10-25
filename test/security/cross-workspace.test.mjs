@@ -4,8 +4,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ROOT } from '../lib/source.mjs';
+import { tempDir } from '../lib/temp.mjs';
 
-const DIR = mkdtempSync(join(tmpdir(), 'weave-xws-'));
+const DIR = tempDir('weave-xws-');
 process.env.WEAVE_KEYSTORE = join(DIR, 'keystore.json');
 test.after(() => rmSync(DIR, { recursive: true, force: true }));
 const { Weave } = await import('../../src/engine.js');

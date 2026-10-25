@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { read } from '../lib/source.mjs';
+import { tempDir } from '../lib/temp.mjs';
 
-const ROOT = mkdtempSync(join(tmpdir(), 'weave-sec-webhook-'));
+const ROOT = tempDir('weave-sec-webhook-');
 process.env.WEAVE_KEYSTORE = join(ROOT, 'keystore.json');
 delete process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE;
 const { Weave, localAddress } = await import('../../src/engine.js');

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Weave, WeaveError, PREVIEW_MAX_BYTES } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { inspect } from '../src/backup.js';
+import { tempDir } from './lib/temp.mjs';
 
 await import('../public/file-preview-core.js');
 const P = globalThis.WeavePreview;
@@ -13,7 +14,7 @@ const P = globalThis.WeavePreview;
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000fa000000bb80802000000', 'hex');
 const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBPVP8 '), Buffer.alloc(32, 7)]);
 
-function seed(dir = mkdtempSync(join(tmpdir(), 'weave-preview-'))) {
+function seed(dir = tempDir('weave-preview-')) {
   const w = new Weave({ path: join(dir, 'ws.db') });
   w.createSpace({ name: 'Dev' });
   w.createTable({ space: 'Dev', name: 'Deck' });
@@ -72,7 +73,7 @@ test('previews count toward storage, export, import and backup like the original
   assert.ok(w.storageStats().sizeBytes - before >= PNG.length + WEBP.length, 'storage left the preview out');
   const dump = JSON.parse(JSON.stringify(w.exportJSON()));
   assert.equal(dump.fileBlobs?.[file.preview.id], WEBP.toString('base64'), 'the export dropped the preview');
-  const dst = new Weave({ path: join(mkdtempSync(join(tmpdir(), 'weave-preview-')), 'dst.db') });
+  const dst = new Weave({ path: join(tempDir('weave-preview-'), 'dst.db') });
   dst.importJSON(dump);
   assert.deepEqual(dst.readFile(file.id, { preview: true }).bytes, WEBP, 'the import lost the preview');
   const refs = inspect(w.store.path).refs.map((r) => r.id);

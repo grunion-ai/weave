@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave, ACTIVITY_PAGE } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const OVER = 12;
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
@@ -65,7 +66,7 @@ test('weave_activity answers one page by default, every row for -1, and says so 
 });
 
 test('weave activity prints one page by default, --limit -1 prints the whole log, and help says so (Issue #940)', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-actpage-'));
+  const dir = tempDir('weave-actpage-');
   try {
     const data = join(dir, 'ws.db');
     const fw = new Weave({ path: data });

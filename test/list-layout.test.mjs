@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -166,7 +167,7 @@ test('the agent writes the list keys through weave_table_view with names, and th
 });
 
 test('the CLI and REST take the same keys', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-list-'));
+  const dir = tempDir('weave-list-');
   try {
     const data = join(dir, 'w.db');
     const fw = new Weave({ path: data });

@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 
 test('workspace logo: set / read / delete on a file-backed workspace', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-logo-'));
+  const dir = tempDir('weave-logo-');
   const w = new Weave({ path: join(dir, 'ws.db') });
   assert.throws(() => w.getWorkspaceLogo(), WeaveError);
 
@@ -67,7 +68,7 @@ test('REST: logo upload, serving, listing flag, delete', async () => {
 });
 
 test("server alias: /w/weaver/ requests reach the renamed 'weave' workspace", async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-alias-'));
+  const dir = tempDir('weave-alias-');
   const main = new Weave({ path: join(dir, 'main.db') });
   main.state.meta.name = 'main';
   main.save();

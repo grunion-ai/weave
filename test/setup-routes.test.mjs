@@ -9,6 +9,7 @@ import { startServer, openSignupFromEnv } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
 import { createBilling, CLERK_API } from '../src/billing.js';
 import { startIdp } from './lib/idp.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const hit = (port, host, method, path, { cookie, body, token, ua } = {}) => new Promise((resolve, reject) => {
   const payload = body === undefined ? null : JSON.stringify(body);
@@ -29,7 +30,7 @@ const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c
 async function serve({ openSignup = { on: false }, billing = null } = {}) {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = mkdtempSync(join(tmpdir(), 'weave-setup-'));
+  const dir = tempDir('weave-setup-');
   const taken = new Weave({ path: join(dir, 'harbor.db'), name: 'harbor' });
   taken.state.meta.name = 'harbor';
   taken.setRequireAuth(true);
@@ -58,7 +59,7 @@ async function serve({ openSignup = { on: false }, billing = null } = {}) {
 test('an empty hub root lets the first sign-in create, and the owner takes its name from the login', async () => {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = mkdtempSync(join(tmpdir(), 'weave-setup-empty-'));
+  const dir = tempDir('weave-setup-empty-');
   const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   main.save();
   const { server, port } = await startServer(main, { port: 0, oidc, limits: { options: 1000, failed: 1000, slugs: 1000 } });

@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const asAccount = (w, name) => { const a = w.listAccounts().find((x) => x.name === name); w.actor = a ? `account:${a.id}` : name; };
 
 function fresh(actor = 'kyle', { solo = false } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-reveal-'));
+  const dir = tempDir('weave-reveal-');
   const w = new Weave({ keystorePath: join(dir, 'keystore.json'), actor });
   if (!solo) w.createAccount({ name: 'kyle', role: 'admin' });
   asAccount(w, actor);
@@ -84,7 +85,7 @@ test('a grant is itself audited, so an admin opening a credential leaves a trail
 });
 
 test('a credential carried over from #64 has no owner, so nobody reveals it', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-reveal-v1-'));
+  const dir = tempDir('weave-reveal-v1-');
   const path = join(dir, 'keystore.json');
   writeFileSync(path, JSON.stringify({ ancient: 'old-secret' }), { mode: 0o600 });
 

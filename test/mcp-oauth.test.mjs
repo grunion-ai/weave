@@ -82,6 +82,62 @@ test('401: a call with no credential names the metadata document, per workspace'
   } finally { s.stop(); }
 });
 
+const BROWSER_ACCEPT = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+
+test('Issue #1195: a browser opening the MCP address gets a page naming the workspace and the address, challenge intact', async () => {
+  const s = await serve();
+  try {
+    for (const [path, ws, meta] of [['/mcp', s.w.state.meta.name, '/.well-known/oauth-protected-resource/mcp'], ['/w/docs/mcp', s.docs.state.meta.name, '/.well-known/oauth-protected-resource/w/docs/mcp']]) {
+      const res = await s.call('GET', path, { headers: { Accept: BROWSER_ACCEPT } });
+      assert.equal(res.status, 401, path);
+      assert.match(res.headers.get('content-type'), /^text\/html/, path);
+      assert.equal(res.headers.get('www-authenticate'), `Bearer resource_metadata="${s.base}${meta}"`, 'MCP clients still find the metadata');
+      const html = await res.text();
+      assert.ok(html.includes(ws), `${path} names the workspace`);
+      assert.ok(html.includes(`${s.base}${path}`), `${path} shows its own MCP address`);
+      assert.ok(html.includes(`--transport http`) && html.includes(` ${s.base}${path}</code>`), `${path} gives the Claude Code command`);
+      assert.match(html, /Claude\.ai/);
+      assert.match(html, /ChatGPT/);
+      assert.match(html, /<button[^>]*data-copy/);
+      assert.ok(html.includes(`href="${path.replace(/\/mcp$/, '')}/docs"`), 'links the Connect an agent guide');
+    }
+    const head = await s.call('HEAD', '/mcp', { headers: { Accept: BROWSER_ACCEPT } });
+    assert.equal(head.status, 401);
+    assert.match(head.headers.get('content-type'), /^text\/html/);
+    assert.match(head.headers.get('www-authenticate'), /resource_metadata=/);
+  } finally { s.stop(); }
+});
+
+test('Issue #1195: every request that is not a browser page view keeps the JSON 401 byte for byte', async () => {
+  const s = await serve();
+  try {
+    const exact = async (res, label) => {
+      assert.equal(res.status, 401, label);
+      assert.equal(res.headers.get('content-type'), 'application/json', label);
+      assert.equal(res.headers.get('www-authenticate'), `Bearer resource_metadata="${s.base}/.well-known/oauth-protected-resource/mcp"`, label);
+      const text = await res.text();
+      const body = JSON.parse(text);
+      assert.match(body.error, /^Sign in with .+ to use this MCP server$/, label);
+      assert.equal(text, JSON.stringify({ error: body.error, code: 'unauthorized' }, null, 1), label);
+    };
+    await exact(await s.call('POST', '/mcp', { body: { jsonrpc: '2.0', id: 1, method: 'initialize' } }), 'POST initialize');
+    await exact(await s.call('POST', '/mcp', { body: { jsonrpc: '2.0', id: 1, method: 'initialize' }, headers: { Accept: BROWSER_ACCEPT } }), 'POST with an html Accept');
+    await exact(await s.call('GET', '/mcp', { headers: { Accept: 'application/json, text/event-stream' } }), 'GET from an MCP client');
+    await exact(await s.call('GET', '/mcp', { headers: { Accept: 'application/json;q=1, text/html;q=0.5' } }), 'GET that prefers JSON');
+    await exact(await s.call('GET', '/mcp', { headers: { Accept: '*/*' } }), 'GET with any Accept');
+    const bare = await new Promise((resolve, reject) => {
+      request({ host: '127.0.0.1', port: s.port, path: '/mcp' }, (res) => {
+        let raw = '';
+        res.on('data', (c) => { raw += c; });
+        res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], body: raw }));
+      }).on('error', reject).end();
+    });
+    assert.equal(bare.status, 401);
+    assert.equal(bare.type, 'application/json', 'GET with no Accept');
+    assert.equal(bare.body, JSON.stringify({ error: JSON.parse(bare.body).error, code: 'unauthorized' }, null, 1));
+  } finally { s.stop(); }
+});
+
 test('origin: the resource is a configured origin picked by Host, never the Host itself', async () => {
   const s = await serve({ origin: 'https://weave.example.com', mcpOrigins: ['https://mcp.weave.example.com'] });
   try {

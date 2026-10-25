@@ -7,6 +7,7 @@ import { Weave } from '../../src/engine.js';
 import { startServer } from '../../src/server.js';
 import { createRequestHandler } from '../../src/routes.js';
 import { request } from '../../scripts/test-manager.mjs';
+import { tempDir } from './temp.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
 
@@ -83,7 +84,7 @@ export async function withServer(fn) {
 }
 
 export function managerHarness(prefix) {
-  const scratch = mkdtempSync(join(tmpdir(), prefix));
+  const scratch = tempDir(prefix);
   const env = { ...process.env, WEAVE_TEST_MANAGER_DIR: scratch, WEAVE_TEST_JOB: '', NODE_TEST_CONTEXT: '', WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };
   test.after(async () => { await request({ type: 'stop' }, { directory: scratch }).catch(() => {}); rmSync(scratch, { recursive: true, force: true }); });
   const cli = (args, overrides = {}) => {

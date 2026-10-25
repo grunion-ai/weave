@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scanSuites } from '../src/quality-mirror.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
-const dir = mkdtempSync(join(tmpdir(), 'weave-cli-uncalled-'));
+const dir = tempDir('weave-cli-uncalled-');
 const data = join(dir, 'ws.db');
 const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'census' };
 

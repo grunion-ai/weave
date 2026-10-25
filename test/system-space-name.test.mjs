@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
+import { tempDir } from './lib/temp.mjs';
 
 const systemSpaces = (w) => Object.values(w.state.spaces).filter((s) => s.system === 'workspace');
 const spacesRow = (w, id) => {
@@ -22,7 +23,7 @@ test('a new workspace names its system space System, with the gear, under the ke
 });
 
 test('opening a workspace stored with a Workspace space renames it System, once, and keeps its id', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-system-space-'));
+  const dir = tempDir('weave-system-space-');
   try {
     const path = join(dir, 'old.db');
     const old = new Weave({ path });

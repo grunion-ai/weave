@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 function fresh() {
   const w = new Weave();
@@ -393,7 +394,7 @@ test('REST: the same verb at /api/tables/:table/views[/:view]', async () => {
 
 test('CLI: weave table view reads and writes with the same keys', () => {
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-table-views-'));
+  const dir = tempDir('weave-table-views-');
   const data = join(dir, 'ws.db');
   const cli = (...args) => JSON.parse(execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' }));
   try {

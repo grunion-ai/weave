@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
+import { tempDir } from './lib/temp.mjs';
 
 function source() {
   const w = new Weave();
@@ -73,7 +74,7 @@ test('import drops an order entry that names no field, and keeps the rest in pla
 });
 
 test('a workspace already carrying the hole heals when it is opened', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-import-'));
+  const dir = tempDir('weave-import-');
   const file = join(dir, 'damaged.db');
   try {
     const w = source();

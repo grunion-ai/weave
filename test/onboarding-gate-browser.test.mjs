@@ -8,13 +8,14 @@ import { createOidc } from '../src/oidc.js';
 import { startIdp } from './lib/idp.mjs';
 import { launch, phoneBrowser, phoneProfile, PHONE } from './lib/browser.mjs';
 import { startConnectorPage, CHAT_APPS } from './lib/chat-client.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const FILE = 'test/onboarding-steps.json';
 const baseline = JSON.parse(readFileSync(new URL('./onboarding-steps.json', import.meta.url), 'utf8'));
 const METRICS = ['pages', 'signIns', 'consents', 'clicks'];
 
 const idp = await startIdp({ sessions: true, host: 'localhost' });
-const dir = mkdtempSync(join(tmpdir(), 'weave-onboarding-gate-'));
+const dir = tempDir('weave-onboarding-gate-');
 const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
 const s = await launch('onboarding gate, sign-up to the first tool call', (main) => {
   main.state.meta.name = 'Net';

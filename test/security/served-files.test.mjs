@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
-const dir = mkdtempSync(join(tmpdir(), 'weave-served-'));
+const dir = tempDir('weave-served-');
 process.env.WEAVE_KEYSTORE = join(dir, 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { startServer } = await import('../../src/server.js');

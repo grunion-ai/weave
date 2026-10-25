@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { createForm } from '../src/forms.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 function seed(w) {
   w.createSpace({ name: 'Capture' });
@@ -28,7 +29,7 @@ test('MCP advertises a retry key and repeated requests return one receipt', () =
 });
 
 test('CLI retries persist across processes and reject changed content with the same key', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-forms-agent-'));
+  const dir = tempDir('weave-forms-agent-');
   const path = join(dir, 'capture.db');
   const w = new Weave({ path });
   const form = seed(w);
@@ -61,7 +62,7 @@ test('MCP form management creates and edits one native registry form with archit
 });
 
 test('CLI form configuration creates and updates the same saved form', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-native-form-cli-'));
+  const dir = tempDir('weave-native-form-cli-');
   const path = join(dir, 'capture.db');
   const w = new Weave({ path });
   seed(w);

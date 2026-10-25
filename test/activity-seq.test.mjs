@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { workspace } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -220,7 +221,7 @@ test('route, MCP and CLI carry seq (parity)', async () => {
   assert.equal(typeof dispatchTool(w, 'weave_activity', { entity: e.id }).items[0].seq, 'number');
   assert.equal(typeof dispatchTool(w, 'weave_get_entity', { entity: e.id }).activity[0].seq, 'number');
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-actseq-'));
+  const dir = tempDir('weave-actseq-');
   try {
     const data = join(dir, 'ws.db');
     const fw = new Weave({ path: data });

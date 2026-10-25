@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 function fresh() {
   const w = new Weave();
@@ -158,7 +159,7 @@ test('REST and CLI speak the same keys', async () => {
     assert.equal(body.frozen, 1);
   } finally { server.close(); }
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-view-layout-'));
+  const dir = tempDir('weave-view-layout-');
   const data = join(dir, 'ws.db');
   const cli = (...args) => JSON.parse(execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' }));
   try {

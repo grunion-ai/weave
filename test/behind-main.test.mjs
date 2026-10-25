@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describeBuild, headContains } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const sha = (c) => c.repeat(40);
 
@@ -24,7 +25,7 @@ test('describeBuild: at main is never behind', () => {
 });
 
 test('headContains: ancestry against a real checkout', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-behind-'));
+  const dir = tempDir('weave-behind-');
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' }).stdout.trim();
   try {
     git('init', '-q');

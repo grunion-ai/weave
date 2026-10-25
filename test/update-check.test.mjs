@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createReleaseCheck, updateCheckFromEnv, newerVersion, RELEASES_URL } from '../src/update-check.js';
+import { tempDir } from './lib/temp.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-09-28T12:00:00Z');
@@ -15,7 +16,7 @@ function counting(impl) {
   f.calls = [];
   return f;
 }
-const scratch = () => join(mkdtempSync(join(tmpdir(), 'weave-update-')), 'update-check.json');
+const scratch = () => join(tempDir('weave-update-'), 'update-check.json');
 const clock = (t = T0) => { const c = () => c.t; c.t = t; return c; };
 
 test('the switch reads WEAVE_UPDATE_CHECK: on unless it says off', () => {

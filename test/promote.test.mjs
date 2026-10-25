@@ -111,6 +111,18 @@ test('a promotion fast-forwards production, calls the deploy hook and waits for 
   assert.equal(out.health.supervisor.watch.ok, true);
 });
 
+test('a promotion that lands while sign-in is broken stays promoted and writes one alert line (Issue #1178)', async () => {
+  const broken = { ...live(3), auth: { ok: false } };
+  const f = fake({ commits: [commit(2), commit(3)], health: [live(1), broken] });
+  const out = await promote(f.io, { sha: sha(3), from: sha(1) }, fast);
+  assert.equal(out.action, 'promoted', 'an auth fault is configuration: blocking the promotion would block its fix too');
+  assert.deepEqual(f.kinds(), ['push', 'check', 'alert']);
+  assert.match(f.writes[2][1], /sign-in is broken: \/api\/health reads auth\.ok false/);
+  const fine = fake({ commits: [commit(2), commit(3)], health: [live(1), { ...live(3), auth: { ok: true } }] });
+  await promote(fine.io, { sha: sha(3), from: sha(1) }, fast);
+  assert.deepEqual(fine.kinds(), ['push', 'check']);
+});
+
 test('a watch that fails or a rollback fails the run, files an Issue, alerts and opens a revert of the promoted range', async () => {
   const commits = [commit(2), commit(3), commit(4)];
   const tripped = live(3, { ok: false, reason: '/api/health failed 3 checks in a row' });

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 function build() {
   const w = new Weave();
@@ -152,7 +153,7 @@ test('weave_bulk is the MCP door and takes every parameter the engine takes', ()
 
 test('weave bulk is the CLI door', () => {
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-bulk-'));
+  const dir = tempDir('weave-bulk-');
   const data = join(dir, 'ws.db');
   const cli = (...args) => execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' });
   try {

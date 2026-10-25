@@ -8,10 +8,11 @@ import { createOidc } from '../src/oidc.js';
 import { startIdp } from './lib/idp.mjs';
 import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 import { connectLikeChatApp, CHAT_APPS } from './lib/chat-client.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 async function hub({ open = true, limit = 2, clerk = false } = {}) {
   const idp = await startIdp();
-  const dir = mkdtempSync(join(tmpdir(), 'weave-setup-flows-'));
+  const dir = tempDir('weave-setup-flows-');
   const taken = new Weave({ path: join(dir, 'harbor.db'), name: 'harbor' });
   taken.state.meta.name = 'harbor';
   taken.setRequireAuth(true);

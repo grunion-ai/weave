@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
+import { Weave, WeaveError, fileHeaders, isHtmlFile, viewHtml, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -9,7 +9,7 @@ const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister, toolTable } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
-import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.js';
+import { renderAuthPage, renderRefusalPage, renderMcpDoorPage, sameOriginPath } from './auth-page.js';
 import { PRIVACY, TERMS, SUPPORT, AGENT_DOCS } from './legal.js';
 import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
@@ -54,7 +54,17 @@ const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS)
 const actorOf = (account) => (account?.id ? accountActor(account.id) : account?.name);
 const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
 
-const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
+const prefersHtml = (accept) => {
+  const q = {};
+  for (const part of String(accept ?? '').split(',')) {
+    const [type, ...params] = part.trim().toLowerCase().split(';');
+    const weight = params.map((p) => p.trim().match(/^q=([\d.]+)$/)).find(Boolean);
+    q[type.trim()] = weight ? Number(weight[1]) : 1;
+  }
+  return (q['text/html'] ?? 0) > 0 && (q['text/html'] ?? 0) > (q['application/json'] ?? 0);
+};
+
+const wallPageHtml =(authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
@@ -142,7 +152,7 @@ const joinedInvite = (next) => {
 };
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, anonymousForms = ['1', 'true'].includes(String(process.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, signIn = () => null, anonymousForms = ['1', 'true'].includes(String(process.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const clerkPane = (() => {
     if (!clerkKey || !oidc) return null;
     let host;
@@ -608,6 +618,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (path === '/mcp') {
       if (oidc) mcpChallenge = `Bearer resource_metadata="${hostOrigin ?? mcpOrigin(rx)}/.well-known/oauth-protected-resource${wsPrefix}/mcp"`;
       const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
+      if (oidc && !bearer && ['GET', 'HEAD'].includes(rx.method) && prefersHtml(rx.header('accept'))) {
+        const workspace = weave.state.meta.name;
+        return out(401, renderMcpDoorPage({ workspace, url: `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`, server: workspaceSlug(workspace) || 'weave', docsHref: `${wsPrefix}/docs` }),
+          { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'WWW-Authenticate': mcpChallenge });
+      }
       if (oidc && !bearer) return deny(401, `Sign in with ${oidc.name} to use this MCP server`);
       if (oidc && !bearer.startsWith('wv_')) {
         const ip = clientIp(rx);
@@ -1303,9 +1318,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { sha, version, ready: sha != null && serving.stale !== true }, { 'Cache-Control': 'no-store' });
         }
         if (route === 'GET /api/health') {
-          if (!mayAdminister(weave, role)) return out(200, { ok: true, name: 'weave', ...(role ? { version } : {}) });
+          const auth = signIn();
+          if (!mayAdminister(weave, role)) return out(200, { ok: true, name: 'weave', ...(role ? { version } : {}), ...(auth ? { auth: { ok: auth.ok } } : {}) });
           const nightly = backup();
-          return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}) });
+          return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}), ...(auth ? { auth } : {}) });
         }
         if (route === 'GET /api/schema') return out(200, weave.describeSchema());
         if (route === 'GET /api/ontology') {
@@ -1940,7 +1956,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
           const { meta, bytes } = weave.readFile(m[1], { preview: rx.searchParams?.has('preview') ?? false });
-          return out(200, bytes, fileHeaders(meta, bytes, { view: rx.searchParams?.has('view') ?? false }));
+          const view = rx.searchParams?.has('view') ?? false;
+          return out(200, view && isHtmlFile(meta) ? viewHtml(bytes) : bytes, fileHeaders(meta, bytes, { view }));
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {

@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { fresh } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 test('density is a view setting: compact and spacious are stored, comfortable is the default and reads as absent', () => {
   const w = fresh();
@@ -79,7 +80,7 @@ test('MCP, REST and CLI speak density by name', async () => {
     assert.equal((await res.json()).density, 'compact');
   } finally { server.close(); }
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-view-density-'));
+  const dir = tempDir('weave-view-density-');
   const data = join(dir, 'ws.db');
   const cli = (...args) => JSON.parse(execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' }));
   try {

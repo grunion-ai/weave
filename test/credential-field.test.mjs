@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, CREDENTIAL_KINDS, KEYSTORES } from '../src/engine.js';
 import { FIELD_TYPE_VOCABULARY } from '../src/vocabulary.js';
+import { tempDir } from './lib/temp.mjs';
 
 function fresh() {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-cred-'));
+  const dir = tempDir('weave-cred-');
   const w = new Weave({ keystorePath: join(dir, 'keystore.json') });
   w.createSpace({ name: 'Dev' });
   w.createTable({ space: 'Dev', name: 'Service' });

@@ -105,6 +105,13 @@ running animation, its transform is identity and its box has stayed put for a
 frame (Issue #901).
 `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
 Retries remain visible in test output; repeated flakiness gets a tracker issue.
+A test that needs a scratch directory calls `tempDir(prefix)` from
+`test/lib/temp.mjs`, which removes every directory it opened when the process
+exits. `test/temp-dirs.test.mjs` refuses a bare
+`mkdtempSync(join(tmpdir(), ...))` anywhere under `test/`, because a suite run
+outside the manager, such as a bare `node --test` or a browser suite that only
+takes a browser lease, keeps the caller's own `TMPDIR` and leaves those
+directories on the disk (Issue #1083).
 
 ### Sheriff
 
@@ -150,7 +157,11 @@ happened, the worker's pid never changed and dev answered no 5xx. It then
 posts the commit status `dev-soak` (success) on that SHA; promotion reads that
 context. A failure posts `dev-soak` failure linking the run and sends one line
 to `SHERIFF_ALERT_URL` and the job summary. A newer main commit cancels the
-older run, and a soak that sees dev move to newer main posts nothing.
+older run. A soak that watched the commit pass and held dev for the whole
+window still succeeds when dev moves on the poll that completes it, so a busy
+main still yields commits promotion can take. A soak cut short before its
+window elapses posts `dev-soak` pending on that SHA, described as superseded,
+which reads apart from both a pass and a failure and which promotion skips.
 
 With the `DEV_SMOKE_TOKEN` secret (an editor `wv_` token on dev) the smoke
 also creates a row through the API, sees it in the grid, and hard-deletes it,
@@ -256,6 +267,11 @@ and opens a `promote/revert-<sha>` PR on main for the promoted range (armed when
 `SHERIFF_TOKEN` is set). `production` is never rewound: it stays on the failed
 commit while prod serves its rollback, and the next promotion waits for a main
 commit that reverts it. A timeout files and alerts without a revert.
+
+A promotion that passes while `/api/health` reads `auth.ok: false` stays
+promoted and writes one alert line. A broken sign-in comes from provider
+configuration, such as a rotated client secret, so holding the promotion
+would only hold back a fix.
 
 Set the repository variable `PROMOTION_PAUSED=true` to stop promotion; delete it
 or set it to anything else to resume. Two rulesets guard the branch: nobody
