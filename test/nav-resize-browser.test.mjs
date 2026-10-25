@@ -107,7 +107,7 @@ if (s) {
     const page = await open();
     await page.click('#nav-collapse');
     assert.equal(await page.locator('#nav-resize').isVisible(), false, 'no handle while collapsed');
-    await page.click('#nav-expand');
+    await page.click('#main .nav-menu');
     assert.equal(await page.locator('#nav-resize').isVisible(), true, 'the handle returns on expand');
     await page.setViewportSize({ width: 880, height: 900 });
     assert.equal(await page.locator('#nav-resize').isVisible(), false, 'no handle on a narrow window');

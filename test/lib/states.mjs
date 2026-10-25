@@ -123,7 +123,7 @@ function touch(weave) {
   const rows = [];
   for (let i = 0; i < 8; i++) {
     rows.push(weave.createEntity(issues, {
-      name: `Issue ${i}: a phone row name long enough to wrap`,
+      name: i === 1 ? `Issue ${i}` : `Issue ${i}: a phone row name long enough to wrap`,
       values: { Status: 'Open', Severity: 'High', Symptom: ['Looks broken', 'Slow'], Notes: 'a note' },
     }));
   }
@@ -131,7 +131,61 @@ function touch(weave) {
   return { table: issues.id, row: rows[0].id, ...views(weave, issues) };
 }
 
-export const SEEDS = { grid, messy, a11y, touch };
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5f3a8d40000000049454e44ae426082', 'hex');
+export const UNBROKEN = 'Antidisestablishmentarianism'.repeat(4);
+const SINK_STATE = 'Waiting on the vendor to countersign the renewal';
+const SINK_OPTION = 'An option label long enough to run past any chip width';
+const SINK_TAG = 'A second tag that also runs long';
+
+function sink(weave) {
+  weave.createSpace({ name: 'Lab' });
+  const parts = weave.createTable({ space: 'Lab', name: 'Part' });
+  weave.addField(parts, { name: 'Cost', type: 'number', config: { format: 'currency', currency: 'USD' } });
+  const t = weave.createTable({ space: 'Lab', name: 'Sample' });
+  weave.addField(t, { name: 'Status', type: 'workflow', config: { states: [
+    { name: 'Open', category: 'not-started', default: true },
+    { name: SINK_STATE, category: 'in-progress' },
+    { name: 'Done', category: 'done' }] } });
+  weave.addField(t, { name: 'Notes', type: 'text' });
+  weave.addField(t, { name: 'Amount', type: 'number', config: { format: 'currency', currency: 'USD' } });
+  weave.addField(t, { name: 'Score', type: 'rating', config: { max: 10 } });
+  weave.addField(t, { name: 'Due', type: 'date' });
+  weave.addField(t, { name: 'Window', type: 'daterange', config: { format: 'long' } });
+  weave.addField(t, { name: 'Checked', type: 'checkbox' });
+  weave.addField(t, { name: 'Live', type: 'toggle', config: { on: 'Published to every customer', off: 'Held back for review' } });
+  weave.addField(t, { name: 'Site', type: 'url' });
+  weave.addField(t, { name: 'Mail', type: 'email' });
+  weave.addField(t, { name: 'Kind', type: 'select', config: { options: ['Short', SINK_OPTION] } });
+  weave.addField(t, { name: 'Tags', type: 'multiselect', config: { options: ['Short', SINK_OPTION, SINK_TAG] } });
+  weave.addRelation(t, { name: 'Parts', targetDb: parts, cardinality: 'many-to-many', inverseName: 'Samples' });
+  weave.addField(t, { name: 'Definition', type: 'field' });
+  weave.addField(t, { name: 'Secret', type: 'key' });
+  weave.addField(t, { name: 'Files', type: 'attachments' });
+  weave.addField(t, { name: 'Face', type: 'avatar' });
+  weave.addField(t, { name: 'Part costs', type: 'lookup', config: { relationField: 'Parts', targetField: 'Cost' } });
+  weave.addField(t, { name: 'Total cost', type: 'rollup', config: { relationField: 'Parts', targetField: 'Cost', aggregate: 'sum' } });
+  weave.addField(t, { name: 'Double', type: 'formula', config: { expression: 'Amount * 2' } });
+  weave.addField(t, { name: 'Brief', type: 'document' });
+  const ps = ['Bolt', `Housing ${UNBROKEN}`].map((name, i) => weave.createEntity(parts, { name, values: { Cost: [12.5, 987654321.99][i] } }).id);
+  const full = weave.createEntity(t, { name: UNBROKEN, values: {
+    Status: SINK_STATE, Notes: UNBROKEN, Amount: 98765432109.87, Score: 10, Due: '2026-10-25',
+    Window: { start: '1999-01-01', end: '2099-12-31' }, Checked: true, Live: true,
+    Site: `https://docs.example.com/${UNBROKEN}`, Mail: `${UNBROKEN.toLowerCase()}@example.com`,
+    Kind: SINK_OPTION, Tags: ['Short', SINK_OPTION, SINK_TAG], Parts: ps,
+    Definition: { type: 'select', config: { options: ['Draft', SINK_OPTION] } }, Secret: `sk-${UNBROKEN}`,
+  } }).id;
+  weave.attachToField(full, 'Files', { name: `${UNBROKEN}.pdf`, mime: 'application/pdf', bytes: Buffer.from('%PDF-1') });
+  weave.attachToField(full, 'Face', { name: 'face.png', mime: 'image/png', bytes: PNG });
+  weave.setDoc(full, `# ${UNBROKEN}\n\nBody text.`, 'Brief');
+  weave.createEntity(t, { name: 'A', values: { Status: 'Open', Kind: 'Short', Amount: 1, Score: 1, Tags: ['Short'], Parts: [ps[0]] } });
+  weave.createEntity(t, { name: 'Pump housing', values: { Status: SINK_STATE, Kind: 'Short', Amount: 1250000, Window: { start: '2026-01-01', end: '2026-12-31' }, Live: false, Parts: [ps[1]] } });
+  weave.createEntity(t, { name: 'Blank', values: { Status: 'Done' } });
+  return { table: t.id, row: full, ...views(weave, t) };
+}
+
+const withSink = (build) => (weave) => ({ ...build(weave), sink: sink(weave) });
+
+export const SEEDS = Object.fromEntries(Object.entries({ grid, messy, a11y, touch }).map(([name, build]) => [name, withSink(build)]));
 
 const at = (sel) => () => sel;
 const tap = (page, sel, cell) => {
@@ -154,6 +208,13 @@ export const ROUTES = {
   },
   'row-dock': { url: (c) => `${c.base}/#/table/${c.table}?e=${c.row}`, ready: at('#dock .entity-fields .fieldrow') },
   'issue-table': { url: (c) => `${c.base}/#/table/${c.issue.id}`, ready: at(ROW) },
+  'sink-table': { url: (c) => `${c.base}/#/table/${c.sink.table}`, ready: at(ROW) },
+  'sink-board': { url: (c) => `${c.base}/#/table/${c.sink.table}/view/${c.sink.board}`, ready: at('.wv-board .tile') },
+  'sink-list': { url: (c) => `${c.base}/#/table/${c.sink.table}/view/${c.sink.list}`, ready: at('.wv-list .list-row') },
+  'sink-row': {
+    url: (c, cell) => (cell === 'phone' ? `${c.base}/#/table/${c.sink.table}?e=${c.sink.row}` : `${c.base}/#/entity/${c.sink.row}`),
+    ready: (cell) => (cell === 'phone' ? '#dock:not([hidden]) .fieldrow[data-field="Status"]' : '.entity-fields .fieldrow[data-field="Status"]'),
+  },
   'entity-page': { url: (c) => `${c.base}/#/entity/${c.entityId}`, ready: at('.vditor-ir [contenteditable="true"]'), editor: true },
   map: { url: (c) => `${c.base}/#/map`, ready: at('#main .view-title') },
   settings: { url: (c) => `${c.base}/#/settings`, ready: at('#main .settings-purge') },
@@ -531,14 +592,18 @@ const TOUCH_STATES = [
   { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'] },
   { name: 'table list', route: 'table', open: 'rest', layout: 'table', roots: ['#main'] },
   { name: 'row page', route: 'row-dock', open: 'rest', layout: 'table', roots: ['#dock'] },
-  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu') },
+  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163, 1164] } },
   { name: 'picker sheet', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .chip-trigger[title="Status"]', root: '.picker-pop', act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
   { name: 'bug panel', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#bug-panel', act: (p) => openBugReport(p) },
 ].map((s) => ({ ...s, cells: PHONE, seeds: TOUCH }));
 
 const SHARED_STATES = [
-  { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { cutoff: [1123, 1124, 1125, 1126, 1127], touch: [1128] } },
-  { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127], touch: [1130, 1131, 1132, 1133, 1134] } },
+  { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { cutoff: [1123, 1124, 1125, 1126, 1127] } },
+  { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127] } },
+  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1127, 1160, 1161], 'cutoff|phone': [1152, 1161] } },
+  { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127], 'cutoff|phone': [1157], touch: [1169, 1170] } },
+  { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { 'cutoff|desktop': [1123, 1124, 1125, 1126, 1127, 1151, 1152, 1153, 1154, 1155, 1156, 1157, 1161], 'cutoff|phone': [1157] } },
+  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|desktop': [1127, 1151, 1153, 1158, 1159, 1161], 'cutoff|phone': [1151, 1152, 1156, 1161, 1162], touch: [1165, 1166, 1167, 1168] } },
 ];
 
 export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...A11Y_STATES, ...TOUCH_STATES, ...SHARED_STATES];

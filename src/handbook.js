@@ -977,7 +977,7 @@ A space is the unit of meaning in a workspace: it groups the tables of one area,
 
 ## Sharing a link
 
-Every row, table, space and workspace has a permalink built from its id, so a rename never breaks it: \`/w/<ws>/e/<id>\` for a row (\`/w/<ws>/e/Issue%23287\` works too), \`/w/<ws>/t/<id>\` for a table, \`/w/<ws>/s/<id>\` for a space and \`/w/<ws>/\` for the workspace. The ⧉ beside a row's \`#id\`, a table's title or a space's title copies it.
+Every row, table, space and workspace has a permalink built from its id, so a rename never breaks it: \`/e/<id>\` for a row, \`/t/<id>\` for a table, \`/s/<id>\` for a space and \`/w/<ws>/\` for the workspace. A row, table or space link names no workspace: on a workspace host such as \`net.weave.grunion.ai\` the host names it, and anywhere else the link opens in whichever workspace holds that id. Links that do carry \`/w/<ws>/\` (\`/w/<ws>/e/Issue%23287\` too) keep working. The ⧉ beside a row's \`#id\`, a table's title or a space's title copies it.
 
 The same row permalink comes back as \`url\` from every door: the API, MCP, the CLI, chips and cards, search hits and the bug reporter. It works as input too. Paste a row's link, with or without the origin, its \`/e/<id>\` path or its bare id into search or ⌘K and that row comes first; pass it to any API, MCP or CLI call that names a row and it names that row.
 
@@ -1274,7 +1274,7 @@ weave automation create Task --name 'Log completion' \\
               {"type":"add-comment","text":"{{Name}} moved to Done."}]'
 \`\`\`
 
-Triggers fire on create, update, and state change. Actions set fields, move state, append to a document, add a comment, or POST a webhook. A webhook that answers non-2xx, does not answer within 5 seconds, or cannot connect marks its Workflows row Failed with the reason; the write that fired it still lands. \`{{Field}}\` placeholders read the row; an empty one reads \`(no Field)\`.
+Triggers fire on create, update, state change, and on a schedule. Actions set fields, move state, append to a document, add a comment, or POST a webhook. A webhook that answers non-2xx, does not answer within 5 seconds, or cannot connect marks its Workflows row Failed with the reason; the write that fired it still lands. \`{{Field}}\` placeholders read the row; an empty one reads \`(no Field)\`.
 
 An \`upsert-row\` action writes a row of another table instead of the one that fired, matched on a key field that holds an id from the other system:
 
@@ -1284,6 +1284,12 @@ An \`upsert-row\` action writes a row of another table instead of the one that f
 \`\`\`
 
 When a row of the target table already holds that key, the action updates it; otherwise it creates one, so a repeated delivery never makes a duplicate. The key is a text, number, url or email field and must be mapped. Each source path reads the firing row (\`row.<Field>\`, \`row.PublicId\`) or the trigger (\`event.type\`, \`event.field\`, \`event.toState\`). A select takes its option name and a relation the target row's Name, as the entities API does. A path that finds nothing leaves its field as it was, and an empty key marks the Workflows row Failed. An upsert into its own table is held by the same depth limit as every automation write.
+
+A \`schedule\` trigger fires on a timer instead of a row change:
+\`\`\`json
+{ "type": "schedule", "cron": "0 9 * * 1-5", "zone": "America/Los_Angeles", "where": [["State", "!=", "Done"]] }
+\`\`\`
+\`cron\` is the five-field expression (minute, hour, day, month, weekday; \`*\`, lists, ranges and \`*/n\` steps), read on the wall clock of \`zone\` (UTC when absent). At each due minute the rule runs its actions on every live row of its table, or on the rows its \`where\` clause admits, written in the query filter syntax; \`{{Today}}\` reads the clock the run happens at and \`event.type\` is \`schedule\`. The server checks every minute. A due minute fires once: a box that slept through several runs one catch-up pass when it wakes, going back seven days at most; a new rule starts at the first tick that sees it, and a rule switched On after its minute waits for the next one. Health and Last Run are stamped per run as for every rule.
 
 ## Decks
 
@@ -2275,7 +2281,7 @@ The bug glyph in the bottom-right corner of every page opens a small panel besid
 
 ## Report issue: an Issue on this instance
 
-**Report issue**, or \`⌘Return\` from the note (the \`⌘↵\` on the button says so), files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current.
+**Report issue**, or \`⌘Return\` from the note (the \`⌘↵\` on the button says so), files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current. The row also asks **Which probe would have caught this?** Whoever fixes the bug answers it with the probe that should have caught it, or with none, and the weekly quality scorecard counts the answers that read none.
 
 That row lives where the instance lives. On the canonical instance it is read every night. On a self-hosted weave it is on your disk, and an instance without a docs workspace cannot file it at all.
 

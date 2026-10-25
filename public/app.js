@@ -232,6 +232,11 @@ function dropToast(item) {
   item.node.remove();
 }
 
+function dropToastNode(node) {
+  const item = toastsUp.find((t) => t.node === node);
+  if (item) dropToast(item);
+}
+
 let toastTick = null;
 function toastClock() {
   if (toastTick) return;
@@ -1209,7 +1214,7 @@ function renderNav() {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
         dataset: { db: db.id },
-      }, iconEl(db.icon, 'wv-icon nav-icon'), db.name);
+      }, iconEl(db.icon, 'wv-icon nav-icon'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
       if (!db.system) {
         row.append(navTableMenu(db));
         kindContext(row, 'table', db);
@@ -1248,15 +1253,6 @@ function renderNav() {
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
       sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
     ]));
-  const railRoute = (href, icon, label, on) => el('a', {
-    class: 'ws-icon rail-route' + (on ? ' active' : ''),
-    href, title: label, 'aria-label': label, ...(on ? { 'aria-current': 'page' } : {}),
-  }, lucideEl(icon, 'wv-icon'));
-  $('#rail-routes')?.replaceChildren(
-    railRoute(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
-    ...(people ? [railRoute(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
-    railRoute('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
-    railRoute('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
@@ -2652,24 +2648,27 @@ function reopenAfterUndo(href, open, stayed) {
 function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
   return {
     label: 'Move to trash', danger: true,
-    run: async () => {
-      try {
+    run: () => {
+      let where = null, landed = null;
+      const settled = (async () => {
         await remove();
         await loadSchema();
-        const where = await after();
-        const landed = location.hash;
-        toast(TRASHED, false, {
-          label: 'Undo',
-          run: async () => {
-            try {
-              await restore();
-              await loadSchema();
-              const href = await undone(where, location.hash === landed);
-              toast('Restored', false, typeof href === 'string' ? { label: 'Open', run: () => { location.hash = href; } } : null);
-            } catch (err) { toast(err.message, true); }
-          },
-        });
-      } catch (err) { toast(err.message, true); }
+        where = await after();
+        landed = location.hash;
+      })();
+      const undo = toast(TRASHED, false, {
+        label: 'Undo',
+        run: async () => {
+          try {
+            await settled;
+            await restore();
+            await loadSchema();
+            const href = await undone(where, location.hash === landed);
+            toast('Restored', false, typeof href === 'string' ? { label: 'Open', run: () => { location.hash = href; } } : null);
+          } catch (err) { toast(err.message, true); }
+        },
+      });
+      return settled.catch((err) => { dropToastNode(undo); toast(err.message, true); });
     },
   };
 }
@@ -5111,7 +5110,7 @@ function tableChrome(db, trashCount) {
     permalink: () => {
       const v = ref.db.view;
       const byDefault = !v || v.id === pickTableView(allTables().find((d) => d.id === ref.db.id) ?? ref.db, null)?.id;
-      return `${location.origin}${WS_PREFIX}/${byDefault ? `t/${ref.db.id}` : viewHref(ref.db, v)}`;
+      return byDefault ? `${location.origin}/t/${ref.db.id}` : `${location.origin}${WS_PREFIX}/${viewHref(ref.db, v)}`;
     },
     title: db.name,
     icon: db.icon,
@@ -6392,33 +6391,62 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const MORE_ICON = { move: 'send', rollup: 'sigma', copy: 'link' };
   const puck = el('div', { class: 'sel-puck-wrap' });
 
-  const runOnSelection = async (verb, each, undoable = null) => {
+  const runOnSelection = async (verb, each) => {
     const ids = [...chosen()];
     const failed = [];
     for (const id of ids) {
       try { await each(id); } catch { failed.push(id); }
     }
     const done = ids.filter((id) => !failed.includes(id));
-    const action = undoable && done.length ? undoable(done) : null;
-    if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true, action);
-    else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`, false, action);
+    if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true);
+    else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`);
     clearChosen();
     await onSaved?.();
     return done;
   };
 
-  const trashChosen = async () => {
-    const ids = chosen(), drawn = drawnIds();
-    const last = Math.max(...[...ids].map((id) => drawn.indexOf(id)));
-    const keep = (id) => !ids.has(id);
+  const dropRows = (ids) => {
+    const gone = new Set(ids);
+    const strip = (arr) => {
+      let k = 0;
+      for (let i = arr.length - 1; i >= 0; i--) if (arr[i] && gone.has(arr[i].id)) { arr.splice(i, 1); k++; }
+      return k;
+    };
+    strip(items);
+    if (pager) {
+      const k = strip(pager.rows);
+      pager.total -= k;
+      pager.reach = Math.max(0, pager.reach - k);
+    } else strip(sortedItems);
+    for (const tr of live.values()) tr.remove();
+    live.clear();
+    for (const id of ids) built.delete(id);
+    rewindow();
+  };
+
+  const trashChosen = () => {
+    const ids = [...chosen()], drawn = drawnIds();
+    const last = Math.max(...ids.map((id) => drawn.indexOf(id)));
+    const keep = (id) => !ids.includes(id);
     const next = drawn.slice(last + 1).find(keep) ?? drawn.slice(0, last).reverse().find(keep) ?? null;
-    const gesture = { kind: 'delete', ids: [] };
-    await runOnSelection(TRASHED, (id) => api('DELETE', `/entities/${id}`), (done) => {
-      gesture.ids = done;
-      lastGesture = gesture;
-      return { label: 'Undo', run: () => undoGesture(gesture) };
-    });
+    const gesture = { kind: 'delete', ids };
+    lastGesture = gesture;
+    clearChosen();
+    if (dock && ids.includes(weaveEntitySurface.selectionId(dock.state))) { dockClose(); dockSyncUrl(); }
+    dropRows(ids);
+    const undo = toast(`${TRASHED} ${SEL().countLabel(ids.length, db.term)}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
     focusGridRow(next, main);
+    gesture.settled = (async () => {
+      const results = await Promise.allSettled(ids.map((id) => api('DELETE', `/entities/${id}`)));
+      gesture.ids = ids.filter((id, i) => results[i].status === 'fulfilled');
+      const failed = ids.length - gesture.ids.length;
+      if (failed) {
+        if (!gesture.ids.length) dropToastNode(undo);
+        toast(`${TRASHED}: ${failed} of ${ids.length} failed`, true);
+      }
+      if (!gesture.undoing) await onSaved?.();
+    })();
+    return gesture.settled;
   };
 
   const runBulk = async (verb, op, params) => {
@@ -6493,7 +6521,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       valuePop({ anchor, title: `New ${term.singular}`, placeholder: 'Name', apply: 'Create & link',
         onApply: (name) => runBulk('Rolled up', 'rollup', { field: f.name, name }) });
     }),
-    copy: () => copyText([...chosen()].map((id) => `${location.origin}${WS_PREFIX}/e/${id}`).join('\n'),
+    copy: () => copyText([...chosen()].map((id) => `${location.origin}/e/${id}`).join('\n'),
       `${SEL().countLabel(chosen().size, db.term)} — links copied`),
   };
   const more = (anchor) => picker(anchor, {
@@ -8492,7 +8520,7 @@ async function showSpace(spaceId) {
   main.replaceChildren(
     viewHeader({
       crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
-      permalink: `${location.origin}${WS_PREFIX}/s/${spaceId}`,
+      permalink: `${location.origin}/s/${spaceId}`,
       title: space.space,
       kind: 'space',
       onRename: async (name) => {
@@ -8658,7 +8686,8 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
       const ay = y + n.h + 6 + i * 25;
       const actions = a.actions.map((x) => (AUTO_ACTION[x.type] ?? (() => 'webhook'))(x)).join(', ');
       const trig = a.trigger.type === 'state-changed' ? `${a.trigger.field}→${a.trigger.toState ?? '*'}`
-        : a.trigger.type === 'field-updated' ? `${a.trigger.field} changed` : 'created';
+        : a.trigger.type === 'field-updated' ? `${a.trigger.field} changed`
+        : a.trigger.type === 'schedule' ? `cron ${a.trigger.cron}` : 'created';
       const full = `⚡ ${trig} ⇒ ${actions}`;
       const fits = Math.floor((n.w - 16) / 5.8);
       const label = full.length > fits ? full.slice(0, fits - 1).trimEnd() + '…' : full;
@@ -10085,7 +10114,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         crumbPath(inPeek
           ? (crumbs ?? weaveBreadcrumbs.dockCrumbs([entityHop(entity)]))
           : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity)), {
-          copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') },
+          copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}/e/${id}`, 'Permalink copied') },
           foldFrom: inPeek ? 1 : 4,
         }),
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
@@ -11108,7 +11137,7 @@ function noteEntityRecent(entity) {
   const st = wf ? entity.fields?.[wf.name] : null;
   noteRecent({
     kind: 'entity', id: entity.id, name: entity.name, db: entity.db, publicId: entity.publicId,
-    url: `${WS_PREFIX}/e/${entity.id}`,
+    url: `/e/${entity.id}`,
     ...(st ? { chip: { state: { name: st, category: stateCategory(wf, st) } } } : {}),
   });
 }
@@ -11147,7 +11176,7 @@ function linkSearch(f, { linked = [], commit }) {
         label: targets.length > 1 ? `+ New ${noun} in ${t.qualified}` : `+ New ${noun}`,
         run: async (q) => {
           const made = await api('POST', `/tables/${t.id}/entities`, { values: { Name: q || `New ${t.name}` } });
-          return { kind: 'entity', id: made.id, publicId: made.publicId, name: made.name, db: made.db ?? t.qualified, url: `${WS_PREFIX}/e/${made.id}` };
+          return { kind: 'entity', id: made.id, publicId: made.publicId, name: made.name, db: made.db ?? t.qualified, url: `/e/${made.id}` };
         },
       };
     }),
@@ -11170,6 +11199,8 @@ document.addEventListener('keydown', (e) => {
 let lastGesture = null;
 
 async function gestureTop(g) {
+  await g.settled;
+  if (!g.ids.length) return [];
   const top = await api('GET', `/undo?limit=${g.ids.length}`);
   const ours = [];
   for (const u of top) {
@@ -11180,9 +11211,11 @@ async function gestureTop(g) {
 }
 
 async function undoGesture(g) {
+  g.undoing = true;
   if (lastGesture === g) lastGesture = null;
   try {
     const ours = await gestureTop(g);
+    if (!g.ids.length) return;
     if (ours.length) await api('POST', '/undo', { steps: ours.length });
     for (const id of g.ids) if (!ours.includes(id)) await api('POST', `/entities/${id}/restore`);
     await refreshView();
@@ -12046,48 +12079,58 @@ function wireWsNew() {
 }
 
 const narrowShell = matchMedia('(max-width: 900px)');
+function setNavCollapsed(collapsed) {
+  const app = $('#app');
+  app.classList.toggle('nav-collapsed', collapsed);
+  app.classList.remove('nav-peek');
+  localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
+}
 function wireNavCollapse() {
   const app = $('#app');
   const collapse = $('#nav-collapse');
-  const expand = $('#nav-expand');
   const sidebar = $('#sidebar');
-  if (!app || !collapse || !expand || !sidebar) return;
-  const apply = (collapsed) => {
-    app.classList.toggle('nav-collapsed', collapsed);
-    app.classList.remove('nav-peek');
-    expand.classList.toggle('hidden', !collapsed);
-    localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
-  };
+  const rail = $('#ws-rail');
+  if (!app || !collapse || !sidebar || !rail) return;
+  const apply = setNavCollapsed;
   collapse.addEventListener('click', () => (narrowShell.matches ? app.classList.remove('nav-peek') : apply(true)));
-  expand.addEventListener('click', () => apply(false));
   const strip = el('div', { id: 'nav-hot-strip', 'aria-hidden': 'true' });
   app.append(strip);
+  const panel = [sidebar, rail, strip];
   let settle = null;
-  strip.addEventListener('mouseenter', () => {
-    if (!app.classList.contains('nav-collapsed')) return;
+  let pointer = null;
+  addEventListener('pointermove', (e) => {
+    const moved = pointer && (pointer.x !== e.clientX || pointer.y !== e.clientY);
+    pointer = { x: e.clientX, y: e.clientY };
+    if (!moved || e.target !== strip) return;
+    if (!app.classList.contains('nav-collapsed') || app.classList.contains('nav-peek')) return;
     app.classList.add('nav-peek');
     clearTimeout(settle);
     settle = setTimeout(() => {
-      if (!sidebar.matches(':hover') && !strip.matches(':hover')) app.classList.remove('nav-peek');
+      if (!panel.some((n) => n.matches(':hover'))) app.classList.remove('nav-peek');
     }, 400);
-  });
+  }, true);
   strip.addEventListener('click', () => apply(false));
   sidebar.addEventListener('click', (e) => {
     if (!app.classList.contains('nav-peek') || narrowShell.matches) return;
     if (e.target.closest('a,button,input,textarea,select,label')) return;
     apply(false);
   });
-  sidebar.addEventListener('mouseleave', (e) => {
-    if (e.relatedTarget?.closest?.('.wv-menu')) return;
-    if (app.classList.contains('nav-peek') && !narrowShell.matches) app.classList.remove('nav-peek');
-  });
+  for (const side of [sidebar, rail]) {
+    side.addEventListener('mouseleave', (e) => {
+      if (e.relatedTarget?.closest?.('.wv-menu, #sidebar, #ws-rail, #nav-hot-strip')) return;
+      if (app.classList.contains('nav-peek') && !narrowShell.matches) app.classList.remove('nav-peek');
+    });
+  }
   addEventListener('keydown', (e) => { if (e.key === 'Escape') app.classList.remove('nav-peek'); });
   apply(localStorage.getItem('weave-nav-collapsed') === '1');
   const shut = () => app.classList.remove('nav-peek');
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);
   sidebar.addEventListener('click', (e) => { if (narrowShell.matches && e.target.closest('a[href]')) shut(); }, true);
-  narrowShell.addEventListener('change', shut);
+  narrowShell.addEventListener('change', () => {
+    shut();
+    for (const btn of document.querySelectorAll('.nav-menu')) labelNavMenu(btn);
+  });
 }
 
 const NAV_WIDTH = { min: 200, max: 480, base: 264, step: 16 };
@@ -12203,14 +12246,20 @@ function wireNavHold() {
   }, true);
 }
 
+function labelNavMenu(btn) {
+  const label = narrowShell.matches ? 'Open navigation' : 'Show sidebar';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
 function navMenuButton() {
   const btn = el('button', {
-    class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button',
-    title: 'Open navigation', 'aria-label': 'Open navigation', 'aria-controls': 'sidebar',
+    class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button', 'aria-controls': 'sidebar',
     'aria-expanded': $('#app')?.classList.contains('nav-held') ? 'true' : 'false',
-    onclick: () => $('#app').classList.add('nav-peek'),
+    onclick: () => (narrowShell.matches ? $('#app').classList.add('nav-peek') : setNavCollapsed(false)),
   });
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+  labelNavMenu(btn);
+  btn.innerHTML = '<svg class="nav-menu-burger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>'
+    + '<svg class="nav-menu-panel" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>';
   return btn;
 }
 
