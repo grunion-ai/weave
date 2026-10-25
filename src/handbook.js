@@ -2459,7 +2459,7 @@ The pane holds the view picker at the top, then five sections. One section is op
 | **Sort** | Up to three levels: primary, secondary and tertiary. Each level has a field, a direction worded by type, move up, move down and remove. Rows that tie on every level fall back to **#**. Empty values sort last in both directions. |
 | **Group** | Up to five nested levels, in Table and List layouts. Each level has a field, an order, move up, move down and remove. **Collapse all** and **Expand all** fold every group. Empty values gather under **No value**, listed last. A row with several values in a multi-select appears under each one, and every total above that level counts it once. In List layout the section also holds **Completed by** and **Nest by**. |
 | **Fields** | Shows, hides and reorders columns, with a **Group n** or **Sort n** tag on a field in use; opens the field tray to add a field. |
-| **Display** | **Layout** (Table or List), **Density** (Compact 32, Comfortable 44 or Spacious 72 pixels), the **Σ Rollups** switch, **Subtotals** (Every level, Top level, None) and the aggregation for each column. |
+| **Display** | **Layout** (Table, List or Board), **Density** (Compact, Comfortable or Spacious; table rows are 32, 44 or 72 pixels), the **Σ Rollups** switch, **Subtotals** (Every level, Top level, None) and the aggregation for each column. |
 
 A field sits in Sort or Group, never both: grouping by a sorted field takes it out of Sort, and the Sort section says so. Groups order the rows first; the sort levels order the rows inside each innermost group. A collapsed group keeps its header and its subtotal, so collapsing every group turns the table into a summary. Hiding a grouped field keeps its group headers. Changing the group fields opens every group again.
 
@@ -2468,6 +2468,14 @@ A subtotal row shows the group's live row count and, for each column, the aggreg
 On a phone the sliders button keeps the table menu: View, Density, Fields, Filters, Group and Sort, with the same sort and group levels.
 
 Search is temporary: it is not saved into a view or shared with other people, and leaving the table clears it.
+
+## Boards
+
+Board displays each record as a card. Groups can sit side by side as columns or stack vertically as a gallery. Collapse a group with its chevron: a column becomes a narrow rail with its label and count; a stacked group keeps its header. The view remembers these folds. Two grouping levels in a side-by-side board produce columns and collapsible swimlanes.
+
+Density changes the padding and spacing inside cards. Picture size remains a separate setting. Hover or focus a card to pick it for comparison; the checkbox has its own space beside the title. Drag a card into a group to change its grouped value, then use Undo to restore it.
+
+A relation block uses a board when the linked table's first view is a Board. It shows only linked records, honors the relation's field and filter settings, and keeps New, Link existing and Unlink actions. Its collapsed groups stay local to that entity in the current browser tab. Group changes edit the linked record without leaving the entity; hand ordering remains in the full table view.
 
 ## Managing views
 

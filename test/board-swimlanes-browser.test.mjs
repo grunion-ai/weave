@@ -60,6 +60,23 @@ if (s) {
     await page.mouse.up();
   };
 
+  test('a lane column folds independently from its swimlanes', async () => {
+    seed();
+    const page = await open();
+    try {
+      const head = page.locator('.board-col-head[data-key="Research"]');
+      await head.locator('.list-fold').click();
+      assert.ok((await head.boundingBox()).width < 80);
+      assert.equal(await page.locator(`${cell('Research', 'Office')} .board-cards`).isVisible(), false);
+      assert.equal(await page.locator(`${cell('Ready to Buy', 'Office')} .board-cards`).isVisible(), true);
+      await eventually(() => view().collapsed?.includes('Research'), true);
+      await page.reload();
+      await page.waitForSelector('.board-col-head.column-shut');
+      await page.locator('.board-col-head[data-key="Research"] .list-fold').click();
+      assert.equal(await page.locator(`${cell('Research', 'Office')} .board-cards`).isVisible(), true);
+    } finally { await page.close(); }
+  });
+
   for (const theme of ['light', 'dark']) {
     test(`side by side with a second group draws lanes across the columns, a cell per column (${theme})`, async () => {
       seed();
