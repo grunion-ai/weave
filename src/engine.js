@@ -81,6 +81,8 @@ export function parseCSV(text) {
 }
 
 const VALUES_BLOCK = '@values';
+const FILES_BLOCK = '@files';
+const isFixedBlock = (key) => key === VALUES_BLOCK || key === FILES_BLOCK;
 const BLOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
   || (f.type === 'relation' && !!(f.many ?? f.config?.many));
@@ -1676,7 +1678,7 @@ export class Weave {
     if (patch.bodyOrder != null) {
       if (!Array.isArray(patch.bodyOrder)) throw new WeaveError('bodyOrder is a list of block keys', 'invalid');
       const keys = patch.bodyOrder.map((ref2) => {
-        if (ref2 === VALUES_BLOCK) return VALUES_BLOCK;
+        if (isFixedBlock(ref2)) return ref2;
         const f = this.getField(db.id, ref2);
         if (!isBodyBlock(f)) throw new WeaveError(`'${f.name}' is not a body block — value fields move inside ${VALUES_BLOCK}`, 'invalid');
         return f.id;
@@ -1800,7 +1802,7 @@ export class Weave {
       fieldOrder: src.fieldOrder.map(mapId),
       createdAt: nowISO(),
     };
-    if (src.bodyOrder) db.bodyOrder = src.bodyOrder.map((k) => (k === VALUES_BLOCK ? k : mapId(k)));
+    if (src.bodyOrder) db.bodyOrder = src.bodyOrder.map((k) => (isFixedBlock(k) ? k : mapId(k)));
     for (const k of Object.keys(db)) if (db[k] === undefined) delete db[k];
     this.state.tables[db.id] = db;
     this.#settlePositions();
@@ -3141,7 +3143,7 @@ export class Weave {
 
   #bodyOrderFrom(db, tDoc) {
     if (!Array.isArray(tDoc.bodyBlocks)) return null;
-    const want = tDoc.bodyBlocks.filter((n) => n === VALUES_BLOCK || (this.findField(db, n) && isBodyBlock(this.findField(db, n))));
+    const want = tDoc.bodyBlocks.filter((n) => isFixedBlock(n) || (this.findField(db, n) && isBodyBlock(this.findField(db, n))));
     const now = this.bodyBlocks(db).filter((n) => want.includes(n));
     return JSON.stringify(want) === JSON.stringify(now) ? null : want;
   }
@@ -5227,12 +5229,12 @@ export class Weave {
     const seen = new Set();
     const out = [];
     for (const key of db.bodyOrder ?? []) {
-      if (seen.has(key) || !known.includes(key)) continue;
+      if (seen.has(key) || !(known.includes(key) || key === FILES_BLOCK)) continue;
       seen.add(key);
       out.push(key);
     }
     for (const key of known) if (!seen.has(key)) out.push(key);
-    return out.map((key) => key === VALUES_BLOCK ? VALUES_BLOCK : db.fields[key].name);
+    return out.map((key) => isFixedBlock(key) ? key : db.fields[key].name);
   }
 
   #recipe(db, type, config) {

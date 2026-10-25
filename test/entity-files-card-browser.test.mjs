@@ -9,6 +9,8 @@ let placed;
 let feature;
 let featureTable;
 let notes;
+let tasks;
+let task;
 
 const s = await launch('ledger files on the entity page', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -34,6 +36,13 @@ const s = await launch('ledger files on the entity page', (weave) => {
   feature = weave.createEntity(featureTable, { name: 'View pane' });
   weave.attachFile(feature.id, { name: 'weave-view-pane-mockup.html', mime: 'text/html', bytes: Buffer.from('<h1>m</h1>') });
   weave.attachFile(feature.id, { name: 'notes.txt', mime: 'text/plain', bytes: Buffer.from('n') });
+
+  tasks = weave.createTable({ space: 'Development', name: 'Task' });
+  weave.addField(tasks, { name: 'Owner', type: 'text' });
+  weave.addField(tasks, { name: 'Brief', type: 'document' });
+  weave.updateTable(tasks, { bodyOrder: ['Brief', '@files', '@values'] });
+  task = weave.createEntity(tasks, { name: 'Write the brief', values: { Owner: 'bo' } });
+  weave.attachFile(task.id, { name: 'brief.pdf', mime: 'application/pdf', bytes: Buffer.from('p') });
 });
 
 if (s) {
@@ -144,6 +153,25 @@ if (s) {
     assert.equal(weave.getEntity(feature.id).files.length, 2, 'the bytes were uploaded again');
     const drawn = await eventually(() => page.$$eval('[data-block="Files 2"] .attach-item', (ns) => ns.length), 2);
     assert.equal(drawn, 2, 'the field block does not show the files');
+    await page.close();
+  });
+
+  test('a row opened from the grid places its Files card by the body order once the record arrives', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector(`tr[data-eid="${task.id}"] .open-link`);
+    const held = [];
+    let holding = true;
+    await page.route(/\/api\/entities\/[^/?]+$/, (route) => {
+      if (holding && route.request().method() === 'GET') held.push(route); else route.continue();
+    });
+    await page.click(`tr[data-eid="${task.id}"] .open-link`);
+    await page.waitForSelector('#dock:not([hidden]) .entity-body');
+    holding = false;
+    for (const r of held.splice(0)) await r.continue();
+    await page.waitForSelector('#dock .entity-files-card');
+    const order = await eventually(() => page.$$eval('#dock .entity-body > [data-block]', (ns) => ns.map((n) => n.dataset.block).slice(0, 3)), ['Brief', '@files', '@values']);
+    assert.deepEqual(order, ['Brief', '@files', '@values'], 'a late Files card lands at the end instead of its place');
     await page.close();
   });
 }

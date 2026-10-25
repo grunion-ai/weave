@@ -740,6 +740,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 @media (hover: hover) { .entity-body > [data-block]:hover .opt-grip { opacity: 1; } }
 @media (hover: none) { .entity-body > [data-block] .opt-grip { opacity: .7; } }
 .related-block { margin: 0 0 18px; }
+.entity-files-card { margin: 0 0 18px; }
+.entity-files-card > .attach-chips { display: flex; padding-left: 22px; }
+.entity-files-card > .entity-files-page { margin-top: 8px; }
+.entity-files-make { margin-left: auto; padding: 0 8px; }
 .entity-body > .attach-block { grid-template-columns: 16px 150px minmax(0, 1fr); gap: 0 10px; align-items: center;
   min-height: 32px; padding: 3px 6px 3px 0; margin: 4px 0 14px -6px; border-radius: var(--tblr-border-radius); }
 .entity-body > .attach-block:hover { background: var(--wv-pill-hover); }
@@ -2516,6 +2520,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #sidebar .ws-wordmark { min-height: 44px; }
   .wv-schema > summary { min-height: 44px; }
   .entity-body :is(.block-head, .doc-section-head) { min-height: 44px; align-items: center; }
+  .entity-files-make { min-height: 44px; }
   .entity-fields .fieldrow { min-height: 44px; align-items: center; }
   .entity-fields .fieldrow :is(.form-control, .form-select, .picker-face, input.inline-edit, select.inline-edit) { min-height: 44px; }
   .bug-cat, .bug-mail, .bug-send { min-height: 44px; }

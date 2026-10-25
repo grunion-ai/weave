@@ -28,12 +28,14 @@
     return field ? { field, file } : { refuse: 'no-field', file };
   }
 
-  function photoFieldName(db) {
+  function freeFieldName(db, base) {
     const taken = new Set((db?.fields ?? []).map((f) => String(f.name).toLowerCase()));
+    const nth = (n) => (n === 1 ? base : `${base} ${n}`);
     let n = 1;
-    while (taken.has((n === 1 ? 'photo' : `photo ${n}`))) n += 1;
-    return n === 1 ? 'Photo' : `Photo ${n}`;
+    while (taken.has(nth(n).toLowerCase())) n += 1;
+    return nth(n);
   }
+  const photoFieldName = (db) => freeFieldName(db, 'Photo');
 
   const PICK_MIN = 2;
   const PICK_CAP = 4;
@@ -99,5 +101,5 @@
     return { card: CARD_PX[size], column: COLUMN_PX[size], phone: PHONE_COLUMNS[size] };
   }
 
-  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
+  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, freeFieldName, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
 })(typeof window !== 'undefined' ? window : globalThis);

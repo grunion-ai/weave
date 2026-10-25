@@ -10396,6 +10396,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
 
   const VALUES_BLOCK = '@values';
+  const FILES_BLOCK = '@files';
   const SHEET_FIELD_TYPES = new Set(['workflow', 'select', 'multiselect', 'relation']);
   const SHEET_HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .fieldrow-label';
   const relationCount = (v) => (Array.isArray(v) ? v.length : v == null ? 0 : 1);
@@ -10535,10 +10536,62 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
 
   const named = db.bodyBlocks ?? [VALUES_BLOCK];
+  let filesCard = null;
+  let placed = false;
+  const drawFiles = () => {
+    if (filesCard) return;
+    const inFields = new Set((db.fields ?? [])
+      .filter((f) => f.type === 'attachments')
+      .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
+    const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
+    if (!loose.length) return;
+    const filesBody = el('div', { class: 'attach-chips' }, ...loose.map((file) => attachItemEl(file, { group: loose })));
+    const pages = loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'entity-files-page' }, fileViewerEl(file)));
+    const foldFiles = (closed) => {
+      for (const n of [filesBody, ...pages]) n.classList.toggle('hidden', closed);
+      filesCaret.classList.toggle('closed', closed);
+      setDisclosure(filesCaret, !closed);
+    };
+    const filesCaret = disclosure('doc-caret', true, {
+      title: 'Collapse files',
+      onclick: (e) => {
+        e.stopPropagation();
+        const closed = !filesBody.classList.contains('hidden');
+        foldFiles(closed);
+        docSectionCollapse(id, FILES_BLOCK, closed);
+      },
+    });
+    const makeField = async () => {
+      try {
+        const name = boardCore.freeFieldName(db, 'Files');
+        await api('POST', `/tables/${db.id}/fields`, { name, type: 'attachments' });
+        await api('PATCH', `/entities/${id}`, { values: { [name]: loose.map((f) => f.id) } });
+        await loadSchema();
+        toast(`${loose.length === 1 ? 'The file moved' : 'The files moved'} into a new ${name} field`);
+        refresh();
+      } catch (err) { toast(err.message, true); }
+    };
+    const filesHead = el('div', { class: 'block-head' },
+      anchor('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
+      el('button', {
+        type: 'button', class: 'btn btn-sm btn-ghost-secondary entity-files-make',
+        title: `Make an attachments field on ${db.name} that holds these files`, onclick: makeField,
+      }, 'Make a field'));
+    if (docSectionCollapse(id, FILES_BLOCK)) foldFiles(true);
+    filesCard = wireBlock(FILES_BLOCK, el('div', { class: 'entity-files-card' }, filesHead, filesBody, ...pages), [filesHead.querySelector('.opt-grip'), filesHead]);
+    if (!placed) return;
+    const order = [...named, ...blocks.keys()];
+    const next = order.slice(order.indexOf(FILES_BLOCK) + 1).map((k) => blocks.get(k)).find((n) => n?.isConnected);
+    if (next) next.before(filesCard); else left.append(filesCard);
+  };
+  drawFiles();
+  if (later) fills.push(drawFiles);
+
   for (const key of [...named, ...blocks.keys()]) {
     const node = blocks.get(key);
     if (node && !node.isConnected) left.append(node);
   }
+  placed = true;
   let appears = appearsAsPanel(db, entity, refresh);
   if (appears) left.prepend(appears);
   if (later) {
@@ -10553,24 +10606,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       if (appears?.isConnected) appears.after(coverEl(file)); else left.prepend(coverEl(file));
     });
   }
-  let filesCard = null;
-  const drawFiles = () => {
-    if (filesCard) return;
-    const inFields = new Set((db.fields ?? [])
-      .filter((f) => f.type === 'attachments')
-      .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
-    const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
-    if (!loose.length) return;
-    filesCard = el('div', { class: 'card panel entity-files-card' },
-      el('div', { class: 'card-header' },
-        el('h3', { class: 'card-title' }, `Files · ${loose.length}`)),
-      el('div', { class: 'card-body attach-chips' },
-        ...loose.map((file) => attachItemEl(file, { group: loose }))),
-      ...loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'card-body entity-files-page' }, fileViewerEl(file))));
-    left.append(filesCard);
-  };
-  drawFiles();
-  if (later) fills.push(drawFiles);
 
   const refCard = (title, extraClass, refs) => {
     if (!refs.length) return;
