@@ -78,21 +78,69 @@ if (s) {
     });
   }
 
-  test('Settings moves a workspace to the trash behind the typed name and hold, and Trash restores it (Feature #297)', async () => {
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: Settings deletes a workspace from its own dialog once the name is typed, and Trash restores it (Issue #1171)`, async () => {
+      const page = await open('#/settings', theme);
+      try {
+        await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
+        const card = page.locator('#main .settings-workspaces');
+        const names = (await card.locator('.list-row-name').allTextContents()).map((t) => t.trim());
+        assert.deepEqual(names, ['scratch'], 'only a deletable workspace is offered: never the default or weave');
+        const openDialog = async () => {
+          await card.locator('.list-row', { hasText: 'scratch' }).locator('.ws-delete-open').click();
+          await page.locator('#modal').waitFor();
+        };
+        const live = () => fetch(`${base}/api/workspaces`).then((r) => r.json()).then((l) => l.some((w) => w.name === 'scratch'));
+
+        await openDialog();
+        assert.equal(await card.locator('.purge-confirm').count(), 0, 'nothing unfolds inline under the row');
+        assert.equal((await page.textContent('#modal h2')).trim(), 'Delete workspace');
+        assert.match(await page.textContent('#modal'), /scratch/, 'the dialog names the workspace');
+        const input = page.locator('#modal input[name="confirm"]');
+        const go = page.locator('#modal button[type="submit"]');
+        assert.equal(await page.evaluate(() => document.activeElement?.name), 'confirm', 'the name box takes focus');
+        assert.equal((await go.textContent()).trim(), 'Delete workspace');
+        assert.match(await go.getAttribute('class'), /\bbtn-danger\b/, 'Delete is drawn as a danger button from the start');
+        assert.ok(await go.isDisabled(), 'Delete is off until the name is typed');
+        await input.fill('scratc');
+        assert.ok(await go.isDisabled(), 'a partial name keeps it off');
+        await input.fill('Scratch');
+        assert.ok(await go.isDisabled(), 'the match is exact, case included');
+        await input.press('Enter');
+        assert.ok(await page.locator('#modal').isVisible(), 'Enter on a mismatch submits nothing');
+        await page.keyboard.press('Escape');
+        await page.locator('#modal').waitFor({ state: 'detached' });
+        assert.ok(await live(), 'Escape deletes nothing');
+
+        await openDialog();
+        await page.locator('#modal button', { hasText: 'Cancel' }).click();
+        await page.locator('#modal').waitFor({ state: 'detached' });
+        assert.ok(await live(), 'Cancel deletes nothing');
+
+        await openDialog();
+        await input.fill('scratch');
+        assert.ok(await go.isEnabled(), 'the exact name turns Delete on');
+        await go.click();
+        await page.locator('#modal').waitFor({ state: 'detached' });
+        await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
+        assert.equal(await live(), false, 'the workspace left the live list');
+        const row = (await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json())).find((w) => w.name === 'scratch');
+        assert.ok(row?.deletedAt, 'the workspace sits in the trash, file kept');
+        await page.locator('.wv-toast', { hasText: 'scratch' }).locator('button', { hasText: 'Undo' }).click();
+        await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
+        assert.ok(await live(), 'Undo brings it back');
+      } finally { await page.close(); }
+    });
+  }
+
+  test('a workspace deleted from the Settings dialog comes back from Trash (Issue #1171)', async () => {
     const page = await open('#/settings', 'dark');
     try {
       await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
-      const card = page.locator('#main .settings-workspaces');
-      const names = (await card.locator('.list-row-name').allTextContents()).map((t) => t.trim());
-      assert.deepEqual(names, ['scratch'], 'only a deletable workspace is offered: never the default or weave');
-      await card.locator('.list-row', { hasText: 'scratch' }).locator('.purge-open').click();
-      const hold = card.locator('.purge-confirm .hold-btn');
-      assert.ok(await hold.isDisabled(), 'disarmed until the name is typed');
-      await card.locator('.purge-confirm input').fill('scratch');
-      await holdToEnd(page, hold);
+      await page.locator('#main .settings-workspaces .ws-delete-open').click();
+      await page.locator('#modal input[name="confirm"]').fill('scratch');
+      await page.locator('#modal button[type="submit"]').click();
       await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
-      const row = (await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json())).find((w) => w.name === 'scratch');
-      assert.ok(row?.deletedAt, 'the workspace sits in the trash, file kept');
       await page.click('#sidebar .nav-system a[href="#/trash"]');
       await page.locator('#main .trash-workspaces button', { hasText: 'Restore' }).click();
       await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');

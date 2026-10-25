@@ -311,7 +311,7 @@ function holdPage(back, box, label = box.querySelector('h2')) {
   }).observe(document.body, { childList: true });
 }
 
-function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
+function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass = 'btn-primary') {
   document.querySelector('#modal-back')?.remove();
   const opener = document.activeElement;
   const close = () => {
@@ -321,7 +321,7 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
     if (held && opener?.isConnected) opener.focus();
   };
   const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) close(); } });
-  const done = el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel);
+  const done = el('button', { class: `btn ${submitClass}`, type: 'submit' }, submitLabel);
   const form = el('form', {}, ...bodyNodes,
     el('div', { class: 'actions' },
       onSubmit ? el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel') : null,
@@ -3733,6 +3733,31 @@ function confirmToggle(after, build) {
   };
 }
 
+function deleteWorkspaceDialog(w) {
+  const input = el('input', {
+    class: 'form-control', name: 'confirm', autocomplete: 'off', spellcheck: 'false',
+    placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
+  });
+  modal('Delete workspace', [
+    el('p', {}, 'This moves ', el('strong', {}, w.name),
+      ` to the trash with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. Restore brings it back from Trash in the sidebar.`),
+    el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm'),
+    input,
+  ], async () => {
+    if (input.value !== w.name) throw Object.assign(new Error('The name does not match'), { shown: true });
+    await api('DELETE', `/workspaces/${w.id}`);
+    if (w.name === state.wsCurrent) { location.href = '/'; return; }
+    toast(`Workspace ${w.name} moved to the trash`, false, {
+      label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); showSettings(); },
+    });
+    buildWsRail();
+    showSettings();
+  }, 'Delete workspace', 'btn-danger');
+  const go = $('#modal button[type="submit"]');
+  go.disabled = true;
+  input.addEventListener('input', () => { go.disabled = input.value !== w.name; });
+}
+
 async function showSettings() {
   state.route = { page: 'settings' };
   renderNav();
@@ -3799,25 +3824,9 @@ async function showSettings() {
         el('span', { class: 'text-secondary' }, `${w.tables ?? 0} tables, ${w.entities ?? 0} entities`),
         el('span', { class: 'spacer' }));
       row.append(el('button', {
-        class: 'btn btn-sm btn-outline-danger purge-open', type: 'button',
-        onclick: confirmToggle(row, () => {
-          const { box, input } = typedHold(w.name, `Its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities move with it.`, {
-            label: 'Move to trash', hold: true, holdingLabel: 'Hold to move to trash…',
-            run: async () => {
-              try {
-                await api('DELETE', `/workspaces/${w.id}`);
-                if (w.name === state.wsCurrent) { location.href = '/'; return; }
-                toast(`Workspace ${w.name} moved to the trash`, false, {
-                  label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); showSettings(); },
-                });
-                buildWsRail();
-                showSettings();
-              } catch (err) { toast(err.message, true); }
-            },
-          });
-          return { node: el('div', {}, box), input };
-        }),
-      }, 'Move to trash…'));
+        class: 'btn btn-sm btn-outline-danger ws-delete-open', type: 'button',
+        onclick: () => deleteWorkspaceDialog(w),
+      }, 'Delete…'));
       return row;
     })));
 }
