@@ -64,6 +64,54 @@ if (s) {
     await page.mouse.up();
   };
 
+  test('groups collapse to a narrow rail and restore after reload', async () => {
+    seed({ picture: 'off' });
+    const page = await open();
+    try {
+      const group = page.locator('.board-group[data-key="Research"]');
+      const fold = group.locator('.list-fold');
+      await fold.click();
+      assert.equal(await fold.getAttribute('aria-expanded'), 'false');
+      assert.ok((await group.boundingBox()).width < 80);
+      assert.equal(await group.locator('.board-cards').isVisible(), false);
+      await eventually(() => view().collapsed?.includes('Research'), true);
+      await page.reload();
+      await page.waitForSelector('.board-group.shut');
+      await page.locator('.board-group[data-key="Research"] .list-fold').click();
+      assert.equal(await group.locator('.tile').count(), 2);
+      await eventually(() => view().collapsed?.includes('Research'), false);
+    } finally { await page.close(); }
+  });
+
+  test('card density changes spacing and selection never covers the ID or title in either theme', async () => {
+    for (const theme of ['light', 'dark']) {
+      const heights = [];
+      for (const density of ['compact', 'comfortable', 'spacious']) {
+        seed({ picture: 'off', density });
+        const page = await open({ theme });
+        try {
+          const card = page.locator(tile(ids.desk));
+          await card.hover();
+          heights.push((await card.boundingBox()).height);
+          const pick = await card.locator('.tile-pick').boundingBox();
+          for (const selector of ['.tile-id', '.tile-title']) {
+            const text = await card.locator(selector).boundingBox();
+            assert.ok(pick.x >= text.x + text.width || pick.x + pick.width <= text.x || pick.y >= text.y + text.height || pick.y + pick.height <= text.y);
+          }
+          assert.equal(await page.locator('.board-wrap').evaluate((n) => getComputedStyle(n).borderTopWidth), '0px');
+          if (density === 'comfortable') {
+            await openPane(page, 'display');
+            await page.locator('#view-pane .vp-density .seg-opt', { hasText: 'Compact' }).click();
+            assert.equal(await page.locator('.board-wrap').getAttribute('data-density'), 'compact');
+            assert.ok((await card.boundingBox()).height < heights[1]);
+            await eventually(() => view().density, 'compact');
+          }
+        } finally { await page.close(); }
+      }
+      assert.ok(heights[0] < heights[1] && heights[1] < heights[2], `${theme}: density heights ${heights}`);
+    }
+  });
+
   test('side by side draws one card per row, a column per State option, and the cover picture', async () => {
     seed();
     for (const theme of ['light', 'dark']) {
@@ -103,6 +151,25 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a drop keeps its board connected until the lifted card settles', async () => {
+    seed({ picture: 'off' });
+    const page = await open();
+    try {
+      await page.evaluate(() => {
+        window.boardSettlingCuts = [];
+        new MutationObserver((changes) => {
+          for (const change of changes) for (const node of change.removedNodes) {
+            if (node.nodeType === 1 && node.matches('.board-wrap') && node.querySelector('.wv-reorder-lift')) window.boardSettlingCuts.push(true);
+          }
+        }).observe(document.querySelector('#main'), { childList: true });
+      });
+      await drag(page, tile(ids.pants), '.board-group[data-key="Bought"] .board-empty');
+      await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Bought"] .tile[data-eid="${id}"]:not(.wv-reorder-slot)`), ids.pants);
+      assert.deepEqual(await page.evaluate(() => window.boardSettlingCuts), []);
+      assert.equal(await eventually(() => valueOf(ids.pants, 'State'), 'Bought'), 'Bought');
+    } finally { await page.close(); }
+  });
+
   test('dragging a card into another column writes State, and Undo puts it back', async () => {
     seed();
     const page = await open();
@@ -116,6 +183,19 @@ if (s) {
       assert.equal(await eventually(() => valueOf(ids.pants, 'State'), 'Research'), 'Research');
       await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Research"] .tile[data-eid="${id}"]`), ids.pants);
       assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+
+  test('a failed group move restores the saved card position', async () => {
+    seed({ picture: 'off' });
+    const page = await open();
+    try {
+      await page.route(`**/api/entities/${ids.pants}`, (route) => route.request().method() === 'PATCH'
+        ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Move refused' }) }) : route.continue());
+      await drag(page, tile(ids.pants), '.board-group[data-key="Bought"] .board-empty');
+      await page.locator('.wv-toast', { hasText: 'Move refused' }).waitFor();
+      assert.equal(await page.locator(`.board-group[data-key="Research"] ${tile(ids.pants).replace('.wv-board ', '')}`).count(), 1);
+      assert.equal(valueOf(ids.pants, 'State'), 'Research');
     } finally { await page.close(); }
   });
 

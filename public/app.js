@@ -1259,29 +1259,19 @@ function renderNav() {
         await loadSchema();
       })),
     }, '+ New space'));
-  const systemFolded = folded.has(SYSTEM_FOLD_KEY);
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
   const peopleHere = !!people && allTables().some((d) => d.id === people.id);
-  const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
-  const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
-    el('div', { class: 'nav-space-row nav-system-head' },
-      el('button', {
-        class: 'nav-space', type: 'button', 'aria-expanded': String(!systemFolded),
-        title: systemFolded ? 'Expand System' : 'Collapse System',
-        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
-      }, lucideEl('settings', 'wv-icon nav-icon'), 'System'),
-      disclosure('nav-caret', !systemFolded, {
-        title: systemFolded ? 'Expand System' : 'Collapse System',
-        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
-      })),
-    ...(systemFolded ? [] : [
-      sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
-      ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
-      sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
-      sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
-    ]));
+  const sysRow = (href, icon, label, on) => el('a', {
+    class: 'ws-icon' + (on ? ' active' : ''), href, title: label, 'aria-label': label,
+    ...(on ? { 'aria-current': 'page' } : {}),
+  }, lucideEl(icon, 'wv-icon'), el('span', { class: 'visually-hidden' }, label));
+  $('#rail-system').replaceChildren(
+    sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
+    ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
+    sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
+    sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
@@ -1323,10 +1313,9 @@ function renderNav() {
   }
   const identity = el('div', { class: 'nav-identity' }, accountSlot(), personalMenuButton());
   document.querySelector('#sidebar .nav-pinned')?.remove();
-  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, state.healthChip, state.trialChip, identity));
+  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, state.healthChip, state.trialChip, identity));
 }
 
-const SYSTEM_FOLD_KEY = 'system';
 const TRIAL_NOTICE_DAYS = 3;
 
 const ACCOUNT_ROLE_LABELS = { architect: 'Architect', editor: 'Editor', observer: 'Observer', admin: 'Architect', writer: 'Editor', reader: 'Observer' };
@@ -3232,14 +3221,21 @@ function fileBodyEl(file, frameClass) {
   const url = fileUrl(file);
   return kind === 'image' ? el('img', { src: url, alt: file.name })
     : kind === 'pdf' || kind === 'text' ? el('iframe', { class: frameClass, src: url, title: file.name })
-      : kind === 'html' ? el('iframe', { class: frameClass, src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX })
+      : kind === 'html' ? el('iframe', { class: frameClass, src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX, dataset: { fileId: file.id } })
         : null;
 }
+const fileFrameOf = (source) => (source ? [...document.querySelectorAll('iframe[data-file-id]')].find((f) => f.contentWindow === source) ?? null : null);
+addEventListener('message', (e) => {
+  if (e.data?.weave !== 'frame-height') return;
+  const frame = fileFrameOf(e.source);
+  const h = Math.round(Number(e.data.height));
+  if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) frame.style.height = `${Math.min(h, 200000)}px`;
+});
 function fileViewerEl(file, { size = 'medium' } = {}) {
   const kind = fileKind(file);
-  const body = fileBodyEl(file, 'file-viewer-frame');
+  const body = fileBodyEl(file, 'file-viewer-frame' + (kind === 'html' ? ' fits-content' : ''));
   if (!body) return null;
-  return el('div', { class: `file-viewer size-${size} kind-${kind}` },
+  return el('div', { class: `file-viewer size-${size} kind-${kind}` + (kind === 'html' ? ' fit-content' : '') },
     el('div', { class: 'file-viewer-bar' },
       iconEl(fileIconName(file), 'wv-icon'),
       el('span', { class: 'file-viewer-name' }, file.name),
@@ -3618,11 +3614,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
     const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
     const present = files.filter((x) => !x.missing);
-    const sheet = mode === 'inline' && f.multiple !== false ? present
+    const pages = mode === 'inline' || mode === 'auto' ? present.filter((x) => fileKind(x) === 'html') : [];
+    const sheet = mode === 'inline' && f.multiple !== false ? present.filter((x) => !pages.includes(x))
       : mode === 'auto' ? present.filter(isPictureFile) : [];
     const box = el('span', { class: 'attach-box' + (mode === 'link' || mode === 'cover' ? '' : ' attach-box-wide') });
-    const viewer = mode === 'inline' && f.multiple === false && present[0] ? fileViewerEl(present[0], look) : null;
-    if (viewer) box.append(viewer);
+    const single = mode === 'inline' && f.multiple === false && present[0] && !pages.includes(present[0]) ? present[0] : null;
+    for (const file of single ? [single] : pages) { const viewer = fileViewerEl(file, look); if (viewer) box.append(viewer); }
     if (sheet.length) box.append(attachSheetEl(sheet, look, { remove }));
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
@@ -4653,7 +4650,7 @@ function tableDensityButton(ref) {
       { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
       { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' },
     ], gridDensity(db), (next) => {
-      const wrap = document.querySelector('.wv-grid')?.closest('.table-wrap') ?? document.querySelector('#main .list-wrap');
+      const wrap = document.querySelector('#main > .table-wrap, #main > .list-wrap, #main > .board-wrap');
       if (wrap?.wvSetDensity) wrap.wvSetDensity(next); else saveGridDensity(db, next);
       btn.label(next);
       pop?.remove(); btn.focus({ preventScroll: true });
@@ -4975,7 +4972,7 @@ function displayBlock(db, save) {
     el('div', { class: 'vp-line vp-density' }, el('span', { class: 'view-layout-label' }, 'Density'),
       keyedSeg(segCtl([{ id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }, { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
         { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' }], gridDensity(db), (mode) => {
-        const wrap = document.querySelector('#main .wv-grid')?.closest('.table-wrap') ?? document.querySelector('#main .list-wrap');
+        const wrap = document.querySelector('#main > .table-wrap, #main > .list-wrap, #main > .board-wrap');
         if (wrap?.wvSetDensity) wrap.wvSetDensity(mode); else saveGridDensity(db, mode);
         document.querySelector('#main .table-density-btn')?.label?.(mode);
         paneSync(db);
@@ -5912,13 +5909,15 @@ async function drawCompare() {
 function renderBoard(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted } = ctx;
   const v = db.view;
+  const picksState = ctx.embedded ? { dbId: db.id, ids: [], full: false } : boardPicks;
+  const writeView = (patch) => ctx.writeView ? ctx.writeView(patch) : listViewWrite(db, patch);
   const groups = boardCore.groupsOf(v);
   const picture = boardCore.pictureOf(db, v);
   const size = boardCore.widths(picture);
   const fields = boardCardFields(db);
-  if (boardPicks.dbId !== db.id) Object.assign(boardPicks, { dbId: db.id, ids: [], full: false });
+  if (picksState.dbId !== db.id) Object.assign(picksState, { dbId: db.id, ids: [], full: false });
   const known = new Set((everyone ?? items).map((it) => it.id));
-  boardPicks.ids = boardPicks.ids.filter((id) => known.has(id));
+  picksState.ids = picksState.ids.filter((id) => known.has(id));
   if (compare?.db.id === db.id) compare.db = db;
   const levels = groups === 'side' ? s.levels.slice(0, 2) : s.levels;
   const lanes = groups === 'side' && levels.length === 2;
@@ -5930,15 +5929,16 @@ function renderBoard(main, db, items, ctx) {
   let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
-  const reload = () => keepScroll(() => showDatabase(db.id, db.view.id));
-  const write = async (item, values, order, undo = null) => {
+  const reload = () => ctx.reload ? ctx.reload() : keepScroll(() => showDatabase(db.id, db.view.id));
+  const write = async (item, values, order, undo = null, settled = null) => {
     const release = gridHold();
     try {
       if (Object.keys(values).length) await api('PATCH', `/entities/${item.id}`, { values });
       if (order) await listViewWrite(db, { order });
+      await settled;
       await reload();
       if (undo) toast(undo.text, false, { label: 'Undo', run: () => write(item, undo.values, null) });
-    } catch (err) { toast(err.message, true); } finally { release(); }
+    } catch (err) { await settled; await reload(); toast(err.message, true); } finally { release(); }
   };
 
   const addPhotoField = async (it, file) => {
@@ -5980,7 +5980,7 @@ function renderBoard(main, db, items, ctx) {
     RO().guard(card);
     fileDropZone(card, (files) => dropCover(it, files));
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.tile-pick') || !(e.shiftKey || (dockCoversScreen.matches && boardPicks.ids.length))) return;
+      if (e.target.closest('.tile-pick') || !(e.shiftKey || (dockCoversScreen.matches && picksState.ids.length))) return;
       e.preventDefault();
       e.stopPropagation();
       pickCard(it.id);
@@ -5988,7 +5988,7 @@ function renderBoard(main, db, items, ctx) {
     card.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.shiftKey) return;
       const phone = dockCoversScreen.matches;
-      if (!phone && e.target.closest('.tile-field > dd')) { if (!nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
+      if (!phone && e.target.closest('.tile-field > dd')) { if (!ctx.embedded && !nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
       if (!e.target.closest(phone ? TILE_FORM : TILE_HANDS_OFF)) boardDrag(e, card);
     });
     card.addEventListener('click', (e) => {
@@ -6006,12 +6006,22 @@ function renderBoard(main, db, items, ctx) {
     const key = node.key ?? '';
     const cards = el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)));
     cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
+    const shut = !cell && listCore.isCollapsed(collapsed, key);
+    const fold = el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.label || key}` }, lucideEl('chevron-right'));
     const head = !cell && (node.path?.length || completed)
-      ? el('div', { class: 'board-group-head' },
+      ? el('div', { class: 'board-group-head' }, fold,
         completed ? el('span', { class: 'list-group-label' }, node.label) : listHeadingEl(s, depth, node),
         el('span', { class: 'list-count' }, String(node.count ?? node.items.length)))
       : null;
-    const sec = el('section', { class: 'board-group' + (completed ? ' board-completed' : ''), dataset: { key }, 'aria-label': key || db.name }, head, cards);
+    const sec = el('section', { class: 'board-group' + (completed ? ' board-completed' : '') + (shut ? ' shut' : ''), dataset: { key }, 'aria-label': key || db.name }, head, cards);
+    fold.addEventListener('click', () => {
+      collapsed = listCore.toggleCollapsed(collapsed, key);
+      const now = listCore.isCollapsed(collapsed, key);
+      sec.classList.toggle('shut', now);
+      fold.setAttribute('aria-expanded', String(!now));
+      v.collapsed = collapsed;
+      writeView({ collapsed });
+    });
     sec.wvPath = completed ? null : node.path;
     return sec;
   };
@@ -6030,7 +6040,7 @@ function renderBoard(main, db, items, ctx) {
       row.classList.toggle('shut', now);
       fold.setAttribute('aria-expanded', String(!now));
       v.collapsed = collapsed;
-      listViewWrite(db, { collapsed });
+      writeView({ collapsed });
     });
     row.append(el('div', { class: 'board-lane-head' },
       el('span', { class: 'board-lane-title' }, fold, listHeadingEl(s, 1, lane), el('span', { class: 'list-count' }, String(lane.count)))),
@@ -6038,36 +6048,53 @@ function renderBoard(main, db, items, ctx) {
     return row;
   };
   const grid = lanes ? boardCore.laneGrid(arranged.groups, arrangeLevels[1]) : null;
+  const syncColumns = () => {
+    board.style.gridTemplateColumns = grid.columns.map((c) => listCore.isCollapsed(collapsed, c.key) ? '48px' : 'var(--board-col-width)').join(' ');
+    grid.columns.forEach((c, i) => {
+      const shut = listCore.isCollapsed(collapsed, c.key);
+      board.querySelectorAll(`.board-col-head:nth-child(${i + 1}), .board-lane > .board-group:nth-child(${i + 2})`).forEach((n) => n.classList.toggle('column-shut', shut));
+      board.querySelector(`.board-col-head:nth-child(${i + 1}) .list-fold`)?.setAttribute('aria-expanded', String(!shut));
+    });
+  };
+  const columnHead = (c) => el('div', { class: 'board-col-head board-group-head', dataset: { key: c.key } },
+    el('button', { class: 'list-fold', type: 'button', 'aria-label': `Fold ${c.label}`, 'aria-expanded': 'true', onclick: () => {
+      collapsed = listCore.toggleCollapsed(collapsed, c.key);
+      v.collapsed = collapsed;
+      syncColumns();
+      writeView({ collapsed });
+    } }, lucideEl('chevron-right')), listHeadingEl(s, 0, c), el('span', { class: 'list-count' }, String(c.count)));
   const board = el('div', {
     class: 'wv-board', 'aria-label': `${db.name} · ${v.name}`,
     dataset: { groups: levels.length ? groups : 'stacked', picture, ...(lanes ? { lanes: 'true' } : {}) },
     style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
   }, ...(lanes
-    ? [...grid.columns.map((c) => el('div', { class: 'board-col-head board-group-head', dataset: { key: c.key } }, listHeadingEl(s, 0, c), el('span', { class: 'list-count' }, String(c.count)))), ...grid.lanes.map(laneEl)]
+    ? [...grid.columns.map(columnHead), ...grid.lanes.map(laneEl)]
     : leaves.map(([node, depth]) => groupEl(flat(node), depth))));
+  if (lanes) syncColumns();
   if (arranged.completed?.count) board.append(groupEl(flat(arranged.completed), 0, { completed: true }));
   const sortName = (gridSort(db) ?? []).map((x) => x.field).join(', ');
   const manualBtn = el('button', { class: 'btn btn-sm btn-ghost-primary tiny board-manual', type: 'button', onclick: () => listViewWrite(db, { sort: [] }).then(reload) }, 'Manual');
-  const hint = sorted
+  const hint = ctx.embedded ? null : sorted
     ? el('span', { class: 'board-hint' }, `Sorted by ${sortName}: ${levels.length ? 'drag into another group, or ' : ''}choose `, manualBtn, ' to arrange by hand')
     : el('span', { class: 'board-hint' }, levels.length ? 'Manual: drag to arrange, or into another group to change it' : 'Manual: drag to arrange, left to right then down');
   const picks = el('span', { class: 'board-picks' });
   const footer = el('div', { class: 'list-footer board-footer', role: 'status', 'aria-live': 'polite' },
     el('span', {}, listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term })), hint, picks);
-  const wrap = el('div', { class: 'card board-wrap', dataset: { layout: 'board' } }, board, footer);
+  const wrap = el('div', { class: 'board-wrap', dataset: { layout: 'board', density: gridDensity(db) } }, board, footer);
+  wrap.wvSetDensity = (mode) => { wrap.dataset.density = mode; saveGridDensity(db, mode); };
   main.append(wrap);
   syncPicks();
   board.style.setProperty('--board-top', `${Math.max(0, Math.round(board.getBoundingClientRect().top + scrollY))}px`);
   markDockedRow();
 
   function pickCard(id) {
-    const got = boardCore.togglePick(boardPicks.ids, id);
-    boardPicks.ids = got.ids;
-    boardPicks.full = got.refused;
+    const got = boardCore.togglePick(picksState.ids, id);
+    picksState.ids = got.ids;
+    picksState.full = got.refused;
     syncPicks();
   }
   function syncPicks() {
-    const on = new Set(boardPicks.ids);
+    const on = new Set(picksState.ids);
     board.classList.toggle('is-picking', on.size > 0);
     for (const t of board.querySelectorAll('.tile[data-eid]')) {
       const yes = on.has(t.dataset.eid);
@@ -6078,10 +6105,10 @@ function renderBoard(main, db, items, ctx) {
     if (!on.size) { picks.replaceChildren(); return; }
     const n = on.size;
     picks.replaceChildren(
-      boardPicks.full ? el('span', { class: 'board-pick-hint' }, `Compare takes up to ${boardCore.PICK_CAP} cards`) : null,
+      picksState.full ? el('span', { class: 'board-pick-hint' }, `Compare takes up to ${boardCore.PICK_CAP} cards`) : null,
       el('button', { class: 'btn btn-sm btn-primary board-compare', type: 'button', ...(n < boardCore.PICK_MIN ? { disabled: '', title: `Pick ${boardCore.PICK_MIN} to ${boardCore.PICK_CAP} cards to compare` } : {}),
-        onclick: () => openCompare(db, boardPicks.ids) }, `Compare ${n}`),
-      el('button', { class: 'btn btn-sm btn-ghost-secondary board-clear', type: 'button', onclick: () => { Object.assign(boardPicks, { ids: [], full: false }); syncPicks(); } }, 'Clear'));
+        onclick: () => openCompare(db, picksState.ids) }, `Compare ${n}`),
+      el('button', { class: 'btn btn-sm btn-ghost-secondary board-clear', type: 'button', onclick: () => { Object.assign(picksState, { ids: [], full: false }); syncPicks(); } }, 'Clear'));
   }
   function boardDrag(down, card) {
     const side = board.dataset.groups === 'side';
@@ -6095,7 +6122,7 @@ function renderBoard(main, db, items, ctx) {
     let held = null;
     const under = () => {
       const g = [...board.querySelectorAll('.board-group')].find((n) => {
-        if (!n.getClientRects().length) return false;
+        if (n.classList.contains('shut') || n.classList.contains('column-shut') || !n.getClientRects().length) return false;
         const r = n.getBoundingClientRect();
         return at.x >= r.left && at.x <= r.right && ((side && !inLanes) || (at.y >= r.top && at.y <= r.bottom));
       });
@@ -6105,7 +6132,7 @@ function renderBoard(main, db, items, ctx) {
     RO().sortable(down, {
       source: card,
       items: () => {
-        const all = [...board.querySelectorAll('.tile, .board-tail')];
+        const all = [...board.querySelectorAll('.tile, .board-tail')].filter((n) => !n.closest('.board-group.shut, .board-lane.shut, .column-shut'));
         const group = under();
         return group ? all.filter((n) => group.contains(n)) : all;
       },
@@ -6119,21 +6146,21 @@ function renderBoard(main, db, items, ctx) {
       },
     });
   }
-  function drop(card, { node, before }) {
+  function drop(card, { node, before, settled }) {
     const item = card.wvItem.row.item;
     const from = card.wvPath;
     const sec = node.closest('.board-group');
     const to = sec?.wvPath;
-    if (!to) return reload();
+    if (!to) return Promise.resolve(settled).then(reload);
     const values = from ? listPathValues(s, to, item, from) : listPathValues(s, to, item, to.map(() => ({ key: null })));
     if (!from && s.completedBy) values[s.completedBy.name] = false;
     const target = node.classList.contains('tile') ? node : null;
     const order = !sorted && target ? listCore.moveInOrder(effective(), item.id, target.dataset.eid, !before) : null;
-    if (!Object.keys(values).length && !order) return reload();
+    if (!Object.keys(values).length && !order) return Promise.resolve(settled).then(reload);
     const back = from ? listPathValues(s, from, item, to) : (s.completedBy ? { [s.completedBy.name]: true } : {});
     const where = to.map((p) => p.label).join(listCore.SEP);
     const undo = Object.keys(values).length ? { text: `#${item.publicId} moved to ${where}`, values: back } : null;
-    write(item, values, order, undo);
+    write(item, values, order, undo, settled);
   }
 }
 function groupFieldOptions(db) {
@@ -10538,7 +10565,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       el('div', { class: 'card-header' },
         el('h3', { class: 'card-title' }, `Files · ${loose.length}`)),
       el('div', { class: 'card-body attach-chips' },
-        ...loose.map((file) => attachItemEl(file, { group: loose }))));
+        ...loose.map((file) => attachItemEl(file, { group: loose }))),
+      ...loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'card-body entity-files-page' }, fileViewerEl(file))));
     left.append(filesCard);
   };
   drawFiles();
@@ -10926,8 +10954,20 @@ async function relatedGrid(entity, f, onSaved) {
     await onSaved();
   };
 
+  const unlinkButton = (item) => el('button', {
+        class: 'btn btn-sm btn-ghost-secondary tiny unlink-btn', title: `Unlink from ${f.name}`,
+        onclick: async (e) => {
+          e.stopPropagation();
+          try {
+            await api('POST', `/entities/${entity.id}/unlink`, { field: f.name, targets: [item.id] });
+            await onSaved();
+          } catch (err) { toast(err.message, true); }
+        },
+      }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
+
+  const view = pickTableView(target);
   const body = el('tbody', {},
-    ...rows.map((item) => el('tr', {
+    ...(view.layout === 'board' ? [] : rows).map((item) => el('tr', {
       class: 'entity-row',
       dataset: { eid: item.id, href: `#/entity/${item.id}` },
       onclick: (e) => {
@@ -10944,16 +10984,7 @@ async function relatedGrid(entity, f, onSaved) {
         class: (isNumCell(c, item) ? 'num' : '')
           + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),
       }, labeledEditorFor(c, item, target, onSaved, { compact: true }))),
-      el('td', {}, el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny unlink-btn', title: `Unlink from ${f.name}`,
-        onclick: async (e) => {
-          e.stopPropagation();
-          try {
-            await api('POST', `/entities/${entity.id}/unlink`, { field: f.name, targets: [item.id] });
-            await onSaved();
-          } catch (err) { toast(err.message, true); }
-        },
-      }, iconEl('lucide:x', 'wv-icon wv-icon-xs'))))),
+      el('td', {}, unlinkButton(item)))),
     el('tr', { class: 'add-entity-row' },
       el('td', { colspan: String(colCount) },
         el('button', {
@@ -10962,7 +10993,8 @@ async function relatedGrid(entity, f, onSaved) {
             try {
               const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: `New ${target.name}` } });
               await link([made.id]);
-              focusNewRow(made.id, { scope: '.related-block', select: true });
+              if (view.layout === 'board') { await dockEntity(target, made.id, { step: true }); $('#dock .name-edit')?.focus(); }
+              else focusNewRow(made.id, { scope: '.related-block', select: true });
             } catch (err) { toast(err.message, true); }
           },
         }, `+ New ${target.term.singular}`),
@@ -10978,7 +11010,7 @@ async function relatedGrid(entity, f, onSaved) {
           }),
         }, '+ Link existing'))));
 
-  return el('section', { class: 'related-section', dataset: { field: f.id } },
+  const section = el('section', { class: 'related-section', dataset: { field: f.id } },
     el('div', { class: 'related-head' },
       el('span', { class: 'related-name' }, f.name),
       el('span', { class: 'related-count', title: filtered ? `${rows.length} of ${linked.length} ${target.term.plural} match the subtable filter` : null }, tally),
@@ -10994,6 +11026,26 @@ async function relatedGrid(entity, f, onSaved) {
           body))
       : el('div', { class: 'card' },
         el('table', { class: 'table table-sm wv-grid' }, body)));
+  if (view.layout === 'board') {
+    const boardDb = viewed(target, { ...view, fields: cols.map((c) => c.name) });
+    const collapseKey = `weave-related-board:${entity.id}:${f.id}`;
+    try { boardDb.view.collapsed = JSON.parse(sessionStorage.getItem(collapseKey) ?? 'null') ?? view.collapsed; } catch (err) { toast(err.message, true); }
+    const content = section.lastElementChild;
+    const actions = el('div', { class: 'board-actions' }, ...body.querySelectorAll('.add-entity-btn'));
+    content.remove();
+    const setup = listSetup(boardDb);
+    const domains = await Promise.all(setup.levels.map((level) => level.f.type === 'relation' ? listTargetRows(level.f) : null));
+    renderBoard(section, boardDb, rows, {
+      setup, all: linked.length, everyone: rows, domains, filtered, sorted: true, embedded: true,
+      reload: onSaved,
+      writeView: async ({ collapsed }) => { try { sessionStorage.setItem(collapseKey, JSON.stringify(collapsed)); } catch (err) { toast(err.message, true); } },
+    });
+    for (const card of section.querySelectorAll('.tile[data-eid]')) {
+      card.append(unlinkButton({ id: card.dataset.eid }));
+    }
+    section.append(actions);
+  }
+  return section;
 }
 
 function subtableOf(f, target) {
@@ -12259,10 +12311,17 @@ function wireWsNew() {
 }
 
 const narrowShell = matchMedia('(max-width: 900px)');
+let navPeekDwell, navPeekLeave;
+function closeNavPeek() {
+  clearTimeout(navPeekDwell);
+  clearTimeout(navPeekLeave);
+  navPeekDwell = navPeekLeave = null;
+  $('#app').classList.remove('nav-peek');
+}
 function setNavCollapsed(collapsed) {
   const app = $('#app');
   app.classList.toggle('nav-collapsed', collapsed);
-  app.classList.remove('nav-peek');
+  closeNavPeek();
   localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
 }
 function wireNavCollapse() {
@@ -12272,22 +12331,28 @@ function wireNavCollapse() {
   const rail = $('#ws-rail');
   if (!app || !collapse || !sidebar || !rail) return;
   const apply = setNavCollapsed;
-  collapse.addEventListener('click', () => (narrowShell.matches ? app.classList.remove('nav-peek') : apply(true)));
+  collapse.addEventListener('click', () => (narrowShell.matches ? closeNavPeek() : apply(true)));
   const strip = el('div', { id: 'nav-hot-strip', 'aria-hidden': 'true' });
   app.append(strip);
   const panel = [sidebar, rail, strip];
-  let settle = null;
   let pointer = null;
+  const leave = () => {
+    clearTimeout(navPeekDwell);
+    navPeekDwell = null;
+    if (!narrowShell.matches && app.classList.contains('nav-peek') && !navPeekLeave) navPeekLeave = setTimeout(closeNavPeek, 400);
+  };
   addEventListener('pointermove', (e) => {
     const moved = pointer && (pointer.x !== e.clientX || pointer.y !== e.clientY);
     pointer = { x: e.clientX, y: e.clientY };
-    if (!moved || e.target !== strip) return;
-    if (!app.classList.contains('nav-collapsed') || app.classList.contains('nav-peek')) return;
-    app.classList.add('nav-peek');
-    clearTimeout(settle);
-    settle = setTimeout(() => {
-      if (!panel.some((n) => n.matches(':hover'))) app.classList.remove('nav-peek');
-    }, 400);
+    if (!moved || narrowShell.matches) return;
+    if (!panel.some((n) => n.contains(e.target)) && !e.target.closest('.wv-menu')) return leave();
+    clearTimeout(navPeekLeave);
+    navPeekLeave = null;
+    if (e.target !== strip || !app.classList.contains('nav-collapsed') || app.classList.contains('nav-peek') || navPeekDwell) return;
+    navPeekDwell = setTimeout(() => {
+      navPeekDwell = null;
+      if (app.classList.contains('nav-collapsed') && !narrowShell.matches && strip.matches(':hover')) app.classList.add('nav-peek');
+    }, 150);
   }, true);
   strip.addEventListener('click', () => apply(false));
   sidebar.addEventListener('click', (e) => {
@@ -12295,18 +12360,18 @@ function wireNavCollapse() {
     if (e.target.closest('a,button,input,textarea,select,label')) return;
     apply(false);
   });
-  for (const side of [sidebar, rail]) {
+  for (const side of panel) {
     side.addEventListener('mouseleave', (e) => {
       if (e.relatedTarget?.closest?.('.wv-menu, #sidebar, #ws-rail, #nav-hot-strip')) return;
-      if (app.classList.contains('nav-peek') && !narrowShell.matches) app.classList.remove('nav-peek');
+      leave();
     });
   }
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') app.classList.remove('nav-peek'); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNavPeek(); });
   apply(localStorage.getItem('weave-nav-collapsed') === '1');
-  const shut = () => app.classList.remove('nav-peek');
+  const shut = closeNavPeek;
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);
-  sidebar.addEventListener('click', (e) => { if (narrowShell.matches && e.target.closest('a[href]')) shut(); }, true);
+  for (const side of [sidebar, rail]) side.addEventListener('click', (e) => { if (narrowShell.matches && e.target.closest('a[href]')) shut(); }, true);
   narrowShell.addEventListener('change', () => {
     shut();
     for (const btn of document.querySelectorAll('.nav-menu')) labelNavMenu(btn);
