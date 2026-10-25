@@ -1,0 +1,1 @@
+- A formatted number that runs past its grid column now shows its compact form ($98.8B for $98,765,432,109.87) with the full amount in the cell's title, so a reader never sees a cut prefix of an amount; a number that fits keeps every digit, and widening the column brings the digits back (Issue #1160).

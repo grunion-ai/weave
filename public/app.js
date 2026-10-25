@@ -2413,6 +2413,10 @@ function markClippedCells(grid) {
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
     if (overflowsX(c)) cutOff.add(c.closest('td'));
   }
+  for (const n of grid.querySelectorAll('tbody td .num-dressed[data-compact]')) {
+    n.textContent = n.title;
+    if (overflowsX(n)) n.textContent = n.dataset.compact;
+  }
   for (const label of grid.querySelectorAll('tbody td .k > .k-label')) {
     const chip = label.parentElement;
     chip.dataset.fieldTitle ??= chip.getAttribute('title') ?? '';
@@ -3730,11 +3734,14 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     return graphic;
   }
   if (f.type === 'number' && val != null && String(val) !== String(rawVal)) {
-    const dressed = el('span', { class: 'num-dressed', tabindex: 0, onclick: (e) => {
+    const dressed = el('span', { class: 'num-dressed', tabindex: 0, title: String(val), onclick: (e) => {
       e.stopPropagation();
       dressed.replaceWith(input);
       input.focus();
     } }, String(val));
+    if (typeof rawVal === 'number' && f.format !== 'compact') {
+      dressed.dataset.compact = numberCore.dressNumber({ format: 'compact', currency: f.currency }, isPercent ? rawVal * 100 : rawVal) + (isPercent ? '%' : f.unit ? ` ${f.unit}` : '');
+    }
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
     return dressed;
   }

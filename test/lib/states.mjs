@@ -598,7 +598,7 @@ const TOUCH_STATES = [
 const SHARED_STATES = [
   { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { cutoff: [1124, 1125], touch: [1217] } },
   { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH },
-  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1160, 1161], 'cutoff|phone': [1152, 1161] } },
+  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1161], 'cutoff|phone': [1152, 1161] } },
   { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|phone': [1157], touch: [1169, 1170] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { 'cutoff|desktop': [1124, 1125, 1151, 1152, 1154, 1157, 1161], 'cutoff|phone': [1157], touch: [1217] } },
   { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|desktop': [1151, 1161], 'cutoff|phone': [1151, 1152, 1161], touch: [1165, 1166, 1167, 1168] } },
