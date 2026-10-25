@@ -739,7 +739,7 @@ test('tracking a promotion branch follows that branch, never main, and the deplo
   }
 });
 
-function fakeBin(version, { afterMigrate = '', migrateWrites = false, healthStatus = 'sick ? 503 : 200' } = {}) {
+function fakeBin(version, { afterMigrate = '', migrateWrites = false, healthStatus = 'sick ? 503 : 200', auth = null } = {}) {
   return `import { createServer } from 'node:http';
 ${migrateWrites ? "import { DatabaseSync } from 'node:sqlite';" : ''}
 const data = process.argv[process.argv.indexOf('--data') + 1];
@@ -747,7 +747,7 @@ let sick = false;
 let broken = false;
 const s = createServer((q, r) => {
   r.setHeader('content-type', 'application/json');
-  if (q.url.startsWith('/api/health')) { r.statusCode = ${healthStatus}; return r.end(JSON.stringify({ ok: !sick, name: 'weave', version: ${JSON.stringify(version)} })); }
+  if (q.url.startsWith('/api/health')) { r.statusCode = ${healthStatus}; return r.end(JSON.stringify({ ok: !sick, name: 'weave', version: ${JSON.stringify(version)}${auth ? `, auth: ${JSON.stringify(auth)}` : ''} })); }
   r.statusCode = broken ? 500 : 200;
   r.end('{}');
 });
@@ -786,6 +786,25 @@ test('a release that passes its watch is marked good only then, and the watch sh
     await waitFor(() => events.some((e) => e.type === 'watch-passed'));
     assert.equal((await health(base)).supervisor.watch.ok, true);
     assert.ok(okMark(dataPath, `v${NEXT}`), 'good once the watch passed');
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a release whose health reads a broken sign-in passes its watch: an auth fault is never a rollback (Issue #1178)', async () => {
+  const dataPath = dataDir('watch-auth');
+  const heads = { main: MAIN_A };
+  const gh = fakeMain({ heads, tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { auth: { ok: false } }) }) });
+  const { sup, base, events } = await supervise(dataPath, gh, { env: TRACK, ...WATCH });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    await waitFor(() => events.some((e) => e.type === 'watch-passed'));
+    const h = await health(base);
+    assert.deepEqual(h.auth, { ok: false }, 'the auth block reaches the release watch through the proxy');
+    assert.equal(h.supervisor.commit, MAIN_A);
+    assert.equal(h.supervisor.watch.ok, true);
+    assert.deepEqual(h.supervisor.failed, []);
+    assert.ok(okMark(dataPath, `c${MAIN_A}`), 'kept as a good release, so a fix can roll forward from it');
   } finally {
     await sup.close();
   }
