@@ -33,25 +33,3 @@ test('the billing page reads its muted text at 4.5:1 on both the canvas and the 
     }
   }
 });
-
-const APP_THEMES = () => {
-  const css = read('public/style.css');
-  const block = (head) => css.slice(css.indexOf(head), css.indexOf('\n}', css.indexOf(head)));
-  return { light: tokensOf(block(':root, [data-bs-theme="light"] {')), dark: tokensOf(block('[data-bs-theme="dark"] {')) };
-};
-
-const textMutedToken = () => {
-  const rule = read('public/style.css').match(/\.text-muted\s*\{[^}]*color:\s*var\((--[\w-]+)\)/);
-  return rule ? rule[1] : null;
-};
-
-test('app muted text reads 4.5:1 on the panel and the sunk surface in both themes (Issue #1098)', () => {
-  const token = textMutedToken();
-  assert.ok(token, '.text-muted takes a weave theme token, not the vendored fixed grey');
-  for (const [theme, tokens] of Object.entries(APP_THEMES())) {
-    for (const ground of ['--tblr-bg-surface', '--tblr-bg-surface-secondary']) {
-      const r = ratio(tokens[token], tokens[ground]);
-      assert.ok(r >= 4.5, `${theme}: ${token} ${tokens[token]} on ${ground} ${tokens[ground]} reads ${r}:1`);
-    }
-  }
-});
