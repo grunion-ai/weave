@@ -1662,6 +1662,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .date-cell { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .date-cell .date-text { min-width: 0; width: min(100%, max(120px, var(--date-fit, 0px))); }
 .date-cell .date-text-wide { width: max(200px, var(--date-fit, 0px)); }
+.range-cell > input.date-text { field-sizing: content; width: auto; min-width: min(120px, 100%); max-width: 100%; }
 .wv-grid .range-cell { overflow-x: auto; }
 .wv-grid .range-cell > input.date-text { flex: none; field-sizing: content; width: auto; min-width: 120px; max-width: none; }
 .range-sep { color: var(--tblr-secondary); }
@@ -2413,6 +2414,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .tile-field { display: contents; cursor: auto; }
 .tile-field dt { color: var(--tblr-secondary); font-weight: 400; }
 .tile-field dd { min-width: 0; margin: 0; overflow: hidden; }
+.tile-field:has(.range-cell) > dd { grid-column: 1 / -1; }
 .tile-field .inline-edit { --wv-edit-fs: var(--fs-secondary); }
 .board-footer { border-top: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
 .board-hint { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
@@ -2549,6 +2551,8 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 }
 @media (hover: none) and (pointer: coarse) and (max-width: 600px) {
   .entity-fields .fieldrow { grid-template-columns: 110px minmax(0, 1fr); }
+  .entity-fields .entity-values .fieldrow:has(.range-cell) { grid-template-columns: minmax(0, 1fr); }
+  .entity-fields .entity-values .fieldrow:has(.range-cell) > :nth-child(3) { grid-column: 1; }
 }
 
 @media (max-width: 600px) {
