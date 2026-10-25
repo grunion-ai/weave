@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
+import { FIELD_TYPES, Weave } from '../src/engine.js';
 import { CELLS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
 import { JOURNEYS, cellsOf as journeyCells } from './lib/journeys.mjs';
 import { OVERLAYS } from './lib/overlays.mjs';
@@ -97,18 +97,69 @@ test('journeys, overlays and the cut-off sweep are filtered views of the catalog
   assert.ok(!JOURNEYS.some((j) => j.name === 'activity-panel'), 'the budgets keep the journeys they hold numbers for');
 });
 
-test('each probe keeps the surfaces it walked before the catalog, and adds the board and list views', () => {
+test('each probe keeps the surfaces it walked before the catalog, and adds the board and list views and the kitchen sink', () => {
   const rests = (probe) => unique(plan(probe).filter((p) => p.state.open === 'rest').map((p) => p.state.name)).sort();
   const overlays = (probe) => unique(plan(probe).filter((p) => p.state.open === 'overlay').map((p) => p.state.name)).sort();
   assert.equal(JOURNEYS.length, 14);
   assert.equal(SWEEP_JOURNEYS.length, 15);
   assert.equal(OVERLAYS.length, 39);
-  assert.deepEqual(rests('cutoff'), ['board-view', 'list-view']);
-  assert.deepEqual(rests('flicker'), ['board-view', 'list-view']);
-  assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'list-view', 'map', 'published form', 'settings', 'start', 'trash']);
+  assert.deepEqual(rests('cutoff'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
+  assert.deepEqual(rests('flicker'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
+  assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'list-view', 'map', 'published form', 'settings', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'start', 'trash']);
   assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share dialog', 'sort popover']);
-  assert.deepEqual(rests('touch'), ['board-view', 'list-view', 'row page', 'table list', 'workspace home']);
+  assert.deepEqual(rests('touch'), ['board-view', 'list-view', 'row page', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'table list', 'workspace home']);
   assert.deepEqual(overlays('touch'), ['bug panel', 'menu', 'picker sheet']);
+});
+
+const sinkOf = (weave, handles) => {
+  const table = weave.getTable(handles.sink.table);
+  const fields = Object.values(table.fields).filter((f) => !f.deletedAt);
+  const rows = weave.listEntities(table.id);
+  return { table, fields, rows, byName: (n) => fields.find((f) => f.name === n) };
+};
+
+test('every seed carries the kitchen-sink table with all 22 field types (Issue #1119)', async () => {
+  for (const [name, build] of Object.entries(SEEDS)) {
+    const weave = new Weave();
+    const handles = await build(weave);
+    assert.ok(handles.sink?.table, `${name} seed: builds the kitchen-sink table`);
+    const { fields } = sinkOf(weave, handles);
+    const types = new Set(fields.map((f) => f.type));
+    assert.deepEqual(FIELD_TYPES.filter((t) => !types.has(t)), [], `${name} seed: the kitchen sink holds every field type`);
+    assert.equal(FIELD_TYPES.length, 22);
+  }
+});
+
+test('the kitchen-sink rows carry adversarial values: unbroken text, large currency, long options, states and ranges', async () => {
+  const weave = new Weave();
+  const handles = await SEEDS.touch(weave);
+  const { rows, byName } = sinkOf(weave, handles);
+  const value = (row, field) => row.values[byName(field).id];
+  const words = (s) => String(s).split(/[\s/@.-]+/);
+  const longest = (s) => Math.max(...words(s).map((w) => w.length));
+  const full = rows.find((r) => r.id === handles.sink.row);
+  assert.ok(longest(value(full, 'Name')) >= 80, 'the row name is one unbroken word');
+  assert.ok(longest(value(full, 'Notes')) >= 80, 'the text value is one unbroken word');
+  assert.ok(longest(value(full, 'Secret')) >= 80, 'the key value is one unbroken word');
+  assert.ok(value(full, 'Amount') >= 1e10 && byName('Amount').config.format === 'currency', 'the currency runs to eleven digits');
+  const longName = (opts) => Math.max(...opts.map((o) => o.name.length));
+  assert.ok(longName(byName('Kind').config.options) >= 40, 'a select option name runs long');
+  assert.ok(longName(byName('Tags').config.options) >= 40, 'a multiselect option name runs long');
+  assert.ok(longName(byName('Status').config.states) >= 40, 'a workflow state name runs long');
+  const { start, end } = value(full, 'Window');
+  assert.ok(Number(end.slice(0, 4)) - Number(start.slice(0, 4)) >= 100, 'the date range spans a century');
+  assert.ok(value(full, 'Tags').length >= 3 && value(full, 'Parts').length >= 2, 'the chips stack');
+  assert.ok(weave.getEntity(full.id).files.length >= 2, 'the attachments and avatar hold files');
+  assert.ok(rows.some((r) => value(r, 'Name').length <= 2), 'a short name sits beside the long ones');
+  for (const layout of ['board', 'list']) assert.ok(handles.sink[layout], `the kitchen sink has a ${layout} view`);
+});
+
+test('every probe that walks a rest state walks the kitchen sink on the table, list and board layouts (Issue #1119)', () => {
+  for (const probe of ['cutoff', 'flicker', 'a11y', 'touch']) {
+    const mine = plan(probe).filter((p) => p.state.route?.startsWith('sink-'));
+    assert.deepEqual(unique(mine.map((p) => p.state.layout)).filter(Boolean).sort(), ['board', 'list', 'table'], `${probe} walks the kitchen sink on every layout`);
+    assert.ok(mine.some((p) => p.state.layout === null), `${probe} walks the kitchen-sink row with every field`);
+  }
 });
 
 test('every seed builds the handles the shared states read, so their routes resolve', async () => {
