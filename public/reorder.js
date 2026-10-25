@@ -253,9 +253,9 @@
   }
 
   function sortable(down, opts) {
-    const { source, items, axis = 'y', scroller, tail, members: memberFn, onPlace, onDrop, onCancel, zone, lock = false } = opts;
+    const { source, items, axis = 'y', scroller, tail, members: memberFn, onPlace, onDrop, onStay, onCancel, zone, lock = false, alsoScroll = [] } = opts;
     const follow = (p) => clone.follow(lock && axis === 'y' ? 0 : p.x - start.x, lock && axis === 'x' ? 0 : p.y - start.y);
-    let clone = null, members = [source], origin = null, auto = null, last = null, placed = null, start = null;
+    let clone = null, members = [source], origin = null, auto = null, extra = [], last = null, placed = null, start = null;
     const skipNext = (n) => { let s = n?.nextElementSibling; while (s && (members.includes(s) || lifting(s))) s = s.nextElementSibling; return s; };
     const candidates = () => items().filter((n) => !members.includes(n) && !n.classList.contains('wv-reorder-lift') && n.isConnected && n.getClientRects().length);
     const parents = () => [...new Set([origin.parent, source.parentElement].filter(Boolean))];
@@ -284,6 +284,7 @@
     let hosts = [];
     const finishWith = (home) => {
       auto?.stop();
+      for (const a of extra) a.stop();
       for (const h of hosts) h.classList.remove('wv-reorder-host');
       const back = () => {
         if (origin.next && origin.next.parentNode === origin.parent && !members.includes(origin.next)) origin.next.before(...members);
@@ -310,6 +311,7 @@
         hosts = [...new Set([origin.parent, ...items().map((n) => n.parentElement)].filter(Boolean))];
         for (const h of hosts) h.classList.add('wv-reorder-host');
         auto = autoScroll({ scroller: scroller ?? scrollParent(source.parentElement, axis), axis, point: () => last, onScroll: () => reposition(last) });
+        extra = alsoScroll.map((o) => autoScroll({ ...o, point: () => last, onScroll: () => reposition(last) }));
         last = p;
         follow(p);
         reposition(p);
@@ -319,6 +321,7 @@
         follow(p);
         reposition(p);
         auto.kick();
+        for (const a of extra) a.kick();
       },
       drop: (p) => {
         last = p;
@@ -326,6 +329,7 @@
         const moved = !(skipNext(members[members.length - 1]) === origin.next && source.parentNode === origin.parent);
         finishWith(false);
         if (moved) onDrop?.({ ...placed, point: p, start });
+        else onStay?.({ point: p, start });
       },
       cancel: () => { finishWith(true); onCancel?.(); },
     });

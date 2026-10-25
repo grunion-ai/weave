@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage, dispatchTool, TOOLS, COMPACT_TOOLS } from '../src/mcp.js';
+import { unwrapData } from './lib/fixtures.mjs';
 
 let rpcId = 0;
 function call(w, name, args) {
   const res = handleMcpMessage(w, { jsonrpc: '2.0', id: ++rpcId, method: 'tools/call', params: { name, arguments: args } });
-  const text = res.result.content[0].text;
+  const text = unwrapData(res.result.content[0].text);
   assert.ok(!res.result.isError, `${name}: ${text}`);
   return { text, data: JSON.parse(text) };
 }

@@ -6,8 +6,27 @@ import { submitForm, listForms, createForm, updateForm, getFormDefinition } from
 const PROTOCOL_VERSION = '2024-11-05';
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
-function textResult(data) {
-  return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data) }] };
+const seal = (text) => text.replace(/<(?=\/?weave_data)/gi, '\\u003c');
+const attr = (v) => String(v ?? '*').replace(/[\s"<>&]+/g, ' ').trim() || '*';
+function textResult(data, source = null) {
+  const text = typeof data === 'string' ? data : JSON.stringify(data);
+  if (!source) return { content: [{ type: 'text', text }] };
+  const head = `<weave_data table="${attr(source.table)}" entity="${attr(source.entity)}" field="${attr(source.field)}">`;
+  return { content: [{ type: 'text', text: `${head}\n${seal(text)}\n</weave_data>` }] };
+}
+
+function storedSource(weave, name, args) {
+  if (name === 'weave_call' && args.name !== 'help') {
+    let inner = args.args ?? {};
+    try { if (typeof inner === 'string') inner = JSON.parse(inner); } catch { inner = {}; }
+    return storedSource(weave, args.name, inner ?? {});
+  }
+  if (!READ_ONLY.has(name)) return null;
+  const tableOf = (fn) => { try { const db = fn(); return db ? weave.qualifiedName(db) : null; } catch { return null; } };
+  const ref = args.db ?? args.table ?? null;
+  const table = (ref != null ? tableOf(() => weave.findTable(ref)) ?? ref : null)
+    ?? (args.entity != null ? tableOf(() => weave.state.tables[weave.getEntity(args.entity).dbId]) : null);
+  return { table, entity: args.entity ?? null, field: args.doc ?? args.field ?? null };
 }
 
 export const COMPACT_TOOLS = new Set([
@@ -62,13 +81,14 @@ export const TOOLS = [
         limit: { type: 'number' },
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
-        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out; weave_get_entity carries an entity\'s activity. Not with select.' },
+        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
         relations: { type: 'string', enum: ['full', 'chip'], description: 'chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). Default full: every row embeds its related rows\' summaries.' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
         countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted rows before where and search' },
-        search: { type: 'string', description: 'Keep only the rows the weave_search matcher finds in this table: name, publicId (#143), text fields, documents, comments. Composes with where and sort; total counts the matches.' },
-        view: { type: 'string', description: 'A saved view, by id or name: the rows it shows. Its filters AND where; its sort and search apply unless you pass your own.' },
+        search: { type: 'string', description: 'Only the rows weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
+        view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
+        groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
       },
       required: ['db'],
     },
@@ -115,7 +135,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_stats',
-    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the row count rides with the name column). Nothing is stored — to keep a figure on the record, add a rollup on the System/Spaces row instead (weave_add_field with config.via).',
+    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the row count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces row (weave_add_field, config.via).',
     inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {}, field: { type: 'string' } }, required: ['table'] },
   },
   {
@@ -311,7 +331,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write, creating the view if new (from: copy). fields: columns in order. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}]. search: text. position: 0 = first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. layout: table|list. group: ≤3 levels, field or {field, heading: label|chip, order: option|table|az, grain}. completedBy: checkbox. nest: Parent link. collapsed: group paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
+    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side). group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. nest: Parent link. collapsed: paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -319,7 +339,7 @@ export const TOOLS = [
         move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
         position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
         widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
-        layout: { type: 'string' }, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
+        layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
       },
       required: ['view'],
     },
@@ -675,7 +695,7 @@ function callTool(weave, name, rawArgs, caller) {
     let inner = rawArgs.args ?? {};
     if (typeof inner === 'string') inner = JSON.parse(inner);
     if (rawArgs.name === 'help') {
-      const t = TOOLS.find((x) => x.name === inner.tool);
+      const t = TOOLS.find((x) => x.name === inner.tool && mayCall(caller, x.name));
       if (!t) throw new Error(`help needs args.tool, one of the names weave_call lists (got ${JSON.stringify(inner.tool ?? null)})`);
       return { name: t.name, description: t.description, inputSchema: t.inputSchema };
     }
@@ -687,11 +707,12 @@ function callTool(weave, name, rawArgs, caller) {
   return verbose === true ? result : compactResult(name, result);
 }
 
+const systemWrite = (system) => new Error(system === 'users' ? 'Writing a Users row needs an architect token' : 'Writing a row of a system table needs an architect token');
 function refuseUsersWrite(weave, ref, caller) {
   if (!caller || mayAdminister(weave, caller.role)) return;
   let system = null;
   try { system = weave.state.tables[weave.getEntity(ref).dbId]?.system; } catch {}
-  if (system === 'users') throw new Error('Writing a Users row needs an architect token');
+  if (system) throw systemWrite(system);
 }
 
 export function mayAdminister(on, role) {
@@ -699,6 +720,12 @@ export function mayAdminister(on, role) {
 }
 const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root', weave_shares: 'workspace' };
 export const SEATLESS_TOOLS = new Set(['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_trash', 'weave_stats', 'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_relation_map', 'weave_add_comment']);
+export const ROLE_TOOLS = {
+  observer: new Set([...SEATLESS_TOOLS, 'weave_call']),
+  editor: new Set([...SEATLESS_TOOLS, 'weave_call', 'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_attach_file']),
+};
+const mayCall = (caller, name) => !ROLE_TOOLS[caller?.tier] || ROLE_TOOLS[caller.tier].has(name);
+const unknownTool = (name) => Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 function checkRowArgs(name, args, required) {
@@ -711,6 +738,7 @@ function checkRowArgs(name, args, required) {
 }
 
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
+  if (!mayCall(caller, name)) throw unknownTool(name);
   if (caller?.seat && !SEATLESS_TOOLS.has(name)) throw new Error(caller.seat);
   if (caller && ADMIN_TOOLS[name]) {
     const atRoot = ADMIN_TOOLS[name] === 'root';
@@ -733,14 +761,15 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.query(args.db, {
         where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
         offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'full',
-        includeDeleted: Boolean(args.includeDeleted),
+        includeDeleted: args.includeDeleted == null ? null : Boolean(args.includeDeleted),
         trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
+        groupBy: args.groupBy ?? null,
       });
     case 'weave_get_entity':
       return weave.readEntity(args.entity);
     case 'weave_create_entity': {
       checkRowArgs(name, args, false);
-      if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system === 'users') throw new Error('Writing a Users row needs an architect token');
+      if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system) throw systemWrite(weave.findTable(args.db).system);
       const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc, docs: args.docs });
       const once = weave.takeOneTime(e.id);
       return { ...weave.readEntity(e.id), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(envOrigin(), once.invite.code) } } : once ?? {}) };
@@ -787,7 +816,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_doc_restore':
       return weave.restoreDocRevision(args.entity, args.field ?? null, args.seq);
     case 'weave_add_comment':
-      return weave.addComment(args.entity, { author: args.author ?? 'agent', text: args.text });
+      return weave.addComment(args.entity, { author: caller?.role && !['architect', 'editor'].includes(caller.role) ? weave.actor : args.author ?? 'agent', text: args.text });
     case 'weave_delete_comment':
       return weave.deleteComment(args.entity, args.comment);
     case 'weave_search':
@@ -972,7 +1001,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_import_json':
       return { ok: true, ...weave.importJSON(args.state) };
     default:
-      throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
+      throw unknownTool(name);
   }
 }
 
@@ -999,10 +1028,10 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
       case 'ping':
         return reply({});
       case 'tools/list':
-        return reply({ tools: listTools(tools) });
+        return reply({ tools: listTools(tools).filter((t) => mayCall(caller, t.name)) });
       case 'tools/call': {
         try {
-          return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller)));
+          return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller), storedSource(weave, params.name, params.arguments ?? {})));
         } catch (err) {
           return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
         }

@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "b836dd12a6ba8c3e7a392f0e418ed1c2f0691560"
+      "revision": "9e875c6112477e69dd914d49aa413ae1246df284"
     },
     "views": [
       {
@@ -380,6 +380,7 @@
       "title": "One core, one host",
       "items": [
         "src/server.js wraps src/routes.js in node:http",
+        "src/minify.js strips whitespace from first-party scripts and styles before src/server.js compresses them",
         "src/store.js keeps one node:sqlite .db per workspace",
         "src/server.js answers each workspace at <slug>.WEAVE_BASE_DOMAIN"
       ]

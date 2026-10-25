@@ -55,6 +55,7 @@ function seedShowcaseBase(w) {
   w.addField(ft, { name: 'Nested definition', type: 'field', config: { depth: 2 } });
   w.addField(ft, { name: 'API key', type: 'key' });
   w.addField(ft, { name: 'Files', type: 'attachments' });
+  w.addField(ft, { name: 'Face', type: 'avatar' });
   w.addRelation(ft, { name: 'Owner', targetDb: people, cardinality: 'many-to-one', inverseName: 'Owns' });
   w.addRelation(ft, { name: 'Peers', targetDb: people, cardinality: 'many-to-many', inverseName: 'Peer of' });
   w.addField(ft, { name: 'Owner email', type: 'lookup', config: { relationField: 'Owner', targetField: 'Email' } });

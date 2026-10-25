@@ -222,7 +222,7 @@ test('cached provider identity uses the current account role after demotion', as
     assert.equal(changed.res.status, 200);
     assert.equal(changed.data.result.isError, undefined);
     assert.equal(s.w.listAccounts().find(a => a.name === 'kyle').role, 'observer');
-    assert.equal((await create()).res.status, 403);
+    assert.equal((await create()).data.result.isError, true, 'an observer holds no row tool (Issue #508)');
     assert.equal(s.idp.seen.userinfo, calls, 'provider identity remains cached; account permissions do not');
   } finally { s.stop(); }
 });

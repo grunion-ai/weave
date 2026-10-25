@@ -68,9 +68,12 @@ function woven(base, { amp, half, w, a, b, gap, closed = false, gapScale = 0.5 }
 
 const MARKS = Object.fromEntries(['weave-mark-light', 'weave-mark-dark', 'weave-mark-white', 'weave-mark-mono-cream', 'weave-mark-mono-blue'].map((n) => [n, readFileSync(n === 'weave-mark-light' || n === 'weave-mark-dark' ? join(HERE, '..', '..', 'public', 'brand', n + '.svg') : join(HERE, '..', 'assets', n + '.svg'), 'utf8')]));
 let markSeq = 0;
-function mark(name, cx, cy, width, recolor) {
+const embed = (src) => {
   const id = `m${++markSeq}`;
-  const inner = MARKS[name].replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').replace(/id="w([AB])"/g, `id="${id}$1"`).replace(/url\(#w([AB])\)/g, `url(#${id}$1)`);
+  return src.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').replace(/id="w([AB])"/g, `id="${id}$1"`).replace(/url\(#w([AB])\)/g, `url(#${id}$1)`);
+};
+function mark(name, cx, cy, width, recolor) {
+  const inner = embed(MARKS[name]);
   const h = width * (16 / 28);
   const body = recolor ? inner.replace(/stroke="#ffffff"/g, `stroke="${recolor}"`) : inner;
   return `<svg x="${f(cx - width / 2)}" y="${f(cy - h / 2)}" width="${f(width)}" height="${f(h)}" viewBox="10 16 28 16">${body}</svg>`;
@@ -453,8 +456,20 @@ const TREAT = [
   ['B15', 'seal-lockup-dark', 'Lockup, dark', 660, 240, 'Same lockup on dark surfaces.', () => seal('blue') + wordmark(272, 158, 128, C.cream)],
 ];
 for (const [code, id, name, w, h, note, fn] of TREAT) add(id, 'Badge', name, w, h, fn(), { code, note });
+const LOCKS = [
+  ['L1', 'lockup-light', 'Lockup, inline, light', 480, 'Mark at 1.6x beside the outlined wordmark; the word sits on the mark\'s centre line.'],
+  ['L2', 'lockup-dark', 'Lockup, inline, dark', 480, 'Same lockup on dark surfaces: sky second strand, cream word.'],
+  ['L3', 'lockup-stacked-light', 'Lockup, stacked, light', 240, 'Mark 75% of the word\'s width, half a word height above it, both centred.'],
+  ['L4', 'lockup-stacked-dark', 'Lockup, stacked, dark', 240, 'Same stacked lockup on dark surfaces.'],
+];
+for (const [code, id, name, w, note] of LOCKS) {
+  const src = readFileSync(join(HERE, '..', 'assets', id.replace('lockup-', 'weave-lockup-') + '.svg'), 'utf8');
+  const [, , vw, vh] = src.match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
+  const h = Math.round(w * vh / vw);
+  add(id, 'Lockup', name, w, h, `<svg width="${w}" height="${h}" viewBox="0 0 ${vw} ${vh}">${embed(src)}</svg>`, { code, note });
+}
 const GUIDE = JSON.parse(readFileSync(join(HERE, 'guide.json'), 'utf8'));
-const FAMILY = { 'Seals and badges': 'badge', Badge: 'badge', Icon: 'icon', Posters: 'poster', 'Poster variants': 'poster', 'Mark patterns': 'pattern', 'Contour variants': 'pattern', 'Rope variants': 'pattern', 'Halftone variants': 'pattern' };
+const FAMILY = { 'Seals and badges': 'badge', Badge: 'badge', Icon: 'icon', Lockup: 'lockup', Posters: 'poster', 'Poster variants': 'poster', 'Mark patterns': 'pattern', 'Contour variants': 'pattern', 'Rope variants': 'pattern', 'Halftone variants': 'pattern' };
 const manifest = {
   badgeWords: { top: LABELS.sealTop, bottom: LABELS.sealBottom },
   regenerate: 'node brand/kit/build-kit.mjs && node brand/kit/render-kit-png.mjs',

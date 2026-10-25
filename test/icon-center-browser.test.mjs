@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch } from './lib/browser.mjs';
+import { openPane, openViews } from './lib/view-pane.mjs';
 
 let deals, acme;
 const s = await launch('icon centre', (weave) => {
@@ -132,13 +133,13 @@ if (s) {
     });
   }
 
-  test('the views popover centres its grip and hold-to-delete buttons', async () => {
+  test('the View pane\'s view list centres its grip and hold-to-delete buttons', async () => {
     const page = await browser.newPage({ viewport: widths[0][1] });
     try {
       await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      await page.locator('.table-view-btn').click();
-      await page.waitForSelector('.table-view-popover .view-del');
+      await openViews(page);
+      await page.waitForSelector('#view-pane .view-del');
       const found = await page.evaluate(probe);
       assert.ok(found.lone.some((b) => /^Hold to delete/.test(b.what)), 'the view delete button is measured');
       assert.ok(found.lone.some((b) => /^Reorder/.test(b.what)), 'the view grip is measured');
@@ -151,9 +152,9 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      await page.locator('.table-filter-btn').click();
-      await page.waitForSelector('.table-filter-popover .filter-chip .opt-dot');
-      const m = await page.locator('.table-filter-popover .filter-chip:has(.opt-dot)').first().evaluate((chip) => {
+      await openPane(page, 'filters');
+      await page.waitForSelector('#view-pane .filter-chip .opt-dot');
+      const m = await page.locator('#view-pane .filter-chip:has(.opt-dot)').first().evaluate((chip) => {
         const mid = (r) => r.top + r.height / 2;
         const label = chip.querySelector('.filter-chip-label');
         const dot = chip.querySelector('.opt-dot').getBoundingClientRect();

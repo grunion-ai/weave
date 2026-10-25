@@ -57,6 +57,9 @@
   .btn-link:hover { color: var(--ink); }
   .actions { display: flex; gap: 10px; align-items: center; margin-top: 22px; }
   .actions .grow { flex: 1; }
+  .workspace-ready { display: grid; gap: 10px; margin-bottom: 24px; }
+  .workspace-ready p { margin: 0; }
+  .agent-tools > summary { padding: 12px 0; cursor: pointer; }
   .form-label { display: block; font-weight: 600; color: var(--ink); margin: 14px 0 4px; }
   .form-control { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; }
   .form-control:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -114,8 +117,8 @@
   .bypass { margin-top: 22px; }
   .apps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .copybox pre.prompt { max-height: 11.5em; overflow: auto; font: 13px/1.5 var(--app); word-break: normal; overflow-wrap: anywhere; }
-  .app { display: flex; gap: 12px; align-items: center; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font: inherit; color: var(--body); cursor: pointer; transition: border-color .15s, transform .15s; }
-  .app:hover { border-color: var(--muted); transform: translateY(-1px); }
+  .app { display: flex; gap: 12px; align-items: center; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font: inherit; color: var(--body); cursor: pointer; transition: border-color .15s; }
+  .app:hover { border-color: var(--muted); }
   .app:focus-visible, .card:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .app-tile { display: inline-grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 10px; color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, var(--panel)); }
   .app-tile .glyph { width: 20px; height: 20px; }
@@ -196,8 +199,8 @@
   .pane-foot { font-size: 12.5px; color: var(--muted); }
   .pane-foot a { color: var(--muted); }
   .stage { position: sticky; top: 0; height: 100vh; overflow: hidden; }
-  .radiate, .radiate img { display: block; width: 100%; height: 100%; }
-  .radiate img { object-fit: cover; object-position: center; }
+  .radiate { display: block; width: 100%; height: 100%; }
+  .radiate img { position: absolute; left: 50%; top: 50%; width: min(3840px, 660%); max-width: none; height: auto; min-height: 100%; object-fit: cover; transform: translate(-50%, -50%); }
   .mark { display: inline-flex; }
   .mark-dark { display: none; }
   @media (prefers-color-scheme: dark) { .mark-light { display: none; } .mark-dark { display: block; } }
@@ -233,7 +236,7 @@
   <section class="pane">
     <a class="brand" href="/start" aria-label="weave"><span data-mark="s" data-viewbox="8 12 32 24" id="brand-mark" class="mark"><svg class="mark-light" viewBox="8 12 32 24" aria-hidden="true"><defs><mask id="sLA" maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"><rect x="-24" y="-24" width="96" height="96" fill="#fff"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/></mask><mask id="sLB" maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"><rect x="-24" y="-24" width="96" height="96" fill="#fff"/><path d="M20,28 C24,28 24,20 28,20" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/></mask></defs><path d="M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" mask="url(#sLA)"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="#0c1b33" stroke-width="3.5" stroke-linecap="round" mask="url(#sLB)"/><path d="M20,28 C24,28 24,20 28,20" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/></svg><svg class="mark-dark" viewBox="8 12 32 24" aria-hidden="true"><defs><mask id="sDA" maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"><rect x="-24" y="-24" width="96" height="96" fill="#fff"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/></mask><mask id="sDB" maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"><rect x="-24" y="-24" width="96" height="96" fill="#fff"/><path d="M20,28 C24,28 24,20 28,20" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/></mask></defs><path d="M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round" mask="url(#sDA)"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="#60a5fa" stroke-width="3.5" stroke-linecap="round" mask="url(#sDB)"/><path d="M20,28 C24,28 24,20 28,20" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/></svg></span>weave</a>
     <div class="progress" id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Setup progress" hidden></div>
-    <main id="start" aria-live="polite"></main>
+    <main id="start" aria-live="polite"><p class="muted" role="status">Loading weave…</p></main>
     <footer class="pane-foot" data-consent-slot><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></footer>
   </section>
   <aside class="stage" id="stage"></aside>

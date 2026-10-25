@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { openPane, sortBy as paneSortBy } from './lib/view-pane.mjs';
 
 let sessions, entries, journal;
 const ROWS = [
@@ -43,39 +44,24 @@ if (s) {
   };
   const order = (page) => page.$$eval('.wv-grid tbody tr.entity-row td.name-cell', (tds) => tds.map((td) => td.querySelector('input')?.value ?? td.textContent.trim()));
   const stopPaging = async (page) => {
-    await page.click('.eye-btn');
-    await page.waitForSelector('.chip-pop .eye-row');
-    const read = page.waitForResponse((r) => r.url().includes('/trash'));
-    await page.locator('.chip-pop .eye-row', { hasText: 'Deleted' }).first().click();
+    await openPane(page, 'filters');
+    const read = page.waitForResponse((r) => r.url().includes(`/tables/${page.url().split('/table/')[1]?.split(/[/?]/)[0]}/query`) && r.request().postDataJSON()?.includeDeleted === true);
+    await page.locator('#view-pane label[data-deleted]').click();
     await read;
     await page.waitForLoadState('networkidle');
-    await page.keyboard.press('Escape');
-    await page.waitForSelector('.chip-pop', { state: 'detached' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
   };
 
   const sortPop = async (page) => {
     await page.waitForLoadState('networkidle');
-    await page.click('#main .table-sort-btn');
-    await page.waitForSelector('.table-sort-popover .table-sort-field');
-    await page.locator('.table-sort-popover').evaluate((p) => Promise.all(p.getAnimations({ subtree: true }).map((a) => a.finished)));
-    return page.locator('.table-sort-popover');
+    await openPane(page, 'sort');
+    return page.locator('#view-pane .sort-levels');
   };
   const sortBy = async (page, field, words = null) => {
-    let pop = await sortPop(page);
-    const now = await pop.locator('.table-sort-field[aria-pressed="true"] .table-sort-name').textContent().catch(() => null);
-    if (now !== field) {
-      await pop.locator('.table-sort-field').filter({ has: page.locator('.table-sort-name', { hasText: new RegExp(`^${field}$`) }) }).click();
-      await page.waitForSelector('.table-sort-popover', { state: 'detached' });
-      await page.waitForFunction((f) => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.startsWith(`Sort: ${f},`), field);
-      if (!words) return;
-      pop = await sortPop(page);
-    }
-    if (words) {
-      await pop.locator('.seg-opt', { hasText: words }).click();
-      await page.waitForFunction((w) => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.endsWith(w), words);
-    }
-    await page.keyboard.press('Escape');
+    await page.waitForLoadState('networkidle');
+    await paneSortBy(page, field, words);
+    await page.waitForFunction((f) => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.startsWith(`Sort: ${f},`), field);
+    if (words) await page.waitForFunction((w) => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.endsWith(w), words);
   };
 
   test('a date column reads newest first, whichever half does the sorting', async () => {
@@ -145,8 +131,8 @@ if (s) {
         assert.deepEqual(await labels(pop), ['Oldest to newest', 'Newest to oldest']);
         assert.equal(await pop.locator('.seg-opt.on').textContent(), 'Newest to oldest');
         const ink = await pop.evaluate((p) => [getComputedStyle(p).color, getComputedStyle(p).backgroundColor]);
-        assert.notEqual(ink[0], ink[1], `${theme}: the popover reads`);
-        await pop.locator('.table-sort-clear').click();
+        assert.notEqual(ink[0], ink[1], `${theme}: the Sort section reads`);
+        await pop.locator('.sort-remove').click();
         await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'middle');
       } finally { await page.close(); }
     });
@@ -162,7 +148,6 @@ if (s) {
       await sortBy(page, 'Public Id');
       let pop = await sortPop(page);
       assert.deepEqual(await labels(pop), ['Smallest to largest', 'Largest to smallest']);
-      await page.keyboard.press('Escape');
       await sortBy(page, 'Public Id', 'Largest to smallest');
       await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'newest');
       assert.deepEqual(await order(page), ['newest', 'oldest', 'middle'], '#3, #2, #1');
@@ -171,7 +156,6 @@ if (s) {
       const words = await labels(pop);
       assert.ok(words.includes('Option order') && words.includes('Reverse option order'), words.join(' | '));
       assert.ok(!words.some((w) => /Sort ascending|Sort descending/.test(w)), 'no type-blind wording left');
-      await page.keyboard.press('Escape');
     } finally { await page.close(); }
   });
 

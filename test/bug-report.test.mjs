@@ -313,7 +313,7 @@ test('a submitted report becomes an Issue in the weave workspace', async () => {
   assert.equal(r.status, 201);
   assert.equal(r.data.table, 'Development/Issue');
   assert.equal(r.data.workspace, 'weave');
-  assert.match(r.data.url, /^\/w\/weave\/#\/entity\/[0-9a-f-]{36}$/, 'a link the reporter can open');
+  assert.match(r.data.url, /^\/w\/weave\/e\/[0-9a-f-]{36}$/, 'a link the reporter can open');
 
   const found = await post('/w/weave/api/tables/Issue/query', {});
   const issue = found.data.items.find((i) => i.id === r.data.id);

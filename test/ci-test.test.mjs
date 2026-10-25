@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, SMOKE, newestAttempts } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts } from '../scripts/ci-test.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
 const manifest = plan(files, { unit: files.slice(0, 2), browser: files.slice(2) }, () => 10, 2, 2);
@@ -101,7 +101,7 @@ test('a changed file maps to browser tests whose source cites it', () => {
 test('a diff nothing maps to falls back to the fixed smoke set, never an empty browser lane', () => {
   assert.deepEqual(touchedBrowser(['DEVELOPMENT.md', 'test/formula.test.mjs'], browserFiles, read), [...SMOKE].sort());
   assert.deepEqual(touchedBrowser([], browserFiles, read), [...SMOKE].sort());
-  assert.ok(SMOKE.length > 0 && SMOKE.length <= 8);
+  assert.ok(SMOKE.length > 0 && SMOKE.length <= 12);
   assert.ok(SMOKE.every(f => f.endsWith('-browser.test.mjs')));
 });
 
@@ -109,6 +109,88 @@ test('the smoke set names browser tests that exist in this repository', async ()
   const { testFiles, lanes } = await import('../scripts/test.mjs');
   const { browser } = lanes(testFiles());
   assert.deepEqual(SMOKE.filter(f => !browser.includes(f)), []);
+});
+
+const sheetSources = {
+  'test/phone-new-row-sheet-browser.test.mjs': "await page.locator('.sheet-grip').hover();",
+  'test/phone-picker-sheet-browser.test.mjs': "const pill = page.locator('.sheet-grip-pill');",
+  'test/phone-bottom-bar-browser.test.mjs': "await styleOf(page, '.phone-bottom-bar');",
+};
+const sheetBrowser = [...Object.keys(sheetSources), ...browserFiles];
+const sheetRead = (file) => sheetSources[file] ?? sources[file] ?? '';
+const sheetDiff = [
+  'diff --git a/public/app.js b/public/app.js',
+  'index 83152140..1a5732e1 100644',
+  '--- a/public/app.js',
+  '+++ b/public/app.js',
+  '@@ -11291,10 +11291,11 @@ function sheetGrip(sheet, close) {',
+  "   const grip = el('div', { class: 'sheet-grip' }, el('span', { class: 'sheet-grip-pill' }));",
+  '-    const speed = Math.max(0, e.clientY - y) / span;',
+  "+    const reach = e.type === 'pointerup' ? Math.max(at, e.clientY - y) : at;",
+].join('\n');
+
+test('hunk tokens are the dashed and slashed literals of the changed blocks, never the diff headers', () => {
+  assert.deepEqual(reachTokens(sheetDiff), ['sheet-grip', 'sheet-grip-pill']);
+  assert.deepEqual(reachTokens(''), []);
+  assert.deepEqual(reachTokens('diff --git a/public/field-dialog-core.js b/public/field-dialog-core.js'), []);
+});
+
+test('a changed public module selects every browser suite naming the DOM tokens of the block it changed', () => {
+  assert.deepEqual(touchedBrowser(['public/app.js'], sheetBrowser, sheetRead), [...SMOKE].sort());
+  assert.deepEqual(
+    touchedBrowser(['public/app.js'], sheetBrowser, sheetRead, sheetDiff),
+    [...SMOKE, 'test/phone-new-row-sheet-browser.test.mjs', 'test/phone-picker-sheet-browser.test.mjs'].sort(),
+  );
+});
+
+test('a changed server module selects the browser suites naming the paths its block serves', () => {
+  const routes = {
+    'test/footer-rollups-browser.test.mjs': "await page.request.post('/api/tables/subtotals');",
+    'test/table-views-browser.test.mjs': 'const open = true;',
+  };
+  const browser = [...Object.keys(routes), ...browserFiles];
+  const read = (file) => routes[file] ?? sources[file] ?? '';
+  const diff = ["@@ -820,6 +820,7 @@ function routeTable(req) {", "+  if (path === '/api/tables/subtotals') return subtotals(req);"].join('\n');
+  assert.deepEqual(touchedBrowser(['src/routes.js'], browser, read), [...SMOKE].sort());
+  assert.deepEqual(
+    touchedBrowser(['src/routes.js'], browser, read, diff),
+    [...SMOKE, 'test/footer-rollups-browser.test.mjs'].sort(),
+  );
+});
+
+test('the reached tier drops a token the whole lane names and stops at its file cap', () => {
+  const wide = Array.from({ length: 120 }, (_, i) => `test/w${String(i).padStart(3, '0')}-browser.test.mjs`);
+  const browser = [...wide, ...SMOKE];
+  const read = (file) => (wide.includes(file) ? `const token = 'wv-token-${file.slice(6, 9)}'; const shared = 'wv-whole-lane';` : '');
+  assert.deepEqual(touchedBrowser(['public/app.js'], browser, read, "+  const shared = 'wv-whole-lane';"), [...SMOKE].sort());
+  const everyToken = wide.map((file) => `+  const token = 'wv-token-${file.slice(6, 9)}';`).join('\n');
+  const picked = touchedBrowser(['public/app.js'], browser, read, everyToken);
+  assert.equal(picked.length, SMOKE.length + REACH_CAP);
+  assert.ok(REACH_CAP >= 20 && REACH_SPREAD >= 1);
+  assert.deepEqual(picked.filter((file) => SMOKE.includes(file)).sort(), [...SMOKE].sort());
+});
+
+test('the PR plan shards the reached browser suites beside the named ones', () => {
+  const unit = Array.from({ length: 30 }, (_, i) => `test/u${String(i).padStart(2, '0')}.test.mjs`);
+  const browser = [...Object.keys(sheetSources), ...SMOKE];
+  const shards = prPlan({ unit, browser }, ['public/app.js'], sheetRead, () => 1, sheetDiff);
+  const picked = shards.filter((s) => s.lane === 'browser').flatMap((s) => s.files);
+  assert.ok(picked.includes('test/phone-picker-sheet-browser.test.mjs'));
+  assert.equal(picked.length, SMOKE.length + 2);
+});
+
+test('the sheet grabber tokens reach the phone sheet suites of this repository, which file names cannot', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { testFiles, lanes } = await import('../scripts/test.mjs');
+  const { browser } = lanes(testFiles());
+  const read = (file) => readFileSync(file, 'utf8');
+  const diff = "+  const grip = el('div', { class: 'sheet-grip' }, el('span', { class: 'sheet-grip-pill' }));";
+  const named = touchedBrowser(['public/app.js'], browser, read);
+  const reached = touchedBrowser(['public/app.js'], browser, read, diff);
+  const beyond = reached.filter((file) => !named.includes(file));
+  assert.ok(beyond.length >= 2, `sheet-grip reached ${beyond.length} suites beyond the name match`);
+  assert.ok(reached.includes('test/phone-picker-sheet-browser.test.mjs'));
+  assert.ok(reached.length <= SMOKE.length + REACH_CAP + named.length);
 });
 
 test('the PR plan runs every unit file and the touched browser tests through the full-suite planner', () => {
@@ -124,7 +206,7 @@ test('the PR plan runs every unit file and the touched browser tests through the
   assert.equal(wide.filter(s => s.lane === 'browser').length, 4);
   assert.equal(wide.filter(s => s.lane === 'browser').flatMap(s => s.files).length, browser.length);
   const mid = prPlan({ unit, browser }, many.slice(0, 30), read, () => 1);
-  assert.equal(mid.filter(s => s.lane === 'browser').length, 2);
+  assert.equal(mid.filter(s => s.lane === 'browser').length, 3);
 });
 
 test('pr.yml runs the fast tier on ready pull requests and one PR gate requires every shard', async () => {
@@ -143,6 +225,27 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
   assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
 });
 
+test('every gating workflow bounds each browser install attempt and retries it once', async () => {
+  const { readFileSync } = await import('node:fs');
+  for (const [file, from, to, jobBudget] of [['pr.yml', '  test:', '  gate:', 15], ['test.yml', '  test:', '  gate:', 30], ['dev-soak.yml', '  soak:', null, 30]]) {
+    const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
+    const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
+    assert.ok(job.length > 200, `${file} has a ${from.trim()} job`);
+    assert.match(job, new RegExp(`timeout-minutes: ${jobBudget}\\n`), `${file} declares the job budget this test reasons about`);
+    const steps = [...job.matchAll(/- name: Install [^\n]*\n(?:        if: [^\n]*\n)?        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)(?=\n      - )/g)];
+    assert.equal(steps.length, 1, `${file} has one bounded install step`);
+    const [, backstop, body] = steps[0];
+    const attempts = [...body.matchAll(/timeout (\d+)m npx --no-install playwright install --with-deps /g)].map((m) => Number(m[1]));
+    assert.equal(attempts.length, 2, `${file} attempts the install twice`);
+    for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `${file} waits ${budget} minutes on an attempt`);
+    assert.match(body, /dpkg --configure -a \|\| true/, `${file} repairs an interrupted unpack before the second attempt`);
+    assert.match(body, /Acquire::Retries/, `${file} bounds apt's own connections`);
+    assert.ok(attempts[0] + attempts[1] <= Number(backstop), `${file} fits both attempts in the step backstop`);
+    assert.ok(Number(backstop) < jobBudget, `${file} leaves the job room to run its work`);
+    assert.doesNotMatch(job, /continue-on-error/, `${file} does not lean on continue-on-error, which a killed step does not survive`);
+    assert.equal(job.match(/playwright install --with-deps /g).length, 2, `${file} installs browsers in one place`);
+  }
+});
 test('a re-run shard replaces its earlier attempt, so the gate judges the newest result', () => {
   const failed = { ...evidence()[0], attempt: 1, code: 1 };
   const rerun = { ...evidence()[0], attempt: 2 };
@@ -173,4 +276,13 @@ test('the main tests gate judges each shard by its newest attempt, so Re-run fai
   const passed = evidence().slice(1).map((r) => ({ ...r, attempt: 1 }));
   assert.throws(() => validate(manifest, newestAttempts([failed, ...passed]), 'abc'), /Invalid shard/);
   assert.equal(validate(manifest, newestAttempts([failed, ...passed, rerun]), 'abc').files, 4);
+});
+
+test('onboarding journeys are mandatory even for unrelated changes and cannot silently disappear', () => {
+  const selected = touchedBrowser(['README.md'], browserFiles, read);
+  for (const file of ONBOARDING) {
+    assert.ok(selected.includes(file));
+    assert.throws(() => touchedBrowser([], browserFiles.filter(f => f !== file), read), /Missing required journey suite/);
+  }
+  assert.equal(ONBOARDING.length, 4);
 });

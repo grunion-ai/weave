@@ -57,7 +57,7 @@ test('a date level takes a grain; order and heading are checked against the fiel
     [['Notes'], /cannot group/],
     [[{ field: 'Priority', heading: 'chip' }], /Only a link field/],
     [[{ field: 'Priority', order: 'table' }], /only a link field/],
-    [['Trip', 'Priority', 'Due', 'Done'], /at most 3/],
+    [['Trip', 'Priority', 'Due', 'Done', 'Trips seen', 'Parent'], /at most 5/],
     [['Trip', 'Trip'], /once/],
     [['Nope'], /Nope/],
   ]) assert.throws(() => w.tableView('To-do/By due', { group }), re, JSON.stringify(group));
@@ -68,7 +68,7 @@ test('completedBy takes a checkbox or toggle; nest takes a to-one link to the sa
   assert.throws(() => w.tableView('To-do/X', { completedBy: 'Priority' }), /checkbox or toggle/);
   assert.throws(() => w.tableView('To-do/X', { nest: 'Trip' }), /link from To-do to itself/);
   assert.throws(() => w.tableView('To-do/X', { nest: 'Children' }), /one parent/);
-  assert.throws(() => w.tableView('To-do/X', { layout: 'board' }), /table or list/);
+  assert.throws(() => w.tableView('To-do/X', { layout: 'grid' }), /table, list or board/);
   const t = w.createEntity('Trip', { name: 'Japan' });
   assert.throws(() => w.tableView('To-do/X', { order: [t.id] }), /not a row of/);
 });

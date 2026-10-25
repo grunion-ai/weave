@@ -59,8 +59,8 @@ if (s) {
       const mod = page.locator('.fieldrow-system[data-field="Modified By"] .k-actor a');
       await mod.waitFor();
       assert.match(await mod.getAttribute('href'), new RegExp(`#/entity/${agent.id}$`));
-      assert.equal(await mod.locator('.mi-cpu').count(), 1, 'an agent wears the robot glyph, not initials');
-      assert.equal(await mod.locator('.av').count(), 0);
+      assert.equal(await mod.locator('.mi-cpu').count(), 1, 'the agent badge identifies automation');
+      assert.equal(await mod.locator('.av').count(), 0, 'an agent fallback does not use person initials');
       assert.match(await page.locator('.fieldrow-system[data-field="Modified By"] .k-actor-via').textContent(), /via MCP/);
       assert.doesNotMatch(await page.locator('body').innerText(), /VMH4hSRpVOhCwUno/);
     } finally { await page.close(); }
@@ -75,7 +75,7 @@ if (s) {
       await page.locator(`tr[data-eid="${row.id}"] td[data-sys="Created By"] .k-actor a`).waitFor();
       assert.ok(await web.evaluate((n) => n.classList.contains('is-unknown')), 'muted');
       assert.equal(await web.locator('a').count(), 0, 'no link');
-      assert.equal(await web.locator('.av').count(), 0, 'no initials beside the word: never "WWeb"');
+      assert.equal(await web.locator('.av, .actor-av').count(), 0, 'no initials beside the word: never "WWeb"');
       assert.equal((await web.innerText()).trim(), 'Web');
       const ink = await web.evaluate((n) => [getComputedStyle(n).color, getComputedStyle(document.body).color]);
       assert.notEqual(ink[0], ink[1], 'quieter than body text');

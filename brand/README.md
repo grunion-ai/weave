@@ -17,7 +17,7 @@ width 3.5 on a 48-unit grid. The under-strand is cut with SVG masks
 | --- | --- | --- |
 | 1 | App icon tile | **A** — blue `#2563eb` squircle, cream `#e0dcd4` + ice `#bcd3ff` strands |
 | 2 | Favicon | **B** — mono blue, strands thickened to 4.5 (optical correction) |
-| 3 | Lockup | **A** — inline, mark ≈ x-height beside the wordmark |
+| 3 | Lockup | **A** inline: mark at 1.6x (18.4 units tall, about 1.75 times the word height) beside the wordmark, the word centred on the mark's centre line, 0.6 word heights apart. **C** stacked: mark 75% of the word's width, half a word height above it, both centred. Kyle, 2026-10-22; replaces the 2026-08-16 inline lockup with the mark at x-height |
 | 4 | Wordmark | **B** — "weave" lowercase, Outfit 600, −0.02em tracking |
 | 5 | Light-mode strand pair | **B** — blue `#2563eb` + ink `#0c1b33` |
 | 6 | Canonical one-color mark | **A** — brand blue mono |
@@ -82,11 +82,12 @@ straight into `public/brand/`; the rest go to `assets/`. No file lives in both.
 | `weave-mark-white.svg` | On blue-filled contexts (buttons, banners) |
 | `weave-app-icon.svg` | 512 squircle app icon |
 | `weave-loader-dark.svg` / `-light.svg` | Animated loader (decision 7), same strand pairs as the marks |
-| `weave-lockup-dark.svg` / `-light.svg` | Inline mark + wordmark |
-| `weave-lockup-email-light.svg` / `-dark.svg` | The invite emails' lockup (Feature #216): ink second strand on light, `#3b82f6` lead on dark, as approved 2026-10-03. `render-png.mjs` draws them, with Outfit loaded, to `public/brand/email-lockup-{light,dark}.png` at 208x48, which weave serves to mail clients (Gmail strips SVG) |
+| `weave-lockup-dark.svg` / `-light.svg` | Inline lockup (decision 3A): blue + sky with a cream word on dark, blue + ink with an ink word on light |
+| `weave-lockup-stacked-dark.svg` / `-light.svg` | Stacked lockup (decision 3C), same pairs |
+| `weave-lockup-email-light.svg` / `-dark.svg` | The invite emails' lockup (Feature #216): ink second strand on light, `#3b82f6` lead on dark, as approved 2026-10-03. `render-png.mjs` draws them to `public/brand/email-lockup-{light,dark}.png` at 393x72, three times the 131x24 the email shows (`LOCKUP_SIZES`), which weave serves to mail clients (Gmail strips SVG) |
 
 `assets/png/`: rasters rendered via headless Chromium: favicon 16/48, app icon
-512/180, mark 256, lockup 512, plus
+512/180, mark 256, inline and stacked lockup 512 wide, plus
 `weave-loader-{dark,light}.gif` (see below).
 
 ## The loader (decision 7)
@@ -116,6 +117,32 @@ Consumers:
 | App page loads | `public/brand/weave-loader-rope.html` (`loaderRopeHtml()`) | Inlined by `initPageLoader()`. Chrome and Safari tick SMIL on the main thread, so the SMIL rope froze on every long task (Issue #390). The app shows the still strands through windows that move by transform only, which the compositor runs: each end of the dash is an anchor holding a far-side window, a square cut at the end's point and a round cap disc, and the strand inside counter-moves so it stays put. The ends ride the dash's ends frame by frame; the unweave follows Chromium's dash so it ends on the two end dots. Look settled by Kyle, 2026-09-28 |
 | README hero | `assets/png/weave-loader-{dark,light}.gif` | GitHub's image proxy does not run SMIL; `brand/render-gif.mjs` builds the pair from the same generator |
 
+## Marketing: radiating rings (2026-10-15)
+
+A half-page print and social asset: the mark centred on a half US Letter page
+(8.5 x 5.5 in, landscape), with contour rings spaced 16 px apart at 3.8 px
+weight radiating from it to every edge. Kyle picked this from three contact
+sheet rounds (concept 1b-3).
+
+The rings are iso-lines of the distance from the two strands. Near the mark
+they follow the rope; further out the field is blurred at a radius that grows
+with distance, so every ring stays one continuous curve with no cusp at the
+strand ends while the pitch holds. `test/brand-radiate.test.mjs` gates the
+pitch, the smoothness, the edge-to-edge fill and both palettes.
+
+| File in `assets/marketing/` | Use |
+| --- | --- |
+| `weave-radiate-half-letter-dark.{svg,pdf,png}` | Slate canvas `#0f1115`, sky rings, blue + sky strands |
+| `weave-radiate-half-letter-light.{svg,pdf,png}` | White, blue rings, blue + ink strands |
+
+The SVG and PDF are vector. The PNG is 2550 x 1650, 300 dpi at print size.
+
+The same generator writes the setup page stage art at 3840 x 2160 into
+`public/brand/weave-radiate-{light,dark}.svg` (Issue #990). The mark keeps the
+half-page scale, so it is 320 px wide on the 4K canvas and the rings run out to
+every edge. `public/start.html` draws it at its own scale and shrinks it only
+when the stage is too narrow to hold the mark at 55% of its width.
+
 ## Usage rules
 
 - **Minimum sizes:** mark 12px tall; lockup 80px wide. Below that, use the favicon build.
@@ -123,12 +150,11 @@ Consumers:
 - **Never** recolor strands outside the pairs above, outline the mark, or
   rotate the horizontal mark (vertical/diagonal ropes were explored and
   rejected for the primary — see `docs/`).
-- The lockup wordmark is Outfit 600; the SVG falls back to the system stack if
-  Outfit isn't loaded.
-
-## Marketing kit
-
-The badge, posters and patterns for the website, email, social, print and merch live in [kit/](kit/README.md). Agents read [kit/manifest.json](kit/manifest.json) to pick an asset by family and use; the kit README has a recipe table for each channel. The badge ring words are DATA · AGENTS over SYSTEMS (Feature #347).
+- The lockup wordmark is Outfit 600 with -0.02em tracking, outlined to a path
+  (`WORDMARK` in `build-logos.mjs`), so every lockup draws the same with or
+  without Outfit installed and needs no outlining before print.
+- `lockupLayout()` holds the lockup proportions; `build-logos.test.mjs` checks
+  the mark scale, the centring and the gaps against them.
 
 ## Rebuilding
 
@@ -136,6 +162,7 @@ The badge, posters and patterns for the website, email, social, print and merch 
 node brand/build-logos.mjs        # served SVGs + loader -> public/brand/, the rest -> brand/assets/
 node brand/render-png.mjs         # PNGs via Playwright Chromium
 node --test brand/build-logos.test.mjs
+node brand/build-radiate.mjs --render   # half-page radiating-rings asset -> brand/assets/marketing/
 ```
 
 ImageMagick cannot rasterize these SVGs (its delegate drops `<mask>`), which is

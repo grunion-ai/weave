@@ -25,7 +25,7 @@ test('every font-size in the stylesheets reads a scale token (Issue #383)', () =
   const ok = (v) => {
     const t = v.match(/^var\(--fs-([a-z0-9]+)\)$/);
     if (t) return t[1] in SCALE;
-    return /^var\(--wv-(grid|chip|inline)-f(ont|s)\)$/.test(v) || v === 'inherit' || v === '0';
+    return /^var\(--wv-(grid|chip|edit)-f(ont|s)\)$/.test(v) || v === 'inherit' || v === '0';
   };
   const bad = sizeValues(CSS).filter((v) => !ok(v));
   assert.deepEqual(bad, [], 'off-scale font-size values');
@@ -39,8 +39,8 @@ test('the grid and chip aliases resolve to the grid step', () => {
   assert.ok(alias('grid').every((v) => v === 'var(--wv-chip-font)' || v === 'var(--fs-grid)'), alias('grid').join(', '));
 });
 
-test('the inline-edit size token resolves to a scale step (Issue #786)', () => {
-  const sizes = [...CSS.matchAll(/--wv-inline-fs\s*:\s*([^;}]+)/g)].map((m) => m[1].trim());
+test('the edit field size token resolves to a scale step (Issue #786, Issue #1030)', () => {
+  const sizes = [...CSS.matchAll(/--wv-edit-fs\s*:\s*([^;}]+)/g)].map((m) => m[1].trim());
   assert.ok(sizes.length >= 2, sizes.join(', '));
   assert.deepEqual(sizes.filter((v) => !(v === 'var(--wv-grid-font)' || /^var\(--fs-(meta|secondary|grid|body|doc|h2|h1|title)\)$/.test(v))), []);
 });

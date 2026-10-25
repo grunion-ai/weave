@@ -91,8 +91,10 @@ if (openHub) {
     await step(p, 'account');
     const art = await stageArt(p);
     assert.match(art, /picture class="radiate"/, 'the right pane carries the radiating-rings asset');
-    assert.deepEqual(await donut(p), { at: 25, name: 'Account' }, 'the donut starts at a quarter');
+    assert.equal(await donut(p), null, 'signing in shows no setup donut (Issue #987)');
     await go(p, 'signin');
+    await step(p, 'workspace');
+    assert.deepEqual(await donut(p), { at: 50, name: 'Workspace' }, 'the donut appears on the workspace step');
     await nameIt(p, 'Ada Sales', 'ada-sales');
     await step(p, 'work');
     assert.equal((await donut(p)).at, 75);
@@ -122,7 +124,7 @@ if (openHub) {
     await step(p, 'agent');
     assert.equal((await donut(p)).at, 100);
     assert.equal(await stageArt(p), art);
-    assert.deepEqual(await p.locator('main h2').allTextContents(), ['Chat apps', 'Harnesses'], 'two groups: chat apps and harnesses (Issue #950)');
+    assert.deepEqual(await p.locator('main h2').allTextContents(), ['Chat apps', 'Desktop and terminal tools'], 'chat apps lead; desktop clients are disclosed separately');
     const listed = (i) => p.locator('main .apps').nth(i).locator('.app[data-tool] b').allTextContents();
     assert.deepEqual(await listed(0), ['Claude', 'ChatGPT', 'Gemini'], 'Claude leads the chat apps');
     assert.deepEqual(await listed(1), ['Claude Code', 'Codex', 'Antigravity', 'Gemini CLI', 'Something else']);
@@ -135,7 +137,7 @@ if (openHub) {
     const lead = await p.locator('main .lead').textContent();
     assert.match(lead, /agent you already use/);
     assert.ok(lead.trim().split(/\s+/).length <= 16, `the lead is one short line (${lead})`);
-    assert.equal(await p.locator('main [data-go="next"]').count(), 0, 'no way forward but a tool or skip');
+    assert.equal(await p.locator('main [data-go="next"]').count(), 0, 'AI setup has no misleading Continue action before a connection');
     await p.click('.app[data-tool="claude"]');
     assert.equal(await p.locator('.chosen b').textContent(), 'Claude', 'the chosen app heads the step');
     await p.click('main [data-go="change"]');
@@ -180,6 +182,7 @@ if (openHub) {
     await step(p, 'agent');
     const fits = () => p.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
     assert.ok(await fits(), 'the app grid fits the phone');
+    await p.locator('main details summary').click();
     await p.click('.app[data-tool="claude-code"]');
     assert.match(await p.locator('ol.steps').textContent(), /Run \/mcp/);
     const prompt = await p.locator('.steps pre.prompt').textContent();
@@ -225,6 +228,7 @@ if (openHub) {
       await signIn(p, openHub);
       if (at === 'work') await nameIt(p, `Skip ${at}`, `skip-${at}-chosen`);
       await step(p, at);
+      if (at === 'workspace') await p.waitForSelector('.ws-slug-status[data-state="available"]');
       await go(p, 'skip');
       await p.waitForURL(at === 'work' ? /\/w\/skip-work-chosen\/$/ : /\/w\/skip-workspace\/$/, { timeout: 15000 });
       await p.context().close();
@@ -239,6 +243,7 @@ if (openHub) {
     await pickWork(p, 'tasks');
     await step(p, 'agent');
     await p.mouse.move(0, 0);
+    await p.locator('main details summary').click();
     await p.click('.app[data-tool="codex"]');
     assert.match(await p.locator('.steps li[data-at] code').textContent(), /^codex mcp add weave --url http:\/\/localhost:\d+\/w\/no-agent\/mcp$/, 'Codex copies its add command');
     assert.equal(await p.locator('main .btn-primary[data-copy="address"]').textContent(), 'Copy command');
@@ -325,6 +330,7 @@ if (openHub) {
     const anchors = new Map();
     const views = [['list', await read()]];
     for (const id of ids) {
+      if (await p.locator(`.app[data-tool="${id}"]`).isHidden()) await p.locator("main details summary").click();
       await p.click(`.app[data-tool="${id}"]`);
       await p.waitForSelector('.chosen');
       views.push([id, await read()]);
@@ -342,6 +348,9 @@ if (openHub) {
         anchors.set(a.abs, a.text);
       }
     }
+    const mcp = await p.request.get(`${openHub.base}/w/link-check/mcp`);
+    assert.equal(mcp.status(), 401, 'the address answers as an MCP server asking for sign-in');
+    assert.match(mcp.headers()['www-authenticate'] ?? '', /resource_metadata=/);
     const promise = { weave: /weave/i, Privacy: /<title>Privacy/, Terms: /<title>Terms/ };
     for (const [abs, text] of anchors) {
       if (new URL(abs).origin !== new URL(openHub.base).origin) continue;
@@ -349,10 +358,7 @@ if (openHub) {
       assert.ok(res.status() < 400, `"${text}" (${abs}) answers ${res.status()}`);
       assert.match(await res.text(), promise[text] ?? /./, `"${text}" lands on the page it names`);
     }
-    assert.deepEqual([...anchors.values()].sort(), ['Privacy', 'Terms', 'weave'], 'the step links home, Privacy and Terms, and nothing else');
-    const mcp = await p.request.get(`${openHub.base}/w/link-check/mcp`);
-    assert.equal(mcp.status(), 401, 'the address answers as an MCP server asking for sign-in');
-    assert.match(mcp.headers()['www-authenticate'] ?? '', /resource_metadata=/);
+    assert.deepEqual([...anchors.values()].sort(), ['Open workspace', 'Privacy', 'Terms', 'weave'], 'the created workspace can be opened before AI setup');
     await p.context().close();
   });
 
@@ -397,7 +403,7 @@ if (openHub) {
     await signIn(p, openHub, 'bypass');
     await p.waitForURL(/\/w\/twice\/$/, { timeout: 15000 });
     openHub.idp.signInBrowserAs(who);
-    await p.goto(`${openHub.base}/start`);
+    await p.goto(`${openHub.base}/start?pick=1`);
     await step(p, 'list');
     assert.deepEqual(await p.locator('.rows .ws-title').allTextContents(), ['twice']);
     const row = await p.locator('.rows a.ws-row').evaluate((a) => ({
@@ -421,6 +427,8 @@ if (openHub) {
     await go(p, 'new');
     await step(p, 'workspace');
     await p.click('main button:has-text("Back")');
+    await step(p, 'list');
+    await p.reload();
     await step(p, 'list');
     await p.context().close();
   });
@@ -468,6 +476,7 @@ if (openHub) {
     await p.goto(`${clerkHub.base}/start#/settings`);
     await step(p, 'account');
     await p.waitForSelector('.pane #clerk-pane [data-fake-clerk="signin"]');
+    assert.equal(await p.locator('#clerk-pane').getAttribute('aria-busy'), null, 'the loaded sign-in form is no longer busy');
     assert.equal(await p.evaluate(() => location.hash), '', 'a leftover hash is cleared before Clerk mounts (Issue #933)');
     assert.equal(await p.locator('main [data-go="signin"]').isHidden(), true, 'the provider button steps aside for the mounted form');
     const options = () => p.evaluate(() => ({ mounted: window.__clerkMounted, ...window.__clerkOptions, appearance: !!window.__clerkOptions.appearance?.variables?.colorPrimary, footer: window.__clerkOptions.appearance?.elements?.footerAction?.display }));
@@ -477,6 +486,7 @@ if (openHub) {
     assert.match(inn.forceRedirectUrl, /^\/api\/auth\/oidc\/start\?start=1&next=%2Fstart$/);
     assert.equal(inn.signUpForceRedirectUrl, inn.forceRedirectUrl);
     assert.equal(await p.locator('main h1').textContent(), 'Sign in to weave');
+    assert.equal(await donut(p), null, 'a returning visitor signs in with no setup donut (Issue #987)');
     assert.equal(await p.locator('main [data-go="switch"]').textContent(), 'Create an account');
     assert.equal(await p.locator('main [data-go="bypass"], main [data-go="skip"]').count(), 0, 'login cannot be skipped');
     await p.click('main [data-go="switch"]');
@@ -485,6 +495,7 @@ if (openHub) {
     assert.deepEqual([up.mounted, up.routing], ['signup', 'virtual']);
     assert.equal(up.signInForceRedirectUrl, up.forceRedirectUrl);
     assert.equal(await p.locator('main h1').textContent(), 'Create your weave account');
+    assert.equal(await donut(p), null, 'the create-account form carries no donut either');
     await p.click('main [data-go="switch"]');
     await p.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
     await p.click('#clerk-pane [data-fake-clerk="google"]');
@@ -553,8 +564,10 @@ if (openHub) {
     assert.equal(await p.locator('#work-details .details-lead').textContent(), `Details for ${picked}.`, 'the details text comes from the catalog');
     await p.click('.chip[data-category="all"]');
     assert.equal(await p.locator('#work-details').isVisible(), true, 'the pick stays open across chips');
+    const creating = p.waitForRequest((request) => new URL(request.url()).pathname === '/api/start/workspaces' && request.method() === 'POST');
     await go(p, 'next');
-    await step(p, 'build');
+    assert.equal((await creating).postDataJSON().template, picked);
+    await step(p, 'agent');
     await p.context().close();
   });
 
@@ -622,7 +635,7 @@ if (openHub) {
       const res = await r.fetch();
       await r.fulfill({ response: res, json: { ...(await res.json()), waiting: 'waits' } });
     });
-    await p.goto(`${openHub.base}/start`);
+    await p.goto(`${openHub.base}/start?pick=1`);
     await step(p, 'list');
     const note = p.locator('.alert[data-code="waiting"]');
     assert.match(await note.textContent(), /waits needs a plan/);
@@ -671,7 +684,7 @@ if (openHub) {
     await p.press('#work-search', 'Escape');
     assert.equal(await p.inputValue('#work-search'), '');
     assert.equal((await visibleCards(p)).length, all, 'Escape clears the search');
-    assert.equal((await visibleCards(p)).at(-1 - (await p.locator('.card[data-template="basic"]').count())), 'empty', 'the fallbacks stay pinned at the end');
+    assert.equal((await visibleCards(p))[0], 'empty', 'simple setups are available first');
     await p.context().close();
   });
 
@@ -688,8 +701,10 @@ if (openHub) {
     assert.match(await p.locator('.no-match').textContent(), /submarine sonar/);
     await p.click('.card[data-template="empty"]');
     assert.equal(await p.inputValue('#work-other'), 'submarine sonar', 'the query becomes the description');
+    const creating = p.waitForRequest((request) => new URL(request.url()).pathname === '/api/start/workspaces' && request.method() === 'POST');
     await go(p, 'next');
-    await step(p, 'build');
+    assert.equal(Object.hasOwn((await creating).postDataJSON(), 'template'), false, 'Empty creates a workspace without a template');
+    await step(p, 'agent');
     await p.context().close();
   });
 
@@ -716,6 +731,7 @@ if (openHub) {
     await p.keyboard.type('candidates');
     assert.ok(await p.locator('.card[data-template]:visible').first().evaluate((n) => n.getBoundingClientRect().top < innerHeight * 0.55), 'the first match shows above where the keyboard rises');
     const top = (await visibleCards(p))[0];
+    assert.equal(top, 'recruiting', 'search results precede the simple setup alternatives');
     await p.keyboard.press('Enter');
     assert.equal(await p.locator('.card[aria-pressed="true"]').getAttribute('data-template'), top, 'Enter picks the first match');
     assert.equal(await p.evaluate(() => document.activeElement.dataset.template), top);
@@ -730,7 +746,144 @@ if (openHub) {
     await p.keyboard.press('Enter');
     assert.equal(await p.locator('.card[aria-pressed="true"]').getAttribute('data-template'), first, 'Enter on a card picks it');
     await go(p, 'next');
-    await step(p, 'build');
+    await step(p, 'agent');
+    assert.equal(await p.locator('main [data-go="open"]').isVisible(), true, 'keyboard selection creates an accessible workspace');
     await p.close();
   });
+  for (const phone of [false, true]) {
+    for (const theme of ['light', 'dark']) {
+      test(`onboarding recovery and second workspace (${phone ? 'phone' : 'desktop'}, ${theme})`, async () => {
+        const p = await page({ phone, theme });
+        const suffix = `${phone ? 'phone' : 'desktop'}-${theme}`;
+        person(openHub, { email: `recovery-${suffix}@example.com` });
+        try {
+          await signIn(p, openHub);
+          await nameIt(p, `Recovery ${suffix}`, `custom-${suffix}`);
+          await p.click('.card[data-template="tasks"]');
+          await p.reload();
+          await step(p, 'work');
+          assert.equal(await p.locator('.card[data-template="tasks"]').getAttribute('aria-pressed'), 'true');
+          await p.getByRole('button', { name: 'Back', exact: true }).click();
+          await step(p, 'workspace');
+          assert.equal(await p.inputValue('input[name="slug"]'), `custom-${suffix}`);
+          await p.waitForSelector('.ws-slug-status[data-state="available"]');
+          await go(p, 'next');
+          await step(p, 'work');
+          await go(p, 'next');
+          await step(p, 'agent');
+          await p.reload();
+          await step(p, 'agent');
+          assert.equal(await p.locator('main [data-go="open"]').isVisible(), true);
+          assert.equal(await p.locator('.app[data-tool="codex"]').isHidden(), true);
+          assert.ok(await p.locator('main [data-go="open"]').evaluate((n) => n.getBoundingClientRect().bottom < innerHeight));
+          await go(p, 'open');
+          await p.waitForSelector('#ws-new', { state: 'attached' });
+          if (phone) await p.getByRole('button', { name: 'Open navigation', exact: true }).click();
+          await p.locator('#ws-new').click();
+          await p.locator('.wv-menu.ws-plus .wv-menu-row', { hasText: 'New workspace' }).click();
+          await step(p, 'workspace');
+          assert.equal(await p.inputValue('input[name="name"]'), '');
+          await p.fill('input[name="name"]', `Second ${suffix}`);
+          await p.fill('input[name="slug"]', `second-${suffix}`);
+          await p.waitForSelector('.ws-slug-status[data-state="available"]');
+          await go(p, 'skip');
+          await p.waitForURL(new RegExp(`/w/second-${suffix}/$`));
+          assert.equal(await p.locator('.wv-start-new').count(), 1);
+        } finally { await p.close(); }
+      });
+    }
+  }
+
+  for (const phone of [false, true]) test(`signup intent survives refresh, login switching and workspace creation (${phone ? 'phone' : 'desktop'})`, async () => {
+    const p = await page({ phone });
+    person(clerkHub, { email: `intent-${phone ? 'phone' : 'desktop'}@example.com` });
+    try {
+      await p.goto(`${clerkHub.base}/start?mode=signup`);
+      await p.waitForSelector('#clerk-pane[data-mode="signup"]');
+      await p.reload();
+      await p.waitForSelector('#clerk-pane[data-mode="signup"]');
+      await go(p, 'switch');
+      await p.waitForSelector('#clerk-pane[data-mode="signin"]');
+      await p.reload();
+      await p.waitForSelector('#clerk-pane[data-mode="signin"]');
+      await go(p, 'switch');
+      await p.waitForSelector('#clerk-pane[data-mode="signup"]');
+      await p.click('#clerk-pane [data-fake-clerk="google"]');
+      await nameIt(p, `Intent ${phone ? 'phone' : 'desktop'}`, `intent-${phone ? 'phone' : 'desktop'}`);
+      await go(p, 'skip');
+      await p.waitForURL(new RegExp(`/w/intent-${phone ? 'phone' : 'desktop'}/$`));
+    } finally { await p.close(); }
+  });
+
+  test('blocked session storage does not prevent setup', async () => {
+    const p = await page();
+    person(openHub, { email: 'blocked-storage@example.com' });
+    await p.addInitScript(() => Object.defineProperty(window, 'sessionStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } }));
+    try {
+      await signIn(p, openHub);
+      await nameIt(p, 'Blocked storage', 'blocked-storage');
+      await pickWork(p, 'tasks');
+      await step(p, 'agent');
+      assert.equal(await p.locator('main [data-go="open"]').isVisible(), true);
+    } finally { await p.close(); }
+  });
+
+  for (const role of ['architect', 'editor', 'observer']) {
+    for (const { phone, populated } of [{ phone: false, populated: false }, { phone: true, populated: false }, { phone: false, populated: true }, { phone: true, populated: true }]) {
+      test(`invited ${role} in a ${populated ? 'populated' : 'empty'} workspace (${phone ? 'phone' : 'desktop'})`, async () => {
+        const suffix = `${role}-${phone ? 'phone' : 'desktop'}-${populated ? 'full' : 'empty'}`;
+        const owner = await page();
+        person(openHub, { email: `owner-${suffix}@example.com` });
+        await signIn(owner, openHub);
+        await nameIt(owner, `Invite ${suffix}`, `invite-${suffix}`);
+        if (populated) {
+          await pickWork(owner, 'tasks');
+          await step(owner, 'agent');
+          await go(owner, 'open');
+        } else await go(owner, 'skip');
+        await owner.waitForURL(new RegExp(`/w/invite-${suffix}/`));
+        await owner.close();
+        const w = openHub.opened(`invite-${suffix}`);
+        const email = `invited-${suffix}@example.com`;
+        const invite = w.inviteMember({ email, role, issuer: openHub.idp.issuer });
+        w.store.close();
+        const p = await page({ phone, theme: phone ? 'dark' : 'light' });
+        person(openHub, { email });
+        try {
+          await p.goto(`${openHub.base}/w/invite-${suffix}/api/auth/oidc/start?invite=${invite.code}`);
+          await p.waitForSelector('#main .view-header');
+          const onboarding = await p.evaluate(async () => (await fetch('api/onboarding')).json());
+          assert.equal(onboarding.show, false, 'invited members do not rename the workspace');
+          if (populated) assert.equal(await p.locator('.wv-start').count(), 0);
+          else if (role === 'architect') assert.equal(await p.locator('.wv-start-new').count(), 1);
+          else {
+            assert.equal(await p.locator('.wv-start-new, .wv-start-template').count(), 0);
+            assert.match(await p.locator('.wv-start').textContent(), /Ask a workspace architect/);
+            assert.match(await p.locator('.wv-start').textContent(), new RegExp(`As an ${role}`));
+            assert.equal(await p.locator('.nav-add-table:visible').count(), 0);
+          }
+          assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        } finally { await p.close(); }
+      });
+    }
+  }
+
+  test('expired setup sign-in resumes only after the same identity authenticates', async () => {
+    const p = await page();
+    const who = person(openHub, { email: 'expired-draft@example.com' });
+    try {
+      await signIn(p, openHub);
+      await nameIt(p, 'Draft team', 'expired-draft');
+      await p.context().clearCookies();
+      await p.reload();
+      await step(p, 'account');
+      openHub.idp.signInBrowserAs(who);
+      await go(p, 'signin');
+      await step(p, 'work');
+      await p.getByRole('button', { name: 'Back', exact: true }).click();
+      await step(p, 'workspace');
+      assert.equal(await p.inputValue('input[name="slug"]'), 'expired-draft');
+    } finally { await p.close(); }
+  });
+
 }

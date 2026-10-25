@@ -202,3 +202,18 @@ test('WEAVE_ORIGIN is read as a bare origin, and refused otherwise; WEAVE_TRUST_
   assert.equal(trustProxyFromEnv({}), false);
   assert.equal(trustProxyFromEnv({ WEAVE_TRUST_PROXY: '1' }), true);
 });
+
+test('routes: a non-Bearer Authorization header beside a valid session cookie leaves the session in charge (Issue #1084)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await s.signIn(KYLE);
+    const basic = { Authorization: 'Basic eDp5' };
+    const withCookie = await s.call('GET', '/api/auth/me', { cookie: kyle.cookie, headers: basic });
+    assert.equal(withCookie.status, 200);
+    assert.equal((await withCookie.json()).account.name, 'kyle', 'the session account answers, not an anonymous caller');
+    const bare = await s.call('GET', '/api/auth/me', { headers: basic });
+    const anon = await s.call('GET', '/api/auth/me');
+    assert.equal(bare.status, anon.status, 'a Basic header alone is the usual anonymous answer');
+    assert.equal(bare.status, 401);
+  } finally { s.stop(); }
+});

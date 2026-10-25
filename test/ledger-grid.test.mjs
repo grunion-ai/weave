@@ -59,14 +59,14 @@ test('a clipped cell draws no floating marker glyph', () => {
 });
 
 test('hovering a row draws no box around each of its cells', () => {
-  const hov = rulesFor('.wv-grid .inline-edit:hover');
+  const hov = rulesFor('.wv-grid .inline-edit:not(:focus):hover');
   assert.equal(hov['border-color'], 'transparent', 'a per-cell border reads as a rule between fields');
   assert.equal(hov.background, 'none', 'and so does a per-cell ground');
 });
 
 test('the active cell is the only thing wearing a border', () => {
-  assert.ok(rulesFor('.wv-grid .inline-edit:focus')['border-color'],
-    'focus is where the control shows itself');
+  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 1.5px var(--tblr-primary)',
+    'focus is where the control shows itself (Issue #1030)');
   assert.deepEqual(rulesFor('.wv-grid td.cell-pick'), {},
     'no cell-type gets its own outline — the row is the unit of feedback');
 });
@@ -121,7 +121,7 @@ test('every value surface in the grid is set at one size, and it is the chip siz
   for (const sel of ['.wv-grid tbody td', '.wv-grid .num-dressed', '.wv-grid .text-dressed', '.wv-grid td.sys-cell']) {
     assert.equal(rulesFor(sel)['font-size'], 'var(--wv-grid-font)', `${sel} reads the grid token`);
   }
-  assert.equal(rulesFor('.inline-edit')['--wv-inline-fs'], 'var(--wv-grid-font)', 'an inline edit sits at the grid token by default');
+  assert.equal(rulesFor('.inline-edit')['--wv-edit-fs'], 'var(--wv-grid-font)', 'an inline edit sits at the grid token by default');
   assert.equal(rulesFor('.wv-grid tbody .inline-edit')['font-size'], undefined, 'and the grid keeps that default');
   assert.equal(root['--wv-grid-line'], '20px', 'a whole-pixel line, so a row height is a whole pixel');
   for (const sel of ['.wv-grid tbody td', '.wv-grid tbody .inline-edit']) {

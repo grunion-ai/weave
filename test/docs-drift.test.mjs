@@ -74,17 +74,22 @@ test('PARITY.md scores its own table and the build that ships', () => {
   assert.doesNotMatch(parity, /JSON file per workspace|\b23 tools/, 'PARITY.md describes the v0.1 build');
 });
 
+const BOARD_LAYOUT = [
+  'layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side)',
+  '[--layout table|list|board]',
+];
 const offersBoard = /\bboards?\b/i;
-test('no agent-facing string offers the board view', () => {
+const bare = (text) => BOARD_LAYOUT.reduce((t, ok) => t.split(ok).join(''), text);
+test('no agent-facing string offers a board view kind; Board is only a table layout (Issue #75, Issue #438; Net Task #122)', () => {
   assert.deepEqual(VOCABULARY.viewKinds, ['table']);
   const { icons, ...vocabulary } = VOCABULARY;
-  assert.doesNotMatch(JSON.stringify(vocabulary), offersBoard, 'weave_vocabulary offers a board');
-  for (const tool of TOOLS) assert.doesNotMatch(JSON.stringify(tool), offersBoard, `${tool.name} offers a board`);
-  for (const g of [...GUIDES, ...FIELD_DOCS]) assert.doesNotMatch(g.doc, offersBoard, `Handbook "${g.name}" offers a board`);
-  assert.doesNotMatch(primer(), offersBoard, 'the MCP primer offers a board');
+  assert.doesNotMatch(bare(JSON.stringify(vocabulary)), offersBoard, 'weave_vocabulary offers a board');
+  for (const tool of TOOLS) assert.doesNotMatch(bare(JSON.stringify(tool)), offersBoard, `${tool.name} offers a board`);
+  for (const g of [...GUIDES, ...FIELD_DOCS]) assert.doesNotMatch(bare(g.doc), offersBoard, `Handbook "${g.name}" offers a board`);
+  assert.doesNotMatch(bare(primer()), offersBoard, 'the MCP primer offers a board');
   const help = execFileSync(process.execPath, [join(ROOT, 'bin/weave.js'), 'help'], { encoding: 'utf8' });
-  assert.doesNotMatch(help, offersBoard, 'weave help offers a board');
-  for (const file of ['AGENTS.md', 'llms.txt']) assert.doesNotMatch(read(file), offersBoard, `${file} offers a board`);
+  assert.doesNotMatch(bare(help), offersBoard, 'weave help offers a board');
+  for (const file of ['AGENTS.md', 'llms.txt']) assert.doesNotMatch(bare(read(file)), offersBoard, `${file} offers a board`);
 });
 
 test('a saved view refuses a view kind the UI does not draw', () => {

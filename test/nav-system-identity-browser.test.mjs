@@ -84,7 +84,7 @@ if (s) {
     const panel = page.locator('#sidebar .nav-identity');
     await panel.locator('.nav-account[data-state="signed-in"]').waitFor({ state: 'attached' });
     assert.equal((await panel.locator('.nav-account-name').innerText()).trim(), 'Ada Lovelace');
-    assert.equal((await panel.locator('.av').innerText()).trim(), 'AL');
+    assert.equal((await panel.locator('.nav-account-av').innerText()).trim(), 'AL');
     const role = panel.locator('.nav-account-role');
     assert.equal((await role.innerText()).trim(), 'Editor');
     assert.match(await role.getAttribute('class'), /\bhue-blue\b/);

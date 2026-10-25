@@ -1,5 +1,5 @@
 {
-  "_": "Cut-off text the gate tolerates today, per platform and fingerprint (Feature #298). It only shrinks: after a fix, run node scripts/cutoff-sweep.mjs --lower on each platform and commit the lowered counts. A platform with no section is seeded by its first --lower; CI runs linux, and a red gate prints the linux counts it measured.",
+  "_": "The ceiling of cut-off text the gate tolerates today, per platform and fingerprint (Feature #298). A count over the ceiling fails the gate; a count under it is a stale baseline the gate reports and does not fail, because a count varies run to run on a loaded runner (Issue #1103). It only shrinks: once a lower count holds, run node scripts/cutoff-sweep.mjs --lower on each platform and commit the lowered counts. A platform with no section is seeded by its first --lower; CI runs linux, and a red gate prints the linux counts it measured.",
   "darwin": {
     "clipped|td.clipped > div.wv-cb > span.ms-box > button.btn.btn-sm": 2,
     "ellipsis|div#cmdk-results > div.cmdk-group > div#cmdk-opt-#.result.active > span.cmdk-text": 1,

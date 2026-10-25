@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, existsSync, statSync, copyFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, existsSync, statSync, copyFileSync, writeFileSync, chmodSync, openSync, writeSync, closeSync, createReadStream, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, createGzip } from 'node:zlib';
+import { createHash, randomBytes } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { DatabaseSync } from 'node:sqlite';
 import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
@@ -391,15 +395,85 @@ test('a GitHub outage is not a verdict: the release is tried again on the next c
   }
 });
 
-test('unpackRelease strips the top directory and refuses an entry that climbs out', () => {
+test('unpackRelease strips the top directory and refuses an entry that climbs out', async () => {
   const dir = mkdtempSync(join(scratch, 'unpack-'));
   const tar = join(dir, 'a.tar');
-  packTar(tar, [{ name: 'top/package.json', data: Buffer.from('{"version":"1.2.3"}') }, { name: 'top/src/x.js', data: Buffer.from('x') }]);
-  unpackRelease(gzipSync(readFileSync(tar)), join(dir, 'out'));
+  packTar(tar, [{ name: 'top/package.json', data: Buffer.from('{"version":"1.2.3"}') }, { name: 'top/src/x.js', data: Buffer.from('x') }, { name: 'top/empty.txt', data: Buffer.alloc(0) }]);
+  await unpackRelease(gzipSync(readFileSync(tar)), join(dir, 'out'));
   assert.equal(readFileSync(join(dir, 'out', 'src', 'x.js'), 'utf8'), 'x');
-  packTar(tar, [{ name: 'top/../../evil.js', data: Buffer.from('x') }]);
-  assert.throws(() => unpackRelease(gzipSync(readFileSync(tar)), join(dir, 'out2')), /escapes/);
+  assert.equal(readFileSync(join(dir, 'out', 'package.json'), 'utf8'), '{"version":"1.2.3"}');
+  assert.equal(readFileSync(join(dir, 'out', 'empty.txt'), 'utf8'), '');
+  packTar(tar, [{ name: 'top/ok.js', data: Buffer.from('ok') }, { name: 'top/../../evil.js', data: Buffer.from('x') }]);
+  await assert.rejects(unpackRelease(gzipSync(readFileSync(tar)), join(dir, 'out2')), /escapes/);
   assert.ok(!existsSync(join(dir, 'evil.js')));
+});
+
+test('unpackRelease reads a fetch body stream and refuses a truncated or corrupt archive', async () => {
+  const dir = mkdtempSync(join(scratch, 'unpack-body-'));
+  const tar = join(dir, 'a.tar');
+  const big = randomBytes(70_000);
+  packTar(tar, [{ name: 'top/a.bin', data: big }, { name: 'top/b.txt', data: Buffer.from('b') }]);
+  const tgz = gzipSync(readFileSync(tar));
+  await unpackRelease(new Response(tgz).body, join(dir, 'out'));
+  assert.ok(readFileSync(join(dir, 'out', 'a.bin')).equals(big));
+  assert.equal(readFileSync(join(dir, 'out', 'b.txt'), 'utf8'), 'b');
+  const cut = readFileSync(tar).subarray(0, 512 + 40_000);
+  await assert.rejects(unpackRelease(gzipSync(cut), join(dir, 'cut')), /truncated/);
+  const bad = Buffer.from(readFileSync(tar));
+  bad[0] ^= 0xff;
+  await assert.rejects(unpackRelease(gzipSync(bad), join(dir, 'bad')), /checksum/);
+});
+
+test('unpackRelease streams a large archive without holding it in memory (Issue #954)', async (t) => {
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc');
+  const dir = mkdtempSync(join(scratch, 'unpack-large-'));
+  const blob = join(dir, 'blob.bin');
+  const MB = 1024 * 1024;
+  const fd = openSync(blob, 'w');
+  const want = createHash('sha256');
+  for (let i = 0; i < 36; i++) {
+    const chunk = Buffer.concat([randomBytes(MB / 2), Buffer.alloc(MB / 2, i)]);
+    writeSync(fd, chunk);
+    want.update(chunk);
+  }
+  closeSync(fd);
+  const tar = join(dir, 'r.tar');
+  packTar(tar, [{ name: 'top/package.json', data: Buffer.from('{"version":"1.2.3"}') }, { name: 'top/data/blob.bin', path: blob }]);
+  const tgz = join(dir, 'r.tar.gz');
+  await pipeline(createReadStream(tar), createGzip(), createWriteStream(tgz));
+  const archive = statSync(tar).size;
+  assert.ok(archive >= 30 * MB, `fixture tar is ${archive} bytes`);
+  rmSync(blob);
+  gc();
+  const base = process.memoryUsage();
+  let peakBuffers = 0, peakLive = 0, peakRss = 0, samples = 0;
+  const sample = () => {
+    const m = process.memoryUsage();
+    peakBuffers = Math.max(peakBuffers, m.arrayBuffers - base.arrayBuffers);
+    peakRss = Math.max(peakRss, m.rss - base.rss);
+    gc();
+    peakLive = Math.max(peakLive, process.memoryUsage().arrayBuffers - base.arrayBuffers);
+    samples++;
+  };
+  const timer = setInterval(sample, 5);
+  try {
+    await unpackRelease(createReadStream(tgz), join(dir, 'out'));
+  } finally {
+    clearInterval(timer);
+  }
+  sample();
+  const after = process.memoryUsage();
+  const mb = (n) => (n / MB).toFixed(1);
+  t.diagnostic(`issue-954 memory: tar ${mb(archive)} MB, gz ${mb(statSync(tgz).size)} MB, ${samples} samples, peak live buffers +${mb(peakLive)} MB, peak arrayBuffers before gc +${mb(peakBuffers)} MB, peak rss +${mb(peakRss)} MB, after rss +${mb(after.rss - base.rss)} MB`);
+  assert.ok(samples >= 3, `only ${samples} memory samples ran during the unpack`);
+  assert.ok(peakLive < archive / 16, `live buffers grew ${peakLive} bytes for a ${archive}-byte archive`);
+  assert.ok(peakBuffers < archive / 2, `arrayBuffers grew ${peakBuffers} bytes for a ${archive}-byte archive`);
+  assert.ok(peakRss < archive / 2, `peak rss grew ${peakRss} bytes for a ${archive}-byte archive`);
+  const got = createHash('sha256');
+  for await (const chunk of createReadStream(join(dir, 'out', 'data', 'blob.bin'))) got.update(chunk);
+  assert.equal(got.digest('hex'), want.digest('hex'));
+  assert.equal(readFileSync(join(dir, 'out', 'package.json'), 'utf8'), '{"version":"1.2.3"}');
 });
 
 function plantedReleases() {
@@ -665,7 +739,7 @@ test('tracking a promotion branch follows that branch, never main, and the deplo
   }
 });
 
-function fakeBin(version, { afterMigrate = '', migrateWrites = false } = {}) {
+function fakeBin(version, { afterMigrate = '', migrateWrites = false, healthStatus = 'sick ? 503 : 200' } = {}) {
   return `import { createServer } from 'node:http';
 ${migrateWrites ? "import { DatabaseSync } from 'node:sqlite';" : ''}
 const data = process.argv[process.argv.indexOf('--data') + 1];
@@ -673,7 +747,7 @@ let sick = false;
 let broken = false;
 const s = createServer((q, r) => {
   r.setHeader('content-type', 'application/json');
-  if (q.url.startsWith('/api/health')) { r.statusCode = sick ? 503 : 200; return r.end(JSON.stringify({ ok: !sick, name: 'weave', version: ${JSON.stringify(version)} })); }
+  if (q.url.startsWith('/api/health')) { r.statusCode = ${healthStatus}; return r.end(JSON.stringify({ ok: !sick, name: 'weave', version: ${JSON.stringify(version)} })); }
   r.statusCode = broken ? 500 : 200;
   r.end('{}');
 });
@@ -775,6 +849,109 @@ test('a 5xx rate past the threshold inside the watch rolls back', async () => {
     const h = await health(base);
     assert.equal(h.supervisor.release, 'image');
     assert.match(h.supervisor.lastSwap.rollback, /5xx/);
+  } finally {
+    await sup.close();
+  }
+});
+
+const UNAVAILABLE = { error: 'The weave worker did not answer', code: 'unavailable' };
+
+test('a serving worker killed with SIGKILL outside any watch is reported through onWorkerDied once, and its requests answer 502 unavailable', async () => {
+  const dataPath = dataDir('killed');
+  const died = [];
+  const errors = [];
+  const { sup, base, events } = await supervise(dataPath, fakeGitHub(), {
+    onWorkerDied: () => died.push(Date.now()),
+    log: { log() {}, warn() {}, error: (m) => errors.push(m) },
+  });
+  try {
+    const { pid } = (await health(base)).supervisor;
+    process.kill(pid, 'SIGKILL');
+    await waitFor(() => died.length > 0);
+    await waitFor(() => !alive(pid));
+    assert.equal(died.length, 1, 'the death is reported once');
+    assert.ok(errors.some((m) => m.includes('the serving worker exited (SIGKILL)')), `the log names the signal: ${errors.join(' | ')}`);
+    const r = await fetch(`${base}/api/health`);
+    assert.equal(r.status, 502);
+    assert.deepEqual(await r.json(), UNAVAILABLE);
+    assert.equal(sup.status().pid, pid, 'nothing replaced it: outside a watch, restarting is the onWorkerDied owner\'s job');
+    assert.deepEqual(events, [], 'no swap or rollback was attempted');
+    assert.equal(died.length, 1);
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a serving worker killed with SIGKILL inside its watch rolls back to the image without calling onWorkerDied', async () => {
+  const dataPath = dataDir('watch-killed');
+  const died = [];
+  const gh = fakeMain({ heads: { main: MAIN_A }, tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT) }) });
+  const { sup, base, events } = await supervise(dataPath, gh, { env: TRACK, ...WATCH, watchMs: 20_000, onWorkerDied: () => died.push(Date.now()) });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    const killed = sup.status().pid;
+    assert.equal(sup.status().release, `c${MAIN_A}`);
+    process.kill(killed, 'SIGKILL');
+    await waitFor(() => events.some((e) => e.type === 'rolled-back'));
+    const back = events.find((e) => e.type === 'rolled-back');
+    assert.deepEqual([back.from, back.to], [`c${MAIN_A}`, 'image']);
+    assert.match(back.reason, /the serving worker exited \(SIGKILL\)/);
+    const h = await health(base);
+    assert.equal(h.version, IMAGE_VERSION);
+    assert.notEqual(h.supervisor.pid, killed);
+    assert.equal(h.supervisor.watch.ok, false);
+    assert.deepEqual(h.supervisor.failed, [MAIN_A]);
+    assert.deepEqual(died, [], 'a rollback is not a death');
+    assert.equal((await sup.check()).action, 'skipped', 'the killed commit is not retried until main moves');
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a worker that stops answering inside its watch is tallied as 502s until the rate trips a rollback', async () => {
+  const dataPath = dataDir('watch-deaf');
+  const gh = fakeMain({ heads: { main: MAIN_A }, tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { afterMigrate: 's.close(); s.closeAllConnections();' }) }) });
+  const { sup, base, events } = await supervise(dataPath, gh, { env: TRACK, ...WATCH, watchMs: 20_000, watchPollMs: 60_000 });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+    const deaf = sup.status().pid;
+    const answers = [];
+    for (let i = 0; i < 40 && !events.some((e) => e.type === 'rolled-back'); i++) {
+      const r = await fetch(`${base}/api/anything`);
+      answers.push([r.status, await r.json()]);
+    }
+    await waitFor(() => events.some((e) => e.type === 'rolled-back'));
+    const unavailable = answers.filter(([status, body]) => status === 502 && body.code === UNAVAILABLE.code);
+    assert.ok(unavailable.length >= 5, `the deaf worker's requests answered 502 unavailable (${unavailable.length} of ${answers.length})`);
+    const h = await health(base);
+    assert.equal(h.supervisor.release, 'image');
+    assert.match(h.supervisor.lastSwap.rollback, /^\d+ of \d+ responses were 5xx$/);
+    assert.deepEqual(h.supervisor.failed, [MAIN_A]);
+    await waitFor(() => !alive(deaf));
+  } finally {
+    await sup.close();
+  }
+});
+
+test('a candidate whose health check answers 502 is refused before any request reaches it, and the serving worker keeps serving', async () => {
+  const dataPath = dataDir('candidate-502');
+  const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { healthStatus: 502 }) }) });
+  const { sup, base, events } = await supervise(dataPath, gh, { healthTimeoutMs: 10_000 });
+  try {
+    const before = await health(base);
+    const result = await sup.check();
+    assert.equal(result.action, 'failed');
+    assert.equal(result.retry, false, 'a 502 health check is a verdict on the release');
+    assert.match(result.reason, /\/api\/health never answered ok for 9\.9\.9: HTTP 502, version 9\.9\.9/);
+    const after = await health(base);
+    assert.equal(after.version, IMAGE_VERSION, 'still the old version');
+    assert.equal(after.supervisor.pid, before.supervisor.pid, 'the same worker');
+    assert.equal(after.supervisor.lastSwap.ok, false);
+    assert.equal(after.supervisor.lastSwap.to, `v${NEXT}`);
+    assert.deepEqual(after.supervisor.failed, [NEXT]);
+    assert.deepEqual(events.map((e) => e.type), ['failed'], 'no request was ever switched to it');
+    assert.equal((await sup.check()).action, 'skipped', 'the refused release is not tried twice');
+    assert.deepEqual(releasesOf(dataPath), ['state.json'], 'the refused release folder is gone');
   } finally {
     await sup.close();
   }

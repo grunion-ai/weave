@@ -59,11 +59,31 @@ scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
 four shards, plus the browser tests the diff maps to, sharded at about twenty
 files each, four at most. A changed browser test runs itself. Any other changed
 file maps to browser tests named for its module (`public/chip-core.js` maps to
-`test/chip-*-browser.test.mjs`) or whose source cites its file name. A fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`) always runs, so a
-diff nothing maps to still boots the app in a browser. `PR gate` succeeds only
+`test/chip-*-browser.test.mjs`) or whose source cites its file name. The diff
+also maps by what it names: the plan reads the changed blocks with
+`git diff -W`, takes every dashed or slashed literal of six characters or more
+out of them (`sheet-grip`, `/api/tables/subtotals`), and adds each browser test
+whose source names one. A literal more than `REACH_SPREAD` browser tests name
+is too common to place a change, so it is dropped, and the reached tier stops
+at `REACH_CAP` files beyond the name matches, which holds the gate inside its
+fifteen-minute job timeout. A change to `public/app.js` or `src/routes.js`
+therefore runs the journeys that name the DOM classes and routes it touches,
+which file names alone never reach (Issue #1075). A fixed smoke set (`SMOKE` in
+`scripts/ci-test.mjs`) always runs, so a diff nothing maps to still boots the
+app in a browser. `PR gate` succeeds only
 when every shard succeeded and `pr-aggregate` finds executed evidence for every
 planned file at the exact commit. A newer push to the same pull request cancels
-the running one.
+the running one. A browser job bounds each
+`playwright install --with-deps` attempt at five minutes with `timeout` and
+runs a second one after `dpkg --configure -a`, since a trickling apt mirror
+held that step for fifteen minutes three times on 2026-10-23 and took the gate
+down with it. The bound lives in the shell, not in `timeout-minutes`: a step
+the runner kills on its own timeout cancels the whole job, so `continue-on-error`
+never reaches the retry (measured on PR #430, 2026-10-23). The step also writes
+an apt drop-in with a twenty-second acquire timeout and three retries, so one
+stalled connection no longer costs minutes. The `tests` shard job and the dev
+soak carry the same bound, after the mirror held their install for thirty
+minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
 The `tests` workflow runs the full inventory on every main push. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can
@@ -348,15 +368,38 @@ integration tests; ordinary jobs use the shared default, which is keyed on a has
 worktree with changed manager code gets its own manager, and the old one exits after
 five idle minutes. `--stop` cancels active work, so inspect `--status` first.
 
+## State catalog
+
+`test/lib/states.mjs` is the one list of app states the runtime probes walk
+(Issue #1119). A state names a route, a layout (`table`, `list`, `board`), an
+open state (`journey`, `rest`, `overlay`, `hover`, `drag`), the seeds it
+renders on, its cells and its themes. `PROBES` says which seed, open states,
+cells and themes each probe measures, and `plan(probe)` is the list it walks:
+the cut-off sweep, the flicker gate, the budgets, the a11y gate and the touch
+gate all read it. `test/lib/journeys.mjs` and `test/lib/overlays.mjs` are
+filtered views of it. A state that names no seed renders on every seed, so a
+surface added that way falls under every probe at once; the board and list
+views entered first.
+
+A state that fails a probe it newly joins carries a `hold` naming the Issue
+rows that track the failure, keyed by probe (`touch`) or probe and cell
+(`cutoff|desktop`). A held state stays out of that gate and is still walked:
+the gate asserts it still shows what its rows track and prints the counts.
+**Fixing one:** fix the rows, watch the held test fail because the state is
+clean, and drop the hold in the same change so the gate walks it. A hold never
+stands in for a baseline: `test/cutoff-baseline.json` and the touch gate's
+zero tolerance are unchanged.
+
 ## Flicker loop
 
 A flicker is something the reader saw that should not have been there: a node
 painted for a beat and gone, a list painted empty and refilled, a class that
 flipped and flipped back, content that jumped with no input, a screencast
 frame that differs from both neighbours while they match. `test/lib/flicker.mjs`
-is the probe; `test/lib/journeys.mjs` is the nine journeys it walks (load,
-open a table, scroll, edit a cell, open a row, switch view, type in a
-document, trash and undo, flip the theme).
+is the probe; it walks the journeys and the rest states the state catalog plans
+for it (load, open a table, scroll, edit a cell, open a row, switch view, type
+in a document, trash and undo, flip the theme, the phone journeys, and loading
+the board and list views).
 
 ```bash
 node scripts/flicker-sweep.mjs                         # 3 runs, keeps what 2 saw
@@ -405,6 +448,60 @@ raised number unless the same change writes a new reason under
 `raised["<journey|cell>"]`. The reason names the Issue or Feature that needs
 the click.
 
+## Vitals budget
+
+`test/vitals-budget-browser.test.mjs` loads home (`#/`) and a table
+(`#/table/<id>`) cold, once to warm up and then seven times, on desktop and on the phone, and reads
+LCP, CLS and INP from PerformanceObserver (`test/lib/vitals.mjs`). After the
+page is ready it makes one real interaction for INP: desktop opens the Task
+table from the sidebar or a row's dock, the phone opens the menu or taps a row.
+CLS is the largest session window of shifts without recent input. The medians
+are judged against `test/vitals-budget.json`
+(`vitals["<journey|cell|metric>"]`) and logged as
+`vitals <journey|cell|metric> <value> runs <...> budget <n>`. The phone cell runs
+Chromium with the iPhone 15 profile, because WebKit reports no `layout-shift`
+entries. Budgets hold the Linux runner's medians with headroom; a raise needs a
+new reason under `raised[...]`, checked against `HEAD^1` by
+`test/vitals-budget.test.mjs`.
+
+## Feedback budget
+
+An action answers on screen before the server does. `test/feedback-budget-browser.test.mjs`
+walks every journey three times with each `/api/` request held 1000 ms by a
+Playwright route, and times each trusted press or commit key (Enter, Tab,
+Escape) to the first animation frame after a visible DOM change. A skeleton, a
+loader or `aria-busy` is not an answer. The journey's time is its slowest
+action; the gate reads the median of the three walks against
+`test/feedback-budget.json` (`ms["<journey|cell>"]`) and logs
+`feedback <journey|cell> <ms> runs <a,b,c> budget <n> acts <kind:ms ...>`.
+
+A fourth walk runs against the unheld server and refuses any loading state
+shown for an action that settles inside the skeleton delay: a skeleton or
+loader visible sooner than `SKELETON_SHOW_AFTER_MS` after an action, or
+`aria-busy` that sets and clears inside it. `busy["<journey|cell>"]` lets a
+journey off that check only while it names the Issue that will fix it.
+
+Budgets hold the Linux runner's times with headroom, since a timing gate cannot
+ratchet down on every run the way clicks do. A time over its budget fails.
+Raising a budget needs a new reason under `raised["<journey|cell>"]`, checked
+against `HEAD^1` by `test/feedback-budget.test.mjs`, the same rule as the click
+budget. Journeys that wait on the server today carry their measured time and the
+`Slow:` Issue that tracks them; lower the budget in the change that fixes one.
+
+## Render budget
+
+`test/render-budget-browser.test.mjs` walks every journey three times with the
+flicker probe and counts its renders: animation frames in which the app wrote to
+the DOM under `<body>` (child lists, `class`, `hidden` or `style`). The median
+of three walks is judged against `test/render-budget.json`
+(`renders["<journey|cell>"]`) and logged as
+`renders <journey|cell> <n> runs <a,b,c> budget <n>`. Budgets hold the Linux
+runner's largest median plus a quarter and one frame, since network timing
+splits writes across frames from run to run. A count over its budget fails.
+Batch the writes, or raise the budget with a new reason under
+`raised["<journey|cell>"]`, which `test/render-budget.test.mjs` checks against
+`HEAD^1`.
+
 ## Cut-off loop
 
 Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page
@@ -422,15 +519,26 @@ node scripts/cutoff-sweep.mjs --cell phone --overlay field-editor,new-field   # 
 node scripts/cutoff-sweep.mjs --lower               # after a fix: lower this platform's baseline
 ```
 
-The sweep walks the flicker journeys and opens every dialog and popover listed in
-`test/lib/overlays.mjs`, at desktop 1440x900 in Chromium and phone 390x844 in
+The sweep walks the journeys and rest states the state catalog plans for it and
+opens every dialog and popover listed in `test/lib/overlays.mjs`, at desktop 1440x900 in Chromium and phone 390x844 in
 WebKit, on the messy seed. `test/cutoff-gate-browser.test.mjs` runs the same
 sweep in the gate against `test/cutoff-baseline.json`, which holds today's counts
 per platform, since system fonts differ between macOS and the Linux CI runner.
-The gate fails on a fingerprint the baseline does not hold, or more instances
-than it holds, and fails when a fingerprint disappears or drops in count until
-the change lowers the baseline. `test/cutoff-core.test.mjs` refuses a baseline
-that grows past its committed version or past the base a pull request merges
-into. **Fixing one:** fix the cut-off, run the sweep with `--lower`, and commit
-the lowered counts in the same change. A red gate prints the Linux counts it
-measured; copy them into the `linux` section.
+The baseline is a ceiling. The gate fails on a fingerprint the baseline does not
+hold, or more instances than it holds. A count under the ceiling is a stale
+baseline: the gate prints it as `stale:` and passes, since the same commit
+measured one breadcrumb fingerprint 5, 7 and 8 times on loaded runners (Issue
+#1103). `test/cutoff-core.test.mjs` refuses a baseline that grows past its
+committed version or past the base a pull request merges into, so the ceiling
+only ever comes down. **Fixing one:** fix the cut-off, run the sweep until the
+lower count holds, run it once with `--lower`, and commit the lowered counts in
+the same change. A red gate prints the Linux counts it measured; copy them into
+the `linux` section.
+
+### Mandatory onboarding verification
+
+[The onboarding verification contract](docs/onboarding-verification.md) maps the
+required journeys, permutations and remaining coverage gaps to executable tests.
+`ONBOARDING` in `scripts/ci-test.mjs` runs on every ready PR, alongside `SMOKE`,
+regardless of diff selection. Missing mandatory suites fail planning. Keep the
+contract and regression assertions current in the same PR as a flow change.

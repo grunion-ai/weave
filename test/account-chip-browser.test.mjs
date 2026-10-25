@@ -13,6 +13,10 @@ const s = await launch('account chip', (root) => {
   uno = new Weave();
   uno.updateWorkspace({ name: 'uno' });
   uno.createSpace({ name: 'Agent' });
+  const issuer = 'https://idp.weave.test';
+  const unoAda = uno.createAccount({ name: 'Ada Lovelace', role: 'editor' }).account;
+  root.redeemIdentityInvite(root.linkIdentity(ada.id, { issuer }).code, { issuer, subject: 'user_ada' });
+  uno.redeemIdentityInvite(uno.linkIdentity(unoAda.id, { issuer }).code, { issuer, subject: 'user_ada' });
   uno.setRequireAuth(true);
 }, { server: () => ({ workspaces: { uno } }) });
 
@@ -42,7 +46,7 @@ if (s) {
     assert.equal((await chip.locator('.nav-account-name').innerText()).trim(), 'Ada Lovelace');
     assert.equal((await chip.locator('.nav-account-role').innerText()).trim(), 'Editor');
     assert.match(await chip.locator('.nav-account-role').getAttribute('class'), /\bk-select\b.*\bhue-blue\b|\bhue-blue\b.*\bk-select\b/, 'the role is a blue chip');
-    assert.equal((await chip.locator('.av').innerText()).trim(), 'AL');
+    assert.equal((await chip.locator('.nav-account-av').innerText()).trim(), 'AL');
     assert.equal(await chip.evaluate((n) => n.closest('.nav-pinned')?.lastElementChild?.matches('.nav-identity') && !!n.closest('.nav-identity')), true, 'the panel closes the pinned strip');
     await ctx.close();
   });

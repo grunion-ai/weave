@@ -73,36 +73,55 @@ test('the rail floats: its track is sticky inside a full-height gutter', () => {
   assert.match(APP, /class:\s*'doc-rail-track'/, 'the rail is built with a track to stick');
 });
 
-test('each dash carries its heading, hidden until the rail is clicked open', () => {
-  assert.match(APP, /doc-rail-label'\s*\}\s*,\s*d\.text/, 'the label is the heading text');
-  assert.match(CSS, /\.doc-rail-label\s*\{[^}]*display:\s*none/, 'resting rail is a minimap');
-  assert.match(CSS, /\.doc-rail\.open\s+\.doc-rail-label\s*\{\s*display:\s*block/,
-    'clicking the rail opens the headings');
-  assert.doesNotMatch(CSS, /\.doc-rail:hover\s+\.doc-rail-label/,
-    'hover reveals nothing — the outline is click-to-open');
+test('the resting rail rides the vertical middle of its scroll box, as ChatGPT does', () => {
+  assert.match(CSS, /\.doc-rail-track\s*\{[^}]*top:\s*calc\(50%[^;]*var\(--rail-h/,
+    'sticky top is the box middle less half the rail');
+  assert.match(APP, /setProperty\('--rail-h'/, 'the rail measures its own height for the offset');
 });
 
-test('the open outline widens in place — it never leaves the gutter for the viewport middle', () => {
-  const rule = CSS.match(/\.doc-rail\.open\s+\.doc-rail-track\s*\{[^}]*\}/)?.[0];
-  assert.ok(rule, 'an .open state restyles the track');
-  assert.doesNotMatch(rule, /position:\s*fixed/, 'the open track stays in the gutter flow');
-  assert.doesNotMatch(rule, /top:\s*50%/, 'nothing anchors it to the viewport middle');
-  assert.doesNotMatch(rule, /translateY\(/, 'and nothing centres it there');
+test('a section preview is its text, whitespace collapsed and capped', () => {
+  assert.equal(LIB.sectionPreview([]), '');
+  assert.equal(LIB.sectionPreview(['  one\n two ', '', 'three']), 'one two three');
+  const long = LIB.sectionPreview(['word '.repeat(200)], 40);
+  assert.ok(long.length <= 40, `capped at the limit (${long.length})`);
+  assert.ok(long.endsWith('…'), 'a cut preview ends on an ellipsis');
+});
+
+test('resting dashes share one length and grow to their depth while the rail is hovered', () => {
+  assert.match(CSS, /\.doc-rail-tick\s*\{[^}]*width:\s*\d+px/, 'one resting length for every tick');
+  assert.match(CSS, /\.doc-rail:hover\s+\.doc-rail-tick\s*\{[^}]*width:\s*var\(--w\)/,
+    'a hovered rail lets each tick take its depth length');
+  assert.match(APP, /--w:\$\{d\.width\}px/, 'the depth length rides on the tick as --w');
+});
+
+test('hovering a dash shows one preview card beside the rail, never a panel or a native tooltip', () => {
   const from = APP.indexOf('function attachDashRail');
-  const rail = APP.slice(from, APP.indexOf('function attachHeadingFolds', from));
-  assert.doesNotMatch(rail, /track\.style\.left/, 'no inline x pin — sticky keeps the rail\'s own x');
+  const rail = APP.slice(from, APP.indexOf('const docFolds', from));
+  assert.match(rail, /class:\s*'doc-rail-card'/, 'the rail owns one card');
+  assert.match(rail, /pointerenter/, 'a dash under the pointer shows its card');
+  assert.match(rail, /focus/, 'and so does a dash reached by keyboard');
+  assert.match(rail, /sectionPreview\(/, 'the card previews the section text');
+  assert.doesNotMatch(rail, /classList\.add\('open'\)/, 'no click-to-open panel');
+  assert.doesNotMatch(rail, /title:\s*d\.text/, 'no native title tooltip on a dash');
+  assert.doesNotMatch(CSS, /\.doc-rail\.open/, 'no open-panel styles');
+  assert.doesNotMatch(CSS, /\.doc-rail-label/, 'no label list');
 });
 
-test('the outline opens on click and closes on Escape or a click away', () => {
+test('the card hides when the pointer leaves the rail, on blur and on Escape', () => {
   const from = APP.indexOf('function attachDashRail');
-  const rail = APP.slice(from, APP.indexOf('function refreshDashRail'));
-  assert.match(rail, /classList\.add\('open'\)/, 'a click opens the rail');
-  assert.match(rail, /Escape/, 'Escape closes it');
-  assert.match(rail, /contains\(e\.target\)/, 'so does clicking anywhere else');
+  const rail = APP.slice(from, APP.indexOf('function headText', from));
+  assert.match(rail, /pointerleave/);
+  assert.match(rail, /focusout/);
+  assert.match(rail, /Escape/);
 });
 
-test('a hovered dash grows its tick', () => {
-  assert.match(CSS, /\.doc-rail-dash:hover\s+\.doc-rail-tick\s*\{[^}]*scaleX\(/);
+test('the card clamps its preview to three lines and its title to one', () => {
+  assert.match(CSS, /\.doc-rail-card-text\s*\{[^}]*-webkit-line-clamp:\s*3/);
+  assert.match(CSS, /\.doc-rail-card-title\s*\{[^}]*text-overflow:\s*ellipsis/);
+});
+
+test('the dash for the section on screen is body-coloured', () => {
+  assert.match(CSS, /\.doc-rail-dash\.active\s+\.doc-rail-tick\s*\{[^}]*var\(--tblr-body-color\)/);
 });
 
 test('the document text is indented off the gutter', () => {
