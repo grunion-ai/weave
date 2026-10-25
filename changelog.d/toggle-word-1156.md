@@ -1,0 +1,1 @@
+- **Toggle labels wrap beside the switch**: a toggle's on and off words print in full on board tiles and the record page, wrapping to a second line instead of ending in an ellipsis (Issue #1156).
