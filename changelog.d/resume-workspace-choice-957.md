@@ -1,1 +1,0 @@
-- Returning to weave resumes the workspace explicitly selected in this browser, including workspaces opened through a root account. Listing workspaces preserves that choice, and revoked access still falls back to an accessible workspace (Issue #957).

@@ -1,1 +1,0 @@
-- **The workspace header's Invite button is a 44px target on a phone** (Issue #759): moving Invite into the workspace header left it a 42x28 `btn-sm`, which `test/phone-touch-targets-browser.test.mjs` refuses on the workspace home. It now takes the same 44px floor as the other header buttons at phone width and on touch screens.

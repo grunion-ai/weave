@@ -1,1 +1,0 @@
-- Create empty workspace keeps the entered name and address and validates availability. (Issue #1010).

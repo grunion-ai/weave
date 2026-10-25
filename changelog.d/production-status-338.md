@@ -1,1 +1,0 @@
-- Public production status page with observed uptime for web, API, and MCP, incident timelines, and an independently hosted backup (Feature #338).
