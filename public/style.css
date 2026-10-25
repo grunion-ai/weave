@@ -689,6 +689,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .panel { margin-bottom: 16px; }
 .fieldrow { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; padding: 4px 0; }
 .fieldrow label { color: var(--tblr-secondary); font-size: var(--fs-grid); }
+.fieldrow-pending { display: block; min-height: 22px; }
 .fieldrow.compact { grid-template-columns: 92px 1fr; font-size: var(--fs-grid); padding: 2px 0; }
 .entity-fields { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 22px; container-type: inline-size; container-name: entity-body; }
 .entity-values { column-gap: 26px; }

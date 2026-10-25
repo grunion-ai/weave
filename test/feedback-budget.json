@@ -7,7 +7,7 @@
     "scroll-grid|desktop": 120,
     "scroll-grid|phone": 120,
     "edit-cell|desktop": 120,
-    "open-row|desktop": 1400,
+    "open-row|desktop": 120,
     "switch-view|desktop": 120,
     "type-doc|desktop": 120,
     "type-doc|phone": 120,
@@ -17,17 +17,15 @@
     "phone-menu|phone": 450,
     "phone-table-sheet|phone": 120,
     "phone-picker|phone": 200,
-    "phone-open-row|phone": 1950
+    "phone-open-row|phone": 120
   },
   "busy": {
     "switch-view|desktop": "Issue #1062: a grid hold sets aria-busy at once, so closing the view strip flips it for 95 to 141 ms"
   },
   "raised": {
     "open-table|phone": "Issue #1042: fixed for Issue #1056 (PR #399), measured 9 to 10 ms locally; PR gate run 39875308002 read 52, 156 and 457 ms on a loaded runner and 42, 42, 42 on the retry, so it sits on the 120 ms fast-journey floor rather than its measured value",
-    "open-row|desktop": "Issue #1057: the dock waits for the entity request; measured 1052 to 1056 ms",
     "phone-search|phone": "Issue #1042: main CI runs every browser suite at once, and medians there drift past the PR gate baseline: main run 39377260173 read 298,145,214 ms against 210 (Issue #1060 tracks the slow sheet)",
     "phone-menu|phone": "Issue #1042: main CI runs every browser suite at once, and medians there drift past the PR gate baseline: main read 217,259,373 ms (Issue #1061 tracks the slow menu)",
-    "phone-open-row|phone": "Issue #1059: the record waits for the entity request; measured 1168 to 1462 ms",
     "open-table|desktop": "Issue #1042: main run 39378994075 read phone-table-sheet at 88, 48 and 86 ms (20 ms on retry); fast journeys on main swing between about 20 and 90 ms, so the floor moves from 80 to 120 ms",
     "scroll-grid|desktop": "Issue #1042: main run 39378994075 read phone-table-sheet at 88, 48 and 86 ms (20 ms on retry); fast journeys on main swing between about 20 and 90 ms, so the floor moves from 80 to 120 ms",
     "scroll-grid|phone": "Issue #1042: main run 39378994075 read phone-table-sheet at 88, 48 and 86 ms (20 ms on retry); fast journeys on main swing between about 20 and 90 ms, so the floor moves from 80 to 120 ms",

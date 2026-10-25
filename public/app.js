@@ -88,6 +88,7 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
     warmGets.delete(path);
     if (Date.now() - hit.at < WARM_MS) return hit.p;
   }
+  if (method !== 'GET') warmGets.clear();
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const seen = method === 'PATCH' && rowRevisions.get(path.match(/^\/entities\/([^/?]+)$/)?.[1]);
   let res;
@@ -402,13 +403,26 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: new Set(),
   selected: new Map() };
 
+const heldRows = new Map();
+const HELD_ROWS_CAP = 5000;
+function holdRow(item) {
+  if (!item?.id) return item;
+  if (heldRows.size >= HELD_ROWS_CAP) heldRows.clear();
+  heldRows.set(item.id, item);
+  return item;
+}
+
 async function openEntity(id, { drill = false } = {}) {
-  let entity;
   const here = allTables().find((d) => d.id === state.route?.dbId);
   const docs = (here?.fields ?? []).filter((f) => f.type === 'document').map((f) => `/doc/revisions?field=${encodeURIComponent(f.name)}&limit=2`);
   for (const tail of ['/references', '/references-from', ...docs]) warmGet(`/entities/${id}${tail}`);
-  try { entity = await api('GET', `/entities/${id}`); } catch (err) { return toast(err.message, true); }
-  warmGet(`/entities/${id}`, Promise.resolve(entity));
+  const fetching = warmGet(`/entities/${id}`);
+  const held = heldRows.get(id);
+  let entity = held && allTables().some((d) => d.id === held.dbId) ? held : null;
+  if (!entity) {
+    try { entity = await fetching; } catch (err) { return toast(err.message, true); }
+    warmGet(`/entities/${id}`, Promise.resolve(entity));
+  }
   const db = allTables().find((d) => d.id === entity.dbId);
   if (!db) { location.hash = `#/entity/${id}`; return; }
   if (state.route?.page !== 'db') {
@@ -417,7 +431,7 @@ async function openEntity(id, { drill = false } = {}) {
     history.pushState(null, '', `#/table/${db.id}`);
     await withPageLoader(() => showDatabase(db.id));
   }
-  await dockEntity(db, id, { drill, step: true });
+  await dockEntity(db, id, { drill, step: true, held: entity === held ? held : null });
 }
 
 document.addEventListener('click', (e) => {
@@ -587,7 +601,7 @@ function anchorTable(db) {
   return (state.route?.page === 'db' && allTables().find((d) => d.id === state.route.dbId)) || db;
 }
 
-async function dockEntity(db, id, { drill = false, step = false } = {}) {
+async function dockEntity(db, id, { drill = false, step = false, held = null } = {}) {
   commitActiveEdit();
   compare = null;
   const S = weaveEntitySurface;
@@ -600,7 +614,7 @@ async function dockEntity(db, id, { drill = false, step = false } = {}) {
   const known = crumbNav?.stack.find((h) => h.id === id);
   const hop = { ...known, ...tableHop(db), id };
   crumbNav = drill ? weaveBreadcrumbs.navHop(crumbNav, hop) : weaveBreadcrumbs.navOpen(crumbNav, hop);
-  dock = { db, state: st, editors: dock?.editors ?? [] };
+  dock = { db, state: st, editors: dock?.editors ?? [], held };
   syncDockChain();
   dockSyncUrl({ step });
   await drawDock();
@@ -660,8 +674,22 @@ function dockGo(next) {
 async function drawDock() {
   if (!dock) return;
   const top = dock.state.chain[dock.state.chain.length - 1];
-  let entity, refs;
-  try { [entity, refs] = await Promise.all([api('GET', `/entities/${top.id}`), entityRefs(top.id)]); } catch (err) { dockClose(); return toast(err.message, true); }
+  const held = dock.held?.id === top.id ? dock.held : null;
+  dock.held = null;
+  const full = Promise.all([api('GET', `/entities/${top.id}`), entityRefs(top.id)]);
+  let entity, refs, later = null;
+  if (held) {
+    entity = { ...held };
+    refs = [[], []];
+    later = full.then(([fresh, fullRefs]) => {
+      warmGet(`/entities/${top.id}`, Promise.resolve(fresh));
+      noteEntityRecent(fresh);
+      return [fresh, fullRefs];
+    });
+    later.catch(() => {});
+  } else {
+    try { [entity, refs] = await full; } catch (err) { dockClose(); return toast(err.message, true); }
+  }
   crumbNav = weaveBreadcrumbs.navUpdate(crumbNav, entityHop(entity));
   syncDockChain();
   noteEntityRecent(entity);
@@ -693,7 +721,7 @@ async function drawDock() {
       }, iconEl('✕')),
     ],
   };
-  await renderEntityView(entity, { mount: host, refresh: drawDock, refs, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs, dockControls });
+  await renderEntityView(entity, { mount: host, refresh: drawDock, refs, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs, later, dockControls });
   markDockedRow();
 }
 
@@ -6526,6 +6554,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       : td;
   };
   const buildRow = (item) => {
+    holdRow(item);
     const row = el('tr', {
       class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
       dataset: { eid: item.id, href: registryHref(db, item) ?? `#/entity/${item.id}` },
@@ -7201,7 +7230,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const i = at(item.id);
       if (i < 0) continue;
       const was = arr[i];
-      arr[i] = item;
+      arr[i] = holdRow(item);
       const j = items.findIndex((r) => r && r.id === item.id);
       if (j >= 0) items[j] = item;
       const tr = built.get(item.id);
@@ -10048,10 +10077,27 @@ function entityHop(entity) {
 }
 
 const entityRefs = (id) => Promise.all(['references-from', 'references'].map((path) => api('GET', `/entities/${id}/${path}`).catch(() => [])));
-async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null }) {
+async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null, later = null }) {
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
-  const [refsOut, refsIn] = refs;
+  let [refsOut, refsIn] = refs;
+  const fills = [];
+  const holds = (name) => !later || (!!entity.fields && name in entity.fields);
+  const holdsDoc = (name) => !later || (!!entity.docs && name in entity.docs);
+  const asNode = (x) => (x?.nodeType ? x : document.createTextNode(x ?? ''));
+  const streamed = (f, draw) => {
+    let node = asNode(holds(f.name) ? draw() : el('span', { class: 'fieldrow-pending' }));
+    if (later) {
+      const was = holds(f.name) ? JSON.stringify(entity.fields[f.name] ?? null) : undefined;
+      fills.push(() => {
+        if (was === JSON.stringify(entity.fields?.[f.name] ?? null) || node.contains(document.activeElement)) return;
+        const next = asNode(draw());
+        node.replaceWith(next);
+        node = next;
+      });
+    }
+    return node;
+  };
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
@@ -10067,6 +10113,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     requestAnimationFrame(fit);
   }
   nameInput.addEventListener('input', () => { for (const st of docFolds) st.schedule(); });
+  if (later) fills.push(() => { if (nameInput.value !== (entity.name ?? '') && document.activeElement !== nameInput) nameInput.value = entity.name ?? ''; });
   if (!computed) nameInput.addEventListener('change', async () => {
     try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); toast('Renamed'); }
     catch (err) { toast(err.message, true); }
@@ -10106,8 +10153,16 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, entityAvatarEl(entity, db, refresh), nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
   );
-  const nextFab = nextStateButton(entity, db, refresh);
-  if (nextFab) mount.append(nextFab);
+  let nextFab = null;
+  const drawFab = () => {
+    const fab = nextStateButton(entity, db, refresh);
+    if (nextFab && fab && nextFab.outerHTML === fab.outerHTML) return;
+    nextFab?.remove();
+    nextFab = fab;
+    if (fab) mount.append(fab);
+  };
+  if ((db?.fields ?? []).filter((x) => x.type === 'workflow').every((x) => holds(x.name))) drawFab();
+  if (later) fills.push(drawFab);
   if (!inPeek && db) {
     mount.querySelector(`.crumb-path a[href="#/table/${entity.dbId}"]`)?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -10116,7 +10171,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
 
   const grid = el('div', { class: 'entity-grid', dataset: { eid: id } });
-  grid.classList.toggle('side-open', refsOut.length > 0 || refsIn.length > 0);
+  const openSide = () => grid.classList.toggle('side-open', refsOut.length > 0 || refsIn.length > 0);
+  openSide();
   mount.append(el('div', { class: 'entity-split' }, grid));
   const left = el('div');
   const right = el('div', { class: 'entity-side' });
@@ -10130,31 +10186,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const dl = kindDots('doc', f, () => ({ entity }), { title: `${f.name} downloads`, align: 'left', extraClass: 'doc-dl' });
 
     const body = el('div', { class: 'doc-section-body' }, host);
-    const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
-    const isApp = mode === 'app';
-    const isDiagram = mode === 'diagram';
-    const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: f.name })
-      : isDiagram ? el('div', { class: 'doc-diagram' }) : null;
+    const nameEl = el('span', { class: 'doc-section-name' }, f.name);
     let sourceBox = null;
-    const drawDiagram = () => {
-      appFrame.replaceChildren(el('pre', { class: 'mermaid' }, sourceBox?.value ?? entity.docs?.[f.name] ?? ''));
-      renderMermaidIn(appFrame);
-    };
-    let showingSource = false;
-    let mounted = false;
-    const sourceToggle = appFrame ? el('span', {
-      class: 'doc-anchor', title: 'Edit source',
-      onclick: () => {
-        showingSource = !showingSource;
-        host.classList.toggle('hidden', !showingSource);
-        appFrame.classList.toggle('hidden', showingSource);
-        sourceToggle.classList.toggle('active', showingSource);
-        if (showingSource && !mounted) { mounted = true; mountSourceEditor(); }
-        if (!showingSource) { if (isApp) appFrame.src = appFrame.src; else drawDiagram(); }
-      },
-    }, iconEl('lucide:code-xml', 'wv-icon')) : null;
-    if (appFrame) { host.classList.add('hidden'); body.prepend(appFrame); }
-    if (isDiagram) drawDiagram();
     const caret = disclosure('doc-caret', true, {
       title: 'Collapse section',
       onclick: () => {
@@ -10168,8 +10201,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       kindContext(el('div', { class: 'doc-section-head' },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
-        el('span', { class: 'doc-section-name' }, f.name),
-        sourceToggle,
+        nameEl,
         el('button', {
           type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this document', 'aria-label': 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
@@ -10212,8 +10244,39 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       sourceBox = ta;
       host.append(ta);
     };
-    if (mode === 'code') mountSourceEditor();
-    if (mode === 'markdown') mountEditor();
+    const fillDoc = () => {
+      const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
+      const isApp = mode === 'app';
+      const isDiagram = mode === 'diagram';
+      const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: f.name })
+        : isDiagram ? el('div', { class: 'doc-diagram' }) : null;
+      const drawDiagram = () => {
+        appFrame.replaceChildren(el('pre', { class: 'mermaid' }, sourceBox?.value ?? entity.docs?.[f.name] ?? ''));
+        renderMermaidIn(appFrame);
+      };
+      let showingSource = false;
+      let mounted = false;
+      if (appFrame) {
+        const sourceToggle = el('span', {
+          class: 'doc-anchor', title: 'Edit source',
+          onclick: () => {
+            showingSource = !showingSource;
+            host.classList.toggle('hidden', !showingSource);
+            appFrame.classList.toggle('hidden', showingSource);
+            sourceToggle.classList.toggle('active', showingSource);
+            if (showingSource && !mounted) { mounted = true; mountSourceEditor(); }
+            if (!showingSource) { if (isApp) appFrame.src = appFrame.src; else drawDiagram(); }
+          },
+        }, iconEl('lucide:code-xml', 'wv-icon'));
+        nameEl.after(sourceToggle);
+        host.classList.add('hidden');
+        body.prepend(appFrame);
+      }
+      if (isDiagram) drawDiagram();
+      if (mode === 'code') mountSourceEditor();
+      if (mode === 'markdown') mountEditor();
+    };
+    if (holdsDoc(f.name)) fillDoc(); else fills.push(fillDoc);
     return section;
   };
 
@@ -10229,7 +10292,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
   const coverF = boardCore.coverField(db);
   const coverFile = boardCore.coverOf(db, entity);
-  if (coverFile) left.prepend(entityCoverEl(coverFile, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' }));
+  const coverEl = (file) => entityCoverEl(file, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' });
+  if (coverFile) left.prepend(coverEl(coverFile));
   const blocks = new Map();
 
   const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
@@ -10282,7 +10346,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) },
         fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null),
-      labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }),
+      streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { label: f.name })),
       sheetKind ? el('span', { class: 'fieldrow-chev', 'aria-hidden': 'true' }, chevron()) : null, note);
     node.dataset.ftype = f.type;
     if (f.type === 'attachments') {
@@ -10291,7 +10355,11 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       continue;
     }
     if (sheetKind) {
-      if (f.type === 'relation' && relationCount(entity.fields[f.name])) node.classList.add('fieldrow-wide');
+      if (f.type === 'relation') {
+        const wide = () => node.classList.toggle('fieldrow-wide', relationCount(entity.fields?.[f.name]) > 0);
+        wide();
+        if (later) fills.push(wide);
+      }
       node.addEventListener('click', (e) => {
         if (!dockCoversScreen.matches || e.target.closest(SHEET_HANDS_OFF)) return;
         (node.querySelector('.chip-trigger, .picker-face') ?? node.querySelector('.ms-box > button'))?.click();
@@ -10315,7 +10383,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         const label = row.querySelector('.fieldrow-label');
         return el('span', { class: 'wv-sum' + (system ? ' wv-sum-system' : ''), dataset: { field: row.dataset.field }, title: fieldDescription(f) || null },
           el('span', { class: 'wv-sum-label', onclick: f ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
-          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name }));
+          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name })));
       }));
     const setFolded = (closed) => {
       values.classList.toggle('hidden', closed);
@@ -10342,13 +10410,14 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   for (const f of shown.filter((x) => x.type === 'relation' && x.many && !x.targetDbIds)) {
     const grip = anchor(f.name);
     const slot = wireBlock(f.name, el('div', { class: 'related-block' }), [grip]);
-    relatedGrid(entity, f, refresh)
+    const drawRelated = () => relatedGrid(entity, f, refresh)
       .then((grid) => {
         if (!grid) { slot.remove(); blocks.delete(f.name); return; }
         grid.querySelector('.related-head')?.prepend(grip);
         slot.append(grid);
       })
       .catch((err) => toast(err.message, true));
+    if (holds(f.name)) drawRelated(); else fills.push(drawRelated);
   }
 
   const named = db.bodyBlocks ?? [VALUES_BLOCK];
@@ -10356,19 +10425,37 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const node = blocks.get(key);
     if (node && !node.isConnected) left.append(node);
   }
-  const appears = appearsAsPanel(db, entity, refresh);
+  let appears = appearsAsPanel(db, entity, refresh);
   if (appears) left.prepend(appears);
-  const inFields = new Set((db.fields ?? [])
-    .filter((f) => f.type === 'attachments')
-    .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
-  const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
-  if (loose.length) {
-    left.append(el('div', { class: 'card panel entity-files-card' },
+  if (later) {
+    fills.push(() => {
+      const next = appearsAsPanel(db, entity, refresh);
+      if (!appears || !next) return;
+      if (appears.outerHTML !== next.outerHTML) { appears.replaceWith(next); appears = next; }
+    });
+    if (coverF && !coverFile) fills.push(() => {
+      const file = boardCore.coverOf(db, entity);
+      if (!file) return;
+      if (appears?.isConnected) appears.after(coverEl(file)); else left.prepend(coverEl(file));
+    });
+  }
+  let filesCard = null;
+  const drawFiles = () => {
+    if (filesCard) return;
+    const inFields = new Set((db.fields ?? [])
+      .filter((f) => f.type === 'attachments')
+      .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
+    const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
+    if (!loose.length) return;
+    filesCard = el('div', { class: 'card panel entity-files-card' },
       el('div', { class: 'card-header' },
         el('h3', { class: 'card-title' }, `Files · ${loose.length}`)),
       el('div', { class: 'card-body attach-chips' },
-        ...loose.map((file) => attachItemEl(file)))));
-  }
+        ...loose.map((file) => attachItemEl(file))));
+    left.append(filesCard);
+  };
+  drawFiles();
+  if (later) fills.push(drawFiles);
 
   const refCard = (title, extraClass, refs) => {
     if (!refs.length) return;
@@ -10441,9 +10528,26 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     left.prepend(section);
     if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
   }
-  refCard('References', 'ref-outbound-card', refsOut);
-  refCard('Referenced by', 'ref-inbound-card', refsIn);
+  const drawRefs = () => {
+    openSide();
+    refCard('References', 'ref-outbound-card', refsOut);
+    refCard('Referenced by', 'ref-inbound-card', refsIn);
+  };
+  drawRefs();
   activityPanel.mounted(id, mount);
+  if (later) {
+    later.then(([fresh, fullRefs]) => {
+      if (!mount.isConnected) return;
+      Object.assign(entity, fresh);
+      [refsOut, refsIn] = fullRefs;
+      for (const fill of fills) fill();
+      drawRefs();
+    }, (err) => {
+      if (!mount.isConnected) return;
+      onClose?.();
+      toast(err.message, true);
+    });
+  }
 }
 
 const activityPanel = (() => {
