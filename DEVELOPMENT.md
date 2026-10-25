@@ -385,8 +385,9 @@ five idle minutes. `--stop` cancels active work, so inspect `--status` first.
 `test/lib/states.mjs` is the one list of app states the runtime probes walk
 (Issue #1119). A state names a route, a layout (`table`, `list`, `board`), an
 open state (`journey`, `rest`, `overlay`, `hover`, `drag`), the seeds it
-renders on, its cells and its themes. `PROBES` says which seed, open states,
-cells and themes each probe measures, and `plan(probe)` is the list it walks:
+renders on, its cells and its themes. `PROBES` says which seeds, open states,
+cells and themes each probe measures (a state walks on the first listed seed
+that renders it), and `plan(probe)` is the list it walks:
 the cut-off sweep, the flicker gate, the budgets, the a11y gate and the touch
 gate all read it. `test/lib/journeys.mjs` and `test/lib/overlays.mjs` are
 filtered views of it. A state that names no seed renders on every seed, so a
@@ -402,13 +403,22 @@ one-letter name beside them). The shared states `sink-table`, `sink-list`,
 the record page, so every probe sees every field type.
 
 A state that fails a probe it newly joins carries a `hold` naming the Issue
-rows that track the failure, keyed by probe (`touch`) or probe and cell
+rows that track the failure, keyed by probe (`cutoff`) or probe and cell
 (`cutoff|desktop`). A held state stays out of that gate and is still walked:
 the gate asserts it still shows what its rows track and prints the counts.
 **Fixing one:** fix the rows, watch the held test fail because the state is
 clean, and drop the hold in the same change so the gate walks it. A hold never
-stands in for a baseline: `test/cutoff-baseline.json` and the touch gate's
-zero tolerance are unchanged.
+stands in for a baseline: `test/cutoff-baseline.json` is unchanged.
+
+The touch gate keeps no holds. It walks every phone state in the catalog at
+rest or with an overlay open, on the touch and cut-off seeds, and counts the
+controls under 44 px as `state|control|engine` against the per-platform
+ceiling in `test/touch-baseline.json`, shaped and enforced like the cut-off
+baseline: a new fingerprint or a higher count fails, a lower count prints a
+stale note. Its `issues` map names the Issue rows behind every
+`state|control`, and the gate refuses an entry without one. **Fixing one:**
+fix the row, then `node scripts/touch-sweep.mjs --lower` (the full sweep on
+both engines) drops the counts; `--state <name>` reproduces one state.
 
 ## Quality scorecard
 

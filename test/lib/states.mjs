@@ -590,7 +590,7 @@ const TOUCH_STATES = [
   { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'] },
   { name: 'table list', route: 'table', open: 'rest', layout: 'table', roots: ['#main'] },
   { name: 'row page', route: 'row-dock', open: 'rest', layout: 'table', roots: ['#dock'] },
-  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163, 1164] } },
+  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu') },
   { name: 'picker sheet', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .chip-trigger[title="Status"]', root: '.picker-pop', act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
   { name: 'bug panel', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#bug-panel', act: (p) => openBugReport(p) },
 ].map((s) => ({ ...s, cells: PHONE, seeds: TOUCH }));
@@ -599,19 +599,19 @@ const SHARED_STATES = [
   { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { cutoff: [1123, 1124, 1125, 1126, 1127] } },
   { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127] } },
   { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1127, 1160, 1161], 'cutoff|phone': [1152, 1161] } },
-  { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127], 'cutoff|phone': [1157], touch: [1169, 1170] } },
+  { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127], 'cutoff|phone': [1157] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { 'cutoff|desktop': [1123, 1124, 1125, 1126, 1127, 1151, 1152, 1153, 1154, 1155, 1156, 1157, 1161], 'cutoff|phone': [1157] } },
-  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|desktop': [1127, 1151, 1153, 1158, 1159, 1161], 'cutoff|phone': [1151, 1152, 1156, 1161, 1162], touch: [1165, 1166, 1167, 1168] } },
+  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|desktop': [1127, 1151, 1153, 1158, 1159, 1161], 'cutoff|phone': [1151, 1152, 1156, 1161, 1162] } },
 ];
 
 export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...A11Y_STATES, ...TOUCH_STATES, ...SHARED_STATES];
 
 export const PROBES = {
-  cutoff: { seed: 'messy', opens: ['journey', 'rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: ['light'] },
-  flicker: { seed: 'grid', opens: ['journey', 'rest'], cells: CELLS, themes: ['light'] },
-  budgets: { seed: 'grid', opens: ['journey'], cells: CELLS, themes: ['light'] },
-  a11y: { seed: 'a11y', opens: ['rest', 'overlay', 'hover', 'drag'], cells: ['desktop'], themes: THEMES },
-  touch: { seed: 'touch', opens: ['rest', 'overlay'], cells: ['phone'], themes: THEMES },
+  cutoff: { seeds: ['messy'], opens: ['journey', 'rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: ['light'] },
+  flicker: { seeds: ['grid'], opens: ['journey', 'rest'], cells: CELLS, themes: ['light'] },
+  budgets: { seeds: ['grid'], opens: ['journey'], cells: CELLS, themes: ['light'] },
+  a11y: { seeds: ['a11y'], opens: ['rest', 'overlay', 'hover', 'drag'], cells: ['desktop'], themes: THEMES },
+  touch: { seeds: ['touch', 'messy'], opens: ['rest', 'overlay'], cells: ['phone'], themes: THEMES },
 };
 
 export const seedsOf = (s) => s.seeds ?? Object.keys(SEEDS);
@@ -624,10 +624,11 @@ export function plan(probe) {
   const p = PROBES[probe];
   const out = [];
   for (const state of STATES) {
-    if (!p.opens.includes(state.open) || !seedsOf(state).includes(p.seed)) continue;
+    const seed = p.seeds.find((x) => seedsOf(state).includes(x));
+    if (!p.opens.includes(state.open) || !seed) continue;
     for (const cell of cellsOf(state).filter((c) => p.cells.includes(c))) {
       for (const theme of themesOf(state).filter((t) => p.themes.includes(t))) {
-        out.push({ state, cell, theme, hold: state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null });
+        out.push({ state, seed, cell, theme, hold: state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null });
       }
     }
   }

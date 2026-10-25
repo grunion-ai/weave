@@ -1,0 +1,1 @@
+- The phone touch-target gate now walks every phone state in the state catalog, including the sheets and pickers it never measured, against a shrink-only ceiling in `test/touch-baseline.json` with an Issue row behind each entry. `node scripts/touch-sweep.mjs` measures it and `--lower` drops counts after a fix (Issue #1119).
