@@ -1503,9 +1503,9 @@ function expandDocument(grid, url, title) {
   return wrap;
 }
 
-function fullscreenViewer(title, { url = null, mount = null, sandbox = null, prev = null, next = null } = {}) {
+function fullscreenViewer(title, { url = null, mount = null, sandbox = null, prev = null, next = null, fileId = null } = {}) {
   document.querySelector('#fsv-back')?.remove();
-  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined }) : null;
+  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined, dataset: fileId ? { fileId } : {} }) : null;
   const close = () => back.remove();
   const back = el('div', { id: 'fsv-back' },
     el('div', { class: 'fsv-bar' },
@@ -3232,6 +3232,34 @@ addEventListener('message', (e) => {
   const h = Math.round(Number(e.data.height));
   if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) frame.style.height = `${Math.min(h, 200000)}px`;
 });
+const PAGE_STORAGE_SAVE_MS = 400;
+(() => {
+  const due = new Map();
+  const refused = new Set();
+  let timer = null;
+  const flush = () => {
+    clearTimeout(timer);
+    timer = null;
+    for (const [id, items] of due) {
+      due.delete(id);
+      api('PUT', `/files/${id}/storage`, { items }).then(() => refused.delete(id), (err) => {
+        if (refused.has(id)) return;
+        refused.add(id);
+        toast(err.message, true);
+      });
+    }
+  };
+  addEventListener('message', (e) => {
+    if (e.data?.weave !== 'frame-storage') return;
+    const frame = fileFrameOf(e.source);
+    const items = e.data.items;
+    if (!frame || !items || typeof items !== 'object' || Array.isArray(items)) return;
+    due.set(frame.dataset.fileId, items);
+    clearTimeout(timer);
+    timer = setTimeout(flush, PAGE_STORAGE_SAVE_MS);
+  });
+  addEventListener('pagehide', flush);
+})();
 function fileViewerEl(file, { size = 'medium' } = {}) {
   const kind = fileKind(file);
   const body = fileBodyEl(file, 'file-viewer-frame' + (kind === 'html' ? ' fits-content' : ''));
@@ -3259,6 +3287,7 @@ function fileLightbox(files, index) {
   fullscreenViewer(`${file.name} · ${index + 1} / ${files.length}`, {
     url: fileUrl(file) + (kind === 'html' ? '?view' : ''),
     sandbox: kind === 'html' ? HTML_FRAME_SANDBOX : null,
+    fileId: kind === 'html' ? file.id : null,
     prev: index > 0 ? () => fileLightbox(files, index - 1) : null,
     next: index < files.length - 1 ? () => fileLightbox(files, index + 1) : null,
   });

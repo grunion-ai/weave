@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, isHtmlFile, viewHtml, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
+import { Weave, WeaveError, fileHeaders, isHtmlFile, viewHtml, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -1986,7 +1986,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
           const { meta, bytes } = weave.readFile(m[1], { preview: rx.searchParams?.has('preview') ?? false });
           const view = rx.searchParams?.has('view') ?? false;
-          return out(200, view && isHtmlFile(meta) ? viewHtml(bytes) : bytes, fileHeaders(meta, bytes, { view }));
+          if (!view || !isHtmlFile(meta)) return out(200, bytes, fileHeaders(meta, bytes, { view }));
+          const page = viewHtml(bytes, frameStorageScript(weave.readFileStorage(m[1]).items) + FRAME_HEIGHT_SCRIPT);
+          return out(200, page, { ...fileHeaders(meta, bytes, { view }), 'Cache-Control': 'no-store' });
+        }
+        if ((m = path.match(/^\/api\/files\/([^/]+)\/storage$/))) {
+          if (rx.method === 'GET') return out(200, weave.readFileStorage(m[1]));
+          if (rx.method === 'PUT') return out(200, weave.writeFileStorage(m[1], body.items));
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {
