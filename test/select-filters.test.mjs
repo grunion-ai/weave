@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from './lib/temp.mjs';
 
 function bugs() {
   const w = new Weave();
@@ -67,7 +68,7 @@ test('countAll answers the undeleted table, before where and search', async () =
     assert.equal(body.total, 2);
     assert.equal(body.all, 5);
   } finally { server.close(); }
-  const dir = mkdtempSync(join(tmpdir(), 'weave-count-all-'));
+  const dir = tempDir('weave-count-all-');
   try {
     const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
     const run = (...args) => JSON.parse(execFileSync(process.execPath, [cli, '--data', join(dir, 'w.db'), ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));

@@ -11,6 +11,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { ROOT } from './lib/source.mjs';
 import { firstPartyAssets } from './lib/bytes.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const PUBLIC = join(ROOT, 'public');
 const ASSETS = firstPartyAssets(PUBLIC);
@@ -72,7 +73,7 @@ test('minifyJs reads app.js in linear time, well under a second', () => {
 });
 
 test('createMinified serves a file it cannot minify as written', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-minify-'));
+  const dir = tempDir('weave-minify-');
   try {
     const bad = join(dir, 'bad.js');
     writeFileSync(bad, "const s = 'open\n");

@@ -37,6 +37,12 @@ test('the README refuses an extension API, not the plugin marketplace it install
   assert.match(README, /\/plugin install weave --marketplace grunion-ai\/weave/);
 });
 
+test('the README What\'s inside table keeps every area row', () => {
+  for (const area of ['Data model', 'Statistics', 'Views', 'Documents', 'Automations', 'Search', 'Storage', 'Forms', 'Sharing', 'Templates', 'Phone', 'Distribution', 'History', 'Interfaces']) {
+    assert.match(section("What's inside"), new RegExp(`\\| ${area} \\|`), area);
+  }
+});
+
 test('the README names the published container image (Issue #1146)', () => {
   assert.match(README, /docker run[^\n]*ghcr\.io\/grunion-ai\/weave/);
 });

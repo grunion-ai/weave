@@ -7,11 +7,12 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { MAX_TRIES, WINDOW_MS } from '../src/applet.js';
 import { GUIDES } from '../src/handbook.js';
+import { tempDir } from './lib/temp.mjs';
 
 const PASSCODE = '11243947';
 
 async function stand(passcode = PASSCODE) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-applet-'));
+  const dir = tempDir('weave-applet-');
   const w = new Weave({ path: join(dir, 'uno.json') });
   w.state.meta.name = 'uno';
   const space = w.createSpace({ name: 'Product' });
@@ -267,7 +268,7 @@ test('applet: a file attaches to a task and comes back on it', async () => {
 test('applet: with no passcode configured there is no applet at all', async () => {
   const prior = process.env.WEAVE_APPLET_PASSCODE;
   delete process.env.WEAVE_APPLET_PASSCODE;
-  const dir = mkdtempSync(join(tmpdir(), 'weave-applet-off-'));
+  const dir = tempDir('weave-applet-off-');
   const w = new Weave({ path: join(dir, 'uno.json') });
   const { server } = await startServer(w, { port: 0 });
   try {
@@ -298,7 +299,7 @@ test('applet: the Environment reference counts the wrong answers the gate really
 test('applet: the Environment reference says an unset passcode shuts the applet, not opens it (Issue #814)', async () => {
   const prior = process.env.WEAVE_APPLET_PASSCODE;
   delete process.env.WEAVE_APPLET_PASSCODE;
-  const dir = mkdtempSync(join(tmpdir(), 'weave-applet-doc-'));
+  const dir = tempDir('weave-applet-doc-');
   const w = new Weave({ path: join(dir, 'uno.json') });
   const { server } = await startServer(w, { port: 0 });
   try {
@@ -330,7 +331,7 @@ test('serve: the host is a choice, and loopback is the default', async () => {
     'the phone needs --host to reach the applet, and nothing else may widen the bind');
   assert.match(bin, /startServer\(w, \{ port, host, build: buildInfo[^}]*\}\)/);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-host-'));
+  const dir = tempDir('weave-host-');
   const w = new Weave({ path: join(dir, 'uno.json') });
   const { server } = await startServer(w, { port: 0, host: '0.0.0.0' });
   try {
@@ -358,7 +359,7 @@ test('applet: the bug sheet speaks the shape /api/bug-report accepts', async () 
 
 test('applet: a report filed the way the applet files it becomes an Issue', async () => {
   const { seedWeaver } = await import('../src/weaver-seed.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-bug-'));
+  const dir = tempDir('weave-bug-');
   const prior = process.env.WEAVE_APPLET_PASSCODE;
   process.env.WEAVE_APPLET_PASSCODE = PASSCODE;
   const w = new Weave({ path: join(dir, 'uno.json') });
@@ -393,7 +394,7 @@ test('applet: a report filed the way the applet files it becomes an Issue', asyn
 });
 
 async function standStage() {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-applet-stage-'));
+  const dir = tempDir('weave-applet-stage-');
   const w = new Weave({ path: join(dir, 'work.json') });
   w.state.meta.name = 'work';
   const space = w.createSpace({ name: 'Ops' });

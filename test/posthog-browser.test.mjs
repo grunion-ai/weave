@@ -8,6 +8,7 @@ import { Weave } from '../src/engine.js';
 import { createOidc } from '../src/oidc.js';
 import { startIdp } from './lib/idp.mjs';
 import { launch } from './lib/browser.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const FAKE = `window.__ph = window.__ph || [];
 window.posthog = {
@@ -36,7 +37,7 @@ async function fakePosthog() {
 
 async function hub(posthog) {
   const idp = await startIdp();
-  const dir = mkdtempSync(join(tmpdir(), 'weave-posthog-flows-'));
+  const dir = tempDir('weave-posthog-flows-');
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const s = await launch(`posthog funnel, ${posthog ? 'with' : 'without'} a key`, (main) => {
     main.state.meta.name = 'Net';

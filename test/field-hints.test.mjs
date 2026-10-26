@@ -11,6 +11,7 @@ import { unwrapData } from './lib/fixtures.mjs';
 import { startServer } from '../src/server.js';
 import { FIELD_PATHS, nextFor, fieldHints, containerHints } from '../src/field-hints.js';
 import { FIELD_TYPE_VOCABULARY } from '../src/vocabulary.js';
+import { tempDir } from './lib/temp.mjs';
 
 let rpcId = 0;
 function call(w, name, args) {
@@ -155,7 +156,7 @@ test('REST and the CLI answer with the same guidance (Issue #579)', async () => 
     assert.equal(w.getField('Transaction', 'Amount').next, undefined, 'nothing is stored on the field');
   } finally { server.close(); }
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-hints-'));
+  const dir = tempDir('weave-hints-');
   try {
     const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
     const cli = (...args) => execFileSync('node', [BIN, ...args, '--data', join(dir, 'ws.db')], { encoding: 'utf8' });

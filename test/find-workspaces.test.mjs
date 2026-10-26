@@ -8,6 +8,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
 import { startIdp } from './lib/idp.mjs';
+import { tempDir } from './lib/temp.mjs';
 await import('../public/slug-core.js');
 const { WeaveSlugs } = globalThis;
 
@@ -32,7 +33,7 @@ const cookieLine = (res, name) => setCookies(res).find((c) => c.startsWith(`${na
 async function serve({ withOidc = true } = {}) {
   const idp = await startIdp();
   const oidc = withOidc ? createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' }) : null;
-  const dir = mkdtempSync(join(tmpdir(), 'weave-find-'));
+  const dir = tempDir('weave-find-');
   const pin = (w, name, role, subject) => {
     w.createAccount({ name, role });
     w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject });

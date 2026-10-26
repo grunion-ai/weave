@@ -264,7 +264,7 @@
     const reposition = (p) => {
       const list = candidates();
       if (!list.length) return;
-      const rects = list.map((n) => n.getBoundingClientRect());
+      const rects = list.map(settledRect);
       const i = nearest(rects, p.x, p.y);
       if (i < 0) return;
       const node = list[i];
@@ -297,9 +297,9 @@
       const to = settledRect(source);
       for (const m of members) m.classList.add('wv-reorder-settle');
       const reveal = () => { for (const m of members) m.classList.remove('wv-reorder-slot', 'wv-reorder-settle'); };
-      clone.settle(to).then(reveal);
+      const settled = clone.settle(to).then(reveal);
       if (reduced()) reveal();
-      return home;
+      return settled;
     };
     return press(down, {
       lift: (p, s) => {
@@ -327,8 +327,8 @@
         last = p;
         if (outside(p)) { finishWith(true); onCancel?.(); return; }
         const moved = !(skipNext(members[members.length - 1]) === origin.next && source.parentNode === origin.parent);
-        finishWith(false);
-        if (moved) onDrop?.({ ...placed, point: p, start });
+        const settled = finishWith(false);
+        if (moved) onDrop?.({ ...placed, point: p, start, settled });
         else onStay?.({ point: p, start });
       },
       cancel: () => { finishWith(true); onCancel?.(); },

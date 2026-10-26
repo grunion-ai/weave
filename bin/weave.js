@@ -210,8 +210,10 @@ Undo (entity mutations only — schema work is not undoable)
   undo --list [--limit 20]           Show what undo would revert, newest first
 Views & automations
   view list [--trash] | get <id> | delete <id> [--hard] | restore <id> | share <id> | unshare <id>
-  share list [--kind entity|table|space|view|workspace] [--id <id>]
-  share mint <kind> <id> [--mode read|edit|manage] [--private] [--label L] [--expires ISO]
+  share list [--kind entity|entities|table|space|view|workspace] [--id <id>] [--include-inactive]
+  share mint <kind> <id> [--ids '["id"]'] [--mode read|submit|edit|manage] [--form ID] [--private] [--label L] [--expiry 1h|1d|7d|30d|90d|never] [--expires ISO]
+  share update <share id> [--label L] [--expiry PRESET | --expires ISO]
+  share regenerate <share id> [--expiry PRESET | --expires ISO]   Replace the public link
   share renew <share id>              Thirty more days on the same link
   share revoke <share id>             Ends a link
   view create <name> --blocks '[{"table":"Task","where":[["Status","=","Open"]]}]'
@@ -895,14 +897,22 @@ async function main() {
       const [sub, a, b] = args;
       if (sub === 'mint') {
         return out(w.mintShare({
-          scope: { kind: a, id: a === 'workspace' ? null : b }, mode: flags.mode ?? 'read', visibility: flags.private ? 'private' : 'public',
+          scope: a === 'entities' ? { kind: a, ids: parseJsonFlag('ids') } : { kind: a, id: a === 'workspace' ? null : b }, mode: flags.mode ?? 'read', visibility: flags.private ? 'private' : 'public',
+          formId: flags.form, expiry: flags.expiry,
           label: typeof flags.label === 'string' ? flags.label : '', expiresAt: typeof flags.expires === 'string' ? flags.expires : null,
         }));
       }
+      if (sub === 'update' || sub === 'regenerate') {
+        const patch = {};
+        if (typeof flags.label === 'string') patch.label = flags.label;
+        if (typeof flags.expiry === 'string') patch.expiry = flags.expiry;
+        if (typeof flags.expires === 'string') patch.expiresAt = flags.expires;
+        return out(sub === 'update' ? w.updateShare(a, patch) : w.regenerateShare(a, patch));
+      }
       if (sub === 'revoke') return out(w.revokeShare(a));
       if (sub === 'renew') return out(w.renewShare(a));
-      if (sub === 'list' || !sub) return out(w.listShares({ kind: typeof flags.kind === 'string' ? flags.kind : null, id: typeof flags.id === 'string' ? flags.id : null }));
-      throw new WeaveError(`Unknown share subcommand '${sub}'. Try: list, mint, renew, revoke`);
+      if (sub === 'list' || !sub) return out(w.listShares({ kind: typeof flags.kind === 'string' ? flags.kind : null, id: typeof flags.id === 'string' ? flags.id : null, includeInactive: Boolean(flags['include-inactive']) }));
+      throw new WeaveError(`Unknown share subcommand '${sub}'. Try: list, mint, renew, revoke, update, regenerate`);
     }
     case 'automation': {
       const [sub, ref] = args;

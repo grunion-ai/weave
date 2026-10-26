@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer, createWorkspaceHub } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const json = async (r) => r.json();
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -43,7 +44,7 @@ test('hub: members join the root registry; the root grid carries a Workspace col
 });
 
 test('hub: adopted and created workspaces join; a hard delete drops the rows', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-rootreg-'));
+  const dir = tempDir('weave-rootreg-');
   try {
     const main = new Weave({ path: join(dir, 'main.db') });
     main.updateWorkspace({ name: 'main' });

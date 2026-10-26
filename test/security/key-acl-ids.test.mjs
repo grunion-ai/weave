@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
 const { client } = await import('../lib/fixtures.mjs');
 
 function build() {
-  const keystorePath = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+  const keystorePath = join(tempDir('weave-ks-'), 'keystore.json');
   const w = new Weave({ keystorePath });
   const kyle = w.createAccount({ name: 'kyle', role: 'architect' });
   const sajit = w.createAccount({ name: 'sajit', role: 'editor' });
@@ -87,7 +88,7 @@ test('a grant to a name with no account is refused', () => {
 });
 
 test('an account-less workspace keeps its keystore open to the local operator', () => {
-  const keystorePath = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+  const keystorePath = join(tempDir('weave-ks-'), 'keystore.json');
   const w = new Weave({ keystorePath, actor: 'local' });
   w.setKey('stripe', 'sk_test_hush');
   w.actor = 'web';
@@ -95,7 +96,7 @@ test('an account-less workspace keeps its keystore open to the local operator', 
 });
 
 test('over HTTP, a root editor whose name matches a legacy owner cannot rotate or delete that key', async () => {
-  process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+  process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
   const root = new Weave();
   root.updateWorkspace({ name: 'root' });
   const writer = root.createAccount({ name: 'root-writer', role: 'editor' });

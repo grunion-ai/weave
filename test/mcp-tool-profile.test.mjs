@@ -9,6 +9,7 @@ import { PassThrough } from 'node:stream';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage, startMcpServer, TOOLS, CORE_TOOLS, listTools } from '../src/mcp.js';
 import { unwrapData } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const CORE = ['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
@@ -126,7 +127,7 @@ test('the stdio server takes the profile', async () => {
 });
 
 test('weave mcp --tools all lists every tool; a bad value is refused', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-mcp-tools-'));
+  const dir = tempDir('weave-mcp-tools-');
   try {
     const data = join(dir, 'w.db');
     const count = (extra, env = {}) => new Promise((resolve, reject) => {

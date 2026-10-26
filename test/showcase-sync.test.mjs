@@ -8,9 +8,10 @@ import { Weave } from '../src/engine.js';
 import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
 import { seedWeaver, seedFieldShowcase, syncShowcase, showcaseHash } from '../src/weaver-seed.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
-const dir = mkdtempSync(join(tmpdir(), 'weave-showcase-sync-'));
+const dir = tempDir('weave-showcase-sync-');
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 
 function olderShowcase(w = new Weave()) {

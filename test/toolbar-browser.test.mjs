@@ -4,6 +4,7 @@ import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { launch } from './lib/browser.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 let tableRef;
 
@@ -272,7 +273,7 @@ if (s) {
   test('upload attaches png, pdf and txt to the entity and links them in the doc', async () => {
     const id = entityWithDoc('Upload', 'upload target paragraph\n');
     const page = await openEntity(id);
-    const dir = mkdtempSync(join(tmpdir(), 'weave-up-'));
+    const dir = tempDir('weave-up-');
     const png = join(dir, 'dot.png');
     writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==', 'base64'));
     const pdf = join(dir, 'note.pdf');
@@ -304,7 +305,7 @@ if (s) {
   test('an uploaded image carries no alt text, so a file name never lands in the document', async () => {
     const id = entityWithDoc('Alt', 'alt target paragraph\n');
     const page = await openEntity(id);
-    const dir = mkdtempSync(join(tmpdir(), 'weave-alt-'));
+    const dir = tempDir('weave-alt-');
     const png = join(dir, 'Trip wishlist.png');
     writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==', 'base64'));
     try {
@@ -322,7 +323,7 @@ if (s) {
   test('an upload that never lands writes nothing into the document', async () => {
     const id = entityWithDoc('Failed', 'failure target paragraph\n');
     const page = await openEntity(id);
-    const dir = mkdtempSync(join(tmpdir(), 'weave-fail-'));
+    const dir = tempDir('weave-fail-');
     const png = join(dir, 'Trip wishlist.png');
     writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==', 'base64'));
     try {
@@ -381,7 +382,7 @@ if (s) {
   test('an uploaded pdf embeds a live viewer and an html file links (Issue #483)', async () => {
     const id = entityWithDoc('ViewerUp', 'viewer paragraph target\n');
     const page = await openEntity(id);
-    const dir = mkdtempSync(join(tmpdir(), 'weave-view-'));
+    const dir = tempDir('weave-view-');
     const pdf = join(dir, 'view.pdf');
     writeFileSync(pdf, '%PDF-1.4\n%%EOF\n');
     const html = join(dir, 'page.html');

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { TOOLS, handleMcpMessage } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const SPEC = () => ({
   workspace: 'personal-finance',
@@ -227,7 +228,7 @@ test('POST /api/build is the HTTP door', async () => {
 
 test('weave build <file.json> is the CLI door, with --dry-run', () => {
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-build-'));
+  const dir = tempDir('weave-build-');
   const data = join(dir, 'ws.db');
   const file = join(dir, 'spec.json');
   writeFileSync(file, JSON.stringify(SPEC()));

@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-md-')), 'keystore.json');
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-md-'), 'keystore.json');
 const { renderMarkdown } = await import('../../src/markdown.js');
 
 const HOSTILE = [

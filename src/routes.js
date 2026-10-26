@@ -1,6 +1,6 @@
-import { Weave, WeaveError, fileHeaders, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
+import { Weave, WeaveError, fileHeaders, isHtmlFile, viewHtml, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
-import { shareDoor, shareGate, sharePage, scopedMention } from './shares.js';
+import { shareDoor, shareGate, sharePage, scopedMention, sharedRead } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
@@ -9,7 +9,8 @@ const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister, toolTable } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
-import { renderAuthPage, renderRefusalPage, sameOriginPath } from './auth-page.js';
+import { renderAuthPage, renderRefusalPage, renderMcpDoorPage, sameOriginPath } from './auth-page.js';
+import { CLIENT_FAULTS } from './oidc.js';
 import { PRIVACY, TERMS, SUPPORT, AGENT_DOCS } from './legal.js';
 import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
@@ -54,7 +55,17 @@ const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS)
 const actorOf = (account) => (account?.id ? accountActor(account.id) : account?.name);
 const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
 
-const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
+const prefersHtml = (accept) => {
+  const q = {};
+  for (const part of String(accept ?? '').split(',')) {
+    const [type, ...params] = part.trim().toLowerCase().split(';');
+    const weight = params.map((p) => p.trim().match(/^q=([\d.]+)$/)).find(Boolean);
+    q[type.trim()] = weight ? Number(weight[1]) : 1;
+  }
+  return (q['text/html'] ?? 0) > 0 && (q['text/html'] ?? 0) > (q['application/json'] ?? 0);
+};
+
+const wallPageHtml =(authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
@@ -298,7 +309,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
     if (wsM && wsM[1] !== 'undefined') {
-      const target = hub.get(wsM[1]) ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
+      const target = hub.get(wsM[1]) ?? hub.entries().find(([, w]) => w.state.meta.id === wsM[1])?.[1] ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
       if (!target) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
       weave = target;
       wsPrefix = `/w/${wsM[1]}`;
@@ -608,6 +619,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (path === '/mcp') {
       if (oidc) mcpChallenge = `Bearer resource_metadata="${hostOrigin ?? mcpOrigin(rx)}/.well-known/oauth-protected-resource${wsPrefix}/mcp"`;
       const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
+      if (oidc && !bearer && ['GET', 'HEAD'].includes(rx.method) && prefersHtml(rx.header('accept'))) {
+        const workspace = weave.state.meta.name;
+        return out(401, renderMcpDoorPage({ workspace, url: `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`, server: workspaceSlug(workspace) || 'weave', docsHref: `${wsPrefix}/docs` }),
+          { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'WWW-Authenticate': mcpChallenge });
+      }
       if (oidc && !bearer) return deny(401, `Sign in with ${oidc.name} to use this MCP server`);
       if (oidc && !bearer.startsWith('wv_')) {
         const ip = clientIp(rx);
@@ -627,19 +643,24 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       mcpDoor = true;
     }
     const door = shareDoor(path, authz);
-    const share = door ? weave.shareByToken(door.token) : null;
+    let share = door ? weave.shareByToken(door.token) : null;
     if (door) {
       if (!share) return door.page ? notFound({ error: 'This share link is not (or no longer) valid', code: 'not-found' }) : deny(401, 'Invalid token');
       if (share.visibility === 'private' && !sessionOn(weave)) return door.page ? wallPage() : deny(401, 'This share link is private: sign in to open it');
       weave.actor = actor = `share:${share.label || share.id.slice(0, 8)}`.slice(0, 120);
-      if (door.page) {
-        const hit = sharePage(weave, share, door.rest, { method: rx.method, prefix: wsPrefix });
+      if (share.mode === 'submit') {
+        if (door.rest === '' || door.rest === '/') path = `/f/${share.formId}`;
+        else if (door.rest.startsWith('/api/')) path = door.rest;
+        else return notFound({ error: 'Not found', code: 'not-found' });
+        if (!((['GET', 'HEAD'].includes(rx.method) && path === `/f/${share.formId}`) || (rx.method === 'POST' && path === `/api/forms/${share.formId}/submit`))) return deny(403, 'A submission link only accepts its form');
+      } else if (door.page) {
+        const hit = sharePage(weave, share, door.rest, { method: rx.method, prefix: wsPrefix, searchParams: rx.searchParams });
         if (hit.redirect) return { status: 302, headers: { Location: hit.redirect, 'Cache-Control': 'no-store' }, body: '' };
         if (hit.html) return out(200, hit.html, sandboxedHtmlHeaders({ 'Cache-Control': 'no-store' }, HTML_PAGE_POLICY));
         if (hit.status === 405) return out(405, { error: 'A share page is read-only', code: 'method-not-allowed' }, { Allow: 'GET, HEAD' });
         if (!hit.path) return notFound({ error: 'Not found', code: 'not-found' });
         path = hit.path;
-      }
+      } else if (door.rest.startsWith('/api/')) path = door.rest;
     }
     if (share) role = null;
     else if (authz && /^Bearer /i.test(authz)) {
@@ -791,7 +812,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     try {
       let m;
       if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|mmd|html|pdf)$/))) {
-        const entity = weave.readEntity(m[1]);
+        const entity = sharedRead(weave, share, m[1]);
         const fieldRef = m[2] ?? null;
         const markdown = weave.getDoc(m[1], fieldRef);
         const docLabel = fieldRef ? ` • ${fieldRef}` : '';
@@ -811,7 +832,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(200, pdf, fileHeaders({ name: `${entity.name || 'document'}.pdf`, mime: 'application/pdf' }, pdf));
       }
       if ((m = path.match(/^\/e\/([^/]+)\/entity\.(md|mmd|html|pdf)$/))) {
-        const entity = weave.readEntity(m[1]);
+        const entity = sharedRead(weave, share, m[1]);
         const lines = [`# ${entity.name || '#' + entity.publicId}`, '', `${entity.db} #${entity.publicId} • updated ${entity.updatedAt.slice(0, 10)}`, '', '## Fields', '', '| Field | Value |', '|---|---|'];
         for (const [k, v] of Object.entries(entity.fields)) {
           if (k in entity.docs) continue;
@@ -821,6 +842,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         for (const [docName, docText] of Object.entries(entity.docs)) {
           lines.push('', '<div class="pagebreak"></div>', '', `## ${docName}`, '', docText || '_empty_');
         }
+        if (entity.notice) lines.push('', entity.notice);
         const md = lines.join('\n');
         const subtitle = `${entity.db} #${entity.publicId} • full entity export`;
         if (m[2] === 'md') return out(200, md, { 'Content-Type': 'text/markdown; charset=utf-8' });
@@ -875,16 +897,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (err instanceof WeaveError && err.code === 'not-found' && weave.state.meta.requireAuth && role == null) return { form: null, admitted: false };
           throw err;
         }
+        if (share) return { form, admitted: share.mode === 'submit' && form.enabled && share.formId === form.id && form.shareOnly && form.owner === weave && share.scope.id === form.tableId };
         return { form, admitted: formAdmits(form, { role: roleOn(form.owner), anonymous: anonymousForms }) };
       };
       if ((m = path.match(/^\/f\/([^/]+)$/)) && ['GET', 'HEAD'].includes(rx.method)) {
         const { form, admitted } = formFor(m[1]);
         if (!admitted) return wall();
         formClient();
-        return out(200, renderFormPage(form, { mount: wsPrefix, searchParams: rx.searchParams }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        const formParams = new URLSearchParams(rx.searchParams);
+        if (share) formParams.delete('preview');
+        return out(200, renderFormPage(form, { mount: share ? `${wsPrefix}/s/${share.token}` : wsPrefix, ...(share && rx.searchParams.get('preview') === '1' ? { submitUrl: `${wsPrefix}/s/${share.token}/api/forms/${form.id}/submit?preview=1` } : {}), searchParams: formParams }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
 
       if ((m = path.match(/^\/api\/forms\/([^/]+)\/submit$/)) && rx.method === 'POST') {
+        if (share && rx.searchParams.get('preview') === '1') return deny(403, 'Preview does not submit entries');
         const { form, admitted } = formFor(m[1]);
         if (!admitted) return deny(401, 'Sign in to submit this form');
         const ip = clientIp(rx);
@@ -900,12 +926,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const input = form.kind === 'Row' && body && typeof body === 'object' && !Array.isArray(body) && !Object.hasOwn(body, 'values') ? { values: Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'idempotencyKey')) } : body;
         const result = submitForm(weave, form.id, input ?? {}, {
           actor,
+          ...(share ? { authorize: freshForm => {
+            const current = weave.shareByToken(door.token);
+            if (!current || current.mode !== 'submit' || current.formId !== freshForm.id || current.scope.id !== freshForm.tableId || !freshForm.shareOnly || freshForm.owner !== weave) throw new WeaveError('This submission link is no longer valid', 'forbidden');
+          } } : {}),
           server: { version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name },
           idempotencyKey,
-          scope: signedIn ? '' : idempotencyKey != null ? `key:${await digest(idempotencyKey)}` : `client:${client}`,
-          dedupScope: signedIn ? '' : `client:${client}`,
+          scope: `${share ? `share:${share.token}:` : ''}${signedIn ? '' : idempotencyKey != null ? `key:${await digest(idempotencyKey)}` : `client:${client}`}`,
+          dedupScope: `${share ? `share:${share.token}:` : ''}${signedIn ? '' : `client:${client}`}`,
         });
-        return out(result.replayed ? 200 : 201, result);
+        return out(result.replayed ? 200 : 201, share ? { submitted: true, ...(result.replayed ? { replayed: true } : {}), ...(result.duplicate ? { duplicate: true } : {}) } : result);
       }
 
       if (statusPage) {
@@ -993,6 +1023,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         weave.actor = actorForRequest;
         const route = `${rx.method} ${path}`;
         if (share) {
+          weave.maybeRefresh();
+          share = weave.shareByToken(door.token);
+          if (!share) return deny(401, 'This share link is no longer valid');
+          if (share.visibility === 'private' && !sessionOn(weave)) return deny(401, 'Sign in to open this share link');
           const gated = shareGate(weave, share, { method: rx.method, path, body, searchParams: rx.searchParams, viewerZone });
           if (gated) return out(gated.status, gated.data);
         }
@@ -1063,9 +1097,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (!c || !cookies.wv_oidc || cookies.wv_oidc !== c.binder) { noteFailure(ip); return refusal(400, 'This sign-in expired or was already used', 'Start again from the sign-in page, in the browser you want to sign in.'); }
               mount = c.mount ?? '';
               const toStart = (code) => ({ status: 302, headers: { Location: `/start?error=${code}`, 'Cache-Control': 'no-store' }, body: '' });
-              if (rx.searchParams.get('error') || !rx.searchParams.get('code')) {
+              const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
+              const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
+              const broken = (code, where) => {
+                console.error(`weave: ALERT sign-in is broken: ${oidc.name} refused weave's own client at its ${where} (${code}); check WEAVE_OIDC_CLIENT_ID, WEAVE_OIDC_CLIENT_SECRET and the allowed scopes against the provider`);
+                return refusal(503, 'Sign-in is broken on weave\'s side', [`${oidc.name} refused weave's own credentials (${code}), so nobody can sign in until weave's configuration is fixed.`, 'Signing in again, or with a different account, will not help. The fault is logged for the people who run weave; try again later.'], []);
+              };
+              const refused = rx.searchParams.get('error');
+              if (CLIENT_FAULTS.has(refused)) { noteFailure(ip); return broken(refused, 'authorization endpoint'); }
+              if (refused || !rx.searchParams.get('code')) {
                 if (c.start) return toStart('signin_failed');
-                return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? rx.searchParams.get('error') ?? 'No authorization code came back.'));
+                return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? refused ?? 'No authorization code came back.'), [await differentAccount(), signInAgain()]);
               }
               let who;
               try {
@@ -1073,7 +1115,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               } catch (err) {
                 noteFailure(ip);
                 if (!(err instanceof WeaveError)) return c.start ? toStart('provider_down') : refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
-                return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
+                if (CLIENT_FAULTS.has(err.provider)) return broken(err.provider, 'token endpoint');
+                return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message, [await differentAccount(), signInAgain()]);
               }
               if (c.start) {
                 const back = /^\/start(?:[?#]|$)/.test(c.next) ? c.next : '/start';
@@ -1081,8 +1124,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               }
               const root = hub.get(hub.defaultName);
               let account = null;
-              const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
-              const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
               let engine = null;
               if (c.invite) {
                 try {
@@ -1567,14 +1608,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const { token, url, ...grant } = share;
           return out(200, grant);
         }
+        const shareLink = grant => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` });
         if (path.startsWith('/api/shares') && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Share links are minted, listed, renewed and revoked by an architect');
-        if (route === 'GET /api/shares') return out(200, weave.listShares({ kind: rx.searchParams.get('kind'), id: rx.searchParams.get('id') }));
-        if (route === 'POST /api/shares') return out(201, weave.mintShare(body ?? {}));
+        if (route === 'GET /api/shares') return out(200, weave.listShares({ kind: rx.searchParams.get('kind'), id: rx.searchParams.get('id'), includeInactive: rx.searchParams.get('includeInactive') === '1' }).map(shareLink));
+        if (route === 'POST /api/shares') return out(201, shareLink(weave.mintShare(body ?? {})));
+        if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'PATCH') return out(200, shareLink(weave.updateShare(decodeURIComponent(m[1]), body ?? {})));
+        if ((m = path.match(/^\/api\/shares\/([^/]+)\/regenerate$/)) && rx.method === 'POST') return out(200, shareLink(weave.regenerateShare(decodeURIComponent(m[1]), body ?? {})));
         if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'DELETE') {
-          return out(200, weave.revokeShare(decodeURIComponent(m[1])));
+          return out(200, shareLink(weave.revokeShare(decodeURIComponent(m[1]))));
         }
         if ((m = path.match(/^\/api\/shares\/([^/]+)\/renew$/)) && rx.method === 'POST') {
-          return out(200, weave.renewShare(decodeURIComponent(m[1])));
+          return out(200, shareLink(weave.renewShare(decodeURIComponent(m[1]))));
         }
         if (route === 'GET /api/views') return out(200, weave.listViews({ trash: ['1', 'true'].includes(rx.searchParams.get('trash') ?? '') }));
         if (route === 'POST /api/views') return out(201, weave.createView(body ?? {}));
@@ -1941,7 +1985,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
           const { meta, bytes } = weave.readFile(m[1], { preview: rx.searchParams?.has('preview') ?? false });
-          return out(200, bytes, fileHeaders(meta, bytes, { view: rx.searchParams?.has('view') ?? false }));
+          const view = rx.searchParams?.has('view') ?? false;
+          return out(200, view && isHtmlFile(meta) ? viewHtml(bytes) : bytes, fileHeaders(meta, bytes, { view }));
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {

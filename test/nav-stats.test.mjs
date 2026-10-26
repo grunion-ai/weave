@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { APP } from './lib/source.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 function seeded(path = null) {
   const w = new Weave(path ? { path } : undefined);
@@ -28,7 +29,7 @@ test('storageStats: live entity count + attached file bytes (in-memory)', () => 
 });
 
 test('storageStats: file-backed workspace counts the .db on disk', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-stats-'));
+  const dir = tempDir('weave-stats-');
   try {
     const w = seeded(join(dir, 'ws.db'));
     w.createEntity('Contract', { name: 'Acme' });

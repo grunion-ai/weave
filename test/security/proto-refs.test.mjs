@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
-const ROOT = mkdtempSync(join(tmpdir(), 'weave-sec-proto-'));
+const ROOT = tempDir('weave-sec-proto-');
 process.env.WEAVE_KEYSTORE = join(ROOT, 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 test.after(() => rmSync(ROOT, { recursive: true, force: true }));

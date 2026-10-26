@@ -1,0 +1,1 @@
+- Selected-entry links now omit related and computed fields from JSON, HTML and document exports, and query responses no longer carry counts or chip metadata from outside a narrow grant. Share API requests recheck the credential after receiving a request body (Issue #1207).

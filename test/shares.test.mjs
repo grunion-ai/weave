@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { withinScope, SHARE_KINDS, SHARE_MODES, SHARE_VISIBILITIES } from '../src/shares.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -56,8 +57,8 @@ test('a grant has the ruled shape, a wvs_ token kept in plaintext, and a /s/ lin
 
 test('the enums are the ruled ones, and a bad grant is refused before it is stored', () => {
   const { w, one, task } = seed();
-  assert.deepEqual(SHARE_KINDS, ['entity', 'table', 'space', 'view', 'workspace']);
-  assert.deepEqual(SHARE_MODES, ['read', 'comment', 'edit', 'manage']);
+  assert.deepEqual(SHARE_KINDS, ['entity', 'entities', 'table', 'space', 'view', 'workspace']);
+  assert.deepEqual(SHARE_MODES, ['read', 'comment', 'edit', 'manage', 'submit']);
   assert.deepEqual(SHARE_VISIBILITIES, ['public', 'private']);
   const scope = { kind: 'entity', id: one.id };
   assert.throws(() => w.mintShare({ scope: { kind: 'document', id: one.id } }), { code: 'invalid' });
@@ -167,7 +168,7 @@ test('a view share is a grant; an old shareToken lifts into one on open and keep
   assert.equal(w.listViews()[0].shared, false);
   assert.equal(w.viewByShareToken(token), null);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-shares-'));
+  const dir = tempDir('weave-shares-');
   try {
     const path = join(dir, 'ws.db');
     const a = new Weave({ path });
@@ -401,7 +402,7 @@ test('REST mint, list and revoke follow the roles: architects only, editors and 
     assert.equal(made.status, 201);
     const g = await made.json();
     assert.match(g.token, /^wvs_/);
-    assert.equal(g.url, `/s/${g.token}`);
+    assert.equal(g.url, `/w/${w.state.meta.id}/s/${g.token}`);
     assert.equal(g.createdBy, 'root');
     assert.equal((await call('POST', '/api/shares', { token: architect, body: { scope, mode: 'comment' } })).status, 403);
     const listed = await (await call('GET', `/api/shares?kind=entity&id=${one.id}`, { token: architect })).json();
@@ -447,7 +448,7 @@ test('the MCP tool and the CLI verb mint, list and revoke', () => {
   assert.ok(dispatchTool(w, 'weave_shares', { action: 'revoke', share: g.id }).revokedAt);
   assert.throws(() => dispatchTool(w, 'weave_shares', { action: 'nope' }), /list, mint, renew, revoke/);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-share-cli-'));
+  const dir = tempDir('weave-share-cli-');
   try {
     const data = join(dir, 'ws.db');
     const cli = (...args) => execFileSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

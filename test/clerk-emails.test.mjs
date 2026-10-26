@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CLERK_EMAILS, CLERK_REQUIRED, clerkEmail, clerkPayload } from '../src/mail.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -60,7 +61,7 @@ test('clerk emails: unknown slug names the known ones', () => {
 });
 
 test('clerk emails: the script writes a payload and a preview per template without pushing', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'clerk-emails-test-'));
+  const dir = tempDir('clerk-emails-test-');
   const out = execFileSync(process.execPath, [join(ROOT, 'scripts/clerk-emails.mjs'), '--out', dir], { encoding: 'utf8' });
   for (const slug of SLUGS) {
     assert.ok(out.includes(`wrote ${slug}: `), `reports ${slug}`);

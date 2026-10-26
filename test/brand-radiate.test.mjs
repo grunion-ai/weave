@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RADIATE, SIZES, STAGE, rings, radiateSvg, build, buildStage } from "../brand/build-radiate.mjs";
+import { tempDir } from './lib/temp.mjs';
 
 const { width, height, pitch } = RADIATE;
 const cx = width / 2, cy = height / 2;
@@ -92,7 +93,7 @@ test("dark sits on the slate canvas with blue and sky strands; light on white wi
 });
 
 test("build writes the dark and light half-page SVGs", () => {
-  const dir = mkdtempSync(join(tmpdir(), "radiate-"));
+  const dir = tempDir("radiate-");
   build(dir);
   assert.deepEqual(readdirSync(dir).sort(),
     ["weave-radiate-half-letter-dark.svg", "weave-radiate-half-letter-light.svg"]);
@@ -165,7 +166,7 @@ test("stage rings keep the half-page pitch out to the corners", () => {
 });
 
 test("buildStage writes the setup page copies, and public/brand matches the generator", () => {
-  const dir = mkdtempSync(join(tmpdir(), "radiate-stage-"));
+  const dir = tempDir("radiate-stage-");
   buildStage(dir);
   assert.deepEqual(readdirSync(dir).sort(), ["weave-radiate-dark.svg", "weave-radiate-light.svg"]);
   for (const [theme, file] of Object.entries(STAGE.files)) {

@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { createWorkspaceHub, startServer } from '../src/server.js';
 import { workspaceSlug } from '../src/workspace-name.js';
+import { tempDir } from './lib/temp.mjs';
 
-const tmp = () => mkdtempSync(join(tmpdir(), 'weave-wsslug-'));
+const tmp = () => tempDir('weave-wsslug-');
 
 test('workspaceSlug: a display name folds to a DNS label: lowercase letters, digits and -', () => {
   assert.equal(workspaceSlug('Personal finance'), 'personal-finance');

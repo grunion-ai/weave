@@ -5,9 +5,10 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-const dir = mkdtempSync(join(tmpdir(), 'weave-cli-'));
+const dir = tempDir('weave-cli-');
 const data = join(dir, 'ws.json');
 
 function cli(...args) {

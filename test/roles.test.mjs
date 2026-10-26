@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+import { tempDir } from './lib/temp.mjs';
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../src/engine.js');
 const { createWorkspaceHub } = await import('../src/server.js');
 const { client } = await import('./lib/fixtures.mjs');
@@ -49,7 +50,7 @@ test('engine: the old names are input aliases, stored under the new name with a 
 });
 
 test('migration: an account and its wv_ token stored under an old role name are rewritten on open, and the token keeps working', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-roles-'));
+  const dir = tempDir('weave-roles-');
   try {
     const path = join(dir, 'w.db');
     const a = new Weave({ path });
@@ -173,7 +174,7 @@ test('mcp: weave_accounts create takes the new names, the old as aliases, Editor
 });
 
 test('cli: account create defaults to editor and takes the old names with a note', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-roles-cli-'));
+  const dir = tempDir('weave-roles-cli-');
   try {
     const data = join(dir, 'w.db');
     const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
@@ -235,7 +236,7 @@ test('account set is available through CLI and MCP without rotating tokens', () 
   const { account, token } = w.createAccount({ name: 'bot' });
   assert.deepEqual(dispatchTool(w, 'weave_accounts', { action: 'set', account: account.id, role: 'observer' }), { id: account.id, role: 'observer' });
   assert.equal(w.verifyToken(token).role, 'observer');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-role-set-'));
+  const dir = tempDir('weave-role-set-');
   try {
     const data = join(dir, 'w.db');
     const run = args => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });

@@ -25,7 +25,6 @@
   "poster-og-ink": { "ground": "self-contained", "use": ["link preview on dark timelines"] },
   "poster-og-slate": { "ground": "self-contained", "use": ["link preview on light timelines"] },
   "poster-og-contour": { "ground": "self-contained", "use": ["primary link preview with the contour field", "launch announcements"] },
-  "poster-github": { "ground": "self-contained", "use": ["GitHub social preview for grunion-ai/weave", "docs site og:image"] },
   "poster-contour-light": { "ground": "self-contained", "use": ["link preview, light", "blog post header"] },
   "poster-contour-blue": { "ground": "self-contained", "use": ["link preview, brand blue", "event pages"] },
   "poster-contour-topo": { "ground": "self-contained", "use": ["link preview, topographic field", "changelog posts"] },

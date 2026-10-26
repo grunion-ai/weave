@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { fold, foldRepo, stampServerJson, changelogGuard, fragmentGuard, openSecurityCitations, FRAGMENT_NAME } from '../scripts/changelog-fold.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -67,7 +68,7 @@ test('fold is idempotent, and with nothing to fold it changes nothing', () => {
 });
 
 test('foldRepo writes CHANGELOG.md, deletes the fragments, and a second run is a no-op', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-changelog-'));
+  const dir = tempDir('weave-changelog-');
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ version: '0.4.44' }));
   writeFileSync(join(dir, 'CHANGELOG.md'), MD);
   mkdirSync(join(dir, 'changelog.d'));
@@ -89,7 +90,7 @@ test('fold refuses an empty fragment and names it', () => {
 });
 
 test('foldRepo with an empty fragment writes nothing and deletes nothing', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-changelog-'));
+  const dir = tempDir('weave-changelog-');
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ version: '0.4.44' }));
   writeFileSync(join(dir, 'CHANGELOG.md'), MD);
   mkdirSync(join(dir, 'changelog.d'));
@@ -272,7 +273,7 @@ test('fold finds a heading it wrote itself, so a second fold of one version appe
 });
 
 test('foldRepo stamps the package version into server.json: the top-level version and the oci tag', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-changelog-'));
+  const dir = tempDir('weave-changelog-');
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ version: '0.4.44' }));
   writeFileSync(join(dir, 'CHANGELOG.md'), MD);
   mkdirSync(join(dir, 'changelog.d'));

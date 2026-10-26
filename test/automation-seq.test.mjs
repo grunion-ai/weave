@@ -10,6 +10,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { workspace } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -25,7 +26,7 @@ const legacy = (t, letter, seq) => ({
   trigger: { type: 'entity-created' }, actions: [{ type: 'append-doc', text: letter }], ...(seq != null ? { seq } : {}),
 });
 
-const tmp = () => mkdtempSync(join(tmpdir(), 'weave-autoseq-'));
+const tmp = () => tempDir('weave-autoseq-');
 
 test('create mints a workspace-wide seq that never repeats', () => {
   const { w, t } = workspace();

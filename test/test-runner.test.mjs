@@ -6,12 +6,13 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { RETRIES, argsFor, browserConcurrency, browserProblem, childEnv, lanes, run, testFiles } from '../scripts/test.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
 
 function fixture(kind) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-runner-'));
+  const dir = tempDir('weave-runner-');
   writeFileSync(join(dir, 'good.test.mjs'),
     "import test from 'node:test';\ntest('good', () => {});\n");
   const body = kind === 'broken'
@@ -107,7 +108,7 @@ test('the run finds every suite, and keeps the reporter it would have had', () =
 });
 
 test('default node discovery does not launch the suite through scripts/test.mjs (Issue #435)', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-discovery-'));
+  const dir = tempDir('weave-discovery-');
   try {
     mkdirSync(join(dir, 'scripts'));
     mkdirSync(join(dir, 'test'));
@@ -176,7 +177,7 @@ test('a run with no browser suite never checks for a browser (Issue #557)', () =
 });
 
 test('the browser check reports a launch that cannot find its executable (Issue #557)', (t) => {
-  const empty = mkdtempSync(join(tmpdir(), 'weave-no-browsers-'));
+  const empty = tempDir('weave-no-browsers-');
   try {
     const env = { ...childEnv(), PLAYWRIGHT_BROWSERS_PATH: empty };
     const problem = browserProblem(env);

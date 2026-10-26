@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import '../public/board-core.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const Board = globalThis.weaveBoardCore;
@@ -95,7 +96,7 @@ test('weave_table_view takes groups and picture and tells agents a gallery and a
 });
 
 test('the CLI takes --groups and --picture', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-board-'));
+  const dir = tempDir('weave-board-');
   try {
     const data = join(dir, 'w.db');
     const fw = new Weave({ path: data });
