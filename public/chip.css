@@ -42,6 +42,7 @@
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-field .k-key > .k-label, .fieldrow .k-key > .k-label { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+:is(.tile-field dd, .fieldrow) .k > .k-label, :is(.tile-field dd, .fieldrow) .k-rel > a > .k-label, .tile-field dd > .computed.k { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
 .k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); color: var(--tblr-secondary); }
 .k-more { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); }
 .mention-fields { display: none; }
