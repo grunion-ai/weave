@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave, ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS, HTML_VIEW_POLICY, fileHeaders } from '../src/engine.js';
+import { Weave, ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS, HTML_VIEW_POLICY, fileHeaders, viewHtml, FRAME_HEIGHT_SCRIPT } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
 await import('../public/date-grain.js');
@@ -102,6 +102,23 @@ test('fileHeaders: ?view shows an HTML upload under HTML_VIEW_POLICY and changes
   }
 });
 
+test('viewHtml puts the frame script after the doctype, so the page keeps standards mode, and touches no other byte (Issue #1175)', () => {
+  const script = Buffer.from(FRAME_HEIGHT_SCRIPT);
+  const cases = [
+    ['<!doctype html><p>x</p>', '<!doctype html>', '<p>x</p>'],
+    ['﻿  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0//EN">\n<html><body>é</body></html>', '﻿  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0//EN">', '\n<html><body>é</body></html>'],
+    ['<html><body>no doctype</body></html>', '', '<html><body>no doctype</body></html>'],
+  ];
+  for (const [page, before, after] of cases) {
+    assert.deepEqual(viewHtml(Buffer.from(page)), Buffer.concat([Buffer.from(before), script, Buffer.from(after)]), page.slice(0, 20));
+  }
+  const latin = Buffer.from([0x3c, 0x70, 0x3e, 0xe9, 0x3c, 0x2f, 0x70, 0x3e]);
+  assert.deepEqual(viewHtml(latin).subarray(script.length), latin, 'bytes that are not UTF-8 pass through untouched');
+  assert.match(FRAME_HEIGHT_SCRIPT, /^<script>[^<]*<\/script>$/, 'one inline script, allowed by script-src unsafe-inline');
+  assert.match(FRAME_HEIGHT_SCRIPT, /parent\.postMessage\(\{ ?weave: ?'frame-height'/, 'it posts the height to the parent');
+  assert.doesNotMatch(FRAME_HEIGHT_SCRIPT, /fetch|XMLHttpRequest|cookie/, 'it reaches nothing but the parent');
+});
+
 test('GET /api/files/:id?view serves the HTML upload in place; the bare route still downloads it', async () => {
   const w = fresh();
   const e = w.createEntity('Issue', { name: 'Page' });
@@ -115,7 +132,8 @@ test('GET /api/files/:id?view serves the HTML upload in place; the bare route st
     assert.equal(shown.status, 200);
     assert.equal(shown.headers.get('content-type'), 'text/html; charset=utf-8');
     assert.equal(shown.headers.get('content-security-policy'), `${HTML_VIEW_POLICY}; frame-ancestors 'self'`, 'the view policy, plus the frame rule every HTML answer carries');
-    assert.deepEqual(Buffer.from(await shown.arrayBuffer()), HTML, 'the bytes are unchanged');
+    assert.deepEqual(Buffer.from(await shown.arrayBuffer()), viewHtml(HTML), 'the page, with the frame script after its doctype');
+    assert.deepEqual(Buffer.from(await (await fetch(`${base}/api/files/${file.id}`)).arrayBuffer()), HTML, 'the stored bytes are unchanged');
     const png = w.attachFile(e.id, { name: 'a.png', mime: 'image/png', bytes: PNG });
     assert.equal((await fetch(`${base}/api/files/${png.id}?view`)).headers.get('content-security-policy'), "sandbox; default-src 'none'");
   } finally { server.close(); }

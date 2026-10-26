@@ -44,7 +44,7 @@ if (s) {
     const page = await open('light', { height: 900 });
     try {
       const shown = await page.$$eval('#main .crumb-actions > *', (ns) => ns.filter((n) => n.offsetParent).map((n) => n.className));
-      assert.equal(shown.length, 2, `only Search and View show beside the crumbs: ${shown}`);
+      assert.equal(shown.length, 3, `Search, View and Share show beside the crumbs: ${shown}`);
       assert.match(shown[0], /table-search/);
       assert.match(shown[1], /table-view-btn/);
       assert.equal(await page.locator('#main .crumb-row .dots-btn[title="Table actions"]').isVisible(), true, 'and the table menu');

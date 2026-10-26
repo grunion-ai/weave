@@ -75,6 +75,7 @@ test('PARITY.md scores its own table and the build that ships', () => {
 });
 
 const BOARD_LAYOUT = [
+  'Board layout',
   'layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side)',
   '[--layout table|list|board]',
 ];
@@ -82,6 +83,9 @@ const offersBoard = /\bboards?\b/i;
 const bare = (text) => BOARD_LAYOUT.reduce((t, ok) => t.split(ok).join(''), text);
 test('no agent-facing string offers a board view kind; Board is only a table layout (Issue #75, Issue #438; Net Task #122)', () => {
   assert.deepEqual(VOCABULARY.viewKinds, ['table']);
+  assert.match(bare('view: board'), offersBoard);
+  assert.match(bare('kind: board'), offersBoard);
+  assert.doesNotMatch(bare('Board layout'), offersBoard);
   const { icons, ...vocabulary } = VOCABULARY;
   assert.doesNotMatch(bare(JSON.stringify(vocabulary)), offersBoard, 'weave_vocabulary offers a board');
   for (const tool of TOOLS) assert.doesNotMatch(bare(JSON.stringify(tool)), offersBoard, `${tool.name} offers a board`);

@@ -93,7 +93,7 @@ if (s) {
       await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
       const row = (await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json())).find((w) => w.name === 'scratch');
       assert.ok(row?.deletedAt, 'the workspace sits in the trash, file kept');
-      await page.click('#sidebar .nav-system a[href="#/trash"]');
+      await page.click('#ws-rail .nav-system a[href="#/trash"]');
       await page.locator('#main .trash-workspaces button', { hasText: 'Restore' }).click();
       await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
     } finally { await page.close(); }
@@ -122,7 +122,7 @@ if (s) {
   test('the personal menu opens Settings, and the System group keeps only its four tables', async () => {
     const page = await open('#/');
     try {
-      assert.equal(await page.locator('#sidebar .nav-system a[href="#/settings"]').count(), 0, 'Settings is not a System row');
+      assert.equal(await page.locator('#ws-rail .nav-system a[href="#/settings"]').count(), 0, 'Settings is not a System row');
       await page.click('#sidebar .nav-identity .nav-identity-more');
       await page.locator('.nav-personal-menu [role="menuitem"]', { hasText: 'Settings' }).click();
       await page.waitForSelector('#main .settings-purge');

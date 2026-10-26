@@ -105,6 +105,7 @@ test('a link minted before expiry existed is given thirty days from the upgrade'
   w.actor = 'ar';
   const g = w.mintShare({ scope: { kind: 'entity', id: row.id } });
   w.state.meta.shares[g.id].expiresAt = null;
+  delete w.state.meta.shares[g.id].expiryVersion;
   w.save();
   w.store.close?.();
   const reopened = new Weave({ path });

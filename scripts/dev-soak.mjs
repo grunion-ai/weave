@@ -35,10 +35,9 @@ export function judge(health, { sha, first = null }) {
 }
 
 export function describe(outcome) {
-  const passed = `${outcome.rounds} smokes over ${Math.round(outcome.ms / 60_000)} min${outcome.retries ? ` (${outcome.retries} retried)` : ''}, watch passed, ${outcome.fivexx} 5xx`;
-  const text = outcome.state === 'success' ? passed
-    : outcome.state === 'superseded' ? `superseded: ${outcome.reason}`
-      : outcome.reason;
+  const text = outcome.state === 'success'
+    ? `${outcome.rounds} smokes over ${Math.round(outcome.ms / 60_000)} min${outcome.retries ? ` (${outcome.retries} retried)` : ''}, watch passed, ${outcome.fivexx} 5xx`
+    : outcome.reason;
   return text.length > 140 ? `${text.slice(0, 137)}...` : text;
 }
 
@@ -49,7 +48,6 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
   let rounds = 0;
   let misses = 0;
   let retries = 0;
-  let watchPassed = false;
   let nextSmoke = start;
   const end = (state, reason) => ({ state, reason, rounds, retries, fivexx, ms: clock.now() - start });
   for (;;) {
@@ -76,13 +74,11 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
       misses = 0;
       const j = judge(health.body, { sha, first });
       if (j.verdict === 'moved') {
-        if (watchPassed && rounds > 0 && clock.now() - start >= cfg.soakMs) return end('success', `watch passed over the full window; ${j.reason}`);
         const head = await io.mainHead();
         return head && head !== sha ? end('superseded', `main moved to ${short(head)}; ${j.reason}`) : end('failure', j.reason);
       }
       if (j.verdict === 'fail') return end('failure', j.reason);
       first ??= health.body.supervisor;
-      if (j.verdict === 'ok') watchPassed = true;
       const elapsed = clock.now() - start;
       if (elapsed >= cfg.soakMs && rounds > 0 && j.verdict === 'ok') return end('success', j.reason);
       if (elapsed >= cfg.soakMs + cfg.graceMs) return end('failure', `watch still open ${Math.round(elapsed / 60_000)} min after the swap`);
@@ -94,10 +90,13 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
 }
 
 export async function report({ sha, outcome, io }) {
-  const state = outcome.state === 'superseded' ? 'pending' : outcome.state;
-  const status = { state, context: CONTEXT, description: describe(outcome), target_url: io.runUrl };
+  if (outcome.state === 'superseded') {
+    io.log(`dev-soak ${short(sha)}: superseded, ${outcome.reason}; the newer commit's run posts its own status`);
+    return null;
+  }
+  const status = { state: outcome.state, context: CONTEXT, description: describe(outcome), target_url: io.runUrl };
   await io.status(sha, status);
-  if (outcome.state === 'failure') await io.alert(`weave dev-soak: ${short(sha)} failed: ${outcome.reason} ${io.runUrl ?? ''}`.trim());
+  if (outcome.state !== 'success') await io.alert(`weave dev-soak: ${short(sha)} failed: ${outcome.reason} ${io.runUrl ?? ''}`.trim());
   return status;
 }
 

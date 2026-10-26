@@ -60,6 +60,24 @@ if (s) {
     await page.mouse.up();
   };
 
+  test('a lane column folds independently from its swimlanes', async () => {
+    seed();
+    const page = await open();
+    try {
+      const head = page.locator('.board-col-head[data-key="Research"]');
+      await head.locator('.list-fold').click();
+      assert.ok((await head.boundingBox()).width < 80);
+      assert.equal(await page.locator(`${cell('Research', 'Office')} .board-cards`).isVisible(), false);
+      assert.equal(await page.locator(`${cell('Ready to Buy', 'Office')} .board-cards`).isVisible(), true);
+      await eventually(() => view().collapsed?.includes('Research'), true);
+      await page.reload();
+      await page.waitForSelector('.board-col-head.column-shut');
+      await page.locator('.board-col-head[data-key="Research"] .list-fold').click();
+      assert.equal(await page.locator(`${cell('Research', 'Office')} .board-cards`).isVisible(), true);
+      await eventually(() => view().collapsed?.includes('Research'), false);
+    } finally { await page.close(); }
+  });
+
   for (const theme of ['light', 'dark']) {
     test(`side by side with a second group draws lanes across the columns, a cell per column (${theme})`, async () => {
       seed();
@@ -79,7 +97,8 @@ if (s) {
         }
         const lane = page.locator('.board-lane[data-key="Office"] .board-lane-title');
         assert.equal(await lane.evaluate((n) => getComputedStyle(n).position), 'sticky');
-        await page.setViewportSize({ width: 860, height: 900 });
+        await page.setViewportSize({ width: 820, height: 900 });
+        assert.ok(await page.locator('.wv-board').evaluate((n) => n.scrollWidth > n.clientWidth), 'the narrow viewport overflows the columns');
         await page.locator('.wv-board').evaluate((n) => { n.scrollLeft = 400; });
         const board = await page.locator('.wv-board').boundingBox();
         await page.waitForFunction(() => document.querySelector('.wv-board').scrollLeft > 0);
@@ -158,7 +177,7 @@ if (s) {
       const parent = page.locator('.wv-board > .board-group[data-key="Ready to Buy"]');
       assert.equal(await parent.locator(':scope > .board-group-head .list-group-label').innerText(), 'Ready to Buy', 'the first level heads its section');
       assert.equal(await parent.locator(':scope > .board-group-head .list-count').innerText(), '2');
-      assert.ok(await parent.locator(`:scope > .board-groups > .board-group[data-key="Ready to Buy${SEP}Office"] ${card(ids.desk)}`).count(), 'the second level nests inside the first');
+      assert.ok(await parent.locator(`:scope > .board-nest > .board-group[data-key="Ready to Buy${SEP}Office"] ${card(ids.desk)}`).count(), 'the second level nests inside the first');
       assert.equal(await page.locator('.wv-board .board-group-head .list-group-label', { hasText: 'Office' }).count(), 3, 'a second-level heading repeats under each first-level section');
       assert.deepEqual(page.errors, []);
     } finally { await page.close(); }

@@ -8,11 +8,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const out = join(here, "png");
 mkdirSync(out, { recursive: true });
 const { assets } = JSON.parse(readFileSync(join(here, "manifest.json"), "utf8"));
+const scale = (a) => (a.family === "icon" ? 4 : a.family === "lockup" ? 3 : a.family === "badge" ? 2 : 1);
 
-const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined });
+const browser = await chromium.launch();
 const page = await browser.newPage();
 for (const a of assets) {
-  const w = a.width * a.scale, h = a.height * a.scale;
+  const k = scale(a), w = a.width * k, h = a.height * k;
   await page.setViewportSize({ width: w, height: h });
   await page.setContent(
     `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@600&display=block">` +

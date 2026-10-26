@@ -12,6 +12,7 @@ const COLUMNS = [
   ['Fields', 'text'],
   ['Hidden', 'text'],
   ['Enabled', 'checkbox'],
+  ['Share only', 'checkbox'],
   ['Floor', 'select', { options: FORM_FLOORS }],
   ['Kind', 'select', { options: FORM_KINDS }],
 ];
@@ -69,7 +70,7 @@ export function adoptForms(member, root) {
     if (!tablesRow) continue;
     root.createEntity(target.id, {
       name: member.entityName(row),
-      values: { Description: raw('Description') ?? '', Table: tablesRow.id, Fields: raw('Fields') ?? '[]', Hidden: raw('Hidden') ?? '{}', Enabled: raw('Enabled') === true, Floor: optionName('Floor', raw('Floor')), Kind: optionName('Kind', raw('Kind')) },
+      values: { Description: raw('Description') ?? '', Table: tablesRow.id, Fields: raw('Fields') ?? '[]', Hidden: raw('Hidden') ?? '{}', Enabled: raw('Enabled') === true, 'Share only': raw('Share only') === true, Floor: optionName('Floor', raw('Floor')), Kind: optionName('Kind', raw('Kind')) },
     });
     member.deleteEntity(row.id, { hard: true });
     moved += 1;
@@ -134,6 +135,7 @@ function toForm(reg, row) {
     kind,
     floor: FORM_FLOORS.includes(f.Floor) ? f.Floor : 'Observer',
     enabled: f.Enabled === true,
+    shareOnly: f['Share only'] === true,
     workspace: owner.state.meta.name,
     table: owner.qualifiedName(table),
     fields,
@@ -224,11 +226,12 @@ const FORM_SETTINGS = ['name', 'description', 'table', 'fields', 'hidden', 'enab
 
 function validateFormSettings(settings, creating = false) {
   if (!isMap(settings)) throw new WeaveError('Form settings must be an object', 'invalid');
-  for (const key of Object.keys(settings)) if (!FORM_SETTINGS.includes(key) && !(creating && key === 'kind')) throw new WeaveError(`Unknown form setting '${key}'`, 'invalid');
+  for (const key of Object.keys(settings)) if (!FORM_SETTINGS.includes(key) && !(creating && ['kind', 'shareOnly'].includes(key))) throw new WeaveError(`Unknown form setting '${key}'`, 'invalid');
   if ((creating || hasOwn(settings, 'name')) && (typeof settings.name !== 'string' || !settings.name.trim())) throw new WeaveError('A form needs a name', 'invalid');
   if (hasOwn(settings, 'description') && typeof settings.description !== 'string') throw new WeaveError('Description must be text', 'invalid');
   if (hasOwn(settings, 'enabled') && typeof settings.enabled !== 'boolean') throw new WeaveError('Enabled must be true or false', 'invalid');
   if (hasOwn(settings, 'floor') && !FORM_FLOORS.includes(settings.floor)) throw new WeaveError('Floor must be Observer or Anonymous', 'invalid');
+  if (hasOwn(settings, 'shareOnly') && typeof settings.shareOnly !== 'boolean') throw new WeaveError('Share only must be true or false', 'invalid');
   if (hasOwn(settings, 'kind') && !FORM_KINDS.includes(settings.kind)) throw new WeaveError('Unknown form kind', 'invalid');
 }
 
@@ -266,7 +269,7 @@ export function updateForm(w, ref, patch = {}) {
 
 export function createForm(w, settings = {}) {
   validateFormSettings(settings, true);
-  let { name, description = '', table, fields = [], hidden = {}, enabled = true, floor = 'Observer', kind = 'Row' } = settings;
+  let { name, description = '', table, fields = [], hidden = {}, enabled = true, floor = 'Observer', kind = 'Row', shareOnly = false } = settings;
   const reg = registryOf(w);
   const formsT = formsTable(w);
   const db = w.getTable(table);
@@ -277,7 +280,7 @@ export function createForm(w, settings = {}) {
   ({ fields, hidden } = normalizeDefinition(w, db, name, fields, hidden, kind));
   const row = reg.createEntity(formsT.id, {
     name,
-    values: { Description: description, Table: tablesRow.id, Fields: JSON.stringify(fields), Hidden: JSON.stringify(hidden), Enabled: !!enabled, Floor: floor, Kind: kind },
+    values: { Description: description, Table: tablesRow.id, Fields: JSON.stringify(fields), Hidden: JSON.stringify(hidden), Enabled: !!enabled, 'Share only': shareOnly, Floor: floor, Kind: kind },
   });
   return getForm(w, row.id);
 }
@@ -299,6 +302,7 @@ export function ensureBugForm(docs) {
 }
 
 export function formAdmits(form, { role = null, anonymous = false } = {}) {
+  if (form.shareOnly) return false;
   if (!form.owner.state.meta.requireAuth) return true;
   if (role != null) return true;
   return form.floor === 'Anonymous' && !!anonymous;
@@ -466,8 +470,10 @@ export function submitForm(w, ref, input = {}, options = {}) {
   }
 }
 
-function submitResolved(w, ref, input = {}, { actor = null, server = {}, idempotencyKey = null, scope = '', dedupScope = scope, dedupWindowMs = 60000 } = {}) {
+function submitResolved(w, ref, input = {}, { actor = null, server = {}, idempotencyKey = null, scope = '', dedupScope = scope, dedupWindowMs = 60000, authorize = null } = {}) {
   const form = getForm(w, ref);
+  if (form.shareOnly && typeof authorize !== 'function') throw new WeaveError('This form requires a live submission link', 'forbidden');
+  if (authorize) authorize(form);
   if (!form.enabled) throw new WeaveError(`The form '${form.name}' is turned off`, 'forbidden');
   if (!isMap(input) || (input.values != null && !isMap(input.values))) throw new WeaveError('Form values must be an object', 'invalid');
   if (idempotencyKey != null && (typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || idempotencyKey.length > 200)) throw new WeaveError('Idempotency key must contain 1 to 200 characters', 'invalid');
@@ -546,7 +552,7 @@ function bugControls(form) {
   ].join('');
 }
 
-export function renderFormPage(form, { mount = '', searchParams = new URLSearchParams() } = {}) {
+export function renderFormPage(form, { mount = '', submitUrl = null, searchParams = new URLSearchParams() } = {}) {
   form = prefillForm(form, searchParams);
   const bug = form.kind === 'Bug report';
   const body = bug ? bugControls(form) : form.fields.map((f) => `<div class="mb-3">${control(f)}</div>`).join('');
@@ -554,6 +560,7 @@ export function renderFormPage(form, { mount = '', searchParams = new URLSearchP
 <html lang="en" data-bs-theme="light">
 <head>
 <meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(form.name)} · weave</title>
 <link rel="stylesheet" href="/vendor/tabler.min.css">
@@ -563,7 +570,7 @@ ${bug ? '<script src="/bug-core.js"></script>\n' : ''}<script src="/form.js"></s
 <body class="d-flex flex-column">
 <main class="page page-center">
 <div class="container container-tight py-4">
-<form class="card card-md" id="wv-form" data-submit="${esc(`${mount}/api/forms/${form.id}/submit`)}" data-kind="${bug ? 'bug' : 'row'}" novalidate>
+<form class="card card-md" id="wv-form" data-submit="${esc(submitUrl ?? `${mount}/api/forms/${form.id}/submit`)}" data-kind="${bug ? 'bug' : 'row'}" novalidate>
 <div class="card-body">
 <h1 class="card-title h2 mb-2">${esc(form.name)}</h1>
 ${form.description ? `<p class="text-secondary mb-4">${esc(form.description)}</p>` : ''}${form.enabled ? '' : '<div class="alert alert-warning" role="alert">This form is turned off.</div>'}

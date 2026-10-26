@@ -15,7 +15,6 @@
       "png": "png/badge-footer-light.png",
       "width": 156,
       "height": 40,
-      "scale": 2,
       "ground": "white or light page",
       "use": [
         "foot of public forms under Send (src/forms.js)",
@@ -33,7 +32,6 @@
       "png": "png/badge-footer-dark.png",
       "width": 156,
       "height": 40,
-      "scale": 2,
       "ground": "dark page",
       "use": [
         "foot of public forms and shared views in dark mode"
@@ -50,7 +48,6 @@
       "png": "png/badge-release.png",
       "width": 140,
       "height": 140,
-      "scale": 2,
       "ground": "any; the badge carries its own ink disc",
       "use": [
         "beside each version in release notes and GitHub Releases"
@@ -67,7 +64,6 @@
       "png": "png/pattern-contour-light.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "site hero background",
@@ -86,7 +82,6 @@
       "png": "png/pattern-contour-dark.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "dark site hero background",
@@ -104,7 +99,6 @@
       "png": "png/pattern-rope-light.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "merch all-over print",
@@ -123,7 +117,6 @@
       "png": "png/pattern-rope-dark.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "dark merch print",
@@ -141,7 +134,6 @@
       "png": "png/icon-product.png",
       "width": 48,
       "height": 48,
-      "scale": 4,
       "ground": "any",
       "use": [
         "Product and engineering starter category (public/starter-core.js)"
@@ -158,7 +150,6 @@
       "png": "png/poster-og.png",
       "width": 1200,
       "height": 630,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "grunion.ai/weave og:image",
@@ -176,7 +167,6 @@
       "png": "png/poster-og-ink.png",
       "width": 1200,
       "height": 630,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "link preview on dark timelines"
@@ -193,7 +183,6 @@
       "png": "png/poster-og-slate.png",
       "width": 1200,
       "height": 630,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "link preview on light timelines"
@@ -210,7 +199,6 @@
       "png": "png/poster-square.png",
       "width": 1080,
       "height": 1080,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "Instagram and LinkedIn square posts"
@@ -227,7 +215,6 @@
       "png": "png/poster-banner.png",
       "width": 1584,
       "height": 396,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "LinkedIn and X profile headers"
@@ -244,7 +231,6 @@
       "png": "png/poster-og-contour.png",
       "width": 1200,
       "height": 630,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "primary link preview with the contour field",
@@ -262,7 +248,6 @@
       "png": "png/pattern-contour-dense.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "fine texture behind copy",
@@ -280,7 +265,6 @@
       "png": "png/pattern-contour-peaks.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "single-mark hero with relief map",
@@ -298,7 +282,6 @@
       "png": "png/pattern-contour-blue.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "brand blue hero background",
@@ -316,7 +299,6 @@
       "png": "png/pattern-rope-twill.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "textile and merch print",
@@ -334,7 +316,6 @@
       "png": "png/pattern-rope-blue.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "brand blue merch print",
@@ -352,7 +333,6 @@
       "png": "png/pattern-dots-vignette.png",
       "width": 1200,
       "height": 800,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "brand blue background behind a centred mark",
@@ -371,7 +351,6 @@
       "png": "png/poster-contour-light.png",
       "width": 1200,
       "height": 630,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "link preview, light",
@@ -389,7 +368,6 @@
       "png": "png/poster-contour-blue.png",
       "width": 1200,
       "height": 630,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "link preview, brand blue",
@@ -407,7 +385,6 @@
       "png": "png/poster-contour-topo.png",
       "width": 1200,
       "height": 630,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "link preview, topographic field",
@@ -425,7 +402,6 @@
       "png": "png/poster-contour-square.png",
       "width": 1080,
       "height": 1080,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "Instagram and LinkedIn square posts, contour field"
@@ -442,7 +418,6 @@
       "png": "png/poster-contour-banner.png",
       "width": 1584,
       "height": 396,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "LinkedIn and X profile headers, contour field"
@@ -459,7 +434,6 @@
       "png": "png/poster-story-contour.png",
       "width": 1080,
       "height": 1920,
-      "scale": 2,
       "ground": "self-contained",
       "use": [
         "Instagram and LinkedIn stories"
@@ -476,7 +450,6 @@
       "png": "png/badge-blue.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "white, slate or any light surface",
       "use": [
         "grunion.ai/weave hero",
@@ -496,7 +469,6 @@
       "png": "png/badge-ink.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "brand blue #2563eb or photography",
       "use": [
         "posters on brand blue (X1, X4)",
@@ -515,7 +487,6 @@
       "png": "png/badge-cream.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "ink #0c1b33 or night #0f1115",
       "use": [
         "dark site sections",
@@ -534,7 +505,6 @@
       "png": "png/badge-mono-blue.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "white or uncoated paper",
       "use": [
         "one-colour print",
@@ -553,7 +523,6 @@
       "png": "png/badge-mono-ink.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "white or uncoated paper",
       "use": [
         "invoices",
@@ -573,7 +542,6 @@
       "png": "png/badge-mono-cream.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "dark photography or video",
       "use": [
         "video end cards",
@@ -591,7 +559,6 @@
       "png": "png/badge-mono-white.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "brand blue #2563eb",
       "use": [
         "buttons and banners on blue",
@@ -609,7 +576,6 @@
       "png": "png/badge-watermark.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "brand blue #2563eb",
       "use": [
         "tonal background behind copy",
@@ -627,7 +593,6 @@
       "png": "png/badge-small.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "white or light surface",
       "use": [
         "favicon-size spots under 72px",
@@ -647,7 +612,6 @@
       "png": "png/badge-sticker.png",
       "width": 260,
       "height": 260,
-      "scale": 2,
       "ground": "print, die-cut",
       "use": [
         "3 inch die-cut sticker; the cream ring is the die line"
@@ -664,7 +628,6 @@
       "png": "png/badge-small-ink.png",
       "width": 240,
       "height": 240,
-      "scale": 2,
       "ground": "dark surface",
       "use": [
         "dark avatars",
@@ -682,7 +645,6 @@
       "png": "png/badge-lockup-stacked.png",
       "width": 240,
       "height": 330,
-      "scale": 2,
       "ground": "white or light surface",
       "use": [
         "narrow columns",
@@ -701,7 +663,6 @@
       "png": "png/badge-lockup-light.png",
       "width": 660,
       "height": 240,
-      "scale": 2,
       "ground": "white or light surface",
       "use": [
         "email header",
@@ -721,7 +682,6 @@
       "png": "png/badge-lockup-dark.png",
       "width": 660,
       "height": 240,
-      "scale": 2,
       "ground": "ink or night surface",
       "use": [
         "dark email header",
@@ -740,7 +700,6 @@
       "png": "png/lockup-light.png",
       "width": 480,
       "height": 88,
-      "scale": 3,
       "ground": "white or light surface",
       "use": [
         "site and app header",
@@ -760,7 +719,6 @@
       "png": "png/lockup-dark.png",
       "width": 480,
       "height": 88,
-      "scale": 3,
       "ground": "ink or night surface",
       "use": [
         "dark site and app header",
@@ -779,7 +737,6 @@
       "png": "png/lockup-stacked-light.png",
       "width": 240,
       "height": 143,
-      "scale": 3,
       "ground": "white or light surface",
       "use": [
         "sign-in and splash screens",
@@ -798,7 +755,6 @@
       "png": "png/lockup-stacked-dark.png",
       "width": 240,
       "height": 143,
-      "scale": 3,
       "ground": "ink or night surface",
       "use": [
         "dark sign-in and splash screens",
@@ -806,24 +762,6 @@
         "dark covers"
       ],
       "note": "Same stacked lockup on dark surfaces."
-    },
-    {
-      "code": "X8",
-      "id": "poster-github",
-      "name": "GitHub social preview, contour field",
-      "family": "poster",
-      "theme": null,
-      "svg": "svg/poster-github.svg",
-      "png": "png/poster-github.png",
-      "width": 1280,
-      "height": 640,
-      "scale": 2,
-      "ground": "self-contained",
-      "use": [
-        "GitHub social preview for grunion-ai/weave",
-        "docs site og:image"
-      ],
-      "note": null
     }
   ]
 }

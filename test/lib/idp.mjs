@@ -171,6 +171,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       codes.delete(form.get('code'));
       const publicClient = clients.has(id) && !secret;
       if (!publicClient && (id !== clientId || secret !== clientSecret)) return json(401, { error: 'invalid_client' });
+      if (['invalid_client', 'invalid_scope', 'unauthorized_client'].includes(tamper)) return json(tamper === 'invalid_client' ? 401 : 400, { error: tamper });
       if (!grant || form.get('grant_type') !== 'authorization_code') return json(400, { error: 'invalid_grant' });
       if (publicClient && grant.clientId !== id) return json(400, { error: 'invalid_grant', error_description: 'code was issued to another client' });
       if (form.get('redirect_uri') !== grant.redirectUri) return json(400, { error: 'invalid_grant', error_description: 'redirect_uri mismatch' });
