@@ -93,7 +93,7 @@
 .wv-prose .k-rel .wv-av { vertical-align: -3px; margin-right: 4px; }
 .hue-slate  { --fill: rgba(0, 5, 20, .05);      --text: #60646c; --dot: transparent; }
 .hue-blue   { --fill: rgba(71, 105, 235, .12);  --text: #3a5bc7; --dot: #4769eb; }
-.hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #218358; --dot: #2ea043; }
+.hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #1a6b48; --dot: #2ea043; }
 .hue-amber  { --fill: rgba(245, 159, 0, .16);   --text: #7a5209; --dot: #f59f00; }
 .hue-red    { --fill: rgba(229, 72, 77, .12);   --text: #ce2c31; --dot: #e5484d; }
 .hue-purple { --fill: rgba(142, 78, 198, .12);  --text: #7a3fb8; --dot: #8e4ec6; }
