@@ -1,0 +1,1 @@
+- The Share (Beta) button on a table toolbar draws an icon again. It asked `lucideEl` for `share`, a name the bundled lucide set does not carry, and the missing glyph reached the button's `innerHTML` as the literal text `undefined`. The button now takes `upload`, and `lucideEl` returns nothing rather than a string when a name has no glyph (Issue #1233).

@@ -81,3 +81,16 @@ test('the formatting showcase and the icon library use the form themselves', () 
   for (const g of ['load-wave.gif', 'picker-scroll.gif']) assert.ok(!page.includes(g), `${g} showed a trigger that no longer exists (Issue #192)`);
   assert.doesNotMatch(page, /plays \*\*once\*\* when the page loads/, 'the Handbook must not promise a load wave (Issue #192)');
 });
+
+test('every icon name public/app.js asks for by hand is in the bundled set (Issue #1233)', () => {
+  const asked = [...new Set([...APP.matchAll(/lucideEl\('([a-z0-9-]+)'/g)].map((m) => m[1]))];
+  assert.ok(asked.length >= 15, `the scan found only ${asked.length} literal lucideEl names`);
+  const missing = asked.filter((n) => !reg.NAMES.includes(n));
+  assert.deepEqual(missing, [], `public/app.js draws icons the set does not carry: ${missing.join(', ')}`);
+});
+
+test('lucideEl hands back nothing when the set has no such glyph, never the string undefined (Issue #1233)', () => {
+  const body = APP.slice(APP.indexOf('function lucideEl('), APP.indexOf('const canHover'));
+  assert.match(body, /if \(!\w+\) return null;/, 'lucideEl returns null on a miss before it touches innerHTML');
+  assert.doesNotMatch(body, /innerHTML = window\.LUCIDE_MOVING\[name\];/, 'the raw lookup no longer reaches innerHTML unchecked');
+});

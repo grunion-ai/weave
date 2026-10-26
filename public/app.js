@@ -870,9 +870,11 @@ function playIcon(host) {
   }, ms));
 }
 function lucideEl(name, cls = 'wv-icon') {
+  const glyph = window.LUCIDE_MOVING[name];
+  if (!glyph) return null;
   const reg = window.weaveIconRegistry;
   const span = el('span', { class: `${cls} mi mi-${name}`, 'data-ms': String(reg.MOTION[name] || 0) });
-  span.innerHTML = window.LUCIDE_MOVING[name];
+  span.innerHTML = glyph;
   return span;
 }
 const canHover = matchMedia('(hover: hover)');
@@ -5241,7 +5243,7 @@ function renderViewPane(pane, db, { force = false } = {}) {
 let closeSharePanel = null;
 function sharePanelButton(context) {
   if (!state.canManageForms) return null;
-  const button = el('button', { class: 'btn btn-sm btn-icon table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('share'));
+  const button = el('button', { class: 'btn btn-sm btn-icon table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('upload'));
   button.addEventListener('click', () => {
     if (closeSharePanel) { closeSharePanel(); return; }
     setPaneOpen(false, { focus: false });

@@ -24,6 +24,9 @@ if (s) {
     });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
+      const shareButton = page.locator('.table-share-btn');
+      assert.equal(await shareButton.locator('svg').count(), 1, 'the Share button draws its icon (Issue #1233)');
+      assert.equal((await shareButton.innerText()).trim(), '', 'the Share button carries no text, least of all undefined (Issue #1233)');
       await page.click('.table-share-btn');
       await page.waitForSelector('#share-pane:not([hidden]) .share-add');
       assert.equal(await page.locator('#share-pane details, #share-pane [role="tab"]').count(), 0);
