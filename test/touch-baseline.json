@@ -73,11 +73,38 @@
     "group|button.vp-add-level.group-add": [
       1186
     ],
+    "invite|button.btn.btn-primary": [
+      1225
+    ],
+    "invite|button.form-select.picker-face": [
+      1225
+    ],
+    "invite|input.form-control": [
+      1225
+    ],
     "menu|a.nav-space": [
       1163
     ],
+    "multi-picker|button.picker-done": [
+      1226
+    ],
+    "multi-picker|input.search-bare.picker-search": [
+      1226
+    ],
     "nav|a.nav-space": [
       1163
+    ],
+    "new-table|button.btn": [
+      1227
+    ],
+    "new-table|button.btn.btn-primary": [
+      1227
+    ],
+    "new-table|button.tray-close": [
+      1227
+    ],
+    "new-table|input.form-control": [
+      1227
     ],
     "phone-row|button.btn.btn-sm": [
       1182
@@ -145,6 +172,9 @@
     "share-row|input.form-control": [
       1188
     ],
+    "share-space|button.btn.btn-sm": [
+      1229
+    ],
     "share-table|button.btn": [
       1188
     ],
@@ -187,6 +217,10 @@
     ],
     "sort|button.vp-add-level.sort-add": [
       1186
+    ],
+    "space-home|button.btn.btn-sm": [
+      1222,
+      1228
     ],
     "table-icon|button.picker-cell": [
       1189
@@ -266,10 +300,28 @@
     "group|button.btn.btn-sm|webkit": 1,
     "group|button.vp-add-level.group-add|chromium": 2,
     "group|button.vp-add-level.group-add|webkit": 1,
+    "invite|button.btn.btn-primary|chromium": 4,
+    "invite|button.btn.btn-primary|webkit": 2,
+    "invite|button.form-select.picker-face|chromium": 2,
+    "invite|button.form-select.picker-face|webkit": 1,
+    "invite|input.form-control|chromium": 2,
+    "invite|input.form-control|webkit": 1,
     "menu|a.nav-space|chromium": 2,
     "menu|a.nav-space|webkit": 1,
+    "multi-picker|button.picker-done|chromium": 2,
+    "multi-picker|button.picker-done|webkit": 1,
+    "multi-picker|input.search-bare.picker-search|chromium": 2,
+    "multi-picker|input.search-bare.picker-search|webkit": 1,
     "nav|a.nav-space|chromium": 2,
     "nav|a.nav-space|webkit": 1,
+    "new-table|button.btn.btn-primary|chromium": 2,
+    "new-table|button.btn.btn-primary|webkit": 1,
+    "new-table|button.btn|chromium": 2,
+    "new-table|button.btn|webkit": 1,
+    "new-table|button.tray-close|chromium": 2,
+    "new-table|button.tray-close|webkit": 1,
+    "new-table|input.form-control|chromium": 2,
+    "new-table|input.form-control|webkit": 1,
     "phone-row|button.btn.btn-sm|chromium": 2,
     "phone-row|button.btn.btn-sm|webkit": 1,
     "phone-row|button.field-reorder-handle|chromium": 14,
@@ -313,6 +365,8 @@
     "share-row|input.form-control|webkit": 1,
     "share-row|input|chromium": 6,
     "share-row|input|webkit": 3,
+    "share-space|button.btn.btn-sm|chromium": 4,
+    "share-space|button.btn.btn-sm|webkit": 2,
     "share-table|button.btn.btn-primary|chromium": 2,
     "share-table|button.btn.btn-primary|webkit": 1,
     "share-table|button.btn|chromium": 2,
@@ -338,6 +392,8 @@
     "sort|button.btn.btn-sm|webkit": 1,
     "sort|button.vp-add-level.sort-add|chromium": 2,
     "sort|button.vp-add-level.sort-add|webkit": 1,
+    "space-home|button.btn.btn-sm|chromium": 4,
+    "space-home|button.btn.btn-sm|webkit": 2,
     "table-icon|button.picker-cell.picker-none|chromium": 2,
     "table-icon|button.picker-cell.picker-none|webkit": 1,
     "table-icon|button.picker-cell|chromium": 184,
@@ -403,10 +459,28 @@
     "group|button.btn.btn-sm|webkit": 1,
     "group|button.vp-add-level.group-add|chromium": 2,
     "group|button.vp-add-level.group-add|webkit": 1,
+    "invite|button.btn.btn-primary|chromium": 4,
+    "invite|button.btn.btn-primary|webkit": 2,
+    "invite|button.form-select.picker-face|chromium": 2,
+    "invite|button.form-select.picker-face|webkit": 1,
+    "invite|input.form-control|chromium": 2,
+    "invite|input.form-control|webkit": 1,
     "menu|a.nav-space|chromium": 2,
     "menu|a.nav-space|webkit": 1,
+    "multi-picker|button.picker-done|chromium": 2,
+    "multi-picker|button.picker-done|webkit": 1,
+    "multi-picker|input.search-bare.picker-search|chromium": 2,
+    "multi-picker|input.search-bare.picker-search|webkit": 1,
     "nav|a.nav-space|chromium": 2,
     "nav|a.nav-space|webkit": 1,
+    "new-table|button.btn.btn-primary|chromium": 2,
+    "new-table|button.btn.btn-primary|webkit": 1,
+    "new-table|button.btn|chromium": 2,
+    "new-table|button.btn|webkit": 1,
+    "new-table|button.tray-close|chromium": 2,
+    "new-table|button.tray-close|webkit": 1,
+    "new-table|input.form-control|chromium": 2,
+    "new-table|input.form-control|webkit": 1,
     "phone-row|button.btn.btn-sm|chromium": 2,
     "phone-row|button.btn.btn-sm|webkit": 1,
     "phone-row|button.field-reorder-handle|chromium": 14,
@@ -450,6 +524,8 @@
     "share-row|input.form-control|webkit": 1,
     "share-row|input|chromium": 6,
     "share-row|input|webkit": 3,
+    "share-space|button.btn.btn-sm|chromium": 4,
+    "share-space|button.btn.btn-sm|webkit": 2,
     "share-table|button.btn.btn-primary|chromium": 2,
     "share-table|button.btn.btn-primary|webkit": 1,
     "share-table|button.btn|chromium": 2,
@@ -475,6 +551,8 @@
     "sort|button.btn.btn-sm|webkit": 1,
     "sort|button.vp-add-level.sort-add|chromium": 2,
     "sort|button.vp-add-level.sort-add|webkit": 1,
+    "space-home|button.btn.btn-sm|chromium": 4,
+    "space-home|button.btn.btn-sm|webkit": 2,
     "table-icon|button.picker-cell.picker-none|chromium": 2,
     "table-icon|button.picker-cell.picker-none|webkit": 1,
     "table-icon|button.picker-cell|chromium": 184,

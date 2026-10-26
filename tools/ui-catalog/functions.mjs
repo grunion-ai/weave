@@ -24,7 +24,7 @@ export const FUNCTIONS = [
     { cat: 'button', sig: /date-pick/ },
   ] },
   { id: 'collapse-section', title: 'Collapse a section', blurb: 'Disclosure toggles that fold a group of rows, fields, headings or the sidebar. Issue #766 asks for one control here.', match: [
-    { sig: /nav-caret|doc-caret|doc-fold|view-desc-more|fold|nav-expand|nav-collapse|summary/ },
+    { sig: /nav-caret|doc-caret|doc-fold|view-desc-more|fold|nav-expand|nav-collapse|nav-toggle|summary/ },
     { cat: 'button', sig: /^(?!.*mention)/, text: /^(collapse|expand|show more|show less|fold)\b|^[‹›]$/i },
   ] },
   { id: 'search', title: 'Search', blurb: 'Every way to search: the ⌘K palette, the sidebar search, the table search and the search fields inside pickers.', match: [
@@ -73,7 +73,7 @@ export const FUNCTIONS = [
     { text: /sort by|smallest to largest|a → z|z → a|oldest|newest/i },
   ] },
   { id: 'change-view', title: 'Change the view or row height', blurb: 'The view switcher, its view tabs and the row density control.', match: [
-    { sig: /table-view|view-tab|view-row|density|seg-ctl|list-segs|table-tools|table-control/ },
+    { sig: /table-view|view-tab|view-row|view-reset|view-clear|vp-view-pick|density|seg-ctl|list-segs|table-tools|table-control/ },
   ] },
   { id: 'select-rows', title: 'Select rows and act on them', blurb: 'Row checkboxes and the selection bar with its bulk actions.', match: [
     { sig: /sel-box|sel-act|sel-puck|glass/ },
@@ -86,7 +86,7 @@ export const FUNCTIONS = [
   ] },
   { id: 'link-records', title: 'Link records and attach files', blurb: 'The + link and + file buttons, relation chips and the controls that unlink a row.', match: [
     { text: /\+ ?link|\+ ?file|link to|link existing|unlink/i },
-    { sig: /attach|unlink|mention|relation|k-rel/ },
+    { sig: /attach|av-pick|unlink|mention|relation|k-rel/ },
   ] },
   { id: 'navigate', title: 'Navigate back and forward', blurb: 'Breadcrumbs, sidebar rows, the back and forward arrows and the phone navigation button.', match: [
     { cat: 'nav' },
@@ -132,9 +132,10 @@ export const FUNCTIONS = [
     { cat: 'cell', sig: /fieldrow/ },
     { cat: 'bar', sig: /view-header/ },
     { cat: 'card', sig: /empty-note/ },
-    { cat: 'card', sig: /panel/ },
+    { cat: 'card', sig: /panel/ }, { cat: 'button', sig: /desc-info/ },
   ] },
   { id: 'browse-rows', title: 'Browse rows in a table', blurb: 'Table cells with their header row, column headers, footers and the table cards on space and home pages.', match: [
+    { cat: 'popover', sig: /table-wrap/ },
     { cat: 'cell', sig: /(^|\s|> )(td|th)\b|\bnum\b/ },
     { cat: 'card', sig: /table-wrap|list-rows|space-tables|system-tables|^div\.card$|card$/ },
     { cat: 'chip', sig: /ID chip|Badge|List chip|List group chip|Card state/ },

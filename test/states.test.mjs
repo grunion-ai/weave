@@ -102,13 +102,13 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   const overlays = (probe) => unique(plan(probe).filter((p) => p.state.open === 'overlay').map((p) => p.state.name)).sort();
   assert.equal(JOURNEYS.length, 14);
   assert.equal(SWEEP_JOURNEYS.length, 15);
-  assert.equal(OVERLAYS.length, 39);
-  assert.deepEqual(rests('cutoff'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
-  assert.deepEqual(rests('flicker'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
-  assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'list-view', 'map', 'published form', 'settings', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'start', 'trash']);
+  assert.equal(OVERLAYS.length, 48);
+  assert.deepEqual(rests('cutoff'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'space-home']);
+  assert.deepEqual(rests('flicker'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'space-home']);
+  assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'list-view', 'map', 'published form', 'settings', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'space-home', 'start', 'trash']);
   assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share dialog', 'sort popover']);
-  assert.deepEqual(rests('touch'), ['board-view', 'list-view', 'row page', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'table list', 'workspace home']);
-  assert.deepEqual(overlays('touch'), ['bug panel', 'bug-report', 'date-picker', 'density', 'doc-downloads', 'entity-field-editor', 'entity-status', 'filters', 'group', 'menu', 'nav', 'phone-row', 'picker sheet', 'range-picker', 'row-actions', 'search', 'share-page', 'share-row', 'share-table', 'sort', 'table-icon', 'table-tools', 'view', 'workspace-menu']);
+  assert.deepEqual(rests('touch'), ['board-view', 'list-view', 'row page', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'space-home', 'table list', 'workspace home']);
+  assert.deepEqual(overlays('touch'), ['bug panel', 'bug-report', 'date-picker', 'density', 'doc-downloads', 'entity-field-editor', 'entity-status', 'filters', 'group', 'invite', 'menu', 'multi-picker', 'nav', 'new-row-sheet', 'new-table', 'phone-row', 'picker sheet', 'range-picker', 'row-actions', 'search', 'select-picker', 'share-page', 'share-row', 'share-space', 'share-table', 'sort', 'table-icon', 'table-tools', 'view', 'workspace-menu']);
 });
 
 const sinkOf = (weave, handles) => {

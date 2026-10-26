@@ -175,11 +175,11 @@ function sink(weave) {
   } }).id;
   weave.attachToField(full, 'Files', { name: `${UNBROKEN}.pdf`, mime: 'application/pdf', bytes: Buffer.from('%PDF-1') });
   weave.attachToField(full, 'Face', { name: 'face.png', mime: 'image/png', bytes: PNG });
-  weave.setDoc(full, `# ${UNBROKEN}\n\nBody text.`, 'Brief');
+  weave.setDoc(full, `# ${UNBROKEN}\n\nBody text.\n\n## Measured\n\nWhat the probe saw.\n\n## Fix shape\n\nWhat to change.\n\n## Follow-up\n\nWhat comes after.\n`, 'Brief');
   weave.createEntity(t, { name: 'A', values: { Status: 'Open', Kind: 'Short', Amount: 1, Score: 1, Tags: ['Short'], Parts: [ps[0]] } });
   weave.createEntity(t, { name: 'Pump housing', values: { Status: SINK_STATE, Kind: 'Short', Amount: 1250000, Window: { start: '2026-01-01', end: '2026-12-31' }, Live: false, Parts: [ps[1]] } });
   weave.createEntity(t, { name: 'Blank', values: { Status: 'Done' } });
-  return { table: t.id, row: full, ...views(weave, t) };
+  return { table: t.id, row: full, space: t.spaceId, ...views(weave, t) };
 }
 
 const withSink = (build) => (weave) => ({ ...build(weave), sink: sink(weave) });
@@ -197,11 +197,13 @@ const menu = async (page, cell, trigger, label) => {
 };
 
 export const ROUTES = {
-  home: { url: (c) => `${c.base}/#/`, ready: at('#main') },
-  table: { url: (c) => `${c.base}/#/table/${c.table}`, ready: at(ROW) },
+  home: { harvest: 'Home', url: (c) => `${c.base}/#/`, ready: at('#main') },
+  space: { harvest: 'Space', url: (c) => `${c.base}/#/space/${c.sink.space}`, ready: at('#main .space-tables') },
+  table: { harvest: 'Table', url: (c) => `${c.base}/#/table/${c.table}`, ready: at(ROW) },
   board: { url: (c) => `${c.base}/#/table/${c.table}/view/${c.board}`, ready: at('.wv-board .tile') },
   list: { url: (c) => `${c.base}/#/table/${c.table}/view/${c.list}`, ready: at('.wv-list .list-row') },
   entity: {
+    harvest: 'Entity',
     url: (c, cell) => (cell === 'phone' ? `${c.base}/#/table/${c.table}?e=${c.ids[3]}` : `${c.base}/#/entity/${c.ids[3]}`),
     ready: (cell) => (cell === 'phone' ? '#dock:not([hidden]) .fieldrow[data-field="Status"]' : '.entity-fields .fieldrow[data-field="Status"]'),
   },
@@ -217,8 +219,8 @@ export const ROUTES = {
   'entity-page': { url: (c) => `${c.base}/#/entity/${c.entityId}`, ready: at('.vditor-ir [contenteditable="true"]'), editor: true },
   map: { url: (c) => `${c.base}/#/map`, ready: at('#main .view-title') },
   settings: { url: (c) => `${c.base}/#/settings`, ready: at('#main .settings-purge') },
-  trash: { url: (c) => `${c.base}/#/trash`, ready: at('#main .view-title') },
-  'activity-log': { url: (c) => `${c.base}/#/activity`, ready: at('.activity-row') },
+  trash: { harvest: 'Trash', url: (c) => `${c.base}/#/trash`, ready: at('#main .view-title') },
+  'activity-log': { harvest: 'Activity', url: (c) => `${c.base}/#/activity`, ready: at('.activity-row') },
   'forms-builder': {
     url: (c) => `${c.base}/#/table/${c.table}`, ready: at(ROW),
     async setup(page) {
@@ -478,7 +480,7 @@ const paneClose = (page, ctx, cell) => tap(page, '#view-pane .vp-close', cell);
 
 const OVERLAY_STATES = [
   {
-    name: 'search', route: 'home', cells: BOTH, root: '#cmdk-back',
+    name: 'search', route: 'home', cells: BOTH, trigger: ['button.phone-search'], root: '#cmdk-back',
     async act(page, ctx, cell) {
       await tap(page, cell === 'phone' ? '.phone-search' : '.search-like', cell);
       await page.waitForSelector('#cmdk-input');
@@ -488,11 +490,11 @@ const OVERLAY_STATES = [
   },
   { name: 'shortcuts', route: 'home', cells: DESKTOP, root: '#modal-back', act: (page, ctx, cell) => menu(page, cell, '#sidebar .nav-identity-more', 'Keyboard shortcuts') },
   { name: 'personal-menu', route: 'home', cells: DESKTOP, root: '.nav-personal-menu', act: (page, ctx, cell) => tap(page, '#sidebar .nav-identity-more', cell) },
-  { name: 'new-workspace', route: 'home', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '.ws-new', cell) },
-  { name: 'workspace-menu', route: 'home', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#main .dots-btn[title="Workspace actions"]', cell) },
+  { name: 'new-workspace', route: 'home', cells: DESKTOP, trigger: ['button.ws-icon.ws-new'], root: '#tray-back', act: (page, ctx, cell) => tap(page, '.ws-new', cell) },
+  { name: 'workspace-menu', route: 'home', cells: BOTH, trigger: ['button.btn.btn-ghost-secondary.btn-sm.dots-btn'], root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#main .dots-btn[title="Workspace actions"]', cell) },
   { name: 'nav-table-menu', route: 'home', cells: DESKTOP, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#nav .dots-btn[title="Task actions"]', cell) },
   {
-    name: 'bug-report', route: 'home', cells: BOTH, root: '#bug-panel',
+    name: 'bug-report', route: 'home', cells: BOTH, trigger: ['button.bug-fab'], root: '#bug-panel',
     async act(page, ctx, cell) {
       if (cell !== 'phone') return tap(page, '.bug-fab', cell);
       await tap(page, '#main .nav-menu', cell);
@@ -530,7 +532,7 @@ const OVERLAY_STATES = [
       await tap(page, '.chip-pop .chip-pop-row >> text=Field settings', cell);
     },
   },
-  { name: 'table-icon', route: 'table', cells: BOTH, root: '.picker-pop', act: (page, ctx, cell) => (cell === 'phone' ? tableMenu('Add icon…')(page, ctx, cell) : tap(page, '#main .icon-btn', cell)) },
+  { name: 'table-icon', route: 'table', cells: BOTH, trigger: ['button.icon-btn'], root: '.picker-pop', act: (page, ctx, cell) => (cell === 'phone' ? tableMenu('Add icon…')(page, ctx, cell) : tap(page, '#main .icon-btn', cell)) },
   { name: 'field-menu', route: 'table', cells: DESKTOP, root: '.chip-pop', act: (page, ctx, cell) => tap(page, '.field-menu[title="Configure Status"]', cell) },
   {
     name: 'field-editor', route: 'table', cells: DESKTOP, root: '#tray-back',
@@ -540,17 +542,26 @@ const OVERLAY_STATES = [
     },
   },
   { name: 'new-field', route: 'table', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#main .add-field-btn', cell) },
-  { name: 'status-picker', route: 'table', cells: DESKTOP, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${ROW} .chip-trigger[title="Status"]`, cell) },
-  { name: 'link-picker', route: 'table', cells: DESKTOP, root: '#cmdk-back', act: (page, ctx, cell) => tap(page, `${ROW} button >> text=+ link`, cell) },
-  { name: 'activity', route: 'entity', cells: DESKTOP, root: 'aside.wv-activity', act: (page, ctx, cell) => tap(page, '#main .activity-btn', cell) },
-  { name: 'entity-fields', route: 'entity', cells: DESKTOP, root: '.chip-pop', act: (page, ctx, cell) => tap(page, '#main .eye-btn', cell) },
+  { name: 'status-picker', route: 'table', cells: DESKTOP, trigger: ['State chip'], root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${ROW} .chip-trigger[title="Status"]`, cell) },
+  { name: 'link-picker', route: 'table', cells: DESKTOP, trigger: ['button.btn.btn-ghost-secondary.btn-sm.tiny'], root: '#cmdk-back', act: (page, ctx, cell) => tap(page, `${ROW} button >> text=+ link`, cell) },
+  { name: 'activity', route: 'entity', cells: DESKTOP, trigger: ['button.activity-btn.btn.btn-sm'], root: 'aside.wv-activity', act: (page, ctx, cell) => tap(page, '#main .activity-btn', cell) },
+  { name: 'entity-fields', route: 'entity', cells: DESKTOP, trigger: ['button.btn.btn-sm.eye-btn'], root: '.chip-pop', act: (page, ctx, cell) => tap(page, '#main .eye-btn', cell) },
   { name: 'entity-field-editor', route: 'entity', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#dock .fieldrow[data-field="Status"] .fieldrow-label', cell) },
   { name: 'row-actions', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Row actions"]`, cell) },
   { name: 'share-row', route: 'entity', cells: BOTH, root: '#modal-back', act: (page, ctx, cell) => menu(page, cell, `${scope(cell)} .dots-btn[title="Row actions"]`, 'Share…') },
   { name: 'doc-downloads', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
   { name: 'entity-status', route: 'entity', cells: BOTH, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Status"] .chip-trigger`, cell) },
-  { name: 'date-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Due"] .date-pick-btn`, cell) },
+  { name: 'date-picker', route: 'entity', cells: BOTH, trigger: ['button.date-pick-btn'], root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Due"] .date-pick-btn`, cell) },
   { name: 'range-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Window"] .date-pick-btn`, cell) },
+  { name: 'invite', route: 'home', cells: BOTH, root: '#modal-back', trigger: ['button.btn.btn-sm.wv-invite-btn'], act: (page, ctx, cell) => tap(page, '.wv-invite-btn', cell) },
+  { name: 'new-table', route: 'space', cells: BOTH, root: '#tray-back', trigger: ['button.btn.btn-sm.wv-start-new'], act: (page, ctx, cell) => tap(page, '#main .wv-start-new', cell) },
+  { name: 'share-space', route: 'space', cells: BOTH, root: '#share-pane', trigger: ['button.btn.btn-sm.share-btn'], act: (page, ctx, cell) => tap(page, '#main .table-share-btn', cell) },
+  { name: 'new-row-sheet', route: 'table', cells: PHONE, root: '.new-row-sheet', trigger: ['button.phone-new'], act: (page, ctx, cell) => tap(page, '.phone-bar .phone-new', cell) },
+  { name: 'select-picker', route: 'sink-row', cells: BOTH, root: '.picker-pop', trigger: ['Select chip'], act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Kind"] .chip-trigger`, cell) },
+  { name: 'multi-picker', route: 'sink-row', cells: BOTH, root: '.picker-pop', trigger: ['Multi-select chip'], act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Tags"] .chip-trigger`, cell) },
+  { name: 'subtable-fields', route: 'sink-row', cells: DESKTOP, root: '.subtable-popover', trigger: ['button.btn.btn-ghost-secondary.btn-sm.eye-btn'], act: (page, ctx, cell) => tap(page, '#main .eye-btn.btn-ghost-secondary', cell) },
+  { name: 'doc-rail', route: 'sink-row', cells: DESKTOP, root: '.doc-rail-card', trigger: ['button.doc-rail-dash'], act: (page) => page.locator('#main .doc-rail-dash').first().focus() },
+  { name: 'doc-collapse', route: 'sink-row', cells: DESKTOP, root: '.doc-ref-layer', trigger: ['button.doc-caret.wv-disclosure'], act: (page, ctx, cell) => tap(page, '#main .doc-caret', cell) },
 ].map((o) => ({ ...o, open: 'overlay', layout: o.route === 'table' ? 'table' : null, seeds: MESSY }));
 
 const a11yMenu = (label) => (page) => menu(page, 'desktop', '#main .dots-btn[title="Table actions"]', label);
@@ -601,6 +612,7 @@ const SHARED_STATES = [
   { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1127, 1160, 1161], 'cutoff|phone': [1152, 1161] } },
   { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127], 'cutoff|phone': [1157] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { 'cutoff|desktop': [1123, 1124, 1125, 1126, 1127, 1151, 1152, 1153, 1154, 1155, 1156, 1157, 1161], 'cutoff|phone': [1157] } },
+  { name: 'space-home', route: 'space', open: 'rest', layout: null, cells: BOTH, hold: { 'cutoff|desktop': [1127] } },
   { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|desktop': [1127, 1151, 1153, 1158, 1159, 1161], 'cutoff|phone': [1151, 1152, 1156, 1161, 1162] } },
 ];
 
@@ -638,6 +650,23 @@ export function plan(probe) {
 export const walked = (probe) => plan(probe).filter((p) => !p.hold);
 export const held = (probe) => plan(probe).filter((p) => p.hold);
 export const statesOf = (entries, open) => [...new Set(entries.filter((p) => p.state.open === open).map((p) => p.state))];
+
+const kindOf = (route) => route.replace(/^Phone · /, '').split(':')[0];
+
+export function harvested(data) {
+  return {
+    routes: [...new Set((data.meta?.routes ?? []).map(kindOf))].sort(),
+    triggers: [...new Set((data.controls ?? []).filter((c) => c.opens?.length).map((c) => c.sig))].sort(),
+  };
+}
+
+export function uncatalogued(data) {
+  const { routes, triggers } = harvested(data);
+  const walked = new Set(STATES.map((s) => s.route).filter(Boolean));
+  const kinds = new Set(Object.entries(ROUTES).filter(([k, r]) => r.harvest && walked.has(k)).map(([, r]) => r.harvest));
+  const opened = new Set(STATES.filter((s) => s.open === 'overlay').flatMap((s) => s.trigger ?? []));
+  return { routes: routes.filter((r) => !kinds.has(r)), triggers: triggers.filter((t) => !opened.has(t)) };
+}
 
 export function journeyOf(state, cell) {
   if (state.open === 'journey') return state;

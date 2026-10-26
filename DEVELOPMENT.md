@@ -420,6 +420,15 @@ stale note. Its `issues` map names the Issue rows behind every
 fix the row, then `node scripts/touch-sweep.mjs --lower` (the full sweep on
 both engines) drops the counts; `--state <name>` reproduces one state.
 
+The catalog also answers to the ui-catalog harvest (`npm run ui-catalog`,
+`docs/ui-catalog/index.html`). A route in `ROUTES` names the harvest kind it
+stands for (`harvest: 'Table'`), and an overlay state names the harvested
+trigger that opens it (`trigger: ['button.icon-btn']`).
+`test/ui-catalog-states.test.mjs` fails when the committed harvest holds a
+route kind no walked route names, or a trigger no overlay state names, and
+when the catalog names one the harvest never saw. **Adding one:** regenerate
+the harvest, add the state the test names, and let the probes measure it.
+
 ## Quality scorecard
 
 `scripts/quality-scorecard.mjs` prints one JSON row of quality numbers for the
