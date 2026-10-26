@@ -2326,7 +2326,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .list-fold svg { width: 14px; height: 14px; transition: transform .15s; transform: rotate(90deg); }
 .list-group.shut > .list-group-head .list-fold svg { transform: none; }
 .list-group.shut > .list-group-body { display: none; }
-.list-group-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-group-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
 .list-group-label.is-none { color: var(--tblr-secondary); font-weight: 500; }
 .list-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot, transparent); flex: none; }
 .list-group-label.hue-slate .list-dot { background: var(--tblr-border-color-dark, var(--tblr-border-color)); }
