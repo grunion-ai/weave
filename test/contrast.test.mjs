@@ -65,3 +65,36 @@ test('danger labels read 4.5:1 on the panel in both themes (Issue #1099)', () =>
     assert.ok(r >= 4.5, `${theme}: danger ${danger} on the panel ${tokens['--tblr-bg-surface']} reads ${r}:1`);
   }
 });
+
+await import('../public/chip-core.js');
+const core = globalThis.chipCore;
+
+const chipPaints = () => {
+  const out = { light: {}, dark: {} };
+  for (const m of read('public/chip.css').matchAll(/(\[data-bs-theme="dark"\]\s+)?\.hue-([\w-]+)\s*\{([^}]*)\}/g)) {
+    const fill = m[3].match(/--fill:\s*rgba\(([^)]+)\)/);
+    const text = m[3].match(/--text:\s*(#[0-9a-fA-F]{3,8})/);
+    if (fill && text) out[m[1] ? 'dark' : 'light'][m[2]] = { fill: fill[1].split(',').map(Number), text: text[1] };
+  }
+  return out;
+};
+
+const hexOf = (rgb) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+const composite = ([r, g, b, a], groundHex) => {
+  const h = groundHex.trim().replace('#', '');
+  const ground = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  return hexOf([r, g, b].map((v, i) => v * a + ground[i] * (1 - a)));
+};
+
+test('the done state chip reads 4.5:1 on its own tint in both themes (Issue #1100)', () => {
+  const paints = chipPaints();
+  const hue = core.categoryHue('done');
+  const themes = APP_THEMES();
+  for (const theme of ['light', 'dark']) {
+    const paint = paints[theme][hue] ?? paints.light[hue];
+    assert.ok(paint, `chip.css paints the ${hue} hue for ${theme}`);
+    const tint = composite(paint.fill, themes[theme]['--tblr-bg-surface']);
+    const r = ratio(paint.text, tint);
+    assert.ok(r >= 4.5, `${theme}: done chip text ${paint.text} on its tint ${tint} reads ${r}:1`);
+  }
+});
