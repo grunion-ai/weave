@@ -1,0 +1,1 @@
+- A large number that overflows its grid cell now shows its compact form ($98.8B) with the full amount on hover, and returns to the full figure once the column is wide enough, so a reader never sees a cut prefix of an amount (Issue #1160).

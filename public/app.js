@@ -2926,6 +2926,24 @@ function viewFieldOf(db, shape) {
 }
 const cellGraphics = globalThis.weaveCellGraphics;
 const numberCore = globalThis.weaveNumberCore;
+const numberFit = new ResizeObserver((entries) => {
+  for (const { target } of entries) {
+    const box = target.classList.contains('num-dressed') ? target.parentElement : target;
+    if (box !== target) { numberFit.unobserve(target); if (box) numberFit.observe(box); }
+    for (const span of box?.querySelectorAll(':scope > .num-dressed[data-compact]') ?? []) {
+      span.textContent = span.dataset.full;
+      span.removeAttribute('title');
+      if (span.scrollWidth > span.clientWidth) { span.textContent = span.dataset.compact; span.title = span.dataset.full; }
+    }
+  }
+});
+function fitNumber(dressed, f, raw) {
+  if (f.format === 'percent' || f.unit) return;
+  const compact = String(numberCore.dressNumber({ format: 'compact', currency: f.format === 'currency' ? f.currency ?? 'USD' : null, decimals: 1 }, raw));
+  if (compact === dressed.textContent) return;
+  Object.assign(dressed.dataset, { full: dressed.textContent, compact });
+  numberFit.observe(dressed);
+}
 function scaleText(f, scale) {
   if (scale == null) return null;
   return f?.format === 'percent' ? `${Math.round(scale * 1e4) / 100}%` : Number(scale).toLocaleString();
@@ -3685,6 +3703,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       input.focus();
     } }, String(val));
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
+    fitNumber(dressed, f, rawVal);
     return dressed;
   }
   return input;
