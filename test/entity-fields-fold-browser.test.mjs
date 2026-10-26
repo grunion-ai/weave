@@ -55,7 +55,7 @@ if (s) {
     assert.equal(await folded(page), true);
     assert.deepEqual(await summaryFields(page), ['Vendor', 'Qty', 'Stage'], 'every shown value field, in field order — the hidden one is not there');
     const chip = await page.$eval('.wv-sum[data-field="Vendor"]', (n) => ({
-      label: n.querySelector('.wv-sum-label')?.textContent, value: n.querySelector('input')?.value ?? n.textContent,
+      label: n.querySelector('.wv-sum-label')?.textContent, value: n.querySelector('.text-dressed')?.textContent ?? n.querySelector('input')?.value ?? n.textContent,
       title: n.getAttribute('title'),
     }));
     assert.equal(chip.label, 'Vendor');
@@ -78,10 +78,13 @@ if (s) {
     const page = await open(order.id);
     await page.waitForSelector('.entity-values .fieldrow');
     await page.click(`${HEAD} .doc-caret`);
-    await page.waitForSelector('.entity-values-summary:not(.hidden) .wv-sum[data-field="Vendor"] input');
+    await page.click('.entity-values-summary:not(.hidden) .wv-sum[data-field="Vendor"] .text-dressed');
     await page.fill('.wv-sum[data-field="Vendor"] input', 'Nordic Semi');
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => document.querySelector('.entity-values-summary:not(.hidden) .wv-sum[data-field="Vendor"] input')?.value === 'Nordic Semi', null, { timeout: 5000 });
+    await page.waitForFunction(() => {
+      const shown = document.querySelector('.entity-values-summary:not(.hidden) .wv-sum[data-field="Vendor"] :is(.text-dressed, input)');
+      return (shown?.value ?? shown?.textContent) === 'Nordic Semi';
+    }, null, { timeout: 5000 });
     const saved = await page.evaluate(async (id) => (await fetch(`api/entities/${id}`).then((r) => r.json())).fields.Vendor, order.id);
     assert.equal(saved, 'Nordic Semi', 'the edit reached the engine');
     await page.close();
@@ -116,7 +119,7 @@ if (s) {
     await page.waitForSelector('.chip-pop .eye-row');
     await flip(page, 'Topic');
     await page.waitForSelector('.entity-values .fieldrow[data-field="Topic"]', { timeout: 5000 });
-    assert.equal(await page.$eval('.fieldrow[data-field="Topic"] input', (n) => n.value), 'Weds');
+    assert.equal(await page.$eval('.fieldrow[data-field="Topic"] .text-dressed', (n) => n.textContent), 'Weds');
     await page.close();
   });
 }

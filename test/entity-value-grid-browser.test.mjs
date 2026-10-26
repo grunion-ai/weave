@@ -132,8 +132,9 @@ if (s) {
   test('a value still edits in place inside the grid', async () => {
     const id = fresh();
     const page = await openEntity(id);
+    await page.click('.entity-values [data-field="Vendor"] .text-dressed');
     const input = await page.$('.entity-values [data-field="Vendor"] input');
-    assert.ok(input, 'the value is an inline editor, not a read-only cell');
+    assert.ok(input, 'the value opens its inline editor on click, it is not a read-only cell');
     await input.fill('Nordic Assembly');
     await input.dispatchEvent('change');
     await page.waitForFunction(

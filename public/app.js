@@ -2889,16 +2889,29 @@ function dressTokens(into, tokens) {
   return into;
 }
 
-function dressedText(md, input) {
-  const tokens = globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
+function dressedText(md, input, { literal = false } = {}) {
+  const tokens = literal ? [{ text: md }] : globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
   const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
   dressTokens(dressed, tokens);
-  dressed.addEventListener('click', (e) => {
-    e.stopPropagation();
+  const open = () => {
     dressed.replaceWith(input);
     input.focus();
     input.select();
+  };
+  dressed.addEventListener('click', (e) => {
+    e.stopPropagation();
+    open();
   });
+  dressed.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    const typed = e.key.length === 1 && e.key !== ' ';
+    if (!typed && e.key !== ' ' && !(e.key === 'Enter' && !e.shiftKey)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    open();
+    if (typed) document.execCommand('insertText', false, e.key);
+  });
+  dressed.wvEditor = input;
   input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
   return dressed;
 }
@@ -3352,7 +3365,7 @@ function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, 
   const node = editorFor(f, item, db, onSaved, { compact, fit });
   if (node instanceof Element) {
     const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
-    for (const n of [node, ...node.querySelectorAll('*')]) {
+    for (const n of [node, node.wvEditor, ...node.querySelectorAll('*')].filter(Boolean)) {
       if (n.matches('input, select, textarea') && !n.hasAttribute('aria-label') && !n.hasAttribute('aria-labelledby')) n.setAttribute('aria-label', name);
     }
   }
@@ -3726,6 +3739,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
     return dressed;
   }
+  if (!fit && typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
   return input;
 }
 

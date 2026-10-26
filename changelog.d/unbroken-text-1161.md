@@ -1,0 +1,1 @@
+- A text, email or key value now rests as wrapping text on a board tile and on the record page, so a long unbroken word breaks anywhere and shows in full instead of running out of its input; a click on the text opens the input, as it does for text with inline marks. The grid keeps its one-line cell with the ellipsis at rest (Issue #1161).
