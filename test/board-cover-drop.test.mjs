@@ -53,9 +53,3 @@ test('photoFieldName finds a free name for the new cover field', () => {
   assert.equal(Board.photoFieldName(db([{ name: 'Photo', type: 'text' }])), 'Photo 2');
   assert.equal(Board.photoFieldName(db([{ name: 'Photo', type: 'text' }, { name: 'photo 2', type: 'text' }])), 'Photo 3');
 });
-
-test('freeFieldName finds a free name from any base', () => {
-  assert.equal(Board.freeFieldName(db([]), 'Files'), 'Files');
-  assert.equal(Board.freeFieldName(db([{ name: 'files', type: 'text' }]), 'Files'), 'Files 2');
-  assert.equal(Board.photoFieldName(db([{ name: 'Photo', type: 'text' }])), 'Photo 2', 'the cover field keeps its own base');
-});

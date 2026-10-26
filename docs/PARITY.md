@@ -1,6 +1,6 @@
 # Weave ↔ Fibery feature parity matrix
 
-Scope: Fibery's core work-platform feature set, the features a team uses to model and run work. Billing and hosted infrastructure are out of scope and not counted. Re-scored against v0.4.109 on 2026-10-25; `test/docs-drift.test.mjs` recomputes the score from the table, so a row that changes moves the total with it.
+Scope: Fibery's core work-platform feature set, the features a team uses to model and run work. Billing and hosted infrastructure are out of scope and not counted. Re-scored against v0.4.63 on 2026-10-03; `test/docs-drift.test.mjs` recomputes the score from the table, so a row that changes moves the total with it.
 
 Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 
@@ -41,7 +41,7 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 | 26 | Formula fields | ✅ | 23 functions, safe parser, live check before save |
 | 27 | Assignees / people | 🟡 | accounts exist, but a person field is a relation to a Person table; no field type binds to accounts |
 | 28 | Files & attachments | ✅ | upload (base64 API/MCP), disk blobs, serve with mime |
-| 29 | Avatars/icons on entities | ✅ | icons on spaces and tables; an `avatar` field gives each row an uploaded image or initials |
+| 29 | Avatars/icons on entities | 🟡 | icons on spaces and tables; rows carry none |
 
 ## Documents & collaboration
 
@@ -62,8 +62,8 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
 | 39 | Table view | ✅ | all field types incl. computed, in-place cell editing, sort |
-| 40 | Board / kanban | ✅ | a table-view layout (Feature #352): kanban columns, picture gallery, swimlanes (#355), compare (#354), drop a picture to set a cover (#353) |
-| 41 | List view | ✅ | a table-view layout, grouped, ordered and checkable (Feature #276) |
+| 40 | Board / kanban | ❌ | removed in Issue #75 |
+| 41 | List view | ❌ | removed before the board |
 | 42 | Entity page | ✅ | docked beside the table or full page; fields, documents, comments, activity |
 | 43 | Sorting | ✅ | API + UI |
 | 44 | Filtering | ✅ | the Filters popover in the UI (Issues #319, #448); API/CLI/MCP filter language with relation traversal and and/or |
@@ -71,7 +71,7 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 | 46 | Timeline / Gantt | ❌ | |
 | 47 | Whiteboards | ❌ | |
 | 48 | Reports / charts | ❌ | number displays and sparklines live in cells; no chart view |
-| 49 | Forms | ✅ | public form links at `/f/<id>`, prefill links, `weave form create\|update\|config\|submit` (Feature #303) |
+| 49 | Forms | ❌ | |
 
 ## Automation, API & data
 
@@ -93,13 +93,13 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 
 ## Score
 
-- ✅ full: **53**
-- 🟡 partial (×0.5): **2** → 1
+- ✅ full: **49**
+- 🟡 partial (×0.5): **3** → 1.5
 - Total counted features: **62**
 
-**Parity: (53 + 1) / 62 = 87.1%** (target: 80%)
+**Parity: (49 + 1.5) / 62 = 81.5%** (target: 80%)
 
-Most of the missing 12.9% sits in two groups. Collaboration: real-time co-editing, fine-grained permissions and connector integrations. Secondary views: calendar, timeline, whiteboard and charts.
+Most of the missing 18.5% sits in two groups. Collaboration: real-time co-editing, fine-grained permissions and connector integrations. Secondary views: board, list, calendar, timeline, whiteboard, charts and forms.
 
 ## Outside the matrix
 

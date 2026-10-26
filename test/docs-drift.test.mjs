@@ -68,11 +68,8 @@ test('PARITY.md scores its own table and the build that ships', () => {
   assert.match(parity, new RegExp(`Total counted features: \\*\\*${rows.length}\\*\\*`), `the score counts ${rows.length} rows`);
   assert.ok(parity.includes(`= ${pct}%`), `the parity score is ${pct}%`);
   assert.ok(read('docs/comparison/fibery.md').includes(`**${pct}%**`), `docs/comparison/fibery.md quotes the ${pct}% score`);
-  for (const shipped of ['Board / kanban', 'List view', 'Forms', 'Avatars/icons on entities']) {
-    assert.equal(rows.find((r) => r.name === shipped)?.status, '✅', `${shipped} ships and must score ✅`);
-  }
-  for (const file of ['docs/PARITY.md', 'docs/comparison/fibery.md', 'docs/comparison/airtable.md']) {
-    assert.doesNotMatch(read(file), /removed in Issue #75|board and list views were removed|list view was removed/i, `${file} calls a shipped layout removed`);
+  for (const gone of ['Board / kanban', 'List view']) {
+    assert.equal(rows.find((r) => r.name === gone)?.status, '❌', `${gone} was removed and must score ❌`);
   }
   assert.doesNotMatch(parity, /JSON file per workspace|\b23 tools/, 'PARITY.md describes the v0.1 build');
 });

@@ -7,12 +7,12 @@ whole thing. [weave](https://github.com/grunion-ai/weave) implements that model
 as an MIT-licensed program you run yourself, against a single SQLite file.
 
 The [feature parity matrix](../PARITY.md) scores weave against Fibery's core
-work-platform feature set, feature by feature: **87.1%** at last count. Most of
+work-platform feature set, feature by feature: **81.5%** at last count. Most of
 the gap sits in collaboration (live co-editing, fine-grained permissions,
 connectors) and secondary view types. This page is the narrative version.
 
-*Fibery's product as described here reflects August 2026, and weave's reflects
-v0.4.109 (2026-10-25). Check fibery.io for current details.*
+*Fibery's product as described here reflects August 2026 — check fibery.io for
+current details.*
 
 ## Concept mapping
 
@@ -31,11 +31,10 @@ v0.4.109 (2026-10-25). Check fibery.io for current details.*
 | Workflow / multistate | Workflow field | Categories, default state, transition log. |
 | Rules / automations | Automations | created / field changed / state changed → set field, append doc, comment, webhook. |
 | Comments & activity | Comments & activity | Per entity, including automation-driven changes. |
-| Table / board / list views | Table view with Table, List and Board layouts | Board draws kanban columns, a picture gallery and swimlanes. |
+| Table / board / list views | Table view | The board and list views were removed; the table is the one view. |
 | Relation diagram | Relation map | Tables, cardinalities, and the automation layer in one picture. |
 | Whiteboards, Timeline, Calendar, Reports | — | Not built. |
-| Forms | Forms | Public links at `/f/<id>` add one row to one table, with prefill links. |
-| Portals | — | Not built. |
+| Forms, Portals | — | Not built. |
 | Users, permissions, guest access | Accounts and roles | Three roles per workspace and read-only share links for saved views; no per-space permissions or guest seats. |
 | Integrations (Jira, GitHub, Slack…) | Webhooks + REST | Outbound webhooks and a full REST API; no connector catalog. |
 | AI assistant | MCP server | Agent-accessibility instead of built-in AI features. |
@@ -61,7 +60,7 @@ v0.4.109 (2026-10-25). Check fibery.io for current details.*
   and no live updates on an open page.
 - **View types.** Whiteboards, timeline/Gantt, calendar, and reports/charts —
   none of which weave has.
-- **Portals** for outside users to browse and work in the tool.
+- **Forms and portals** for collecting work from outside the tool.
 - **Integrations.** A catalog of two-way syncs versus outbound webhooks you wire
   yourself.
 - **Scale and support.** A hosted service with an SLA, backups, and a team
@@ -75,7 +74,7 @@ want the data local — especially if agents do a meaningful share of the readin
 and writing.
 
 It is the wrong move if you depend on fine-grained permissions, whiteboards, timelines,
-reports, portals, or two-way integrations. Those are non-goals of a local-first
+reports, forms, or two-way integrations. Those are non-goals of a local-first
 tool, not near-term roadmap items.
 
 ## Migrating

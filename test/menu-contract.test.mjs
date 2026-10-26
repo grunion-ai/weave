@@ -71,12 +71,8 @@ test('the multi-select trash speaks the record menu\'s words (Feature #296, D6)'
   assert.match(body, /label: 'Undo'/, 'and offers the same Undo');
 });
 
-test('workspace delete lives only in the Settings dialog, never a menu; its routes stay (Feature #297, Issue #1171)', () => {
-  const dialog = fnBody('deleteWorkspaceDialog');
-  assert.equal(APP.split('Delete workspace').length, dialog.split('Delete workspace').length, 'every Delete workspace string sits in the Settings dialog');
-  assert.equal(APP.split('deleteWorkspaceDialog(').length - 1, 2, 'the dialog has one caller');
-  assert.match(fnBody('showSettings'), /deleteWorkspaceDialog\(w\)/, 'and Settings is that caller');
-  for (const fn of ['menu', 'dotsMenu', 'buildWsRail', 'personalMenu']) assert.doesNotMatch(fnBody(fn), /deleteWorkspaceDialog|Delete workspace/, `${fn} offers no workspace delete`);
+test('workspace delete has left the interface; its routes stay (Feature #297)', () => {
+  assert.equal(APP.includes('Delete workspace'), false, 'no Delete workspace row or dialog');
   assert.equal(APP.includes('confirmDeleteWorkspace'), false, 'no dialog entry point');
   assert.match(APP, /api\('POST', `\/workspaces\/\$\{w\.id\}\/restore`\)/, 'the Trash page still restores a trashed workspace');
 });

@@ -5,8 +5,8 @@ platform: connected tables, relations, workflows, formulas, rollups, and
 markdown documents on every record, in a single SQLite file you own. This page
 maps Airtable's concepts onto weave's, and is honest about what is missing.
 
-*Airtable's product and pricing as described here reflect August 2026, and
-weave's reflect v0.4.109 (2026-10-25). Check airtable.com for current terms.*
+*Airtable's product and pricing as described here reflect August 2026 — check
+airtable.com for current terms.*
 
 ## Concept mapping
 
@@ -18,8 +18,8 @@ weave's reflect v0.4.109 (2026-10-25). Check airtable.com for current terms.*
 | Record | Entity | Every entity gets a per-table public id — `Task#12` — usable as a ref anywhere. |
 | Field | Field | See the field-type table below. |
 | Grid view | Table view | Inline editing on every cell. |
-| Kanban view | Board layout | Kanban columns with swimlanes, as a layout of the table view. |
-| Gallery / list | Board and List layouts | Board's gallery preset shows each row's cover picture. |
+| Kanban view | Not built | The board view was removed in Issue #75. |
+| Gallery / list | Not built | The list view was removed before the board view. |
 | Linked record | Relation | Bidirectional and real — the inverse field is created and maintained for you. |
 | Lookup | Lookup | Pull a field across a relation. |
 | Rollup | Rollup | Aggregate across a relation. |
@@ -28,16 +28,16 @@ weave's reflect v0.4.109 (2026-10-25). Check airtable.com for current terms.*
 | Attachments | File attachments | Stored in a `files/` directory beside the workspace. |
 | Automations | Automations | Trigger on created / field changed / state changed → set field, append doc, add comment, POST a webhook. |
 | Interfaces | — | Not built. |
-| Forms | Forms | Public links at `/f/<id>` add one row to one table; prefill links set fields. |
+| Forms | — | Not built. |
 | Sync / integrations | Webhooks + REST + CSV | Outbound webhooks and a full REST API; no prebuilt connector catalog. |
 | Collaborators & permissions | Accounts with three roles | Observer, editor or architect per workspace; nothing narrower. See below. |
 
 ## Field types
 
 weave implements text, number, date, date range, checkbox, url, email, select,
-multiselect, workflow state, rating, toggle, attachments, avatar, relation, lookup, rollup, formula, and document.
+multiselect, workflow state, relation, lookup, rollup, formula, and document.
 
-Airtable types with no weave equivalent today: duration, barcode,
+Airtable types with no weave equivalent today: rating, duration, barcode,
 button, user, currency and percent as distinct types (use number), and the
 AI-generated field types.
 
@@ -64,7 +64,8 @@ AI-generated field types.
   roles per workspace and has no per-table or per-field permissions and no live
   co-editing. Authentication stays off until an operator runs
   `weave workspace require-auth`.
-- **Interfaces.** Airtable's app-builder has no counterpart in weave.
+- **Interfaces and forms.** Airtable's app-builder and form surfaces have no
+  counterpart in weave.
 - **The marketplace.** Hundreds of prebuilt integrations and extensions versus
   outbound webhooks and an API you wire up yourself.
 - **Maturity.** Airtable has been hardened by a decade of production use across

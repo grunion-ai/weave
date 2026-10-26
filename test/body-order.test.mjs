@@ -66,11 +66,3 @@ test('a collection relation is a block of its own', () => {
   w.updateTable(parts, { bodyOrder: ['Peers', '@values'] });
   assert.deepEqual(w.bodyBlocks(parts).slice(0, 2), ['Peers', '@values']);
 });
-
-test('the loose Files card has a place in the body order once someone moves it', () => {
-  const { w, parts } = build();
-  assert.ok(!w.bodyBlocks(parts).includes('@files'), 'an unplaced Files card adds nothing to the default order');
-  w.updateTable(parts, { bodyOrder: ['@files', '@values'] });
-  assert.deepEqual(w.getTable(parts).bodyOrder, ['@files', '@values'], 'the card is stored under its fixed key');
-  assert.deepEqual(w.bodyBlocks(parts).slice(0, 2), ['@files', '@values'], 'and the page is handed it in that place');
-});

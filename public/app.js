@@ -317,7 +317,7 @@ function holdPage(back, box, label = box.querySelector('h2')) {
   }).observe(document.body, { childList: true });
 }
 
-function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass = 'btn-primary') {
+function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   document.querySelector('#modal-back')?.remove();
   const opener = document.activeElement;
   const close = () => {
@@ -327,7 +327,7 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass =
     if (held && opener?.isConnected) opener.focus();
   };
   const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) close(); } });
-  const done = el('button', { class: `btn ${submitClass}`, type: 'submit' }, submitLabel);
+  const done = el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel);
   const form = el('form', {}, ...bodyNodes,
     el('div', { class: 'actions' },
       onSubmit ? el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel') : null,
@@ -1516,14 +1516,13 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
         el('button', { class: 'btn btn-sm', title: 'Previous (←)', disabled: prev ? undefined : '', onclick: () => prev?.() }, iconEl('‹')),
         el('button', { class: 'btn btn-sm', title: 'Next (→)', disabled: next ? undefined : '', onclick: () => next?.() }, iconEl('›'))) : null,
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
-      url ? bugTrigger('btn btn-sm') : null,
       el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
   holdPage(back, back, back.querySelector('.fsv-title'));
   back.tabIndex = -1;
   back.focus();
   const onKey = (e) => {
-    if (e.key === 'Escape') { if (!document.querySelector('#bug-panel')) close(); }
+    if (e.key === 'Escape') close();
     else if (e.key === 'ArrowLeft' && prev) prev();
     else if (e.key === 'ArrowRight' && next) next();
   };
@@ -3291,7 +3290,6 @@ const filePanel = (() => {
         files.length > 1 ? icon('Next', 'lucide:chevron-right', { disabled: index < files.length - 1 ? undefined : '', onclick: () => step(1) }) : null,
         icon('Full screen', 'lucide:maximize-2', { onclick: () => fileLightbox(files, index) }),
         el('a', { class: 'wv-act-icon', href: fileViewUrl(file), target: '_blank', rel: 'noopener', title: 'Open in a browser tab', 'aria-label': 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')),
-        bugTrigger('wv-act-icon'),
         icon('Close (Esc)', 'lucide:x', { class: 'wv-act-icon wv-act-close', onclick: close })),
       el('div', { class: `wv-file-body kind-${kind}` }, fileBodyEl(file, 'wv-file-frame')));
     const side = $('#side');
@@ -3303,7 +3301,7 @@ const filePanel = (() => {
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !isOpen() || e.defaultPrevented) return;
-    if (document.querySelector('#fsv-back, #modal-back, #tray-back, #cmdk-back, #bug-panel, .picker-pop, .chip-pop')) return;
+    if (document.querySelector('#fsv-back, #modal-back, #tray-back, #cmdk-back, .picker-pop, .chip-pop')) return;
     e.stopPropagation();
     close();
   }, true);
@@ -3821,31 +3819,6 @@ function confirmToggle(after, build) {
   };
 }
 
-function deleteWorkspaceDialog(w) {
-  const input = el('input', {
-    class: 'form-control', name: 'confirm', autocomplete: 'off', spellcheck: 'false',
-    placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
-  });
-  modal('Delete workspace', [
-    el('p', {}, 'This moves ', el('strong', {}, w.name),
-      ` to the trash with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. Restore brings it back from Trash in the sidebar.`),
-    el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm'),
-    input,
-  ], async () => {
-    if (input.value !== w.name) throw Object.assign(new Error('The name does not match'), { shown: true });
-    await api('DELETE', `/workspaces/${w.id}`);
-    if (w.name === state.wsCurrent) { location.href = '/'; return; }
-    toast(`Workspace ${w.name} moved to the trash`, false, {
-      label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); showSettings(); },
-    });
-    buildWsRail();
-    showSettings();
-  }, 'Delete workspace', 'btn-danger');
-  const go = $('#modal button[type="submit"]');
-  go.disabled = true;
-  input.addEventListener('input', () => { go.disabled = input.value !== w.name; });
-}
-
 async function showSettings() {
   state.route = { page: 'settings' };
   renderNav();
@@ -3912,9 +3885,25 @@ async function showSettings() {
         el('span', { class: 'text-secondary' }, `${w.tables ?? 0} tables, ${w.entities ?? 0} entities`),
         el('span', { class: 'spacer' }));
       row.append(el('button', {
-        class: 'btn btn-sm btn-outline-danger ws-delete-open', type: 'button',
-        onclick: () => deleteWorkspaceDialog(w),
-      }, 'Delete…'));
+        class: 'btn btn-sm btn-outline-danger purge-open', type: 'button',
+        onclick: confirmToggle(row, () => {
+          const { box, input } = typedHold(w.name, `Its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities move with it.`, {
+            label: 'Move to trash', hold: true, holdingLabel: 'Hold to move to trash…',
+            run: async () => {
+              try {
+                await api('DELETE', `/workspaces/${w.id}`);
+                if (w.name === state.wsCurrent) { location.href = '/'; return; }
+                toast(`Workspace ${w.name} moved to the trash`, false, {
+                  label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); showSettings(); },
+                });
+                buildWsRail();
+                showSettings();
+              } catch (err) { toast(err.message, true); }
+            },
+          });
+          return { node: el('div', {}, box), input };
+        }),
+      }, 'Move to trash…'));
       return row;
     })));
 }
@@ -5935,7 +5924,7 @@ function renderBoard(main, db, items, ctx) {
   const rows = items.map((it) => ({ id: it.id, keys: levels.map((l) => listKeys(l, it)), parent: null, done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, item: it }));
   const byPid = new Map([...(everyone ?? []), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
-  const arrangeLevels = levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
+  const arrangeLevels = levels.map((l, i) => ({ order: l.order, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
   const arranged = listCore.arrange(rows, { levels: arrangeLevels, completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered });
   let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
@@ -10407,7 +10396,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
 
   const VALUES_BLOCK = '@values';
-  const FILES_BLOCK = '@files';
   const SHEET_FIELD_TYPES = new Set(['workflow', 'select', 'multiselect', 'relation']);
   const SHEET_HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .fieldrow-label';
   const relationCount = (v) => (Array.isArray(v) ? v.length : v == null ? 0 : 1);
@@ -10547,62 +10535,10 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
 
   const named = db.bodyBlocks ?? [VALUES_BLOCK];
-  let filesCard = null;
-  let placed = false;
-  const drawFiles = () => {
-    if (filesCard) return;
-    const inFields = new Set((db.fields ?? [])
-      .filter((f) => f.type === 'attachments')
-      .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
-    const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
-    if (!loose.length) return;
-    const filesBody = el('div', { class: 'attach-chips' }, ...loose.map((file) => attachItemEl(file, { group: loose })));
-    const pages = loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'entity-files-page' }, fileViewerEl(file)));
-    const foldFiles = (closed) => {
-      for (const n of [filesBody, ...pages]) n.classList.toggle('hidden', closed);
-      filesCaret.classList.toggle('closed', closed);
-      setDisclosure(filesCaret, !closed);
-    };
-    const filesCaret = disclosure('doc-caret', true, {
-      title: 'Collapse files',
-      onclick: (e) => {
-        e.stopPropagation();
-        const closed = !filesBody.classList.contains('hidden');
-        foldFiles(closed);
-        docSectionCollapse(id, FILES_BLOCK, closed);
-      },
-    });
-    const makeField = async () => {
-      try {
-        const name = boardCore.freeFieldName(db, 'Files');
-        await api('POST', `/tables/${db.id}/fields`, { name, type: 'attachments' });
-        await api('PATCH', `/entities/${id}`, { values: { [name]: loose.map((f) => f.id) } });
-        await loadSchema();
-        toast(`${loose.length === 1 ? 'The file moved' : 'The files moved'} into a new ${name} field`);
-        refresh();
-      } catch (err) { toast(err.message, true); }
-    };
-    const filesHead = el('div', { class: 'block-head' },
-      anchor('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
-      el('button', {
-        type: 'button', class: 'btn btn-sm btn-ghost-secondary entity-files-make',
-        title: `Make an attachments field on ${db.name} that holds these files`, onclick: makeField,
-      }, 'Make a field'));
-    if (docSectionCollapse(id, FILES_BLOCK)) foldFiles(true);
-    filesCard = wireBlock(FILES_BLOCK, el('div', { class: 'entity-files-card' }, filesHead, filesBody, ...pages), [filesHead.querySelector('.opt-grip'), filesHead]);
-    if (!placed) return;
-    const order = [...named, ...blocks.keys()];
-    const next = order.slice(order.indexOf(FILES_BLOCK) + 1).map((k) => blocks.get(k)).find((n) => n?.isConnected);
-    if (next) next.before(filesCard); else left.append(filesCard);
-  };
-  drawFiles();
-  if (later) fills.push(drawFiles);
-
   for (const key of [...named, ...blocks.keys()]) {
     const node = blocks.get(key);
     if (node && !node.isConnected) left.append(node);
   }
-  placed = true;
   let appears = appearsAsPanel(db, entity, refresh);
   if (appears) left.prepend(appears);
   if (later) {
@@ -10617,6 +10553,24 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       if (appears?.isConnected) appears.after(coverEl(file)); else left.prepend(coverEl(file));
     });
   }
+  let filesCard = null;
+  const drawFiles = () => {
+    if (filesCard) return;
+    const inFields = new Set((db.fields ?? [])
+      .filter((f) => f.type === 'attachments')
+      .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
+    const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
+    if (!loose.length) return;
+    filesCard = el('div', { class: 'card panel entity-files-card' },
+      el('div', { class: 'card-header' },
+        el('h3', { class: 'card-title' }, `Files · ${loose.length}`)),
+      el('div', { class: 'card-body attach-chips' },
+        ...loose.map((file) => attachItemEl(file, { group: loose }))),
+      ...loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'card-body entity-files-page' }, fileViewerEl(file))));
+    left.append(filesCard);
+  };
+  drawFiles();
+  if (later) fills.push(drawFiles);
 
   const refCard = (title, extraClass, refs) => {
     if (!refs.length) return;
@@ -12678,23 +12632,15 @@ function installBugReporter() {
   document.body.append(fab);
 }
 
-function bugTrigger(cls) {
-  if (!bugRecorder) return null;
-  return el('button', {
-    class: `${cls} bug-trigger`, type: 'button', title: 'Report a problem', 'aria-label': 'Report a problem', 'aria-expanded': 'false',
-    onclick: (e) => (document.querySelector('#bug-panel') ? closeBugPanel() : openBugPanel(e.currentTarget)),
-  }, bugGlyph());
-}
-
 function closeBugPanel() {
   document.querySelector('#bug-panel')?.remove();
-  for (const n of document.querySelectorAll('.bug-fab, .bug-trigger')) n.setAttribute('aria-expanded', 'false');
+  document.querySelector('.bug-fab')?.setAttribute('aria-expanded', 'false');
 }
 
 function openBugPanel(from) {
   closeBugPanel();
   const fab = from.classList.contains('bug-fab');
-  from.setAttribute('aria-expanded', 'true');
+  if (fab) from.setAttribute('aria-expanded', 'true');
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
@@ -12783,11 +12729,10 @@ function openBugPanel(from) {
   const panel = el('div', { id: 'bug-panel', role: 'dialog', 'aria-label': 'Report a problem' }, form);
   document.body.append(panel);
 
-  if (!dockCoversScreen.matches) {
+  if (fab) {
     const r = from.getBoundingClientRect();
     panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
-    if (fab) panel.style.bottom = (innerHeight - r.top + 6) + 'px';
-    else panel.style.top = (r.bottom + 6) + 'px';
+    panel.style.bottom = (innerHeight - r.top + 6) + 'px';
   }
 
   dismissOutside({
