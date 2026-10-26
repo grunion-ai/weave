@@ -247,6 +247,21 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('the record page range input keeps its 200px floor inside a field row', async () => {
+    const id = freshSprint({ Window: { start: '2026-08-01', end: '2026-09-15' } });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+      const widthOf = async (field) => {
+        const box = page.locator(`.entity-fields .fieldrow[data-field="${field}"] .range-text`);
+        await settled(box);
+        return box.evaluate((input) => input.offsetWidth);
+      };
+      assert.equal(await widthOf('Window'), 200, 'a short set range fills the floor');
+      assert.equal(await widthOf('Readable'), 200, 'an empty range fills the floor');
+    } finally { await page.close(); }
+  });
+
   test('the phone record page sizes a long range input to its value (Issue #1162)', async (t) => {
     const handset = await engineOf(phoneProfile().engine);
     if (!handset) return t.skip(`${phoneProfile().engine} cannot launch here`);
@@ -263,6 +278,12 @@ if (s) {
       });
       assert.ok(geo.input >= geo.text, `the input (${geo.input}px) holds its value (${geo.text}px)`);
       assert.ok(geo.input <= geo.row, `the input (${geo.input}px) stays inside the row (${geo.row}px)`);
+      const empty = await page.locator('#dock .entity-fields .fieldrow[data-field="Window"] .range-text').evaluate((input) => {
+        const row = input.closest('.fieldrow').getBoundingClientRect();
+        return { width: input.offsetWidth, inside: input.getBoundingClientRect().right <= row.right };
+      });
+      assert.equal(empty.width, 200, 'an empty range keeps the floor beside its label');
+      assert.ok(empty.inside, 'the empty range input stays inside the row');
       assert.deepEqual((await page.evaluate(probe, '#dock .entity-fields')).filter((f) => /range/.test(f.selector)), [], 'the probe finds no cut-off range on the record page');
     } finally { await page.close(); }
   });
