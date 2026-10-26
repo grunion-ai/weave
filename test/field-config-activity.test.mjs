@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -199,7 +200,7 @@ test('a system table records nothing', () => {
 });
 
 test('the entries survive a reopen and are not in the table blob', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'wv-428-'));
+  const dir = tempDir('wv-428-');
   try {
     const data = join(dir, 'w.db');
     const { w, t } = workspace({ path: data });
@@ -261,7 +262,7 @@ test('MCP and CLI reach the same verb', () => {
   const out = dispatchTool(w, 'weave_rollback_field', { db: 'Ops/Ticket', field: 'Priority', activity: a.id });
   assert.equal(out.field.config.options.length, 2);
 
-  const dir = mkdtempSync(join(tmpdir(), 'wv-428-cli-'));
+  const dir = tempDir('wv-428-cli-');
   try {
     const data = join(dir, 'w.db');
     const { w: fw, t: ft } = workspace({ path: data });

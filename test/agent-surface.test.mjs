@@ -10,6 +10,7 @@ import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { unwrapData } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = readFileSync(join(ROOT, 'bin/weave.js'), 'utf8');
@@ -74,7 +75,7 @@ const SURFACE = [
   ['file.read', ['readFile'], 'weave_files', 'file read', ['GET /api/files/:ref']],
   ['file.delete', ['deleteFile'], 'weave_files', 'file delete', ['DELETE /api/entities/:ref/files/:ref']],
   ['view', ['createView', 'listViews', 'getView', 'deleteView', 'restoreView', 'shareView', 'unshareView', 'resolveView'], 'weave_views', 'view', ['GET /api/views', 'POST /api/views', 'GET /api/views/:ref', 'DELETE /api/views/:ref', 'POST /api/views/:ref/restore', 'POST /api/views/:ref/share', 'DELETE /api/views/:ref/share']],
-  ['share', ['mintShare', 'listShares', 'renewShare', 'revokeShare'], 'weave_shares', 'share', ['GET /api/shares', 'POST /api/shares', 'POST /api/shares/:ref/renew', 'DELETE /api/shares/:ref', 'GET /api/share']],
+  ['share', ['mintShare', 'listShares', 'renewShare', 'revokeShare', 'updateShare', 'regenerateShare'], 'weave_shares', 'share', ['GET /api/shares', 'POST /api/shares', 'POST /api/shares/:ref/renew', 'PATCH /api/shares/:ref', 'POST /api/shares/:ref/regenerate', 'DELETE /api/shares/:ref', 'GET /api/share']],
   ['automation.create', ['createAutomation'], 'weave_create_automation', 'automation create', ['POST /api/automations']],
   ['automation.manage', ['listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'], 'weave_automations', 'automation', ['GET /api/automations', 'PATCH /api/automations/:ref', 'DELETE /api/automations/:ref']],
   ['activity', ['activityFeed', 'getActivity'], 'weave_activity', 'activity', ['GET /api/activity', 'GET /api/activity/:rest']],
@@ -145,6 +146,7 @@ const INTERNAL = {
   viewQuery: 'read helper (Issue #839): the where, sort and search one saved view applies; weave_query {view}, CLI query --view and POST /tables/:id/query {view} run it',
   permalink: 'link formatter (Feature #203): the one /w/<ws>/e/<uuid> path every door emits as `url`; the permalink gate below holds every emitter to it',
   takeOneTime: 'write plumbing (Feature #318) — the invite link or token a Users row create hands back once; every create door ships it beside the row',
+  runSchedules: 'process plumbing (Feature #312): the server\'s minute ticker fires every due schedule rule on each hub workspace; an agent writes the rule as a Workflows row and the clock does the rest',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));
@@ -314,17 +316,17 @@ test('every query option reaches every door', () => {
 });
 
 test('every door emits the one permalink a row has, and no door builds its own (Feature #203)', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-permalink-'));
+  const dir = tempDir('weave-permalink-');
   const data = join(dir, 'uno.db');
   const w = new Weave({ path: data, name: 'uno' });
   w.createSpace({ name: 'Ops' });
   const table = w.createTable({ space: 'Ops', name: 'Task' });
   const row = w.createEntity('Task', { Name: 'ship the zebrafinch' });
   const link = w.permalink('entity', row.id);
-  assert.equal(link, `/w/uno/e/${row.id}`);
-  assert.equal(w.permalink('table', table.id), `/w/uno/t/${table.id}`);
+  assert.equal(link, `/e/${row.id}`);
+  assert.equal(w.permalink('table', table.id), `/t/${table.id}`);
   const space = w.getSpace('Ops');
-  assert.equal(w.permalink('space', space.id), `/w/uno/s/${space.id}`);
+  assert.equal(w.permalink('space', space.id), `/s/${space.id}`);
 
   const rpc = (name, args) => {
     const res = handleMcpMessage(w, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });

@@ -4,9 +4,10 @@ import { mkdtempSync, chmodSync, accessSync, rmSync, constants } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store, WeaveError } from '../src/store.js';
+import { tempDir } from './lib/temp.mjs';
 
 const readOnlyDir = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-ro-'));
+  const dir = tempDir('weave-ro-');
   chmodSync(dir, 0o555);
   try { accessSync(dir, constants.W_OK); chmodSync(dir, 0o755); rmSync(dir, { recursive: true, force: true }); return null; }
   catch { return dir; }
@@ -39,7 +40,7 @@ test('a data directory the process cannot write names the cause, not the file fo
 
 test('a file that really is not a SQLite database still says so', async () => {
   const { writeFileSync } = await import('node:fs');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-notdb-'));
+  const dir = tempDir('weave-notdb-');
   try {
     writeFileSync(join(dir, 'workspace.db'), 'this is not a database');
     const err = open(dir);

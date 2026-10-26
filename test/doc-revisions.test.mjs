@@ -10,6 +10,7 @@ import { Weave, WeaveError } from '../src/engine.js';
 import { Store } from '../src/store.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -84,7 +85,7 @@ function storeContract(name, makeStore) {
 
 storeContract('memory store', () => new Store());
 storeContract('sqlite store', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-rev-'));
+  const dir = tempDir('weave-rev-');
   test.after(() => rmSync(dir, { recursive: true, force: true }));
   const s = new Store(join(dir, 'ws.db'));
   s.load();
@@ -92,7 +93,7 @@ storeContract('sqlite store', () => {
 });
 
 test('sqlite: revisions persist across a reopen and live outside the entity blob', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-rev-'));
+  const dir = tempDir('weave-rev-');
   test.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'ws.db');
   const w = build({ path, revisionWindowMs: 0 });
@@ -108,7 +109,7 @@ test('sqlite: revisions persist across a reopen and live outside the entity blob
 });
 
 test('sqlite: a workspace whose revision log predates restoredFrom opens, gains the column, and reads its old rows as plain (Issue #588)', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-rev-'));
+  const dir = tempDir('weave-rev-');
   test.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'ws.db');
   const w = build({ path, revisionWindowMs: 0 });
@@ -345,7 +346,7 @@ test('MCP: weave_doc_revisions lists or reads; weave_doc_restore writes back', (
 });
 
 test('CLI: weave doc-revisions and weave doc-restore', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-rev-cli-'));
+  const dir = tempDir('weave-rev-cli-');
   test.after(() => rmSync(dir, { recursive: true, force: true }));
   const data = join(dir, 'ws.db');
   const cli = (...args) => execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8', env: { ...process.env, WEAVE_ACTOR: 'kyle' } });

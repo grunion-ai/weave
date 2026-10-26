@@ -7,6 +7,7 @@ const SKEW_S = 60;
 const DISCOVERY_TTL_MS = 60 * 60 * 1000;
 const TOKEN_TTL_MS = 60 * 1000;
 const TOKEN_CACHE_MAX = 1000;
+export const CLIENT_FAULTS = new Set(['invalid_client', 'invalid_scope', 'unauthorized_client']);
 const ALGS = {
   RS256: { import: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, verify: { name: 'RSASSA-PKCS1-v1_5' } },
   ES256: { import: { name: 'ECDSA', namedCurve: 'P-256' }, verify: { name: 'ECDSA', hash: 'SHA-256' } },
@@ -38,7 +39,7 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
   const getJson = async (url, init) => {
     const res = await fetch(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) });
     const body = await res.json().catch(() => null);
-    if (!res.ok || !body) throw refuse(`The identity provider answered ${res.status} at ${new URL(url).pathname}${body?.error ? `: ${body.error}` : ''}`);
+    if (!res.ok || !body) throw Object.assign(refuse(`The identity provider answered ${res.status} at ${new URL(url).pathname}${body?.error ? `: ${body.error}` : ''}`), typeof body?.error === 'string' ? { provider: body.error } : {});
     return body;
   };
   const discover = async () => {
@@ -79,9 +80,36 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
     return claims;
   }
 
+  const tokenRequest = (doc, form) => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' };
+    const methods = doc.token_endpoint_auth_methods_supported ?? ['client_secret_basic'];
+    if (!clientSecret) form.set('client_id', clientId);
+    else if (methods.includes('client_secret_basic')) headers.Authorization = `Basic ${Buffer.from(`${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`).toString('base64')}`;
+    else { form.set('client_id', clientId); form.set('client_secret', clientSecret); }
+    return { headers, body: form.toString() };
+  };
+
   return {
     issuer,
     name: name || new URL(issuer).hostname,
+    async probe({ redirectUri = null } = {}) {
+      const checkedAt = new Date().toISOString();
+      let res, body;
+      try {
+        const doc = await discover();
+        const form = new URLSearchParams({ grant_type: 'authorization_code', code: `weave-probe-${randomBytes(18).toString('base64url')}`, code_verifier: randomBytes(48).toString('base64url') });
+        if (redirectUri) form.set('redirect_uri', redirectUri);
+        res = await fetch(doc.token_endpoint, { method: 'POST', ...tokenRequest(doc, form), redirect: 'error', signal: AbortSignal.timeout(10_000) });
+        body = await res.json().catch(() => null);
+      } catch (err) {
+        return { ok: false, checkedAt, code: err instanceof WeaveError ? 'discovery_failed' : 'unreachable', detail: err.message };
+      }
+      const code = typeof body?.error === 'string' ? body.error.slice(0, 64) : null;
+      const status = res.status;
+      if (CLIENT_FAULTS.has(code) || status === 401) return { ok: false, checkedAt, status, code: code ?? 'invalid_client' };
+      if (status >= 500) return { ok: false, checkedAt, status, code: code ?? 'server_error' };
+      return { ok: true, checkedAt, status, ...(code ? { code } : {}) };
+    },
     async begin({ redirectUri, fresh = false }) {
       const doc = await discover();
       const state = randomBytes(32).toString('base64url');
@@ -106,12 +134,7 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
     async redeem({ code, redirectUri, verifier, nonce }) {
       const doc = await discover();
       const form = new URLSearchParams({ grant_type: 'authorization_code', code: String(code ?? ''), redirect_uri: redirectUri, code_verifier: verifier });
-      const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' };
-      const methods = doc.token_endpoint_auth_methods_supported ?? ['client_secret_basic'];
-      if (!clientSecret) form.set('client_id', clientId);
-      else if (methods.includes('client_secret_basic')) headers.Authorization = `Basic ${Buffer.from(`${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`).toString('base64')}`;
-      else { form.set('client_id', clientId); form.set('client_secret', clientSecret); }
-      const tokens = await getJson(doc.token_endpoint, { method: 'POST', headers, body: form.toString() });
+      const tokens = await getJson(doc.token_endpoint, { method: 'POST', ...tokenRequest(doc, form) });
       const claims = await verifyIdToken(tokens.id_token, { nonce, doc });
       const email = claims.email_verified === true && typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
       const name = typeof claims.name === 'string' ? claims.name.trim().replace(/\s+/g, ' ').slice(0, 80) : '';

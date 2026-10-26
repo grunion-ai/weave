@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { VOCABULARY, searchIcons } from '../src/vocabulary.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const call = (w, name, args) => dispatchTool(w, name, args ?? {});
@@ -59,7 +60,7 @@ test('the MCP schema declares sections; REST and CLI take the comma list', async
     assert.deepEqual(await (await fetch(`${base}?section=optionColors,numberFormats`)).json(), json({ optionColors: VOCABULARY.optionColors, numberFormats: VOCABULARY.numberFormats }));
     assert.deepEqual(await (await fetch(`${base}?section=icons,numberFormats&query=wallet`)).json(), json({ icons: searchIcons('wallet'), numberFormats: VOCABULARY.numberFormats }));
   } finally { server.close(); }
-  const dir = mkdtempSync(join(tmpdir(), 'weave-vocab-sections-'));
+  const dir = tempDir('weave-vocab-sections-');
   try {
     const out = execFileSync('node', [BIN, '--data', join(dir, 'ws.db'), 'vocabulary', 'optionColors,numberFormats'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     assert.deepEqual(JSON.parse(out), json({ optionColors: VOCABULARY.optionColors, numberFormats: VOCABULARY.numberFormats }));

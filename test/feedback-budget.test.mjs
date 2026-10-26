@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 import { clickKey, unexplainedRaises } from './lib/clicks.mjs';
 import { BUDGET_FILE, busyFaults, feedbackOf, judgeMs, median, skeletonDelay } from './lib/feedback.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const budget = JSON.parse(readFileSync(resolve(ROOT, BUDGET_FILE), 'utf8'));
@@ -55,7 +56,7 @@ test('aria-busy that clears inside the skeleton delay is refused; aria-busy on a
 
 test('the skeleton delay is read from the app source wherever it lives', () => {
   assert.equal(skeletonDelay(), 150);
-  const dir = mkdtempSync(join(tmpdir(), 'skeleton-'));
+  const dir = tempDir('skeleton-');
   writeFileSync(join(dir, 'a.js'), 'const X = 1;');
   writeFileSync(join(dir, 'b.js'), 'const SKELETON_SHOW_AFTER_MS = 90;');
   assert.equal(skeletonDelay(`${dir}/`), 90);

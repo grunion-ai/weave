@@ -41,6 +41,9 @@ a.provider{display:block;text-align:center;text-decoration:none;color:var(--ink)
 @media (prefers-color-scheme: dark){.mark-light{display:none}.mark-dark{display:block}}
 .legal{text-align:center;margin-top:14px;font-size:12.5px}
 .legal a{color:var(--muted)}
+.copyable{display:flex;align-items:flex-start;gap:8px;margin:0 0 14px}
+.copyable code{flex:1;min-width:0;overflow-wrap:anywhere;font-family:var(--mono);font-size:12.5px;line-height:1.45;color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.copyable button{flex:none}
 `;
 
 export function sameOriginPath(raw, origin, fallback) {
@@ -125,6 +128,41 @@ export function renderRefusalPage({ title, lines = [], actions = [] } = {}) {
     <h1>${esc(title)}</h1>
 ${[].concat(lines).map((l) => `    <p class="sub">${esc(l)}</p>\n`).join('')}${actions.map((a) => `    <a class="provider" href="${esc(a.href)}">${esc(a.label)}</a>\n`).join('')}  </div>
 </main>
+</body></html>`;
+}
+
+const COPY_JS = `for (const b of document.querySelectorAll('[data-copy]')) b.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'Copied'; } catch { b.textContent = 'Select and copy'; }
+  setTimeout(() => { b.textContent = 'Copy'; }, 1600);
+});`;
+
+const copyable = (text, label) => `    <div class="copyable"><code>${esc(text)}</code><button class="small" type="button" data-copy="${esc(text)}" aria-label="${esc(label)}">Copy</button></div>\n`;
+
+export function renderMcpDoorPage({ workspace, url, server = 'weave', docsHref = '/docs' } = {}) {
+  const add = `claude mcp add --transport http ${server} ${url}`;
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>MCP server for ${esc(workspace)}</title>
+<style>${CSS}</style>
+</head><body>
+<main>
+  <div class="card">
+    ${MARK}
+    <h1>MCP server for ${esc(workspace)}</h1>
+    <p class="sub">This address connects AI clients such as Claude and ChatGPT to ${esc(workspace)} over MCP. A browser has nothing to show here. Add the address to your AI client, and its first call opens a sign-in.</p>
+${copyable(url, 'Copy the MCP address')}    <h2>Claude Code</h2>
+${copyable(add, 'Copy the Claude Code command')}    <p class="sub">Then run <code>/mcp</code> in Claude Code and sign in.</p>
+    <h2>Claude.ai</h2>
+    <p class="sub">Open Settings, then Connectors, and add a custom connector with the address above.</p>
+    <h2>ChatGPT</h2>
+    <p class="sub">Add a custom connector with the address above.</p>
+    <a class="provider" href="${esc(docsHref)}">Connect an agent guide</a>
+  </div>
+</main>
+<script>${COPY_JS}</script>
 </body></html>`;
 }
 

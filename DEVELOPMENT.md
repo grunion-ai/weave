@@ -105,6 +105,13 @@ running animation, its transform is identity and its box has stayed put for a
 frame (Issue #901).
 `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
 Retries remain visible in test output; repeated flakiness gets a tracker issue.
+A test that needs a scratch directory calls `tempDir(prefix)` from
+`test/lib/temp.mjs`, which removes every directory it opened when the process
+exits. `test/temp-dirs.test.mjs` refuses a bare
+`mkdtempSync(join(tmpdir(), ...))` anywhere under `test/`, because a suite run
+outside the manager, such as a bare `node --test` or a browser suite that only
+takes a browser lease, keeps the caller's own `TMPDIR` and leaves those
+directories on the disk (Issue #1083).
 
 ### Sheriff
 
@@ -257,6 +264,11 @@ and opens a `promote/revert-<sha>` PR on main for the promoted range (armed when
 commit while prod serves its rollback, and the next promotion waits for a main
 commit that reverts it. A timeout files and alerts without a revert.
 
+A promotion that passes while `/api/health` reads `auth.ok: false` stays
+promoted and writes one alert line. A broken sign-in comes from provider
+configuration, such as a rotated client secret, so holding the promotion
+would only hold back a fix.
+
 Set the repository variable `PROMOTION_PAUSED=true` to stop promotion; delete it
 or set it to anything else to resume. Two rulesets guard the branch: nobody
 deletes it or pushes a non-fast-forward, and only the promotion deploy key
@@ -381,6 +393,14 @@ filtered views of it. A state that names no seed renders on every seed, so a
 surface added that way falls under every probe at once; the board and list
 views entered first.
 
+Every seed also carries the kitchen sink: a Lab/Sample table with all 22
+field types and adversarial values (a 112-character unbroken word as name,
+text, key, URL, email and file name, an eleven-digit currency, a 55-character
+option, a 48-character workflow state, a century-long date range, and a
+one-letter name beside them). The shared states `sink-table`, `sink-list`,
+`sink-board` and `sink-row` walk it on the table, list and board layouts and
+the record page, so every probe sees every field type.
+
 A state that fails a probe it newly joins carries a `hold` naming the Issue
 rows that track the failure, keyed by probe (`touch`) or probe and cell
 (`cutoff|desktop`). A held state stays out of that gate and is still walked:
@@ -389,6 +409,35 @@ the gate asserts it still shows what its rows track and prints the counts.
 clean, and drop the hold in the same change so the gate walks it. A hold never
 stands in for a baseline: `test/cutoff-baseline.json` and the touch gate's
 zero tolerance are unchanged.
+
+## Quality scorecard
+
+`scripts/quality-scorecard.mjs` prints one JSON row of quality numbers for the
+current ISO week, computed from the repo at HEAD and the last 7 days of main
+(Issue #1120). The nightly flicker routine writes it to the `Development/Scorecard`
+table on the canonical tracker, one row per week, so the trend sits beside the
+Issue rows it explains.
+
+```bash
+node scripts/quality-scorecard.mjs                         # this week's row
+node scripts/quality-scorecard.mjs --issues issues.json    # plus the probe answers on those Issue rows
+```
+
+| Field | Read from | Direction |
+| --- | --- | --- |
+| UI fixes, Class-wide fixes, Generalization rate | Commits naming an Issue that touch `public/`. Class-wide means the commit touched a baseline or budget file (the byte budget excepted), a probe module in `test/lib/` or a static source gate | Rate rises |
+| Touch, Cut-off and Alignment repeats | Subjects of those UI fixes | Falls |
+| Reverts | `Revert "…"` and sheriff reverts on main | Falls |
+| Coverage per probe | States each probe walks over every state in `test/lib/states.mjs` | Rises |
+| Field types seeded | Types the catalog seeds create, out of 22 | Rises |
+| Width bands covered | Probe viewports across the bands cut at 480, 600, 700 and 900 px, out of 5 | Rises |
+| Cut-off instances and fingerprints, A11y entries, Touch holds, Touch baseline entries, Held states | `test/cutoff-baseline.json` (linux), `test/a11y-baseline.json`, the catalog's holds | Falls |
+| Spacing and Z-index on tokens | Declarations in `public/*.css` whose value reads a `var(--…)`, comments stripped | Rises |
+| Probe answers, Probe answers none | The bug report's "Which probe would have caught this?" section on Issue rows updated in the window | None falls |
+
+The class-wide test reads file paths, and the repeat classes read subject
+keywords, so small counts are approximate. Over the 27 days to 24 Oct the script
+counts 18 class-wide fixes of 263, where the hand audit counted 23 of 247.
 
 ## Flicker loop
 

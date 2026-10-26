@@ -5,7 +5,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
+import { tempDir } from './lib/temp.mjs';
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../src/engine.js');
 const { dispatchTool, handleMcpMessage } = await import('../src/mcp.js');
 const { startServer } = await import('../src/server.js');
@@ -244,7 +245,7 @@ test('mcp: create, update and delete Users rows like any table; non-architects a
 });
 
 test('cli: entity create on Users prints the invite link or the token once', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-users-cli-'));
+  const dir = tempDir('weave-users-cli-');
   try {
     const data = join(dir, 'w.db');
     const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: ISS, WEAVE_ORIGIN: 'https://weave.example.com', WEAVE_UPDATE_CHECK: 'off' } });
@@ -261,7 +262,7 @@ test('cli: entity create on Users prints the invite link or the token once', () 
 
 test('ui: the nav pins Users beside Workflows, and + New on Users opens the user dialog', () => {
   const nav = fnBodyOf('renderNav');
-  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("$('#sidebar').append(system"));
+  const group = nav.slice(nav.indexOf("$('#rail-system').replaceChildren"), nav.indexOf("class: 'nav-pinned'"));
   assert.ok(group.indexOf("'Users'") > group.indexOf("'Workflows'") && group.indexOf("'Users'") < group.indexOf("'#/activity'"), 'Workflows, Users, Activity, Trash');
   assert.match(nav, /db\.system === 'users'/, 'Users leaves the Workspace space list');
   assert.match(APP, /if \(db\.system === 'users'\) return newUserDialog\(db, redraw\)/);

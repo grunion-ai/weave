@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 function buildWorkspace(w = new Weave()) {
   w.createSpace({ name: 'Quality' });
@@ -128,7 +129,7 @@ test('REST, MCP and CLI carry fields and relations', async () => {
     server.close();
   }
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-query-fields-'));
+  const dir = tempDir('weave-query-fields-');
   try {
     const data = join(dir, 'ws.db');
     const d = new Weave({ path: data });

@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
+import { tempDir } from './lib/temp.mjs';
 
 function build() {
   const w = new Weave();
@@ -184,7 +185,7 @@ test('describeSchema names every member of the target set', () => {
 });
 
 test('persistence round-trip: a multi-target field survives save/load', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-poly-'));
+  const dir = tempDir('weave-poly-');
   const path = join(dir, 'w.json');
   try {
     const w1 = new Weave({ path });

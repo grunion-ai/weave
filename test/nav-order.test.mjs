@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../src/engine.js';
 import { startServer, createWorkspaceHub } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const userSpaces = (w) => w.listSpaces().filter((s) => !s.system).map((s) => s.name);
@@ -22,8 +23,8 @@ const build = () => {
   return w;
 };
 
-const tempDir = (fn) => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-nav-order-'));
+const inTempDir = (fn) => {
+  const dir = tempDir('weave-nav-order-');
   try { return fn(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 };
 
@@ -102,7 +103,7 @@ test('a duplicate lands last in its space; a trashed table keeps its place for i
   assert.deepEqual(tablesIn(w, 'Alpha'), ['Three', 'One', 'Two', 'One Copy'], 'Two comes back after One, where it sat');
 });
 
-test('the order survives a reload from disk (Feature #284)', () => tempDir((dir) => {
+test('the order survives a reload from disk (Feature #284)', () => inTempDir((dir) => {
   const path = join(dir, 'ws.db');
   const w = new Weave({ path });
   for (const name of ['Alpha', 'Bravo', 'Charlie']) w.createSpace({ name });
@@ -116,7 +117,7 @@ test('the order survives a reload from disk (Feature #284)', () => tempDir((dir)
   again.store.close?.();
 }));
 
-test('a workspace saved before positions existed keeps today\'s order as its starting order (Feature #284)', () => tempDir((dir) => {
+test('a workspace saved before positions existed keeps today\'s order as its starting order (Feature #284)', () => inTempDir((dir) => {
   const path = join(dir, 'old.db');
   const w = new Weave({ path });
   for (const name of ['Zulu', 'Alpha', 'Mike']) w.createSpace({ name });
@@ -167,7 +168,7 @@ test('workspaces: the hub order is the stored order, and moveWorkspace rewrites 
   assert.throws(() => root.moveWorkspace('beta', -2), /position is a whole number/);
 });
 
-test('workspaces: the order survives a hub restart (Feature #284)', () => tempDir((dir) => {
+test('workspaces: the order survives a hub restart (Feature #284)', () => inTempDir((dir) => {
   const open = () => {
     const root = new Weave({ path: join(dir, 'root.db') });
     root.updateWorkspace({ name: 'root' });
@@ -262,7 +263,7 @@ test('MCP reads and writes the same order through the same engine calls (Feature
   assert.deepEqual(read.workspaces.map((x) => x.name), ['beta', 'root', 'alpha', 'gamma']);
 });
 
-test('CLI reads and writes the same order (Feature #284)', () => tempDir((dir) => {
+test('CLI reads and writes the same order (Feature #284)', () => inTempDir((dir) => {
   const data = join(dir, 'ws.db');
   const cli = (...args) => JSON.parse(execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' }));
   for (const name of ['Alpha', 'Bravo']) cli('space', 'create', name);

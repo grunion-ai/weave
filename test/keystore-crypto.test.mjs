@@ -4,9 +4,10 @@ import { mkdtempSync, readFileSync, writeFileSync, statSync, existsSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
+import { tempDir } from './lib/temp.mjs';
 
 function fresh(env = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-ks-'));
+  const dir = tempDir('weave-ks-');
   const path = join(dir, 'keystore.json');
   return { dir, path, w: new Weave({ keystorePath: path, keystoreEnv: env }) };
 }
@@ -41,7 +42,7 @@ test('a keystore reopens with the key file beside it', () => {
 });
 
 test('a plaintext keystore from #64 migrates on open, losing nothing', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-ks-v1-'));
+  const dir = tempDir('weave-ks-v1-');
   const path = join(dir, 'keystore.json');
   writeFileSync(path, JSON.stringify({ legacy: 'old-secret', other: 'second' }, null, 1), { mode: 0o600 });
 

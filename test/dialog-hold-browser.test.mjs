@@ -162,7 +162,7 @@ if (s) {
         assert.equal(await styleOf(page.locator('#fsv-back'), 'outlineStyle', 'none'), 'none', 'the focused viewer draws no ring');
 
         await page.keyboard.press('Tab');
-        assert.equal(await focused(page), 'Back', 'the first Tab lands on the toolbar\'s first control');
+        assert.equal(await focused(page), 'Refresh', 'the first Tab lands on the toolbar\'s first control');
         await page.keyboard.press('Shift+Tab');
         assert.equal(await focused(page), 'IFRAME', 'Shift+Tab from the first control wraps to the frame');
         await page.focus('#fsv-back button[title="Close (Esc)"]');
@@ -174,9 +174,9 @@ if (s) {
         await page.keyboard.press('Tab');
         assert.equal(await inFrame(), 'second');
         await page.keyboard.press('Tab');
-        assert.equal(await focused(page), 'Back', 'Tab out of the frame\'s last stop wraps to the toolbar, not the page');
+        assert.equal(await focused(page), 'Refresh', 'Tab out of the frame\'s last stop wraps to the toolbar, not the page');
 
-        await page.focus('#fsv-back button[title="Back"]');
+        await page.focus('#fsv-back button[title="Refresh"]');
         await page.keyboard.press('Escape');
         await page.waitForSelector('#fsv-back', { state: 'detached' });
         assert.deepEqual(await freed(page), [], 'Escape frees the page');

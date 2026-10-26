@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { fresh } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const seeded = () => {
   const w = fresh();
@@ -82,7 +83,7 @@ test('weave_table_view, the CLI and REST read and write it, and the REST query h
   const rows = await dispatchTool(w, 'weave_query', { db: 'Task', search: w.tableView('Task/Standard').search });
   assert.equal(rows.total, 2);
 
-  const dir = mkdtempSync(join(tmpdir(), 'weave-search-'));
+  const dir = tempDir('weave-search-');
   try {
     const db = join(dir, 'w.db');
     const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');

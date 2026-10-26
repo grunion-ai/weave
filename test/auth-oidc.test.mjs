@@ -4,12 +4,14 @@ import { Weave } from '../src/engine.js';
 import { createOidc, oidcFromEnv } from '../src/oidc.js';
 import { renderAuthPage } from '../src/auth-page.js';
 import { createBilling } from '../src/billing.js';
+import { startServer } from '../src/server.js';
 import { startIdp, serveOidc, cookieOf } from './lib/idp.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -88,7 +90,7 @@ test('engine: invites never leave through the JSON export, and an import keeps t
 });
 
 test('migration: a pinned identity drops its email, an unpinned one is dropped, and the identity audit is scrubbed', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-oidc-mig-'));
+  const dir = tempDir('weave-oidc-mig-');
   try {
     const path = join(dir, 'w.db');
     const w = new Weave({ path });
@@ -131,7 +133,7 @@ test('migration: a dump carrying the old shape is scrubbed on import too', () =>
 });
 
 test('cli: account link mints an invite (issuer from WEAVE_OIDC_ISSUER or --issuer); unlink takes the subject', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-oidc-'));
+  const dir = tempDir('weave-oidc-');
   try {
     const data = join(dir, 'w.db');
     const run = (args, env = {}) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: '', WEAVE_OIDC_CLIENT_ID: '', WEAVE_ORIGIN: '', WEAVE_UPDATE_CHECK: 'off', ...env } });
@@ -255,6 +257,70 @@ test('oidc: what comes back is the issuer and the subject, and userinfo is never
       assert.deepEqual(who, { issuer: s.idp.issuer, subject: 'user_kyle', ...(claimsInIdToken ? { email: 'kyle@example.com' } : {}) }, 'the verified email from the id token only, never userinfo');
     } finally { s.stop(); }
   }
+});
+
+test('oidc: the client-credential probe tells a client the provider accepts (invalid_grant) from one it refuses (Issue #1178)', async () => {
+  const idp = await startIdp();
+  try {
+    const good = await createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret }).probe({ redirectUri: 'http://localhost/cb' });
+    assert.deepEqual([good.ok, good.status, good.code], [true, 400, 'invalid_grant']);
+    assert.ok(Date.parse(good.checkedAt) > 0);
+    const sent = idp.seen.token.at(-1);
+    assert.equal(sent.basic, true, 'the probe authenticates the way a sign-in does');
+    assert.equal(sent.form.redirect_uri, 'http://localhost/cb');
+    assert.match(sent.form.code, /^weave-probe-/);
+    const stale = await createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: 'rotated-away' }).probe();
+    assert.deepEqual([stale.ok, stale.status, stale.code], [false, 401, 'invalid_client']);
+  } finally { idp.stop(); }
+  const doc = { issuer: ISS, authorization_endpoint: `${ISS}/oauth/authorize`, token_endpoint: `${ISS}/oauth/token`, jwks_uri: `${ISS}/jwks` };
+  const answering = (status, body) => createOidc({ issuer: ISS, clientId: 'c', clientSecret: 's', fetch: async (url) => (String(url).endsWith('/openid-configuration') ? Response.json(doc) : new Response(body == null ? 'nope' : JSON.stringify(body), { status })) });
+  for (const [status, body, ok, code] of [
+    [400, { error: 'invalid_scope' }, false, 'invalid_scope'],
+    [400, { error: 'unauthorized_client' }, false, 'unauthorized_client'],
+    [401, null, false, 'invalid_client'],
+    [503, null, false, 'server_error'],
+    [400, { error: 'invalid_request' }, true, 'invalid_request'],
+  ]) {
+    const r = await answering(status, body).probe();
+    assert.deepEqual([r.ok, r.code], [ok, code], `${status} ${body?.error ?? ''}`);
+  }
+  const down = await createOidc({ issuer: ISS, clientId: 'c', fetch: async () => { throw new TypeError('fetch failed'); } }).probe();
+  assert.deepEqual([down.ok, down.code], [false, 'unreachable']);
+});
+
+test('routes: /api/health carries the sign-in probe; anonymous reads auth.ok, an architect reads the provider code, and the top-level ok stays true (Issue #1178)', async () => {
+  const idp = await startIdp();
+  const w = new Weave();
+  const architect = w.createAccount({ name: 'root', role: 'architect' }).token;
+  w.setRequireAuth(true);
+  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: 'rotated-away', name: 'Clerk' });
+  const errors = [];
+  const was = console.error;
+  console.error = (line) => errors.push(String(line));
+  const { server, port } = await startServer(w, { port: 0, oidc, authProbeEvery: 40 });
+  const health = async (token) => (await fetch(`http://127.0.0.1:${port}/api/health`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })).json();
+  try {
+    let body;
+    for (let i = 0; i < 200 && !(body = await health(architect)).auth; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(body.ok, true, 'an auth fault never fails the Railway check or the release swap');
+    assert.deepEqual([body.auth.ok, body.auth.status, body.auth.code], [false, 401, 'invalid_client']);
+    assert.deepEqual(await health(null), { ok: true, name: 'weave', auth: { ok: false } }, 'anonymous learns only whether sign-in works');
+    assert.ok(errors.some((l) => /sign-in is broken: Clerk answered 401 invalid_client/.test(l)), errors.join('\n'));
+    const seen = idp.seen.token.length;
+    for (let i = 0; i < 200 && idp.seen.token.length === seen; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.ok(idp.seen.token.length > seen, 'the probe runs again on its interval');
+  } finally { console.error = was; server.close(); idp.stop(); }
+  const quiet = new Weave();
+  const off = await startServer(quiet, { port: 0, oidc: null, authProbeEvery: 40 });
+  try {
+    assert.equal('auth' in (await (await fetch(`http://127.0.0.1:${off.port}/api/health`)).json()), false, 'no provider, no auth block');
+  } finally { off.server.close(); }
+});
+
+test('cli: weave serve probes sign-in at start and every fifteen minutes (Issue #1178)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const bin = readFileSync(BIN, 'utf8');
+  assert.match(bin, /await startServer\(w, \{[^}]*authProbeEvery: 15 \* 60_000/);
 });
 
 test('routes: signing in provisions nobody — a stranger, and the linked email under a new subject, are refused', async () => {
@@ -484,6 +550,82 @@ test('routes: no sign-in refusal page links into the automatic redirect', async 
       assert.ok(links.includes('/auth?signed-out=1'), `${why}: ${links}`);
     }
   } finally { s.stop(); }
+});
+
+const quietErrors = () => {
+  const lines = [];
+  const was = console.error;
+  console.error = (line) => lines.push(String(line));
+  return { lines, restore: () => { console.error = was; } };
+};
+
+test('routes: a provider that refuses weave\'s own client gets a "broken on weave\'s side" page with nothing to retry (Issue #1179)', async () => {
+  const s = await serve();
+  const log = quietErrors();
+  try {
+    const pages = [];
+    for (const code of ['invalid_client', 'invalid_scope', 'unauthorized_client']) {
+      s.idp.tamper(code);
+      pages.push([`token endpoint ${code}`, code, (await s.signIn(KYLE)).res]);
+    }
+    s.idp.tamper('invalid_client');
+    const onboarding = await s.call('GET', '/api/auth/oidc/start?start=1');
+    const back = s.idp.approve(onboarding.headers.get('location'), KYLE);
+    pages.push(['token endpoint from /start', 'invalid_client', await s.call('GET', back.pathname + back.search, { cookie: cookieOf(onboarding) })]);
+    s.idp.tamper(null);
+    const start = await s.call('GET', '/api/auth/oidc/start');
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    pages.push(['authorization endpoint invalid_scope', 'invalid_scope', await s.call('GET', `/api/auth/oidc/callback?error=invalid_scope&state=${state}`, { cookie: cookieOf(start) })]);
+    for (const [why, code, res] of pages) {
+      assert.equal(res.status, 503, why);
+      assert.equal(res.headers.get('set-cookie'), null, why);
+      assert.equal(res.headers.get('cache-control'), 'no-store', why);
+      const html = await res.text();
+      assert.match(html, /<h1>Sign-in is broken on weave&#39;s side<\/h1>|<h1>Sign-in is broken on weave's side<\/h1>/, why);
+      assert.match(html, new RegExp(`Clerk refused weave(&#39;|')s own credentials \\(${code}\\)`), why);
+      assert.match(html, /will not help/, why);
+      assert.deepEqual(hrefs(html), [], `${why}: no link back into the loop`);
+    }
+    assert.equal(log.lines.filter((l) => /ALERT sign-in is broken/.test(l)).length, pages.length, log.lines.join('\n'));
+    assert.equal(Object.keys(s.w.state.meta.sessions ?? {}).length, 0);
+  } finally { log.restore(); s.stop(); }
+});
+
+test('routes: every other failed verification keeps Back to sign in and adds Use a different account, which asks the provider for a fresh login (Issue #1179)', async () => {
+  const s = await serve();
+  try {
+    s.idp.tamper('signature');
+    const unverified = (await s.signIn(KYLE, { next: '/#/Dev/Task' })).res;
+    assert.equal(unverified.status, 401);
+    const start = await s.call('GET', '/api/auth/oidc/start');
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    const denied = await s.call('GET', `/api/auth/oidc/callback?error=access_denied&state=${state}`, { cookie: cookieOf(start) });
+    assert.equal(denied.status, 400);
+    s.idp.tamper(null);
+    for (const [why, res] of [['unverified', unverified], ['denied', denied]]) {
+      const html = await res.text();
+      assert.match(html, />Back to sign in</, why);
+      assert.match(html, />Use a different account</, why);
+      const links = hrefs(html);
+      assert.ok(links.includes('/auth?signed-out=1'), `${why}: ${links}`);
+      const other = links.find((h) => h.startsWith('/api/auth/oidc/start?fresh=1'));
+      assert.ok(other, `${why}: ${links}`);
+      const again = await s.call('GET', other);
+      assert.equal(new URL(again.headers.get('location')).searchParams.get('prompt'), 'login', `${why}: the provider asks who you are instead of approving silently`);
+      if (why === 'unverified') {
+        const back = s.idp.approve(again.headers.get('location'), KYLE);
+        const done = await s.call('GET', back.pathname + back.search, { cookie: cookieOf(again) });
+        assert.deepEqual([done.status, done.headers.get('location')], [302, '/#/Dev/Task']);
+      }
+    }
+  } finally { s.stop(); }
+  const ended = await serve({ idpOptions: { endSession: true } });
+  try {
+    ended.idp.tamper('signature');
+    const out = hrefs(await (await ended.signIn(KYLE)).res.text()).find((h) => h.startsWith(ended.idp.issuer));
+    assert.ok(out, 'with an end-session endpoint, Use a different account ends the provider session first');
+    assert.equal(new URL(out).pathname, '/oauth/logout');
+  } finally { ended.stop(); }
 });
 
 test('routes: a rate-limited sign-in is a page with a way back, not bare JSON', async () => {

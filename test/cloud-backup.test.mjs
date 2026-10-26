@@ -11,11 +11,12 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { GUIDES } from '../src/handbook.js';
 import { backup, restore, cloud, cloudStore, destKind, scheduleNightly, CLOUD_QUOTA_BYTES, RETAIN, ARCHIVE_PREFIX } from '../src/backup.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
 const run = promisify(execFile);
-const tmp = (label) => mkdtempSync(join(tmpdir(), `weave-cloud-${label}-`));
+const tmp = (label) => tempDir(`weave-cloud-${label}-`);
 const MAGIC = Buffer.from('WVBK1\0');
 const sealed = (n = 64) => Buffer.concat([MAGIC, randomBytes(n)]);
 const PASS = 'correct horse battery staple';

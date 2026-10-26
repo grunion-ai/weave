@@ -10,11 +10,12 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { GUIDES } from '../src/handbook.js';
 import { backup, cloudStore } from '../src/backup.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
 const run = promisify(execFile);
-const tmp = (label) => mkdtempSync(join(tmpdir(), `weave-migrate-${label}-`));
+const tmp = (label) => tempDir(`weave-migrate-${label}-`);
 const PASS = 'correct horse battery staple';
 
 function memoryBucket() {

@@ -9,11 +9,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/weave.js', import.meta.url));
 
 function tmp() {
-  return mkdtempSync(join(tmpdir(), 'weave-blobs-'));
+  return tempDir('weave-blobs-');
 }
 
 function seed(w) {

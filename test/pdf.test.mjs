@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { markdownToPdf, stripInline, unicodeFont } from '../src/pdf.js';
+import { tempDir } from './lib/temp.mjs';
 
 function checkXref(s) {
   assert.ok(s.startsWith('%PDF-1.4'), 'starts with PDF header');
@@ -146,7 +147,7 @@ test('pure-ASCII docs stay Helvetica-only — no embedded font', () => {
 });
 
 test('unicode PDF written to disk has a well-formed xref trailer', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'weave-pdf-'));
+  const dir = tempDir('weave-pdf-');
   const file = path.join(dir, 'unicode.pdf');
   try {
     fs.writeFileSync(file, markdownToPdf(UNICODE_MD, { title: 'Round trip' }));
@@ -163,7 +164,7 @@ test('a missing unicode font degrades the PDF, never the process (G2)', async ()
   const { mkdtempSync, cpSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-pdf-nofont-'));
+  const dir = tempDir('weave-pdf-nofont-');
   try {
     cpSync(new URL('../src', import.meta.url).pathname, join(dir, 'src'), { recursive: true });
     const mod = await import(join(dir, 'src', 'pdf.js'));

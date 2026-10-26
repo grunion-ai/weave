@@ -77,7 +77,10 @@ export async function promote(io, { sha, from }, { deadlineMs = 25 * 60_000, pol
   const outcome = hook?.action === 'skipped'
     ? { state: 'failed', why: `the supervisor skipped ${short(sha)}: ${hook.reason ?? 'no reason given'}`, known: true }
     : await waitLive(io, sha, { deadlineMs, pollMs, sleep });
-  if (outcome.state === 'passed') return { action: 'promoted', sha, from, health: outcome.health };
+  if (outcome.state === 'passed') {
+    if (outcome.health?.auth?.ok === false) await io.alert(`weave promote: ${short(sha)} is live, but sign-in is broken: /api/health reads auth.ok false (an architect read names the provider's error code)${self ? `; ${self}` : ''}`);
+    return { action: 'promoted', sha, from, health: outcome.health };
+  }
 
   const { commits } = await io.range(from, sha);
   const lines = [

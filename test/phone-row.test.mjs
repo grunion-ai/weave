@@ -9,6 +9,7 @@ import '../public/phone-row.js';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const PR = globalThis.weavePhoneRow;
 const FIELDS = [
@@ -142,7 +143,7 @@ test('MCP, REST and CLI speak phoneRow by name', async () => {
     assert.equal((await res.json()).phoneRow.lead, 'Severity');
   } finally { server.close(); }
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-phone-row-'));
+  const dir = tempDir('weave-phone-row-');
   const data = join(dir, 'ws.db');
   const cli = (...args) => JSON.parse(execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' }));
   try {

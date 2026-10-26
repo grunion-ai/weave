@@ -2,13 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../../src/engine.js';
 import { startServer } from '../../src/server.js';
+import { createForm } from '../../src/forms.js';
 import { SHARE_KINDS, SHARE_MODES } from '../../src/shares.js';
 import { read } from '../lib/source.mjs';
 
 const RUNG = Object.fromEntries([...read('src/shares.js').match(/const RUNG = \{([^}]+)\}/)[1].matchAll(/(\w+): (\d+)/g)].map(([, m, n]) => [m, Number(n)]));
 const LANDING = { entity: (s) => `/e/${s.one.id}/entity.html`, table: (s) => `/table/${s.task.id}`, space: (s) => `/space/${s.dev.id}`, view: (s) => `/view/${s.view.id}`, workspace: () => '/workspace' };
 const SCOPE_ID = { entity: (s) => s.one.id, table: (s) => s.task.id, space: (s) => s.dev.id, view: (s) => s.view.id, workspace: (s) => s.w.state.meta.id };
-const NARROW = new Set(['entity', 'view']);
+const NARROW = new Set(['entity', 'entities', 'view']);
+const LADDER_MODES = SHARE_MODES.filter(mode => mode !== 'submit');
+const LADDER_KINDS = SHARE_KINDS.filter(kind => kind !== 'entities');
+const INVALID = SHARE_MODES.flatMap(mode => SHARE_KINDS.filter(kind => (kind === 'entities' && mode !== 'read') || (mode === 'submit' && kind !== 'table')).map(kind => ({ mode, kind })));
 const OUTSIDE = 'A share link reaches the rows, documents and files in its scope, nothing else';
 
 function seed() {
@@ -44,7 +48,7 @@ async function serve() {
     redirect: 'manual',
   });
   s.grant = (kind, mode, extra = {}) => {
-    const g = s.w.mintShare({ scope: { kind, id: SCOPE_ID[kind](s) }, mode: mode === 'comment' ? 'read' : mode, ...extra });
+    const g = s.w.mintShare({ scope: kind === 'entities' ? { kind, ids: [s.one.id] } : { kind, id: SCOPE_ID[kind](s) }, mode: mode === 'comment' ? 'read' : mode, ...extra });
     s.w.state.meta.shares[g.id].mode = mode;
     return s.w.shareByToken(g.token);
   };
@@ -61,8 +65,8 @@ function probes(kind, mode) {
   const inScope = NARROW.has(kind) ? ['One'] : ['One', 'Two'];
   const refused = (error) => ({ status: 403, error });
   return [
-    { name: 'GET the landing page', method: 'GET', path: (s, g) => `/s/${g.token}`, expect: { status: 302 }, check: (s, g, res) => assert.equal(res.headers.get('location'), `/s/${g.token}${LANDING[kind](s)}`) },
-    { name: 'GET the scope page', method: 'GET', path: (s, g) => `/s/${g.token}${LANDING[kind](s)}`, expect: { status: 200 } },
+    { name: 'GET the landing page', method: 'GET', path: (s, g) => `/s/${g.token}`, expect: { status: kind === 'entities' ? 200 : 302 }, check: (s, g, res) => { if (kind !== 'entities') assert.equal(res.headers.get('location'), `/s/${g.token}${LANDING[kind](s)}`); } },
+    { name: 'GET the scope page', method: 'GET', path: (s, g) => `/s/${g.token}${kind === 'entities' ? '' : LANDING[kind](s)}`, expect: { status: 200 } },
     { name: 'GET the row page', method: 'GET', path: (s, g) => `/s/${g.token}/e/${s.one.id}/entity.html`, expect: { status: 200 }, check: async (s, g, res) => assert.match(await res.text(), /Shared doc body/) },
     { name: 'POST at a page', method: 'POST', path: (s, g) => `/s/${g.token}/e/${s.one.id}/doc.md`, expect: { status: 405, error: 'A share page is read-only' }, write: true },
     { name: 'GET /api/share', method: 'GET', path: () => '/api/share', expect: { status: 200 }, check: async (s, g, res) => assert.deepEqual([(await res.json()).mode, g.scope.kind], [mode, kind]) },
@@ -80,7 +84,7 @@ function probes(kind, mode) {
     },
     {
       name: 'POST a row', method: 'POST', path: (s) => `/api/tables/${s.task.id}/entities`, body: { Name: `made by ${mode}` }, write: true,
-      expect: kind === 'entity' ? refused('This share link reaches one row; it cannot add rows beside it')
+      expect: ['entity', 'entities'].includes(kind) ? refused('This share link reaches one row; it cannot add rows beside it')
         : rung >= RUNG.manage ? { status: 201 } : refused(`A ${mode} link cannot add rows; that takes manage`),
       effect: (s) => assert.ok(s.w.listEntities(s.task.id).some((e) => s.w.entityName(e) === `made by ${mode}`)),
     },
@@ -92,14 +96,14 @@ function probes(kind, mode) {
   ];
 }
 
-const MATRIX = SHARE_MODES.flatMap((mode) => SHARE_KINDS.map((kind) => ({ mode, kind, probes: probes(kind, mode) })));
+const MATRIX = LADDER_MODES.flatMap(mode => LADDER_KINDS.map(kind => ({ mode, kind, probes: probes(kind, mode) }))).concat({ mode: 'read', kind: 'entities', probes: probes('entities', 'read') });
 
 test('the matrix is generated from the rungs and scope kinds src/shares.js declares', () => {
-  assert.deepEqual(Object.keys(RUNG), SHARE_MODES, 'every mode has a rung, in ladder order');
-  assert.deepEqual(Object.values(RUNG), SHARE_MODES.map((_, i) => i));
-  assert.deepEqual(Object.keys(LANDING).sort(), [...SHARE_KINDS].sort());
-  assert.equal(MATRIX.length, SHARE_MODES.length * SHARE_KINDS.length);
-  assert.equal(MATRIX.reduce((n, c) => n + c.probes.length, 0), 300, 'cells asserted through the share door');
+  assert.deepEqual(Object.keys(RUNG), LADDER_MODES, 'every mode has a rung, in ladder order');
+  assert.deepEqual(Object.values(RUNG), LADDER_MODES.map((_, i) => i));
+  assert.deepEqual(Object.keys(LANDING).sort(), [...LADDER_KINDS].sort());
+  assert.equal(MATRIX.length + 1 + INVALID.length, SHARE_MODES.length * SHARE_KINDS.length, 'ladder cells, submission-only table, and invalid combinations cover every enum pair');
+  assert.equal(MATRIX.reduce((n, c) => n + c.probes.length, 0), 315, 'all legacy probes plus the selected-entry read probes');
 });
 
 for (const { mode, kind, probes: cells } of MATRIX) {
@@ -172,4 +176,50 @@ test('the shared table page renders a many-relation cell as names joined by ", "
   } finally {
     s.stop();
   }
+});
+
+
+for (const { mode, kind } of INVALID) {
+  test(`share door matrix: ${mode} on ${kind} is an invalid capability combination`, () => {
+    const s = seed();
+    const form = createForm(s.w, { name: 'Submission', table: s.task.id, fields: [{ field: 'Name', required: true }], shareOnly: true });
+    const before = JSON.stringify(s.w.state.meta.shares ?? {});
+    const scope = kind === 'entities' ? { kind, ids: [s.one.id] } : { kind, id: SCOPE_ID[kind](s) };
+    assert.throws(() => s.w.mintShare({ scope, mode, formId: form.id }), { code: 'invalid' });
+    assert.equal(JSON.stringify(s.w.state.meta.shares ?? {}), before);
+  });
+}
+
+test('share door matrix: submit on a table creates only through its share-only form', async () => {
+  const s = await serve();
+  try {
+    const form = createForm(s.w, { name: 'Submission', table: s.task.id, fields: [{ field: 'Name', required: true }], shareOnly: true });
+    const g = s.w.mintShare({ scope: { kind: 'table', id: s.task.id }, mode: 'submit', formId: form.id });
+    assert.equal((await s.call('GET', `/s/${g.token}`)).status, 200);
+    const before = s.snapshot();
+    for (const [method, path, body] of [
+      ['GET', '/api/share'], ['GET', `/api/entities/${s.one.id}`], ['GET', `/api/entities/${s.one.id}/doc`],
+      ['GET', `/api/tables/${s.task.id}/entities`], ['POST', `/api/tables/${s.task.id}/query`, {}],
+      ['GET', '/api/schema'], ['GET', `/api/forms/${form.id}`],
+      ['PATCH', `/api/entities/${s.one.id}`, { Name: 'Not allowed' }],
+      ['POST', `/api/entities/${s.one.id}/comments`, { text: 'Not allowed' }],
+      ['POST', `/api/tables/${s.task.id}/entities`, { Name: 'Not allowed' }], ['DELETE', `/api/entities/${s.one.id}`],
+    ]) {
+      const response = await s.call(method, path, { token: g.token, body });
+      assert.equal(response.status, 403, `${method} ${path}`);
+    }
+    for (const path of [`/s/${g.token}/e/${s.one.id}/entity.html`, `/s/${g.token}/table/${s.task.id}`]) {
+      assert.equal((await s.call('GET', path)).status, 404);
+    }
+    assert.equal(s.snapshot(), before, 'all unsupported operations leave rows and audit unchanged');
+    assert.equal((await s.call('GET', `/f/${form.id}`)).status, 401, 'stable form id cannot bypass the link');
+    assert.equal((await s.call('POST', `/api/forms/${form.id}/submit`, { body: { values: { Name: 'Not allowed' } } })).status, 401);
+    const submitted = await s.call('POST', `/s/${g.token}/api/forms/${form.id}/submit`, { body: { values: { Name: 'Submitted through capability' } } });
+    assert.equal(submitted.status, 201);
+    assert.deepEqual(await submitted.json(), { submitted: true });
+    assert.equal(s.w.listEntities(s.task.id).filter(row => s.w.entityName(row) === 'Submitted through capability').length, 1);
+    s.w.revokeShare(g.id);
+    assert.equal((await s.call('GET', `/s/${g.token}`)).status, 404);
+    assert.equal((await s.call('POST', `/s/${g.token}/api/forms/${form.id}/submit`, { body: { values: { Name: 'Revoked' } } })).status, 401);
+  } finally { s.stop(); }
 });

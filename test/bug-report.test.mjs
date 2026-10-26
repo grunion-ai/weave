@@ -313,7 +313,9 @@ test('a submitted report becomes an Issue in the weave workspace', async () => {
   assert.equal(r.status, 201);
   assert.equal(r.data.table, 'Development/Issue');
   assert.equal(r.data.workspace, 'weave');
-  assert.match(r.data.url, /^\/w\/weave\/e\/[0-9a-f-]{36}$/, 'a link the reporter can open');
+  assert.equal(r.data.url, `/e/${r.data.id}`, 'the bare row link');
+  const hop = await fetch(`${base}${r.data.url}`, { redirect: 'manual' });
+  assert.equal(hop.headers.get('location'), `/w/weave/e/${r.data.id}`, 'a link the reporter can open from their own workspace');
 
   const found = await post('/w/weave/api/tables/Issue/query', {});
   const issue = found.data.items.find((i) => i.id === r.data.id);

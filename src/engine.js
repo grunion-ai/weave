@@ -18,6 +18,7 @@ import { uuid, slug } from './ids.js';
 import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
+import { parseCron, dueBetween } from './schedule.js';
 import * as Shares from './shares.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
@@ -152,6 +153,13 @@ export const HTML_VIEW_POLICY = "sandbox allow-scripts allow-popups allow-popups
 export const HTML_PAGE_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; frame-src 'self'";
 export const sandboxedHtmlHeaders = (extra = {}, policy = HTML_VIEW_POLICY) => ({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': policy, ...extra });
 const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
+export const isHtmlFile = (meta) => HTML_FILE_TYPES.has(String(meta?.mime ?? '').split(';')[0].trim().toLowerCase());
+export const FRAME_HEIGHT_SCRIPT = "<script>(() => { if (parent === window) return; let sent = -1, gap = -1; const send = () => { const h = Math.ceil(Math.max(document.documentElement.getBoundingClientRect().height, document.body ? document.body.scrollHeight : 0)); if (h === sent) return; const over = h - innerHeight; if (over > 0 && sent === innerHeight && over === gap) return; gap = over; sent = h; parent.postMessage({ weave: 'frame-height', height: h }, '*'); }; new ResizeObserver(send).observe(document.documentElement); addEventListener('load', send); })();</script>";
+const LEADING_DOCTYPE = /^(?:\xEF\xBB\xBF)?\s*<!doctype[^>]*>/i;
+export function viewHtml(bytes, head = FRAME_HEIGHT_SCRIPT) {
+  const at = bytes.toString('latin1', 0, 4096).match(LEADING_DOCTYPE)?.[0].length ?? 0;
+  return Buffer.concat([bytes.subarray(0, at), Buffer.from(head), bytes.subarray(at)]);
+}
 export function fileHeaders(meta, bytes, { view = false } = {}) {
   const claimed = String(meta.mime ?? '').split(';')[0].trim().toLowerCase();
   const image = claimed.startsWith('image/') ? sniffImage(bytes) : null;
@@ -329,6 +337,8 @@ const WORKFLOW_STATES = [
   { name: 'Ready', category: 'done' },
 ];
 const workflowActor = (rowId) => `workflow:${rowId}`;
+const templated = (v) => typeof v === 'string' && v.includes('{{');
+const scheduleOut = (t) => ({ cron: t.cron, zone: t.zone, ...(t.where != null ? { where: t.where } : {}) });
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 const UPSERT_KEY_TYPES = ['text', 'number', 'url', 'email'];
 const blankSource = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
@@ -483,7 +493,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.entities',
-      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
+      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed, or schedule: a cron expression, a zone and an optional where clause, Feature #312) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
@@ -2041,6 +2051,26 @@ export class Weave {
     this.save();
     this.#audit('share-renewed', Shares.auditDetail(g));
     return g;
+  }
+
+  updateShare(id, patch = {}) {
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      const g = Shares.update(this, id, patch);
+      this.save();
+      this.#audit('share-updated', Shares.auditDetail(g));
+      return g;
+    });
+  }
+
+  regenerateShare(id, patch = {}) {
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      const g = Shares.regenerate(this, id, patch);
+      this.save();
+      this.#audit('share-regenerated', Shares.auditDetail(g));
+      return g;
+    });
   }
 
   shareByToken(token) {
@@ -6169,7 +6199,7 @@ export class Weave {
     const ws = `/w/${this.state.meta.name}`;
     if (kind === 'workspace') return `${ws}/`;
     if (kind === 'view') return `${ws}/#/view/${id}`;
-    return `${ws}/${{ entity: 'e', table: 't', space: 's' }[kind]}/${id}`;
+    return `/${{ entity: 'e', table: 't', space: 's' }[kind]}/${id}`;
   }
 
   getEntity(id) {
@@ -7866,11 +7896,22 @@ export class Weave {
     if (spec.table == null || spec.table === '') throw new WeaveError('The Script names no table', 'invalid');
     const db = this.getTable(spec.table);
     const { trigger, actions } = spec;
-    if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed'].includes(trigger.type)) {
+    if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed', 'schedule'].includes(trigger.type)) {
       throw new WeaveError(`Invalid automation trigger`, 'invalid');
     }
     const t = { type: trigger.type };
-    if (trigger.type !== 'entity-created') {
+    if (trigger.type === 'schedule') {
+      if (trigger.cron == null || trigger.cron === '') throw new WeaveError('A schedule trigger needs a cron expression: minute hour day month weekday, as in "0 9 * * 1-5"', 'invalid');
+      try { t.cron = parseCron(trigger.cron).text; } catch (err) { throw new WeaveError(err.message, 'invalid'); }
+      const zone = trigger.zone ?? 'UTC';
+      if (!DG.isZone(zone)) throw new WeaveError(`'${zone}' is not a time zone`, 'invalid');
+      t.zone = zone;
+      if (trigger.where != null) {
+        if (typeof trigger.where !== 'object') throw new WeaveError('A schedule where clause is a query filter: a list of [field, op, value] terms, or {and}/{or}', 'invalid');
+        this.query(db.id, { where: trigger.where, limit: 1, relations: 'chip' });
+        t.where = trigger.where;
+      }
+    } else if (trigger.type !== 'entity-created') {
       const f = this.getField(db.id, trigger.field);
       t.fieldId = f.id;
       if (trigger.type === 'state-changed' && trigger.toState) {
@@ -7883,7 +7924,7 @@ export class Weave {
     const acts = (actions ?? []).map((a) => {
       if (a?.type === 'set-field') {
         const f = this.getField(db.id, a.field);
-        this.#checkFits(f, a.value);
+        if (!templated(a.value)) this.#checkFits(f, a.value);
         return { type: 'set-field', fieldId: f.id, value: a.value };
       }
       if (a?.type === 'append-doc') {
@@ -7942,6 +7983,7 @@ export class Weave {
     };
     try {
       const trigger = { type: c.trigger.type };
+      if (c.trigger.type === 'schedule') Object.assign(trigger, scheduleOut(c.trigger));
       if (c.trigger.fieldId) trigger.field = fname(c.trigger.fieldId);
       if (c.trigger.toStateId) {
         const st = db.fields[c.trigger.fieldId].config.states?.find((s) => s.id === c.trigger.toStateId);
@@ -8092,11 +8134,11 @@ export class Weave {
     return rule;
   }
 
-  #stampRun(row, failure) {
+  #stampRun(row, failure, at = nowISO()) {
     const health = this.#wfField('Health');
     const reasonF = this.#wfField('Health Reason');
     this.#stamp(row, () => {
-      row.values[this.#wfField('Last Run').id] = nowISO();
+      row.values[this.#wfField('Last Run').id] = at;
       this.#setOption(row, health, failure ? 'Failed' : 'Healthy');
       row.values[reasonF.id] = failure ?? null;
     });
@@ -8150,6 +8192,7 @@ export class Weave {
       const db = auto.dbId ? this.state.tables[auto.dbId] : null;
       const fieldName = (fid) => db?.fields[fid]?.name ?? null;
       const trigger = auto.trigger ? { type: auto.trigger.type } : null;
+      if (auto.trigger?.type === 'schedule') Object.assign(trigger, scheduleOut(auto.trigger));
       if (auto.trigger?.fieldId) trigger.field = fieldName(auto.trigger.fieldId);
       if (auto.trigger?.toStateId && auto.trigger.fieldId) {
         trigger.toState = db.fields[auto.trigger.fieldId]?.config.states
@@ -8255,40 +8298,85 @@ export class Weave {
       if (t.type !== event.type) continue;
       if (t.fieldId && t.fieldId !== event.fieldId) continue;
       if (t.toStateId && t.toStateId !== event.toStateId) continue;
-      const name = reg.entityName(rule.row);
-      let failure = null;
-      const run = { failed: false };
-      reg.#wfRun.set(rule.row.id, run);
-      const person = this.actor;
-      this.actor = workflowActor(rule.row.id);
-      try {
-        for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth, run);
-      } catch (err) {
-        failure = err.message;
-        run.failed = true;
-      } finally {
-        this.actor = person;
-      }
-      this.#logActivity(e, 'automation-ran', { name, workflow: rule.row.id });
-      reg.#stampRun(rule.row, failure);
-      if (reg !== this) reg.save();
+      this.#fireRule(rule, db, [e], event, depth);
     }
   }
 
-  #runAction(rule, name, action, db, e, event, depth, run) {
+  #fireRule(rule, db, rows, event, depth, at = nowISO()) {
+    const reg = this.#reg;
+    const name = reg.entityName(rule.row);
+    let failure = null;
+    const run = { failed: false };
+    reg.#wfRun.set(rule.row.id, run);
+    const person = this.actor;
+    this.actor = workflowActor(rule.row.id);
+    const ran = [];
+    try {
+      for (const e of rows) {
+        const steps = {};
+        const outs = [];
+        ran.push({ e, outs });
+        for (const [i, action] of rule.actions.entries()) {
+          const out = this.#runAction(rule, name, action, db, e, event, depth, run, steps) ?? null;
+          steps[String(i + 1)] = out;
+          outs.push(out);
+        }
+      }
+    } catch (err) {
+      failure = err.message;
+      run.failed = true;
+    } finally {
+      this.actor = person;
+    }
+    for (const { e, outs } of ran) this.#logActivity(e, 'automation-ran', { name, workflow: rule.row.id, steps: outs });
+    reg.#stampRun(rule.row, failure, at);
+    if (reg !== this) reg.save();
+  }
+
+  #scheduleSince = new Map();
+
+  runSchedules({ now = this.now() } = {}) {
+    const reg = this.#reg;
+    const F = (n) => reg.#wfField(n);
+    let fired = 0;
+    for (const rule of reg.#allRules()) {
+      if (rule.owner !== this || rule.trigger?.type !== 'schedule') continue;
+      const row = rule.row;
+      if (rule.problem || row.deletedAt || row.values[F('On').id] !== true) {
+        this.#scheduleSince.set(row.id, now.getTime());
+        continue;
+      }
+      const seen = this.#scheduleSince.get(row.id);
+      const lastRun = row.values[F('Last Run').id];
+      if (seen === undefined && lastRun == null) { this.#scheduleSince.set(row.id, now.getTime()); continue; }
+      const since = new Date(Math.max(lastRun ? Date.parse(lastRun) : 0, seen ?? 0));
+      if (!dueBetween(parseCron(rule.trigger.cron), rule.trigger.zone, since, now)) continue;
+      const db = this.state.tables[rule.dbId];
+      const rows = this.query(db.id, { where: rule.trigger.where ?? [], relations: 'chip' }).items
+        .map((item) => own(this.state.entities, item.id)).filter(Boolean);
+      this.#fireRule(rule, db, rows, { type: 'schedule' }, 0, now.toISOString());
+      fired++;
+    }
+    if (fired) this.save();
+    return fired;
+  }
+
+  #runAction(rule, name, action, db, e, event, depth, run, steps = {}) {
     if (action.type === 'set-field') {
       const f = db.fields[action.fieldId];
-      if (f) {
-        const before = this.#undoBefore(e, db, [f]);
-        this.#applyValues(e, db, { [f.name]: action.value }, { depth: depth + 1 });
-        if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
-      }
+      if (!f) return null;
+      const value = templated(action.value) ? this.#template(action.value, e, db, steps) : action.value;
+      const before = this.#undoBefore(e, db, [f]);
+      this.#applyValues(e, db, { [f.name]: value }, { depth: depth + 1 });
+      if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
+      return { field: f.name, value };
     } else if (action.type === 'append-doc') {
       const docField = db.fields[action.fieldId] ?? this.documentFields(db)[0];
       if (docField) {
         e.docs = e.docs ?? {};
         const before = e.docs[docField.id] ?? '';
-        const after = (before ? before.replace(/\n*$/, '\n\n') : '') + stripEmptyEmbeds(this.#template(action.text, e, db));
+        const text = stripEmptyEmbeds(this.#template(action.text, e, db, steps));
+        const after = (before ? before.replace(/\n*$/, '\n\n') : '') + text;
         const prior = { at: e.updatedAt, by: e.modifiedBy };
         this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: before } } });
         e.docs[docField.id] = after;
@@ -8296,15 +8384,18 @@ export class Weave {
         e.modifiedBy = this.actor;
         this.#logActivity(e, 'doc-appended', docChange(docField.name, before, after));
         this.#recordDocRevision(e, docField, before, after, { prior });
+        return { field: docField.name, text };
       }
     } else if (action.type === 'add-comment') {
-      const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db), createdAt: nowISO() };
+      const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db, steps), createdAt: nowISO() };
       e.comments.push(comment);
       this.#recordUndo('comment-add', e, { commentId: comment.id });
+      return { id: comment.id, text: comment.text };
     } else if (action.type === 'upsert-row') {
-      this.#upsertRow(action, this.#upsertSource(e, db, event), depth);
+      const { e: row, created } = this.#upsertRow(action, this.#upsertSource(e, db, event, steps), depth);
+      return { id: row.id, publicId: row.publicId, name: this.entityName(row), created };
     } else if (action.type === 'webhook') {
-      if (this.#noWebhooks) return;
+      if (this.#noWebhooks) return { url: action.url, sent: false };
       const payload = {
         event: event.type,
         workspace: this.state.meta.name,
@@ -8328,10 +8419,12 @@ export class Weave {
       }, failed), failed)
         .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${url.host}: ${why}`); })
         .catch(() => {});
+      return { url: action.url, sent: true };
     }
+    return null;
   }
 
-  #upsertSource(e, db, event) {
+  #upsertSource(e, db, event, steps = {}) {
     const row = { PublicId: e.publicId };
     for (const [name, v] of Object.entries(this.#readEntityIn(e.id).fields)) {
       const chip = (x) => (x && typeof x === 'object' && 'publicId' in x ? x.name : x);
@@ -8339,7 +8432,7 @@ export class Weave {
     }
     const field = event.fieldId ? db.fields[event.fieldId] : null;
     const toState = event.toStateId ? field?.config.states?.find((s) => s.id === event.toStateId)?.name : null;
-    return { row, event: { type: event.type, ...(field ? { field: field.name } : {}), ...(toState ? { toState } : {}), ...(event.payload ?? {}) } };
+    return { row, event: { type: event.type, ...(field ? { field: field.name } : {}), ...(toState ? { toState } : {}), ...(event.payload ?? {}) }, steps };
   }
 
   #upsertRow(action, source, depth) {
@@ -8359,9 +8452,9 @@ export class Weave {
     const hit = this.listEntities(target.id)
       .filter((x) => x.values[key.id] != null && String(x.values[key.id]) === want)
       .sort((x, y) => x.publicId - y.publicId)[0];
-    if (!hit) return this.createEntity(target.id, { values }, { depth: depth + 1 });
+    if (!hit) return { e: this.createEntity(target.id, { values }, { depth: depth + 1 }), created: true };
     delete values[key.name];
-    return this.updateEntity(hit.id, values, { depth: depth + 1 });
+    return { e: this.updateEntity(hit.id, values, { depth: depth + 1 }), created: false };
   }
 
   #webhookFailed(id, run, reason) {
@@ -8376,9 +8469,13 @@ export class Weave {
     this.save();
   }
 
-  #template(text, e, db) {
+  #template(text, e, db, steps = {}) {
     return text.replace(/\{\{([^}]+)\}\}/g, (_, name) => {
       const key = name.trim();
+      if (key.startsWith('steps.')) {
+        const v = sourcePath({ steps }, key);
+        return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+      }
       if (key === 'PublicId') return String(e.publicId);
       if (key === 'Today' || key === 'Today:iso') {
         const iso = this.now().toISOString().slice(0, 10);

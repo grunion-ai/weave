@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts } from '../scripts/ci-test.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
 const manifest = plan(files, { unit: files.slice(0, 2), browser: files.slice(2) }, () => 10, 2, 2);
@@ -54,7 +55,7 @@ test('CI reporter records executed files, timings and missing prerequisite skips
   const { tmpdir } = await import('node:os');
   const { join, resolve } = await import('node:path');
   const { spawnSync } = await import('node:child_process');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-ci-test-'));
+  const dir = tempDir('weave-ci-test-');
   try {
     const fixture = join(dir, 'example.test.mjs'), report = join(dir, 'events.jsonl');
     writeFileSync(fixture, "import test from 'node:test'; test('executed', () => {}); test('missing', {skip: 'playwright not installed'}, () => {});");

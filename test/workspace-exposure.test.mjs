@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer, createWorkspaceHub, deployTokenFromEnv } from '../src/server.js';
 import { exposed, probeUrls } from '../scripts/exposure.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const DEPLOY = 'd'.repeat(40);
 
@@ -26,7 +27,7 @@ const hit = (port, host, method, path, { token, body, cookie } = {}) => new Prom
 });
 
 function hubIn({ requireAuth = false } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-exposure-'));
+  const dir = tempDir('weave-exposure-');
   const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   main.state.meta.name = 'Net';
   if (requireAuth) main.setRequireAuth(true);

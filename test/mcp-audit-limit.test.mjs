@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { dispatchTool } from '../src/mcp.js';
+import { tempDir } from './lib/temp.mjs';
 
 const SPACES = 105;
 
@@ -16,7 +17,7 @@ function busy(w) {
 for (const [label, open] of [
   ['in memory', () => ({ w: busy(new Weave()), done() {} })],
   ['on disk', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'weave-audit-limit-'));
+    const dir = tempDir('weave-audit-limit-');
     const w = busy(new Weave({ path: join(dir, 'w.db') }));
     return { w, done() { w.close?.(); rmSync(dir, { recursive: true, force: true }); } };
   }],

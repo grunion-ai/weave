@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from './lib/temp.mjs';
 
 const KIT = fileURLToPath(new URL('../brand/kit/', import.meta.url));
 const manifest = JSON.parse(readFileSync(join(KIT, 'manifest.json'), 'utf8'));
@@ -65,7 +66,7 @@ test('the kit README lists every asset', () => {
 });
 
 test('the committed kit matches a fresh build', () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'weave-kit-'));
+  const tmp = tempDir('weave-kit-');
   execFileSync(process.execPath, [join(KIT, 'build-kit.mjs'), '--out', tmp], { stdio: 'pipe' });
   assert.equal(readFileSync(join(tmp, 'manifest.json'), 'utf8'), readFileSync(join(KIT, 'manifest.json'), 'utf8'));
   for (const f of readdirSync(join(tmp, 'svg'))) {

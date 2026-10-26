@@ -249,7 +249,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_automation',
-    description: 'Create an automation rule as a System/Workflows row; its Script holds the rule as JSON. enabled (default true) is the row\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a row of another table matched on its key field (text, number, url or email); source paths read row.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) templates.',
+    description: 'Create an automation rule as a System/Workflows row; its Script holds the rule as JSON. enabled (default true) is the row\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live row of the table the where clause admits, and a box that slept catches up with one run. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a row of another table matched on its key field (text, number, url or email); source paths read row.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' }, enabled: { type: 'boolean' } },
@@ -426,12 +426,13 @@ export const TOOLS = [
   },
   {
     name: 'weave_shares',
-    description: 'Share links: one grant opens one entity, table, space, saved view or the whole workspace to whoever holds its wvs_ token. action: list (kind?, id? narrow it) | mint (kind: entity|table|space|view|workspace, id, mode: read|edit|manage, default read: edit changes rows in scope, manage also adds and trashes them, neither touches schema; comment is reserved and refused; visibility: public|private, private opens only for a signed-in account; label; expiresAt ISO, thirty days out when omitted) | renew (share: the grant id; thirty more days on the same token) | revoke (share: the grant id). The answer carries token and url (/s/<token>); a holder reads pages there or calls the scoped JSON API with Authorization: Bearer <token>. Every action takes an architect token.',
+    description: 'Share beta: architect-managed links. action list (kind?, id?, includeInactive?) | mint (kind entity|entities|table|space|view|workspace, id or ids; mode read|submit|edit|manage; formId for submit; visibility public|private; label; expiry 1h|1d|7d|30d|90d|never or expiresAt ISO; default 30d) | update (share, label?, expiry? or expiresAt?; keeps URL) | regenerate (share, optional expiry; old token stops immediately) | renew (share, 30 more days) | revoke (share). Submit only creates through its form. Public links require no login; private requires an existing signed-in member. Named email/domain audiences are unavailable in beta. Tokens never change scope. Every action requires architect access.',
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, mode: { type: 'string' },
         visibility: { type: 'string' }, label: { type: 'string' }, expiresAt: { type: 'string' }, share: { type: 'string' },
+        expiry: { type: 'string' }, formId: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } }, includeInactive: { type: 'boolean' },
       },
       required: ['action'],
     },
@@ -523,7 +524,7 @@ export const TOOLS = [
       properties: {
         action: { type: 'string', enum: ['list', 'get', 'create', 'update'] },
         form: { type: 'string', description: 'The form ID or name for get or update.' },
-        definition: { type: 'object', description: 'name, description, table, fields, hidden, enabled and floor (Observer or Anonymous). Update accepts only the settings to change.' },
+        definition: { type: 'object', description: 'name, description, table, fields, hidden, enabled and floor (Observer or Anonymous). Create also accepts immutable shareOnly true for submission-link-only forms. Update accepts only the settings to change.' },
       },
       required: ['action'],
     },
@@ -903,11 +904,16 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       }
     case 'weave_shares': {
       switch (args.action) {
-        case 'list': return { shares: weave.listShares({ kind: args.kind ?? null, id: args.id ?? null }) };
-        case 'mint': return weave.mintShare({ scope: { kind: args.kind, id: args.id }, mode: args.mode, visibility: args.visibility, label: args.label, expiresAt: args.expiresAt });
+        case 'list': return { shares: weave.listShares({ kind: args.kind ?? null, id: args.id ?? null, includeInactive: Boolean(args.includeInactive) }) };
+        case 'mint': return weave.mintShare({ scope: args.kind === 'entities' ? { kind: args.kind, ids: args.ids } : { kind: args.kind, id: args.id }, mode: args.mode, visibility: args.visibility, label: args.label, expiry: args.expiry, expiresAt: args.expiresAt, formId: args.formId });
+        case 'update':
+        case 'regenerate': {
+          const patch = Object.fromEntries(['label', 'expiry', 'expiresAt'].filter((key) => Object.hasOwn(args, key)).map((key) => [key, args[key]]));
+          return args.action === 'update' ? weave.updateShare(args.share, patch) : weave.regenerateShare(args.share, patch);
+        }
         case 'renew': return weave.renewShare(args.share);
         case 'revoke': return weave.revokeShare(args.share);
-        default: throw new Error(`Unknown shares action '${args.action}' (list, mint, renew, revoke)`);
+        default: throw new Error(`Unknown shares action '${args.action}' (list, mint, renew, revoke, update, regenerate)`);
       }
     }
     case 'weave_automations':

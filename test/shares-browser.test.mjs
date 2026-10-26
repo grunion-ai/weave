@@ -56,11 +56,10 @@ if (s) {
     }
   });
 
-  test('the table, space and saved-view pages open the same dialog on their own scope', async () => {
+  test('the table menu and saved-view pages retain their legacy dialog on their own scope', async () => {
     reset();
     const cases = [
       [`#/table/${task.id}`, async (page) => fromMenu(page, '.view-header .crumb-row'), 'table', task.id],
-      [`#/space/${space.id}`, async (page) => page.locator('.view-header .share-btn').click(), 'space', space.id],
       [`#/view/${view.id}`, async (page) => page.locator('#main .share-btn').click(), 'view', view.id],
     ];
     for (const [hash, opener, kind, id] of cases) {
@@ -78,6 +77,27 @@ if (s) {
         await page.close();
       }
     }
+  });
+
+  test('the space toolbar opens the beta panel and creates a link for the entire space', async () => {
+    reset();
+    const page = await open(`#/space/${space.id}`);
+    try {
+      await page.getByRole('button', { name: 'Share (Beta)', exact: true }).click();
+      await page.locator('#share-pane:not([hidden])').waitFor();
+      assert.match(await page.locator('#share-pane').innerText(), /Entire space: Dev/);
+      assert.equal(await page.locator('#modal').count(), 0);
+      await page.getByRole('button', { name: 'Add link', exact: true }).click();
+      assert.equal(await page.getByLabel('Link purpose', { exact: true }).locator('option').count(), 1);
+      await page.getByRole('button', { name: 'Create link', exact: true }).click();
+      await page.locator('#share-pane .share-link').first().waitFor();
+      const grants = weave.listShares({ kind: 'space', id: space.id });
+      assert.equal(grants.length, 1);
+      assert.equal(grants[0].mode, 'read');
+      assert.equal(grants[0].visibility, 'public');
+      await page.getByRole('button', { name: 'Close share panel', exact: true }).click();
+      assert.equal(await page.locator('#share-pane').isVisible(), false);
+    } finally { await page.close(); }
   });
 
   for (const theme of ['light', 'dark']) {

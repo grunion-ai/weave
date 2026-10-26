@@ -24,7 +24,7 @@ test('an event field cannot add a line, a step or a heading to the Replay list (
   assert.equal(steps.length, EVENTS.length, 'one step per recorded event, none forged');
   assert.deepEqual(steps.map((l) => Number(l.split('.')[0])), EVENTS.map((_, i) => i + 1));
   assert.equal(md.match(/^## Done$/m), null, 'no heading came out of an event field');
-  assert.deepEqual(md.match(/^## .*$/gm), ['## Report', '## Where', '## Replay', '## Trace']);
+  assert.deepEqual(md.match(/^## .*$/gm), ['## Report', '## Which probe would have caught this?', '## Where', '## Replay', '## Trace']);
   for (const line of steps) assert.equal((line.match(/`/g) ?? []).length % 2, 0, `balanced code spans: ${line}`);
 });
 

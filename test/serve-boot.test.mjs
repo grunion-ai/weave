@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ROOT } from './lib/source.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
 const FIXTURE = join(ROOT, 'test', 'fixtures', 'weave-v0.4.100.db');
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
-const scratch = mkdtempSync(join(tmpdir(), 'weave-serve-boot-'));
+const scratch = tempDir('weave-serve-boot-');
 test.after(() => rmSync(scratch, { recursive: true, force: true }));
 
 const HOME = join(scratch, 'home');

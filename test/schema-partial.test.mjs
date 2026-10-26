@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const put = (url, body) => fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -53,7 +54,7 @@ test('PUT /api/schema without partial still refuses a document that omits an exi
 });
 
 test('weave schema apply --partial adds spaces without repeating the existing ones', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-schema-partial-'));
+  const dir = tempDir('weave-schema-partial-');
   const data = join(dir, 'ws.db');
   const cli = (...args) => execFileSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8' });
   try {

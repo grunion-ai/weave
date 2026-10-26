@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { build } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 function onDisk() {
-  const path = join(mkdtempSync(join(tmpdir(), 'weave-desc-')), 'uno.json');
+  const path = join(tempDir('weave-desc-'), 'uno.json');
   const w = new Weave({ path });
   w.createSpace({ name: 'Product' });
   const tasks = w.createTable({ space: 'Product', name: 'Task' });

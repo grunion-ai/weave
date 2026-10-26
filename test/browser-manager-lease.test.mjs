@@ -7,11 +7,12 @@ import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { request } from '../scripts/test-manager.mjs';
 import { chromium } from './lib/browser.mjs';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const helper = pathToFileURL(join(ROOT, 'test/lib/browser.mjs')).href;
 const skip = chromium ? false : 'playwright not installed';
-const directory = mkdtempSync(join(tmpdir(), 'weave-lease-test-'));
+const directory = tempDir('weave-lease-test-');
 test.after(async () => { await request({ type: 'stop' }, { directory }).catch(() => {}); rmSync(directory, { recursive: true, force: true }); });
 
 function script(name, body, overrides = {}, deadline = 60_000) {

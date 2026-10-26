@@ -30,7 +30,9 @@ test('an automation\'s writes carry workflow:<row id>; the person keeps the writ
   const ran = e.activity.filter((a) => a.kind === 'automation-ran');
   assert.equal(ran.length, 1);
   assert.equal(ran[0].actor, 'kyle', 'automation-ran keeps the triggering person');
-  assert.deepEqual(ran[0].detail, { name: 'Close out on Done', workflow: auto.id });
+  assert.equal(ran[0].detail.name, 'Close out on Done');
+  assert.equal(ran[0].detail.workflow, auto.id);
+  assert.equal(ran[0].detail.steps.length, 3, 'the entry carries one output per action');
   assert.equal(w.actor, 'kyle', 'the engine\'s actor is restored after the run');
 });
 

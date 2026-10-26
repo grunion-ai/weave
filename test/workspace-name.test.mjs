@@ -6,11 +6,12 @@ import { join } from 'node:path';
 import * as naming from '../src/workspace-name.js';
 import { Weave } from '../src/engine.js';
 import { createWorkspaceHub, openDefaultWorkspace } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const { nameFromFile, workspaceName } = naming;
 
 const SLUG_RULE = /^[a-z0-9][a-z0-9-_]*$/i;
-const tmp = () => mkdtempSync(join(tmpdir(), 'weave-wsname-'));
+const tmp = () => tempDir('weave-wsname-');
 
 test('workspaceName: "Personal Workspace", slug personal-workspace, the same every time', () => {
   for (let i = 0; i < 20; i++) {

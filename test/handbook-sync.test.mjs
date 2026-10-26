@@ -8,9 +8,10 @@ import { Weave } from '../src/engine.js';
 import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
 import { GUIDES, FIELD_DOCS, applyHandbook, handbookDrift, handbookHash, syncHandbook } from '../src/handbook.js';
+import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
-const dir = mkdtempSync(join(tmpdir(), 'weave-handbook-sync-'));
+const dir = tempDir('weave-handbook-sync-');
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 
 const guideRow = (w, name) => w.findEntity(w.getTable('Handbook/Guide'), name);

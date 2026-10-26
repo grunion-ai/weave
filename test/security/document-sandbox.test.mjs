@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from '../lib/temp.mjs';
 
-process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-docbox-')), 'keystore.json');
+process.env.WEAVE_KEYSTORE = join(tempDir('weave-docbox-'), 'keystore.json');
 const { Weave, HTML_VIEW_POLICY } = await import('../../src/engine.js');
 const { startServer } = await import('../../src/server.js');
 
@@ -88,7 +89,7 @@ test('POST /api/markdown escapes HTML blocks, at the top level and inside a quot
 });
 
 test('the task applet returns its description with HTML blocks escaped', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-docbox-applet-'));
+  const dir = tempDir('weave-docbox-applet-');
   const w = new Weave({ path: join(dir, 'uno.json') });
   w.state.meta.name = 'uno';
   const space = w.createSpace({ name: 'Product' });

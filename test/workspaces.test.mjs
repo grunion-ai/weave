@@ -4,12 +4,13 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { renderMarkdown } from '../src/markdown.js';
+import { tempDir } from './lib/temp.mjs';
 
 test('engine refuses to adopt non-workspace JSON files', async () => {
   const { mkdtempSync, writeFileSync, readFileSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-guard-'));
+  const dir = tempDir('weave-guard-');
   try {
     const pkg = join(dir, 'package.json');
     const original = '{\n "name": "something",\n "version": "1.0.0"\n}';
@@ -94,7 +95,10 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
     assert.equal((await fetch(`${base}/w/nope/api/health`)).status, 404);
 
     const scoped = await (await fetch(`${base}/w/weave/api/search?q=quickstart`)).json();
-    assert.ok(scoped.some((h) => h.url.startsWith('/w/weave/')));
+    const hit = scoped.find((h) => h.kind === 'entity');
+    assert.equal(hit?.url, `/e/${hit?.id}`, 'a scoped hit carries the bare row link');
+    const hop = await fetch(`${base}${hit.url}`, { redirect: 'manual' });
+    assert.equal(hop.headers.get('location'), `/w/weave/e/${hit.id}`, 'and that link finds its way back to weave');
 
     const all = await (await fetch(`${base}/api/search?q=uno+thing&all=1`)).json();
     assert.ok(all.some((h) => h.workspace === 'uno' && h.kind === 'entity'));
@@ -121,7 +125,7 @@ test('workspace delete: trash move, guards, and the fresh-workspace description'
   const { join } = await import('node:path');
   const { Weave } = await import('../src/engine.js');
   const { startServer } = await import('../src/server.js');
-  const dir = mkdtempSync(join(tmpdir(), 'weave-wsdel-'));
+  const dir = tempDir('weave-wsdel-');
   try {
     const main = new Weave({ path: join(dir, 'main.db') });
     main.state.meta.name = 'main';
