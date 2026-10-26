@@ -50,7 +50,7 @@ if (s) {
     await page.goto(`${base}/#/entity/${s.wizard.id}`);
     await page.waitForFunction(() => /Design onboarding wizard/.test(document.querySelector('#main')?.textContent));
     await page.goto(`${base}/#/entity/${s.apollo.id}`);
-    await page.waitForFunction(() => /Apollo Launch/.test(document.querySelector('#main')?.textContent));
+    await page.waitForFunction(() => document.title.includes('Apollo Launch'));
     await palette(page);
     const g = await groups(page);
     assert.equal(g.length, 1);

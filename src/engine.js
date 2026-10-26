@@ -155,8 +155,38 @@ export const HTML_VIEW_POLICY = "sandbox allow-scripts allow-popups allow-popups
 export const HTML_PAGE_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; frame-src 'self'";
 export const sandboxedHtmlHeaders = (extra = {}, policy = HTML_VIEW_POLICY) => ({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': policy, ...extra });
 const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
+export const FILE_STORAGE_CAP = 5 * 1024 * 1024;
 export const isHtmlFile = (meta) => HTML_FILE_TYPES.has(String(meta?.mime ?? '').split(';')[0].trim().toLowerCase());
 export const FRAME_HEIGHT_SCRIPT = "<script>(() => { if (parent === window) return; let sent = -1, gap = -1; const send = () => { const h = Math.ceil(Math.max(document.documentElement.getBoundingClientRect().height, document.body ? document.body.scrollHeight : 0)); if (h === sent) return; const over = h - innerHeight; if (over > 0 && sent === innerHeight && over === gap) return; gap = over; sent = h; parent.postMessage({ weave: 'frame-height', height: h }, '*'); }; new ResizeObserver(send).observe(document.documentElement); addEventListener('load', send); })();</script>";
+const scriptJson = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+export const frameStorageScript = (items = {}) => `<script>(() => {
+  const live = parent !== window;
+  const area = (seed, kept) => {
+    const map = new Map(Object.entries(seed));
+    let queued = false;
+    const send = () => { queued = false; parent.postMessage({ weave: 'frame-storage', items: Object.fromEntries(map) }, '*'); };
+    const changed = () => { if (kept && live && !queued) { queued = true; queueMicrotask(send); } };
+    const api = {
+      get length() { return map.size; },
+      key(i) { return [...map.keys()][i] ?? null; },
+      getItem(k) { k = String(k); return map.has(k) ? map.get(k) : null; },
+      setItem(k, v) { map.set(String(k), String(v)); changed(); },
+      removeItem(k) { if (map.delete(String(k))) changed(); },
+      clear() { if (map.size) { map.clear(); changed(); } },
+    };
+    return new Proxy(api, {
+      get: (t, p) => (typeof p === 'string' && !(p in t) ? map.get(p) : Reflect.get(t, p)),
+      set: (t, p, v) => { if (!(p in t)) t.setItem(p, v); return true; },
+      has: (t, p) => p in t || map.has(p),
+      deleteProperty: (t, p) => { t.removeItem(p); return true; },
+      ownKeys: () => [...map.keys()],
+      getOwnPropertyDescriptor: (t, p) => (map.has(p) ? { value: map.get(p), writable: true, enumerable: true, configurable: true } : undefined),
+    });
+  };
+  for (const [name, store] of [['localStorage', area(${scriptJson(items)}, true)], ['sessionStorage', area({}, false)]]) {
+    try { Object.defineProperty(window, name, { value: store, configurable: true, enumerable: true }); } catch {}
+  }
+})();</script>`;
 const LEADING_DOCTYPE = /^(?:\xEF\xBB\xBF)?\s*<!doctype[^>]*>/i;
 export function viewHtml(bytes, head = FRAME_HEIGHT_SCRIPT) {
   const at = bytes.toString('latin1', 0, 4096).match(LEADING_DOCTYPE)?.[0].length ?? 0;
@@ -474,9 +504,9 @@ export const ONTOLOGY = {
     },
     {
       key: 'file', name: 'File', storedIn: 'entity.files',
-      definition: 'A blob attached to an entity, stored beside the workspace file and referenced by id from attachments fields.',
+      definition: 'A blob attached to an entity, stored beside the workspace file and referenced by id from attachments fields. An HTML file also keeps its page storage (Issue #1176): the localStorage its page writes while weave shows it, held in the store\'s file_storage table beside the file and never written into the file\'s bytes.',
       identity: 'uuid; the blob is files/<id> next to the workspace',
-      api: ['attachFile', 'attachToField', 'readFile', 'deleteFile'],
+      api: ['attachFile', 'attachToField', 'readFile', 'deleteFile', 'readFileStorage', 'writeFileStorage'],
     },
     {
       key: 'activity', name: 'Activity', storedIn: 'entity.activity',
@@ -8746,6 +8776,37 @@ export class Weave {
     throw new WeaveError(`File '${fileId}' not found`, 'not-found');
   }
 
+  #fileMeta(fileId) {
+    for (const e of Object.values(this.state.entities)) {
+      const meta = e.files.find((f) => f.id === fileId);
+      if (meta) return meta;
+    }
+    throw new WeaveError(`File '${fileId}' not found`, 'not-found');
+  }
+
+  readFileStorage(fileId) {
+    this.#fileMeta(fileId);
+    const row = this.store.getFileStorage(fileId);
+    return { file: fileId, items: row ? JSON.parse(row.json) : {}, bytes: row ? Buffer.byteLength(row.json) : 0, updatedAt: row?.at ?? null };
+  }
+
+  writeFileStorage(fileId, items) {
+    const meta = this.#fileMeta(fileId);
+    if (!isHtmlFile(meta)) throw new WeaveError(`'${meta.name}' is not an HTML file; only an HTML file keeps page storage`, 'invalid');
+    if (!items || typeof items !== 'object' || Array.isArray(items)) throw new WeaveError('Page storage is an object of string keys to string values, under `items`', 'invalid');
+    for (const [k, v] of Object.entries(items)) {
+      if (typeof v !== 'string') throw new WeaveError(`Page storage values are strings; '${k}' holds a ${v === null ? 'null' : typeof v}`, 'invalid');
+    }
+    const json = JSON.stringify(items);
+    const bytes = Buffer.byteLength(json);
+    if (bytes > FILE_STORAGE_CAP) {
+      throw new WeaveError(`'${meta.name}' tried to keep ${(bytes / 1048576).toFixed(1)} MB of page storage; a file keeps at most ${FILE_STORAGE_CAP / 1048576} MB, so this change was not saved`, 'too-large');
+    }
+    const at = nowISO();
+    this.store.setFileStorage(fileId, { at, json });
+    return { file: fileId, bytes, updatedAt: at };
+  }
+
   setWorkspaceLogo({ name, bytes }) {
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
     const mime = logoType(buf);
@@ -8786,6 +8847,7 @@ export class Weave {
     }
     this.#dropBlob(fileId);
     if (had?.preview) this.#dropBlob(had.preview.id);
+    if (had) this.store.deleteFileStorage(fileId);
     this.#mark(e);
     this.save();
     return { id: fileId, entity: e.id, deleted: !!had };

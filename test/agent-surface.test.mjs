@@ -146,6 +146,8 @@ const INTERNAL = {
   viewQuery: 'read helper (Issue #839): the where, sort and search one saved view applies; weave_query {view}, CLI query --view and POST /tables/:id/query {view} run it',
   permalink: 'link formatter (Feature #203): the one /w/<ws>/e/<uuid> path every door emits as `url`; the permalink gate below holds every emitter to it',
   takeOneTime: 'write plumbing (Feature #318) — the invite link or token a Users row create hands back once; every create door ships it beside the row',
+  readFileStorage: 'browser bridge (Issue #1176): the app reads an HTML file\'s page storage over GET /api/files/:id/storage and seeds it into the ?view page; an agent reads the file itself with weave_files',
+  writeFileStorage: 'browser bridge (Issue #1176): the app saves what a sandboxed HTML page wrote to localStorage over PUT /api/files/:id/storage; no agent writes a page\'s storage',
   runSchedules: 'process plumbing (Feature #312): the server\'s minute ticker fires every due schedule rule on each hub workspace; an agent writes the rule as a Workflows row and the clock does the rest',
 };
 

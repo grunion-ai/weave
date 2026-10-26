@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS doc_revisions (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, field_id TEXT NOT NULL,
   at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL, restored_from INTEGER);
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
+CREATE TABLE IF NOT EXISTS file_storage (file_id TEXT PRIMARY KEY, at TEXT NOT NULL, json TEXT NOT NULL);
 `;
 
 const LOAD_ORDER = {
@@ -250,6 +251,23 @@ export class Store {
   deleteDocRevisions(entityId) {
     if (!this.#db) { this.#memRevs = this.#memRevs.filter((r) => r.entityId !== entityId); return; }
     this.#db.prepare('DELETE FROM doc_revisions WHERE entity_id = ?').run(entityId);
+  }
+
+  #memFileStorage = new Map();
+
+  getFileStorage(fileId) {
+    if (!this.#db) return this.#memFileStorage.get(fileId) ?? null;
+    return this.#db.prepare('SELECT at, json FROM file_storage WHERE file_id = ?').get(fileId) ?? null;
+  }
+
+  setFileStorage(fileId, { at, json }) {
+    if (!this.#db) { this.#memFileStorage.set(fileId, { at, json }); return; }
+    this.#db.prepare('INSERT INTO file_storage (file_id, at, json) VALUES (?, ?, ?) ON CONFLICT(file_id) DO UPDATE SET at = excluded.at, json = excluded.json').run(fileId, at, json);
+  }
+
+  deleteFileStorage(fileId) {
+    if (!this.#db) { this.#memFileStorage.delete(fileId); return; }
+    this.#db.prepare('DELETE FROM file_storage WHERE file_id = ?').run(fileId);
   }
 
   setAuditDetail(seq, detail) {
