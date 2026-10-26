@@ -1824,6 +1824,8 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--wv-hover-border); }
 @media (hover: hover) { .bug-fab:hover { opacity: 1; border-color: var(--wv-hover-border); } }
 body:has(#tray-back) .bug-fab { bottom: 72px; }
+body:has(#fsv-back > .fsv-frame, #side:not([hidden]) > .wv-file-panel) .bug-fab { display: none; }
+.bug-trigger .bug-fab-icon { width: 16px; height: 16px; }
 @media (max-width: 600px) {
   .bug-fab { display: none; }
 }
