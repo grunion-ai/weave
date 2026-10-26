@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, phoneBrowser, phonePage, PHONE } from './lib/browser.mjs';
+import { launch, eventually, phoneBrowser, phonePage, PHONE, atRest } from './lib/browser.mjs';
 import { pointer, centre } from './lib/reorder-surfaces.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
@@ -125,6 +125,23 @@ if (s) {
         const controls = await page.$$eval('.table-view-popover :is(.view-layout .seg-opt, .board-preset)', (ns) => ns.map((n) => [n.textContent, n.offsetHeight]));
         assert.ok(controls.length >= 10, `Layout, presets, Groups and Picture sit in the phone menu: ${controls.length}`);
         assert.deepEqual(controls.filter(([, h]) => h < 44), [], 'every control is a 44 px target');
+      } finally { await page.close(); }
+    });
+
+    test(`${engine.name}: a long title wraps inside the card, stays a 44 px target and nothing is cut off (Issue #1123)`, async () => {
+      seed();
+      const long = weave.createEntity(list.id, { name: 'Standing desk: a title that runs well past the card so the tile has to wrap it somewhere sensible', values: { State: 'Research' } }).id;
+      const page = await open(engine);
+      try {
+        const title = page.locator(`${tile(long)} .tile-title`);
+        await atRest(title);
+        const box = (n) => ({ height: n.getBoundingClientRect().height, over: n.scrollWidth - n.clientWidth });
+        const got = await title.evaluate(box);
+        const short = await page.locator(`${tile(ids.pants)} .tile-title`).evaluate(box);
+        assert.ok(got.height > short.height && short.height >= 44, `the long title takes more lines than a short one and both stay 44 px targets: ${JSON.stringify({ got, short })}`);
+        assert.ok(got.over <= 1, `no title text runs past the card: ${got.over}px hidden`);
+        assert.equal(await pageScrollsSideways(page), false, 'a wrapped title never widens the page');
+        assert.deepEqual(page.errors, []);
       } finally { await page.close(); }
     });
 
