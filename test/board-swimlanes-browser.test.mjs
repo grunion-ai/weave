@@ -154,6 +154,13 @@ if (s) {
       assert.equal(await page.locator('.wv-board .board-lane').count(), 0);
       assert.equal(await page.locator('.wv-board').getAttribute('data-lanes'), null);
       assert.ok(await page.locator(`.wv-board .board-group[data-key="Ready to Buy${SEP}Office"] ${card(ids.desk)}`).count());
+      assert.equal(await page.locator('.wv-board > .board-group').count(), 3, 'one section per State, the first level');
+      const parent = page.locator('.wv-board > .board-group[data-key="Ready to Buy"]');
+      assert.equal(await parent.locator(':scope > .board-group-head .list-group-label').innerText(), 'Ready to Buy', 'the first level heads its section');
+      assert.equal(await parent.locator(':scope > .board-group-head .list-count').innerText(), '2');
+      assert.ok(await parent.locator(`:scope > .board-groups > .board-group[data-key="Ready to Buy${SEP}Office"] ${card(ids.desk)}`).count(), 'the second level nests inside the first');
+      assert.equal(await page.locator('.wv-board .board-group-head .list-group-label', { hasText: 'Office' }).count(), 3, 'a second-level heading repeats under each first-level section');
+      assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
   });
 

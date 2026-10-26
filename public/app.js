@@ -5982,24 +5982,22 @@ function renderBoard(main, db, items, ctx) {
     });
     return card;
   };
+  const flat = (node) => (node.groups ? node : { ...node, items: node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; }) });
   const groupEl = (node, depth, { completed = false, cell = false } = {}) => {
     const key = node.key ?? '';
-    const cards = el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)));
-    cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
+    const body = node.groups
+      ? el('div', { class: 'board-groups' }, ...node.groups.map((g) => groupEl(flat(g), depth + 1)))
+      : el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)), el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
     const head = !cell && (node.path?.length || completed)
       ? el('div', { class: 'board-group-head' },
         completed ? el('span', { class: 'list-group-label' }, node.label) : listHeadingEl(s, depth, node),
         el('span', { class: 'list-count' }, String(node.count ?? node.items.length)))
       : null;
-    const sec = el('section', { class: 'board-group' + (completed ? ' board-completed' : ''), dataset: { key }, 'aria-label': key || db.name }, head, cards);
+    const sec = el('section', { class: 'board-group' + (completed ? ' board-completed' : '') + (node.groups ? ' board-parent' : ''), dataset: { key }, 'aria-label': key || db.name }, head, body);
     sec.wvPath = completed ? null : node.path;
     return sec;
   };
-  const leaves = [];
-  const walk = (node, depth) => (node.groups ? node.groups.forEach((g) => walk(g, depth + 1)) : leaves.push([node, depth]));
-  if (arranged.groups) arranged.groups.forEach((g) => walk(g, 0));
-  else leaves.push([{ key: '', path: [], items: arranged.items, count: arranged.items.length }, 0]);
-  const flat = (node) => ({ ...node, items: node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; }) });
+  const roots = arranged.groups ?? [{ key: '', path: [], items: arranged.items, count: arranged.items.length }];
   const laneEl = (lane) => {
     const shut = boardCore.laneShut(collapsed, lane);
     const row = el('div', { class: 'board-lane' + (shut ? ' shut' : ''), role: 'group', 'aria-label': lane.label, dataset: { key: lane.key } });
@@ -6024,7 +6022,7 @@ function renderBoard(main, db, items, ctx) {
     style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
   }, ...(lanes
     ? [...grid.columns.map((c) => el('div', { class: 'board-col-head board-group-head', dataset: { key: c.key } }, listHeadingEl(s, 0, c), el('span', { class: 'list-count' }, String(c.count)))), ...grid.lanes.map(laneEl)]
-    : leaves.map(([node, depth]) => groupEl(flat(node), depth))));
+    : roots.map((g) => groupEl(flat(g), 0))));
   if (arranged.completed?.count) board.append(groupEl(flat(arranged.completed), 0, { completed: true }));
   const sortName = (gridSort(db) ?? []).map((x) => x.field).join(', ');
   const manualBtn = el('button', { class: 'btn btn-sm btn-ghost-primary tiny board-manual', type: 'button', onclick: () => listViewWrite(db, { sort: [] }).then(reload) }, 'Manual');
@@ -6074,7 +6072,7 @@ function renderBoard(main, db, items, ctx) {
     const inLanes = board.dataset.lanes === 'true';
     let held = null;
     const under = () => {
-      const g = [...board.querySelectorAll('.board-group')].find((n) => {
+      const g = [...board.querySelectorAll('.board-group:not(.board-parent)')].find((n) => {
         if (!n.getClientRects().length) return false;
         const r = n.getBoundingClientRect();
         return at.x >= r.left && at.x <= r.right && ((side && !inLanes) || (at.y >= r.top && at.y <= r.bottom));

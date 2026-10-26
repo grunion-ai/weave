@@ -2346,6 +2346,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .wv-board { --card-w: 188px; --col-w: 232px; --phone-cols: 2; display: grid; gap: 18px; padding: 12px; min-width: 0; }
 .wv-board[data-groups="side"] { display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; }
 .board-group { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.board-groups { display: grid; gap: 14px; padding-left: 14px; min-width: 0; }
 .wv-board[data-groups="side"] > .board-group { flex: 0 0 var(--col-w); width: var(--col-w); box-sizing: border-box; padding: 8px; border-radius: 8px; background: var(--tblr-bg-surface-secondary); }
 .board-group-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; }
 .board-completed > .board-group-head { color: var(--tblr-secondary); }
