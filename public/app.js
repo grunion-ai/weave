@@ -3312,8 +3312,8 @@ const filePanel = (() => {
   return { open, close, mounted, get isOpen() { return isOpen(); } };
 })();
 
-function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label } = {}) {
-  const node = editorFor(f, item, db, onSaved, { compact, fit });
+function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, plain = false, label } = {}) {
+  const node = editorFor(f, item, db, onSaved, { compact, fit, plain });
   if (node instanceof Element) {
     const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
     for (const n of [node, ...node.querySelectorAll('*')]) {
@@ -3384,7 +3384,7 @@ function optionChipEl(f, name) {
   }
 }
 
-function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) {
+function editorFor(f, item, db, onSaved, { compact = false, fit = false, plain = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
   const saved = async () => {
@@ -3642,7 +3642,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     });
   }
   if (f.type === 'daterange') {
-    return rangeControl({ value: item.raw?.[f.name] ?? null, title: f.name, costume: f, compact, onChange: (r) => patch(r) });
+    const range = item.raw?.[f.name] ?? null;
+    if (plain) {
+      const full = !!(range?.start && range?.end);
+      return el('span', { class: 'range-plain' + (full ? '' : ' is-empty') }, full ? weaveDateCore.formatDateRange(range, { ...f, viewerZone: LOCAL_ZONE }) : 'start – end');
+    }
+    return rangeControl({ value: range, title: f.name, costume: f, compact, onChange: (r) => patch(r) });
   }
   const rawVal = item.raw?.[f.name] ?? val;
   if (rawVal != null && typeof rawVal === 'object') {
@@ -5974,7 +5979,7 @@ function renderBoard(main, db, items, ctx) {
           el('span', { class: 'tile-id' }, `#${it.publicId}`),
           el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1', title: label }, label)),
         fields.length ? el('dl', { class: 'tile-fields' }, ...fields.map((f) => el('div', { class: 'tile-field', dataset: { field: f.name } },
-          el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, () => reload(), { compact: true }))))) : null));
+          el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, () => reload(), { compact: true, plain: true }))))) : null));
     card.wvPath = path;
     card.wvItem = node;
     RO().guard(card);
@@ -10463,6 +10468,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { label: f.name })),
       sheetKind ? el('span', { class: 'fieldrow-chev', 'aria-hidden': 'true' }, chevron()) : null, note);
     node.dataset.ftype = f.type;
+    if (f.type === 'daterange') node.classList.toggle('fieldrow-wide', !!entity.raw?.[f.name]?.start);
     if (f.type === 'attachments') {
       node.classList.add('attach-block');
       wireBlock(f.name, node, [node.querySelector('.opt-grip')]);

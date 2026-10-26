@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, engineOf, phonePage, phoneProfile, settled } from './lib/browser.mjs';
+import { probe } from './lib/cutoff.mjs';
 
 let sprints;
 
@@ -219,6 +220,50 @@ if (s) {
       await page.locator('.entity-fields .fieldrow', { hasText: 'Window' }).first().locator('.fieldrow-label').click();
       await page.waitForSelector('#tray');
       assert.equal(await dflt.locator('.range-text').inputValue(), '2026-10-01 – 2026-10-05', 'the stored default comes back as a range, not [object Object]');
+    } finally { await page.close(); }
+  });
+
+  test('a board tile paints a range as text that wraps inside the card (Issue #1126)', async () => {
+    const id = freshSprint({ Readable: { start: '1999-01-01', end: '2099-12-31' } });
+    const view = weave.tableView(`${sprints.id}/Board`, { layout: 'board' });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await page.goto(`${base}/#/table/${sprints.id}/view/${view.id}`, { waitUntil: 'networkidle' });
+      const dd = page.locator(`.tile[data-eid="${id}"] .tile-field[data-field="Readable"] dd`);
+      await settled(dd);
+      assert.equal(await dd.locator('input').count(), 0, 'the tile shows the range as text, not an input');
+      const geo = await dd.evaluate((node) => {
+        node.style.width = '120px';
+        const range = document.createRange();
+        range.selectNodeContents(node.firstElementChild);
+        const box = node.getBoundingClientRect();
+        const rects = [...range.getClientRects()].filter((r) => r.width);
+        return { text: node.textContent, lines: rects.length, inside: rects.every((r) => r.left >= box.left - 0.5 && r.right <= box.right + 0.5) };
+      });
+      assert.equal(geo.text, 'Jan 1, 1999 – Dec 31, 2099');
+      assert.ok(geo.lines >= 2, `a 120px card wraps the range (${geo.lines} line)`);
+      assert.ok(geo.inside, 'every line sits inside the card');
+      assert.deepEqual((await page.evaluate(probe, `.tile[data-eid="${id}"]`)).filter((f) => /range/.test(f.selector)), [], 'the probe finds no cut-off range in the tile');
+    } finally { await page.close(); }
+  });
+
+  test('the phone record page sizes a long range input to its value (Issue #1162)', async (t) => {
+    const handset = await engineOf(phoneProfile().engine);
+    if (!handset) return t.skip(`${phoneProfile().engine} cannot launch here`);
+    const id = freshSprint({ Readable: { start: '1999-01-01', end: '2099-12-31' } });
+    const page = await phonePage(handset, { viewport: { width: 390, height: 844 } });
+    try {
+      await page.goto(`${base}/#/table/${sprints.id}?e=${id}`, { waitUntil: 'networkidle' });
+      const box = page.locator('#dock .entity-fields .fieldrow', { hasText: 'Readable' }).first().locator('.range-text');
+      await settled(box);
+      const geo = await box.evaluate((input) => {
+        const c = document.createElement('canvas').getContext('2d');
+        c.font = getComputedStyle(input).font;
+        return { input: input.offsetWidth, text: Math.ceil(c.measureText(input.value).width), row: input.closest('.fieldrow').clientWidth };
+      });
+      assert.ok(geo.input >= geo.text, `the input (${geo.input}px) holds its value (${geo.text}px)`);
+      assert.ok(geo.input <= geo.row, `the input (${geo.input}px) stays inside the row (${geo.row}px)`);
+      assert.deepEqual((await page.evaluate(probe, '#dock .entity-fields')).filter((f) => /range/.test(f.selector)), [], 'the probe finds no cut-off range on the record page');
     } finally { await page.close(); }
   });
 }
