@@ -1,0 +1,1 @@
+- Reversed on a board group level now runs the columns, the lanes and the stacked sections backwards, with No value still last. The board built its group levels without the level's direction, so the toggle saved into the view and changed nothing on the page (Issue #1205).
