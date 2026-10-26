@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { probe } from './lib/cutoff.mjs';
 
 let steps, chain;
 const s = await launch('crumb fold', (weave) => {
@@ -77,6 +78,29 @@ if (s) {
     await page.click('.crumb-fold-menu .crumb-fold-row >> nth=0');
     await page.waitForFunction((n) => document.querySelector('#dock .name-edit')?.value === n, hidden[0]);
     assert.equal(await page.locator('.crumb-fold-menu').count(), 0, 'the menu closes');
+    await page.close();
+  });
+
+  test('the workspace, space and table crumbs stay whole in a narrow dock and the probe reads no cut-off crumb (Issues #1127, #1158, #1159)', async () => {
+    const page = await walk({ pin: 420 });
+    const m = await page.evaluate(() => {
+      const path = document.querySelector('#dock .crumb-path');
+      const heads = [...path.querySelectorAll(':scope > .crumb-slot:not([hidden]) > :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table) > .crumb-nm')];
+      const whole = (n) => n.scrollWidth <= n.clientWidth && n.getBoundingClientRect().right <= path.getBoundingClientRect().right + 0.5;
+      return {
+        ws: document.querySelector('#ws-name').textContent,
+        heads: heads.map((n) => n.textContent),
+        cut: heads.filter((n) => !whole(n)).map((n) => n.textContent),
+        cur: path.querySelector('.crumb-cur .crumb-nm').textContent,
+        title: document.querySelector('#dock .name-edit').value,
+      };
+    });
+    assert.ok(m.ws.length > 14, `the workspace name is longer than the old 14ch cap: ${JSON.stringify(m.ws)}`);
+    assert.deepEqual(m.heads, [m.ws, 'Ops', 'Steps'], 'the workspace, space and table crumbs all show');
+    assert.deepEqual(m.cut, [], 'and none of them is cut');
+    assert.equal(m.title, m.cur, 'the title field under the crumb carries the full name the current crumb may cut');
+    const found = (await page.evaluate(probe, '#dock .crumb-path')).filter((f) => /crumb-k-(ws|space|table)|crumb-cur/.test(f.selector));
+    assert.deepEqual(found, [], `the cut-off probe reads nothing in the head crumbs or the current crumb: ${JSON.stringify(found)}`);
     await page.close();
   });
 

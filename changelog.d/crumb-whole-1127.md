@@ -1,0 +1,2 @@
+- The breadcrumb keeps the workspace name whole instead of cutting it at 14 characters, and a space or table crumb never shrinks below its own short label: ancestor slots no longer flex-shrink, so the pixel or two the trail runs over now comes off the current crumb, which the fold already lets end in an ellipsis (Issues #1127, #1158).
+- The current crumb's ellipsis is by design: the record or view title right below it shows the full name, so the cut-off probe skips `.crumb-cur` and the board, list and kitchen-sink states no longer hold it out of the gate (Issue #1159).
