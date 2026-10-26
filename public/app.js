@@ -872,6 +872,7 @@ function playIcon(host) {
 function lucideEl(name, cls = 'wv-icon') {
   const reg = window.weaveIconRegistry;
   const span = el('span', { class: `${cls} mi mi-${name}`, 'data-ms': String(reg.MOTION[name] || 0) });
+  if (!window.LUCIDE_MOVING[name]) return span;
   span.innerHTML = window.LUCIDE_MOVING[name];
   return span;
 }
