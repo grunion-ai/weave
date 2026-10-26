@@ -870,11 +870,10 @@ function playIcon(host) {
   }, ms));
 }
 function lucideEl(name, cls = 'wv-icon') {
-  const glyph = window.LUCIDE_MOVING[name];
-  if (!glyph) return null;
+  if (!window.LUCIDE_MOVING[name]) return null;
   const reg = window.weaveIconRegistry;
   const span = el('span', { class: `${cls} mi mi-${name}`, 'data-ms': String(reg.MOTION[name] || 0) });
-  span.innerHTML = glyph;
+  span.innerHTML = window.LUCIDE_MOVING[name];
   return span;
 }
 const canHover = matchMedia('(hover: hover)');

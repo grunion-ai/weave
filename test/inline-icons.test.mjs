@@ -91,6 +91,7 @@ test('every icon name public/app.js asks for by hand is in the bundled set (Issu
 
 test('lucideEl hands back nothing when the set has no such glyph, never the string undefined (Issue #1233)', () => {
   const body = APP.slice(APP.indexOf('function lucideEl('), APP.indexOf('const canHover'));
-  assert.match(body, /if \(!\w+\) return null;/, 'lucideEl returns null on a miss before it touches innerHTML');
-  assert.doesNotMatch(body, /innerHTML = window\.LUCIDE_MOVING\[name\];/, 'the raw lookup no longer reaches innerHTML unchecked');
+  const guard = body.indexOf('if (!window.LUCIDE_MOVING[name]) return null;');
+  assert.ok(guard >= 0, 'lucideEl returns null when the set has no glyph for the name');
+  assert.ok(guard < body.indexOf('innerHTML'), 'the guard runs before the sink, so undefined never reaches innerHTML');
 });
