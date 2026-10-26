@@ -44,7 +44,7 @@ if (s) {
       assert.match(said, /template/i, `the note names templates: ${said}`);
       assert.match(said, /deleted/i, `the note names deletion: ${said}`);
       assert.ok(!said.includes('\u2014'), `no em dash: ${said}`);
-      assert.equal(await page.locator('.view-header .share-btn').count(), 0, 'still no Share');
+      assert.equal(await page.locator('.view-header .table-share-btn').count(), 0, 'still no Share');
       assert.equal(await page.locator('.view-header .use-template-btn').count(), 0, 'still no Use template');
       assert.equal(await page.locator('.view-header .dots-btn').count(), 0, 'still no \u22ee');
       const paint = await note.evaluate((n) => ({ fg: getComputedStyle(n).color, bg: getComputedStyle(document.body).backgroundColor }));
@@ -55,7 +55,7 @@ if (s) {
     test(`${theme}: a user space carries no system note (Issue #849)`, async () => {
       const page = await openSpace(user.id, theme);
       assert.equal(await page.locator('.view-header .space-system-note').count(), 0, 'a user space keeps its controls');
-      assert.equal(await page.locator('.view-header .share-btn').count(), 1, 'a user space still offers Share');
+      assert.equal(await page.locator('.view-header .table-share-btn').count(), 1, 'a user space still offers Share');
       await page.close();
     });
 
