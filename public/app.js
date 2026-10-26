@@ -1527,13 +1527,14 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
         el('button', { class: 'btn btn-sm', title: 'Previous (←)', disabled: prev ? undefined : '', onclick: () => prev?.() }, iconEl('‹')),
         el('button', { class: 'btn btn-sm', title: 'Next (→)', disabled: next ? undefined : '', onclick: () => next?.() }, iconEl('›'))) : null,
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
+      url ? bugTrigger('btn btn-sm') : null,
       el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
   holdPage(back, back, back.querySelector('.fsv-title'));
   back.tabIndex = -1;
   back.focus();
   const onKey = (e) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') { if (!document.querySelector('#bug-panel')) close(); }
     else if (e.key === 'ArrowLeft' && prev) prev();
     else if (e.key === 'ArrowRight' && next) next();
   };
@@ -3294,6 +3295,7 @@ const filePanel = (() => {
         files.length > 1 ? icon('Next', 'lucide:chevron-right', { disabled: index < files.length - 1 ? undefined : '', onclick: () => step(1) }) : null,
         icon('Full screen', 'lucide:maximize-2', { onclick: () => fileLightbox(files, index) }),
         el('a', { class: 'wv-act-icon', href: fileViewUrl(file), target: '_blank', rel: 'noopener', title: 'Open in a browser tab', 'aria-label': 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')),
+        bugTrigger('wv-act-icon'),
         icon('Close (Esc)', 'lucide:x', { class: 'wv-act-icon wv-act-close', onclick: close })),
       el('div', { class: `wv-file-body kind-${kind}` }, fileBodyEl(file, 'wv-file-frame')));
     const side = $('#side');
@@ -3305,7 +3307,7 @@ const filePanel = (() => {
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !isOpen() || e.defaultPrevented) return;
-    if (document.querySelector('#fsv-back, #modal-back, #tray-back, #cmdk-back, .picker-pop, .chip-pop')) return;
+    if (document.querySelector('#fsv-back, #modal-back, #tray-back, #cmdk-back, #bug-panel, .picker-pop, .chip-pop')) return;
     e.stopPropagation();
     close();
   }, true);
@@ -12545,15 +12547,23 @@ function installBugReporter() {
   document.body.append(fab);
 }
 
+function bugTrigger(cls) {
+  if (!bugRecorder) return null;
+  return el('button', {
+    class: `${cls} bug-trigger`, type: 'button', title: 'Report a problem', 'aria-label': 'Report a problem', 'aria-expanded': 'false',
+    onclick: (e) => (document.querySelector('#bug-panel') ? closeBugPanel() : openBugPanel(e.currentTarget)),
+  }, bugGlyph());
+}
+
 function closeBugPanel() {
   document.querySelector('#bug-panel')?.remove();
-  document.querySelector('.bug-fab')?.setAttribute('aria-expanded', 'false');
+  for (const n of document.querySelectorAll('.bug-fab, .bug-trigger')) n.setAttribute('aria-expanded', 'false');
 }
 
 function openBugPanel(from) {
   closeBugPanel();
   const fab = from.classList.contains('bug-fab');
-  if (fab) from.setAttribute('aria-expanded', 'true');
+  from.setAttribute('aria-expanded', 'true');
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
@@ -12642,10 +12652,11 @@ function openBugPanel(from) {
   const panel = el('div', { id: 'bug-panel', role: 'dialog', 'aria-label': 'Report a problem' }, form);
   document.body.append(panel);
 
-  if (fab) {
+  if (!dockCoversScreen.matches) {
     const r = from.getBoundingClientRect();
     panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
-    panel.style.bottom = (innerHeight - r.top + 6) + 'px';
+    if (fab) panel.style.bottom = (innerHeight - r.top + 6) + 'px';
+    else panel.style.top = (r.bottom + 6) + 'px';
   }
 
   dismissOutside({

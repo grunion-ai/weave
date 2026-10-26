@@ -168,7 +168,7 @@ if (s) {
       await page.click(`${panel} button[title="Full screen"]`);
       await page.waitForSelector('#fsv-back');
       const titles = await page.locator('#fsv-back .fsv-bar [title]').evaluateAll((ns) => ns.map((n) => n.getAttribute('title')));
-      assert.deepEqual(titles, ['Refresh', 'Previous (←)', 'Next (→)', 'Open in a browser tab', 'Close (Esc)']);
+      assert.deepEqual(titles, ['Refresh', 'Previous (←)', 'Next (→)', 'Open in a browser tab', 'Report a problem', 'Close (Esc)']);
       await page.click('#fsv-back button[title="Close (Esc)"]');
       await page.waitForSelector('#fsv-back', { state: 'detached' });
     } finally { await page.close(); }
