@@ -62,11 +62,13 @@
     const seen = new Map();
     for (const col of groups ?? []) for (const g of col.groups ?? []) if (!seen.has(g.value)) seen.set(g.value, g.path[g.path.length - 1]);
     const rank = new Map((lane.order === 'az' ? [] : lane.domain ?? []).map((d, i) => [d.key, i]));
+    const turn = lane.dir === 'desc' ? -1 : 1;
     const keys = [...seen.keys()].sort((a, b) => {
       if ((a === '') !== (b === '')) return a === '' ? 1 : -1;
       const ra = rank.has(a) ? rank.get(a) : Infinity;
       const rb = rank.has(b) ? rank.get(b) : Infinity;
-      return ra - rb || String(seen.get(a).label).localeCompare(String(seen.get(b).label), undefined, { numeric: true });
+      if (ra !== rb) return ra === Infinity ? 1 : rb === Infinity ? -1 : (ra - rb) * turn;
+      return String(seen.get(a).label).localeCompare(String(seen.get(b).label), undefined, { numeric: true }) * turn;
     });
     const lanes = keys.map((value) => {
       const bucket = seen.get(value);

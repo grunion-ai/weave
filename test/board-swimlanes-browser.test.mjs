@@ -147,6 +147,22 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('Reversed on a group level runs the columns, the lanes and the stacked sections backwards', async () => {
+    seed({ group: [{ field: 'State', dir: 'desc' }, { field: 'Room', dir: 'desc' }] });
+    const page = await open();
+    try {
+      assert.deepEqual(await page.locator('.wv-board .board-col-head .list-group-label').allInnerTexts(), ['Bought', 'Ready to Buy', 'Research']);
+      assert.deepEqual(await page.locator('.wv-board .board-lane-title .list-group-label').allInnerTexts(), ['Kitchen', 'Bedroom', 'Office']);
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+    seed({ groups: 'stacked', group: [{ field: 'State', dir: 'desc' }] });
+    const again = await open();
+    try {
+      assert.deepEqual(await again.locator('.wv-board > .board-group > .board-group-head .list-group-label').allInnerTexts(), ['Bought', 'Ready to Buy', 'Research']);
+      assert.deepEqual(again.errors, []);
+    } finally { await again.close(); }
+  });
+
   test('stacked keeps its nested sections and draws no lanes', async () => {
     seed({ groups: 'stacked' });
     const page = await open();
