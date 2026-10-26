@@ -991,13 +991,17 @@ function crumbPath(crumbs, { copy = null, foldFrom = 1 } = {}) {
 function fitCrumbs(path, foldFrom) {
   if (!path.isConnected) return;
   path.querySelector(':scope > .crumb-more-slot')?.remove();
+  path.classList.remove('crumb-squeeze');
   const slots = [...path.querySelectorAll(':scope > .crumb-slot')];
   for (const sl of slots) sl.hidden = false;
   path.classList.add('crumb-measure');
   const widths = slots.map((sl) => sl.getBoundingClientRect().width);
   path.classList.remove('crumb-measure');
   const fold = weaveBreadcrumbs.foldPlan(widths, path.clientWidth, { from: foldFrom, more: CRUMB_MORE_PX });
-  if (!fold.length) return;
+  if (fold.length) foldCrumbs(slots, fold);
+  path.classList.toggle('crumb-squeeze', path.scrollWidth > path.clientWidth);
+}
+function foldCrumbs(slots, fold) {
   for (const i of fold) slots[i].hidden = true;
   const hidden = fold.map((i) => slots[i].crumb);
   const btn = el('button', {

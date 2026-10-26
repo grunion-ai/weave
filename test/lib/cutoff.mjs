@@ -15,6 +15,7 @@ export function probe(rootSelector = null) {
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'OPTION', 'OPTGROUP', 'SELECT', 'DATALIST', 'IFRAME', 'CANVAS', 'VIDEO', 'AUDIO', 'IMG', 'BR', 'HR']);
   const NOT_TEXT = new Set(['checkbox', 'radio', 'hidden', 'range', 'color', 'file', 'submit', 'button', 'reset', 'image', 'password', 'date', 'time', 'datetime-local', 'month', 'week']);
   const TITLED_BELOW = '.crumb-cur';
+  const TITLE_BOX = '.crumb-path';
   const MIRRORED = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontStretch', 'fontVariant', 'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent', 'lineHeight', 'tabSize', 'wordBreak', 'overflowWrap',
     'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
   const styles = new Map();
@@ -38,6 +39,12 @@ export function probe(rootSelector = null) {
     const left = r.left + x.clientLeft;
     const top = r.top + x.clientTop;
     return { left, top, right: left + x.clientWidth, bottom: top + x.clientHeight };
+  };
+  const pushedOut = (e, box) => {
+    if (!box) return 0;
+    const r = e.getBoundingClientRect();
+    const b = paddingBox(box);
+    return Math.max(b.left - r.left, r.right - b.right);
   };
   const unseen = (e) => {
     const own = e.getBoundingClientRect();
@@ -113,7 +120,15 @@ export function probe(rootSelector = null) {
     for (const e of [root, ...root.querySelectorAll('*')]) {
       if (visited.has(e)) continue;
       visited.add(e);
-      if (SKIP.has(e.tagName) || e instanceof SVGElement || e.closest(TITLED_BELOW)) continue;
+      if (SKIP.has(e.tagName) || e instanceof SVGElement) continue;
+      const titled = e.closest(TITLED_BELOW);
+      if (titled) {
+        if (titled === e && !unseen(e)) {
+          const over = pushedOut(e, e.closest(TITLE_BOX));
+          if (over > 1) push('clipped', e, e.textContent, over);
+        }
+        continue;
+      }
       const field = e.tagName === 'TEXTAREA' || (e.tagName === 'INPUT' && !NOT_TEXT.has(e.type));
       const cs = style(e);
       const ellipsis = cs.textOverflow === 'ellipsis' && cs.overflowX !== 'visible';

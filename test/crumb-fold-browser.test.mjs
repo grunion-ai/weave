@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 import { probe } from './lib/cutoff.mjs';
 
-let steps, chain;
+let steps, chain, long;
 const s = await launch('crumb fold', (weave) => {
   weave.createSpace({ name: 'Ops', icon: 'lucide:folder-kanban' });
   steps = weave.createTable({ space: 'Ops', name: 'Steps', icon: 'lucide:rocket' });
@@ -15,6 +15,7 @@ const s = await launch('crumb fold', (weave) => {
       ...(chain[0] ? { Next: chain[0].id } : {}),
     }));
   }
+  long = weave.createEntity(steps, { name: `Step 9 ${'of a record whose name runs on and on, '.repeat(5)}until the crumb has to give way` });
 });
 
 if (s) {
@@ -77,30 +78,73 @@ if (s) {
     assert.equal(await page.getAttribute('#dock .crumb-more', 'aria-expanded'), 'true');
     await page.click('.crumb-fold-menu .crumb-fold-row >> nth=0');
     await page.waitForFunction((n) => document.querySelector('#dock .name-edit')?.value === n, hidden[0]);
-    assert.equal(await page.locator('.crumb-fold-menu').count(), 0, 'the menu closes');
+    await page.waitForFunction(() => !document.querySelector('.crumb-fold-menu'));
     await page.close();
   });
 
-  test('the workspace, space and table crumbs stay whole in a narrow dock and the probe reads no cut-off crumb (Issues #1127, #1158, #1159)', async () => {
-    const page = await walk({ pin: 420 });
-    const m = await page.evaluate(() => {
-      const path = document.querySelector('#dock .crumb-path');
-      const heads = [...path.querySelectorAll(':scope > .crumb-slot:not([hidden]) > :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table) > .crumb-nm')];
-      const whole = (n) => n.scrollWidth <= n.clientWidth && n.getBoundingClientRect().right <= path.getBoundingClientRect().right + 0.5;
-      return {
-        ws: document.querySelector('#ws-name').textContent,
-        heads: heads.map((n) => n.textContent),
-        cut: heads.filter((n) => !whole(n)).map((n) => n.textContent),
-        cur: path.querySelector('.crumb-cur .crumb-nm').textContent,
-        title: document.querySelector('#dock .name-edit').value,
-      };
-    });
+  async function record(id, width = 1200) {
+    const page = await browser.newPage({ viewport: { width, height: 800 } });
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.querySelector('#main .name-edit')?.value && document.querySelector('#main .crumb-path .crumb-cur'));
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return page;
+  }
+  const readHeads = (page) => page.evaluate(() => {
+    const path = document.querySelector('#main .crumb-path');
+    const p = path.getBoundingClientRect();
+    const nm = (n) => n.querySelector('.crumb-nm');
+    const cut = (n) => n.scrollWidth - n.clientWidth > 1;
+    const heads = [...path.querySelectorAll(':scope > .crumb-slot:not(.crumb-slot-cur)')].map(nm);
+    const cur = path.querySelector('.crumb-cur');
+    const c = cur.getBoundingClientRect();
+    return {
+      ws: document.querySelector('#ws-name').textContent,
+      heads: heads.map((n) => n.textContent),
+      cut: heads.filter(cut).map((n) => n.textContent),
+      cur: nm(cur).textContent,
+      curCut: cut(nm(cur)),
+      curIn: c.left >= p.left - 0.5 && c.right <= p.right + 0.5,
+      over: path.scrollWidth - path.clientWidth,
+      title: document.querySelector('#main .name-edit').value,
+    };
+  });
+  const crumbFinds = async (page) => (await page.evaluate(probe, '#main .crumb-path')).filter((f) => /crumb-k-(ws|space|table)|crumb-cur/.test(f.selector));
+
+  test('the record page shows the workspace, space and table crumbs whole (Issue #1127)', async () => {
+    const page = await record(chain[0].id);
+    const m = await readHeads(page);
     assert.ok(m.ws.length > 14, `the workspace name is longer than the old 14ch cap: ${JSON.stringify(m.ws)}`);
     assert.deepEqual(m.heads, [m.ws, 'Ops', 'Steps'], 'the workspace, space and table crumbs all show');
     assert.deepEqual(m.cut, [], 'and none of them is cut');
-    assert.equal(m.title, m.cur, 'the title field under the crumb carries the full name the current crumb may cut');
-    const found = (await page.evaluate(probe, '#dock .crumb-path')).filter((f) => /crumb-k-(ws|space|table)|crumb-cur/.test(f.selector));
-    assert.deepEqual(found, [], `the cut-off probe reads nothing in the head crumbs or the current crumb: ${JSON.stringify(found)}`);
+    assert.deepEqual(await crumbFinds(page), [], 'the cut-off probe reads nothing in the crumbs');
+    await page.close();
+  });
+
+  test('a long row name gives way first: the head crumbs keep their width, the current crumb takes the ellipsis and the title below carries the name (Issues #1158, #1159)', async () => {
+    const page = await record(long.id);
+    const m = await readHeads(page);
+    assert.deepEqual(m.heads, [m.ws, 'Ops', 'Steps'], 'the head crumbs all show');
+    assert.deepEqual(m.cut, [], `no head crumb is cut: ${JSON.stringify(m)}`);
+    assert.ok(m.curCut, 'the current crumb ends in its own ellipsis');
+    assert.ok(m.curIn && m.over <= 1, `and stays inside the path box: ${JSON.stringify(m)}`);
+    assert.equal(m.title, m.cur, 'the title field under the crumb carries the full name');
+    assert.deepEqual(await crumbFinds(page), [], 'the probe takes the current crumb\'s ellipsis as by design and sees no crumb pushed out of the box');
+    await page.close();
+  });
+
+  test('the probe still reports a current crumb pushed out of its path box', async () => {
+    const page = await record(long.id);
+    await page.evaluate(() => {
+      const path = document.querySelector('#main .crumb-path');
+      for (const sl of path.querySelectorAll(':scope > .crumb-slot')) sl.style.flex = 'none';
+      path.style.flex = 'none';
+      path.style.width = '160px';
+    });
+    await page.waitForFunction(() => document.querySelector('#main .crumb-path').clientWidth === 160);
+    const found = (await crumbFinds(page)).filter((f) => /crumb-cur/.test(f.selector));
+    assert.equal(found.length, 1, `one finding on the current crumb: ${JSON.stringify(found)}`);
+    assert.equal(found[0].kind, 'clipped');
+    assert.ok(found[0].px > 100, `measured how far it sits outside the box: ${found[0].px}px`);
     await page.close();
   });
 
