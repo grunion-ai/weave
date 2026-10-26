@@ -429,6 +429,26 @@ if (s) {
       await page.close();
     });
   }
+  test('a name the vendored set does not carry draws nothing, not a word that takes taps beside it', async () => {
+    const page = await entityPage();
+    const got = await page.evaluate(() => {
+      const span = lucideEl('no-such-glyph');
+      const host = document.createElement('div');
+      host.style.cssText = 'position:fixed;left:120px;top:120px';
+      host.appendChild(span);
+      document.body.appendChild(host);
+      const box = span.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      const ink = range.getBoundingClientRect();
+      const out = { text: span.textContent, box: Math.round(box.width), ink: Math.round(ink.width) };
+      host.remove();
+      return out;
+    });
+    assert.equal(got.text, '', 'the missing name was stringified into the icon span');
+    assert.ok(got.ink <= got.box, `the icon span paints ${got.ink}px of content inside a ${got.box}px box, so it takes taps beside itself`);
+    await page.close();
+  });
   test('every icon on the page is drawn to the one size scale', async () => {
     const page = await entityPage();
     const sizes = await page.evaluate(() => {
