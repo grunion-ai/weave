@@ -44,3 +44,11 @@ test('laneShut and laneFold read and write the existing collapsed group paths', 
   assert.deepEqual(Board.laneFold(shut, office), [List.COMPLETED]);
   assert.deepEqual(Board.laneFold([office.cells[0].key], office).sort(), office.cells.map((c) => c.key).sort(), 'a half-folded lane folds the rest');
 });
+
+test('laneGrid honours a reversed lane level, with No value still last', () => {
+  const lane = { ...levels[1], dir: 'desc' };
+  const grid = Board.laneGrid(List.arrange(rows, { levels: [levels[0], lane], showEmpty: true }).groups, lane);
+  assert.deepEqual(grid.lanes.map((l) => l.label), ['Kitchen', 'Bedroom', 'Office', 'No Room']);
+  const forward = Board.laneGrid(List.arrange(rows, { levels, showEmpty: true }).groups, levels[1]);
+  assert.deepEqual(forward.lanes.map((l) => l.label), ['Office', 'Bedroom', 'Kitchen', 'No Room']);
+});
