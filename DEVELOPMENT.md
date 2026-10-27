@@ -90,12 +90,6 @@ The `tests` workflow runs the full inventory on every main push. Its final
 only publish a main commit whose `CI gate` succeeded. Browser dependencies are installed in CI;
 a missing browser or skipped required browser suite fails the gate. Parallel CI
 jobs have isolated runners and test data. Superseded branch runs are canceled.
-Each main push holds its own concurrency lane, keyed by the commit under test.
-A shared lane keeps one pending run at a time, so the next merge cancelled the
-gate queued behind it: eight merges in the half hour from 18:32Z on 2026-10-25
-left nine consecutive main gates cancelled and the deploy watcher two hours
-behind the tip (Issue #1181). A merge rate above the gate's nineteen-minute
-runtime now costs parallel runs instead of a stalled deploy.
 
 Local runs are for debugging: `npm test -- --targeted <file...>` reproduces a
 red shard, and CI owns verification. Never invoke bare `node --test`; empty
