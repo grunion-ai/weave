@@ -166,9 +166,11 @@ test('engine: a rename keeps the old slug as an alias across a reopen', () => {
 async function serveSignIn() {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+  const ids = {};
   const before = (dir) => {
     for (const name of ['acme', 'other']) {
       const ws = new Weave({ path: join(dir, `${name}.db`), name });
+      ids[name] = ws.state.meta.id;
       ws.state.meta.name = name;
       ws.createAccount({ name: 'kyle', role: 'writer' });
       if (name === 'acme') ws.redeemIdentityInvite(ws.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
@@ -178,7 +180,7 @@ async function serveSignIn() {
     }
   };
   const s = await serveHub({ oidc, origin: 'http://weave.test', before });
-  return { ...s, idp, stop: () => { s.stop(); idp.stop(); } };
+  return { ...s, idp, ids, stop: () => { s.stop(); idp.stop(); } };
 }
 
 const follow = async (s, location, opts) => {
@@ -263,6 +265,93 @@ test('central sign-in: a code answers only on its own host and only for 60 secon
 
     const bogus = await s.at('weave.test')('GET', '/w/acme/api/auth/oidc/start?handoff=evil');
     assert.equal(bogus.status, 400, 'a handoff names a workspace host, nothing else');
+  } finally { s.stop(); }
+});
+
+const signIn = async (s, host, sub = 'user_kyle') => {
+  const start = await s.at(host)('GET', '/api/auth/oidc/start');
+  const apexStart = await follow(s, start.headers.location);
+  const back = s.idp.approve(apexStart.headers.location, { sub });
+  const handoff = await follow(s, back.href, { cookie: cookieOf(apexStart, 'wv_oidc').split(';')[0] });
+  return sessionOf(await follow(s, handoff.headers.location));
+};
+const sessionOf = (res) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith('wv_session_'))?.split(';')[0];
+
+test('rail hop: a session on one workspace host hands itself to another workspace host it opens (Issue #1263)', async () => {
+  const s = await serveSignIn();
+  try {
+    s.main.createAccount({ name: 'kyle', role: 'writer' });
+    s.main.redeemIdentityInvite(s.main.linkIdentity('kyle', { issuer: s.idp.issuer }).code, { issuer: s.idp.issuer, subject: 'user_kyle' });
+    s.main.save();
+    const net = s.at('net.weave.test');
+    const acme = s.at('acme.weave.test');
+    const cookie = await signIn(s, 'net.weave.test');
+    const listed = (await net('GET', '/api/workspaces', { cookie })).json().find((w) => w.name === 'acme');
+    assert.equal(listed.held, undefined, 'acme opens from the net host, so its chip is not held');
+    assert.equal(listed.host, 'http://acme.weave.test/');
+
+    const hop = await net('GET', '/api/auth/open/acme', { cookie });
+    assert.equal(hop.status, 302);
+    const to = new URL(hop.headers.location);
+    assert.equal(to.host, 'acme.weave.test', 'the hop lands on the workspace host');
+    assert.equal(to.pathname, '/api/auth/handoff');
+    const landed = await follow(s, to.href);
+    assert.equal(landed.status, 302);
+    assert.equal(landed.headers.location, '/');
+    const there = sessionOf(landed);
+    assert.ok(there && there !== cookie, 'the acme host gets its own host-only session');
+    assert.equal((await acme('GET', '/api/spaces', { cookie: there })).status, 200, 'signed in on the acme host');
+    assert.equal((await follow(s, to.href)).status, 400, 'the hop code is single use');
+
+    const cold = await net('GET', '/api/auth/open/acme');
+    assert.deepEqual([cold.status, cold.headers.location], [302, 'http://acme.weave.test/'], 'no session: the bare host, which signs in on its own');
+    const shut = await net('GET', '/api/auth/open/other', { cookie });
+    assert.deepEqual([shut.status, shut.headers.location], [302, 'http://other.weave.test/'], 'a session that does not open other hands nothing over');
+    assert.equal((await net('GET', '/api/auth/open/ACME', { cookie })).headers.location.startsWith('http://acme.weave.test/api/auth/handoff?code='), true, 'the slug is case-blind');
+    assert.equal((await net('GET', '/api/auth/open/nosuch', { cookie })).status, 404);
+  } finally { s.stop(); }
+});
+
+test('rail hop: with no base domain there is no hop route', async () => {
+  const s = await serveHub({ baseDomain: null });
+  try {
+    assert.equal((await s.at('127.0.0.1')('GET', '/api/auth/open/Net')).status, 404);
+  } finally { s.stop(); }
+});
+
+test('host routing: a /w/ page asked on another workspace host moves to that workspace host (Issue #1263)', async () => {
+  const s = await serveSignIn();
+  try {
+    const acme = s.at('acme.weave.test');
+    const row = '0b6a3c1e-2f4d-4e8a-9c7b-1d2e3f4a5b6c';
+    for (const [method, path, to] of [
+      ['GET', '/w/other/', 'http://other.weave.test/'],
+      ['HEAD', '/w/other/', 'http://other.weave.test/'],
+      ['GET', '/w/other', 'http://other.weave.test/'],
+      ['GET', `/w/${s.ids.other}/e/${row}?x=1`, `http://other.weave.test/e/${row}?x=1`],
+      ['GET', '/w/Net/', 'http://net.weave.test/'],
+    ]) {
+      const moved = await acme(method, path);
+      assert.deepEqual([moved.status, moved.headers.location], [301, to], `${method} ${path}`);
+    }
+    for (const [host, path] of [
+      ['acme.weave.test', '/w/other/api/workspace'],
+      ['acme.weave.test', '/w/other/app.js'],
+      ['acme.weave.test', '/w/other/mcp'],
+      ['acme.weave.test', '/w/acme/'],
+      ['weave.test', '/w/other/'],
+    ]) {
+      assert.notEqual((await s.at(host)('GET', path)).status, 301, `${host}${path} stays put`);
+    }
+    assert.notEqual((await acme('POST', '/w/other/api/spaces', { body: { name: 'x' } })).status, 301, 'a write is never moved');
+  } finally { s.stop(); }
+});
+
+test('host routing: without sign-in configured a /w/ page on another host is served in place as before', async () => {
+  const s = await serveHub();
+  try {
+    assert.equal((await s.at('weave.test')('POST', '/api/workspaces', { body: { name: 'Acme' } })).status, 201);
+    assert.equal((await s.at('acme.weave.test')('GET', '/w/Net/')).status, 200);
   } finally { s.stop(); }
 });
 

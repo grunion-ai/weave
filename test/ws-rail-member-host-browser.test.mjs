@@ -41,7 +41,7 @@ if (s) {
         assert.ok(await img.evaluate((n) => n.complete && n.naturalWidth > 0), `the logo loads from ${await img.getAttribute('src')}`);
         assert.equal(await chip(page, 'net').evaluate((n) => n.classList.contains('ws-letter')), false);
         const href = await chip(page, 'net').evaluate((n) => new URL(n.href).pathname);
-        assert.equal(href, `/w/${netId}/`, 'the net tile opens net, not the host workspace');
+        assert.equal(href, '/api/auth/open/net', 'the net tile hops to the net host, not the host workspace (Issue #1263)');
         assert.equal((await page.locator('#ws-name').textContent()).trim(), 'scratch', 'the wordmark names the host workspace');
         assert.ok(await chip(page, 'scratch').evaluate((n) => n.classList.contains('active')), 'the host workspace tile is the active one');
         assert.equal(await chip(page, 'net').evaluate((n) => n.classList.contains('active')), false);
