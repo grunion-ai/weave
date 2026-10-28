@@ -5282,7 +5282,7 @@ function renderViewPane(pane, db, { force = false } = {}) {
 let closeSharePanel = null;
 function sharePanelButton(context) {
   if (!state.canManageForms) return null;
-  const button = el('button', { class: 'btn btn-sm btn-icon table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('share'));
+  const button = el('button', { class: 'btn btn-sm btn-icon table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('upload'));
   button.addEventListener('click', () => {
     if (closeSharePanel) { closeSharePanel(); return; }
     setPaneOpen(false, { focus: false });

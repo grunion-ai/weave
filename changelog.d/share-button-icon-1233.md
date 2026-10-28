@@ -1,0 +1,1 @@
+- The Share (Beta) button on a table toolbar draws an icon again. It asked for `share`, a name the bundled icon set does not carry, so since Issue #1235 it drew nothing. It now takes `upload` (Issue #1233).
