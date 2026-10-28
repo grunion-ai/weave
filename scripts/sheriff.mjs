@@ -29,6 +29,10 @@ export function eligible(run, repo = REPO) {
   return null;
 }
 
+export function rerunVerdict(gate) {
+  return gate === 'success' || gate === 'failure' ? gate : 'unknown';
+}
+
 export function nextProbe(lo, hi) {
   return hi - lo > 1 ? Math.floor((lo + hi) / 2) : null;
 }
@@ -59,9 +63,10 @@ export function issueName({ files, prs, culprits, run }) {
   return `Error: ${test}${more} fails on main after ${after}`;
 }
 
-export function revertTitle({ culprits, prs }) {
+export function revertTitle({ culprits, prs, probes = [] }) {
   const what = culprits.length === 1 ? short(culprits[0].sha) : `${culprits.length} commits ${short(culprits[0].sha)}..${short(culprits.at(-1).sha)}`;
-  return `sheriff: revert ${what}${prs.length ? ` (PR ${prList(prs)})` : ''} after main went red`;
+  const unprobed = probes.length ? '' : ` (${culprits.length} commit${culprits.length === 1 ? '' : 's'} in range, no bisect probe)`;
+  return `sheriff: revert ${what}${prs.length ? ` (PR ${prList(prs)})` : ''} after main went red${unprobed}`;
 }
 
 function evidence(ctx) {
@@ -89,7 +94,7 @@ function evidence(ctx) {
 
 export function revertBody(ctx) {
   return [
-    `The tests workflow went red on main and stayed red after one rerun of its failed jobs. The sheriff reverts ${ctx.culprits.length === 1 ? 'the commit that broke it' : 'the commits it could not separate within the bisect cap'}; the fix lands as a new PR.`,
+    `The tests workflow went red on main and stayed red after a rerun of its failed jobs. The sheriff reverts ${ctx.culprits.length === 1 ? 'the commit that broke it' : 'the commits it could not separate within the bisect cap'}; the fix lands as a new PR.`,
     '',
     evidence(ctx),
     '',
@@ -119,7 +124,7 @@ export function prComment(ctx, revert) {
 
 export function issueDescription(ctx, revert, note) {
   return [
-    `The sheriff found main red on ${ctx.run.html_url} and it stayed red after one rerun of the failed jobs.`,
+    `The sheriff found main red on ${ctx.run.html_url} and it stayed red after a rerun of the failed jobs.`,
     note ? `\n${note}` : '',
     revert?.html_url ? `Revert PR: ${revert.html_url}` : 'No revert PR was opened.',
     '',
@@ -151,11 +156,23 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
 
   const { files, jobs } = await io.failures(run);
   if (Number(run.run_attempt) === 1) await io.rerunFailed(run.id);
-  const rerun = await io.waitRun(run.id, 2);
-  if ((await io.gate(rerun.id)) === 'success') {
+  let rerun = await io.waitRun(run.id, 2);
+  let verdict = rerunVerdict(await io.gate(rerun.id));
+  if (verdict === 'unknown') {
+    io.log(`the rerun of ${short(run.head_sha)} reached no CI gate verdict; rerunning its failed jobs once more`);
+    try {
+      await io.rerunFailed(run.id);
+      rerun = await io.waitRun(run.id, Number(rerun.run_attempt ?? 2) + 1);
+      verdict = rerunVerdict(await io.gate(rerun.id));
+    } catch (error) {
+      io.log(`the second rerun of ${short(run.head_sha)} could not be read: ${error.message}`);
+    }
+  }
+  if (verdict === 'success') {
     await io.logFlake({ run, files, jobs });
     return result('flake', { reason: `rerun passed; ${files.length ? files.join(', ') : 'no failing file recorded'}`, files });
   }
+  if (verdict === 'unknown') return result('skip', { reason: `two reruns of the failed jobs reached no CI gate verdict; the next red main run judges ${short(run.head_sha)}`, files });
   const healed = dryRun ? null : await io.greenAfter(run);
   if (healed) return result('skip', { reason: `main went green at ${short(healed.sha)} while the rerun ran` });
 
@@ -191,6 +208,9 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
 
   const reverts = ctx.culprits.filter((c) => isRevert(c.message));
   if (reverts.length) return escalate(io, ctx, result, `the culprit range holds a revert (${reverts.map((c) => short(c.sha)).join(', ')}); the sheriff never reverts a revert`);
+
+  const cleared = dryRun ? null : await io.greenAfter(run);
+  if (cleared) return result('skip', { reason: `main went green at ${short(cleared.sha)} before the revert was opened; ${short(run.head_sha)} is cleared`, culprits: ctx.culprits.map((c) => c.sha) });
 
   const opened = await io.openRevert({ branch: revertBranch(ctx.culprits), shas: ctx.culprits.map((c) => c.sha), title: revertTitle(ctx), body: revertBody(ctx), message: revertMessage(ctx) });
   if (opened.exists) return result('skip', { reason: `${revertBranch(ctx.culprits)} already exists; this culprit was handled` });
