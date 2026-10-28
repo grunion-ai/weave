@@ -614,7 +614,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return out(200, {
         resource: (hostOrigin ?? mcpOrigin(rx)) + rest,
         authorization_servers: [oidc.issuer],
-        scopes_supported: ['openid'],
+        scopes_supported: ['profile', 'offline_access'],
         bearer_methods_supported: ['header'],
       });
     }
