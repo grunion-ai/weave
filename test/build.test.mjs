@@ -67,7 +67,7 @@ test('a three-table build makes the spaces, tables, fields, relations and rows, 
   const amount = w.findField(w.findTable('Transaction'), 'Amount');
   assert.deepEqual([amount.config.format, amount.config.currency], ['currency', 'USD']);
   const amex = w.query('Account', { where: [['Name', '=', 'Amex Gold']] }).items[0];
-  assert.equal(w.readEntity(amex.id).fields.Transactions.length, 1);
+  assert.equal(w.readEntity(amex.id).fields.Transaction.length, 1);
 });
 
 test('dryRun writes nothing and reports what it would make', () => {

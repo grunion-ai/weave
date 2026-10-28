@@ -1404,6 +1404,10 @@ export class Weave {
     return term;
   }
 
+  #inverseName(db, many) {
+    return Term.inverseName(db.name, this.termOf(db), many);
+  }
+
   #setTerm(db, term, { save = true } = {}) {
     const field = db.fields[db.nameFieldId];
     if (!field) throw new WeaveError('This table has no Name field', 'invalid');
@@ -5229,7 +5233,7 @@ export class Weave {
     }
     if (targetDb == null) throw new WeaveError('A relation needs a targetDb (or a targetDbs list)', 'invalid');
     const target = this.getTable(targetDb);
-    const invName = inverseName ?? db.name + (card.targetMany ? 's' : '');
+    const invName = inverseName ?? this.#inverseName(db, card.targetMany);
     if (this.findField(target, invName)) throw new WeaveError(`Field '${invName}' already exists in target table`, 'conflict');
 
     const a = { id: uuid(), name, type: 'relation', config: { targetDb: target.id, many: card.thisMany } };
@@ -5806,7 +5810,7 @@ export class Weave {
     const cardinality = config.cardinality ?? 'many-to-one';
     if (!['many-to-one', 'many-to-many'].includes(cardinality)) throw new WeaveError(`A text field becomes a many-to-one or many-to-many relation, not ${cardinality}`, 'invalid');
     const many = cardinality === 'many-to-many';
-    const invName = config.inverseName ?? db.name + 's';
+    const invName = config.inverseName ?? this.#inverseName(db, true);
     refuseReserved('field', invName);
     if (this.findField(target, invName)) throw new WeaveError(`Field '${invName}' already exists in target table — pass config.inverseName`, 'conflict');
     const exact = new Map();

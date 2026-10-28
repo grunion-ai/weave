@@ -80,3 +80,14 @@ test('the module is a classic script: no import/export, one global', () => {
   assert.ok(html.indexOf('/term-core.js') > -1, 'index.html loads it');
   assert.ok(html.indexOf('/term-core.js') < html.indexOf('/selection-core.js'), 'before the modules that read it');
 });
+
+test('inverseName keeps the table name, or on the many side takes the set plural cased like it', () => {
+  const deals = { singular: 'deal', plural: 'deals', set: true };
+  assert.equal(T.inverseName('Action Items', T.resolve({}), true), 'Action Items', 'no term: the name as written');
+  assert.equal(T.inverseName('Deal', deals, true), 'Deals');
+  assert.equal(T.inverseName('Deal', deals, false), 'Deal', 'the one side keeps the name');
+  assert.equal(T.inverseName('Deal', undefined, true), 'Deal', 'a missing term counts as unset');
+  assert.equal(T.inverseName('Action Item', { singular: 'action item', plural: 'action items', set: true }, true), 'Action Items', 'title case on every word');
+  assert.equal(T.inverseName('Action item', { singular: 'action item', plural: 'action items', set: true }, true), 'Action items', 'sentence case on the first word');
+  assert.equal(T.inverseName('deal', deals, true), 'deals', 'lower case stays lower');
+});
