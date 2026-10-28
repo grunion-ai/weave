@@ -809,7 +809,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           if (r.targets.length > 1) {
             kids.push(el('div', { class: 'modal-note full' }, 'A target set is one-way: no inverse field is created on the member tables.'));
           } else {
-            const autoName = db.name + (['many-to-one', 'many-to-many'].includes(r.cardinality ?? 'many-to-one') ? 's' : '');
+            const autoName = WeaveTerm.inverseName(db.name, db.term, ['many-to-one', 'many-to-many'].includes(r.cardinality ?? 'many-to-one'));
             kids.push(dsection('Inverse field on the target', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: `${autoName} (created automatically — rename here)`, oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
           }
         }

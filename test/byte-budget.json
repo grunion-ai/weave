@@ -225,8 +225,8 @@
       "br": 33428
     },
     "/term-core.js": {
-      "gzip": 1362,
-      "br": 1147
+      "gzip": 1499,
+      "br": 1276
     },
     "/usage-core.js": {
       "gzip": 793,
@@ -247,6 +247,7 @@
     "/phone-row.js": "PR #388 (Issue #1032) added hitBoxes, the 44 px phone list hit geometry that replaced the padded lookup in app.js: gzip 1,039 to 1,585, br 899 to 1,433. Budget set 5% above",
     "/style.css": "Feature #340 (View pane) added the pane, its accordion, sort and group level cards, grouped-table header and subtotal rows and list subtotals: gzip 37,512 to 38,922, br 30,903 to 31,836. Budget set 5% above",
     "/app.js": "PR #490 relanded after PR #494 grew app.js past the budget PR #359 measured: gzip 157,089 to 157,228 served, budget set 5% above at 165,090; br unchanged",
+    "/term-core.js": "PR #520 (Issue #1262) added inverseName, the inverse relation name the engine and the field dialog share: served gzip 1,427 over the 1,362 budget, br 1,215 over 1,147. Budget set 5% above",
     "/agent-connect-core.js": "Issue #1276: derive distinct workspace connector names and use them in setup and authentication instructions; measured 2532 gzip and 2183 Brotli bytes."
   }
 }
