@@ -6043,10 +6043,12 @@ function renderBoard(main, db, items, ctx) {
     });
     return card;
   };
+  const flat = (node) => (node.groups ? node : { ...node, items: node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; }) });
   const groupEl = (node, depth, { completed = false, cell = false } = {}) => {
     const key = node.key ?? '';
-    const cards = el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)));
-    cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
+    const body = node.groups
+      ? el('div', { class: 'board-nest' }, ...node.groups.map((g) => groupEl(flat(g), depth + 1)))
+      : el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)), el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
     const shut = !cell && listCore.isCollapsed(collapsed, key);
     const fold = el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.label || key}` }, lucideEl('chevron-right'));
     const head = !cell && (node.path?.length || completed)
@@ -6054,7 +6056,7 @@ function renderBoard(main, db, items, ctx) {
         completed ? el('span', { class: 'list-group-label' }, node.label) : listHeadingEl(s, depth, node),
         el('span', { class: 'list-count' }, String(node.count ?? node.items.length)))
       : null;
-    const sec = el('section', { class: 'board-group' + (completed ? ' board-completed' : '') + (shut ? ' shut' : ''), dataset: { key }, 'aria-label': key || db.name }, head, cards);
+    const sec = el('section', { class: 'board-group' + (completed ? ' board-completed' : '') + (shut ? ' shut' : '') + (node.groups ? ' board-parent' : ''), dataset: { key }, 'aria-label': key || db.name }, head, body);
     fold.addEventListener('click', () => {
       collapsed = listCore.toggleCollapsed(collapsed, key);
       const now = listCore.isCollapsed(collapsed, key);
@@ -6066,11 +6068,7 @@ function renderBoard(main, db, items, ctx) {
     sec.wvPath = completed ? null : node.path;
     return sec;
   };
-  const leaves = [];
-  const walk = (node, depth) => (node.groups ? node.groups.forEach((g) => walk(g, depth + 1)) : leaves.push([node, depth]));
-  if (arranged.groups) arranged.groups.forEach((g) => walk(g, 0));
-  else leaves.push([{ key: '', path: [], items: arranged.items, count: arranged.items.length }, 0]);
-  const flat = (node) => ({ ...node, items: node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; }) });
+  const roots = arranged.groups ?? [{ key: '', path: [], items: arranged.items, count: arranged.items.length }];
   const laneEl = (lane) => {
     const shut = boardCore.laneShut(collapsed, lane);
     const row = el('div', { class: 'board-lane' + (shut ? ' shut' : ''), role: 'group', 'aria-label': lane.label, dataset: { key: lane.key } });
@@ -6110,7 +6108,7 @@ function renderBoard(main, db, items, ctx) {
     style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
   }, ...(lanes
     ? [...grid.columns.map(columnHead), ...grid.lanes.map(laneEl)]
-    : leaves.map(([node, depth]) => groupEl(flat(node), depth))));
+    : roots.map((g) => groupEl(flat(g), 0))));
   if (lanes) syncColumns();
   if (arranged.completed?.count) board.append(groupEl(flat(arranged.completed), 0, { completed: true }));
   const sortName = (gridSort(db) ?? []).map((x) => x.field).join(', ');
@@ -6163,7 +6161,7 @@ function renderBoard(main, db, items, ctx) {
     let held = null;
     const under = () => {
       const g = [...board.querySelectorAll('.board-group')].find((n) => {
-        if (n.classList.contains('shut') || n.classList.contains('column-shut') || !n.getClientRects().length) return false;
+        if (n.classList.contains('board-parent') || n.classList.contains('shut') || n.classList.contains('column-shut') || !n.getClientRects().length) return false;
         const r = n.getBoundingClientRect();
         return at.x >= r.left && at.x <= r.right && ((side && !inLanes) || (at.y >= r.top && at.y <= r.bottom));
       });
