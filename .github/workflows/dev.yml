@@ -13,7 +13,7 @@ jobs:
   gate:
     name: Dev gate
     if: github.event_name == 'pull_request' && !github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     concurrency:
       group: dev-gate-${{ github.event.pull_request.number }}
@@ -40,7 +40,7 @@ jobs:
   deploy:
     name: Deploy dev
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: dev-deploy
