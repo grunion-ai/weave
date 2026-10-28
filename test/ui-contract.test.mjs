@@ -1629,7 +1629,7 @@ test('workspace links and rename use the workspace id permalink', () => {
   assert.doesNotMatch(home, /\/w\/\$\{updated\.name\}\//, 'never the name URL');
   const rail = fnBody('buildWsRail');
   assert.match(rail, /wsHref\(w\)/, 'the rail links workspaces through wsHref');
-  assert.match(APP, /const wsHref = \(w\) => \(servesBareRoot\(w\) \? '\/' : \(w\.url \?\? `\/w\/\$\{w\.id\}\/`\)\)/, 'wsHref links by id unless the workspace serves this host\'s bare root');
+  assert.match(APP, /const wsHref = \(w\) => \(servesBareRoot\(w\) \? '\/' : w\.host \? `\/api\/auth\/open\/\$\{encodeURIComponent\(w\.name\.toLowerCase\(\)\)\}` : \(w\.url \?\? `\/w\/\$\{w\.id\}\/`\)\)/, 'wsHref hops to a workspace host when it has one, else links by id, unless the workspace serves this host\'s bare root (Issue #1263)');
   assert.match(rail, /w\.id === seg|seg === w\.id|\.id === seg/, 'the current workspace matches by id or name segment');
 });
 
