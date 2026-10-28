@@ -248,14 +248,6 @@ weave doc export Task#5 --format pdf --out t5.pdf
 
 Entities are addressable as \`Table#publicId\`, UUID, or name with \`--table\`.`,
   });
-  w.createEntity(guides, {
-    name: 'Agent access (MCP)', values: { Audience: 'Agent', Order: 4 },
-    doc: `# Agent access
-
-\`weave mcp\` starts a Model Context Protocol stdio server with 21+ tools: schema introspection, query with relation traversal, entity CRUD, workflow transitions, linking, per-field documents, comments, universal search with permalinks, CSV import/export, files, automations.
-
-The REST API mirrors everything under \`/api\` (workspace-scoped under \`/w/<name>/api\`).`,
-  });
 
   w.createSpace({ name: 'Wiki', icon: 'lucide:bookmark', description: 'Design notes and architecture' });
   const articles = w.createTable({ space: 'Wiki', name: 'Article', icon: 'lucide:bookmark' });

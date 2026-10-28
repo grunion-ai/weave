@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { TOOLS, listTools, primer } from '../src/mcp.js';
 import { VOCABULARY } from '../src/vocabulary.js';
 import { GUIDES, FIELD_DOCS } from '../src/handbook.js';
-import { Weave } from '../src/engine.js';
+import { Weave, FIELD_TYPES } from '../src/engine.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFileSync(join(ROOT, file), 'utf8');
@@ -21,29 +21,58 @@ const WORDS = new Map(UNITS.map((w, i) => [w, i]));
 TENS.forEach((t, i) => t && [t, ...UNITS.slice(1, 10).map((u) => `${t}-${u}`)].forEach((w, u) => WORDS.set(w, i * 10 + u)));
 const number = (s) => (/^\d+$/.test(s) ? Number(s) : WORDS.get(s.toLowerCase()));
 
-test('every tool count in the docs is the count src/mcp.js registers', () => {
-  const total = TOOLS.length;
-  const core = listTools('core').length;
+const TOTAL = TOOLS.length;
+const CORE = listTools('core').length;
+const CLAIMS = [
+  [/(?<!about )\b([\w-]+) (?:MCP )?tools\b(?! by default)/gi, TOTAL],
+  [/\b([\w-]+) (?:MCP )?tools by default/gi, CORE],
+  [/\b([\w-]+) listed by default/gi, CORE],
+  [/\blists? all ([\w-]+)/gi, TOTAL],
+  [/\breaches the other ([\w-]+)/gi, TOTAL - CORE],
+  [/\b([\w-]+) field types\b/gi, FIELD_TYPES.length],
+];
+function countClaims(text) {
+  const flat = text.replace(/\s+/g, ' ');
+  return CLAIMS.flatMap(([re, want]) => [...flat.matchAll(re)]
+    .map((m) => ({ phrase: m[0], said: number(m[1]), want }))
+    .filter((c) => c.said !== undefined));
+}
+const codeHas = `src/mcp.js has ${TOTAL} tools, ${CORE} listed by default; src/engine.js has ${FIELD_TYPES.length} field types`;
+
+test('every tool and field-type count in the docs is the count the code has', () => {
   let seen = 0;
   for (const file of DOCS) {
-    const text = read(file).replace(/\s+/g, ' ');
-    const claims = [
-      [/(?<!about )\b([\w-]+) (?:MCP )?tools\b(?! by default)/gi, total],
-      [/\b([\w-]+) (?:MCP )?tools by default/gi, core],
-      [/\b([\w-]+) listed by default/gi, core],
-      [/\blists? all ([\w-]+)/gi, total],
-      [/\breaches the other ([\w-]+)/gi, total - core],
-    ];
-    for (const [re, want] of claims) {
-      for (const m of text.matchAll(re)) {
-        const n = number(m[1]);
-        if (n === undefined) continue;
-        seen++;
-        assert.equal(n, want, `${file} says "${m[0]}"; src/mcp.js has ${total} tools, ${core} listed by default`);
-      }
+    for (const c of countClaims(read(file))) {
+      seen++;
+      assert.equal(c.said, c.want, `${file} says "${c.phrase}"; ${codeHas}`);
     }
   }
-  assert.ok(seen >= 5, `only ${seen} tool counts found: the patterns no longer match the docs`);
+  assert.ok(seen >= 5, `only ${seen} counts found: the patterns no longer match the docs`);
+});
+
+test('every tool and field-type count in the Handbook is the count the code has (Issue #1246)', () => {
+  for (const page of [...GUIDES, ...FIELD_DOCS]) {
+    for (const c of countClaims(page.doc)) assert.equal(c.said, c.want, `Handbook "${page.name}" says "${c.phrase}"; ${codeHas}`);
+  }
+});
+
+test('the Agent access guide walks the MCP primer path with the counts the code has (Issue #1246)', () => {
+  const guide = GUIDES.find((g) => g.name === 'Agent access (MCP)');
+  assert.ok(guide, 'GUIDES has no "Agent access (MCP)" page, so a Handbook sync never corrects the live row');
+  assert.equal(guide.audience, 'Agent');
+  const doc = guide.doc;
+  const claims = countClaims(doc);
+  assert.ok(claims.some((c) => c.want === CORE), 'the guide says how many tools are listed by default');
+  assert.ok(claims.some((c) => c.want === FIELD_TYPES.length), 'the guide says how many field types there are');
+  const path = ['weave_ontology', 'weave_build', 'weave_query', 'weave_search', 'weave_call'];
+  const at = path.map((name) => doc.indexOf(`\`${name}\``));
+  for (const [i, name] of path.entries()) assert.ok(at[i] >= 0, `the guide never names ${name}`);
+  assert.deepEqual([...at].sort((a, b) => a - b), at, `the guide names ${path.join(', ')} out of the primer's order`);
+  for (const step of ['dryRun', '{name: "help", args: {tool}}', 'lucide:<name>']) assert.ok(doc.includes(step), `the guide never says ${step}`);
+  for (const name of ['weave_restore_field', 'weave_restore_table', 'weave_restore_space']) assert.ok(doc.includes(name), `the guide never names ${name}`);
+  assert.doesNotMatch(doc, /not recoverable|stored as `iconly:/i);
+  const tools = new Set(TOOLS.map((t) => t.name));
+  for (const [name] of doc.matchAll(/(?<!<)\bweave_[a-z_]+/g)) assert.ok(tools.has(name), `the guide names ${name}, which src/mcp.js does not register`);
 });
 
 test('the docs state the auth model that ships', () => {
