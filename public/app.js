@@ -1260,29 +1260,19 @@ function renderNav() {
         await loadSchema();
       })),
     }, '+ New space'));
-  const systemFolded = folded.has(SYSTEM_FOLD_KEY);
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
   const peopleHere = !!people && allTables().some((d) => d.id === people.id);
-  const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
-  const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
-    el('div', { class: 'nav-space-row nav-system-head' },
-      el('button', {
-        class: 'nav-space', type: 'button', 'aria-expanded': String(!systemFolded),
-        title: systemFolded ? 'Expand System' : 'Collapse System',
-        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
-      }, lucideEl('settings', 'wv-icon nav-icon'), 'System'),
-      disclosure('nav-caret', !systemFolded, {
-        title: systemFolded ? 'Expand System' : 'Collapse System',
-        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
-      })),
-    ...(systemFolded ? [] : [
-      sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
-      ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
-      sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
-      sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
-    ]));
+  const sysRow = (href, icon, label, on) => el('a', {
+    class: 'ws-icon' + (on ? ' active' : ''), href, title: label, 'aria-label': label,
+    ...(on ? { 'aria-current': 'page' } : {}),
+  }, lucideEl(icon, 'wv-icon'), el('span', { class: 'visually-hidden' }, label));
+  $('#rail-system').replaceChildren(
+    sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
+    ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
+    sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
+    sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
@@ -1324,10 +1314,9 @@ function renderNav() {
   }
   const identity = el('div', { class: 'nav-identity' }, accountSlot(), personalMenuButton());
   document.querySelector('#sidebar .nav-pinned')?.remove();
-  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, state.healthChip, state.trialChip, identity));
+  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, state.healthChip, state.trialChip, identity));
 }
 
-const SYSTEM_FOLD_KEY = 'system';
 const TRIAL_NOTICE_DAYS = 3;
 
 const ACCOUNT_ROLE_LABELS = { architect: 'Architect', editor: 'Editor', observer: 'Observer', admin: 'Architect', writer: 'Editor', reader: 'Observer' };

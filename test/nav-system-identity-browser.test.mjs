@@ -33,64 +33,76 @@ if (s) {
     if (theme) await ctx.addInitScript((t) => { try { localStorage.setItem('weave-theme', t); } catch {} }, theme);
     const page = await ctx.newPage();
     await page.goto(base + path, { waitUntil: 'load' });
-    await page.waitForSelector('#sidebar .nav-system .nav-system-head');
+    await page.waitForSelector('#ws-rail .nav-system a');
     await page.waitForSelector('#sidebar .nav-identity .nav-account[data-state]', { state: 'attached' });
     return { ctx, page };
   };
-  const systemRows = (page) => page.$$eval('#sidebar .nav-system a.nav-db', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
 
-  test('the nav shows a System space with the gear and Workflows, Users, Activity, Trash in order, with no counts', async () => {
-    const { ctx, page } = await open();
-    const head = page.locator('#sidebar .nav-system .nav-system-head .nav-space');
-    assert.equal((await head.innerText()).trim().toLowerCase(), 'system');
-    assert.equal(await head.locator('.mi-settings').count(), 1, 'the gear icon');
-    assert.deepEqual(await systemRows(page), [
-      ['Workflows', `#/table/${wfId}`], ['Users', `#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash'],
-    ]);
-    const below = await page.evaluate(() => {
-      const spaces = [...document.querySelectorAll('#nav .nav-space-row')];
-      const last = spaces.at(-1).getBoundingClientRect().bottom;
-      const sys = document.querySelector('#sidebar .nav-system').getBoundingClientRect().top;
-      return { under: sys >= last, inNav: !!document.querySelector('#nav .nav-system') };
+  for (const theme of ['light', 'dark']) {
+    test(`System lives in the workspace rail while expanded, hidden and peeking (${theme})`, async () => {
+      const { ctx, page } = await open('/', { theme });
+      assert.equal(await page.locator('#sidebar .nav-system').count(), 0);
+      assert.equal(await styleOf(page.locator('#ws-rail .nav-system'), 'border-top-style', 'solid'), 'solid', 'a divider separates System controls from workspaces');
+      const routes = page.locator('#ws-rail .nav-system a');
+      assert.deepEqual(await routes.evaluateAll((as) => as.map((a) => [a.getAttribute('aria-label'), a.getAttribute('href')])), [
+        ['Workflows', `#/table/${wfId}`], ['Users', `#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash'],
+      ]);
+      for (const route of await routes.all()) {
+        assert.equal(await route.isVisible(), true);
+        assert.equal(await route.getAttribute('title'), await route.getAttribute('aria-label'));
+      }
+      await page.evaluate(() => localStorage.setItem('weave-folded-spaces', '["system"]'));
+      await page.reload({ waitUntil: 'networkidle' });
+      assert.equal(await routes.count(), 4, 'legacy folded System preference cannot hide rail controls');
+      await page.click('#nav-collapse');
+      assert.equal(await routes.first().isVisible(), false);
+      await page.mouse.move(700, 400);
+      await page.mouse.move(4, 400);
+      await page.waitForSelector('#app.nav-peek');
+      assert.equal(await routes.first().isVisible(), true);
+      await routes.filter({ hasText: 'Trash' }).click();
+      await page.waitForSelector('#app:not(.nav-peek)');
+      await page.click('#main .nav-menu');
+      await page.waitForSelector('#ws-rail .nav-system a.active');
+      assert.equal(await page.locator('#ws-rail .nav-system a[aria-current="page"]').getAttribute('aria-label'), 'Trash');
+      await ctx.close();
     });
-    assert.deepEqual(below, { under: true, inNav: false }, 'System sits below the user spaces, pinned outside the scrolling list');
-    assert.notEqual(await styleOf(page.locator('#sidebar .nav-system'), 'border-top-style', 'solid'), 'none', 'a hairline sets the group apart');
-    const foot = await page.locator('#sidebar .nav-pinned').innerText();
-    assert.doesNotMatch(foot, /\d/, `no counts, no rows line, no uptime, no version in the foot: ${JSON.stringify(foot)}`);
-    assert.equal(await page.locator('#sidebar .nav-stats, #sidebar .nav-stats-line').count(), 0, 'the rows and size line is gone');
-    assert.equal(await page.locator('#sidebar .nav-health:not([hidden])').count(), 0, 'no version chip on a healthy instance');
-    await ctx.close();
-  });
+  }
 
-  test('System folds like a space and its fold survives a reload', async () => {
-    const { ctx, page } = await open();
-    const caret = page.locator('#sidebar .nav-system .nav-system-head .nav-caret');
-    await caret.click();
-    await page.waitForFunction(() => !document.querySelector('#sidebar .nav-system a.nav-db'));
-    assert.ok((await page.evaluate(() => JSON.parse(localStorage.getItem('weave-folded-spaces') ?? '[]'))).includes('system'));
-    await page.reload({ waitUntil: 'load' });
-    await page.waitForSelector('#sidebar .nav-system .nav-system-head');
-    assert.equal(await page.locator('#sidebar .nav-system a.nav-db').count(), 0, 'still folded after the reload');
-    await page.locator('#sidebar .nav-system .nav-system-head .nav-space').click();
-    await page.waitForSelector('#sidebar .nav-system a.nav-db');
-    await page.reload({ waitUntil: 'load' });
-    await page.waitForSelector('#sidebar .nav-system a.nav-db');
-    assert.equal((await systemRows(page)).length, 4, 'unfolded after the next reload');
-    await ctx.close();
-  });
+  for (const theme of ['light', 'dark']) {
+    test(`phone System controls remain reachable and close the drawer after navigation (${theme})`, async () => {
+      const { ctx, page } = await open('/', { theme });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.click('#main .nav-menu');
+      await page.waitForSelector('#app.nav-held');
+      const trash = page.locator('#ws-rail .nav-system a[aria-label="Trash"]');
+      await trash.scrollIntoViewIfNeeded();
+      const bounds = await trash.boundingBox();
+      assert.ok(bounds.width >= 44 && bounds.height >= 44);
+      await trash.click();
+      await page.waitForSelector('#app:not(.nav-peek):not(.nav-held)');
+      await page.waitForFunction(() => location.hash === '#/trash');
+      assert.equal(await page.locator('#main').evaluate((n) => n.inert), false);
+      await ctx.close();
+    });
+  }
 
   test('the identity panel shows the name and the role in this workspace, and the role follows a workspace switch', async () => {
     const { ctx, page } = await open();
     const panel = page.locator('#sidebar .nav-identity');
+    const foot = await page.locator('#sidebar .nav-pinned').innerText();
+    assert.doesNotMatch(foot, /\d/, `no counts, rows, uptime or version in the foot: ${JSON.stringify(foot)}`);
+    assert.equal(await page.locator('#sidebar .nav-stats, #sidebar .nav-stats-line').count(), 0);
+    assert.equal(await page.locator('#sidebar .nav-health:not([hidden])').count(), 0, 'no version chip on a healthy instance');
     await panel.locator('.nav-account[data-state="signed-in"]').waitFor({ state: 'attached' });
     assert.equal((await panel.locator('.nav-account-name').innerText()).trim(), 'Ada Lovelace');
     assert.equal((await panel.locator('.nav-account-av').innerText()).trim(), 'AL');
     const role = panel.locator('.nav-account-role');
     assert.equal((await role.innerText()).trim(), 'Editor');
     assert.match(await role.getAttribute('class'), /\bhue-blue\b/);
-    const sys = await page.locator('#sidebar .nav-system').boundingBox();
+    const sys = await page.locator('#sidebar .nav-foot').boundingBox();
     const box = await panel.boundingBox();
-    assert.ok(box.y >= sys.y + sys.height - 1, 'the panel sits under System, at the foot');
+    assert.ok(box.y >= sys.y + sys.height - 1, 'the panel sits under New space, at the foot');
     await Promise.all([page.waitForURL(`**/w/${uno.state.meta.id}/`), page.locator('#ws-list a.ws-icon', { hasText: 'U' }).click()]);
     await page.waitForSelector('#sidebar .nav-identity .nav-account[data-state="signed-in"]', { state: 'attached' });
     const unoRole = page.locator('#sidebar .nav-identity .nav-account-role');
@@ -143,7 +155,7 @@ if (s) {
   for (const theme of ['light', 'dark']) {
     test(`the System group and the identity panel read in the ${theme} theme`, async () => {
       const { ctx, page } = await open('/', { theme });
-      for (const sel of ['#sidebar .nav-system-head .nav-space', '#sidebar .nav-system a.nav-db', '#sidebar .nav-identity .nav-account-name', '#sidebar .nav-identity .nav-account-role']) {
+      for (const sel of ['#ws-rail .nav-system a', '#sidebar .nav-identity .nav-account-name', '#sidebar .nav-identity .nav-account-role']) {
         const [fg, bg] = await page.locator(sel).first().evaluate((n) => {
           let p = n;
           while (p && getComputedStyle(p).backgroundColor === 'rgba(0, 0, 0, 0)') p = p.parentElement;
