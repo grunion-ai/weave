@@ -49,7 +49,7 @@ if (s) {
     const res = await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json());
     assert.ok(res.find((w) => w.name === 'scratch')?.deletedAt, 'the server holds the tombstone');
     await assertNoCornerTrash(page);
-    await page.click('#ws-rail .nav-system a[href="#/trash"]');
+    await page.click('#sidebar .nav-system a[href="#/trash"]');
     await page.waitForSelector('#main .trash-workspaces');
     assert.match(await page.textContent('#main .trash-workspaces'), /scratch/);
     await page.locator('#main .trash-workspaces button', { hasText: 'Restore' }).click();
@@ -61,7 +61,7 @@ if (s) {
   async function assertNoCornerTrash(page) {
     assert.equal(await page.locator('#ws-trash').count(), 0, 'no trash glyph');
     assert.equal(await page.locator('#hub-foot').count(), 0, 'no corner row for it to sit in');
-    assert.equal(await page.locator('#ws-rail .nav-system a[href="#/trash"]').count(), 1, 'the Trash row is still in the sidebar');
+    assert.equal(await page.locator('#sidebar .nav-system a[href="#/trash"]').count(), 1, 'the Trash row is still in the sidebar');
   }
 
   test('with one trashed workspace the corner stays empty and Trash lists it, light theme', async () => {

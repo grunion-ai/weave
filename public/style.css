@@ -107,8 +107,8 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .nav-add-table:focus-visible, .nav-space-menu:focus-within, .nav-space-menu:has(.dots-btn[aria-expanded="true"]) { opacity: 1; }
 @media (hover: hover) { .nav-space-row:hover .nav-add-table, .nav-space-row:hover .nav-space-menu { opacity: 1; } }
 .nav-foot { align-self: stretch; margin: 0 -10px; padding-top: 8px; border-top: 1px solid var(--wv-pill-hover); }
-.nav-system { display: flex; flex: none; flex-direction: column; align-items: center; gap: 8px; border-top: 1px solid var(--tblr-border-color); padding-top: 8px; }
-.nav-system .wv-icon { width: 18px; height: 18px; }
+.nav-system { border-top: 1px solid var(--wv-pill-hover); padding-top: 2px; flex: none; align-self: stretch; }
+.nav-system-head { margin: 6px 0 2px; }
 button.nav-space { display: flex; align-items: center; gap: 7px; padding: 0; background: none; border: 0; font-family: inherit; line-height: inherit; text-align: left; cursor: pointer; }
 button.nav-space:hover { color: var(--tblr-primary); }
 button.nav-space:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; border-radius: 3px; }
@@ -2122,10 +2122,13 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .table-filter-popover .hue-slate .opt-dot, #view-pane .hue-slate .opt-dot { display: none; }
 @media (max-width: 600px) {
   #app.nav-peek #sidebar { left: 0; right: 0; top: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); width: auto; height: auto; z-index: 72; padding: 12px 16px 0; gap: 8px; border-radius: 0; box-shadow: none; animation: none; }
-  #app.nav-peek #sidebar #nav { margin: 0 -16px; padding: 0 16px; }
+  #app.nav-peek #sidebar { overflow-y: auto; overscroll-behavior: contain; row-gap: 0; }
+  #app.nav-peek #sidebar #nav { flex: none; overflow: visible; margin: 8px -16px; padding: 0 16px; }
+  #app.nav-peek #sidebar .nav-pinned { display: contents; }
+  #app.nav-peek #sidebar .nav-foot { margin-top: auto; }
+  #app.nav-peek #sidebar .nav-identity { position: sticky; bottom: 0; z-index: 1; margin: 6px -16px 0; padding: 6px 10px 12px; background: var(--wv-canvas); }
   #app.nav-peek #ws-rail { top: auto; bottom: 0; right: 0; width: auto; height: calc(64px + env(safe-area-inset-bottom, 0px)); flex-direction: row; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--tblr-border-color); overflow-x: auto; overflow-y: hidden; z-index: 72; }
   #app.nav-peek #ws-list { flex-direction: row; }
-  #app.nav-peek .nav-system { flex-direction: row; border-top: 0; border-left: 1px solid var(--tblr-border-color); padding-top: 0; padding-left: 8px; }
   #app.nav-peek #ws-rail .ws-icon { width: 44px; height: 44px; }
   #app.nav-peek #ws-rail .ws-icon.ws-weave { width: 46px; height: 46px; }
   #sidebar .brand { min-height: 44px; }
