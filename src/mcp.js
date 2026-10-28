@@ -594,7 +594,7 @@ export const SUMMARY = {
   weave_create_automation: 'create an automation rule',
   weave_automations: 'list, describe, update or delete rules',
   weave_export_csv: 'a table as CSV',
-  weave_attach_file: 'attach a file, or prepare a raw upload outside model context',
+  weave_attach_file: 'attach or prepare raw upload',
   weave_files: 'read or delete an attached file',
   weave_update_space: 'rename a space; description, icon, template mark',
   weave_template_list: 'list template spaces',
