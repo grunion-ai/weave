@@ -1,1 +1,2 @@
-- System returns to the foot of the sidebar, under your spaces and **+ New space**, with Workflows, Users, Activity and Trash as rows that fold from the System caret. The workspace rail holds workspaces only again. The edge peek timing stays (Issue #908).
+- System controls stay in the workspace rail while the sidebar is open or peeking. Workflows, Users, Activity and Trash keep their workspace routing, accessible names and active state, including in the phone drawer. (Issue #908)
+- Hidden navigation peeks after 150 ms at the edge and closes after 400 ms away. Brief passes and Escape cancel a pending peek. (Issue #908)
