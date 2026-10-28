@@ -4,6 +4,7 @@ import { request } from 'node:http';
 import { Weave } from '../src/engine.js';
 import { mcpOriginsFromEnv } from '../src/server.js';
 import { startIdp, serveOidc } from './lib/idp.mjs';
+import { CHAT_APPS, connectLikeChatApp } from './lib/chat-client.mjs';
 
 const KYLE = { sub: 'user_kyle' };
 const ANN = { sub: 'user_ann' };
@@ -48,7 +49,7 @@ test('metadata: RFC 9728 names the provider as the authorization server, for the
       assert.deepEqual(await res.json(), {
         resource,
         authorization_servers: [s.idp.issuer],
-        scopes_supported: ['openid'],
+        scopes_supported: ['profile', 'offline_access'],
         bearer_methods_supported: ['header'],
       });
     }
@@ -280,5 +281,26 @@ test('cached provider identity uses the current account role after demotion', as
     assert.equal(s.w.listAccounts().find(a => a.name === 'kyle').role, 'observer');
     assert.equal((await create()).data.result.isError, true, 'an observer holds no row tool (Issue #508)');
     assert.equal(s.idp.seen.userinfo, calls, 'provider identity remains cached; account permissions do not');
+  } finally { s.stop(); }
+});
+
+for (const app of Object.values(CHAT_APPS)) test(`Issue #948: ${app.name} connects and refreshes on a workspace using default registration scopes`, async () => {
+  const s = await serve();
+  try {
+    s.idp.signInBrowserAs(ANN);
+    const connected = await connectLikeChatApp(`${s.base}/w/docs/mcp`, app);
+    assert.ok(connected.tools.includes('weave_query'));
+    assert.ok(connected.refreshToken, 'the requested offline access allows reconnect without a new sign-in');
+    assert.equal(s.idp.seen.registered[0].scope, 'email offline_access profile');
+    const refresh = await fetch(`${s.idp.issuer}/oauth/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: connected.refreshToken, client_id: connected.clientId }),
+    });
+    assert.equal(refresh.status, 200);
+    const renewed = await refresh.json();
+    assert.notEqual(renewed.access_token, connected.token);
+    assert.notEqual(renewed.refresh_token, connected.refreshToken);
+    assert.equal((await s.rpc('/w/docs/mcp', renewed.access_token, 'tools/list')).res.status, 200);
+    assert.equal((await s.rpc('/mcp', renewed.access_token, 'tools/list')).res.status, 403, 'refresh grants no new workspace');
   } finally { s.stop(); }
 });
