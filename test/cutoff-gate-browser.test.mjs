@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
-import { CELLS, PLATFORM, fingerprint, probe, sectionOf, seed, sweepCell, tally, verdict } from './lib/cutoff.mjs';
+import { CELLS, PLATFORM, fingerprint, probe, sectionOf, seed, settle, sweepCell, tally, verdict } from './lib/cutoff.mjs';
 import { held, ROUTES } from './lib/states.mjs';
 
 const baseline = sectionOf(JSON.parse(readFileSync(new URL('./cutoff-baseline.json', import.meta.url), 'utf8')));
@@ -136,6 +136,30 @@ if (s) {
   }
 
   for (const cell of Object.keys(CELLS)) {
+    test(`${cell}: board and list group heads wrap a long workflow state name instead of cutting it (Issue #1157)`, async (t) => {
+      const m = matrix[cell];
+      if (!m) return t.skip(`${CELLS[cell].engine} cannot launch here`);
+      for (const state of ['sink-board', 'sink-list']) {
+        const page = await m.browser.newPage(m.page);
+        try {
+          await page.goto(ROUTES[state].url(s, cell), { waitUntil: 'networkidle' });
+          await page.waitForSelector(ROUTES[state].ready(cell));
+          const label = page.locator('.list-group-label').filter({ hasText: 'Waiting on the vendor' }).first();
+          await label.scrollIntoViewIfNeeded();
+          await settle(page);
+          const shape = await label.evaluate((e) => {
+            const range = document.createRange();
+            range.selectNodeContents([...e.childNodes].find((n) => n.nodeType === 3));
+            return { lines: new Set([...range.getClientRects()].filter((r) => r.width).map((r) => Math.round(r.top))).size, over: e.scrollWidth - e.clientWidth };
+          });
+          const heads = await page.evaluate(probe, '.board-group-head, .list-group-head');
+          assert.deepEqual(tally(heads), {}, `${state} ${cell}: a group head still cuts its label`);
+          assert.ok(shape.over <= 1, `${state} ${cell}: the label hides ${shape.over}px of its text`);
+          if (state === 'sink-board' || cell === 'phone') assert.ok(shape.lines >= 2, `${state} ${cell}: the long state name sits on ${shape.lines} line`);
+        } finally { await page.close(); }
+      }
+    });
+
     const mine = held('cutoff').filter((p) => p.cell === cell);
     if (!mine.length) continue;
     test(`${cell}: every state held out of the gate still shows the cut-off text its Issue rows track (Issue #1119)`, async (t) => {
@@ -145,16 +169,6 @@ if (s) {
       assert.deepEqual(failed, [], 'a held state could not open: its selectors rotted');
       for (const p of mine) {
         const here = findings.filter((f) => f.where === `${p.state.open}:${p.state.name}`);
-        if (p.state.name === 'sink-board' && cell === 'phone') {
-          const page = await m.browser.newPage(m.page);
-          try {
-            await page.goto(ROUTES['sink-board'].url(s), { waitUntil: 'networkidle' });
-            const header = page.locator('.board-group-head').filter({ hasText: 'Waiting on the vendor' });
-            await header.scrollIntoViewIfNeeded();
-            assert.equal(await header.locator('.list-fold').getAttribute('aria-expanded'), 'true');
-            here.push(...await page.evaluate(probe, '.board-group-head'));
-          } finally { await page.close(); }
-        }
         t.diagnostic(`held: ${p.state.name} ${cell} for Issue #${p.hold.join(', #')} measured ${here.length}: ${JSON.stringify(tally(here))}`);
         assert.ok(here.length, `${p.state.name} shows no cut-off text on ${cell}: once Issue #${p.hold.join(', #')} is fixed, drop its hold in test/lib/states.mjs so the gate walks it`);
       }
