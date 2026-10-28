@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FIELD_TYPES, Weave } from '../src/engine.js';
-import { CELLS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
+import { CELLS, HOLD_PLATFORMS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
 import { JOURNEYS, cellsOf as journeyCells } from './lib/journeys.mjs';
 import { OVERLAYS } from './lib/overlays.mjs';
 import { SWEEP_JOURNEYS } from './lib/cutoff.mjs';
@@ -56,8 +56,9 @@ test('the board and list views enter every probe that walks a route at rest (Iss
 test('a hold names the Issue rows that track it, and only holds a probe that would walk the state', () => {
   for (const s of STATES) {
     for (const [key, rows] of Object.entries(s.hold ?? {})) {
-      const [probe, cell, ...rest] = key.split('|');
+      const [probe, cell, platform, ...rest] = key.split('|');
       assert.deepEqual(rest, [], `${s.name}: hold ${key}`);
+      assert.ok(platform === undefined || (cell !== undefined && HOLD_PLATFORMS.includes(platform)), `${s.name}: hold ${key} names a platform after its cell`);
       assert.ok(Object.hasOwn(PROBES, probe), `${s.name}: hold names probe ${probe}`);
       assert.ok(cell === undefined || cellsOf(s).includes(cell), `${s.name}: hold names cell ${cell}`);
       assert.ok(PROBES[probe].opens.includes(s.open) && seedsOf(s).includes(PROBES[probe].seed), `${s.name}: ${probe} would walk it, so the hold means something`);
@@ -66,6 +67,18 @@ test('a hold names the Issue rows that track it, and only holds a probe that wou
   }
 });
 
+test('a hold with a platform segment holds that platform alone and the others fall back to the plain key', () => {
+  for (const s of STATES) {
+    for (const [key, rows] of Object.entries(s.hold ?? {})) {
+      const [probe, cell, platform] = key.split('|');
+      if (!platform) continue;
+      const fallback = s.hold[`${probe}|${cell}`] ?? s.hold[probe] ?? null;
+      for (const p of plan(probe).filter((x) => x.state === s && x.cell === cell)) {
+        assert.deepEqual(p.hold, process.platform === platform ? rows : fallback, `${s.name}: ${key} on ${process.platform}`);
+      }
+    }
+  }
+});
 test('a held walk leaves the gate and lands in the held list with its Issue rows', () => {
   for (const probe of Object.keys(PROBES)) {
     const all = plan(probe);

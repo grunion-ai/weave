@@ -25,8 +25,12 @@ if (s) {
     for (let i = 0; i < 50 && stored(field) !== want; i++) await new Promise((r) => setTimeout(r, 100));
     return stored(field);
   };
-  const typeInto = async (page, field, text) => {
-    const sel = `.entity-values .fieldrow[data-field="${field}"] input, .fieldrow[data-field="${field}"] input`;
+  const typeInto = async (page, field, text, root = '') => {
+    const row = `${root} .fieldrow[data-field="${field}"]`;
+    await page.waitForSelector(`${row} :is(input, .text-dressed)`);
+    const rest = page.locator(`${row} > .text-dressed`);
+    if (await rest.count()) await rest.click();
+    const sel = `${row} input`;
     await page.waitForSelector(sel);
     await page.fill(sel, text);
     assert.equal(await page.evaluate((q) => document.activeElement === document.querySelector(q), sel), true, 'the input holds focus');
@@ -72,7 +76,7 @@ if (s) {
     await typeInto(page, 'Vendor', 'Nordic ASA');
     await page.reload({ waitUntil: 'networkidle' });
     assert.equal(await settle('Vendor', 'Nordic ASA'), 'Nordic ASA');
-    assert.equal(await page.inputValue('.fieldrow[data-field="Vendor"] input'), 'Nordic ASA', 'the reloaded page shows the saved value');
+    assert.equal(await page.textContent('.fieldrow[data-field="Vendor"] .text-dressed'), 'Nordic ASA', 'the reloaded page shows the saved value');
     await page.close();
   });
 
@@ -80,8 +84,7 @@ if (s) {
     const page = await open(`#/table/${orders.id}`);
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.click(`tr[data-eid="${order.id}"] .open-link`);
-    await page.waitForSelector(`#dock:not([hidden]) .fieldrow[data-field="Note"] input`);
-    await page.fill(`#dock .fieldrow[data-field="Note"] input`, 'docked note');
+    await typeInto(page, 'Note', 'docked note', '#dock:not([hidden])');
     await page.evaluate((id) => document.querySelector(`tr[data-eid="${id}"] .open-link`).click(), other.id);
     await page.waitForSelector(`tr[data-eid="${other.id}"].row-docked`);
     assert.equal(await settle('Note', 'docked note'), 'docked note');
