@@ -1,1 +1,0 @@
-- System returns to the foot of the sidebar, under your spaces and **+ New space**, with Workflows, Users, Activity and Trash as rows that fold from the System caret. The workspace rail holds workspaces only again. The edge peek timing from Issue #908 stays.
