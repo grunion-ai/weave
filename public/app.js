@@ -4038,7 +4038,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false, subtotals: null,
-    layout: null, groups: null, picture: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
+    layout: null, groups: null, picture: null, group: null, completedBy: null, nest: null, collapsed: null, hideEmpty: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -5035,7 +5035,8 @@ function listRowPrefs(db, save) {
   doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
   const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
   nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
-  return [el('div', { class: 'eye-head' }, 'Rows'),
+  const hide = v.group?.length ? [paneSwitch({ label: 'Hide empty groups', on: !!v.hideEmpty, data: { hideEmpty: '' }, onChange: (on) => save({ hideEmpty: on }) })] : [];
+  return [...hide, el('div', { class: 'eye-head' }, 'Rows'),
     el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel),
     el('label', { class: 'group-pref' }, el('span', {}, 'Nest by'), nestSel)];
 }
@@ -5566,6 +5567,7 @@ function listSetup(db) {
     levels,
     completedBy: fieldOf(v.completedBy),
     nest: fieldOf(v.nest),
+    hideEmpty: !!v.hideEmpty,
     chip: viewFieldOf(db, 'chip'),
     dateField: dates.find((f) => shown.has(f.name)) ?? dates[0] ?? null,
   };
@@ -5689,7 +5691,7 @@ function renderList(main, db, items, ctx) {
   const byPid = new Map([...known.values(), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
   const levels = s.levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: VP.NO_VALUE }));
-  const arranged = listCore.arrange(rows, { levels, completedBy: !!s.completedBy, nest: !!s.nest, manual, showEmpty: !filtered });
+  const arranged = listCore.arrange(rows, { levels, completedBy: !!s.completedBy, nest: !!s.nest, manual, showEmpty: !filtered && !s.hideEmpty });
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
   let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
@@ -6017,7 +6019,7 @@ function renderBoard(main, db, items, ctx) {
   const byPid = new Map([...(everyone ?? []), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
   const arrangeLevels = levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
-  const arranged = listCore.arrange(rows, { levels: arrangeLevels, completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered });
+  const arranged = listCore.arrange(rows, { levels: arrangeLevels, completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered && !s.hideEmpty });
   let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
