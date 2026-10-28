@@ -1,0 +1,1 @@
+- A browser install retry no longer dies on the dpkg lock a previous attempt's holder still owns; it waits up to 180 seconds for it, which fits inside the attempt's own five-minute bound (Issue #1141).
