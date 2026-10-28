@@ -183,6 +183,24 @@ Each error is the text weave returns; the fix follows.
 
 The detail behind Using weave, one subsection per topic.
 
+### Local file uploads
+
+For local files, call `weave_call` with `name: "weave_attach_file"` and
+`args: {entity, field, name, mime, prepare: true, size}`. `field` is an optional
+attachments field; `size` is the exact file size in bytes, up to 10 MiB.
+The authenticated HTTP connector returns `{url, method, headers, maxBytes,
+expiresAt}`. A local script sends the file bytes to that URL with the returned
+method and headers. File bytes never need to enter the model context, and no
+separate editor token is needed.
+
+The upload grant authorizes one file at the prepared destination for ten
+minutes. Every transfer attempt consumes it, even if the transfer fails.
+Prepare a fresh grant after failure or server restart. After an uncertain
+response, read the row's attachments before retrying to avoid a duplicate.
+Keep the returned authorization header private. The server rechecks the
+account's current role before accepting bytes and before attaching them.
+For small inline payloads, `contentBase64` still works, with optional `field`.
+
 ### Tool list and replies
 
 `tools/list` names the default tools in the [Tool map](#tool-map); every other

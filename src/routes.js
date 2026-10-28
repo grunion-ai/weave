@@ -163,6 +163,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   })();
   const challenges = new Map();
   const handoffs = new Map();
+  const uploads = new Map();
   const remirror = async (w) => {
     const orgId = billing ? w.billing().billing.orgId : null;
     if (!orgId) return null;
@@ -604,6 +605,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const sessionOn = (w) => ownSession(w) ?? crossSeat(w) ?? docsVisitor(w);
     const authz = rx.header('authorization');
     let oauth = null;
+    let upload = null;
+    const uploadToken = /^Bearer (wvu_[A-Za-z0-9_-]+)$/i.exec(authz ?? '')?.[1];
+    if (uploadToken) {
+      prune(uploads);
+      upload = uploads.get(uploadToken);
+      if (!upload || upload.weave !== weave || upload.mount !== wsPrefix || upload.host !== String(rx.header('host')).toLowerCase() || path !== '/api/uploads' || rx.method !== 'PUT') return deny(401, 'Invalid or expired upload grant; prepare the upload again over MCP');
+      uploads.delete(uploadToken);
+      upload.engine.maybeRefresh();
+      const account = upload.engine.listAccounts().find((a) => a.id === upload.accountId);
+      if (!account || (upload.identity && upload.engine.accountForIdentity(upload.identity, { touch: false })?.id !== account.id)) return deny(401, 'The upload account or sign-in link no longer exists');
+      if (upload.engine !== weave && Weave.roleName(account.role) !== 'architect') return deny(403, 'The upload account no longer administers this workspace');
+      oauth = { account, engine: upload.engine };
+    }
     let mcpDoor = false;
     if (path.startsWith('/.well-known/oauth-protected-resource') && !wsPrefix) {
       const rest = path.slice('/.well-known/oauth-protected-resource'.length);
@@ -644,7 +658,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         let account = null;
         const engine = [weave, root].find((e) => (account = e.accountForIdentity(who)) && (e === weave || mayAdminister(root, account.role)));
         if (!engine) return deny(403, `This ${oidc.name} sign-in opens no account on this workspace. Ask an operator for an invite (weave account link <name>) and open it in a browser once; then sign in here again.`);
-        oauth = { account, engine };
+        oauth = { account, engine, identity: who };
       }
       path = '/api/mcp';
       mcpDoor = true;
@@ -1023,6 +1037,26 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, await cloudBackups.put(account.id, archive, await rx.readBytes(cloudBackups.quota)));
         }
         return out(405, { error: 'Backups answer GET /api/backups, GET /api/backups/<name> and PUT /api/backups/<name>', code: 'method-not-allowed' }, { Allow: 'GET, PUT' });
+      }
+
+      if (path === '/api/uploads' && upload) {
+        if (!['editor', 'architect'].includes(role)) return deny(403, 'Uploading needs an editor account');
+        const entity = weave.getEntity(upload.entity);
+        if (entity.deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
+        if (role === 'editor' && weave.state.tables[entity.dbId]?.system) return deny(403, 'This token cannot change the schema');
+        if (!rx.readBytes) throw new WeaveError('This server cannot receive raw uploads', 'invalid');
+        const bytes = await rx.readBytes(upload.size);
+        if (bytes.length !== upload.size) throw new WeaveError('Upload byte count differs from the prepared size; prepare again', 'invalid');
+        upload.engine.maybeRefresh();
+        weave.maybeRefresh();
+        const account = upload.engine.listAccounts().find((a) => a.id === upload.accountId);
+        const currentRole = Weave.roleName(account?.role);
+        if (!account || (upload.identity && upload.engine.accountForIdentity(upload.identity, { touch: false })?.id !== account.id) || !['editor', 'architect'].includes(currentRole) || (upload.engine !== weave && currentRole !== 'architect')) return deny(403, 'The upload account no longer has permission');
+        if (currentRole === 'editor' && weave.state.tables[weave.getEntity(upload.entity).dbId]?.system) return deny(403, 'This token cannot change the schema');
+        if (weave.getEntity(upload.entity).deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
+        weave.actor = actorForRequest;
+        const file = { name: upload.name, mime: upload.mime, bytes: Buffer.from(bytes) };
+        return out(201, upload.field == null ? weave.attachFile(entity.id, file) : weave.attachToField(entity.id, upload.field, file), { 'Cache-Control': 'no-store' });
       }
 
       if (path.startsWith('/api/')) {
@@ -1659,11 +1693,31 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const msgs = Array.isArray(body) ? body : [body];
           const root = hub.get(hub.defaultName);
           const seat = unseated ? `${seatRequired()} Billing: ${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/billing` : null;
-          const caller = { role, tier: unseated ?? role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto, seat };
+          const prepareUpload = ({ entity, field, name, mime = 'application/octet-stream', size, contentBase64 }) => {
+            if (!['editor', 'architect'].includes(role)) throw new WeaveError('Preparing uploads needs an editor account', 'forbidden');
+            const engine = oauth?.engine ?? weave;
+            const account = oauth?.account ?? (authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null);
+            if (!account) throw new WeaveError('Prepare uploads through OAuth or an account token', 'forbidden');
+            if (!Number.isSafeInteger(size) || size < 0 || size > MAX_BODY_BYTES) throw new WeaveError(`Upload size must be an integer from 0 to ${MAX_BODY_BYTES} bytes`, 'invalid');
+            if (contentBase64 != null || typeof name !== 'string' || !name.trim() || name.length > 255 || typeof mime !== 'string' || mime.length > 255) throw new WeaveError('Prepare with a filename, MIME type and size, without file content', 'invalid');
+            const row = weave.getEntity(entity);
+            if (row.deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
+            if (role === 'editor' && weave.state.tables[row.dbId]?.system) throw new WeaveError('This token cannot change the schema', 'forbidden');
+            const target = field == null ? null : weave.getField(row.dbId, field);
+            if (target && target.type !== 'attachments') throw new WeaveError('The destination must be an attachments field', 'invalid');
+            prune(uploads);
+            if (uploads.size >= 1000) throw new WeaveError('Too many pending uploads; finish one or wait ten minutes', 'rate-limited');
+            const token = `wvu_${newChallenge()}`;
+            const expiresAt = Date.now() + 10 * 60 * 1000;
+            const url = `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/api/uploads`;
+            uploads.set(token, { weave, engine, accountId: account.id, identity: oauth?.identity ?? null, mount: wsPrefix, host: new URL(url).host.toLowerCase(), entity: row.id, field: target?.id ?? null, name, mime, size, expiresAt });
+            return { url, method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, maxBytes: size, expiresAt: new Date(expiresAt).toISOString() };
+          };
+          const caller = { role, tier: unseated ?? role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
-          return out(200, Array.isArray(body) ? replies : replies[0]);
+          return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
         }
         if (route === 'GET /api/undo') {
           return out(200, weave.listUndo({ limit: boundedLimit(rx.searchParams.get('limit'), 20) }));

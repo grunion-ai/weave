@@ -864,6 +864,12 @@ An icon is \`lucide:<name>\` from the inventory. An emoji is refused. An \`iconl
 
 A delete moves its target to the trash unless it passes \`hard: true\`, which purges it for good. \`weave_delete_entity\` trashes a row, and \`weave_restore_entity\` brings it back with its id, public id and links. \`weave_restore_field\`, \`weave_restore_table\` and \`weave_restore_space\` bring back a trashed field, table or space. \`weave_trash\` lists trashed rows. \`weave_query\` takes \`includeDeleted\` to read them, or \`trashCount: true\` for the count alone.
 
+## Local file uploads
+
+Call \`weave_call {name: "weave_attach_file", args: {entity, field, name, mime, prepare: true, size}}\` over authenticated HTTP. The optional \`field\` names an attachments field. Supply the exact byte count, up to 10 MiB. The response contains \`url\`, \`method\`, \`headers\`, \`maxBytes\` and \`expiresAt\`. A local script sends raw file bytes using that URL, method and headers, without putting base64 in the model context or creating a separate editor token.
+
+The grant lasts ten minutes and allows one transfer to that destination. Every transfer attempt consumes it, including a failed transfer. Prepare again after failure or server restart; check the row first after an uncertain response to avoid duplicates. Keep its authorization header private. Account deletion, a role downgrade or unlinking the OAuth identity revokes the grant. Small inline files can still use \`contentBase64\`, with an optional attachments \`field\`.
+
 ## Secrets
 
 No tool returns a secret. A \`key\` field holds the name of a secret. \`weave_keys\` lists the names and sets values; revealing a value is a human act on the CLI or the HTTP surface.
