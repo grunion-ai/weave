@@ -2374,7 +2374,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .wv-board[data-groups="side"] .board-cards { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .board-cards:has(> .tile:not(.wv-reorder-lift)) > .board-empty { display: none; }
 .board-empty { grid-column: 1 / -1; padding: 10px; border: 1.5px dashed var(--tblr-border-color); border-radius: 6px; color: var(--tblr-secondary); font-size: var(--fs-secondary); text-align: center; }
-.wv-board .tile { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface); cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.wv-board .tile { display: flex; flex-direction: column; align-self: start; min-width: 0; overflow: hidden; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface); cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .wv-board .tile:hover { border-color: rgba(var(--tblr-primary-rgb), .45); }
 .wv-board .tile:focus-visible { outline: 2px solid rgba(var(--tblr-primary-rgb), .6); outline-offset: 2px; }
 .wv-board .tile.row-docked { border-color: var(--tblr-primary); box-shadow: 0 0 0 1px var(--tblr-primary); }
