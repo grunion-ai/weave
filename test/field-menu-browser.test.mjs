@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, hold } from './lib/browser.mjs';
 
 let tasks;
 const s = await launch('field menu', (weave) => {
@@ -130,15 +130,17 @@ if (s) {
   const hasField = (name) =>
     Object.values(weave.getTable(tasks.id).fields).some((f) => f.name === name);
 
-  test('one click moves the field to the trash, no hold, and the toast\'s Undo brings it back (Issue #768, Feature #296)', async () => {
+  test('a hold moves the field to the trash, a click does not, and the toast\'s Undo brings it back (Issue #768, Feature #346)', async () => {
     const page = await grid();
     try {
       const pop = await openMenu(page, 'Estimate');
       const del = pop.locator('.wv-menu-row.wv-menu-danger');
-      assert.equal((await del.textContent()).trim(), 'Move to trash');
-      assert.equal(await del.locator('.hold-hint, .hold-fill').count(), 0, 'the row carries no hold gesture');
+      assert.equal((await del.locator('.hold-label').textContent()).trim(), 'Move to trash');
+      assert.equal(await del.locator('.hold-fill').count(), 1, 'the row carries the hold gesture');
       await del.click();
-      assert.equal(await eventually(() => hasField('Estimate'), false), false, 'one click trashes the field');
+      assert.ok(hasField('Estimate'), 'a click alone keeps the field');
+      await hold(del);
+      assert.equal(await eventually(() => hasField('Estimate'), false), false, 'the hold trashes the field');
       const toast = page.locator('.wv-toast', { hasText: 'Moved to trash' }).last();
       await toast.locator('.wv-toast-action', { hasText: 'Undo' }).click();
       assert.equal(await eventually(() => hasField('Estimate'), true), true, 'Undo restores it');

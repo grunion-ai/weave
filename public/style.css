@@ -1231,7 +1231,13 @@ button.wv-act-subject { border: 0; background: none; padding: 0; text-align: lef
 .nav-inline-add::placeholder { color: var(--tblr-secondary); }
 #main { position: relative; }
 .dots-btn { padding: 2px 5px; line-height: 1.1; font-size: var(--fs-doc); letter-spacing: 0; }
-.hold-btn { position: relative; overflow: hidden; cursor: pointer; }
+:where(.hold-btn) { position: relative; }
+.hold-btn { overflow: hidden; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.hold-btn .hold-label:empty { display: none; }
+.sel-act.hold-btn { overflow: visible; }
+.sel-act .hold-fill, .ws-logo-clear .hold-fill { border-radius: inherit; }
+.ws-logo-clear.hold-btn { overflow: hidden; }
+.btn-danger.hold-btn .hold-fill { background: color-mix(in srgb, var(--tblr-dark) 32%, transparent); }
 .hold-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; transform: scaleX(0); transform-origin: left; background: linear-gradient(90deg, color-mix(in srgb, var(--tblr-danger) 14%, transparent), color-mix(in srgb, var(--tblr-danger) 34%, transparent)); transition: transform 0s; }
 .hold-btn.holding .hold-fill { transform: scaleX(1); transition: transform .9s linear; }
 .hold-btn .hold-label { position: relative; }
@@ -2101,7 +2107,6 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .table-view-popover .view-act svg, #view-pane .view-act svg, .table-view-popover .view-act .wv-icon, #view-pane .view-act .wv-icon { width: 14px; height: 14px; }
 .table-view-popover .view-act:hover, #view-pane .view-act:hover { background: var(--wv-pill-hover, rgba(0,0,0,.05)); color: var(--tblr-body-color); }
 .table-view-popover .view-del:hover, #view-pane .view-del:hover, .table-view-popover .view-del.holding, #view-pane .view-del.holding { color: var(--tblr-danger); }
-.table-view-popover .view-del .hold-label:empty, #view-pane .view-del .hold-label:empty { display: none; }
 .table-view-popover .view-check, #view-pane .view-check { width: 14px; flex: none; text-align: center; font-size: var(--fs-grid); }
 .table-view-popover .view-edit, #view-pane .view-edit { padding: 3px 4px; background: color-mix(in oklab, var(--tblr-primary) 6%, transparent); }
 .table-view-popover .view-name-input, #view-pane .view-name-input { --wv-edit-pad: 3px 8px; --wv-edit-fs: var(--fs-grid); flex: 1; min-width: 0; height: 28px; color: var(--tblr-body-color); }

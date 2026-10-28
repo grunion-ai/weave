@@ -1,6 +1,7 @@
 import { createForm } from '../../src/forms.js';
 import { openBugReport } from './bug-report.mjs';
 import { openPane } from './view-pane.mjs';
+import { hold } from './hold.mjs';
 
 export const LAYOUTS = ['table', 'list', 'board'];
 export const OPENS = ['journey', 'rest', 'overlay', 'hover', 'drag'];
@@ -346,7 +347,7 @@ const JOURNEY_STATES = [
       const boxes = page.locator('.wv-grid tbody .sel-box');
       await boxes.nth(1).check();
       await boxes.nth(2).check();
-      await page.locator('.sel-puck .sel-act.danger').click();
+      await hold(page.locator('.sel-puck .sel-act.danger'));
       const toast = page.locator('.wv-toast', { hasText: 'Moved to trash' }).last();
       await toast.waitFor();
       await toast.locator('.wv-toast-action').click();

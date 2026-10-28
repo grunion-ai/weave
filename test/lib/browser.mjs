@@ -186,3 +186,4 @@ export async function eventually(read, want, { timeout = 10000, every = 50 } = {
 }
 
 export { openBugReport } from './bug-report.mjs';
+export { hold } from './hold.mjs';

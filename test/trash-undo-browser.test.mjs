@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, hold } from './lib/browser.mjs';
 
 let bugs;
 const s = await launch('trash undo', (weave) => {
@@ -28,7 +28,7 @@ if (s) {
     const boxes = page.locator('.wv-grid tbody .sel-box');
     await boxes.nth(1).check();
     await boxes.nth(2).check();
-    await page.locator('.sel-puck .sel-act.danger').click();
+    await hold(page.locator('.sel-puck .sel-act.danger'));
     await waitRows(page, before.length - 2);
     return { before, gone: before.slice(1, 3) };
   }
