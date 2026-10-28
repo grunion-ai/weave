@@ -1030,6 +1030,7 @@ export class Weave {
     };
     this.#migrate();
     if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
+    this.#repairDoubledInverses();
     if (this.#settlePositions() | this.#landBlobs()) this.save();
     HELD?.add(this);
   }
@@ -1194,6 +1195,19 @@ export class Weave {
     placeField(db, docField.id);
     db.descriptionFieldId = docField.id;
     return true;
+  }
+
+  #repairDoubledInverses() {
+    for (const target of Object.values(this.state.tables)) {
+      if (target.system) continue;
+      for (const field of Object.values(target.fields)) {
+        const source = field.type === 'relation' && field.config?.inverseFieldId ? this.state.tables[field.config.targetDb] : null;
+        if (!source || source.system || !/ss$/.test(field.name) || field.name.slice(0, -1) !== source.name) continue;
+        const name = this.#inverseName(source, field.config.many);
+        if (name === field.name || this.findField(target, name)) continue;
+        try { this.updateField(target.id, field.id, { name }); } catch (err) { if (!(err instanceof WeaveError)) throw err; }
+      }
+    }
   }
 
   #ensureTerm(db) {
