@@ -32,9 +32,9 @@ test('catalog: Claude first, every agent has steps, a pitch, an icon and somethi
 
 test('chat apps copy the bare address, Codex copies its add command, every other harness copies the tested setup prompt', () => {
   for (const id of ['claude', 'chatgpt', 'gemini']) assert.equal(guide(id, { url: URL_, workspace: 'h' }).value, URL_, id);
-  assert.equal(guide('codex', { url: URL_, workspace: 'h' }).value, `codex mcp add weave --url ${URL_}`);
+  assert.equal(guide('codex', { url: URL_, workspace: 'h' }).value, `codex mcp add weave-harbor --url ${URL_}`);
   for (const id of ['claude-code', 'antigravity', 'gemini-cli', 'other']) assert.equal(guide(id, { url: URL_, workspace: 'h' }).value, setupPrompt(URL_), id);
-  assert.equal(snippet({ copy: 'command' }, URL_), `claude mcp add --transport http --scope user weave ${URL_}`);
+  assert.equal(snippet({ copy: 'command' }, URL_), `claude mcp add --transport http --scope user weave-harbor ${URL_}`);
 });
 
 test('plan limits are said plainly where a vendor gates custom MCP servers', () => {
@@ -71,7 +71,7 @@ test('setup prompt: the text the eval tested, with only the address filled in', 
   const lines = SETUP_PROMPT.split('\n');
   assert.equal(lines[0], 'Connect yourself to my weave workspace.');
   assert.equal(lines.filter((l) => l.includes('{URL}')).length, 1);
-  assert.equal(setupPrompt(URL_), SETUP_PROMPT.replace('{URL}', URL_));
+  assert.equal(setupPrompt('https://weave.grunion.ai/mcp'), SETUP_PROMPT.replace('{URL}', 'https://weave.grunion.ai/mcp'));
   assert.match(setupPrompt(URL_), /Streamable HTTP/);
   assert.match(setupPrompt(URL_), /never ask me for a token or password/);
   assert.equal(createHash('sha256').update(SETUP_PROMPT).digest('hex').slice(0, 12), PROMPT_SHA, 'any edit voids the eval results (Feature #330): rerun the eval, then update this hash');
@@ -106,4 +106,30 @@ test('every named agent shows its own vendored logo mark; Something else keeps a
     assert.match(svg, /^<svg[\s>]/, `${name} is an svg`);
     assert.ok(!/<script|<!--|\son[a-z]+=|href=/i.test(svg), `${name} carries no script, comment, handler or link`);
   }
+});
+
+
+test('workspace connections keep distinct stable names across setup and authentication (Issue #1276)', () => {
+  for (const workspace of ['harbor', 'bandito']) {
+    for (const url of [`https://${workspace}.weave.grunion.ai/mcp`, `https://weave.grunion.ai/w/${workspace}/mcp`]) {
+      const name = `weave-${workspace}`;
+      const codex = guide('codex', { url, workspace: 'A display title' });
+      assert.equal(codex.value, `codex mcp add ${name} --url ${url}`);
+      assert.ok(codex.steps.includes(`Run codex mcp login ${name} and sign in.`));
+      const claude = guide('claude-code', { url, workspace });
+      assert.ok(claude.value.includes(`server named "${name}"`));
+      assert.ok(claude.steps.includes(`Run /mcp, pick ${name}, choose Authenticate.`));
+      assert.ok(guide('gemini-cli', { url, workspace }).steps.includes(`Run /mcp auth ${name} and sign in.`));
+      assert.ok(guide('antigravity', { url, workspace }).steps.some((s) => s.includes(`next to ${name}.`)));
+      assert.ok(guide('claude', { url, workspace }).steps.some((s) => s.startsWith(`Name it ${name},`)));
+      assert.equal(snippet({ copy: 'command' }, url), `claude mcp add --transport http --scope user ${name} ${url}`);
+    }
+  }
+  for (const url of ['https://weave.grunion.ai/mcp', 'https://dev.weave.grunion.ai/mcp', 'http://localhost:4400/mcp']) {
+    const g = guide('codex', { url, workspace: 'Default' });
+    assert.equal(g.value, `codex mcp add weave --url ${url}`);
+    assert.ok(g.steps.includes('Run codex mcp login weave and sign in.'));
+  }
+  assert.ok(setupPrompt(URL_, 'my-server').includes('server named "my-server"'));
+  assert.equal(snippet({ copy: 'codex' }, URL_, 'my-server'), `codex mcp add my-server --url ${URL_}`);
 });
