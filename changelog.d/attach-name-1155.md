@@ -1,0 +1,1 @@
+- The attachment chip on a board tile, list row or table cell middle-truncates a long single file name so the extension stays visible, and shows the full name on hover (Issue #1155).
