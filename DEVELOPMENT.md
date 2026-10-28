@@ -559,7 +559,10 @@ truncated `text-overflow: ellipsis` box (`ellipsis`), a `-webkit-line-clamp` box
 holding more lines than it shows (`line-clamp`), and an input or textarea whose
 value or placeholder runs past its box (`field-value`, `field-placeholder`).
 Text inside an overflow auto or scroll container, visually hidden text and
-invisible elements are not cut-offs. A finding's fingerprint is its kind plus its
+invisible elements are not cut-offs. The current breadcrumb's name is the one
+ellipsis the probe skips by design (Issue #1159): the title row under every
+crumb row shows the full name, so the crumb keeps a fixed share and gives way
+before any other crumb shrinks. A finding's fingerprint is its kind plus its
 selector with every number folded to `#`, and `|phone` for the phone cell.
 
 ```bash
