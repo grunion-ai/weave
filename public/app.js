@@ -5762,12 +5762,27 @@ function renderList(main, db, items, ctx) {
     });
     return form;
   };
+  const LIST_CAP = globalThis.WV_SPIKE_LIST_CAP ?? 200;
+  const cappedRows = (items, path) => {
+    if (!LIST_CAP || items.length <= LIST_CAP) return items.flatMap((i) => rowEls(i, path));
+    let shown = LIST_CAP;
+    const more = el('button', { class: 'btn btn-sm btn-ghost-secondary list-more', type: 'button' });
+    const label = () => { more.textContent = `Show ${Math.min(LIST_CAP, items.length - shown)} more · ${shown} of ${items.length}`; };
+    label();
+    more.addEventListener('click', () => {
+      const next = items.slice(shown, shown + LIST_CAP).flatMap((i) => rowEls(i, path));
+      more.before(...next);
+      shown += LIST_CAP;
+      if (shown >= items.length) more.remove(); else label();
+    });
+    return [...items.slice(0, LIST_CAP).flatMap((i) => rowEls(i, path)), more];
+  };
   const groupEl = (node, depth) => {
     const shut = listCore.isCollapsed(collapsed, node.key);
     const sec = el('section', { class: 'list-group' + (shut ? ' shut' : ''), dataset: { key: node.key, depth: String(depth) }, 'aria-label': node.key });
     const body = node.groups
       ? node.groups.map((g) => groupEl(g, depth + 1))
-      : [...node.items.flatMap((i) => rowEls(i, node.path)), addEl(node.path)];
+      : [...cappedRows(node.items, node.path), addEl(node.path)];
     sec.append(
       el('div', { class: 'list-group-head', style: `--level:${depth}` },
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
@@ -5785,7 +5800,7 @@ function renderList(main, db, items, ctx) {
     ...sumCols.flatMap((c) => rollupCells(from?.rollups, c).map((x) => el('span', { class: 'list-sum-stat' }, `${c} ${FOOT_LABELS[x.agg]} ${x.text}`))));
   const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
   if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
-  else { list.append(...arranged.items.flatMap((i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
+  else { list.append(...cappedRows(arranged.items, []), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
   if (arranged.completed?.count) {
     const c = arranged.completed;
     const shut = listCore.isCollapsed(collapsed, c.key);
@@ -6085,7 +6100,21 @@ function renderBoard(main, db, items, ctx) {
   };
   const groupEl = (node, depth, { completed = false, cell = false } = {}) => {
     const key = node.key ?? '';
-    const cards = el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)));
+    const CAP = globalThis.WV_SPIKE_BOARD_CAP ?? 40;
+    const path = completed ? null : node.path;
+    const cards = el('div', { class: 'board-cards', role: 'list' }, ...(CAP ? node.items.slice(0, CAP) : node.items).map((i) => tileEl(i, path)));
+    if (CAP && node.items.length > CAP) {
+      let shown = CAP;
+      const more = el('button', { class: 'btn btn-sm btn-ghost-secondary board-more', type: 'button' });
+      const label = () => { more.textContent = `Show ${Math.min(CAP, node.items.length - shown)} more · ${shown} of ${node.items.length}`; };
+      label();
+      more.addEventListener('click', () => {
+        more.before(...node.items.slice(shown, shown + CAP).map((i) => tileEl(i, path)));
+        shown += CAP;
+        if (shown >= node.items.length) more.remove(); else label();
+      });
+      cards.append(more);
+    }
     cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
     const shut = !cell && listCore.isCollapsed(collapsed, key);
     const fold = el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.label || key}` }, lucideEl('chevron-right'));
