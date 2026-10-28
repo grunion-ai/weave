@@ -17,7 +17,7 @@ env:
 jobs:
   plan:
     if: ${{ !github.event.pull_request.draft }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -36,7 +36,7 @@ jobs:
   test:
     name: pr ${{ matrix.id }}
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -85,7 +85,7 @@ jobs:
     name: PR gate
     if: ${{ always() && !github.event.pull_request.draft }}
     needs: [plan, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require every shard
