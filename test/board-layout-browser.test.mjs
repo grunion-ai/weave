@@ -353,4 +353,23 @@ if (s) {
       await page.waitForFunction(() => document.querySelector('.wv-board')?.dataset.picture === 'large');
     } finally { await page.close(); }
   });
+
+  test('Hide empty groups drops the column with no cards and saves on the view (Feature #345)', async () => {
+    seed();
+    const page = await open();
+    try {
+      assert.equal(await page.locator('.board-group[data-key="Bought"]').count(), 1);
+      const pane = await openPane(page, 'group');
+      await pane.locator('[data-hide-empty]').click();
+      assert.equal(await pane.locator('[data-hide-empty] input').isChecked(), true);
+      await eventually(() => view().hideEmpty, true);
+      await page.waitForFunction(() => !document.querySelector('.board-group[data-key="Bought"]'));
+      assert.equal(await page.locator('.board-group[data-key="Research"] .tile').count(), 2);
+      assert.equal(await page.locator('.board-group[data-key="Ready to Buy"] .tile').count(), 3);
+      await pane.locator('[data-hide-empty]').click();
+      await eventually(() => view().hideEmpty, undefined);
+      await page.waitForSelector('.board-group[data-key="Bought"] .board-empty');
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
 }

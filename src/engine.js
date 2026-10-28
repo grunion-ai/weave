@@ -2198,6 +2198,7 @@ export class Weave {
     if (db.fields[v.completedBy]) out.completedBy = db.fields[v.completedBy].name;
     if (db.fields[v.nest]) out.nest = db.fields[v.nest].name;
     if (Array.isArray(v.collapsed)) out.collapsed = [...v.collapsed];
+    if (v.hideEmpty) out.hideEmpty = true;
     const order = (v.order ?? []).map((id) => own(this.state.entities, id)).filter((e) => e && !e.deletedAt && e.dbId === db.id).map((e) => e.publicId);
     if (order.length) out.order = order;
     if (v.phoneRow) out.phoneRow = PhoneRow.compact(this.#phoneRowNamed(db, v.phoneRow));
@@ -2336,7 +2337,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'subtotals', 'layout', 'groups', 'picture', 'group', 'completedBy', 'nest', 'collapsed', 'order', 'phoneRow'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'subtotals', 'layout', 'groups', 'picture', 'group', 'completedBy', 'nest', 'collapsed', 'hideEmpty', 'order', 'phoneRow'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -2441,6 +2442,10 @@ export class Weave {
     if (patch.rollups !== undefined) {
       if (patch.rollups !== null && typeof patch.rollups !== 'boolean') throw new WeaveError(`rollups is true, false or null: whether the view draws the Σ row (null follows the table). Got ${JSON.stringify(patch.rollups)}`, 'invalid');
       if (patch.rollups === null) delete next.rollups; else next.rollups = patch.rollups;
+    }
+    if (patch.hideEmpty !== undefined) {
+      if (patch.hideEmpty !== null && typeof patch.hideEmpty !== 'boolean') throw new WeaveError(`hideEmpty is true, false or null: whether grouped layouts leave out groups with no rows. Got ${JSON.stringify(patch.hideEmpty)}`, 'invalid');
+      if (patch.hideEmpty) next.hideEmpty = true; else delete next.hideEmpty;
     }
     this.#writeListKeys(db, next, patch);
     if (patch.phoneRow !== undefined) this.#writePhoneRow(db, next, patch.phoneRow);
@@ -3227,6 +3232,7 @@ export class Weave {
       if (vDoc.density) out.density = vDoc.density;
       if (vDoc.deleted) out.deleted = true;
       if (typeof vDoc.rollups === 'boolean') out.rollups = vDoc.rollups;
+      if (vDoc.hideEmpty) out.hideEmpty = true;
       for (const k of ['layout', 'groups', 'picture', 'subtotals']) if (vDoc[k]) out[k] = vDoc[k];
       if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
       for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
@@ -3259,6 +3265,7 @@ export class Weave {
       if ((vDoc.density ?? 'comfortable') !== (have?.density ?? 'comfortable')) patch.density = vDoc.density ?? 'comfortable';
       if (!!vDoc.deleted !== !!have?.deleted) patch.deleted = !!vDoc.deleted;
       if ((vDoc.rollups ?? null) !== (have?.rollups ?? null)) patch.rollups = vDoc.rollups ?? null;
+      if (!!vDoc.hideEmpty !== !!have?.hideEmpty) patch.hideEmpty = !!vDoc.hideEmpty;
       for (const k of ['layout', 'groups', 'picture', 'subtotals']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
       for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
@@ -7525,7 +7532,7 @@ export class Weave {
       if (orderKey) this.#remember(this.#rowIndex().sortOrders, orderKey, rows);
     }
     const total = rows.length;
-    const groups = grouped ? this.#viewGroups(db, grouped, rows, { showEmpty: grouped.layout === 'list' && !filtered && !String(search ?? '').trim() }) : null;
+    const groups = grouped ? this.#viewGroups(db, grouped, rows, { showEmpty: grouped.layout === 'list' && !grouped.hideEmpty && !filtered && !String(search ?? '').trim() }) : null;
     rows = rows.slice(offset, limit != null ? offset + limit : undefined);
     const items = rows.map((e) => {
       if (!select) return this.#readEntityIn(e.id, { pick, chips });
