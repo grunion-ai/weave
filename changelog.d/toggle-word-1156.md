@@ -1,0 +1,1 @@
+- A toggle's label now wraps beside its switch on board tiles and on the record page instead of ending in an ellipsis. "Published to every customer" lost 81 px on a desktop tile and 8 px on the phone record page; the table cell keeps its one-line label because the column floor is measured from it (Issue #1156).
