@@ -162,6 +162,16 @@ if (s) {
           assert.ok(seen.spaces >= 2, `the touch seed draws at least two spaces in the menu, got ${seen.spaces}`);
           assert.ok(seen.list * 2 >= seen.menu, `the space list keeps at least half of the ${seen.menu}px menu, got ${seen.list}px`);
           assert.deepEqual(seen.hidden, [], `${seen.hidden.length} of ${seen.links} menu links are out of reach in the ${seen.menu}px menu:\n${seen.hidden.join('\n')}`);
+          const trash = page.locator('#sidebar .nav-system a[href="#/trash"]');
+          await trash.scrollIntoViewIfNeeded();
+          assert.equal(await trash.evaluate((n) => {
+            const r = n.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return !!hit && (hit === n || n.contains(hit));
+          }), true, 'the sticky identity panel leaves Trash reachable');
+          await trash.click();
+          await page.waitForFunction(() => location.hash === '#/trash' && !document.querySelector('#app').classList.contains('nav-peek'));
+
         } finally { await page.close(); }
       });
     }
