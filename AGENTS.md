@@ -282,7 +282,7 @@ Card, `description` is the description size (`none`, `small`, `medium`, `large`)
 
 **Read `weave_vocabulary` before configuring anything.** It returns every
 closed set a config value can come from *and what the choice looks like on
-screen*: the eighteen field types with how each renders in the grid and which
+screen*: every field type with how it renders in the grid and which
 config keys it takes, the eight option colors, the icon names (stored as `lucide:<name>`; a value stored as `iconly:<name>` before 2026-09-02 still resolves; anything else is refused — an emoji is not an icon), number
 and date formats, document kinds, relation cardinalities, workflow state
 categories, rollup aggregates, the system columns, the two view kinds, and the
