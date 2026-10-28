@@ -4038,7 +4038,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false, subtotals: null,
-    layout: null, groups: null, picture: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
+    layout: null, groups: null, picture: null, fit: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -5938,6 +5938,8 @@ function boardControls(db, put) {
     row('board-groups', 'Groups', segCtl([{ id: 'stacked', label: 'Stacked' }, { id: 'side', label: 'Side by side' }], boardCore.groupsOf(v), (groups) => put({ groups }))),
     row('board-picture', 'Picture', segCtl(boardCore.PICTURES.map((id) => ({ id, label: PICTURE_LABELS[id], ...(id !== 'off' && !cover ? { title: 'Set an attachments field to Show as cover to give cards a picture' } : {}) })),
       boardCore.pictureOf(db, v), (picture) => put({ picture }))),
+    row('board-fit', 'Fit', segCtl([{ id: 'crop', label: 'Crop', title: 'Every cover is 4:3, cropped to fill' }, { id: 'fit', label: 'Fit', title: 'Each cover shows the whole picture at its own shape' }],
+      v.fit ? 'fit' : 'crop', (fit) => put({ fit: fit === 'fit' || null }))),
   ];
 }
 const TILE_FORM = 'button, input, select, textarea, [contenteditable], .picker-wrap';
@@ -6157,7 +6159,7 @@ function renderBoard(main, db, items, ctx) {
     } }, lucideEl('chevron-right')), listHeadingEl(s, 0, c), el('span', { class: 'list-count' }, String(c.count)));
   const board = el('div', {
     class: 'wv-board', 'aria-label': `${db.name} · ${v.name}`,
-    dataset: { groups: levels.length ? groups : 'stacked', picture, ...(lanes ? { lanes: 'true' } : {}) },
+    dataset: { groups: levels.length ? groups : 'stacked', picture, ...(lanes ? { lanes: 'true' } : {}), ...(v.fit ? { fit: 'true' } : {}) },
     style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
   }, ...(lanes
     ? [...grid.columns.map(columnHead), ...grid.lanes.map(laneEl)]
