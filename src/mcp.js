@@ -268,11 +268,11 @@ export const TOOLS = [
   },
   {
     name: 'weave_attach_file',
-    description: 'Attach a file to an entity (base64 content).',
+    description: 'Attach a file to a row, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
     inputSchema: {
       type: 'object',
-      properties: { entity: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' } },
-      required: ['entity', 'name', 'contentBase64'],
+      properties: { entity: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' }, prepare: { type: 'boolean' }, size: { type: 'integer', minimum: 0, maximum: 10485760 } },
+      required: ['entity', 'name'],
     },
   },
   {
@@ -594,7 +594,7 @@ export const SUMMARY = {
   weave_create_automation: 'create an automation rule',
   weave_automations: 'list, describe, update or delete rules',
   weave_export_csv: 'a table as CSV',
-  weave_attach_file: 'attach a file to a row (base64)',
+  weave_attach_file: 'attach or prepare raw upload',
   weave_files: 'read or delete an attached file',
   weave_update_space: 'rename a space; description, icon, template mark',
   weave_template_list: 'list template spaces',
@@ -838,8 +838,15 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.exportCSV(args.db);
     case 'weave_import_csv':
       return weave.importCSV(args.db, args.csv);
-    case 'weave_attach_file':
-      return weave.attachFile(args.entity, { name: args.name, mime: args.mime, bytes: args.contentBase64 });
+    case 'weave_attach_file': {
+      if (args.prepare === true) {
+        if (!caller?.prepareUpload) throw new Error('Prepare uploads over the authenticated HTTP MCP endpoint; stdio callers can use the file attach CLI.');
+        return caller.prepareUpload(args);
+      }
+      if (typeof args.contentBase64 !== 'string') throw new Error('Send contentBase64, or prepare:true and size for a raw upload.');
+      const file = { name: args.name, mime: args.mime, bytes: args.contentBase64 };
+      return args.field == null ? weave.attachFile(args.entity, file) : weave.attachToField(args.entity, args.field, file);
+    }
     case 'weave_vocabulary':
       return vocabularyView(args.sections ?? args.section, args.query);
     case 'weave_update_space':

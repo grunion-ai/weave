@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sheriff, dryIO, eligible, nextProbe, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
+import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const repo = 'grunion-ai/weave';
@@ -22,7 +22,7 @@ function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badF
     failures: async () => ({ files, jobs: [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }] }),
     rerunFailed: async (id) => writes.push(['rerun', id]),
     waitRun: async (id) => ({ ...run, id, run_attempt: 2 }),
-    gate: async () => rerunGate,
+    gate: async () => (Array.isArray(rerunGate) ? (rerunGate.length > 1 ? rerunGate.shift() : rerunGate[0]) : rerunGate),
     lastGreen: async () => ({ sha: sha(1), url: 'https://github.com/grunion-ai/weave/actions/runs/800' }),
     range: async (from, to) => { assert.equal(from, sha(1)); assert.equal(to, head ?? run.head_sha); return commits; },
     openReverts: async () => reverts,
@@ -67,6 +67,57 @@ test('a rerun that passes is a flake: logged once, nothing reverted or alerted',
   assert.equal(out.action, 'flake');
   assert.deepEqual(f.kinds(), ['rerun', 'flake']);
   assert.deepEqual(f.writes[1][1].files, ['test/grid.test.mjs']);
+});
+
+test('a rerun that reaches no CI gate verdict is rerun once more, never bisected', async () => {
+  for (const gate of ['cancelled', 'timed_out', 'skipped', null]) {
+    const f = fake({ rerunGate: [gate, gate] });
+    const out = await sheriff(900, f.io);
+    assert.equal(out.action, 'skip', `${gate} ended ${out.action}`);
+    assert.deepEqual(f.kinds(), ['rerun', 'rerun']);
+    assert.match(out.reason, /no CI gate verdict/);
+  }
+});
+
+test('a second rerun GitHub refuses leaves the commit unjudged instead of failing the sheriff', async () => {
+  const f = fake({ rerunGate: ['cancelled'] });
+  let reruns = 0;
+  f.io.rerunFailed = async (id) => { if (++reruns > 1) throw new Error('HTTP 422: cannot rerun a cancelled attempt'); f.writes.push(['rerun', id]); };
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'skip');
+  assert.match(out.reason, /no CI gate verdict/);
+  assert.deepEqual(f.kinds(), ['rerun']);
+});
+
+test('the second rerun carries the verdict: green is a flake, red reverts', async () => {
+  const flake = fake({ rerunGate: ['cancelled', 'success'] });
+  assert.equal((await sheriff(900, flake.io)).action, 'flake');
+  assert.deepEqual(flake.kinds(), ['rerun', 'rerun', 'flake']);
+  const red = fake({ rerunGate: ['cancelled', 'failure'] });
+  assert.equal((await sheriff(900, red.io)).action, 'revert');
+  assert.deepEqual(red.kinds(), ['rerun', 'rerun', 'revert', 'comment', 'issue', 'alert']);
+});
+
+test('main going green after the bisect clears the suspect before the revert is opened', async () => {
+  const f = fake({ commits: [101, 102, 103].map((n) => commit(n)), badFrom: 2 });
+  let calls = 0;
+  f.io.greenAfter = async () => (++calls >= 3 ? { sha: sha(101) } : null);
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'skip');
+  assert.match(out.reason, /went green/);
+  assert.ok(!f.kinds().includes('revert'), f.kinds().join(','));
+  assert.deepEqual(f.kinds().filter((k) => k !== 'probe'), ['rerun']);
+});
+
+test('a revert with no bisect probe names the range size and the missing probe in its title', async () => {
+  const f = fake({ commits: [commit(100)] });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'revert');
+  assert.equal(out.probes.length, 0);
+  assert.match(f.writes.find((w) => w[0] === 'revert')[1].title, /\(1 commit in range, no bisect probe\)$/);
+  const bisected = fake({ commits: [101, 102, 103].map((n) => commit(n)), badFrom: 2 });
+  await sheriff(900, bisected.io);
+  assert.doesNotMatch(bisected.writes.find((w) => w[0] === 'revert')[1].title, /no bisect probe/);
 });
 
 test('one commit since the last green run is the culprit: revert PR, PR comment, Issue row, one alert', async () => {
@@ -191,7 +242,12 @@ test('helpers: probes, reverts, markers, failing files, titles and a push that n
   assert.deepEqual(culpritsOf(`x\nSheriff-Culprit: ${sha(1)}\nSheriff-Culprit: ${sha(2)}\n`), [sha(1), sha(2)]);
   assert.deepEqual(failingFiles([{ summaries: [{ file: 'test/b.test.mjs', counts: { failed: 1 } }, { file: 'test/a.test.mjs', success: false, counts: { failed: 0 } }, { file: 'test/c.test.mjs', counts: { failed: 0 } }] }, {}]), ['test/a.test.mjs', 'test/b.test.mjs']);
   assert.equal(issueName({ files: ['test/a.test.mjs', 'test/b.test.mjs'], prs: [{ number: 7 }], culprits: [commit(1)] }), 'Error: test/a.test.mjs (+1 more) fails on main after PR #7');
-  assert.equal(revertTitle({ culprits: [commit(1)], prs: [{ number: 7 }] }), `sheriff: revert ${sha(1).slice(0, 10)} (PR #7) after main went red`);
+  assert.equal(revertTitle({ culprits: [commit(1)], prs: [{ number: 7 }], probes: [{ sha: sha(1), conclusion: 'failure' }] }), `sheriff: revert ${sha(1).slice(0, 10)} (PR #7) after main went red`);
+  assert.equal(revertTitle({ culprits: [commit(1)], prs: [{ number: 7 }] }), `sheriff: revert ${sha(1).slice(0, 10)} (PR #7) after main went red (1 commit in range, no bisect probe)`);
+  assert.match(revertTitle({ culprits: [commit(1), commit(2)], prs: [] }), /\(2 commits in range, no bisect probe\)$/);
+  assert.equal(rerunVerdict('success'), 'success');
+  assert.equal(rerunVerdict('failure'), 'failure');
+  for (const gate of ['cancelled', 'timed_out', 'skipped', 'neutral', 'action_required', null, undefined]) assert.equal(rerunVerdict(gate), 'unknown', String(gate));
   assert.match(revertMessage({ culprits: [commit(1), commit(2)], prs: [], run: red() }), /This reverts commit .*\.\nThis reverts commit/);
   const args = pushArgs('sheriff/revert-x');
   assert.ok(!args.some((a) => /^(-f|--force|--force-with-lease|\+)/.test(a)));

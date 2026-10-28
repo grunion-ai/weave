@@ -122,16 +122,27 @@ directories on the disk (Issue #1083).
 ### Sheriff
 
 `.github/workflows/sheriff.yml` owns a red main (Feature #320). A failed main
-push `tests` run gets its failed jobs rerun once by `scripts/sheriff.mjs`. A green
-rerun is a flake: it appends a line to the Issue row
+push `tests` run gets its failed jobs rerun by `scripts/sheriff.mjs`. Only
+the rerun's `CI gate` conclusion decides guilt, and only `success` and `failure`
+count: a rerun that ends `cancelled`, `timed_out` or `skipped`, or whose
+`CI gate` job never ran, carries no verdict (Issue #1139). The sheriff reruns
+the failed jobs once more and, with still no verdict, skips the run and leaves
+the next red main run to judge that commit. The `tests` concurrency group
+cancels a rerun whenever a newer main commit pushes, and the cancelled rerun
+used to read as a second red.
+
+A green rerun is a flake: it appends a line to the Issue row
 `Error: <test file> flakes on main`, creating it if none is open, and stops. A
 second red finds the commits since the last main run whose `CI gate` succeeded
 and bisects them by dispatching `tests` with its `ref` input, at most four
-runs. Completed runs for a commit are reused for free. It then opens a
-`sheriff/revert-<sha>` PR with squash auto-merge, comments on the original PR,
-files `Error: <test> fails on main after PR #<n>` with the run links, and writes
+runs. Completed runs for a commit are reused for free. It checks once more that
+main has not gone green on its own, then opens a `sheriff/revert-<sha>` PR with
+squash auto-merge, comments on the original PR, files
+`Error: <test> fails on main after PR #<n>` with the run links, and writes
 one alert line to the job summary and `SHERIFF_ALERT_URL`. Past the cap it
-reverts what is still suspect. It never reverts a revert, never acts on a
+reverts what is still suspect. A revert whose range took no bisect probe, the
+single-commit range among them, says so in its subject, so main's history shows
+how much evidence the revert carried. It never reverts a revert, never acts on a
 culprit that already has a revert branch, never pushes to main and never
 forces a push. Replay a run without writing anything:
 `gh workflow run sheriff -f run_id=<id> -f dry_run=true`, or locally

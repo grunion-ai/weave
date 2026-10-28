@@ -123,6 +123,60 @@ if (s) {
     }
   }
 
+  const REACH = () => {
+    const menu = document.querySelector('#sidebar').getBoundingClientRect();
+    const clips = (n) => {
+      const out = [];
+      for (let p = n.parentElement; p && p !== document.body; p = p.parentElement) {
+        if (getComputedStyle(p).overflowY !== 'visible') out.push(p);
+      }
+      return out;
+    };
+    const label = (n) => (n.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 32);
+    const links = [...document.querySelectorAll('#nav a.nav-space, #nav .nav-db')].filter((n) => n.getClientRects().length);
+    const hidden = [];
+    for (const n of links) {
+      const r = n.getBoundingClientRect();
+      const cut = clips(n).find((p) => { const c = p.getBoundingClientRect(); return r.top < c.top || r.bottom > c.bottom; });
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (r.top < 0 || r.bottom > innerHeight) hidden.push(`${label(n)} sits at ${Math.round(r.top)}-${Math.round(r.bottom)} past the ${innerHeight}px screen`);
+      else if (cut) hidden.push(`${label(n)} is clipped by ${cut.tagName.toLowerCase()}#${cut.id || cut.className} (${Math.round(cut.getBoundingClientRect().height)}px tall)`);
+      else if (!hit || !(hit === n || n.contains(hit))) hidden.push(`${label(n)} answers a tap with ${hit ? hit.className || hit.tagName : 'nothing'}`);
+    }
+    const list = links[0] && clips(links[0]).find((p) => p.scrollHeight > p.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(p).overflowY));
+    return { list: list ? Math.round(list.clientHeight) : Math.round(menu.height), spaces: links.filter((n) => n.matches('a.nav-space')).length, links: links.length, menu: Math.round(menu.height), hidden };
+  };
+  const phoneMenu = {
+    name: 'phone menu',
+    url: ROUTES.table.url(s, 'phone'),
+    ready: '#main .nav-menu',
+    roots: ['#sidebar'],
+    act: (page) => page.click('#main .nav-menu'),
+  };
+  for (const [engine, b, profile] of engines) {
+    for (const theme of ['light', 'dark']) {
+      test(`on a phone every space and table in the menu sits in view and takes a tap (${engine}, ${theme}, Issue #1164)`, async () => {
+        const page = await open(b, profile, theme, phoneMenu);
+        try {
+          const seen = await page.evaluate(REACH);
+          assert.ok(seen.spaces >= 2, `the touch seed draws at least two spaces in the menu, got ${seen.spaces}`);
+          assert.ok(seen.list * 2 >= seen.menu, `the space list keeps at least half of the ${seen.menu}px menu, got ${seen.list}px`);
+          assert.deepEqual(seen.hidden, [], `${seen.hidden.length} of ${seen.links} menu links are out of reach in the ${seen.menu}px menu:\n${seen.hidden.join('\n')}`);
+          const trash = page.locator('#sidebar .nav-system a[href="#/trash"]');
+          await trash.scrollIntoViewIfNeeded();
+          assert.equal(await trash.evaluate((n) => {
+            const r = n.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return !!hit && (hit === n || n.contains(hit));
+          }), true, 'the sticky identity panel leaves Trash reachable');
+          await trash.click();
+          await page.waitForFunction(() => location.hash === '#/trash' && !document.querySelector('#app').classList.contains('nav-peek'));
+
+        } finally { await page.close(); }
+      });
+    }
+  }
+
   const viewSwitcher = {
     name: 'views popover',
     hash: `#/table/${table}`,
