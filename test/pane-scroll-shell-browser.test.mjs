@@ -156,6 +156,8 @@ if (s) {
       assert.ok(webkit, 'WebKit is installed, so the Safari bar is measured');
       const page = await open(`#/table/${big.id}?e=${first.id}`, { theme, width: 1600, dockWidth: 380, engine: webkit });
       await page.waitForSelector('#dock:not([hidden]) .name-edit');
+      await page.locator('#dock .doc-section .vditor-reset p').filter({ hasText: 'Ledger paragraph 80 ' }).waitFor();
+      await settled(page.locator('#dock'));
       const bars = await page.evaluate(() => Object.fromEntries(['#nav', '#main', '#dock'].map((q) => {
         const n = document.querySelector(q);
         const cs = getComputedStyle(n);
