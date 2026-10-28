@@ -56,7 +56,7 @@ jobs:
       - name: Install Chromium
         timeout-minutes: 11
         run: |
-          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99weave-acquire > /dev/null
+          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "3";\nDPkg::Lock::Timeout "180";\n' | sudo tee /etc/apt/apt.conf.d/99weave-apt > /dev/null
           if timeout 5m npx --no-install playwright install --with-deps chromium; then exit 0; fi
           sudo dpkg --configure -a || true
           timeout 5m npx --no-install playwright install --with-deps chromium

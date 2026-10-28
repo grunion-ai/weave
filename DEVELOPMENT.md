@@ -81,7 +81,13 @@ down with it. The bound lives in the shell, not in `timeout-minutes`: a step
 the runner kills on its own timeout cancels the whole job, so `continue-on-error`
 never reaches the retry (measured on PR #430, 2026-10-23). The step also writes
 an apt drop-in with a twenty-second acquire timeout and three retries, so one
-stalled connection no longer costs minutes. The `tests` shard job and the dev
+stalled connection no longer costs minutes, and a `DPkg::Lock::Timeout` of 180
+seconds, so an attempt waits for the dpkg frontend lock instead of failing on
+it. The runner image's own boot-time `apt-get` holds that lock past the first
+attempt, and without the wait the retry died in under a second with 299 of its
+300 seconds unspent (Issues #1230, #1141). The wait is sized to fit inside one
+`timeout 5m` attempt, since the bound would otherwise kill the wait it is meant
+to outlast. The `tests` shard job and the dev
 soak carry the same bound, after the mirror held their install for thirty
 minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
