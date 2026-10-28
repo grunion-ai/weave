@@ -140,7 +140,7 @@ if (s) {
       assert.ok(atEnd.within, `+ New space is still in the sidebar's window at the nav's end: ${JSON.stringify(atEnd)}`);
       assert.ok(Math.abs(atEnd.top - atTop.top) <= 20, `the button held its place while the nav ran ${spare}px: ${atTop.top} -> ${atEnd.top}`);
       const order = await page.evaluate(() => [...document.querySelectorAll('#sidebar .nav-pinned > *')].filter((n) => !n.hidden).map((n) => n.className.split(' ')[0]));
-      assert.deepEqual(order, ['nav-foot', 'nav-identity'], `the button leads the strip, the identity panel last (Issue #854, Feature #333): ${order}`);
+      assert.deepEqual(order, ['nav-foot', 'nav-system', 'nav-identity'], `the button leads the strip, the System space follows, the identity panel last (Issue #854, Feature #333): ${order}`);
       await page.click(btn);
       await page.waitForTimeout(150);
       const input = await seen('.nav-inline-add');

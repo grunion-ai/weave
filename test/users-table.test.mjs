@@ -262,7 +262,7 @@ test('cli: entity create on Users prints the invite link or the token once', () 
 
 test('ui: the nav pins Users beside Workflows, and + New on Users opens the user dialog', () => {
   const nav = fnBodyOf('renderNav');
-  const group = nav.slice(nav.indexOf("$('#rail-system').replaceChildren"), nav.indexOf("class: 'nav-pinned'"));
+  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("$('#sidebar').append(system"));
   assert.ok(group.indexOf("'Users'") > group.indexOf("'Workflows'") && group.indexOf("'Users'") < group.indexOf("'#/activity'"), 'Workflows, Users, Activity, Trash');
   assert.match(nav, /db\.system === 'users'/, 'Users leaves the Workspace space list');
   assert.match(APP, /if \(db\.system === 'users'\) return newUserDialog\(db, redraw\)/);
