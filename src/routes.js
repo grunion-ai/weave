@@ -296,6 +296,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     let wsPrefix = '';
     const hostSlug = slugOfHost(rx.header('host'), baseDomain);
     let hostOrigin = null;
+    let hostWs = null;
     if (hostSlug !== null) {
       const holder = hub.bySlug(hostSlug);
       if (!holder) {
@@ -305,6 +306,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return notFound({ error: 'Not found', code: 'not-found' });
       }
       weave = holder;
+      hostWs = holder;
       hostOrigin = `${scheme}//${String(rx.header('host')).toLowerCase()}`;
     }
     const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
@@ -314,6 +316,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       weave = target;
       wsPrefix = `/w/${wsM[1]}`;
       path = wsM[2] || '/';
+    }
+    if (baseDomain && oidc && hostWs && wsPrefix && weave !== hostWs && ['GET', 'HEAD'].includes(rx.method)
+      && !/^\/(?:api|mcp|\.well-known)(?:\/|$)/.test(path) && !/\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)) {
+      const q = rx.searchParams?.toString();
+      return { status: 301, headers: { Location: `${scheme}//${String(weave.state.meta.name).toLowerCase()}.${baseDomain}${encodeURI(path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
     }
     weave.maybeRefresh();
     versionOf = weave;
@@ -1165,6 +1172,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             }
             const minted = h.engine.createSession(h.accountId, { ua: rx.header('user-agent') });
             return { status: 302, headers: { Location: h.next, 'Set-Cookie': sessionCookie(cookieName(h.engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+          }
+          if ((m = path.match(/^\/api\/auth\/open\/([^/]+)$/)) && rx.method === 'GET' && baseDomain) {
+            const target = hub.bySlug(String(m[1]).toLowerCase());
+            if (!target || target.state.meta.deletedAt) return notFound({ error: 'Not found', code: 'not-found' });
+            const host = String(target.state.meta.name).toLowerCase();
+            const hit = sessionOn(target);
+            if (hit) return handOff(hit.engine, hit.id, '/', host);
+            return { status: 302, headers: { Location: `${scheme}//${host}.${baseDomain}/`, 'Cache-Control': 'no-store' }, body: '' };
           }
           if (route === 'POST /api/auth/logout') {
             const everywhere = ['1', 'true'].includes(rx.searchParams?.get('everywhere') ?? '');

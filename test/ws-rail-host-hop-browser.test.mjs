@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Weave } from '../src/engine.js';
+import { launch } from './lib/browser.mjs';
+
+let member;
+let kyle;
+const s = await launch('workspace rail hops to each workspace host', (weave) => {
+  weave.markOnboarded();
+  weave.state.meta.name = 'net';
+  kyle = weave.createAccount({ name: 'kyle', role: 'architect' }).account;
+  weave.markOnboarded(kyle.id);
+  weave.setRequireAuth(true);
+  member = new Weave();
+  member.markOnboarded();
+  member.state.meta.name = 'bandito';
+  member.createAccount({ name: 'owner', role: 'architect' });
+  member.setRequireAuth(true);
+}, { server: () => ({ workspaces: { bandito: member }, baseDomain: 'localhost' }) });
+
+if (s) {
+  const { weave: net, base, browser } = s;
+  const port = new URL(base).port;
+
+  async function signedInOnNet() {
+    const ctx = await browser.newContext();
+    await ctx.addCookies([{ name: `wv_session_${net.state.meta.id}`, value: net.createSession(kyle.id).token, url: `http://net.localhost:${port}` }]);
+    await ctx.route(/\/api\/auth\/open\//, async (route) => {
+      const response = await route.fetch({ maxRedirects: 0 });
+      const to = new URL(response.headers().location);
+      to.port = port;
+      await route.fulfill({ response, headers: { ...response.headers(), location: to.href } });
+    });
+    const page = await ctx.newPage();
+    await page.goto(`http://net.localhost:${port}/`);
+    await page.waitForSelector('#ws-list .ws-icon');
+    return { ctx, page };
+  }
+
+  test('clicking another workspace in the rail opens it on its own host, still signed in (Issue #1263)', async () => {
+    const { ctx, page } = await signedInOnNet();
+    try {
+      assert.equal((await page.locator('#ws-name').textContent()).trim(), 'net');
+      const tile = page.locator('#ws-list .ws-icon[title^="bandito "]');
+      assert.equal(await tile.evaluate((n) => n.classList.contains('ws-held')), false, 'bandito opens with the net session');
+      await Promise.all([page.waitForURL((u) => u.hostname === 'bandito.localhost' && u.pathname === '/'), tile.click()]);
+      await page.waitForFunction(() => document.querySelector('#ws-name')?.textContent.trim() === 'bandito');
+      assert.equal(new URL(page.url()).hostname, 'bandito.localhost', 'the address bar names the bandito host');
+      const there = await ctx.cookies(`http://bandito.localhost:${port}`);
+      assert.ok(there.some((c) => c.name.startsWith('wv_session_')), 'the bandito host holds its own session cookie');
+      assert.equal(await page.locator('#ws-list .ws-icon.active').getAttribute('title').then((t) => t.split(' ')[0]), 'bandito');
+    } finally { await ctx.close(); }
+  });
+}

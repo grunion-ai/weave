@@ -12336,7 +12336,7 @@ function trashedWorkspacesCard(trashed, redraw) {
 }
 const servesBareRoot = (w) => (w.host ? new URL(w.host).hostname === location.hostname : !!w.default);
 const bareRootWs = (list) => list.find(servesBareRoot);
-const wsHref = (w) => (servesBareRoot(w) ? '/' : (w.url ?? `/w/${w.id}/`));
+const wsHref = (w) => (servesBareRoot(w) ? '/' : w.host ? `/api/auth/open/${encodeURIComponent(w.name.toLowerCase())}` : (w.url ?? `/w/${w.id}/`));
 const wsApiPrefix = (w) => `/w/${w.id}/api`;
 async function wsApi(w, method, path, body) {
   const res = await fetch(wsApiPrefix(w) + path, {
