@@ -42,6 +42,19 @@ test('a view saves layout board with groups and picture, and reads them back', (
   assert.equal(w.tableView('Shopping List/Standard', { layout: 'table' }).layout, 'table');
 });
 
+test('a board view saves fit to show the whole picture, and null clears it (Issue #1280)', () => {
+  const { w } = shop();
+  assert.equal(w.tableView('Shopping List/Standard').fit, undefined, 'unset crops');
+  assert.equal(w.tableView('Shopping List/Standard', { layout: 'board', picture: 'medium', fit: true }).fit, true);
+  assert.equal(w.tableView('Shopping List/Standard', { fit: false }).fit, undefined, 'false crops, the same as unset');
+  w.tableView('Shopping List/Standard', { fit: true });
+  assert.equal(w.tableView('Shopping List/Standard', { fit: null }).fit, undefined);
+  assert.throws(() => w.tableView('Shopping List/Standard', { fit: 'yes' }), /fit is true or false/);
+  w.tableView('Shopping List/Standard', { fit: true });
+  const w2 = new Weave();
+  w2.applySchema(w.describeSchema());
+  assert.equal(w2.tableView('Shopping List/Standard').fit, true, 'fit travels with the schema document');
+});
 test('unknown layout, groups and picture values are refused by name', () => {
   const { w } = shop();
   assert.throws(() => w.tableView('Shopping List/X', { layout: 'gallery' }), /layout is table, list or board/);

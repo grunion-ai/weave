@@ -168,6 +168,27 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('Fit shows the whole cover at its own aspect ratio; Crop keeps 4:3 (Issue #1280)', async () => {
+    seed({ groups: 'stacked', picture: 'medium', group: null });
+    const page = await open();
+    const ratio = () => page.locator(`${tile(ids.desk)} .tile-cover`).evaluate((n) => { const r = n.getBoundingClientRect(); return Math.round((r.height / r.width) * 100) / 100; });
+    try {
+      await page.waitForFunction((sel) => document.querySelector(sel)?.complete, `${tile(ids.desk)} .tile-cover img`);
+      assert.equal(await ratio(), 0.75, 'a cropped cover is 4:3');
+      await openPane(page, 'display');
+      await page.click('.board-fit .seg-opt:text-is("Fit")');
+      await eventually(() => view().fit, true);
+      await page.waitForFunction(() => document.querySelector('.wv-board')?.dataset.fit === 'true');
+      await page.waitForFunction((sel) => document.querySelector(sel)?.complete, `${tile(ids.desk)} .tile-cover img`);
+      assert.equal(await ratio(), 1, 'a square picture fits as a square cover');
+      assert.equal(await page.locator(`${tile(ids.mat)} .tile-cover.is-empty`).count(), 1, 'a row with no picture keeps its placeholder');
+      await openPane(page, 'display');
+      await page.click('.board-fit .seg-opt:text-is("Crop")');
+      await eventually(() => view().fit, undefined);
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+
   test('a drop keeps its board connected until the lifted card settles', async () => {
     seed({ picture: 'off' });
     const page = await open();
