@@ -1,0 +1,1 @@
+- The list draws its first 200 rows per group and the Board layout its first 40 cards a column, each ending with a **Show more** button that adds the next batch in place. A 2,000-row list now paints 200 rows and 3,437 elements where it drew all 2,000 and 28,636, and the Board layout 40 cards a column and 2,229 elements where it drew 667 a column and 26,666 (Issue #1266).

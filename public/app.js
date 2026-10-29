@@ -5663,6 +5663,19 @@ function listHeadingEl(s, depth, node) {
   if (f?.type === 'workflow') { const st = f.states?.find((x) => x.name === node.label); if (st) hue = chipCore.stateHue(st, st.category); }
   return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
 }
+function cappedEls(items, cap, draw, label) {
+  if (!cap || items.length <= cap) return items.flatMap(draw);
+  let shown = cap;
+  const more = el('button', { class: 'btn btn-sm btn-ghost-secondary wv-more', type: 'button' });
+  const relabel = () => { more.textContent = label(shown, items.length); };
+  more.addEventListener('click', () => {
+    more.before(...items.slice(shown, shown + cap).flatMap(draw));
+    shown = Math.min(items.length, shown + cap);
+    if (shown >= items.length) more.remove(); else relabel();
+  });
+  relabel();
+  return [...items.slice(0, cap).flatMap(draw), more];
+}
 function renderList(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
   const v = db.view;
@@ -5780,7 +5793,7 @@ function renderList(main, db, items, ctx) {
     const sec = el('section', { class: 'list-group' + (shut ? ' shut' : ''), dataset: { key: node.key, depth: String(depth) }, 'aria-label': node.key });
     const body = node.groups
       ? node.groups.map((g) => groupEl(g, depth + 1))
-      : [...node.items.flatMap((i) => rowEls(i, node.path)), addEl(node.path)];
+      : [...cappedEls(node.items, listCore.LIST_CAP, (i) => rowEls(i, node.path), (shown, all) => listCore.moreLabel({ shown, all, cap: listCore.LIST_CAP, term: db.term })), addEl(node.path)];
     sec.append(
       el('div', { class: 'list-group-head', style: `--level:${depth}` },
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
@@ -5798,7 +5811,7 @@ function renderList(main, db, items, ctx) {
     ...sumCols.flatMap((c) => rollupCells(from?.rollups, c).map((x) => el('span', { class: 'list-sum-stat' }, `${c} ${FOOT_LABELS[x.agg]} ${x.text}`))));
   const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
   if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
-  else { list.append(...arranged.items.flatMap((i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
+  else { list.append(...cappedEls(arranged.items, listCore.LIST_CAP, (i) => rowEls(i, []), (shown, all) => listCore.moreLabel({ shown, all, cap: listCore.LIST_CAP, term: db.term })), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
   if (arranged.completed?.count) {
     const c = arranged.completed;
     const shut = listCore.isCollapsed(collapsed, c.key);
@@ -5808,7 +5821,7 @@ function renderList(main, db, items, ctx) {
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${c.key}`, onclick: () => fold(sec, c.key) }, lucideEl('chevron-right')),
         el('span', { class: 'list-group-label' }, c.label),
         el('span', { class: 'list-count' }, String(c.count))),
-      el('div', { class: 'list-group-body' }, ...c.items.flatMap((i) => rowEls(i, null))));
+      el('div', { class: 'list-group-body' }, ...cappedEls(c.items, listCore.LIST_CAP, (i) => rowEls(i, null), (shown, all) => listCore.moreLabel({ shown, all, cap: listCore.LIST_CAP, term: db.term }))));
     sec.wvItems = c.items;
     list.append(sec);
   }
@@ -6098,7 +6111,7 @@ function renderBoard(main, db, items, ctx) {
   };
   const cardsEl = (node, completed) => {
     const items = node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; });
-    const cards = el('div', { class: 'board-cards', role: 'list' }, ...items.map((i) => tileEl(i, completed ? null : node.path)));
+    const cards = el('div', { class: 'board-cards', role: 'list' }, ...cappedEls(items, listCore.BOARD_CAP, (i) => [tileEl(i, completed ? null : node.path)], (shown, all) => listCore.moreLabel({ shown, all, cap: listCore.BOARD_CAP, term: db.term })));
     cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
     return cards;
   };
