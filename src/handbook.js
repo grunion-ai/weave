@@ -2609,6 +2609,7 @@ A list holds things to finish, in an order you set; a table holds records to com
 | A sort | Orders rows inside each group. The handle still moves rows between groups and nests them; clearing the sort brings the saved order back. |
 | The add row | Ends each innermost group. A row added there takes every group value and every filter that names one value; type the date in its own box (\`today\`, \`fri\`, \`oct 12\`). |
 | A filter | Runs first. Matching ticked rows still go to Completed. A sub-row that matches keeps its parent on screen, dimmed and not counted. Empty groups show only with no filter on. |
+| Past 200 rows | Each group, and the Completed section, draws its first 200 rows and ends with **Show 200 more \u00b7 200 of 3,980 rows**, which adds the next 200 in place. The Board layout draws 40 cards a column and extends the same way (Issue #1266). |
 
 The footer counts what shows: **3 of 8 to-dos · 1 completed**.
 
