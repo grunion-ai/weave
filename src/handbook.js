@@ -2560,7 +2560,7 @@ Search is temporary: it is not saved into a view or shared with other people, an
 
 ## Board layout
 
-The Board layout displays each record as a card. Groups can sit side by side as columns or stack vertically as a gallery. Collapse a group with its chevron: a column becomes a narrow rail with its label and count; a stacked group keeps its header. The view remembers these folds. Two grouping levels in a side-by-side layout produce columns and collapsible swimlanes.
+The Board layout displays each record as a card. Groups can sit side by side as columns or stack vertically as a gallery. Collapse a group with its chevron: a column becomes a narrow rail with its label and count; a stacked group keeps its header. The view remembers these folds. Two grouping levels in a side-by-side layout produce columns and collapsible swimlanes. A stacked layout nests them instead: each level gets its own header and count, and the cards sit in the innermost group.
 
 Density changes the padding and spacing inside cards. Picture size remains a separate setting. Hover or focus a card to pick it for comparison; the checkbox has its own space beside the title. Drag a card into a group to change its grouped value, then use Undo to restore it.
 

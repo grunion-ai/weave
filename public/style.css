@@ -2371,7 +2371,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .board-group { display: grid; gap: 10px; align-content: start; min-width: 0; }
 .wv-board[data-groups="side"] > .board-group { flex: 0 0 var(--col-w); width: var(--col-w); box-sizing: border-box; padding: 8px; border-radius: 8px; background: var(--tblr-bg-surface-secondary); }
 .board-group-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; }
-.board-group.shut > .board-cards { display: none; }
+.board-group.shut > :is(.board-cards, .board-nest) { display: none; }
+.board-nest { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.board-nest > .board-group { padding-left: 12px; }
 .board-group.shut .list-fold svg { transform: none; }
 .wv-board[data-groups="side"] > .board-group.shut { flex-basis: 48px; width: 48px; min-height: 160px; }
 .wv-board[data-groups="side"] > .board-group.shut > .board-group-head { flex-direction: column; align-items: center; }
