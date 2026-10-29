@@ -2361,6 +2361,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .list-add .form-control:focus { border-color: var(--tblr-border-color); background: var(--tblr-bg-forms, var(--tblr-bg-surface)); }
 .list-add-name { flex: 1; min-width: 0; }
 .list-add-date { width: 9rem; flex: none; }
+@media (pointer: coarse) {
+  .list-add .list-add-name { min-height: 44px; }
+}
 .list-completed > .list-group-head { color: var(--tblr-secondary); }
 .list-footer { padding: 8px 12px; border-top: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: var(--fs-secondary); font-variant-numeric: tabular-nums; }
 .board-wrap { --board-pad-y: 8px; --board-pad-x: 10px; --board-gap: 6px; overflow: visible; min-width: 0; }

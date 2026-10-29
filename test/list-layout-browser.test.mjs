@@ -50,6 +50,15 @@ if (s) {
     await page.waitForSelector('.wv-list .list-row');
     return page;
   };
+  const phone = async (theme = 'light') => {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, colorScheme: theme });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.errors = errors;
+    await page.goto(`${base}/#/table/${todo.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.wv-list .list-add .list-add-name');
+    return page;
+  };
   const view = () => weave.tableView(`${todo.id}/Standard`);
   const valueOf = (id, f) => weave.readEntity(id).fields[f];
   const rowsIn = (page, key) => page.$$eval(`.list-group[data-key="${key}"] .list-row`, (rs) => rs.map((r) => r.querySelector('.list-title').textContent.trim()));
@@ -224,6 +233,18 @@ if (s) {
     const over = { r: fg.r * alpha + bg.r * (1 - alpha), g: fg.g * alpha + bg.g * (1 - alpha), b: fg.b * alpha + bg.b * (1 - alpha) };
     const [hi, lo] = [lum(over), lum(bg)].sort((x, y) => y - x);
     return { text: label.textContent, alpha: Number(alpha.toFixed(3)), ratio: Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100 };
+  });
+
+  test('on a phone the add-row name field keeps a 44 px hit area in both themes (Issue #1169)', async () => {
+    seed();
+    for (const theme of ['light', 'dark']) {
+      const page = await phone(theme);
+      try {
+        const box = await page.locator('.wv-list .list-add .list-add-name').first().boundingBox();
+        assert.ok(box.height >= 44, `${theme}: the add-row name field is ${box.height} px tall, under the 44 px minimum`);
+        assert.deepEqual(page.errors, []);
+      } finally { await page.close(); }
+    }
   });
 
   test('every shown field label reads 4.5:1 against the list row in both themes (Issue #1096)', async () => {
