@@ -1,10 +1,10 @@
 # weave documentation
 
 [weave](https://github.com/grunion-ai/weave) is an open-source, self-hosted
-alternative to Airtable, Fibery, Notion databases, and ClickUp, built so that AI
-agents are first-class users. Start at the
-[project README](https://github.com/grunion-ai/weave#readme) — it covers what
-weave is, the quickstart, self-hosting, and the FAQ.
+work database for people and AI agents, and an alternative to Airtable, Fibery,
+Notion databases and ClickUp. Start at the
+[project README](https://github.com/grunion-ai/weave#readme), which covers what
+weave is, the quickstart, self-hosting and the FAQ.
 
 ## In this directory
 
@@ -16,7 +16,7 @@ weave is, the quickstart, self-hosting, and the FAQ.
 | [weave vs Airtable](comparison/airtable.md) | Concept mapping, field types, what wins where, how to migrate |
 | [weave vs Fibery](comparison/fibery.md) | The closest model to weave's, and the honest gaps |
 | [Open-source alternatives compared](comparison/alternatives.md) | weave against NocoDB, Baserow, Grist, and Teable |
-| [Screenshots](screenshots/) | Table, entity documents, docked entity, relation map, search. Regenerate with `node scripts/screenshots.mjs` |
+| [Screenshots](screenshots/) | Table, board, phone, entity documents, docked entity, relation map, search. Regenerate with `node scripts/screenshots.mjs` |
 
 ## Elsewhere in the repo
 

@@ -1,10 +1,11 @@
 # weave
 
-> An open-source, self-hosted alternative to Airtable, Fibery, Notion databases,
-> and ClickUp, in which AI agents are first-class users. Connected tables,
-> bidirectional relations, workflow states, lookups, rollups, formulas,
-> automations, and per-entity markdown documents. One SQLite file, zero runtime
-> dependencies, no build step, MIT licensed.
+> weave is an open-source, self-hosted work database for people and AI agents,
+> and an alternative to Airtable, Fibery, Notion databases and ClickUp. Connected
+> tables, bidirectional relations, workflow states, lookups, rollups, formulas,
+> automations, kanban layouts, forms and markdown documents on every row. People
+> use the web UI; agents use the built-in MCP server, REST API or CLI on the same
+> engine. One SQLite file, zero runtime dependencies, no build step, MIT licensed.
 
 weave runs as a single Node process over a single `.db` file. Everything the web
 UI can do is also available over a REST API, a scriptable CLI, and a built-in
@@ -13,8 +14,9 @@ configuration choice: field types and their options, colors, icons, column width
 and order, hidden columns, saved views, automations. `weave_vocabulary`
 (`GET /api/vocabulary`, `weave vocabulary`) returns every value those settings
 accept and what each looks like on screen, so an agent configures a workspace
-without a human and without guessing. There is no cloud, no signup, and no
-telemetry. A hosted instance signs people in through one OpenID Connect provider
+without a human and without guessing. A local install needs no account and
+sends no telemetry; weave cloud at https://weave.grunion.ai runs the same code
+behind a sign-in. A hosted instance signs people in through one OpenID Connect provider
 and agents through `wv_` tokens; with a provider configured, `/mcp` is an
 OAuth 2.1 protected resource, so `claude mcp add --transport http weave https://<host>/mcp`
 signs an agent in through the browser. A local install binds loopback.
@@ -40,5 +42,5 @@ is nothing to build and nothing to install from npm.
 
 ## Optional
 
-- [Screenshots](https://github.com/grunion-ai/weave/tree/main/docs/screenshots): table, entity documents, docked entity, relation map, search
+- [Screenshots](https://github.com/grunion-ai/weave/tree/main/docs/screenshots): table, kanban layout, phone, entity documents, docked entity, relation map, search
 - [License](https://github.com/grunion-ai/weave/blob/main/LICENSE): MIT
