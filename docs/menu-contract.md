@@ -46,7 +46,7 @@ Share… keeps its current place while its redesign is parked.
 
 ## Delete
 
-Every delete row is `trashRow`, labelled **Move to trash**. One click moves the object to the trash and raises a **Moved to trash** toast with **Undo**. Undo calls the kind's restore route and puts the object back where it was.
+Every delete row is `trashRow`, labelled **Move to trash** with a **HOLD** hint. Holding the row until its fill sweeps across moves the object to the trash and raises a **Moved to trash** toast with **Undo**; a click deletes nothing (Feature #346). Undo calls the kind's restore route and puts the object back where it was.
 
 | Kind | Trash | Undo | Back where it was |
 | --- | --- | --- | --- |
@@ -56,7 +56,9 @@ Every delete row is `trashRow`, labelled **Move to trash**. One click moves the 
 | Share page | `DELETE /api/views/:id` | `POST /api/views/:id/restore` | its row on the workspace page; reopens if it was open |
 | Field | `DELETE /api/tables/:table/fields/:field` | `POST /api/tables/:table/fields/:field/restore` | its column, with its values |
 
-The multi-select toolbar trash uses the same verb, `TRASHED`, and the same Undo; its toast adds the count.
+The multi-select toolbar trash is a hold too, uses the same verb, `TRASHED`, and the same Undo; its toast adds the count.
+
+Every other control that sends a DELETE is a hold as well: Delete workspace in Settings, Revoke on a share link and on an invite, Delete link in the Share panel, Remove logo, the Views list delete and Delete forever. `test/menu-contract.test.mjs` counts the DELETE call sites in the app and fails until a new one is a hold.
 
 A hold is for permanent delete only. The builder keeps `hold: true` rows for it, and no kind's definition uses one. **Delete forever** lives in Settings (`#/settings`, Feature #295): a typed name arms the builder's hold row, and the Trash page only restores.
 

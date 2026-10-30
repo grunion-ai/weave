@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, hold } from './lib/browser.mjs';
 
 const s = await launch('system space menu', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -22,7 +22,7 @@ if (s) {
     await page.waitForSelector('.view-header .dots-btn');
     await page.click('.view-header .dots-btn');
     await page.waitForSelector('.wv-menu[role="menu"]');
-    const items = await page.locator('.wv-menu .wv-menu-row').allTextContents();
+    const items = await page.locator('.wv-menu .wv-menu-row').evaluateAll((rs) => rs.map((r) => (r.querySelector('.wv-menu-label, .hold-label') ?? r).textContent));
     return { page, items };
   }
 
@@ -59,12 +59,12 @@ if (s) {
       await page.close();
     });
 
-    test(`${theme}: a user space offers only Move to trash, one click with no hold (Feature #296, D6)`, async () => {
+    test(`${theme}: a user space offers only Move to trash, behind a hold (Feature #296, Feature #346)`, async () => {
       const { page, items } = await openMenu(user.id, theme);
       assert.ok(!items.some((t) => /Export .*\.csv/.test(t)), `no per-table export: ${items}`);
       assert.equal(await page.locator('.wv-menu .wv-menu-sep').count(), 0, 'no divider');
       assert.deepEqual(items.map((t) => t.trim()), ['Move to trash'], 'one row');
-      assert.equal(await page.locator('.wv-menu .hold-btn').count(), 0, 'no hold-to-delete');
+      assert.equal(await page.locator('.wv-menu .hold-btn').count(), 1, 'hold to delete');
       assert.equal(await page.locator('.wv-menu .wv-menu-row.wv-menu-danger').count(), 1, 'the row reads as destructive');
       await page.close();
     });

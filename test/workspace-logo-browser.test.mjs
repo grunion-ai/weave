@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch } from './lib/browser.mjs';
+import { launch, hold } from './lib/browser.mjs';
 
 const svg = (fill) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="${fill}"/></svg>`);
 const logoOf = (weave) => weave.state.meta.logo ? weave.getWorkspaceLogo().bytes.toString() : null;
@@ -68,7 +68,7 @@ if (s) {
     });
   }
 
-  test('a workspace without a logo shows its letter; the logo adds one and Remove logo clears it (Feature #296)', async () => {
+  test('a workspace without a logo shows its letter; the logo adds one and holding Remove logo clears it (Feature #296, Feature #346)', async () => {
     const page = await open(`/w/${blank.state.meta.id}/`);
     try {
       await page.waitForSelector('#main .ws-logo-pick');
@@ -80,7 +80,11 @@ if (s) {
       await page.waitForSelector('#main .ws-logo-pick img');
       assert.match(logoOf(blank), /gold/);
       await page.hover('#main .ws-logo');
-      await page.click('#main .ws-logo-clear');
+      const clear = page.locator('#main .ws-logo-clear');
+      assert.equal(await clear.evaluate((n) => getComputedStyle(n).position), 'absolute', 'the hold keeps Remove pinned to the logo corner');
+      await clear.click();
+      assert.match(logoOf(blank), /gold/, 'a click alone keeps the logo');
+      await hold(clear);
       await page.waitForFunction(() => !document.querySelector('#main .ws-logo-pick img'));
       assert.equal(logoOf(blank), null, 'the server no longer holds a logo');
       assert.equal((await page.locator('#main .ws-logo-pick').textContent()).trim(), 'B');

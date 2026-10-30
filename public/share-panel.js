@@ -10,7 +10,7 @@
     if (value !== 'custom' || !Number.isFinite(stamp) || stamp <= Date.now()) throw new Error('Choose an expiration in the future.');
     return { expiresAt: new Date(stamp).toISOString() };
   }
-  function mount(pane, context, { el, icon, api, copy, notify, close, confirm }) {
+  function mount(pane, context, { el, icon, api, copy, notify, close, confirm, hold }) {
     let links = [], editing = null, busy = false, alive = true;
     const snapshot = scope(context);
     const scopeName = snapshot.kind === 'entities' ? `${snapshot.ids.length} selected entries` : `Entire ${context.kind}: ${context.name}`;
@@ -54,10 +54,9 @@
             action('Preview link', 'eye', () => window.open(`${url(link)}?preview=1`, '_blank', 'noopener,noreferrer')),
             action('Copy link', 'copy', () => copy(url(link), 'Link copied')),
             action('Edit link', 'pencil', () => edit(link)),
-            !link.revokedAt ? action('Delete link', 'trash-2', async () => {
-              if (!await confirm('Delete link?', 'Anyone using this link will lose access. Entries stay in weave.')) return;
+            !link.revokedAt ? hold('Delete link', 'trash-2', () => perform(async () => {
               await api('DELETE', `/shares/${link.id}`); editing = null; editor.replaceChildren(); add.hidden = false; await refresh();
-            }) : null),
+            })) : null),
           inactive ? el('small', { class: 'share-note' }, 'This link no longer opens shared content.') : null);
       }));
       if (!links.length) list.append(el('p', { class: 'share-note' }, 'No links yet.'));

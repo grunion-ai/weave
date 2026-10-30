@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, hold } from './lib/browser.mjs';
 
 let bugs;
 const s = await launch('trash optimistic', (weave) => {
@@ -37,7 +37,7 @@ if (s) {
   };
   const pressTrash = async (page, ids) => {
     for (const id of ids.slice(1, 3)) await page.locator(`${ROW}[data-eid="${id}"] .sel-box`).check();
-    await page.locator('.sel-puck .sel-act.danger').click();
+    await hold(page.locator('.sel-puck .sel-act.danger'));
   };
   const trashToast = (page) => page.locator('.wv-toast', { hasText: 'Moved to trash' }).last();
 

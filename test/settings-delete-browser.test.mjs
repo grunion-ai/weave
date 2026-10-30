@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, hold } from './lib/browser.mjs';
 
 let notes;
 let scratch;
@@ -79,7 +79,7 @@ if (s) {
   }
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: Settings deletes a workspace from its own dialog once the name is typed, and Trash restores it (Issue #1171)`, async () => {
+    test(`${theme}: Settings deletes a workspace from its own dialog once the name is typed and the hold runs out, and Trash restores it (Issue #1171, Feature #346)`, async () => {
       const page = await open('#/settings', theme);
       try {
         await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
@@ -97,10 +97,12 @@ if (s) {
         assert.equal((await page.textContent('#modal h2')).trim(), 'Delete workspace');
         assert.match(await page.textContent('#modal'), /scratch/, 'the dialog names the workspace');
         const input = page.locator('#modal input[name="confirm"]');
-        const go = page.locator('#modal button[type="submit"]');
+        const go = page.locator('#modal .ws-delete-go');
         assert.equal(await page.evaluate(() => document.activeElement?.name), 'confirm', 'the name box takes focus');
         assert.equal((await go.textContent()).trim(), 'Delete workspace');
         assert.match(await go.getAttribute('class'), /\bbtn-danger\b/, 'Delete is drawn as a danger button from the start');
+        assert.match(await go.getAttribute('class'), /\bhold-btn\b/, 'and it is a hold');
+        assert.equal(await page.locator('#modal button[type="submit"]').count(), 0, 'no submit button deletes on a click');
         assert.ok(await go.isDisabled(), 'Delete is off until the name is typed');
         await input.fill('scratc');
         assert.ok(await go.isDisabled(), 'a partial name keeps it off');
@@ -120,7 +122,11 @@ if (s) {
         await openDialog();
         await input.fill('scratch');
         assert.ok(await go.isEnabled(), 'the exact name turns Delete on');
+        await input.press('Enter');
         await go.click();
+        assert.ok(await page.locator('#modal').isVisible(), 'Enter and a click delete nothing without the hold');
+        assert.ok(await live(), 'the workspace is still live');
+        await hold(go);
         await page.locator('#modal').waitFor({ state: 'detached' });
         await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
         assert.equal(await live(), false, 'the workspace left the live list');
@@ -139,7 +145,7 @@ if (s) {
       await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
       await page.locator('#main .settings-workspaces .ws-delete-open').click();
       await page.locator('#modal input[name="confirm"]').fill('scratch');
-      await page.locator('#modal button[type="submit"]').click();
+      await hold(page.locator('#modal .ws-delete-go'));
       await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
       await page.click('#sidebar .nav-system a[href="#/trash"]');
       await page.locator('#main .trash-workspaces button', { hasText: 'Restore' }).click();
