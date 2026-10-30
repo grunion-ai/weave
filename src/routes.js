@@ -6,7 +6,7 @@ import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
-import { handleMcpMessage, mayAdminister, toolTable } from './mcp.js';
+import { handleMcpMessage, mayAdminister, toolTable, QUERY_PAGE } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage, renderMcpDoorPage, sameOriginPath } from './auth-page.js';
@@ -1926,7 +1926,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(201, { ...weave.readEntity(e.id, { viewerZone }), ...secret });
           }
           if (rx.method === 'GET') {
-            const limit = boundedLimit(rx.searchParams.get('limit'));
+            const limit = boundedLimit(rx.searchParams.get('limit'), QUERY_PAGE);
             const offset = Number(rx.searchParams.get('offset') ?? 0);
             return out(200, weave.query(m[1], { limit, offset, viewerZone, workspace: member.state.meta.id }));
           }
@@ -1935,8 +1935,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, prefillDraft(weave, m[1], rx.searchParams));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && rx.method === 'POST') {
-          if (body?.limit != null) body.limit = boundedLimit(body.limit);
-          return out(200, weave.query(m[1], { ...body, viewerZone, workspace: member.state.meta.id }));
+          const limit = body?.limit == null ? QUERY_PAGE : boundedLimit(body.limit);
+          return out(200, weave.query(m[1], { ...body, limit, viewerZone, workspace: member.state.meta.id }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/formula-check$/)) && rx.method === 'POST') {
           return out(200, weave.checkFormula(m[1], body?.expression, { entity: body?.entity ?? null, excludeField: body?.excludeField ?? null, scan: Boolean(body?.scan) }));

@@ -4,6 +4,7 @@ import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
+export const QUERY_PAGE = 200;
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 const seal = (text) => text.replace(/<(?=\/?weave_data)/gi, '\\u003c');
@@ -71,7 +72,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_query',
-    description: 'Query entities in a table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
+    description: 'Query entities in a table. 200 rows a page: `total` counts every match, `nextOffset` is the next page\'s `offset` while rows remain, `limit: -1` reads the whole table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -82,7 +83,7 @@ export const TOOLS = [
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
         fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
-        relations: { type: 'string', enum: ['full', 'chip'], description: 'chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). Default full: every row embeds its related rows\' summaries.' },
+        relations: { type: 'string', enum: ['full', 'chip'], description: 'Default chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). full: every row embeds its related rows\' summaries.' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
         countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted rows before where and search' },
@@ -561,7 +562,7 @@ export const SUMMARY = {
   weave_build: 'spaces, tables, fields, relations and rows in one call (dryRun checks)',
   weave_ontology: 'short schema: outline, one table, changes',
   weave_schema: 'the full schema as JSON',
-  weave_query: 'rows of one table, filtered (where), sorted, paged',
+  weave_query: 'rows of one table, filtered (where), sorted, 200 a page',
   weave_get_entity: 'one row in full: values, document, comments, activity',
   weave_search: 'find rows, tables and spaces by text; each hit has a permalink',
   weave_create_entity: 'create one row',
@@ -760,8 +761,8 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.describeSchema();
     case 'weave_query':
       return weave.query(args.db, {
-        where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
-        offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'full',
+        where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? QUERY_PAGE,
+        offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'chip',
         includeDeleted: args.includeDeleted == null ? null : Boolean(args.includeDeleted),
         trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
         groupBy: args.groupBy ?? null,
