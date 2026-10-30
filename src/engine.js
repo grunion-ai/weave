@@ -7533,14 +7533,15 @@ export class Weave {
     }
     const total = rows.length;
     const groups = grouped ? this.#viewGroups(db, grouped, rows, { showEmpty: grouped.layout === 'list' && !grouped.hideEmpty && !filtered && !String(search ?? '').trim() }) : null;
-    rows = rows.slice(offset, limit != null ? offset + limit : undefined);
+    rows = rows.slice(offset, limit == null || limit < 0 ? undefined : offset + limit);
+    const nextOffset = rows.length && offset + rows.length < total ? offset + rows.length : null;
     const items = rows.map((e) => {
       if (!select) return this.#readEntityIn(e.id, { pick, chips });
       const out = { id: e.id, publicId: e.publicId, name: this.entityName(e) };
       for (const path of select) out[path] = this.#pathValue(e, db, path);
       return out;
     });
-    return { total, items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}), ...(groups ?? {}) };
+    return { total, ...(nextOffset != null ? { nextOffset } : {}), items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}), ...(groups ?? {}) };
   }
 
   #groupFieldShape(f) {

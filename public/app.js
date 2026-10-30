@@ -4483,7 +4483,7 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
     ...(search ? { search } : {}),
-    ...(whole ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
+    ...(whole ? { limit: -1 } : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
     ...(group ? { groupBy: db.view.id } : {}),
     includeDeleted: showDeleted,
     fields: gridFields(db),
@@ -5594,7 +5594,7 @@ async function readAndDrawList(db, dbId, search) {
   const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
     ...(board ? [...boardCardFields(db).map((f) => f.name), boardCore.coverField(db)?.name] : []),
     ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
-  const base = { fields: [...new Set(names)], relations: 'chip' };
+  const base = { fields: [...new Set(names)], relations: 'chip', limit: -1 };
   const filtered = !!(where || search);
   const showDeleted = !board && showsDeleted(db);
   const sums = !board && showsRollups(db);
@@ -7438,7 +7438,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const stale = fresh.affected.filter((x) => x !== fresh.id && at(x) >= 0);
     const rows = [fresh];
     if (stale.length) {
-      const read = await api('POST', `/tables/${db.id}/query`, { where: [['id', 'in', [fresh.id, ...stale]]] });
+      const read = await api('POST', `/tables/${db.id}/query`, { where: [['id', 'in', [fresh.id, ...stale]]], limit: -1 });
       rows.push(...read.items.filter((r) => r.id !== fresh.id));
     }
     for (const item of rows) {
@@ -8792,7 +8792,7 @@ async function showSpace(spaceId) {
     };
     const onAdd = () => tableTray({ spaceId, after: () => showSpace(spaceId) });
     await schemaDisclosure(main, async (body) => {
-      const res = await api('POST', `/tables/${reg.id}/query`, {});
+      const res = await api('POST', `/tables/${reg.id}/query`, { limit: -1 });
       const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
       renderTable(body, reg, items, onSaved, onAdd);
     });
@@ -10886,7 +10886,7 @@ function tableTray({ spaceId = null, after = null } = {}) {
     await loadSchema();
     if (!after) { location.hash = `#/table/${made.id}`; return; }
     const reg = registryTable('tables');
-    const rows = reg ? (await api('POST', `/tables/${reg.id}/query`, {})).items : [];
+    const rows = reg ? (await api('POST', `/tables/${reg.id}/query`, { limit: -1 })).items : [];
     const row = rows.find((i) => i.sysId === made.id);
     await after();
     if (row) focusNewRow(row.id, { field: 'Name' });
@@ -11409,7 +11409,7 @@ async function showHome() {
       } catch (err) { toast(err.message, true); }
     };
     await schemaDisclosure(main, async (body) => {
-      const res = await api('POST', `/tables/${reg.id}/query`, {});
+      const res = await api('POST', `/tables/${reg.id}/query`, { limit: -1 });
       renderTable(body, reg, mineOnly(res.items), onSaved, onAdd);
     });
   }

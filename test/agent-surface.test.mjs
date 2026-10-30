@@ -314,7 +314,8 @@ test('every query option reaches every door', () => {
     if (!CLI_EXEMPT[k]) assert.ok(cliBlock.includes(`${k}:`), `weave query lacks --${k}`);
   }
   assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
-  assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, viewerZone, workspace: member\.state\.meta\.id \}\)/, 'POST /api/tables/:ref/query passes its body through, scoped to the asking workspace (Issue #875)');
+  assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, limit, viewerZone, workspace: member\.state\.meta\.id \}\)/, 'POST /api/tables/:ref/query passes its body through, scoped to the asking workspace (Issue #875)');
+  assert.match(ROUTES, /const limit = body\?\.limit == null \? QUERY_PAGE : boundedLimit\(body\.limit\);/, 'a query body that names no limit gets the default page, not the whole table (Issue #1267)');
 });
 
 test('every door emits the one permalink a row has, and no door builds its own (Feature #203)', async () => {

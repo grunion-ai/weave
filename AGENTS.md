@@ -76,7 +76,7 @@ workspace file (see
 | Build | `weave_build` | spaces, tables, fields, relations and rows in one call (dryRun checks) |
 | Read and search | `weave_ontology` | short schema: outline, one table, changes |
 |  | `weave_schema` | the full schema as JSON |
-|  | `weave_query` | rows of one table, filtered (where), sorted, paged |
+|  | `weave_query` | rows of one table, filtered (where), sorted, 200 a page |
 |  | `weave_get_entity` | one row in full: values, document, comments, activity |
 |  | `weave_search` | find rows, tables and spaces by text; each hit has a permalink |
 | Write rows | `weave_create_entity` | create one row |
