@@ -259,7 +259,7 @@ test('workflows: tests takes a ref input for bisect probes and the sheriff answe
   assert.match(tests, /workflow_dispatch:\n    inputs:\n      ref:/);
   assert.match(tests, /run-name: \$\{\{ inputs\.ref && format\('tests at \{0\}', inputs\.ref\) \|\| '' \}\}/);
   assert.equal(tests.split('ref: ${{ inputs.ref || github.sha }}').length - 1, 3);
-  assert.match(tests, /group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}-\$\{\{ inputs\.ref \}\}/);
+  assert.match(tests, /group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}-\$\{\{ inputs\.ref \|\| github\.sha \}\}/);
   assert.match(tests, /workflow_dispatch' && !inputs\.ref\)/);
   const yml = readFileSync('.github/workflows/sheriff.yml', 'utf8');
   assert.match(yml, /workflow_run:[^\n]*\n    workflows: \[tests\]\n    types: \[completed\]\n    branches: \[main\]/);
