@@ -45,8 +45,13 @@ if (s) {
     try {
       const tile = page.locator('#ws-list .ws-icon[title^="bandito "]');
       assert.equal(await tile.count(), 0, 'another workspace is absent without its own session or an identity provider');
-      await page.goto(`http://net.localhost:${port}/api/auth/open/bandito`);
-      await page.waitForURL((u) => u.hostname === 'bandito.localhost' && u.pathname === '/auth');
+      const denied = await page.goto(`http://net.localhost:${port}/api/auth/open/bandito`);
+      assert.equal(new URL(page.url()).hostname, 'bandito.localhost');
+      assert.equal(denied.status(), 401);
+      assert.match(await page.textContent('body'), /This workspace requires authentication/);
+      assert.equal(await page.locator('#ws-name').count(), 0);
+      const schema = await page.request.get(`http://bandito.localhost:${port}/api/schema`);
+      assert.equal(schema.status(), 401);
       const there = await ctx.cookies(`http://bandito.localhost:${port}`);
       assert.equal(there.some((c) => c.name.startsWith('wv_session_')), false, 'no session is minted from the other workspace architect');
     } finally { await ctx.close(); }
