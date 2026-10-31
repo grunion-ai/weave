@@ -77,11 +77,13 @@ test('no credentials: the list and search ?all=1 leave out a walled workspace', 
 });
 
 test('reader and writer cannot create or manage an unrelated protected workspace', async () => {
-  const { call, reader, writer } = build();
-  for (const token of [reader, writer]) {
+  const { call, reader, writer, hub, secret } = build();
+  for (const [token, denied] of [[reader, 403], [writer, 401]]) {
     assert.equal((await call('POST', '/api/workspaces', { token, body: { name: 'x' } })).status, 403);
-    assert.equal((await call('DELETE', '/api/workspaces/secret', { token })).status, 401);
-    assert.equal((await call('POST', '/api/workspaces/secret/restore', { token })).status, 401);
+    assert.equal((await call('DELETE', '/api/workspaces/secret', { token })).status, denied);
+    assert.equal((await call('POST', '/api/workspaces/secret/restore', { token })).status, denied);
+    assert.ok(!secret.state.meta.deletedAt);
+    assert.equal(hub.get('x'), null);
   }
 });
 

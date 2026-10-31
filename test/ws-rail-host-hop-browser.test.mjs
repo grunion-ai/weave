@@ -44,8 +44,9 @@ if (s) {
     const { ctx, page } = await signedInOnNet({ memberSession: false });
     try {
       const tile = page.locator('#ws-list .ws-icon[title^="bandito "]');
-      assert.equal(await tile.evaluate((n) => n.classList.contains('ws-held')), true, 'a remembered workspace still requires its own sign-in');
-      await Promise.all([page.waitForURL((u) => u.hostname === 'bandito.localhost' && u.pathname === '/auth'), tile.click()]);
+      assert.equal(await tile.count(), 0, 'another workspace is absent without its own session or an identity provider');
+      await page.goto(`http://net.localhost:${port}/api/auth/open/bandito`);
+      await page.waitForURL((u) => u.hostname === 'bandito.localhost' && u.pathname === '/auth');
       const there = await ctx.cookies(`http://bandito.localhost:${port}`);
       assert.equal(there.some((c) => c.name.startsWith('wv_session_')), false, 'no session is minted from the other workspace architect');
     } finally { await ctx.close(); }

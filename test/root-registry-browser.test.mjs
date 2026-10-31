@@ -69,10 +69,12 @@ if (s) {
       await page.goto(`${unoBase()}/`, { waitUntil: 'networkidle' });
       const users = uno.getTable('System/Users');
       await page.click(`#sidebar .nav-system a[href="#/table/${users.id}"]`);
-      await page.locator('#main .wv-grid tbody tr', { hasText: 'member-person' }).waitFor();
-      const text = await page.locator('#main').innerText();
-      assert.match(text, /member-person/);
-      assert.doesNotMatch(text, /root-person/);
+      const member = uno.findEntity(users.id, 'member-person');
+      const name = page.locator(`#main .wv-grid tr[data-eid="${member.id}"] td[data-field="Name"] input`);
+      await name.waitFor();
+      assert.equal(await name.inputValue(), 'member-person');
+      const names = await page.locator('#main .wv-grid tbody td[data-field="Name"] input').evaluateAll(inputs => inputs.map(input => input.value));
+      assert.deepEqual(names, ['member-person']);
       assert.equal(new URL(page.url()).pathname, `/w/${uno.state.meta.id}/`);
       await page.close();
     });
