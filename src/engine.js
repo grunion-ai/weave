@@ -3455,7 +3455,7 @@ export class Weave {
   workspaceOrder() {
     const reg = this.#reg;
     const t = reg.#sysTable('workspaces');
-    if (!t) throw new WeaveError('This file holds no workspace registry: order workspaces on the hub root', 'invalid');
+    if (!t) throw new WeaveError('This file holds no local workspace registry; migrate its legacy registry before ordering workspaces', 'invalid');
     const rank = new Map((reg.state.meta.workspaceOrder ?? []).map((id, i) => [id, i]));
     return reg.listEntities(t.id).filter((r) => r.sysId)
       .map((r, i) => ({ id: r.sysId, name: reg.entityName(r), i }))
@@ -4943,7 +4943,7 @@ export class Weave {
       if (!this.#sysField(usersT, n)) this.addField(usersT.id, { name: n, type, config }).system = true;
     }
     const wsT = this.#sysTable('workspaces')
-      ?? mkTable('Workspaces', 'workspaces', 'Every workspace this weave serves, as a row: the hub root and every member workspace. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted from the hub, not as rows.');
+      ?? mkTable('Workspaces', 'workspaces', 'This workspace as a row. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted through the hub, not as rows.');
     for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });

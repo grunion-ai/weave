@@ -83,7 +83,7 @@ const sysTable = (reg, kind) => Object.values(reg.state.tables).find((t) => t.sy
 
 function formsTable(w) {
   const t = sysTable(registryOf(w), 'forms');
-  if (!t) throw new WeaveError('This workspace has no System/Forms registry here: forms live at the hub root', 'not-found');
+  if (!t) throw new WeaveError('This workspace has no System/Forms registry; migrate its legacy registry before managing forms', 'not-found');
   return t;
 }
 
