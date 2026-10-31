@@ -156,7 +156,7 @@ if (s) {
   });
 
   test('dragging the context pane gutter pins its width, the width survives a reload, and a double-click resets it (Feature #348)', async () => {
-    const p = await page(`#/table/${tableId}?e=${rowId}&side=activity`);
+    const p = await page(`#/table/${tableId}?e=${rowId}&side=activity`, 1600);
     try {
       await p.waitForSelector('#side:not([hidden]) aside.wv-activity');
       const g = await p.locator('#side-gutter').boundingBox();
