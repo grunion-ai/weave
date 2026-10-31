@@ -806,7 +806,7 @@
     if (s.data.template && !TEMPLATES.some((t) => t.id === s.data.template)) s.data.template = null;
     saveDraft();
 
-    globalThis.WeaveConsent?.start(me.analytics);
+    try { globalThis.WeaveConsent?.start(me.analytics); } catch (err) { console.warn('analytics did not start', err); }
     render();
     if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');
   }
