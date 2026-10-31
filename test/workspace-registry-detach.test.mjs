@@ -112,6 +112,13 @@ test('shared keys and credential reveal are restricted to the owning workspace',
   assert.equal(a.revealKey('shared'), 'private-value');
   b.actor = `account:${outsider.id}`;
   assert.deepEqual(b.listKeys(), []);
+  assert.equal(a.hasKey('shared'), true);
+  assert.equal(b.hasKey('shared'), false);
+  b.createSpace({ name: 'Dev' });
+  b.createTable({ space: 'Dev', name: 'Service' });
+  b.addField('Service', { name: 'Credential', type: 'key' });
+  const row = b.createEntity('Service', { name: 'Service', values: { Credential: 'shared' } });
+  assert.match(b.readEntity(row.id).fields.Credential, /\(unset\)/);
   assert.throws(() => b.revealKey('shared'), /not shared/);
   assert.throws(() => b.resolveKey('shared'), /another workspace/);
   assert.throws(() => b.setKey('shared', 'replacement'), /Only/);

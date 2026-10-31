@@ -3701,7 +3701,8 @@ export class Weave {
   }
 
   hasKey(name) {
-    return Object.hasOwn(this.#readKeystore().keys, name);
+    const entry = own(this.#readKeystore().keys, name);
+    return !!entry && (this.#keyInWorkspace(entry) || this.#localKeys());
   }
 
   listKeys() {
