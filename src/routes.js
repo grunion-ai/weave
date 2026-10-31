@@ -1400,7 +1400,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (template) {
               try {
                 const spec = WeaveStarters.spec(template);
-                const done = w.build(spec);
+                const done = unrestricted(() => w.build(spec));
                 if (!done.ok) throw new Error(done.errors.map((e) => e.error).join('; '));
                 built.tables = spec.spaces[0].tables.map((t) => t.name);
                 table = w.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
@@ -1456,7 +1456,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const was = target.actor;
           target.actor = actorForRequest;
           try {
-            const r = weave.useTemplate(space, target, { name: name == null || name === '' ? undefined : String(name) });
+            const r = unrestricted(() => weave.useTemplate(space, target, { name: name == null || name === '' ? undefined : String(name) }));
             const url = key === hub.defaultName ? `/#/space/${r.space.id}` : `/w/${key}/#/space/${r.space.id}`;
             return { space: r.space, workspace: key, url, plan: r.plan, skipped: r.skipped };
           } finally { target.actor = was; }
