@@ -109,7 +109,7 @@ if (s) {
       await page.waitForSelector('#ws-list .ws-icon');
       assert.equal(await chip(page, 'scratch').count(), 0, 'off the rail');
       await page.click('#sidebar .nav-system a[href="#/trash"]');
-      await page.waitForSelector('#main .trash-page, #main .card');
+      await page.waitForFunction(() => location.hash === '#/trash' && document.querySelector('#main .view-header')?.textContent.includes('Trash') && !document.querySelector('#main .settings-workspaces'));
       assert.equal(await page.locator('#main .trash-workspaces').count(), 0, 'Trash lists no workspaces');
       assert.doesNotMatch(await page.textContent('#main'), /scratch/, 'and never names it');
       await page.goto(`${base}/#/settings`);

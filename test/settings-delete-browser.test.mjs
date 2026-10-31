@@ -144,7 +144,7 @@ if (s) {
       await page.locator('#modal button[type="submit"]').click();
       await page.locator('#ws-list .ws-icon[title^="scratch "]').waitFor({ state: 'detached' });
       await page.click('#sidebar .nav-system a[href="#/trash"]');
-      await page.waitForSelector('#main .card');
+      await page.waitForFunction(() => location.hash === '#/trash' && document.querySelector('#main .view-header')?.textContent.includes('Trash') && !document.querySelector('#main .settings-workspaces'));
       assert.equal(await page.locator('#main .trash-workspaces').count(), 0, 'Trash lists no workspaces');
       assert.doesNotMatch(await page.textContent('#main'), /scratch/);
     } finally {
