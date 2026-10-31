@@ -136,6 +136,8 @@ const HANDOFF_TTL_MS = 60 * 1000;
 const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
 const LIMITS = { options: 10, failed: 5, slugs: 60 };
 const START_TTL_MS = 30 * 60 * 1000;
+const RECENT_CAP = 50;
+const RECENT_NAME = /^[a-z0-9_.-]+$/;
 const holdsLink = (w, kind, id) => {
   w.maybeRefresh();
   if (kind === 't') return !!w.findTable(id);
@@ -561,6 +563,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const railDomain = baseDomain ? `; Domain=.${baseDomain}` : '';
     const railCookie = (names) => `wv_rail=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`;
     const clearRail = () => `wv_rail=; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=0${secureFlag(rx)}`;
+    const recent = String(cookies.wv_recent ?? '').toLowerCase().split(',').filter((n) => RECENT_NAME.test(n));
+    const stampRecent = (hit) => {
+      const name = hub.entries().find(([, w]) => w === weave)?.[0]?.toLowerCase();
+      if (hit && rx.method === 'GET' && hit.status < 400 && RECENT_NAME.test(name ?? '')) {
+        const names = [...new Set([name, ...recent])].slice(0, RECENT_CAP);
+        jar.push(`wv_recent=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`);
+      }
+      return hit;
+    };
     const startCookies = ({ token, logins }) => [`wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, railCookie(findWorkspaces(logins).names)];
     const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
     if (path === '/' && baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
@@ -891,7 +902,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const to = `${wsPrefix}/#/table/${m[1]}/new${q ? `?${q}` : ''}`;
         if (!serveStatic) return { status: 302, headers: { Location: to, 'Cache-Control': 'no-store' }, body: '' };
         const hit = serveStatic('/', rx, { head: `${preview.head}${shellMarker()}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
-        if (hit) return { ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } };
+        if (hit) return stampRecent({ ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } });
       }
       if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
         throw new WeaveError(`A permalink answers GET, not ${rx.method}`, 'not-found');
@@ -902,7 +913,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (preview?.route && !serveStatic) return { status: 302, headers: { Location: preview.route }, body: '' };
         const jump = preview?.route ? `\n<meta name="weave-route" content="${metaAttr(preview.route)}">\n<script src="/permalink.js"></script>` : '';
         const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + shellMarker() + jump }) : null;
-        if (hit) return hit;
+        if (hit) return m?.[1] === 's' ? hit : stampRecent(hit);
       }
 
       const formClient = () => {
@@ -1435,7 +1446,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
           const hubRoot = hub.get(hub.defaultName);
           const manages = mayAdminister(hubRoot, roleOn(hubRoot));
+          const rank = (x) => { const i = recent.indexOf(x.name.toLowerCase()); return i < 0 ? Infinity : i; };
           return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
+            .sort((a, b) => rank(a) - rank(b) || 0)
             .map((x) => ({
               ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && manages } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
               ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : {}),
@@ -2127,7 +2140,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
       if (serveStatic) {
         const hit = serveStatic(path, rx);
-        if (hit) return hit;
+        if (hit) return path === '/' ? stampRecent(hit) : hit;
       }
       return notFound('Not found');
     } catch (err) {

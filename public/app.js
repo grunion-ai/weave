@@ -12296,12 +12296,15 @@ async function buildWsRail() {
       if (weaveWs) pinned.href = wsHref(weaveWs);
       pinned.classList.toggle('active', current === 'weave');
     }
+    const railed = list.filter((w) => w.name !== 'weave');
     listBox.replaceChildren(
-      ...list.filter((w) => w.name !== 'weave').map((w) => {
+      ...[...railed.filter((w) => w === cur), ...railed.filter((w) => w !== cur)].map((w) => {
+        const expired = `${w.name}: session expired, click to sign in`;
         const chip = el('a', {
-          class: 'ws-icon' + (w.logo && !w.held ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : '') + (w.held ? ' ws-held' : ''),
+          class: 'ws-icon' + (w.held ? ' ws-held' : w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : ''),
           href: w.held ? w.open : wsHref(w),
-          title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
+          title: w.held ? expired : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
+          ...(w.held ? { 'aria-label': expired } : {}),
         }, w.logo && !w.held
           ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo`, alt: w.name, onerror: (e) => {
             const host = e.currentTarget.parentElement;
