@@ -42,7 +42,7 @@ if (s) {
 
   for (const [engine, make] of engines) {
     for (const theme of ['light', 'dark']) {
-      test(`on a phone the row header drops Expand and keeps Activity, the eye and the copy link as 44px controls on one line (${engine}, ${theme}, Issue #734, Feature #296)`, async () => {
+      test(`on a phone the row header drops Expand and keeps Activity, the eye, Share and the copy link as 44px controls on one line (${engine}, ${theme}, Issue #734, Feature #296, Issue #765)`, async () => {
         const page = await open(make, theme);
         try {
           const h = await header(page);
@@ -51,13 +51,13 @@ if (s) {
           assert.equal(h.copy, true, 'the header permalink copy shows on a phone');
           assert.equal(h.eye, true, 'Show or hide fields is a header button on a phone');
           const controls = h.controls.filter((c) => c.kind === 'control');
-          assert.deepEqual(controls.map((c) => c.label), ['Activity', 'Show or hide fields', 'Row actions', 'Close']);
+          assert.deepEqual(controls.map((c) => c.label), ['Activity', 'Show or hide fields', 'Share (Beta)', 'Row actions', 'Close']);
           for (const c of controls) assert.ok(c.w >= 44 && c.h >= 44, `${c.label} is ${c.w}x${c.h}`);
           assert.equal(new Set(h.controls.map((c) => Math.round(c.top + c.h / 2))).size <= 2, true, 'the header keeps one line');
           assert.equal(h.scrollWidth, 0, 'no sideways scroll');
           await page.click('#dock .crumb-row .dots-btn');
           const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
-          assert.deepEqual(items, ['Duplicate', 'Share…', 'Markdown', 'HTML', 'PDF', 'Move to trash'], 'the row menu is the plain record definition, with no view rows');
+          assert.deepEqual(items, ['Duplicate', 'Markdown', 'HTML', 'PDF', 'Move to trash'], 'the row menu is the plain record definition, with no view rows');
           await page.keyboard.press('Escape');
           await page.click('#dock .crumb-row .eye-btn');
           await page.waitForSelector('.chip-pop .eye-row, .chip-pop input[type="checkbox"]');
@@ -75,7 +75,7 @@ if (s) {
       assert.equal(h.copy, true);
       await page.click('#dock .crumb-row .dots-btn');
       const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
-      assert.deepEqual(items, ['Duplicate', 'Share…', 'Markdown', 'HTML', 'PDF', 'Move to trash'], 'the same record definition as on a phone');
+      assert.deepEqual(items, ['Duplicate', 'Markdown', 'HTML', 'PDF', 'Move to trash'], 'the same record definition as on a phone');
     } finally { await page.close(); }
   });
 }

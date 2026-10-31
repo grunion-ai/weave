@@ -123,7 +123,7 @@ if (s) {
           assert.ok(Math.abs(seen.menu.box.bottom - (await page.evaluate(() => innerHeight))) <= 1, 'pinned to the bottom edge');
           assert.ok(seen.menu.box.left <= 0.5 && seen.menu.box.right >= seen.vw - 0.5, 'and full width');
           assert.equal(seen.kebab.expanded, 'true', 'the trigger says its menu is open');
-          assert.deepEqual(seen.menu.rows.map((r) => r.text), ['Add icon…', 'Add description…', 'Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV.csv', 'Move to trash'], 'the table definition as rows, Add icon… first on a phone table with no icon (Issue #981), Move to trash last (Feature #296)');
+          assert.deepEqual(seen.menu.rows.map((r) => r.text), ['Add icon…', 'Add description…', 'Move to space…', 'Duplicate', 'New share page…', 'Forms…', 'Copy create link', 'CSV.csv', 'Move to trash'], 'the table definition as rows, Add icon… first on a phone table with no icon (Issue #981), Move to trash last (Feature #296)');
           for (const r of seen.menu.rows) {
             assert.ok(r.h >= 44, `${r.text} is a ${r.h}px row`);
             assert.ok(r.inside, `${r.text} sits inside the sheet`);

@@ -114,8 +114,8 @@ test('every kind has exactly one definition, and the registry names them all', (
 
 test('the definitions match the target menu table', () => {
   const shape = (kind) => Object.fromEntries(core.SECTIONS.map((s) => [s, core.definition(kind)[s] ?? []]).filter(([, ids]) => ids.length));
-  assert.deepEqual(shape('table'), { settings: ['icon', 'description'], organize: ['move', 'duplicate'], share: ['share', 'share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
-  assert.deepEqual(shape('record'), { organize: ['duplicate'], share: ['share'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
+  assert.deepEqual(shape('table'), { settings: ['icon', 'description'], organize: ['move', 'duplicate'], share: ['share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
+  assert.deepEqual(shape('record'), { organize: ['duplicate'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
   assert.deepEqual(shape('space'), { delete: ['delete'] });
   assert.deepEqual(shape('share-page'), { delete: ['delete'] });
@@ -126,6 +126,12 @@ test('the definitions match the target menu table', () => {
 test('the workspace menu holds no delete row: workspace delete leaves the interface (Feature #297)', () => {
   assert.equal(core.definition('workspace').delete, undefined);
   assert.throws(() => core.assemble('workspace', { delete: { label: 'Delete workspace…', run() {} } }), /"delete" is not on the workspace menu/);
+});
+
+test('Share is a header button, never a table or record menu row (Issue #765)', () => {
+  for (const kind of ['table', 'record']) {
+    assert.throws(() => core.assemble(kind, { share: { label: 'Share…', run } }), new RegExp(`"share" is not on the ${kind} menu`));
+  }
 });
 
 test('table description creation and field settings occupy the settings section', () => {
@@ -147,18 +153,17 @@ test('assemble lays rows out in the definition order, whatever order the caller 
     export: core.exportSection({ name: 'Task', serves: ['csv'], href: () => '/x.csv' }),
     'share-page': { label: 'New share page…', run },
     duplicate: { label: 'Duplicate', run },
-    share: { label: 'Share…', run },
     move: { label: 'Move to space…', run },
   });
   assert.deepEqual(rows.map((r) => [r.section, r.label]), [
-    ['organize', 'Move to space…'], ['organize', 'Duplicate'], ['share', 'Share…'], ['share', 'New share page…'], ['export', 'CSV'], ['delete', 'Delete table'],
+    ['organize', 'Move to space…'], ['organize', 'Duplicate'], ['share', 'New share page…'], ['export', 'CSV'], ['delete', 'Delete table'],
   ]);
   assert.deepEqual(shape(core.plan(rows)).map((s) => s[0]), ['organize', 'share', 'export', 'delete']);
 });
 
 test('context may hide a row that cannot work there, never add one', () => {
-  const rows = core.assemble('table', { move: null, duplicate: false, share: { label: 'Share…', run }, delete: { label: 'Delete table', run } });
-  assert.deepEqual(rows.map((r) => r.label), ['Share…', 'Delete table']);
+  const rows = core.assemble('table', { move: null, duplicate: false, forms: { label: 'Forms…', run }, delete: { label: 'Delete table', run } });
+  assert.deepEqual(rows.map((r) => r.label), ['Forms…', 'Delete table']);
   assert.throws(() => core.assemble('space', { rename: { label: 'Rename…', run } }), /"rename" is not on the space menu/);
   assert.throws(() => core.assemble('record', { export: core.exportSection({ name: 'x', serves: ['csv'], href: () => '' }) }), /CSV is not on the record menu/);
 });
