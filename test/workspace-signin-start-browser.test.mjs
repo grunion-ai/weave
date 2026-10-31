@@ -84,8 +84,16 @@ if (s) {
       await page.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
       const inn = await options(page);
       assert.equal(inn.forceRedirectUrl, '/api/auth/oidc/start?start=1&next=%2Fapi%2Fstart%2Fopen%2Fharbor', 'a sign-in goes on to the link');
+      const trail = [];
+      page.on('request', (r) => { if (r.isNavigationRequest()) trail.push(r.url()); });
+      await page.route(/^http:\/\/harbor\.localhost[:/]/, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'harbor' }));
+      const handed = page.waitForRequest((r) => r.url().includes('/api/auth/handoff'), { timeout: 10_000 }).catch(() => null);
       await page.click('#clerk-pane [data-fake-clerk="google"]');
-      await page.waitForURL((u) => u.hostname === 'harbor.localhost' || u.pathname.startsWith('/w/harbor/'));
+      const hit = await handed;
+      assert.ok(hit, `the sign-in never handed off; navigations: ${trail.join(' -> ')}`);
+      const to = new URL(hit.url());
+      assert.equal(to.pathname, '/api/auth/handoff', 'the signed-in link hands off to the workspace host');
+      assert.ok(to.searchParams.get('code'));
       assert.equal(idp.seen.signInPages, 0, 'the provider\'s hosted sign-in page never showed');
     } finally { await ctx.close(); }
   });
