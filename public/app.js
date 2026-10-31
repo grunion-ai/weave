@@ -6205,11 +6205,11 @@ function renderBoard(main, db, items, ctx) {
     }
     if (!on.size) { picks.replaceChildren(); return; }
     const n = on.size;
-    picks.replaceChildren(
+    picks.replaceChildren(...[
       picksState.full ? el('span', { class: 'board-pick-hint' }, `Compare takes up to ${boardCore.PICK_CAP} cards`) : null,
       el('button', { class: 'btn btn-sm btn-primary board-compare', type: 'button', ...(n < boardCore.PICK_MIN ? { disabled: '', title: `Pick ${boardCore.PICK_MIN} to ${boardCore.PICK_CAP} cards to compare` } : {}),
         onclick: () => openCompare(db, picksState.ids) }, `Compare ${n}`),
-      el('button', { class: 'btn btn-sm btn-ghost-secondary board-clear', type: 'button', onclick: () => { Object.assign(picksState, { ids: [], full: false }); syncPicks(); } }, 'Clear'));
+      el('button', { class: 'btn btn-sm btn-ghost-secondary board-clear', type: 'button', onclick: () => { Object.assign(picksState, { ids: [], full: false }); syncPicks(); } }, 'Clear')].filter(Boolean));
   }
   function boardDrag(down, card) {
     const side = board.dataset.groups === 'side';
