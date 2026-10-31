@@ -1,0 +1,1 @@
+- Board covers take a Fit setting: Crop (the 4:3 default), Fit, Original or Capped, a Card shape of 4:3, 1:1, 3:4 or 16:9 for Crop and Fit, and Masonry or Rows for the uneven cards of Original and Capped (Issue #1280).
