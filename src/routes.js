@@ -6,7 +6,7 @@ import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
-import { handleMcpMessage, mayAdminister, toolTable, QUERY_PAGE } from './mcp.js';
+import { handleMcpMessage, mayAdminister, toolTable, QUERY_PAGE, SEATLESS_TOOLS } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage, renderMcpDoorPage, sameOriginPath } from './auth-page.js';
@@ -15,6 +15,7 @@ import { PRIVACY, TERMS, SUPPORT, AGENT_DOCS } from './legal.js';
 import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import { BillingUnavailable, PAID_ROLES } from './billing.js';
+import { ANONYMOUS, viewerFor, spaceRole, workspaceRole, topRole, withViewers, unrestricted } from './access.js';
 import '../public/starter-core.js';
 import '../public/prefill-core.js';
 const { WeaveStarters, WeaveSlugs, weavePrefill } = globalThis;
@@ -137,6 +138,8 @@ const HANDOFF_TTL_MS = 60 * 1000;
 const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
 const LIMITS = { options: 10, failed: 5, slugs: 60 };
 const START_TTL_MS = 30 * 60 * 1000;
+const RECENT_CAP = 50;
+const RECENT_NAME = /^[a-z0-9_.-]+$/;
 const holdsLink = (w, kind, id) => {
   w.maybeRefresh();
   if (kind === 't') return !!w.findTable(id);
@@ -249,7 +252,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     return { ...res, headers: { ...res.headers, 'Set-Cookie': all.length === 1 ? all[0] : all } };
   };
 
-  const respond = async (rx, jar) => {
+  const respond = async (rx, jar, viewers) => {
     let path = rx.path;
     const viewerZone = rx.header('x-weave-zone') || null;
     let versionOf = null;
@@ -501,6 +504,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     let role = null;
     let session = null;
     let accountName = null;
+    let requestAccount = null;
     const cookies = parseCookies(rx.header('cookie'));
     if (cookies[LEGACY_COOKIE]) jar.push(clearCookie(LEGACY_COOKIE, rx));
     const startRoot = baseDomain ? apexOrigin : '';
@@ -562,6 +566,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const railDomain = baseDomain ? `; Domain=.${baseDomain}` : '';
     const railCookie = (names) => `wv_rail=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`;
     const clearRail = () => `wv_rail=; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=0${secureFlag(rx)}`;
+    const recent = String(cookies.wv_recent ?? '').toLowerCase().split(',').filter((n) => RECENT_NAME.test(n));
+    const stampRecent = (hit) => {
+      const name = hub.entries().find(([, w]) => w === weave)?.[0]?.toLowerCase();
+      if (hit && rx.method === 'GET' && hit.status < 400 && RECENT_NAME.test(name ?? '')) {
+        const names = [...new Set([name, ...recent])].slice(0, RECENT_CAP);
+        jar.push(`wv_recent=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`);
+      }
+      return hit;
+    };
     const startCookies = ({ token, logins }) => [`wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, railCookie(findWorkspaces(logins).names)];
     const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
     if (path === '/' && baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
@@ -599,7 +612,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (!base) return null;
       for (const id of base.identities ?? []) {
         const acct = w.accountForIdentity({ issuer: id.issuer, subject: id.subject }, { touch: false });
-        if (acct) return { ...base, role: acct.role };
+        if (acct) return { ...base, role: acct.role, accountId: acct.id, space: acct.space, issuedBy: acct.issuedBy };
       }
       return mayAdminister(root, base.role) ? base : null;
     };
@@ -690,10 +703,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = actor = oauth ? `${accountActor(account.id)} via MCP` : actorOf(account);
       accountName = account.name;
+      requestAccount = account;
       role = Weave.roleName(account.role);
     } else if ((session = sessionOn(weave))) {
       weave.actor = actor = actorOf(session);
       accountName = session.name;
+      requestAccount = session;
       role = Weave.roleName(session.role);
     } else if (weave.state.meta.requireAuth && !openDoor && cookies[cookieName(weave)]) {
       if (weave.removedSession(cookies[cookieName(weave)])) {
@@ -714,6 +729,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return wall();
     }
+    const localAccount = (w, a) => !!a && Object.hasOwn(w.state.meta.accounts ?? {}, a.accountId ?? a.id);
+    const viewerAs = (w, a) => (localAccount(w, a) ? viewerFor(a) : { accountId: null, role: Weave.roleName(a.role) ?? 'observer' });
+    let viewer = share ? { share } : role ? viewerAs(weave, { ...requestAccount, role }) : ANONYMOUS;
     let unseated = null;
     const seatRequired = () => {
       const ws = weave.state.meta.name;
@@ -722,19 +740,49 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         ? `${ended} Reading and commenting stay free. Subscribe on the billing page to keep editing.`
         : `${ended} Reading and commenting stay free. Ask an architect of ${ws} to subscribe on the billing page.`;
     };
-    if (billing && PAID_ROLES.has(role) && accountName && !['GET', 'HEAD', 'OPTIONS'].includes(rx.method) && !path.startsWith('/api/billing') && !path.startsWith('/api/auth/')) {
+    if (billing && PAID_ROLES.has(role ? topRole(weave, viewer) : null) && accountName && !['GET', 'HEAD', 'OPTIONS'].includes(rx.method) && !path.startsWith('/api/billing') && !path.startsWith('/api/auth/')) {
       try {
-        if (!(await billing.standing({ workspace: weave.billing(), accounts: weave.listAccounts() })).seated(accountName)) { unseated = role; role = 'observer'; }
+        if (!(await billing.standing({ workspace: weave.billing(), accounts: weave.listAccounts() })).seated(accountName)) { unseated = topRole(weave, viewer); role = 'observer'; viewer = { ...viewer, unseated: true }; }
       } catch (error) {
         if (!(error instanceof BillingUnavailable)) throw error;
         return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
       }
     }
     const guarded = () => !!(weave.listAccounts().length || hub.get(hub.defaultName).listAccounts().length);
+    if (role) role = workspaceRole(weave, viewer);
+    const viewerOn = (w) => {
+      if (!(w.listAccounts().length || hub.get(hub.defaultName).listAccounts().length)) return null;
+      if (w === weave) return viewer;
+      if (share) return ANONYMOUS;
+      const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : null;
+      const a = oauth ? (w === oauth.engine ? oauth.account : null) : bearer ? w.verifyToken(bearer) ?? docsToken(w, bearer) : sessionOn(w);
+      return a ? viewerAs(w, a) : ANONYMOUS;
+    };
+    const seen = new Map();
+    viewers.of = (w) => {
+      if (!seen.has(w)) seen.set(w, viewerOn(w));
+      return seen.get(w);
+    };
+    const pathSpace = () => unrestricted(() => {
+      try {
+        let m2;
+        if ((m2 = path.match(/^\/api\/tables\/([^/]+)/))) return weave.findTable(decodeURIComponent(m2[1]))?.spaceId ?? null;
+        if ((m2 = path.match(/^\/api\/spaces\/([^/]+)/))) return weave.findSpace(decodeURIComponent(m2[1]))?.id ?? null;
+        if ((m2 = path.match(/^\/api\/entities\/([^/]+)/))) return weave.state.tables[weave.getEntity(decodeURIComponent(m2[1])).dbId]?.spaceId ?? null;
+      } catch {}
+      return null;
+    });
+    const targetSpace = role && !share ? pathSpace() : null;
+    if (requestAccount?.space && localAccount(weave, requestAccount)) viewers.tokenWrite = { engine: weave, accountId: requestAccount.accountId ?? requestAccount.id };
     const actorForRequest = role || share || !guarded() ? actor : 'anonymous';
     weave.actor = actorForRequest;
     const requestActor = role ? actorForRequest : 'anonymous';
-    const cap = role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
+    const targetHidden = !!targetSpace && !weave.canSee(targetSpace);
+    const bulkRows = !!role && rx.method === 'POST' && path === '/api/bulk' && topRole(weave, viewer) !== 'observer';
+    const cap = targetHidden ? null
+      : targetSpace ? spaceRole(weave, viewer, weave.state.spaces[targetSpace])
+        : bulkRows ? 'editor'
+          : role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
     if (cap && cap !== 'architect') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
@@ -797,7 +845,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
           const e = weave.state.entities[ref];
-          if (!e || e.deletedAt) return null;
+          if (!e || e.deletedAt || !weave.canSee(e.id)) return null;
           return {
             href: `${wsPrefix}/e/${e.id}/doc.html`,
             label: weave.entityName(e),
@@ -892,7 +940,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const to = `${wsPrefix}/#/table/${m[1]}/new${q ? `?${q}` : ''}`;
         if (!serveStatic) return { status: 302, headers: { Location: to, 'Cache-Control': 'no-store' }, body: '' };
         const hit = serveStatic('/', rx, { head: `${preview.head}${shellMarker()}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
-        if (hit) return { ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } };
+        if (hit) return stampRecent({ ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } });
       }
       if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
         throw new WeaveError(`A permalink answers GET, not ${rx.method}`, 'not-found');
@@ -903,7 +951,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (preview?.route && !serveStatic) return { status: 302, headers: { Location: preview.route }, body: '' };
         const jump = preview?.route ? `\n<meta name="weave-route" content="${metaAttr(preview.route)}">\n<script src="/permalink.js"></script>` : '';
         const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + shellMarker() + jump }) : null;
-        if (hit) return hit;
+        if (hit) return m?.[1] === 's' ? hit : stampRecent(hit);
       }
 
       const formClient = () => {
@@ -1375,7 +1423,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (template) {
               try {
                 const spec = WeaveStarters.spec(template);
-                const done = w.build(spec);
+                const done = unrestricted(() => w.build(spec));
                 if (!done.ok) throw new Error(done.errors.map((e) => e.error).join('; '));
                 built.tables = spec.spaces[0].tables.map((t) => t.name);
                 table = w.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
@@ -1431,7 +1479,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const was = target.actor;
           target.actor = actorForRequest;
           try {
-            const r = weave.useTemplate(space, target, { name: name == null || name === '' ? undefined : String(name) });
+            const r = unrestricted(() => weave.useTemplate(space, target, { name: name == null || name === '' ? undefined : String(name) }));
             const url = key === hub.defaultName ? `/#/space/${r.space.id}` : `/w/${key}/#/space/${r.space.id}`;
             return { space: r.space, workspace: key, url, plan: r.plan, skipped: r.skipped };
           } finally { target.actor = was; }
@@ -1447,7 +1495,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
           const hubRoot = hub.get(hub.defaultName);
           const manages = mayAdminister(hubRoot, roleOn(hubRoot));
+          const rank = (x) => { const i = recent.indexOf(x.name.toLowerCase()); return i < 0 ? Infinity : i; };
           return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
+            .sort((a, b) => rank(a) - rank(b) || 0)
             .map((x) => ({
               ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && manages } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
               ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : {}),
@@ -1725,8 +1775,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             uploads.set(token, { weave, engine, accountId: account.id, identity: oauth?.identity ?? null, mount: wsPrefix, host: new URL(url).host.toLowerCase(), entity: row.id, field: target?.id ?? null, name, mime, size, expiresAt });
             return { url, method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, maxBytes: size, expiresAt: new Date(expiresAt).toISOString() };
           };
-          const caller = { role, tier: unseated ?? role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
+          const caller = { role, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
+          if (viewers.tokenWrite) {
+            for (const msg of msgs) {
+              const tool = msg?.method === 'tools/call' ? (msg.params?.name === 'weave_call' ? msg.params?.arguments?.name : msg.params?.name) : null;
+              if (tool && !SEATLESS_TOOLS.has(tool)) weave.noteTokenWrite(viewers.tokenWrite.accountId, { method: 'MCP', path: tool, status: 200 });
+            }
+          }
           if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
@@ -1859,6 +1915,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           return out(200, weave.restoreSpace(m[1]));
+        }
+        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members$/)) && rx.method === 'GET') return out(200, weave.spaceMembers(m[1]));
+        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members\/([^/]+)$/))) {
+          if (rx.method === 'PUT') return out(200, weave.setSpaceMember(m[1], m[2], { role: body?.role ?? null }));
+          if (rx.method === 'DELETE') return out(200, weave.removeSpaceMember(m[1], m[2]));
         }
 
         if (route === 'GET /api/tables') {
@@ -2139,7 +2200,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
       if (serveStatic) {
         const hit = serveStatic(path, rx);
-        if (hit) return hit;
+        if (hit) return path === '/' ? stampRecent(hit) : hit;
       }
       return notFound('Not found');
     } catch (err) {
@@ -2151,6 +2212,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
   return async function handle(rx) {
     const jar = [];
-    return withCookies(await respond(rx, jar), jar);
+    const viewers = { of: null };
+    const res = await withViewers(viewers, () => respond(rx, jar, viewers));
+    const wrote = viewers.tokenWrite;
+    const reads = rx.method === 'POST' && (/^\/(api\/)?mcp$/.test(rx.path) || /\/query$/.test(rx.path) || rx.path === '/api/markdown');
+    if (wrote && !reads && !['GET', 'HEAD', 'OPTIONS'].includes(rx.method) && res.status < 400) wrote.engine.noteTokenWrite(wrote.accountId, { method: rx.method, path: rx.path, status: res.status });
+    return withCookies(res, jar);
   };
 }
