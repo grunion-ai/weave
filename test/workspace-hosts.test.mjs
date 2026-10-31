@@ -309,6 +309,13 @@ test('rail hop: a session on one workspace host hands itself to another workspac
     assert.deepEqual([shut.status, shut.headers.location], [302, 'http://other.weave.test/'], 'a session that does not open other hands nothing over');
     assert.equal((await net('GET', '/api/auth/open/ACME', { cookie })).headers.location.startsWith('http://acme.weave.test/api/auth/handoff?code='), true, 'the slug is case-blind');
     assert.equal((await net('GET', '/api/auth/open/nosuch', { cookie })).status, 404);
+
+    const marked = await follow(s, (await net('GET', '/api/auth/open/acme?trashed=old-pipe', { cookie })).headers.location);
+    assert.equal(marked.headers.location, '/?trashed=old-pipe', 'the hop carries the trashed marker to the landing page (Feature #347)');
+    const coldMarked = await net('GET', '/api/auth/open/acme?trashed=old-pipe');
+    assert.equal(coldMarked.headers.location, 'http://acme.weave.test/?trashed=old-pipe', 'the bare-host hop carries it too');
+    const junk = await follow(s, (await net('GET', `/api/auth/open/acme?trashed=${encodeURIComponent('x/../y?z')}`, { cookie })).headers.location);
+    assert.equal(junk.headers.location, '/', 'a marker that is not a workspace name is dropped');
   } finally { s.stop(); }
 });
 

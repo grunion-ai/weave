@@ -80,14 +80,19 @@ if (s) {
       await page.close();
     });
 
-    test(`the Workspace actions menu opens the same Invite dialog (${theme}, Issue #759)`, async () => {
+    test(`Invite lives on the workspace page's Invite button, not in the workspace menu (${theme}, Feature #347)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
       await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
-      await page.click('#main .view-header .dots-btn[title="Workspace actions"]');
-      const item = page.locator('.wv-menu .wv-menu-row', { hasText: 'Invite people…' });
-      await item.waitFor();
-      await item.click();
+      await page.locator('#main .view-header .wv-invite-btn').waitFor();
+      const dots = page.locator('#main .view-header .dots-btn[title="Workspace actions"]');
+      if (await dots.count()) {
+        await dots.click();
+        await page.waitForSelector('.wv-menu .wv-menu-row');
+        assert.equal(await page.locator('.wv-menu .wv-menu-row', { hasText: 'Invite people' }).count(), 0, 'the workspace menu carries no invite row');
+        await page.keyboard.press('Escape');
+      }
+      await page.click('#main .view-header .wv-invite-btn');
       await page.locator('#modal .wv-invite-form input[type=email]').waitFor();
       assert.equal((await page.locator('#modal h2').textContent()).trim(), 'Invite people');
       await page.fill('#modal .wv-invite-form input[type=email]', `enter-${theme}@example.com`);

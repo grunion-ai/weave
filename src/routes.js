@@ -1211,9 +1211,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const target = hub.bySlug(String(m[1]).toLowerCase());
             if (!target || target.state.meta.deletedAt) return notFound({ error: 'Not found', code: 'not-found' });
             const host = String(target.state.meta.name).toLowerCase();
+            const trashed = String(rx.searchParams.get('trashed') ?? '');
+            const land = /^[a-z0-9][a-z0-9-]{0,62}$/i.test(trashed) ? `/?trashed=${trashed}` : '/';
             const hit = sessionOn(target);
-            if (hit) return handOff(hit.engine, hit.id, '/', host);
-            return { status: 302, headers: { Location: `${scheme}//${host}.${baseDomain}/`, 'Cache-Control': 'no-store' }, body: '' };
+            if (hit) return handOff(hit.engine, hit.id, land, host);
+            return { status: 302, headers: { Location: `${scheme}//${host}.${baseDomain}${land}`, 'Cache-Control': 'no-store' }, body: '' };
           }
           if (route === 'POST /api/auth/logout') {
             const everywhere = ['1', 'true'].includes(rx.searchParams?.get('everywhere') ?? '');

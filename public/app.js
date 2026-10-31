@@ -2690,12 +2690,12 @@ async function duplicateEntity(db, id, opts = {}) {
   return api('POST', `/tables/${db.id}/entities`, { values }, opts);
 }
 
-async function toggleLinkPreview(w, on, after) {
+async function setLinkPreview(on) {
   try {
-    const r = await wsApi(w, 'PATCH', '/workspace', { linkPreview: !on });
+    const r = await api('PATCH', '/workspace', { linkPreview: on });
     toast(`Link preview before sign-in is ${r.linkPreview ? 'on' : 'off'}`);
-    after?.();
-  } catch (err) { toast(err.message, true); }
+    return r.linkPreview;
+  } catch (err) { toast(err.message, true); return !on; }
 }
 
 const TRASHED = 'Moved to trash';
@@ -2860,11 +2860,7 @@ const MENU_ROWS = {
     }),
   }),
   workspace: (w, { after = null } = {}) => ({
-    invite: w.invite ? { label: 'Invite people…', run: () => inviteDialog() } : null,
-    'link-preview': typeof w.linkPreview === 'boolean' ? {
-      label: 'Link preview before sign-in', switch: w.linkPreview,
-      run: () => toggleLinkPreview(w, w.linkPreview, after),
-    } : null,
+    delete: w.deletable ? { label: 'Delete workspace…', danger: true, run: () => deleteWorkspaceDialog(w, after) } : null,
   }),
   field: (f, { db }) => ({
     settings: f.system ? null : { label: 'Field settings…', icon: FIELD_MENU_ICONS.edit, run: () => editFieldDialog(db, f) },
@@ -3902,7 +3898,35 @@ function confirmToggle(after, build) {
   };
 }
 
-function deleteWorkspaceDialog(w) {
+function trashedHref(order, gone) {
+  const at = order.findIndex((x) => x.name === gone.name);
+  const open = (x) => x.name !== gone.name && !x.held && !x.deletedAt;
+  const next = order.slice(at + 1).find(open) ?? order.slice(0, Math.max(at, 0)).reverse().find(open);
+  const href = next ? wsHref(next) : '/';
+  return `${href}${href.includes('?') ? '&' : '?'}trashed=${encodeURIComponent(gone.name)}`;
+}
+
+async function trashedArrival() {
+  const q = new URLSearchParams(location.search);
+  const name = q.get('trashed');
+  if (name == null) return;
+  q.delete('trashed');
+  history.replaceState(history.state, '', `${location.pathname}${q.size ? `?${q}` : ''}${location.hash}`);
+  const gone = (await api('GET', '/workspaces?deleted=1').catch(() => [])).find((x) => x.name === name && x.deletedAt);
+  if (!gone) return;
+  toast(`Workspace ${name} moved to the trash`, false, {
+    label: 'Undo',
+    run: async () => {
+      try {
+        await api('POST', `/workspaces/${gone.id}/restore`);
+        const back = (await api('GET', '/workspaces')).find((x) => x.name === name);
+        location.href = back ? wsHref(back) : '/';
+      } catch (err) { toast(err.message, true); }
+    },
+  });
+}
+
+function deleteWorkspaceDialog(w, after = null) {
   const input = el('input', {
     class: 'form-control', name: 'confirm', autocomplete: 'off', spellcheck: 'false',
     placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
@@ -3914,13 +3938,18 @@ function deleteWorkspaceDialog(w) {
     input,
   ], async () => {
     if (input.value !== w.name) throw Object.assign(new Error('The name does not match'), { shown: true });
+    const order = state.wsList ?? [];
     await api('DELETE', `/workspaces/${w.id}`);
-    if (w.name === state.wsCurrent) { location.href = '/'; return; }
+    if (w.name === state.wsCurrent) { location.href = trashedHref(order, w); return; }
+    const redraw = () => {
+      buildWsRail();
+      if (state.route?.page === 'settings') showSettings();
+      else after?.();
+    };
     toast(`Workspace ${w.name} moved to the trash`, false, {
-      label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); showSettings(); },
+      label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); redraw(); },
     });
-    buildWsRail();
-    showSettings();
+    redraw();
   }, 'Delete workspace', 'btn-danger');
   const go = $('#modal button[type="submit"]');
   go.disabled = true;
@@ -3930,7 +3959,7 @@ function deleteWorkspaceDialog(w) {
 async function showSettings() {
   state.route = { page: 'settings' };
   renderNav();
-  const [trash, list] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => [])]);
+  const [trash, list, ws] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => []), api('GET', '/workspace').catch(() => null)]);
   const main = $('#main');
   main.replaceChildren();
   main.append(viewHeader({
@@ -3938,6 +3967,18 @@ async function showSettings() {
     permalink: `${location.origin}${WS_PREFIX}/#/settings`,
     title: 'Settings',
   }));
+  if (typeof ws?.linkPreview === 'boolean') {
+    main.append(el('div', { class: 'card settings-link-preview' },
+      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Link preview')),
+      el('p', { class: 'settings-note' }, 'A row permalink pasted into Slack, Messages or email unfurls with its title, path and first fields before anyone signs in. Documents, other fields and the API stay behind sign-in.'),
+      paneSwitch({
+        label: 'Link preview before sign-in', on: ws.linkPreview,
+        onChange: async (on) => {
+          const now = await setLinkPreview(on);
+          if (now !== on) showSettings();
+        },
+      })));
+  }
   const gone = [
     ...trash.items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views')
       .map((i) => ({ name: i.name || `#${i.publicId}`, where: i.db, deletedAt: i.deletedAt, path: `/entities/${i.id}` })),
@@ -11340,7 +11381,7 @@ async function showHome() {
   bootHomeReads = null;
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
-  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, invite: invRead.status === 'fulfilled' };
+  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, invite: invRead.status === 'fulfilled' };
   const wsCtx = () => ({ after: () => showHome() });
   const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
     return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
@@ -12311,17 +12352,14 @@ async function buildWsRail() {
           } })
           : w.name.slice(0, 1).toUpperCase());
         if (w.held) return chip;
-        const wsMenu = async (e) => {
+        const wsMenu = (e) => {
           e.preventDefault();
           e.stopPropagation();
           const at = e.clientX || e.clientY ? { point: { x: e.clientX, y: e.clientY } } : { anchor: chip };
           if (openMenu?.trigger === chip) { openMenu.close(); return; }
-          const [record, invite] = await Promise.all([wsApi(w, 'GET', '/workspace').catch(() => null),
-            w.name === current ? api('GET', '/invites').then(() => true, () => false) : false]);
-          const o = { ...w, title: record?.title ?? w.name, linkPreview: record ? !!record.linkPreview : undefined, invite };
-          const items = menuFor('workspace', o, { after: () => { if (w.name === current && state.route?.page === 'home') showHome(); } });
+          const items = menuFor('workspace', w);
           if (!items.length) return;
-          menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', o), label: `${w.name} workspace` });
+          menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', w), label: `${w.name} workspace` });
         };
         chip.addEventListener('contextmenu', wsMenu);
         if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) wsMenu(e); });
@@ -12898,6 +12936,7 @@ function openBugPanel(from) {
 
 initPageLoader();
 startUsage();
+trashedArrival();
 installBugReporter();
 installPhoneBar();
 toastLayer();

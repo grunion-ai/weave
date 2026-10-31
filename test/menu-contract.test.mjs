@@ -40,13 +40,13 @@ test('rows that left the menus stay out of app.js menus (Feature #296)', () => {
   assert.doesNotMatch(fnBody('fieldMenuButton'), /onSort|sortLabelsFor/, 'the column menu holds no sort rows');
 });
 
-test('every delete row is the one trash row: one click, "Moved to trash", Undo through the restore route (Feature #296, D6)', () => {
+test('every delete row but the workspace\'s is the one trash row: one click, "Moved to trash", Undo through the restore route (Feature #296, D6, Feature #347)', () => {
   const kinds = globalThis.menuCore.kinds().filter((k) => globalThis.menuCore.definition(k).delete);
-  assert.deepEqual(kinds, ['table', 'record', 'space', 'share-page', 'field']);
+  assert.deepEqual(kinds, ['table', 'record', 'space', 'share-page', 'workspace', 'field']);
   assert.doesNotMatch(ROWS_SRC, /hold: true|holdingLabel/, 'no kind holds to delete');
   const deletes = ROWS_SRC.match(/^    delete: /gm) ?? [];
   assert.equal(deletes.length, kinds.length, 'one delete row per kind');
-  assert.equal((ROWS_SRC.match(/trashRow\(\{/g) ?? []).length, kinds.length, 'and every one is built by trashRow');
+  assert.equal((ROWS_SRC.match(/trashRow\(\{/g) ?? []).length, kinds.length - 1, 'every one but the workspace row is built by trashRow');
   for (const [route, restore] of [
     ["api('DELETE', `/tables/${db.id}`)", "api('POST', `/tables/${db.id}/restore`)"],
     ["api('DELETE', `/entities/${entity.id}`)", "api('POST', `/entities/${entity.id}/restore`)"],
@@ -71,12 +71,14 @@ test('the multi-select trash speaks the record menu\'s words (Feature #296, D6)'
   assert.match(body, /label: 'Undo'/, 'and offers the same Undo');
 });
 
-test('workspace delete lives only in the Settings dialog, never a menu; its routes stay (Feature #297, Issue #1171)', () => {
+test('workspace delete runs through one typed dialog, from the workspace menu row and from Settings; its routes stay (Feature #347, Issue #1171)', () => {
   const dialog = fnBody('deleteWorkspaceDialog');
-  assert.equal(APP.split('Delete workspace').length, dialog.split('Delete workspace').length, 'every Delete workspace string sits in the Settings dialog');
-  assert.equal(APP.split('deleteWorkspaceDialog(').length - 1, 2, 'the dialog has one caller');
-  assert.match(fnBody('showSettings'), /deleteWorkspaceDialog\(w\)/, 'and Settings is that caller');
-  for (const fn of ['menu', 'dotsMenu', 'buildWsRail', 'personalMenu']) assert.doesNotMatch(fnBody(fn), /deleteWorkspaceDialog|Delete workspace/, `${fn} offers no workspace delete`);
+  assert.equal(APP.split('Delete workspace').length - 1, dialog.split('Delete workspace').length - 1 + 1, 'outside the dialog only the menu row names Delete workspace');
+  assert.match(ROWS_SRC, /delete: w\.deletable \? \{ label: 'Delete workspace…', danger: true, run: \(\) => deleteWorkspaceDialog\(w, after\) \} : null/, 'the workspace menu row opens the dialog, and only where the workspace is deletable');
+  assert.equal(APP.split('deleteWorkspaceDialog(').length - 1, 3, 'the dialog has two callers');
+  assert.match(fnBody('showSettings'), /deleteWorkspaceDialog\(w\)/, 'Settings is the other');
+  for (const fn of ['menu', 'dotsMenu', 'buildWsRail', 'personalMenu']) assert.doesNotMatch(fnBody(fn), /deleteWorkspaceDialog|Delete workspace/, `${fn} reaches workspace delete only through the menu definition`);
+  assert.doesNotMatch(dialog, /\?hard=1/, 'the dialog trashes, never purges');
   assert.equal(APP.includes('confirmDeleteWorkspace'), false, 'no dialog entry point');
   assert.match(APP, /api\('POST', `\/workspaces\/\$\{w\.id\}\/restore`\)/, 'the Trash page still restores a trashed workspace');
 });

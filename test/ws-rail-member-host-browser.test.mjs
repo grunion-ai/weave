@@ -19,7 +19,6 @@ if (s) {
   const { weave: net, base, browser } = s;
   const port = new URL(base).port;
   const memberBase = `http://scratch.localhost:${port}`;
-  const netId = net.state.meta.id;
   const chip = (page, name) => page.locator(`#ws-list .ws-icon[title^="${name} "]`);
 
   async function open(theme) {
@@ -49,15 +48,27 @@ if (s) {
     });
   }
 
-  test('the default workspace\'s rail menu on another workspace\'s host reads its own record (Issue #907)', async () => {
+  test('deleting the host workspace from its rail chip hops to the next host with Undo, and Undo hops back (Feature #347)', async () => {
     const page = await open('light');
     try {
-      const read = page.waitForResponse((r) => r.request().method() === 'GET' && /\/api\/workspace$/.test(new URL(r.url()).pathname));
       await chip(page, 'net').click({ button: 'right' });
-      const res = await read;
-      assert.equal(res.status(), 200);
-      assert.equal((await res.json()).id, netId, `the menu read ${res.url()}`);
+      await chip(page, 'scratch').click({ button: 'right' });
       await page.waitForSelector('.ws-ctx .wv-menu-row');
-    } finally { await page.close(); }
+      assert.match(await page.locator('.ws-ctx').textContent(), /scratch/, 'the default net chip opens no menu; the host chip does');
+      await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Delete workspace…' }).click();
+      await page.fill('#modal input[name="confirm"]', 'scratch');
+      await page.click('#modal button[type="submit"]');
+      await page.waitForURL((u) => u.hostname === 'net.localhost');
+      await page.waitForSelector('.wv-toast .wv-toast-action');
+      assert.match(await page.locator('.wv-toast').last().textContent(), /scratch moved to the trash/, 'the Undo toast crosses hosts');
+      assert.equal(new URL(page.url()).searchParams.get('trashed'), null, 'the marker leaves the address bar');
+      assert.ok(member.state.meta.deletedAt, 'scratch is in the trash');
+      await page.locator('.wv-toast .wv-toast-action', { hasText: 'Undo' }).click();
+      await page.waitForURL((u) => u.hostname === 'scratch.localhost');
+      assert.equal(member.state.meta.deletedAt ?? null, null, 'Undo restored it');
+    } finally {
+      if (member.state.meta.deletedAt) await fetch(`${base}/api/workspaces/scratch/restore`, { method: 'POST' });
+      await page.close();
+    }
   });
 }
