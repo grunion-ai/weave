@@ -2423,8 +2423,15 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .wv-compare tr.is-different > td { background: rgba(var(--tblr-primary-rgb), .08); }
 .wv-compare tr.is-different > th { background: linear-gradient(rgba(var(--tblr-primary-rgb), .08), rgba(var(--tblr-primary-rgb), .08)), var(--tblr-bg-surface); color: var(--tblr-body-color); }
 .wv-board .tile.is-file-drop { border-color: var(--tblr-primary); box-shadow: inset 0 0 0 2px var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .08); }
-.tile-cover { aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); }
+.tile-cover { aspect-ratio: var(--frame, 4 / 3); display: grid; grid-template-rows: 100%; place-items: center; overflow: hidden; background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); }
 .tile-cover img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.wv-board[data-fit="fit"] .tile-cover img { object-fit: scale-down; }
+.wv-board:is([data-fit="original"], [data-fit="capped"]) .tile-cover:not(.is-empty) { aspect-ratio: auto; container-type: inline-size; }
+.wv-board:is([data-fit="original"], [data-fit="capped"]) .tile-cover img { width: min(100%, var(--nw, 100%)); height: auto; }
+.wv-board[data-fit="capped"] .tile-cover img { max-height: 150cqw; min-height: min(50cqw, var(--nh, 0px)); }
+.wv-board:is([data-fit="original"], [data-fit="capped"])[data-flow="masonry"]:not([data-groups="side"], [data-lanes]) .board-cards { grid-auto-rows: 2px; row-gap: 0; }
+.wv-board:is([data-fit="original"], [data-fit="capped"])[data-flow="masonry"]:not([data-groups="side"], [data-lanes]) .board-cards > * { align-self: start; }
+.wv-board:is([data-fit="original"], [data-fit="capped"])[data-flow="masonry"]:not([data-groups="side"], [data-lanes]) .board-empty { grid-row-end: span 24; }
 .tile-cover.is-empty .wv-icon svg { width: 24px; height: 24px; opacity: .6; }
 .tile-body { display: grid; gap: var(--board-gap, 6px); min-width: 0; padding: var(--board-pad-y, 8px) var(--board-pad-x, 10px); font-size: var(--fs-grid); }
 .tile-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 600; }

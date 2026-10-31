@@ -2192,6 +2192,7 @@ export class Weave {
     if (LAYOUTS.includes(v.layout)) out.layout = v.layout;
     if (v.groups) out.groups = v.groups;
     if (v.picture) out.picture = v.picture;
+    for (const k of ['fit', 'frame', 'flow']) if (v[k]) out[k] = v[k];
     if (ViewPane.SUBTOTALS.includes(v.subtotals)) out.subtotals = v.subtotals;
     const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ field: db.fields[l.field].name, ...ListCore.compactLevel(db.fields[l.field].type, l) }));
     if (group.length) out.group = group;
@@ -2280,6 +2281,12 @@ export class Weave {
       else if (BoardCore.PICTURES.includes(patch.picture)) next.picture = patch.picture;
       else throw new WeaveError(`picture is off, small, medium or large — got ${JSON.stringify(patch.picture)}`, 'invalid');
     }
+    for (const [key, allowed] of [['fit', BoardCore.FITS], ['frame', BoardCore.FRAMES], ['flow', BoardCore.FLOWS]]) {
+      if (patch[key] === undefined) continue;
+      if (patch[key] == null || patch[key] === '') delete next[key];
+      else if (allowed.includes(patch[key])) next[key] = patch[key];
+      else throw new WeaveError(`${key} is ${allowed.slice(0, -1).join(', ')} or ${allowed.at(-1)} — got ${JSON.stringify(patch[key])}`, 'invalid');
+    }
     if (patch.subtotals !== undefined) {
       if (patch.subtotals == null || patch.subtotals === 'all') delete next.subtotals;
       else if (ViewPane.SUBTOTALS.includes(patch.subtotals)) next.subtotals = patch.subtotals;
@@ -2337,7 +2344,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'subtotals', 'layout', 'groups', 'picture', 'group', 'completedBy', 'nest', 'collapsed', 'hideEmpty', 'order', 'phoneRow'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'subtotals', 'layout', 'groups', 'picture', 'fit', 'frame', 'flow', 'group', 'completedBy', 'nest', 'collapsed', 'hideEmpty', 'order', 'phoneRow'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -3233,7 +3240,7 @@ export class Weave {
       if (vDoc.deleted) out.deleted = true;
       if (typeof vDoc.rollups === 'boolean') out.rollups = vDoc.rollups;
       if (vDoc.hideEmpty) out.hideEmpty = true;
-      for (const k of ['layout', 'groups', 'picture', 'subtotals']) if (vDoc[k]) out[k] = vDoc[k];
+      for (const k of ['layout', 'groups', 'picture', 'fit', 'frame', 'flow', 'subtotals']) if (vDoc[k]) out[k] = vDoc[k];
       if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
       for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
       const pr = vDoc.phoneRow;
@@ -3266,7 +3273,7 @@ export class Weave {
       if (!!vDoc.deleted !== !!have?.deleted) patch.deleted = !!vDoc.deleted;
       if ((vDoc.rollups ?? null) !== (have?.rollups ?? null)) patch.rollups = vDoc.rollups ?? null;
       if (!!vDoc.hideEmpty !== !!have?.hideEmpty) patch.hideEmpty = !!vDoc.hideEmpty;
-      for (const k of ['layout', 'groups', 'picture', 'subtotals']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
+      for (const k of ['layout', 'groups', 'picture', 'fit', 'frame', 'flow', 'subtotals']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
       for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.phoneRow ?? null) !== JSON.stringify(have?.phoneRow ?? null)) {
