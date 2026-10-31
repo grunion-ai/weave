@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { getForm } from './forms.js';
 import { uuid } from './ids.js';
 import { WeaveError } from './store.js';
+import { grantReaches } from './access.js';
 import { renderDocumentPage, escapeHtml } from './markdown.js';
 
 export const SHARE_KINDS = ['entity', 'entities', 'table', 'space', 'view', 'workspace'];
@@ -255,7 +256,7 @@ export function withinScope(weave, grant, { spaceId = null, tableId = null, enti
   }
   if (spaceId != null) {
     sp = liveSpace(weave, spaceId);
-    if (!sp) return false;
+    if (!sp || !grantReaches(weave, grant, sp)) return false;
   }
   if (viewId != null && !own(views(weave), viewId)) return false;
   if (!sp && viewId == null) return false;

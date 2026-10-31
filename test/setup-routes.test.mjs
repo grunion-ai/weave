@@ -11,11 +11,11 @@ import { createBilling, CLERK_API } from '../src/billing.js';
 import { startIdp } from './lib/idp.mjs';
 import { tempDir } from './lib/temp.mjs';
 
-const hit = (port, host, method, path, { cookie, body, token, ua } = {}) => new Promise((resolve, reject) => {
+const hit = (port, host, method, path, { cookie, body, token, ua, headers = {} } = {}) => new Promise((resolve, reject) => {
   const payload = body === undefined ? null : JSON.stringify(body);
   const req = request({
     host: '127.0.0.1', port, method, path,
-    headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(ua ? { 'User-Agent': ua } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(ua ? { 'User-Agent': ua } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}), ...headers },
   }, (res) => {
     let text = '';
     res.setEncoding('utf8');
@@ -140,6 +140,56 @@ test('a signed-out workspace link signs in on the apex setup page and keeps the 
     }
     const host = await s.at('harbor.weave.test')('GET', '/auth?next=%2Fe%2F1');
     assert.equal(host.headers.location, '/api/auth/oidc/start?next=%2Fe%2F1', 'a workspace host keeps its own sign-in');
+  } finally { s.stop(); }
+});
+
+test('a signed-out browser opening a start link signs in on /start and goes on to the link (Issue #1284)', async () => {
+  const s = await serve();
+  const page = { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
+  try {
+    for (const headers of [page, { 'Sec-Fetch-Mode': 'navigate', Accept: '*/*' }]) {
+      const res = await s.apex('GET', '/api/start/open/net', { headers });
+      assert.deepEqual([res.status, res.headers.location], [302, '/start?next=%2Fapi%2Fstart%2Fopen%2Fnet'], JSON.stringify(headers));
+    }
+    const query = await s.apex('GET', '/api/start/open/harbor?to=billing', { headers: page });
+    assert.equal(query.headers.location, `/start?next=${encodeURIComponent('/api/start/open/harbor?to=billing')}`, 'the query rides along');
+    assert.equal((await s.apex('GET', '/api/start/slug?slug=x', { headers: page })).headers.location, '/start', 'a start route that is not a link signs in without a return path');
+    for (const headers of [{}, { Accept: '*/*', 'Sec-Fetch-Mode': 'cors' }, { Accept: 'application/json' }]) {
+      const res = await s.apex('GET', '/api/start/open/net', { headers });
+      assert.equal(res.status, 401, JSON.stringify(headers));
+      assert.match(res.headers['content-type'], /application\/json/);
+      assert.deepEqual(res.json(), { error: 'Sign in first', code: 'unauthorized' }, 'fetch callers keep the JSON contract');
+    }
+    assert.equal((await s.apex('POST', '/api/start/workspaces', { headers: page, body: {} })).status, 401, 'a write is never redirected');
+    assert.equal((await s.apex('GET', '/start?next=%2Fapi%2Fstart%2Fopen%2Fnet')).status, 200, '/start keeps a start link as its return path');
+    for (const bad of ['%2F%2Fevil.example%2Fapi%2Fstart%2Fopen%2Fnet', 'https%3A%2F%2Fevil.example%2Fapi%2Fstart%2Fopen%2Fnet', '%2Fapi%2Fstart%2Fopen%2Fnet%5Cevil.example', '%2F%5Cevil.example%2Fapi%2Fstart%2Fopen%2Fnet', '%2Fapi%2Fstart%2Fslug', '%2Fapi%2Fstart%2Fopen%2F']) {
+      const res = await s.apex('GET', `/start?setup=skip&next=${bad}`);
+      assert.deepEqual([res.status, res.headers.location], [302, '/start?setup=skip'], `next=${bad} is dropped`);
+    }
+    const back = await s.signIn({ sub: 'user_kyle' }, { next: '/api/start/open/harbor?to=billing' });
+    assert.deepEqual([back.res.status, back.res.headers.location], [302, '/api/start/open/harbor?to=billing'], 'the start sign-in goes on to the link');
+    for (const next of ['//evil.example/api/start/open/harbor', '/api/start/slug', '/w/harbor/../../api/start']) {
+      const res = (await s.signIn({ sub: 'user_kyle' }, { next })).res;
+      assert.equal(res.headers.location, '/start', `${next} is not followed after sign-in`);
+    }
+  } finally { s.stop(); }
+});
+
+test('a signed-in browser opening a workspace its login cannot open gets a page with a way back (Issue #1284)', async () => {
+  const s = await serve();
+  try {
+    const { cookie } = await s.signIn({ sub: 'user_stranger', email: 'stranger@example.com', email_verified: true });
+    const page = await s.apex('GET', '/api/start/open/harbor', { cookie, headers: { 'Sec-Fetch-Mode': 'navigate', Accept: 'text/html' } });
+    assert.equal(page.status, 403);
+    assert.match(page.headers['content-type'], /text\/html/);
+    assert.match(page.text, /No access to harbor/);
+    assert.match(page.text, /href="\/start\?pick=1"/);
+    const unknown = await s.apex('GET', '/api/start/open/%3Cb%3Enowhere', { cookie, headers: { Accept: 'text/html' } });
+    assert.equal(unknown.status, 403);
+    assert.doesNotMatch(unknown.text, /<b>nowhere/, 'the slug is escaped');
+    const json = await s.apex('GET', '/api/start/open/harbor', { cookie });
+    assert.equal(json.status, 403);
+    assert.deepEqual(json.json(), { error: 'This sign-in opens no account on that workspace', code: 'forbidden' });
   } finally { s.stop(); }
 });
 
