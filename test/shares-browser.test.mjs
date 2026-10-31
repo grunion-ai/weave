@@ -115,6 +115,25 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('on a phone the header share button answers a 44px tap on every axis, like the ⋮ beside it (Issue #1222)', async () => {
+    for (const [kind, hash, header] of [['workspace', '', '#main .view-header'], ['space', `#/space/${space.id}`, '#main .view-header'], ['docked record', `#/table/${task.id}?e=${one.id}`, '#dock .view-header']]) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+      try {
+        await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
+        const button = page.locator(`${header} .table-share-btn`);
+        await button.waitFor();
+        const reach = await button.evaluate((b) => {
+          const r = b.getBoundingClientRect();
+          const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+          const hit = (x, y) => { const n = document.elementFromPoint(x, y); return !!n && (n === b || b.contains(n)); };
+          const span = (dx, dy) => { let d = 0; while (d < 30 && hit(cx - dx * (d + 0.5), cy - dy * (d + 0.5)) && hit(cx + dx * (d + 0.5), cy + dy * (d + 0.5))) d += 0.5; return 2 * d; };
+          return { w: span(1, 0), h: span(0, 1) };
+        });
+        assert.ok(reach.w >= 43 && reach.h >= 43, `${kind}: the share button answers ${reach.w}x${reach.h}px of taps`);
+      } finally { await page.close(); }
+    }
+  });
+
   test('the space toolbar creates a link for the entire space', async () => {
     reset();
     const page = await open(`#/space/${space.id}`);
