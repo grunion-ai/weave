@@ -42,6 +42,26 @@ test('a view saves layout board with groups and picture, and reads them back', (
   assert.equal(w.tableView('Shopping List/Standard', { layout: 'table' }).layout, 'table');
 });
 
+test('a board view saves fit, frame and flow, refuses other values by name, and carries them in the schema (Issue #1280)', () => {
+  const { w } = shop();
+  const v = w.tableView('Shopping List/Standard', { layout: 'board', picture: 'medium', fit: 'capped', frame: '3:4', flow: 'rows' });
+  assert.equal(v.fit, 'capped');
+  assert.equal(v.frame, '3:4');
+  assert.equal(v.flow, 'rows');
+  const fresh = w.tableView('Shopping List/Columns', { layout: 'board' });
+  assert.equal(fresh.fit, undefined, 'unset crops');
+  assert.equal(fresh.frame, undefined, 'unset is 4:3');
+  assert.equal(fresh.flow, undefined, 'unset is masonry');
+  assert.throws(() => w.tableView('Shopping List/Standard', { fit: true }), /fit is crop, fit, original or capped/);
+  assert.throws(() => w.tableView('Shopping List/Standard', { frame: '2:1' }), /frame is 4:3, 1:1, 3:4 or 16:9/);
+  assert.throws(() => w.tableView('Shopping List/Standard', { flow: 'columns' }), /flow is masonry or rows/);
+  const w2 = new Weave();
+  w2.applySchema(w.describeSchema());
+  const back = w2.tableView('Shopping List/Standard');
+  assert.deepEqual([back.fit, back.frame, back.flow], ['capped', '3:4', 'rows'], 'fit, frame and flow travel with the schema document');
+  const cleared = w.tableView('Shopping List/Standard', { fit: null, frame: null, flow: null });
+  assert.deepEqual([cleared.fit, cleared.frame, cleared.flow], [undefined, undefined, undefined]);
+});
 test('unknown layout, groups and picture values are refused by name', () => {
   const { w } = shop();
   assert.throws(() => w.tableView('Shopping List/X', { layout: 'gallery' }), /layout is table, list or board/);
