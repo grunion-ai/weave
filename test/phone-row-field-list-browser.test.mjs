@@ -49,7 +49,9 @@ if (s) {
     const rows = [...group.querySelectorAll('.fieldrow')].filter(seen);
     return {
       theme: document.documentElement.dataset.bsTheme,
-      group: { ...px(group), radius: parseFloat(gs.borderTopLeftRadius), bg: gs.backgroundColor, clipped: gs.overflowY !== 'visible' },
+      group: { ...px(group), radius: parseFloat(gs.borderTopLeftRadius), bg: gs.backgroundColor,
+        border: gs.borderTopStyle === 'none' ? 0 : parseFloat(gs.borderTopWidth) + parseFloat(gs.borderLeftWidth) },
+      heads: [...document.querySelectorAll('#dock .entity-body > .doc-section .doc-section-head')].filter(seen).map((n) => px(n)),
       pageBg: getComputedStyle(document.body).backgroundColor,
       grips: [...document.querySelectorAll('#dock .entity-fields .opt-grip')].filter(seen).length,
       docSections: [...document.querySelectorAll('#dock .entity-body > .doc-section')].filter(seen).map((n) => px(n)),
@@ -59,6 +61,7 @@ if (s) {
         const chev = n.querySelector('.fieldrow-chev');
         return {
           field: n.dataset.field ?? label?.textContent.trim() ?? '',
+          divider: getComputedStyle(n).boxShadow,
           ftype: n.dataset.ftype ?? null,
           wide: n.classList.contains('fieldrow-wide'),
           cols: getComputedStyle(n).gridTemplateColumns,
@@ -78,17 +81,13 @@ if (s) {
 
   for (const [engine, profile] of engines) {
     for (const theme of ['light', 'dark']) {
-      test(`on a phone the fields block is one inset group of 50px rows, label left and value right (${engine}, ${theme}, Issue #741)`, async () => {
+      test(`on a phone the fields block is one list of 50px rows, label left and value right (${engine}, ${theme}, Issue #741)`, async () => {
         const page = await open({ ...profile, theme });
         try {
           const r = await read(page);
           assert.equal(r.theme, theme);
           assert.ok(r.rows.length >= 6, `every field keeps a row, got ${r.rows.length}`);
-          assert.notEqual(r.group.bg, 'rgba(0, 0, 0, 0)', 'the group draws its own panel surface');
-          assert.notEqual(r.group.bg, r.pageBg, 'and that surface is not the page canvas');
-          assert.ok(r.group.radius >= 16, `the group is rounded, got ${r.group.radius}px`);
-          assert.ok(r.group.clipped, 'and clips its rows to that radius');
-          assert.ok(r.group.left >= 8 && r.group.left <= 24, `the group is inset from the left edge, got ${r.group.left}px`);
+          assert.ok(r.group.left >= 8 && r.group.left <= 24, `the list sits on the pane padding, got ${r.group.left}px`);
           assert.equal(r.grips, 0, 'no drag grip shows on a phone');
           for (const row of r.rows) {
             assert.ok(row.box.h >= 50, `${row.field} is a 50px target, got ${row.box.h}px`);
@@ -101,6 +100,26 @@ if (s) {
           const stacked = r.rows.map((x) => x.box).sort((a, b) => a.top - b.top);
           for (let i = 1; i < stacked.length; i += 1) {
             assert.equal(stacked[i].top, stacked[i - 1].bottom, 'the rows sit flush, divided by a hairline, never spaced');
+          }
+        } finally { await page.close(); }
+      });
+
+      test(`on a phone the fields list sits flush on the page with no outlined panel, its rows split by hairlines (${engine}, ${theme}, Issue #1285)`, async () => {
+        const page = await open({ ...profile, theme });
+        try {
+          const r = await read(page);
+          assert.equal(r.theme, theme);
+          assert.equal(r.group.border, 0, `the fields list draws no outline, got ${r.group.border}px`);
+          assert.equal(r.group.radius, 0, `and no rounded corners, got ${r.group.radius}px`);
+          assert.equal(r.group.bg, 'rgba(0, 0, 0, 0)', 'and no panel surface of its own, so the page shows through');
+          const [first, ...rest] = r.rows;
+          assert.match(first.divider, /inset/, `${first.field} keeps its hairline divider, got ${first.divider}`);
+          for (const row of rest.slice(0, -1)) assert.match(row.divider, /inset/, `${row.field} keeps its hairline divider`);
+          assert.equal(r.rows.at(-1).divider, 'none', 'the last row closes the list with no divider');
+          assert.ok(r.heads.length >= 1, 'the Description section heading shows under the list');
+          for (const row of r.rows) {
+            assert.ok(Math.abs(row.label.left - r.heads[0].left) <= 1,
+              `${row.field} label starts on the section heading's edge, label ${row.label.left} vs heading ${r.heads[0].left}`);
           }
         } finally { await page.close(); }
       });
@@ -189,7 +208,7 @@ if (s) {
       try {
         const r = await read(page);
         assert.equal(r.theme, theme);
-        assert.equal(r.group.bg, 'rgba(0, 0, 0, 0)', 'the inset group is a phone layout only');
+        assert.equal(r.group.bg, 'rgba(0, 0, 0, 0)', 'the fields list never draws a panel');
         assert.ok(r.grips > 0, 'the drag grips stay on a desktop');
         const status = r.rows.find((x) => x.field === 'Status');
         assert.match(status.cols, /^16px /, 'and the row keeps its grip column');
