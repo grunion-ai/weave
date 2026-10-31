@@ -5594,7 +5594,7 @@ async function readAndDrawList(db, dbId, search) {
   const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
     ...(board ? [...boardCardFields(db).map((f) => f.name), boardCore.coverField(db)?.name] : []),
     ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n)),
-    ...(board || showsRollups(db) ? [] : s.levels.map((l, i) => VP.breakdownField(db.fields, s.levels, i)?.name))].filter(Boolean);
+    ...(board || showsRollups(db) ? [] : s.levels.map((l, i) => VP.breakdownField(breakdownFields(db), s.levels, i)?.name))].filter(Boolean);
   const base = { fields: [...new Set(names)], relations: 'chip', limit: -1 };
   const filtered = !!(where || search);
   const showDeleted = !board && showsDeleted(db);
@@ -5676,8 +5676,11 @@ function groupCrumbEl(node) {
   const text = VP.crumbText(node);
   return text ? el('span', { class: 'group-crumb' }, text) : null;
 }
+function breakdownFields(db) {
+  return (allTables().find((t) => t.id === db.id) ?? db).fields;
+}
 function groupSummaryEl(db, levels, node) {
-  const f = VP.breakdownField(db.fields, levels, node.level);
+  const f = VP.breakdownField(breakdownFields(db), levels, node.level);
   const text = VP.breakdown(node.rows, f);
   return text ? el('span', { class: 'group-summary', title: `${f.name}: ${text}` }, text) : null;
 }
@@ -7384,7 +7387,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   };
   const pinFor = (start) => {
     if (!slots || start <= 0 || start >= slots.length || slots[start].kind === 'grand') return -1;
-    for (let i = start - 1; i >= 0; i--) if (slots[i].kind === 'head' && slots[i].node.level === 0) return i;
+    for (let i = start; i >= 0; i--) if (slots[i].kind === 'head' && slots[i].node.level === 0) return i < start ? i : -1;
     return -1;
   };
   const paint = (w) => {

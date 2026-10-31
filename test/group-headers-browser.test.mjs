@@ -73,8 +73,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('list: nested headers show their path and the breakdown too', async () => {
-    const v = view('Standard', { group: ['Severity', 'Area'], rollups: false, layout: 'list', collapsed: null });
+  test('list: nested headers show their path and the breakdown too, read in table field order with the field hidden', async () => {
+    const v = view('Standard', { fields: STANDARD_FIELDS.filter((n) => n !== 'Status'), group: ['Severity', 'Area'], rollups: false, layout: 'list', collapsed: null });
     const page = await open(v, { height: 6000 });
     try {
       const got = await page.$$eval('#main .wv-list .list-group:not(.list-completed)', (ss) => ss.map((sec) => {
