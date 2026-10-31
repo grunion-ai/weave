@@ -30,7 +30,7 @@ async function withHub(fn) {
   }
 }
 
-test('a deleted workspace leaves the hub list but keeps its file and its URL', async () => {
+test('a deleted workspace leaves the hub list and its URL answers 404, while the hub keeps it for the operator (Feature #347)', async () => {
   await withHub(async ({ api }) => {
     assert.equal((await api('POST', '/api/workspaces', { name: 'scratch' })).status, 201);
     assert.ok((await api('GET', '/api/workspaces')).data.some((w) => w.name === 'scratch'));
@@ -42,7 +42,9 @@ test('a deleted workspace leaves the hub list but keeps its file and its URL', a
     const trashed = (await api('GET', '/api/workspaces?deleted=1')).data.find((w) => w.name === 'scratch');
     assert.ok(trashed?.deletedAt, 'the trashed workspace shows with ?deleted=1');
 
-    assert.equal((await api('GET', '/w/scratch/api/health')).status, 200);
+    assert.equal((await api('GET', '/w/scratch/api/health')).status, 404, 'deleted is gone from the user\'s side');
+    assert.equal((await api('POST', '/api/workspaces/scratch/restore')).status, 200, 'the operator can still restore it');
+    assert.equal((await api('GET', '/w/scratch/api/health')).status, 200, 'and it answers again');
   });
 });
 

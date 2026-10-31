@@ -3820,8 +3820,7 @@ async function showTrash(dbId) {
     title: db ? `${db.name} — trash` : 'Trash',
   }));
 
-  const wsTrashed = db ? [] : await trashedWorkspaces();
-  if (!items.length && !views.length && !wsTrashed.length) {
+  if (!items.length && !views.length) {
     main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
     return;
   }
@@ -3868,7 +3867,6 @@ async function showTrash(dbId) {
         ...(db ? [] : [el('th', {}, 'Table')]),
         el('th', {}, 'Deleted'), el('th', {}, ''))),
       rows)));
-  if (wsTrashed.length) main.append(trashedWorkspacesCard(wsTrashed, () => showTrash(dbId)));
 }
 
 function typedHold(name, prompt, row) {
@@ -3898,32 +3896,11 @@ function confirmToggle(after, build) {
   };
 }
 
-function trashedHref(order, gone) {
+function hrefAfterDelete(order, gone) {
   const at = order.findIndex((x) => x.name === gone.name);
-  const open = (x) => x.name !== gone.name && !x.held && !x.deletedAt;
-  const next = order.slice(at + 1).find(open) ?? order.slice(0, Math.max(at, 0)).reverse().find(open);
-  const href = next ? wsHref(next) : '/';
-  return `${href}${href.includes('?') ? '&' : '?'}trashed=${encodeURIComponent(gone.name)}`;
-}
-
-async function trashedArrival() {
-  const q = new URLSearchParams(location.search);
-  const name = q.get('trashed');
-  if (name == null) return;
-  q.delete('trashed');
-  history.replaceState(history.state, '', `${location.pathname}${q.size ? `?${q}` : ''}${location.hash}`);
-  const gone = (await api('GET', '/workspaces?deleted=1').catch(() => [])).find((x) => x.name === name && x.deletedAt);
-  if (!gone) return;
-  toast(`Workspace ${name} moved to the trash`, false, {
-    label: 'Undo',
-    run: async () => {
-      try {
-        await api('POST', `/workspaces/${gone.id}/restore`);
-        const back = (await api('GET', '/workspaces')).find((x) => x.name === name);
-        location.href = back ? wsHref(back) : '/';
-      } catch (err) { toast(err.message, true); }
-    },
-  });
+  const open = (x) => x.name !== gone.name && x.name !== 'weave' && !x.held && !x.deletedAt;
+  const next = order.slice(at + 1).find(open) ?? order.slice(0, Math.max(at, 0)).reverse().find(open) ?? order.find((x) => x.name === 'weave');
+  return next ? wsHref(next) : '/';
 }
 
 function deleteWorkspaceDialog(w, after = null) {
@@ -3932,24 +3909,19 @@ function deleteWorkspaceDialog(w, after = null) {
     placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
   });
   modal('Delete workspace', [
-    el('p', {}, 'This moves ', el('strong', {}, w.name),
-      ` to the trash with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. Restore brings it back from Trash in the sidebar.`),
+    el('p', {}, 'This permanently deletes ', el('strong', {}, w.name),
+      ` with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. It cannot be undone.`),
     el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm'),
     input,
   ], async () => {
     if (input.value !== w.name) throw Object.assign(new Error('The name does not match'), { shown: true });
     const order = state.wsList ?? [];
     await api('DELETE', `/workspaces/${w.id}`);
-    if (w.name === state.wsCurrent) { location.href = trashedHref(order, w); return; }
-    const redraw = () => {
-      buildWsRail();
-      if (state.route?.page === 'settings') showSettings();
-      else after?.();
-    };
-    toast(`Workspace ${w.name} moved to the trash`, false, {
-      label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); redraw(); },
-    });
-    redraw();
+    if (w.name === state.wsCurrent) { location.href = hrefAfterDelete(order, w); return; }
+    toast(`Workspace ${w.name} deleted`);
+    buildWsRail();
+    if (state.route?.page === 'settings') showSettings();
+    else after?.();
   }, 'Delete workspace', 'btn-danger');
   const go = $('#modal button[type="submit"]');
   go.disabled = true;
@@ -4027,7 +3999,7 @@ async function showSettings() {
   if (!deletable.length) return;
   main.append(el('div', { class: 'card settings-workspaces' },
     el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Workspaces')),
-    el('p', { class: 'settings-note' }, 'A workspace moved to the trash keeps its file. Restore brings it back from Trash in the sidebar.'),
+    el('p', { class: 'settings-note' }, 'Deleting a workspace is permanent: it leaves the rail for everyone, its links stop working, and it cannot be undone.'),
     ...deletable.map((w) => {
       const row = el('div', { class: 'list-row' },
         el('span', { class: 'list-row-name' }, w.name),
@@ -12370,28 +12342,6 @@ async function buildWsRail() {
   refreshAccountChip();
 }
 
-async function trashedWorkspaces() {
-  try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; }
-}
-function trashedWorkspacesCard(trashed, redraw) {
-  return el('div', { class: 'card list-rows trash-workspaces', style: 'margin-top:12px' },
-    el('h3', { class: 'card-title' }, 'Workspaces'),
-    ...trashed.map((w) => el('div', { class: 'list-row' },
-      el('span', { class: 'list-row-name' }, w.name),
-      el('span', { class: 'text-secondary' }, 'deleted ', whenEl(w.deletedAt)),
-      el('span', { class: 'spacer' }),
-      el('button', {
-        class: 'btn btn-sm', type: 'button',
-        onclick: async () => {
-          try {
-            await api('POST', `/workspaces/${w.id}/restore`);
-            toast(`Workspace ${w.name} restored`);
-            buildWsRail();
-            redraw();
-          } catch (err) { toast(err.message, true); }
-        },
-      }, 'Restore'))));
-}
 const servesBareRoot = (w) => (w.host ? new URL(w.host).hostname === location.hostname : !!w.default);
 const bareRootWs = (list) => list.find(servesBareRoot);
 const wsHref = (w) => (servesBareRoot(w) ? '/' : w.host ? `/api/auth/open/${encodeURIComponent(w.name.toLowerCase())}` : (w.url ?? `/w/${w.id}/`));
@@ -12936,7 +12886,6 @@ function openBugPanel(from) {
 
 initPageLoader();
 startUsage();
-trashedArrival();
 installBugReporter();
 installPhoneBar();
 toastLayer();

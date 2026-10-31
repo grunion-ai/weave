@@ -48,7 +48,7 @@ if (s) {
     });
   }
 
-  test('deleting the host workspace from its rail chip hops to the next host carrying the trashed marker, and the landing page offers Undo (Feature #347)', async () => {
+  test('deleting the host workspace from its rail chip hops to the next workspace\'s host, with no Undo (Feature #347)', async () => {
     const page = await open('light');
     try {
       await chip(page, 'net').click({ button: 'right' });
@@ -59,19 +59,8 @@ if (s) {
       await page.fill('#modal input[name="confirm"]', 'scratch');
       const hop = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/auth/open/net');
       await page.click('#modal button[type="submit"]');
-      assert.equal(new URL((await hop).url()).searchParams.get('trashed'), 'scratch', 'the hop to the next host carries the marker');
-      assert.ok(member.state.meta.deletedAt, 'scratch is in the trash');
-      const landed = await browser.newPage();
-      try {
-        await landed.goto(`${base}/?trashed=scratch`);
-        await landed.waitForSelector('.wv-toast .wv-toast-action');
-        assert.match(await landed.locator('.wv-toast').last().textContent(), /scratch moved to the trash/, 'the landing page shows the Undo toast');
-        assert.equal(new URL(landed.url()).searchParams.get('trashed'), null, 'the marker leaves the address bar');
-        const back = landed.waitForRequest((r) => new URL(r.url()).pathname === '/api/auth/open/scratch');
-        await landed.locator('.wv-toast .wv-toast-action', { hasText: 'Undo' }).click();
-        await back;
-        assert.equal(member.state.meta.deletedAt ?? null, null, 'Undo restored it and hops back to its host');
-      } finally { await landed.close(); }
+      assert.equal(new URL((await hop).url()).search, '', 'the hop to the next host carries nothing back');
+      assert.ok(member.state.meta.deletedAt, 'scratch is deleted');
     } finally {
       if (member.state.meta.deletedAt) await fetch(`${base}/api/workspaces/scratch/restore`, { method: 'POST' });
       await page.close();

@@ -71,7 +71,7 @@ test('the multi-select trash speaks the record menu\'s words (Feature #296, D6)'
   assert.match(body, /label: 'Undo'/, 'and offers the same Undo');
 });
 
-test('workspace delete runs through one typed dialog, from the workspace menu row and from Settings; its routes stay (Feature #347, Issue #1171)', () => {
+test('workspace delete runs through one typed dialog, from the workspace menu row and from Settings, and the app offers no way back (Feature #347, Issue #1171)', () => {
   const dialog = fnBody('deleteWorkspaceDialog');
   assert.equal(APP.split('Delete workspace').length - 1, dialog.split('Delete workspace').length - 1 + 1, 'outside the dialog only the menu row names Delete workspace');
   assert.match(ROWS_SRC, /delete: w\.deletable \? \{ label: 'Delete workspace…', danger: true, run: \(\) => deleteWorkspaceDialog\(w, after\) \} : null/, 'the workspace menu row opens the dialog, and only where the workspace is deletable');
@@ -80,7 +80,8 @@ test('workspace delete runs through one typed dialog, from the workspace menu ro
   for (const fn of ['menu', 'dotsMenu', 'buildWsRail', 'personalMenu']) assert.doesNotMatch(fnBody(fn), /deleteWorkspaceDialog|Delete workspace/, `${fn} reaches workspace delete only through the menu definition`);
   assert.doesNotMatch(dialog, /\?hard=1/, 'the dialog trashes, never purges');
   assert.equal(APP.includes('confirmDeleteWorkspace'), false, 'no dialog entry point');
-  assert.match(APP, /api\('POST', `\/workspaces\/\$\{w\.id\}\/restore`\)/, 'the Trash page still restores a trashed workspace');
+  assert.doesNotMatch(APP, /\/workspaces\/[^`]*\/restore/, 'the app restores no workspace: deleting is permanent from the user\'s side');
+  assert.doesNotMatch(APP, /trashed=|trashedArrival|trashedWorkspaces/, 'no Undo marker and no workspace list in Trash');
 });
 
 test('no menu row is a Bootstrap dropdown-item; only the menu-less hold button keeps that default', () => {

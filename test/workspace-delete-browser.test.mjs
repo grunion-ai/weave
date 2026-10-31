@@ -36,6 +36,8 @@ if (s) {
   async function confirmDialog(page, name) {
     await page.waitForSelector('#modal input[name="confirm"]');
     assert.equal((await page.locator('#modal h2').textContent()).trim(), 'Delete workspace');
+    assert.match(await page.locator('#modal').textContent(), /permanently deletes .*cannot be undone/s, 'the dialog says it is permanent');
+    assert.doesNotMatch(await page.locator('#modal').textContent(), /trash|restore/i, 'and promises no way back');
     const go = page.locator('#modal button[type="submit"]');
     assert.equal(await go.isDisabled(), true, 'Delete stays off before the name is typed');
     await page.fill('#modal input[name="confirm"]', name.slice(0, -1));
@@ -59,7 +61,7 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: a rail right-click deletes a sibling through the typed dialog, and Undo brings it back (Feature #347)`, async () => {
+    test(`${theme}: a rail right-click deletes a sibling for good: typed dialog, no Undo, gone from the rail and its address (Feature #347)`, async () => {
       const page = await open('/', theme);
       try {
         assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
@@ -71,19 +73,18 @@ if (s) {
         await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Delete workspace…' }).click();
         await confirmDialog(page, 'scratch');
         assert.equal(new URL((await sent).url()).pathname, `/api/workspaces/${await idOf('scratch')}`, 'the menu sends the same DELETE the API takes');
-        await page.waitForSelector('.wv-toast .wv-toast-action');
-        assert.match(await page.locator('.wv-toast').last().textContent(), /scratch moved to the trash/);
+        const toast = page.locator('.wv-toast', { hasText: 'Workspace scratch deleted' });
+        await toast.waitFor();
+        assert.equal(await toast.locator('.wv-toast-action').count(), 0, 'the message offers no Undo');
         await chip(page, 'scratch').waitFor({ state: 'detached' });
-        assert.ok(await tombstone('scratch'), 'the server holds the tombstone');
         assert.equal(new URL(page.url()).pathname, '/', 'deleting a sibling keeps you where you were');
-        await page.locator('.wv-toast .wv-toast-action', { hasText: 'Undo' }).click();
-        await chip(page, 'scratch').waitFor();
-        assert.equal(await tombstone('scratch'), null, 'Undo restores it');
+        assert.equal((await fetch(`${base}/w/${await idOf('scratch')}/api/health`)).status, 404, 'its address answers 404');
+        assert.ok(await tombstone('scratch'), 'the server keeps a tombstone for the operator');
       } finally { await restore('scratch'); await page.close(); }
     });
   }
 
-  test('the ⋮ on the workspace page deletes the workspace you stand in, lands on the next rail workspace, and Undo returns you (Feature #347)', async () => {
+  test('the ⋮ on the workspace page deletes the workspace you stand in and opens the next one on the rail (Feature #347)', async () => {
     const scratchId = await idOf('scratch');
     const spareId = await idOf('spare');
     const page = await open(`/w/${scratchId}/`);
@@ -93,49 +94,27 @@ if (s) {
       assert.deepEqual(await menuRows(page), ['Delete workspace…']);
       await page.locator('.wv-menu .wv-menu-row', { hasText: 'Delete workspace…' }).click();
       await confirmDialog(page, 'scratch');
-      await page.waitForURL(new RegExp(`/w/${spareId}/`));
-      await page.waitForSelector('.wv-toast .wv-toast-action');
-      assert.match(await page.locator('.wv-toast').last().textContent(), /scratch moved to the trash/, 'the toast follows you to the next workspace');
-      assert.equal(new URL(page.url()).searchParams.get('trashed'), null, 'the marker leaves the address bar');
-      assert.ok(await tombstone('scratch'));
-      await page.locator('.wv-toast .wv-toast-action', { hasText: 'Undo' }).click();
-      await page.waitForURL(new RegExp(`/w/${scratchId}/`));
+      await page.waitForURL(new RegExp(`/w/${spareId}/$`));
       await page.waitForSelector('#ws-list .ws-icon.active');
-      assert.equal(await tombstone('scratch'), null, 'Undo restores it and takes you back in');
+      assert.equal(await chip(page, 'scratch').count(), 0, 'the deleted workspace is off the rail');
+      assert.ok(await tombstone('scratch'));
     } finally { await restore('scratch'); await page.close(); }
   });
 
-  test('a stray trashed marker for a live workspace shows no toast', async () => {
-    const page = await open('/?trashed=spare');
-    try {
-      await page.waitForSelector('#main .view-header');
-      await page.waitForFunction(() => !location.search.includes('trashed'));
-      assert.equal(await page.locator('.wv-toast', { hasText: 'moved to the trash' }).count(), 0);
-    } finally { await page.close(); }
-  });
-
-  test('a workspace trashed through the API lists in Trash in the sidebar with Restore, in dark too', async () => {
+  test('a workspace deleted through the API is nowhere in the app: not on the rail, not in Trash, not in Settings', async () => {
     const page = await open('/', 'dark');
     try {
-      assert.equal((await fetch(`${base}/api/workspaces/${await idOf('scratch')}`, { method: 'DELETE' })).status, 200, 'DELETE /api/workspaces/:id trashes');
+      assert.equal((await fetch(`${base}/api/workspaces/${await idOf('scratch')}`, { method: 'DELETE' })).status, 200, 'DELETE /api/workspaces/:id deletes');
       await page.reload();
       await page.waitForSelector('#ws-list .ws-icon');
-      assert.equal(await chip(page, 'scratch').count(), 0, 'the trashed workspace leaves the rail');
-      assert.equal(await page.locator('#ws-trash').count(), 0, 'no trash glyph');
-      assert.equal(await page.locator('#sidebar .nav-system a[href="#/trash"]').count(), 1, 'the Trash row is in the sidebar');
+      assert.equal(await chip(page, 'scratch').count(), 0, 'off the rail');
       await page.click('#sidebar .nav-system a[href="#/trash"]');
-      await page.waitForSelector('#main .trash-workspaces');
-      assert.match(await page.textContent('#main .trash-workspaces'), /scratch/);
-      await page.locator('#main .trash-workspaces button', { hasText: 'Restore' }).click();
-      await chip(page, 'scratch').waitFor();
-    } finally { await restore('scratch'); await page.close(); }
-  });
-
-  test('Settings keeps its Workspaces card', async () => {
-    const page = await open('/#/settings');
-    try {
+      await page.waitForSelector('#main .trash-page, #main .card');
+      assert.equal(await page.locator('#main .trash-workspaces').count(), 0, 'Trash lists no workspaces');
+      assert.doesNotMatch(await page.textContent('#main'), /scratch/, 'and never names it');
+      await page.goto(`${base}/#/settings`);
       await page.waitForSelector('#main .settings-workspaces');
-      assert.match(await page.textContent('#main .settings-workspaces'), /scratch/);
-    } finally { await page.close(); }
+      assert.doesNotMatch(await page.textContent('#main .settings-workspaces'), /scratch/, 'Settings lists only live workspaces');
+    } finally { await restore('scratch'); await page.close(); }
   });
 }
