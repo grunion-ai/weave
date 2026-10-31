@@ -3661,8 +3661,8 @@ export class Weave {
     if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${asked}' (${Weave.ROLES.join(', ')})`, 'invalid');
     const sp = space == null || space === '' ? null : this.getSpace(space);
     if (sp?.system) throw new WeaveError(`A token is scoped to a space people made, not '${sp.name}'`, 'invalid');
-    const caller = this.#callerAccount();
-    const issuer = caller ? own(this.state.meta.accounts ?? {}, caller.slice(8)) : null;
+    const caller = viewerOf(this)?.accountId;
+    const issuer = caller ? own(this.state.meta.accounts ?? {}, caller) ?? null : null;
     if (issuer) {
       const reach = sp ? spaceRole(this, viewerFor(issuer), sp) : workspaceRole(this, viewerFor(issuer));
       if (reach == null) throw new WeaveError(`Space '${space}' not found`, 'not-found');

@@ -633,14 +633,20 @@ async function main() {
       const [sub, name] = args;
       if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '', template: ['true', 'on', 'yes', '1', true].includes(flags.template) })));
       if (sub === 'update') {
-        const patch = pickFlags(['name', 'description', 'icon', 'position']);
+        const patch = pickFlags(['name', 'description', 'icon', 'position', 'access']);
         if (flags.template != null) patch.template = ['true', 'on', 'yes', '1', true].includes(flags.template);
         return out(w.updateSpace(name, patch));
       }
       if (sub === 'delete') { w.deleteSpace(name, { hard: Boolean(flags.hard) }); return out({ space: name, deleted: true }); }
       if (sub === 'restore') return out(w.restoreSpace(name));
       if (sub === 'list' || !sub) return out(w.listSpaces());
-      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, delete, restore`);
+      if (sub === 'members') {
+        const [, , account] = args;
+        if (account && flags.remove) return out(w.removeSpaceMember(name, account));
+        if (account) return out(w.setSpaceMember(name, account, { role: flags.role ?? null }));
+        return out(w.spaceMembers(name));
+      }
+      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, members, delete, restore`);
     }
     case 'template': {
       const [sub, ref] = args;
