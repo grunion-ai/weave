@@ -8,6 +8,7 @@ const s = await launch('workspace delete', (weave) => {
   weave.markOnboarded();
   weave.state.meta.name = 'main';
   scratch = new Weave();
+  scratch.markOnboarded();
   scratch.state.meta.name = 'scratch';
   scratch.createSpace({ name: 'Notes' });
 }, { server: () => ({ workspaces: { scratch } }) });

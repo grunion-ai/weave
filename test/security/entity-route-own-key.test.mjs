@@ -15,7 +15,7 @@ test('an entity id only counts when the workspace holds it as an own key, never 
   }
 });
 
-test('a member route sends a prototype key to its own 404 and still reaches a root entity it does not hold', async () => {
+test('a member route refuses prototype keys and entities owned by another workspace', async () => {
   const root = new Weave();
   root.updateWorkspace({ name: 'root' });
   root.createSpace({ name: 'Ops' });
@@ -34,8 +34,11 @@ test('a member route sends a prototype key to its own 404 and still reaches a ro
       assert.equal((await res.json()).code, 'not-found', key);
     }
     const shared = await fetch(`${base}/api/entities/${ticket.id}`);
-    assert.equal(shared.status, 200);
-    assert.equal((await shared.json()).id, ticket.id);
+    assert.equal(shared.status, 404);
+    assert.equal((await shared.json()).code, 'not-found');
+    const own = await fetch(`http://127.0.0.1:${server.address().port}/api/entities/${ticket.id}`);
+    assert.equal(own.status, 200);
+    assert.equal((await own.json()).id, ticket.id);
   } finally {
     server.close();
   }

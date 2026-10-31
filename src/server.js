@@ -290,11 +290,11 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
   return {
     get defaultName() { return !instances.get(defaultName)?.state.meta.deletedAt && instances.has(defaultName) ? defaultName : [...instances].find(([, w]) => !w.state.meta.deletedAt)?.[0] ?? null; },
     walled,
-    move(ref, position, { workspace } = {}) {
+    move(ref, position, { workspace, visible = () => true } = {}) {
       if (!Number.isInteger(position) || position < 0) throw new WeaveError('position must be a non-negative integer', 'invalid');
       const w = this.get(ref);
-      if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
-      const ids = this.list({ workspace }).map(x => x.id).filter(id => id !== w.state.meta.id);
+      if (!w || !visible(w)) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
+      const ids = this.list({ workspace }).filter(x => visible(this.get(x.id))).map(x => x.id).filter(id => id !== w.state.meta.id);
       ids.splice(Math.min(position, ids.length), 0, w.state.meta.id);
       if (workspace) {
         workspace.state.meta.workspaceOrder = ids;

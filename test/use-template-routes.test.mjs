@@ -63,16 +63,17 @@ test('using a template needs an architect on the target', async () => {
     const editor = root.createAccount({ name: 'ed', role: 'editor' }).token;
     const architect = root.createAccount({ name: 'boss', role: 'architect' }).token;
     acme.createAccount({ name: 'own', role: 'architect' });
+    const spacesBefore = acme.listSpaces().map(s => s.id);
     for (const token of [editor, architect]) {
       const res = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme' }, { Authorization: `Bearer ${token}` });
       assert.equal(res.status, 403);
       assert.match((await res.json()).error, /cannot build in acme/);
     }
-    assert.equal(acme.listSpaces().length, 0, 'nothing written');
+    assert.deepEqual(acme.listSpaces().map(s => s.id), spacesBefore, 'nothing written');
   } finally { server.close(); }
 });
 
-test('an observer on the source may use a template into a workspace where it is an architect', async () => {
+test('an observer on the source may use a template into an open workspace', async () => {
   const root = new Weave();
   root.updateWorkspace({ name: 'root' });
   root.createSpace({ name: 'CRM', template: true });
@@ -90,6 +91,24 @@ test('an observer on the source may use a template into a workspace where it is 
     acme.createAccount({ name: 'own', role: 'architect' });
     const refused = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme', name: 'CRM 2' }, { Authorization: `Bearer ${viewer.token}` });
     assert.equal(refused.status, 403);
+  } finally { server.close(); }
+});
+
+test('template copies use the target local session for permission and audit identity', async () => {
+  const { root, acme, server, base } = await hub();
+  try {
+    const viewer = root.createAccount({ name: 'viewer', role: 'observer' });
+    const owner = acme.createAccount({ name: 'owner', role: 'architect' });
+    root.setRequireAuth(true);
+    acme.setRequireAuth(true);
+    const cookie = [root, acme].map(w => `wv_session_${w.state.meta.id}=${w.createSession(w === root ? viewer.account.id : owner.account.id).token}`).join('; ');
+    const res = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme' }, { Cookie: cookie });
+    assert.equal(res.status, 201, await res.clone().text());
+    const entries = acme.store.listAudit({ limit: -1, actions: ['space-from-template'] });
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].actor, `account:${owner.account.id}`);
+    assert.notEqual(entries[0].actor, `account:${viewer.account.id}`);
+    assert.equal((await post(`${base}/api/spaces`, { name: 'Nope' }, { Cookie: cookie })).status, 403);
   } finally { server.close(); }
 });
 
@@ -111,22 +130,23 @@ test('weave_template_use over HTTP MCP reaches the hub', async () => {
   } finally { server.close(); }
 });
 
-test('a member\'s space is marked a template from its row in the root registry', async () => {
+test('a member\'s space is marked a template from its own registry row', async () => {
   const { root, acme, server, base } = await hub();
   try {
     acme.createSpace({ name: 'Kit' });
-    const spaces = root.getTable('System/Spaces');
-    const row = root.listEntities(spaces.id).find((e) => root.entityName(e) === 'Kit');
-    const res = await fetch(`${base}/api/entities/${row.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Template: true }) });
+    const spaces = acme.getTable('System/Spaces');
+    const row = acme.listEntities(spaces.id).find((e) => acme.entityName(e) === 'Kit');
+    assert.equal((await fetch(`${base}/api/entities/${row.id}`)).status, 404);
+    const res = await fetch(`${base}/w/acme/api/entities/${row.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Template: true }) });
     assert.equal(res.status, 200, await res.clone().text());
     assert.equal(acme.getSpace('Kit').template, true, 'the row edit reaches the member engine');
     assert.deepEqual((await (await fetch(`${base}/w/acme/api/templates`)).json()).map((s) => s.name), ['Kit']);
     acme.updateSpace('Kit', { template: false });
-    assert.equal(root.readEntity(row.id).fields.Template, false, 'and the verb writes the root row');
+    assert.equal(acme.readEntity(row.id).fields.Template, false, 'and the verb writes the local registry row');
   } finally { server.close(); }
 });
 
-test('a space rollup travels into a hub member, where the root registry holds it', () => {
+test('a space rollup travels into the destination workspace registry', () => {
   const root = new Weave();
   root.updateWorkspace({ name: 'root' });
   const acme = new Weave();
@@ -138,7 +158,26 @@ test('a space rollup travels into a hub member, where the root registry holds it
   const spaces = root.getTable('System/Spaces');
   root.addField(spaces.id, { name: 'Deal sum', type: 'rollup', config: { via: deal.id, targetField: 'Amount', aggregate: 'sum' } });
   root.useTemplate('CRM', acme, { name: 'Sales' });
-  const via = (n) => root.findField(spaces, n)?.config.via;
-  assert.equal(via('Deal sum'), deal.id, 'the source keeps its own');
-  assert.equal(via('Deal sum (Sales)'), acme.getTable('Sales/Deal').id, 'the copy\'s reads the member\'s table, under the new space\'s name');
+  assert.equal(root.findField(spaces, 'Deal sum')?.config.via, deal.id, 'the source keeps its own');
+  const localSpaces = acme.getTable('System/Spaces');
+  const copied = Object.values(localSpaces.fields).find(f => f.type === 'rollup' && f.config.via === acme.getTable('Sales/Deal').id);
+  assert.ok(copied, 'the destination registry owns the copied rollup');
+  assert.equal(Object.values(spaces.fields).filter(f => f.type === 'rollup').length, 1, 'the source gains no destination rollup');
+});
+
+
+test('template REST and MCP refuse a protected target with no local accounts', async () => {
+  const { root, acme, server, base } = await hub();
+  try {
+    const { token } = root.createAccount({ name: 'source-owner', role: 'architect' });
+    acme.setRequireAuth(true);
+    const headers = { Authorization: `Bearer ${token}` };
+    const before = acme.listSpaces().map(s => s.id);
+    const response = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme' }, headers);
+    assert.equal(response.status, 403);
+    const rpc = await (await post(`${base}/api/mcp`, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_template_use', arguments: { space: 'CRM', workspace: 'acme' } } }, headers)).json();
+    assert.equal(rpc.result.isError, true);
+    assert.match(rpc.result.content[0].text, /architect|cannot build/);
+    assert.deepEqual(acme.listSpaces().map(s => s.id), before);
+  } finally { server.close(); }
 });

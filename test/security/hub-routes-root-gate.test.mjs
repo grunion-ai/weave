@@ -76,12 +76,12 @@ test('no credentials: the list and search ?all=1 leave out a walled workspace', 
   assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1')), ['open']);
 });
 
-test('reader and writer of the root cannot create, delete or restore workspaces', async () => {
+test('reader and writer cannot create or manage an unrelated protected workspace', async () => {
   const { call, reader, writer } = build();
   for (const token of [reader, writer]) {
     assert.equal((await call('POST', '/api/workspaces', { token, body: { name: 'x' } })).status, 403);
-    assert.equal((await call('DELETE', '/api/workspaces/open', { token })).status, 403);
-    assert.equal((await call('POST', '/api/workspaces/open/restore', { token })).status, 403);
+    assert.equal((await call('DELETE', '/api/workspaces/secret', { token })).status, 401);
+    assert.equal((await call('POST', '/api/workspaces/secret/restore', { token })).status, 401);
   }
 });
 

@@ -13,11 +13,11 @@ import { tempDir } from './lib/temp.mjs';
 
 const BASE = 'weave.test';
 
-const hit = (port, host, method, path, { cookie, body } = {}) => new Promise((resolve, reject) => {
+const hit = (port, host, method, path, { cookie, body, token } = {}) => new Promise((resolve, reject) => {
   const payload = body === undefined ? null : JSON.stringify(body);
   const req = request({
     host: '127.0.0.1', port, method, path,
-    headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}) },
   }, (res) => {
     let text = '';
     res.setEncoding('utf8');
@@ -28,16 +28,24 @@ const hit = (port, host, method, path, { cookie, body } = {}) => new Promise((re
   req.end(payload ?? undefined);
 });
 
-async function serveHub({ baseDomain = BASE, oidc = null, origin = null, before = () => {} } = {}) {
+async function serveHub({ baseDomain = BASE, oidc = null, origin = null, before = () => {}, authenticated = false } = {}) {
   const dir = tempDir('weave-hosts-');
   before(dir);
   const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   main.state.meta.name = 'Net';
+  const token = authenticated ? main.createAccount({ name: 'owner', role: 'architect' }).token : null;
+  if (authenticated) main.redeemIdentityInvite(main.linkIdentity('owner', { issuer: 'https://identity.example' }).code, { issuer: 'https://identity.example', subject: 'owner' });
   main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain, origin, oidc, limits: { options: 1000, failed: 1000 } });
+  const { server, port } = await startServer(main, { port: 0, baseDomain, origin, oidc, openSignup: { on: authenticated, limit: 10 }, limits: { options: 1000, failed: 1000 } });
   const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
-  return { dir, main, port, at, stop: () => { server.close(); rmSync(dir, { recursive: true, force: true }); } };
+  return { dir, main, port, at, token, stop: () => { server.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
+
+const seedAcme = dir => {
+  const w = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
+  w.save();
+  w.store.close();
+};
 
 test('slug rules: a workspace slug is a DNS label, and the reserved names are refused', () => {
   assert.equal(workspaceSlug('ops_hub-2'), 'ops-hub-2', 'an underscore folds to a hyphen');
@@ -69,9 +77,8 @@ test('allowed hosts: one label under the base domain answers only when the base 
 });
 
 test('host routing: <slug>.<base> serves that workspace, the apex the default, /w/ everywhere, unknown 404', async () => {
-  const s = await serveHub();
+  const s = await serveHub({ before: seedAcme });
   try {
-    assert.equal((await s.at('weave.test')('POST', '/api/workspaces', { body: { name: 'Acme' } })).status, 201);
     const acme = s.at('acme.weave.test');
     assert.equal((await acme('GET', '/api/workspace')).json().name, 'acme');
     assert.equal((await s.at('ACME.weave.test')('GET', '/api/workspace')).json().name, 'acme');
@@ -98,9 +105,8 @@ test('host routing: <slug>.<base> serves that workspace, the apex the default, /
 });
 
 test('host routing: a bare /e/ link on a host that does not hold the row moves to the host that does', async () => {
-  const s = await serveHub();
+  const s = await serveHub({ before: seedAcme });
   try {
-    assert.equal((await s.at('weave.test')('POST', '/api/workspaces', { body: { name: 'Acme' } })).status, 201);
     const acme = s.at('acme.weave.test');
     assert.equal((await acme('POST', '/api/spaces', { body: { name: 'Ops' } })).status, 201);
     assert.equal((await acme('POST', '/api/tables', { body: { space: 'Ops', name: 'Task' } })).status, 201);
@@ -125,25 +131,28 @@ test('host routing: with no base domain a slug host is refused as before', async
 });
 
 test('slugs over HTTP: create and rename refuse reserved names; a rename leaves a 301 alias that nobody else can claim', async () => {
-  const s = await serveHub();
+  const s = await serveHub({ authenticated: true });
   const apex = s.at('weave.test');
   try {
-    assert.equal((await apex('POST', '/api/workspaces', { body: { name: 'api' } })).status, 400);
-    assert.equal((await apex('POST', '/api/workspaces', { body: { name: 'Ops_Hub' } })).json().name, 'ops-hub');
-    assert.equal((await apex('POST', '/api/workspaces', { body: { name: 'acme' } })).status, 201);
-    assert.equal((await apex('PATCH', '/w/acme/api/workspace', { body: { name: 'www' } })).status, 400);
+    assert.equal((await apex('POST', '/api/workspaces', { token: s.token, body: { name: 'api' } })).status, 400);
+    const ops = (await apex('POST', '/api/workspaces', { token: s.token, body: { name: 'Ops_Hub' } })).json();
+    assert.equal(ops.name, 'ops-hub');
+    const created = await apex('POST', '/api/workspaces', { token: s.token, body: { name: 'acme' } });
+    assert.equal(created.status, 201, created.text);
+    const token = created.json().owner.token;
+    assert.equal((await apex('PATCH', '/w/acme/api/workspace', { token, body: { name: 'www' } })).status, 400);
 
-    const renamed = await apex('PATCH', '/w/acme/api/workspace', { body: { name: 'Acme Two' } });
+    const renamed = await apex('PATCH', '/w/acme/api/workspace', { token, body: { name: 'Acme Two' } });
     assert.equal(renamed.json().name, 'acme-two');
     const moved = await s.at('acme.weave.test')('GET', '/api/spaces?x=1');
     assert.equal(moved.status, 301);
     assert.equal(moved.headers.location, 'http://acme-two.weave.test/api/spaces?x=1');
-    assert.equal((await s.at('acme-two.weave.test')('GET', '/api/workspace')).json().name, 'acme-two');
+    assert.equal((await s.at('acme-two.weave.test')('GET', '/api/workspace', { token })).json().name, 'acme-two');
 
-    assert.equal((await apex('POST', '/api/workspaces', { body: { name: 'acme' } })).status, 409, 'a released slug stays held');
-    assert.equal((await apex('PATCH', '/w/ops-hub/api/workspace', { body: { name: 'acme' } })).status, 409);
-    assert.equal((await apex('PATCH', '/w/acme-two/api/workspace', { body: { name: 'acme' } })).json().name, 'acme', 'the holder may take its old slug back');
-    assert.equal((await s.at('acme.weave.test')('GET', '/api/workspace')).json().name, 'acme');
+    assert.equal((await apex('POST', '/api/workspaces', { token: s.token, body: { name: 'acme' } })).status, 409, 'a released slug stays held');
+    assert.equal((await apex('PATCH', '/w/ops-hub/api/workspace', { token: ops.owner.token, body: { name: 'acme' } })).status, 409);
+    assert.equal((await apex('PATCH', '/w/acme-two/api/workspace', { token, body: { name: 'acme' } })).json().name, 'acme', 'the holder may take its old slug back');
+    assert.equal((await s.at('acme.weave.test')('GET', '/api/workspace', { token })).json().name, 'acme');
     assert.equal((await s.at('acme-two.weave.test')('GET', '/api/workspace')).status, 301);
   } finally { s.stop(); }
 });
@@ -277,7 +286,7 @@ const signIn = async (s, host, sub = 'user_kyle') => {
 };
 const sessionOf = (res) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith('wv_session_'))?.split(';')[0];
 
-test('rail hop: a session on one workspace host hands itself to another workspace host it opens (Issue #1263)', async () => {
+test('rail hop: only a target workspace session can produce its host handoff (Issue #1263)', async () => {
   const s = await serveSignIn();
   try {
     s.main.createAccount({ name: 'kyle', role: 'writer' });
@@ -286,11 +295,14 @@ test('rail hop: a session on one workspace host hands itself to another workspac
     const net = s.at('net.weave.test');
     const acme = s.at('acme.weave.test');
     const cookie = await signIn(s, 'net.weave.test');
-    const listed = (await net('GET', '/api/workspaces', { cookie })).json().find((w) => w.name === 'acme');
-    assert.equal(listed.held, undefined, 'acme opens from the net host, so its chip is not held');
-    assert.equal(listed.host, 'http://acme.weave.test/');
-
-    const hop = await net('GET', '/api/auth/open/acme', { cookie });
+    assert.ok(!(await net('GET', '/api/workspaces', { cookie })).json().some(w => w.name === 'acme'));
+    const held = (await net('GET', '/api/workspaces', { cookie: `${cookie}; wv_rail=acme` })).json().find(w => w.name === 'acme');
+    assert.equal(held.held, true);
+    const ownSignIn = await net('GET', '/api/auth/open/acme', { cookie });
+    assert.deepEqual([ownSignIn.status, ownSignIn.headers.location], [302, 'http://acme.weave.test/']);
+    const targetCookie = await signIn(s, 'acme.weave.test');
+    const both = `${cookie}; ${targetCookie}`;
+    const hop = await net('GET', '/api/auth/open/acme', { cookie: both });
     assert.equal(hop.status, 302);
     const to = new URL(hop.headers.location);
     assert.equal(to.host, 'acme.weave.test', 'the hop lands on the workspace host');
@@ -307,7 +319,7 @@ test('rail hop: a session on one workspace host hands itself to another workspac
     assert.deepEqual([cold.status, cold.headers.location], [302, 'http://acme.weave.test/'], 'no session: the bare host, which signs in on its own');
     const shut = await net('GET', '/api/auth/open/other', { cookie });
     assert.deepEqual([shut.status, shut.headers.location], [302, 'http://other.weave.test/'], 'a session that does not open other hands nothing over');
-    assert.equal((await net('GET', '/api/auth/open/ACME', { cookie })).headers.location.startsWith('http://acme.weave.test/api/auth/handoff?code='), true, 'the slug is case-blind');
+    assert.equal((await net('GET', '/api/auth/open/ACME', { cookie: both })).headers.location.startsWith('http://acme.weave.test/api/auth/handoff?code='), true, 'the slug is case-blind');
     assert.equal((await net('GET', '/api/auth/open/nosuch', { cookie })).status, 404);
   } finally { s.stop(); }
 });
@@ -348,9 +360,8 @@ test('host routing: a /w/ page asked on another workspace host moves to that wor
 });
 
 test('host routing: without sign-in configured a /w/ page on another host is served in place as before', async () => {
-  const s = await serveHub();
+  const s = await serveHub({ before: seedAcme });
   try {
-    assert.equal((await s.at('weave.test')('POST', '/api/workspaces', { body: { name: 'Acme' } })).status, 201);
     assert.equal((await s.at('acme.weave.test')('GET', '/w/Net/')).status, 200);
   } finally { s.stop(); }
 });

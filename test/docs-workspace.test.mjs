@@ -137,7 +137,7 @@ test('routes: a fresh login opens the docs workspace as an Observer, without an 
     const filed = await h.call('POST', '/w/weave/api/bug-report', { body: { categories: ['slow'], note: 'from a visitor', events: [], client: {} } });
     assert.equal(filed.status, 201, 'but may submit a bug through the form');
     const issue = h.docs.readEntity((await filed.json()).id);
-    assert.equal(issue.createdBy, 'kyle', 'the submitter is the actor');
+    assert.equal(issue.createdBy, 'visitor: kyle', 'the visitor is named without impersonating a local account');
     const forms = await (await h.call('GET', '/w/weave/api/forms')).json();
     const bug = forms.find((f) => f.name === BUG_FORM_NAME);
     assert.equal((await h.call('POST', `/w/weave/api/forms/${bug.id}/submit`, { body: { note: 'second', events: [] } })).status, 201);

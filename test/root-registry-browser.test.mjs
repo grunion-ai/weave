@@ -69,7 +69,7 @@ if (s) {
       await page.goto(`${unoBase()}/`, { waitUntil: 'networkidle' });
       const users = uno.getTable('System/Users');
       await page.click(`#sidebar .nav-system a[href="#/table/${users.id}"]`);
-      await page.waitForSelector('#main .wv-grid tbody tr');
+      await page.locator('#main .wv-grid tbody tr', { hasText: 'member-person' }).waitFor();
       const text = await page.locator('#main').innerText();
       assert.match(text, /member-person/);
       assert.doesNotMatch(text, /root-person/);

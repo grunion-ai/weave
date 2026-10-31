@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
 import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } from '../src/engine.js';
-import { startServer, openDefaultWorkspace } from '../src/server.js';
+import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
@@ -956,8 +956,12 @@ async function main() {
       if (sub === 'set' || sub === 'update') return out(w.updateWorkspace(pickFlags(['name', 'description'])));
       if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
       if (sub === 'link-preview') return out({ linkPreview: w.updateWorkspace({ linkPreview: !flags.off }).linkPreview });
-      if (sub === 'order') return out(w.workspaceOrder());
-      if (sub === 'move') return out(w.moveWorkspace(args[1], Number(flags.position)));
+      if (sub === 'order' || sub === 'move') {
+        const hub = createWorkspaceHub(w);
+        try {
+          return out(sub === 'order' ? hub.list({ workspace: w }) : hub.move(args[1], Number(flags.position), { workspace: w }));
+        } finally { for (const [, on] of hub.entries()) on.store.close?.(); }
+      }
       if (sub === 'leave') return out(leaveWorkspace(w, flags.account ?? CLI_ACTOR));
       if (sub === 'get' || !sub) return out(w.getWorkspace());
       throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview, order, move, leave`);

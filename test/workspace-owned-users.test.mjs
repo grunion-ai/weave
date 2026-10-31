@@ -114,3 +114,15 @@ test('an accountless sibling cannot expose shared keystore keys over HTTP or MCP
   const result = await call('POST', '/w/open/api/mcp', { body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_keys', arguments: { action: 'list' } } } });
   assert.equal(result.json.result.isError, true);
 });
+
+test('workspace ordering neither persists hidden peer IDs nor moves a hidden peer over MCP', async () => {
+  const { first, second, a, call } = fixture();
+  const moved = await call('PATCH', '/api/workspaces/first', { token: a.token, body: { position: 0 } });
+  assert.equal(moved.status, 200);
+  assert.deepEqual(first.state.meta.workspaceOrder, [first.state.meta.id]);
+  assert.ok(!JSON.stringify(first.exportJSON()).includes(second.state.meta.id));
+  const body = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_workspace', arguments: { action: 'move', name: 'second', position: 0 } } };
+  const refused = await call('POST', '/api/mcp', { token: a.token, body });
+  assert.equal(refused.json.result.isError, true);
+  assert.deepEqual(first.state.meta.workspaceOrder, [first.state.meta.id]);
+});

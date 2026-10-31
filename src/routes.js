@@ -52,7 +52,7 @@ export function errorBody(err, code = 'internal') {
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ROWS = 500;
 const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
-const actorOf = (account) => (account?.id ? accountActor(account.id) : account?.name);
+const actorOf = (account) => account?.visitor ? `visitor: ${account.name}` : account?.id ? accountActor(account.id) : account?.name;
 const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
 
 const prefersHtml = (accept) => {
@@ -591,7 +591,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const docsToken = (w, token) => {
       if (!isDocsWorkspace(w) || !w.state.meta.requireAuth) return null;
       const from = hub.entries().find(([, x]) => x !== w && !x.state.meta.deletedAt && x.verifyToken(token))?.[1];
-      return from ? { ...from.verifyToken(token), role: 'observer' } : null;
+      return from ? { ...from.verifyToken(token), role: 'observer', visitor: true } : null;
     };
     const sessionOn = (w) => ownSession(w) ?? docsVisitor(w);
     const authz = rx.header('authorization');
@@ -764,12 +764,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
       if (cap === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
     }
-    const roleOn = (w) => {
-      if (w === weave) return role;
-      if (oauth) return w === oauth.engine ? Weave.roleName(oauth.account.role) : null;
-      if (authz && /^Bearer /i.test(authz)) return Weave.roleName((w.verifyToken(authz.slice(7).trim()) ?? docsToken(w, authz.slice(7).trim()))?.role) ?? null;
-      return Weave.roleName(sessionOn(w)?.role) ?? null;
+    const accountOn = (w) => {
+      if (oauth) return w === oauth.engine ? oauth.account : null;
+      if (authz && /^Bearer /i.test(authz)) return w.verifyToken(authz.slice(7).trim()) ?? docsToken(w, authz.slice(7).trim());
+      return sessionOn(w);
     };
+    const roleOn = (w) => w === weave ? role : Weave.roleName(accountOn(w)?.role) ?? null;
+    const actorOn = (w) => w === weave ? actorForRequest : actorOf(accountOn(w)) ?? `from ${weave.state.meta.name}: ${weave.actorName(actorForRequest)}`;
 
     const plainMention = (kind, ref) => {
       try {
@@ -1325,7 +1326,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               const base = WeaveSlugs.slugify(asked) || 'workspace';
               slug = [base, ...Array.from({ length: 50 }, (_, i) => `${base}-${i + 2}`)].find((s) => hub.slugState(s) === 'available') ?? null;
             }
-            const w = hub.create(asked, { slug, actor: actorForRequest });
+            const w = hub.create(asked, { slug, actor: `creator: ${weave.actorName(actorForRequest)}` });
             const owner = w.createAccount({ name: ownerName, role: 'architect' }).account;
             w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
             w.state.meta.signup = { issuer: me.issuer, subject: me.subject };
@@ -1388,10 +1389,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const target = hub.get(String(workspace));
           if (!target || target.state.meta.deletedAt) throw new WeaveError(`Workspace '${workspace}' not found`, 'not-found');
           const key = hub.list().find((x) => x.id === target.state.meta.id)?.name ?? target.state.meta.name;
-          if (!mayAdminister(target, roleOn(target))) throw new WeaveError(`You cannot build in ${key}: using a template there needs an architect on it`, 'forbidden');
+          const targetRole = roleOn(target);
+          if ((target.state.meta.requireAuth && !targetRole) || !mayAdminister(target, targetRole)) throw new WeaveError(`You cannot build in ${key}: using a template there needs an architect on it`, 'forbidden');
           target.maybeRefresh?.();
           const was = target.actor;
-          target.actor = actorForRequest;
+          target.actor = actorOn(target);
           try {
             const r = weave.useTemplate(space, target, { name: name == null || name === '' ? undefined : String(name) });
             const url = key === hub.defaultName ? `/#/space/${r.space.id}` : `/w/${key}/#/space/${r.space.id}`;
@@ -1459,29 +1461,29 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const caller = bearer ? weave.verifyToken(bearer) : ownSession(weave);
           if (!caller) return deny(401, 'Migrating a backup needs an account on this workspace');
           const archive = await cloudBackups.get(caller.id, source[1]);
-          const w = await hub.createFrom(body.name, { slug: body.slug ?? null, archive, key: body.key, workspace: body.workspace ?? null, actor: actorForRequest });
+          const w = await hub.createFrom(body.name, { slug: body.slug ?? null, archive, key: body.key, workspace: body.workspace ?? null, actor: `creator: ${weave.actorName(actorForRequest)}` });
           const { owner, headers } = ownCreated(w);
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, from: `backup:${source[1]}`, entities: w.storageStats().entities, ...(owner ? { owner } : {}) }, headers);
         }
         if (route === 'POST /api/workspaces') {
-          const w = hub.create(body.name, { slug: body.slug ?? null, actor: actorForRequest });
+          const w = hub.create(body.name, { slug: body.slug ?? null, actor: `creator: ${weave.actorName(actorForRequest)}` });
           const { owner, headers } = ownCreated(w);
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, ...(owner ? { owner } : {}) }, headers);
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          const w = hub.restore(m[1], { actor: actorForRequest });
+          const w = hub.restore(m[1], { actor: actorOn(hub.get(m[1])) });
           return out(200, { name: w.state.meta.name, deletedAt: null });
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'PATCH') {
           if (body?.position == null) throw new WeaveError('position is required: 0 is the first place in the rail', 'invalid');
-          hub.move(decodeURIComponent(m[1]), body.position, { workspace: weave });
+          hub.move(decodeURIComponent(m[1]), body.position, { workspace: weave, visible: canOpen });
           return out(200, hub.list({ workspace: weave }).filter((x) => canOpen(hub.get(x.name))));
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
           if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
           const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
-          if (hard) return out(200, hub.remove(m[1], { hard: true, actor: actorForRequest }));
-          const w = hub.remove(m[1], { actor: actorForRequest });
+          if (hard) return out(200, hub.remove(m[1], { hard: true, actor: actorOn(hub.get(m[1])) }));
+          const w = hub.remove(m[1], { actor: actorOn(hub.get(m[1])) });
           return out(200, { name: w.state.meta.name, deletedAt: w.state.meta.deletedAt });
         }
 
@@ -1721,7 +1723,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             uploads.set(token, { weave, engine, accountId: account.id, identity: oauth?.identity ?? null, mount: wsPrefix, host: new URL(url).host.toLowerCase(), entity: row.id, field: target?.id ?? null, name, mime, size, expiresAt });
             return { url, method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, maxBytes: size, expiresAt: new Date(expiresAt).toISOString() };
           };
-          const caller = { role, tier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
+          const caller = { role, tier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
@@ -1797,6 +1799,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if (route === 'POST /api/bug-report') {
+          const reporter = role == null ? 'bug-report' : `reporter: ${weave.actorName(actorForRequest)}`;
           const docs = hub.get('weave') ?? hub.get('weaver');
           const issues = docs && (() => { try { return docs.getTable('Development/Issue'); } catch { return null; } })();
           if (issues && role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
@@ -1814,7 +1817,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           docs.maybeRefresh();
           const form = ensureBugForm(docs);
           const instance = role != null && typeof body?.instance === 'string' && body.instance.trim() ? body.instance.trim().slice(0, 200) : null;
-          const filed = submitForm(docs, form.id, body ?? {}, { actor: role == null ? 'bug-report' : actorForRequest, server: { ...stamp(), instance, forwardFailure } });
+          const filed = submitForm(docs, form.id, body ?? {}, { actor: docs === weave && role != null ? actorForRequest : reporter, server: { ...stamp(), instance, forwardFailure } });
           return out(201, { ...filed, ...failed });
         }
 

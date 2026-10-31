@@ -688,6 +688,7 @@ test('an archive taken by release v0.4.100 restores with today\'s code and reads
 
 test('full backups preserve hub routing aliases without putting them in single-workspace exports', async () => {
   const { dir, alpha, beta } = seedDataDir();
+  rmSync(join(dir, 'keystore.key'));
   const routes = { 'removed.db': 'alpha.db' };
   writeFileSync(join(dir, '_hub.json'), JSON.stringify(routes));
   closeAll(alpha, beta);

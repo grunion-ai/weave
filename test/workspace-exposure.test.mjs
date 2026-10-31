@@ -75,14 +75,14 @@ test('local workspace creation gives the browser its own new workspace session',
   const h = hubIn({ requireAuth: true });
   h.main.createAccount({ name: 'root', role: 'architect' });
   const cookie = `wv_session_${h.main.state.meta.id}=${h.main.createSession('root').token}`;
-  const { server, port } = await startServer(h.main, { port: 0, origin: null, baseDomain: null, checkHost: false });
+  const { server, port } = await startServer(h.main, { port: 0, origin: null, baseDomain: null });
   try {
-    const made = await hit(port, 'weave.test', 'POST', '/api/workspaces', { cookie, body: { name: 'mine' } });
+    const made = await hit(port, `localhost:${port}`, 'POST', '/api/workspaces', { cookie, body: { name: 'mine' } });
     assert.equal(made.status, 201, made.text);
     const createdCookie = made.headers['set-cookie'].map(c => c.split(';')[0]).join('; ');
-    assert.equal((await hit(port, 'weave.test', 'GET', made.json().url + 'api/tables', { cookie: createdCookie })).status, 200);
-    assert.equal((await hit(port, 'weave.test', 'GET', made.json().url + 'api/tables', { cookie })).status, 401);
-    assert.equal((await hit(port, 'weave.test', 'GET', made.json().url + 'api/tables')).status, 401);
+    assert.equal((await hit(port, `localhost:${port}`, 'GET', made.json().url + 'api/tables', { cookie: createdCookie })).status, 200);
+    assert.equal((await hit(port, `localhost:${port}`, 'GET', made.json().url + 'api/tables', { cookie })).status, 401);
+    assert.equal((await hit(port, `localhost:${port}`, 'GET', made.json().url + 'api/tables')).status, 401);
   } finally { server.close(); h.done(); }
 });
 
