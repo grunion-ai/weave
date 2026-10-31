@@ -589,7 +589,7 @@ const A11Y_STATES = [
 ].map((s) => ({ ...s, cells: DESKTOP, seeds: A11Y }));
 
 const TOUCH_STATES = [
-  { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'], hold: { touch: [1222] } },
+  { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'] },
   { name: 'table list', route: 'table', open: 'rest', layout: 'table', roots: ['#main'] },
   { name: 'row page', route: 'row-dock', open: 'rest', layout: 'table', roots: ['#dock'] },
   { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163] } },

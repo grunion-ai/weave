@@ -2220,8 +2220,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .crumb-row:has(> .table-tools-btn) { padding-right: 0; }
   .crumb-row:has(> .table-tools-btn) > .dl-wrap { position: static; flex: none; margin-left: auto; }
   .crumb-row > .dl-wrap + .table-tools-btn { margin-left: 0; }
-  .crumb-row > .dl-wrap > .dots-btn { width: 44px; height: 44px; min-width: 44px; margin: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 22px; color: var(--tblr-body-color);
+  .crumb-row > .dl-wrap > .dots-btn, .crumb-row:not(:has(> .table-tools-btn)) > .crumb-actions > .table-share-btn { width: 44px; height: 44px; min-width: 44px; margin: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 22px; color: var(--tblr-body-color);
     background: var(--wv-glass); border: 1px solid var(--wv-glass-line); box-shadow: var(--wv-glass-shadow); -webkit-backdrop-filter: blur(18px) saturate(180%); backdrop-filter: blur(18px) saturate(180%); }
+  .crumb-row:not(:has(> .table-tools-btn)) > .crumb-actions > .table-share-btn { margin-right: 4px; }
 }
 @media (max-width: 600px) and (prefers-reduced-motion: reduce) { .crumb-row.tools-open > .crumb-actions { animation: none; } }
 @media (max-width: 600px) {
