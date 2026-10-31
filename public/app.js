@@ -5593,7 +5593,8 @@ async function readAndDrawList(db, dbId, search) {
   const sort = gridSort(db);
   const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
     ...(board ? [...boardCardFields(db).map((f) => f.name), boardCore.coverField(db)?.name] : []),
-    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
+    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n)),
+    ...(board || showsRollups(db) ? [] : s.levels.map((l, i) => VP.breakdownField(db.fields, s.levels, i)?.name))].filter(Boolean);
   const base = { fields: [...new Set(names)], relations: 'chip', limit: -1 };
   const filtered = !!(where || search);
   const showDeleted = !board && showsDeleted(db);
@@ -5617,7 +5618,15 @@ async function readAndDrawList(db, dbId, search) {
     sums: sums ? { ...server, grand: server.grand ?? total, subtotals: db.view?.subtotals ?? 'all' } : null });
 }
 let listWrites = Promise.resolve();
+function shareCollapsed(db, collapsed) {
+  const sig = listCore.groupSig(db.view?.group);
+  if (!sig) return;
+  for (const v of allTables().find((t) => t.id === db.id)?.views ?? []) {
+    if (v.id !== db.view.id && listCore.groupSig(v.group) === sig) v.collapsed = Array.isArray(collapsed) ? [...collapsed] : undefined;
+  }
+}
 function listViewWrite(db, patch) {
+  if (patch.collapsed !== undefined) shareCollapsed(db, patch.collapsed);
   listWrites = listWrites.catch(() => {}).then(() => api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, patch))
     .then(() => loadSchema()).catch((err) => toast(err.message, true));
   return listWrites;
@@ -5662,6 +5671,15 @@ function listHeadingEl(s, depth, node) {
   if (f?.type === 'select' || f?.type === 'multiselect') hue = (f.optionsFull ?? []).find((o) => o.name === node.label)?.hue || 'slate';
   if (f?.type === 'workflow') { const st = f.states?.find((x) => x.name === node.label); if (st) hue = chipCore.stateHue(st, st.category); }
   return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
+}
+function groupCrumbEl(node) {
+  const text = VP.crumbText(node);
+  return text ? el('span', { class: 'group-crumb' }, text) : null;
+}
+function groupSummaryEl(db, levels, node) {
+  const f = VP.breakdownField(db.fields, levels, node.level);
+  const text = VP.breakdown(node.rows, f);
+  return text ? el('span', { class: 'group-summary', title: `${f.name}: ${text}` }, text) : null;
 }
 function renderList(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
@@ -5784,10 +5802,12 @@ function renderList(main, db, items, ctx) {
     sec.append(
       el('div', { class: 'list-group-head', style: `--level:${depth}` },
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
+        groupCrumbEl(node),
         headingEl(depth, node),
-        el('span', { class: 'list-count' }, String(node.count))),
+        el('span', { class: 'list-count' }, String(node.count)),
+        sums ? null : groupSummaryEl(db, s.levels, node)),
       el('div', { class: 'list-group-body' }, ...body),
-      sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? sumEl(node.label, node.rows, depth, sums.sums.get(node.key)) : null);
+      ...(sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? [sumEl(node.label, node.rows, depth, sums.sums.get(node.key))] : []));
     sec.wvPath = node.path;
     sec.wvItems = node.items ?? null;
     return sec;
@@ -6845,9 +6865,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       el('td', { colspan: String(colCount + sysTail.length + phone.chips.filter((x) => !cols.includes(x)).length) },
         el('div', { class: 'group-head-in', style: `--level:${n.level}` },
           el('button', { class: 'group-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `${shut ? 'Expand' : 'Collapse'} ${n.key}`, onclick: () => foldGroup(n.key) }, lucideEl('chevron-right')),
+          groupCrumbEl(n),
           el('span', { class: 'group-head-field' }, level.f.name),
           listHeadingEl({ levels: grouping.levels }, n.level, n),
-          el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)))));
+          el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)),
+          grouping.rollups ? null : groupSummaryEl(db, grouping.levels, n))));
   };
   const buildSumRow = (s) => {
     const grand = s.kind === 'grand';
@@ -6872,6 +6894,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const live = new Map();
   const built = new Map();
   const win = { start: 0, end: 0 };
+  let pinned = null;
 
   const CR = globalThis.WeaveColumnResize;
   const gid = `g${++GRID_SEQ}`;
@@ -7359,6 +7382,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       headH: table.tHead?.offsetHeight ?? 0,
     };
   };
+  const pinFor = (start) => {
+    if (!slots || start <= 0 || start >= slots.length || slots[start].kind === 'grand') return -1;
+    for (let i = start - 1; i >= 0; i--) if (slots[i].kind === 'head' && slots[i].node.level === 0) return i;
+    return -1;
+  };
   const paint = (w) => {
     let changed = false;
     for (const [i, tr] of live) {
@@ -7366,8 +7394,16 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         tr.remove(); live.delete(i); changed = true;
       }
     }
-    setPad(topSpacer, w.topPad); setPad(bottomSpacer, w.bottomPad);
+    const pin = pinFor(w.start);
+    const pinTr = pin < 0 ? null : rowFor(pin);
+    if (pinned && pinned !== pinTr) { pinned.remove(); changed = true; }
+    pinned = pinTr;
+    setPad(topSpacer, w.topPad - (pinTr ? rowH() : 0)); setPad(bottomSpacer, w.bottomPad);
     let cursor = topSpacer.isConnected ? topSpacer : null;
+    if (pinTr) {
+      if (!pinTr.isConnected || pinTr.previousElementSibling !== cursor) { cursor ? cursor.after(pinTr) : tbody.prepend(pinTr); changed = true; }
+      cursor = pinTr;
+    }
     for (let i = w.start; i < w.end; i++) {
       let tr = live.get(i);
       if (!tr) { tr = rowFor(i); live.set(i, tr); cursor ? cursor.after(tr) : tbody.prepend(tr); changed = true; }
@@ -7388,6 +7424,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const rewindow = () => {
     if (!tbody?.isConnected) return;
     const g = geometry();
+    const headH = `${g.headH}px`;
+    if (table.style.getPropertyValue('--wv-thead-h') !== headH) table.style.setProperty('--wv-thead-h', headH);
     const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: reach() });
     if (pager) {
       const next = GW().feedFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), loaded: reach(), total: total() });
@@ -7492,7 +7530,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const levels = (db.sort ?? []).filter((x) => x?.field);
     if (levels.length && !pager) sortedItems.sort(VP.comparator(levels, clientSortValue, (a, b) => (a.publicId ?? 0) - (b.publicId ?? 0)));
     slots = grouping ? groupSlots() : null;
-    live.clear(); built.clear();
+    live.clear(); built.clear(); pinned = null;
     win.start = 0; win.end = 0;
     tbody = el('tbody');
     topSpacer = spacer(); bottomSpacer = spacer();

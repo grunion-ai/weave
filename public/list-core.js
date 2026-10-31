@@ -192,6 +192,10 @@
     return `${shown} of ${all} ${noun}` + (done == null ? '' : ` · ${done} completed`);
   }
 
+  function groupSig(levels) {
+    return (levels ?? []).map((l) => (typeof l === 'string' ? `${l}::asc:` : `${l.field}:${l.order ?? ''}:${l.dir === 'desc' ? 'desc' : 'asc'}:${l.grain ?? ''}`)).join('>');
+  }
+
   function groupLabel(levels, fieldOf) {
     return levels.map((l) => fieldOf(l.field)?.name ?? l.field).join(SEP);
   }
@@ -199,6 +203,6 @@
   root.weaveListCore = {
     GROUP_CAP, GROUP_TYPES, HEADINGS, ORDERS, DIRS, GRAINS, COMPLETED, SEP, NO_VALUE, countRows,
     groupable, levelDefaults, normalizeLevel, compactLevel, parseGroup, dateBucket,
-    applyManual, nestItems, arrange, isCollapsed, toggleCollapsed, moveInOrder, locate, changedLevels, footerText, groupLabel,
+    applyManual, nestItems, arrange, isCollapsed, toggleCollapsed, moveInOrder, locate, changedLevels, footerText, groupLabel, groupSig,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

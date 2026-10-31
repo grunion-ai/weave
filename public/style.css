@@ -2731,6 +2731,11 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .group-head.shut .group-fold svg { transform: none; }
 .group-head-field { font-size: var(--fs-meta); letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); font-weight: 500; }
 .group-count { color: var(--tblr-secondary); font-weight: 400; font-size: var(--fs-secondary); font-variant-numeric: tabular-nums; }
+.group-crumb, .group-summary { color: var(--tblr-secondary); font-weight: 400; font-size: var(--fs-secondary); white-space: nowrap; }
+.group-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.wv-grid tr.group-head.lv-0 > td { position: sticky; top: var(--wv-thead-h, 0px); z-index: 3; }
+#main .table-wrap.wv-fit .wv-grid tr.group-head.lv-0 > td { top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px) + var(--wv-thead-h, 0px)); }
+#main .wv-list > .list-group > .list-group-head { position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px)); z-index: 2; background: var(--tblr-bg-surface); }
 .wv-grid tr.group-sum > td { height: var(--wv-row-h, 36px); color: var(--tblr-secondary); font-size: var(--fs-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--tblr-bg-surface); }
 .wv-grid tr.group-sum.grand > td { border-top: 2px solid var(--tblr-border-color); color: var(--tblr-body-color); font-weight: 600; }
 .group-sum-label { display: inline-block; padding-left: calc(var(--level, 0) * 18px); margin-right: 8px; color: var(--tblr-body-color); font-weight: 600; }
@@ -2749,7 +2754,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #main > .table-wrap .wv-grid > tbody > tr.group-sum > td { display: none; }
   #main > .table-wrap .wv-grid > tbody > tr.group-sum > td.group-sum-cell:nth-child(3) { display: block; flex: 1; min-width: 0; height: auto; border: 0; padding: 0 14px; white-space: normal; }
 }
-.group-head-in > :not(.group-count) { flex: none; }
+.group-head-in > :not(.group-count, .group-summary) { flex: none; }
 
 #share-pane { flex: 0 0 340px; width: 340px; min-width: 0; min-height: 0; margin: 8px 8px 8px 0; display: flex; flex-direction: column; overflow: hidden; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); font-size: var(--fs-grid); }
 #share-pane[hidden] { display: none; }
