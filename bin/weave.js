@@ -404,7 +404,7 @@ async function main() {
       console.error(`--tools takes core or all, not ${JSON.stringify(flags.tools)}`);
       process.exit(1);
     }
-    const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
+    const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
     startMcpServer(w, flags.tools ? { tools: flags.tools } : {});
     return;
   }
@@ -545,10 +545,10 @@ async function main() {
       archive = backups.at(-1).name;
     }
     const r = await c.migrate({ name: flagStr('name'), slug: flagStr('slug'), archive, key, workspace: flagStr('workspace') });
-    return out(`Migrated ${archive} into the workspace ${r.name} on ${c.origin} (${r.entities} entities): ${c.origin}${r.url}`);
+    return out(`Migrated ${archive} into the workspace ${r.name} on ${c.origin} (${r.entities} entities): ${c.origin}${r.url}${r.owner?.token ? `\nWorkspace token: ${r.owner.token}` : ''}`);
   }
 
-  const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
+  const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
 
   switch (command) {
     case 'ontology':
@@ -649,7 +649,7 @@ async function main() {
         if (!ref) throw new WeaveError('Usage: weave template use <space> --into <other.db> [--name <name>]', 'invalid');
         if (!flags.into || flags.into === true) throw new WeaveError('template use needs --into <other.db>: the workspace file to build in', 'invalid');
         const into = String(flags.into);
-        const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR });
+        const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true });
         try {
           return out(w.useTemplate(ref, target, { name: flags.name == null || flags.name === true ? undefined : String(flags.name) }));
         } finally { if (target !== w) target.store.close?.(); }

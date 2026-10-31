@@ -91,8 +91,8 @@ test('start: each sign-in adds a login to the one start cookie; the rows are the
 
     const kyle = await s.signInAtStart({ sub: 'user_kyle' }, again.cookie);
     me = (await s.apex('GET', '/api/start', { cookie: kyle.cookie })).json();
-    assert.deepEqual(me.rows.map((r) => [r.name, r.login]), [['Net', 'Kyle Adriany'], ['acme', 'eve'], ['other', 'dana@example.com'], ['weave', 'Kyle Adriany']], 'a workspace two logins open is listed once, under the first; the root architect opens the docs workspace too');
-    assert.equal(me.canCreate, true, 'the root architect among the logins may create');
+    assert.deepEqual(me.rows.map((r) => [r.name, r.login]), [['Net', 'Kyle Adriany'], ['acme', 'eve'], ['other', 'dana@example.com']], 'only local memberships are listed, once under the first matching login');
+    assert.equal(me.canCreate, false, 'membership does not bypass the closed signup policy');
   } finally { s.stop(); }
 });
 

@@ -720,7 +720,7 @@ function refuseUsersWrite(weave, ref, caller) {
 export function mayAdminister(on, role) {
   return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
 }
-const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root', weave_shares: 'workspace' };
+const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'workspace', weave_shares: 'workspace' };
 export const SEATLESS_TOOLS = new Set(['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_trash', 'weave_stats', 'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_relation_map', 'weave_add_comment']);
 export const ROLE_TOOLS = {
   observer: new Set([...SEATLESS_TOOLS, 'weave_call']),
@@ -742,17 +742,11 @@ function checkRowArgs(name, args, required) {
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   if (!mayCall(caller, name)) throw unknownTool(name);
   if (caller?.seat && !SEATLESS_TOOLS.has(name)) throw new Error(caller.seat);
+  if (caller && name === 'weave_keys' && !caller.role) throw new Error('Managing keys needs an account on this workspace');
   if (caller && ADMIN_TOOLS[name]) {
-    const atRoot = ADMIN_TOOLS[name] === 'root';
-    if (!mayAdminister(atRoot ? caller.root ?? weave : weave, atRoot ? caller.rootRole : caller.role)) {
-      throw new Error(`${name} needs an architect token${atRoot ? ' on the hub root' : ''}`);
-    }
+    if ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role)) throw new Error(`${name} needs an architect token on this workspace`);
   }
-  if (caller && name === 'weave_forms') {
-    const registry = weave.registryHost ?? weave;
-    const rootRole = registry === weave ? caller.role : caller.rootRole;
-    if ((weave.state.meta.requireAuth && !caller.role) || (registry.state.meta.requireAuth && !rootRole) || !mayAdminister(weave, caller.role) || !mayAdminister(registry, rootRole)) throw new Error('Form management needs an architect token on the workspace and hub registry');
-  }
+  if (caller && name === 'weave_forms' && ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role))) throw new Error('Form management needs an architect token on this workspace');
   weave.maybeRefresh?.();
   switch (name) {
     case 'weave_ontology':
@@ -958,10 +952,10 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'update': return (caller?.updateWorkspace ?? ((p) => weave.updateWorkspace(p)))(pick(args, ['name', 'description', 'linkPreview']));
         case 'logo': return weave.setWorkspaceLogo({ name: args.name ?? 'logo.png', bytes: args.contentBase64 });
         case 'clear-logo': weave.deleteWorkspaceLogo(); return { logo: false };
-        case 'order': return { workspaces: weave.workspaceOrder() };
+        case 'order': return { workspaces: caller?.workspaceOrder ? caller.workspaceOrder() : weave.workspaceOrder() };
         case 'move':
-          if (caller && !mayAdminister(caller.root ?? weave, caller.rootRole ?? caller.role)) throw new Error('weave_workspace move needs an architect token on the hub root');
-          return { workspaces: weave.moveWorkspace(args.name, args.position) };
+          if (caller && !mayAdminister(weave, caller.role)) throw new Error('weave_workspace move needs an architect token on this workspace');
+          return { workspaces: caller?.moveWorkspace ? caller.moveWorkspace(args.name, args.position) : weave.moveWorkspace(args.name, args.position) };
         default: throw new Error(`Unknown workspace action '${args.action}' (get, update, logo, clear-logo, order, move)`);
       }
     case 'weave_accounts':

@@ -53,16 +53,16 @@ async function serve({ openSignup = { on: false }, billing = null } = {}) {
     return { res, cookie: cookieOf(res, 'wv_start'), start, back };
   };
   const open = (name) => new Weave({ path: join(dir, `${name}.db`) });
-  return { dir, at, apex, follow, signIn, idp, open, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  return { dir, at, apex, follow, signIn, idp, open, main, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
-test('an empty hub root lets the first sign-in create, and the owner takes its name from the login', async () => {
+test('an empty routing workspace permits signup only when explicitly enabled', async () => {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const dir = tempDir('weave-setup-empty-');
   const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   main.save();
-  const { server, port } = await startServer(main, { port: 0, oidc, limits: { options: 1000, failed: 1000, slugs: 1000 } });
+  const { server, port } = await startServer(main, { port: 0, oidc, openSignup: { on: true, limit: 1 }, limits: { options: 1000, failed: 1000, slugs: 1000 } });
   try {
     const apex = (method, path, opts) => hit(port, `localhost:${port}`, method, path, opts);
     const start = await apex('GET', '/api/auth/oidc/start?start=1');
@@ -171,6 +171,37 @@ test('closed sign-up: a stranger signs in, sees no workspace and cannot create o
     assert.deepEqual([me.signedIn, me.canCreate, me.openSignup, me.rows], [true, false, false, []]);
     const refused = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Ada', slug: 'ada' } });
     assert.deepEqual([refused.status, refused.json().code], [403, 'signup_closed']);
+  } finally { s.stop(); }
+});
+
+test('a workspace architect cannot bypass closed hosted signup', async () => {
+  const s = await serve();
+  try {
+    const { cookie } = await s.signIn({ sub: 'user_kyle' });
+    const me = (await s.apex('GET', '/api/start', { cookie })).json();
+    assert.equal(me.canCreate, false);
+    assert.deepEqual(me.rows.map(row => row.name), ['Net']);
+    const made = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Other', slug: 'other' } });
+    assert.deepEqual([made.status, made.json().code], [403, 'signup_closed']);
+  } finally { s.stop(); }
+});
+
+test('hosted signup ignores the routing workspace access setting and observer session', async () => {
+  const s = await serve({ openSignup: { on: true, limit: 2 } });
+  try {
+    s.main.setRequireAuth(false);
+    s.main.createAccount({ name: 'viewer', role: 'observer' });
+    const session = `wv_session_${s.main.state.meta.id}=${s.main.createSession('viewer').token}`;
+    const { cookie } = await s.signIn({ sub: 'user_fresh', email: 'fresh@example.com', email_verified: true });
+    for (const [slug, credentials] of [['first', cookie], ['second', `${cookie}; ${session}`]]) {
+      const made = await s.apex('POST', '/api/start/workspaces', { cookie: credentials, body: { name: slug, slug } });
+      assert.equal(made.status, 201, made.text);
+      const w = s.open(slug);
+      assert.equal(w.listAccounts()[0].identities[0].subject, 'user_fresh');
+      w.store.close();
+    }
+    const refused = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Third', slug: 'third' } });
+    assert.deepEqual([refused.status, refused.json().code], [403, 'signup_limit']);
   } finally { s.stop(); }
 });
 
@@ -374,5 +405,24 @@ test('spent invites offer safe recovery without redeeming again or admitting str
     assert.match(again.text, /Open workspace/);
     assert.match(again.text, /href="\/w\/recovery\/"/);
     assert.equal(again.headers['set-cookie'], undefined);
+  } finally { s.stop(); }
+});
+
+
+test('trashed signup workspaces still consume the signup allowance', async () => {
+  const s = await serve({ openSignup: { on: true, limit: 1 } });
+  try {
+    const { cookie } = await s.signIn({ sub: 'quota-person', email: 'quota@example.com', email_verified: true });
+    const made = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Quota', slug: 'quota' } });
+    assert.equal(made.status, 201, made.text);
+    const w = s.open('quota');
+    const localCookie = `wv_session_${w.state.meta.id}=${w.createSession(w.listAccounts()[0].id).token}`;
+    w.store.close?.();
+    const local = s.at('quota.weave.test');
+    const removed = await local('DELETE', '/api/workspaces/quota', { cookie: localCookie });
+    assert.equal(removed.status, 200, removed.text);
+    const again = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Second', slug: 'second' } });
+    assert.deepEqual([again.status, again.json().code], [403, 'signup_limit']);
+    assert.equal((await s.apex('GET', '/api/start', { cookie })).json().canCreate, false);
   } finally { s.stop(); }
 });
